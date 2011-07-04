@@ -8,44 +8,53 @@ import loopy as lp
 
 
 
+def make_well_condition_dev_matrix(queue, n, dtype=np.float32):
+    return cl_array.to_device(queue,
+            np.random.randn(n, n).astype(dtype) + 5*np.eye(n, dtype=dtype))
+
 def main_matrix_mul():
-    ctx = cl.create_some_context(answers=[2])
+    #ctx = cl.create_some_context()
+    ctx = cl.create_some_context(answers=[1])
     queue = cl.CommandQueue(ctx, 
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    #n = 16*34
-    n = 16*34
+    n = 16*100
     from pymbolic import var
     a, b, c, i, j, k = [var(s) for s in "abcijk"]
 
-    k = lp.make_loop_kernel(ctx.devices[0], [
+    knl = lp.make_loop_kernel(ctx.devices[0], [
         lp.LoopDimension("i", n),
         lp.LoopDimension("j", n),
         lp.LoopDimension("k", n),
         ], [ 
-        (c[i+n*j], a[i+n*k]*b[k+n*j]) 
-        ],
-        hints={
-            lp.HINTS.PREFETCH: {"a": True, "b":True},
-            lp.HINTS.MIN_GROUP_SIZE: 128,
-            lp.HINTS.MIN_GROUP_COUNT: 30,
-            })
+        (c[i*n+j], a[i*n+k]*b[k*n+j]) 
+        ])
 
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 16) # 8!
+    knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
+    assert knl.get_invalid_reason() is None
 
-    kernel_gen = lp.generate_all_kernels(k)
+    kernel_gen = (lp.insert_register_prefetches(knl)
+            for knl in lp.generate_loop_schedules(knl))
 
     if 1:
-        a = clrandom.rand(queue, (n, n), dtype=np.float32)
-        b = clrandom.rand(queue, (n, n), dtype=np.float32)
+        a = make_well_condition_dev_matrix(queue, n)
+        b = make_well_condition_dev_matrix(queue, n)
         c = cl_array.empty_like(a)
+        refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
 
-        def launcher(gsize, lsize, kernel):
+        def launcher(gsize, lsize, kernel, check):
             kernel(queue, gsize, lsize, a.data, b.data, c.data,
                     g_times_l=True)
-            refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
-            sol = c.astype(np.float64).get()
 
-            print la.norm(refsol-sol)/la.norm(refsol)
+            if check:
+                sol = c.astype(np.float64).get()
+                rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
+                print rel_err
+                #assert rel_err < 1e-5, rel_err
 
         lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
     else:
