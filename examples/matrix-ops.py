@@ -12,23 +12,29 @@ def make_well_condition_dev_matrix(queue, n, dtype=np.float32):
     return cl_array.to_device(queue,
             np.random.randn(n, n).astype(dtype) + 5*np.eye(n, dtype=dtype))
 
-def main_matrix_mul():
+
+
+
+def plain_matrix_mul():
+    dtype = np.float64
     #ctx = cl.create_some_context()
     ctx = cl.create_some_context(answers=[1])
     queue = cl.CommandQueue(ctx, 
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 16*128
+    n = 16*100
     from pymbolic import var
-    a, b, c, i, j, k = [var(s) for s in "abcijk"]
+    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
-    knl = lp.LoopKernel(ctx.devices[0], [
+    knl = lp.LoopKernel(ctx.devices[0],
+        [
         lp.LoopDimension("i", n),
         lp.LoopDimension("j", n),
         lp.LoopDimension("k", n),
         ], [ 
         (c[i*n+j], a[i*n+k]*b[k*n+j]) 
-        ])
+        ],
+        default_vector_type=dtype, name="matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
@@ -40,27 +46,23 @@ def main_matrix_mul():
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
 
-    if 1:
-        a = make_well_condition_dev_matrix(queue, n)
-        b = make_well_condition_dev_matrix(queue, n)
-        c = cl_array.empty_like(a)
-        refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
+    a = make_well_condition_dev_matrix(queue, n, dtype=dtype)
+    b = make_well_condition_dev_matrix(queue, n, dtype=dtype)
+    c = cl_array.empty_like(a)
+    refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
 
-        def launcher(gsize, lsize, kernel, check):
-            evt = kernel(queue, gsize, lsize, a.data, b.data, c.data,
-                    g_times_l=True)
+    def launcher(kernel, gsize, lsize, check):
+        evt = kernel(queue, gsize, lsize, a.data, b.data, c.data,
+                g_times_l=True)
 
-            if check:
-                sol = c.astype(np.float64).get()
-                rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
-                print rel_err
-                #assert rel_err < 1e-5, rel_err
+        if check:
+            sol = c.astype(np.float64).get()
+            rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
+            assert rel_err < 1e-5, rel_err
 
-            return evt
+        return evt
 
-        lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
-    else:
-        lp.show_kernel_codes(kernel_gen)
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
 
 
 
@@ -148,4 +150,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        main_matrix_mul()
+        plain_matrix_mul()

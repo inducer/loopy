@@ -1,6 +1,6 @@
 from __future__ import division
 
-import numpy
+import numpy as np
 from pytools import Record, memoize_method
 from pymbolic.mapper.dependency import DependencyMapper
 from pymbolic.mapper.c_code import CCodeMapper
@@ -11,21 +11,20 @@ import pyopencl as cl
 
 
 
-# TODO: More freedom for data types of input and output vectors
-# TODO: extra parameters
-# TODO: Non-multiple loop splits
-# TODO: Symbolic bounds
-# TODO: Double precision pragma
-# TODO: nD Texture access
 
+# TODO: Functions
+# TODO: Multi-D array access
+# TODO: Symbolic bounds
+# TODO: Non-multiple loop splits
+# TODO: nD Texture access
+# TODO: Common subexpressions
 # TODO: Try different kernels
+# TODO:   - Tricky: Convolution, FD
+# TODO: Try, fix indirect addressing
+
 # TODO: Play with multi-d data layout (optionally?)
 # TODO: Custom reductions per red. axis
-# TODO: Fix indirect addressing
 # TODO: Switch to sympy, serve multiple accesses with one prefetch
-# TODO: Preambles
-# TODO: Functions
-# TODO: Common subexpressions
 # TODO: Vectorize
 # TODO: Unroll
 # TODO: Parallelize reduction
@@ -171,17 +170,76 @@ class LoopDomain(Record):
 
 
 
+# {{{ arguments
+
+class ArrayArg:
+    def __init__(self, name, dtype, strides=None, shape=None, order="C"):
+        """
+        All of the following are optional. Specify either strides or shape.
+
+        :arg strides: like numpy strides, but in multiples of
+            data type size
+        :arg shape:
+        :arg order:
+        """
+        self.name = name
+        self.dtype = np.dtype(dtype)
+
+        if strides is not None and shape is not None:
+            raise ValueError("can only specify one of shape and strides")
+
+        if strides is not None:
+            strides = tuple(strides)
+
+        if shape is not None:
+            from pyopencl.compyte.array import (
+                    f_contiguous_strides,
+                    c_contiguous_strides)
+
+            if order == "F":
+                strides = _f_contiguous_strides(
+                        dtype.itemsize, shape)
+            elif order == "C":
+                strides = _c_contiguous_strides(
+                        dtype.itemsize, shape)
+            else:
+                raise ValueError("invalid order: %s" % order)
+
+        self.strides = strides
+
+    def __repr__(self):
+        return "<ArrayArg '%s' of type %s>" % (self.name, self.dtype)
+
+
+
+class ScalarArg:
+    def __init__(self, name, dtype):
+        self.name = name
+        self.dtype = np.dtype(dtype)
+
+    def __repr__(self):
+        return "<ScalarArg '%s' of type %s>" % (self.name, self.dtype)
+
+# }}}
+
+
+
+
 class LoopKernel(LoopDomain):
     # possible attributes:
     # - device, a PyOpenCL target device
     # - dims from LoopDomain
     # - instructions
+    # - args
     # - prefetch
     # - schedule
     # - register_prefetch
+    # - name
+    # - preamble
 
-    def __init__(self, device, dims, instructions, prefetch={}, schedule=None,
-            register_prefetch=None):
+    def __init__(self, device, dims, instructions, args=None, prefetch={}, schedule=None,
+            register_prefetch=None, default_vector_type=None, name="loopy_kernel",
+            preamble=None):
         from pymbolic import parse
 
         def parse_if_necessary(v):
@@ -196,9 +254,21 @@ class LoopKernel(LoopDomain):
                 for lvalue, expr in instructions]
 
         LoopDomain.__init__(self,
-                device=device, dims=dims, instructions=insns,
+                device=device, args=args, dims=dims, instructions=insns,
                 prefetch=prefetch, schedule=schedule,
-                register_prefetch=register_prefetch)
+                register_prefetch=register_prefetch, name=name,
+                preamble=preamble)
+
+        if args is None:
+            self.args = [
+                    ArrayArg(name, default_vector_type)
+                    for name in 
+                    sorted(self.input_vectors()) + sorted(self.output_vectors())]
+
+    @property
+    @memoize_method
+    def arg_dict(self):
+        return dict((arg.name, arg) for arg in self.args)
 
     @memoize_method
     def all_indices(self):
@@ -223,7 +293,6 @@ class LoopKernel(LoopDomain):
     @memoize_method
     def reduction_dimensions(self):
         return [dim for dim in self.dims if dim.name not in self.output_indices()]
-
     def group_dims(self):
         dims = self.ordered_dim_by_tag_type(GROUP_IDX_TAG)
         return tuple(dim.length for dim in dims)
@@ -261,7 +330,7 @@ class LoopKernel(LoopDomain):
         return self.dims[self.parse_sloppy_dim_to_dim_idx(dim)]
 
     def local_mem_use(self):
-        return sum(pf.size() for pf in self.prefetch.itervalues())
+        return sum(pf.size(self) for pf in self.prefetch.itervalues())
 
     @memoize_method
     def input_vectors(self):
@@ -270,9 +339,9 @@ class LoopKernel(LoopDomain):
         input_vectors = set()
         for lvalue, expr in self.instructions:
             input_vectors.update(
-                    set(v.name for v in dm(expr))
-                    - self.all_indices())
-        return input_vectors
+                    set(v.name for v in dm(expr)))
+
+        return input_vectors - self.all_indices()
 
     @memoize_method
     def output_vectors(self):
@@ -281,9 +350,9 @@ class LoopKernel(LoopDomain):
         output_vectors = set()
         for lvalue, expr in self.instructions:
             output_vectors.update(
-                    set(v.name for v in dm(lvalue))
-                    - self.all_indices())
-        return list(output_vectors)
+                    set(v.name for v in dm(lvalue)))
+
+        return list(output_vectors - self.all_indices())
 
     def _subst_insns(self, old_var, new_expr):
         from pymbolic.mapper.substitutor import substitute
@@ -424,10 +493,10 @@ class PrefetchDescriptor(Record):
     The latter two values are only assigned during code generation.
     """
 
-    def size(self):
+    def size(self, kernel):
         from pytools import product
-        # FIXME: sizeof
-        return 4*product(dim.length for dim in self.dims)
+        return (kernel.arg_dict[self.input_vector].dtype.itemsize
+                * product(dim.length for dim in self.dims))
 
     @memoize_method
     def free_variables(self):
@@ -734,7 +803,7 @@ class WriteOutput(Record):
     pass
 
 class RegisterPrefetch(Record):
-    __slots__ = ["index_expr", "new_name"]
+    __slots__ = ["subscript_expr", "new_name"]
 
 
 
@@ -905,7 +974,7 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
 
     # {{{ build lmem array declarator
 
-    smem_pf_array = POD(numpy.float32, pf.name)
+    smem_pf_array = POD(kernel.arg_dict[pf.input_vector].dtype, pf.name)
     for l in pf.dim_storage_lengths:
         smem_pf_array = ArrayOf(smem_pf_array, l)
     smem_pf_array = CLLocal(smem_pf_array)
@@ -950,7 +1019,7 @@ def generate_code(kernel):
     from cgen import FunctionBody, FunctionDeclaration, \
             POD, Value, RestrictPointer, Module, Block, \
             Initializer, Assign, Statement, For, \
-            Define, Line, Const
+            Define, Line, Const, LiteralLines
 
     from cgen.opencl import CLKernel, CLGlobal, CLRequiredWorkGroupSize
 
@@ -961,17 +1030,18 @@ def generate_code(kernel):
     # {{{ assign names, dim storage lengths to prefetches
 
     all_pf_list = kernel.prefetch.values()
-    all_pf_sizes = [opf.size() for opf in all_pf_list]
+    all_pf_sizes = [opf.size(kernel) for opf in all_pf_list]
 
     new_prefetch = {}
     for i_pf, pf in enumerate(kernel.prefetch.itervalues()):
         dim_storage_lengths = [pfdim.length for pfdim in pf.dims]
 
         other_pf_sizes = sum(all_pf_sizes[:i_pf]+all_pf_sizes[i_pf+1:])
-        # FIXME: sizeof()
 
         from pytools import product
-        other_dim_sizes = 4*product(odim.length for odim in pf.dims[:-1])
+        other_dim_sizes = (
+                kernel.arg_dict[pf.input_vector].dtype.itemsize
+                * product(odim.length for odim in pf.dims[:-1]))
 
         from pyopencl.characterize import usable_local_mem_size
         if (pf.dims[-1].length % 2 == 0
@@ -1022,7 +1092,7 @@ def generate_code(kernel):
         # write code for output writes
         elif isinstance(sched_item, WriteOutput):
             inner = Block(
-                    [Initializer(POD(numpy.float32,
+                    [Initializer(POD(kernel.arg_dict[lvalue.aggregate.name].dtype,
                         "tmp_"+lvalue.aggregate.name), 0)
                         for lvalue, expr in kernel.instructions]
                     +[inner]+
@@ -1037,12 +1107,13 @@ def generate_code(kernel):
                     ccm, kernel, schedule, sched_index, inner)
 
         elif isinstance(sched_item, RegisterPrefetch):
+            agg_name = sched_item.subscript_expr.aggregate.name
             inner = Block([
-                Initializer(POD(numpy.float32,
+                Initializer(POD(kernel.arg_dict[agg_name].dtype,
                     sched_item.new_name),
                     "%s[%s]"
-                    % (sched_item.index_expr.aggregate.name,
-                        ccm(sched_item.index_expr.index, PREC_NONE))),
+                    % (agg_name,
+                        ccm(sched_item.subscript_expr.index, PREC_NONE))),
                 inner])
 
         else:
@@ -1050,12 +1121,42 @@ def generate_code(kernel):
 
     # }}}
 
+    # {{{ build top-level
+
     mod = Module()
+
+    # {{{ examine arg list
+
+    has_double = False
+
+    args = []
+    for arg in kernel.args:
+        if isinstance(arg, ArrayArg):
+            arg_decl = RestrictPointer(POD(arg.dtype, arg.name))
+            if arg_decl.name in kernel.input_vectors():
+                arg_decl = Const(arg_decl)
+            arg_decl = CLGlobal(arg_decl)
+        else:
+            arg_decl = POD(arg.dtype, arg.name)
+
+        if arg.dtype in [np.float64, np.complex128]:
+            has_double = True
+
+        args.append(arg_decl)
+
+    if has_double:
+        mod.extend([
+            Line("#pragma OPENCL EXTENSION cl_khr_fp64: enable"),
+            Line()])
+
+    # }}}
+
+    if kernel.preamble is not None:
+        mod.extend([LiteralLines(kernel.preamble), Line()])
 
     # {{{ symbolic names for group and local indices
 
-    mod.extend([Line()]
-            + [Define(dim.name, "get_group_id(%d) /* 0..%d */"
+    mod.extend([Define(dim.name, "get_group_id(%d) /* 0..%d */"
                 % (dim.tag.axis, dim.length-1))
                 for dim in kernel.dims_by_tag_type(GROUP_IDX_TAG)]
             + [Define(dim.name, "get_local_id(%d) /* 0..%d */"
@@ -1065,17 +1166,12 @@ def generate_code(kernel):
 
     # }}}
 
-    # {{{ construct function
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
                 tuple(dim.length for dim in kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG)),
                 CLKernel(FunctionDeclaration(
-                    Value("void", "loopy_kernel"),
-                    [CLGlobal(Const(RestrictPointer(POD(numpy.float32, name))))
-                        for name in kernel.input_vectors()]
-                    + [CLGlobal(RestrictPointer(POD(numpy.float32, name)))
-                        for name in kernel.output_vectors()]))),
+                    Value("void", kernel.name), args))),
             Block([inner])))
 
     # }}}
@@ -1181,20 +1277,25 @@ class CompiledKernel:
     def __init__(self, context, kernel):
         self.kernel = kernel
         self.code = generate_code(kernel)
-        self.cl_kernel = cl.Program(context, self.code).build().loopy_kernel
+        print self.code
+        self.cl_kernel = getattr(
+                cl.Program(context, self.code).build(),
+                kernel.name)
 
     def time_run(self, queue, launcher, warmup_rounds=2, timing_rounds=5):
         check = True
         for i in range(warmup_rounds):
-            launcher(self.kernel.group_dims(), self.kernel.local_dims(),
-                    self.cl_kernel, check=check)
+            launcher(self.cl_kernel, 
+                    self.kernel.group_dims(), self.kernel.local_dims(),
+                    check=check)
             check = False
 
         events = []
         for i in range(timing_rounds):
             events.append(
-                    launcher(self.kernel.group_dims(), self.kernel.local_dims(),
-                        self.cl_kernel, check=check))
+                    launcher(self.cl_kernel,
+                        self.kernel.group_dims(), self.kernel.local_dims(),
+                        check=check))
         queue.finish()
 
         return 1e-9*sum(evt.profile.END-evt.profile.START for evt in events)/timing_rounds
