@@ -11,15 +11,12 @@ import pyopencl as cl
 
 
 
-# TODO: Restrict, const
-# TODO: Be smart about picking prefetch 'realization' dims
 # TODO: More freedom for data types of input and output vectors
 # TODO: extra parameters
 # TODO: Non-multiple loop splits
 # TODO: Symbolic bounds
 # TODO: Double precision pragma
 # TODO: nD Texture access
-# TODO: Required work group sizes
 
 # TODO: Try different kernels
 # TODO: Play with multi-d data layout (optionally?)
@@ -155,9 +152,6 @@ class LoopDomain(Record):
         return [dim for dim in self.dims
                 if isinstance(dim.tag, tag_type)]
 
-    def local_mem_use(kernel):
-        return sum(pf.size() for pf in kernel.prefetch.itervalues())
-
     def ordered_dim_by_tag_type(self, tag_type):
         result = []
         from itertools import count
@@ -190,6 +184,27 @@ class LoopKernel(LoopDomain):
     # - instructions
     # - prefetch
     # - schedule
+    # - register_prefetch
+
+    def __init__(self, device, dims, instructions, prefetch={}, schedule=None,
+            register_prefetch=None):
+        from pymbolic import parse
+
+        def parse_if_necessary(v):
+            if isinstance(v, str):
+                return parse(v)
+            else:
+                return v
+
+        insns = [
+                (parse_if_necessary(lvalue),
+                    parse_if_necessary(expr))
+                for lvalue, expr in instructions]
+
+        LoopDomain.__init__(self,
+                device=device, dims=dims, instructions=insns,
+                prefetch=prefetch, schedule=schedule,
+                register_prefetch=register_prefetch)
 
     @memoize_method
     def all_indices(self):
@@ -251,6 +266,9 @@ class LoopKernel(LoopDomain):
     def parse_sloppy_dim(self, dim):
         return self.dims[self.parse_sloppy_dim_to_dim_idx(dim)]
 
+    def local_mem_use(self):
+        return sum(pf.size() for pf in self.prefetch.itervalues())
+
     @memoize_method
     def input_vectors(self):
         dm = DependencyMapper(include_subscripts=False)
@@ -283,7 +301,7 @@ class LoopKernel(LoopDomain):
             for lvalue, expr in self.instructions]
 
     def is_prefetch_variable(self, varname):
-        if hasattr(self, "prefetch"):
+        if self.prefetch:
             for pf in self.prefetch.itervalues():
                 for pfdim in pf.dims:
                     if pfdim.name == varname:
@@ -309,10 +327,10 @@ class LoopKernel(LoopDomain):
 
     def substitute(self, old_var, new_expr):
         copy = self.copy(instructions=self._subst_insns(old_var, new_expr))
-        if hasattr(self, "prefetch"):
+        if self.prefetch:
             copy.prefetch = self._subst_prefetch(old_var, new_expr)
 
-        if hasattr(self, "schedule"):
+        if self.schedule is not None:
             for sched_item in self.schedule:
                 if (isinstance(sched_item, LoopDimension)
                         and sched_item.name == old_var):
@@ -381,28 +399,6 @@ class LoopKernel(LoopDomain):
             return "using too much local memory"
 
         return None
-
-
-
-
-
-
-def make_loop_kernel(dev, dims, insns, hints={}):
-    from pymbolic import parse
-
-    def parse_if_necessary(v):
-        if isinstance(v, str):
-            return parse(v)
-        else:
-            return v
-
-    insns = [
-            (parse_if_necessary(lvalue),
-                parse_if_necessary(expr))
-            for lvalue, expr in insns]
-
-    return LoopKernel(device=dev, dims=dims, instructions=insns,
-            hints=hints)
 
 # }}}
 
@@ -536,7 +532,9 @@ class StrideCollector(RecursiveMapper):
 # {{{ loop scheduling
 
 def generate_loop_schedules(kernel):
-    prev_schedule = getattr(kernel, "schedule",
+    prev_schedule = kernel.schedule
+    if prev_schedule is None:
+        prev_schedule = (
             kernel.dims_by_tag_type(GROUP_IDX_TAG)
             + kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG))
 
@@ -841,28 +839,49 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
         realiz_dim_list = realization_dims[pf_dim_idx]
 
         if realiz_dim_list is not None:
-            # parallel fetch
-            pf_dim_expr = 0
+            # {{{ parallel fetch
 
             from pytools import product
             total_realiz_size = product(rd.length for rd in realiz_dim_list)
 
-            # TODO: Too big/too small?
-            assert pf_dim.length == total_realiz_size
+            start_index = 0
+            result = None
 
-            for realiz_dim in realiz_dim_list:
-                assert isinstance(realiz_dim.tag, WORK_ITEM_IDX_TAG)
+            while start_index < pf_dim.length:
+                pf_dim_expr = 0
+                for realiz_dim in realiz_dim_list:
+                    assert isinstance(realiz_dim.tag, WORK_ITEM_IDX_TAG)
 
-                pf_dim_expr = (pf_dim_expr*realiz_dim.length 
-                        + var("get_local_id(%d)" % realiz_dim.tag.axis))
+                    pf_dim_expr = (pf_dim_expr*realiz_dim.length 
+                            + var("get_local_id(%d)" % realiz_dim.tag.axis))
 
-            pf_idx_subst_map = pf_idx_subst_map.copy()
-            pf_idx_subst_map[pf_dim.name] = pf_dim_expr
-            inner = make_fetch_loop_nest(pf_dim_idx+1,
-                    pf_dim_exprs+[pf_dim_expr], pf_idx_subst_map)
-            return inner
+                pf_dim_expr += start_index
+
+                pf_idx_subst_map = pf_idx_subst_map.copy()
+                pf_idx_subst_map[pf_dim.name] = pf_dim_expr
+                inner = make_fetch_loop_nest(pf_dim_idx+1,
+                        pf_dim_exprs+[pf_dim_expr], pf_idx_subst_map)
+
+                if start_index+total_realiz_size > pf_dim.length:
+                    inner = If(
+                            "%s < %s" % (ccm(pf_dim_expr, PREC_NONE), pf_dim.length),
+                            inner)
+
+                if result is None:
+                    result = inner
+                elif isinstance(result, Block):
+                    result.append(inner)
+                else:
+                    result = Block([result, inner])
+
+                start_index += total_realiz_size
+
+            return result
+
+            # }}}
         else:
-            # sequential fetch
+            # {{{ sequential fetch
+
             pf_dim_var = "prefetch_dim_idx_%d" % pf_dim_idx
             pf_dim_expr = var(pf_dim_var)
 
@@ -876,6 +895,8 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
                     "%s < %s" % (pf_dim_var, dim.length),
                     "++%s" % pf_dim_var, 
                     fetch_block)
+
+            # }}}
 
 
     fetch_block = make_fetch_loop_nest(0)
@@ -931,7 +952,7 @@ def generate_code(kernel):
             Initializer, Assign, Statement, For, \
             Define, Line, Const
 
-    from cgen.opencl import CLKernel, CLGlobal
+    from cgen.opencl import CLKernel, CLGlobal, CLRequiredWorkGroupSize
 
     S = Statement
 
@@ -1047,12 +1068,14 @@ def generate_code(kernel):
     # {{{ construct function
     mod.append(
         FunctionBody(
-            CLKernel(FunctionDeclaration(
-                Value("void", "loopy_kernel"),
-                [CLGlobal(Const(RestrictPointer(POD(numpy.float32, name))))
-                    for name in kernel.input_vectors()]
-                + [CLGlobal(RestrictPointer(POD(numpy.float32, name)))
-                    for name in kernel.output_vectors()])),
+            CLRequiredWorkGroupSize(
+                tuple(dim.length for dim in kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG)),
+                CLKernel(FunctionDeclaration(
+                    Value("void", "loopy_kernel"),
+                    [CLGlobal(Const(RestrictPointer(POD(numpy.float32, name))))
+                        for name in kernel.input_vectors()]
+                    + [CLGlobal(RestrictPointer(POD(numpy.float32, name)))
+                        for name in kernel.output_vectors()]))),
             Block([inner])))
 
     # }}}
@@ -1167,14 +1190,14 @@ class CompiledKernel:
                     self.cl_kernel, check=check)
             check = False
 
-        evt_start = cl.enqueue_marker(queue)
+        events = []
         for i in range(timing_rounds):
-            launcher(self.kernel.group_dims(), self.kernel.local_dims(),
-                    self.cl_kernel, check=check)
-        evt_end = cl.enqueue_marker(queue)
-        evt_end.wait()
+            events.append(
+                    launcher(self.kernel.group_dims(), self.kernel.local_dims(),
+                        self.cl_kernel, check=check))
+        queue.finish()
 
-        return 1e-9*(evt_end.profile.START-evt_start.profile.START)/timing_rounds
+        return 1e-9*sum(evt.profile.END-evt.profile.START for evt in events)/timing_rounds
 
 # }}}
 

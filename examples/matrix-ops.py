@@ -18,11 +18,11 @@ def main_matrix_mul():
     queue = cl.CommandQueue(ctx, 
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 16*100
+    n = 16*128
     from pymbolic import var
     a, b, c, i, j, k = [var(s) for s in "abcijk"]
 
-    knl = lp.make_loop_kernel(ctx.devices[0], [
+    knl = lp.LoopKernel(ctx.devices[0], [
         lp.LoopDimension("i", n),
         lp.LoopDimension("j", n),
         lp.LoopDimension("k", n),
@@ -32,7 +32,7 @@ def main_matrix_mul():
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16) # 8!
+    knl = lp.split_dimension(knl, "k", 16)
     knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
@@ -47,7 +47,7 @@ def main_matrix_mul():
         refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
 
         def launcher(gsize, lsize, kernel, check):
-            kernel(queue, gsize, lsize, a.data, b.data, c.data,
+            evt = kernel(queue, gsize, lsize, a.data, b.data, c.data,
                     g_times_l=True)
 
             if check:
@@ -55,6 +55,8 @@ def main_matrix_mul():
                 rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
                 print rel_err
                 #assert rel_err < 1e-5, rel_err
+
+            return evt
 
         lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
     else:
