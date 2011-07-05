@@ -28,6 +28,7 @@ import pyopencl as cl
 # TODO: Common subexpressions
 # TODO: Vectorize
 # TODO: Unroll
+# TODO: Parallelize reduction
 
 
 
@@ -113,13 +114,6 @@ class LoopDimension(Record):
 
 class LoopDomain(Record):
     __slots__ = ["dims"]
-
-    def name_to_idx(self, name):
-        for i, dim in enumerate(self.dims):
-            if dim.name == name:
-                return i
-        else:
-            raise KeyError("invalid dimension name: %s" % name)
 
     def name_to_idx(self, name):
         for i, dim in enumerate(self.dims):
@@ -354,6 +348,12 @@ class LoopKernel(LoopDomain):
                 raise RuntimeError("repeated tag: %s" % d.tag)
 
         dim = self.dims[idx]
+
+        if dim.tag:
+            raise ValueError("cannot split already-tagged dimension")
+
+        if new_tags and dim.name not in self.output_indices():
+            raise NotImplementedError("cannot yet tag a non-output dimension")
 
         if outer_name is None:
             outer_name = dim.name+"_outer"
