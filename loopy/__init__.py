@@ -12,11 +12,10 @@ import pyopencl as cl
 
 
 
-# TODO: Functions
 # TODO: Multi-D array access
-# TODO: Symbolic bounds
 # TODO: Non-multiple loop splits
 # TODO: nD Texture access
+# TODO: Functions
 # TODO: Common subexpressions
 # TODO: Try different kernels
 # TODO:   - Tricky: Convolution, FD
@@ -213,9 +212,10 @@ class ArrayArg:
 
 
 class ScalarArg:
-    def __init__(self, name, dtype):
+    def __init__(self, name, dtype, approximately):
         self.name = name
         self.dtype = np.dtype(dtype)
+        self.approximately = approximately
 
     def __repr__(self):
         return "<ScalarArg '%s' of type %s>" % (self.name, self.dtype)
@@ -262,7 +262,7 @@ class LoopKernel(LoopDomain):
         if args is None:
             self.args = [
                     ArrayArg(name, default_vector_type)
-                    for name in 
+                    for name in
                     sorted(self.input_vectors()) + sorted(self.output_vectors())]
 
     @property
@@ -271,8 +271,15 @@ class LoopKernel(LoopDomain):
         return dict((arg.name, arg) for arg in self.args)
 
     @memoize_method
+    def scalar_args(self):
+        if self.args is None:
+            return set()
+        else:
+            return set(arg.name for arg in self.args if isinstance(arg, ScalarArg))
+
+    @memoize_method
     def all_indices(self):
-        return set(dim.name for dim in self.dims)
+        return set(dim.name for dim in self.dims) - self.scalar_args()
 
     @memoize_method
     def output_indices(self):
@@ -284,7 +291,7 @@ class LoopKernel(LoopDomain):
                     set(v.name for v in dm(lvalue))
                     & self.all_indices())
 
-        return output_indices
+        return output_indices - set(arg.name for arg in self.args)
 
     @memoize_method
     def output_dimensions(self):
@@ -293,6 +300,7 @@ class LoopKernel(LoopDomain):
     @memoize_method
     def reduction_dimensions(self):
         return [dim for dim in self.dims if dim.name not in self.output_indices()]
+
     def group_dims(self):
         dims = self.ordered_dim_by_tag_type(GROUP_IDX_TAG)
         return tuple(dim.length for dim in dims)
@@ -330,7 +338,7 @@ class LoopKernel(LoopDomain):
         return self.dims[self.parse_sloppy_dim_to_dim_idx(dim)]
 
     def local_mem_use(self):
-        return sum(pf.size(self) for pf in self.prefetch.itervalues())
+        return sum(pf.size() for pf in self.prefetch.itervalues())
 
     @memoize_method
     def input_vectors(self):
@@ -341,7 +349,7 @@ class LoopKernel(LoopDomain):
             input_vectors.update(
                     set(v.name for v in dm(expr)))
 
-        return input_vectors - self.all_indices()
+        return input_vectors - self.all_indices() - self.scalar_args()
 
     @memoize_method
     def output_vectors(self):
@@ -352,7 +360,7 @@ class LoopKernel(LoopDomain):
             output_vectors.update(
                     set(v.name for v in dm(lvalue)))
 
-        return list(output_vectors - self.all_indices())
+        return output_vectors - self.all_indices() - self.scalar_args()
 
     def _subst_insns(self, old_var, new_expr):
         from pymbolic.mapper.substitutor import substitute
@@ -403,7 +411,7 @@ class LoopKernel(LoopDomain):
         return copy
 
     def split_dimension(self, idx, inner_length, outer_name=None, inner_name=None,
-            outer_tag=None, inner_tag=None):
+            outer_tag=None, inner_tag=None, is_even_split=None):
         if isinstance(idx, str):
             idx = self.name_to_idx(idx)
 
@@ -429,7 +437,10 @@ class LoopKernel(LoopDomain):
         if inner_name is None:
             inner_name = dim.name+"_inner"
 
-        assert dim.length % inner_length == 0
+        if is_even_split != False and dim.length % inner_length == 0:
+            is_even_split = True
+
+        assert is_even_split
 
         from pymbolic import var
         tgt_expr = var(inner_name) + var(outer_name)*inner_length
@@ -452,7 +463,7 @@ class LoopKernel(LoopDomain):
     def get_invalid_reason(self):
         gdims = self.group_dims()
         ldims = self.local_dims()
-        if (max(len(gdims), len(ldims)) 
+        if (max(len(gdims), len(ldims))
                 > self.device.max_work_item_dimensions):
             return "too many work item dimensions"
 
@@ -476,6 +487,7 @@ class LoopKernel(LoopDomain):
 class PrefetchDescriptor(Record):
     """
     Attributes:
+    :ivar kernel:
     :ivar input_vector: A string indicating the input vector variable name.
     :ivar index_expr: An expression identifying the access which this prefetch
       serves.
@@ -493,16 +505,16 @@ class PrefetchDescriptor(Record):
     The latter two values are only assigned during code generation.
     """
 
-    def size(self, kernel):
+    def size(self):
         from pytools import product
-        return (kernel.arg_dict[self.input_vector].dtype.itemsize
+        return (self.kernel.arg_dict[self.input_vector].dtype.itemsize
                 * product(dim.length for dim in self.dims))
 
     @memoize_method
     def free_variables(self):
         return set(var.name
                 for var in DependencyMapper()(self.index_expr)
-                ) - set(dim.name for dim in self.dims)
+                ) - set(dim.name for dim in self.dims) - self.kernel.scalar_args()
 
     def hash(self):
         return (hash(type(self)) ^ hash(self.input_vector)
@@ -865,11 +877,18 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
 
     strides = StrideCollector()(pf.index_expr)
 
+    approximate_arg_values = dict(
+            (arg.name, arg.approximately)
+            for arg in kernel.args
+            if isinstance(arg, ScalarArg))
+
     def stride_key(a):
         idx, a_stride = a
-        # FIXME: a_stride could be symbolic
-        assert isinstance(a_stride, int)
-        return a_stride
+
+        from pymbolic import evaluate
+        key = evaluate(a_stride, approximate_arg_values)
+        assert isinstance(key, int)
+        return key
 
     pf_dim_strides = sorted(((dim_idx, strides[dim.name])
         for dim_idx, dim in enumerate(pf.dims)
@@ -921,7 +940,7 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
                 for realiz_dim in realiz_dim_list:
                     assert isinstance(realiz_dim.tag, WORK_ITEM_IDX_TAG)
 
-                    pf_dim_expr = (pf_dim_expr*realiz_dim.length 
+                    pf_dim_expr = (pf_dim_expr*realiz_dim.length
                             + var("get_local_id(%d)" % realiz_dim.tag.axis))
 
                 pf_dim_expr += start_index
@@ -961,8 +980,8 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
 
             return For(
                     "int %s = 0" % pf_dim_var,
-                    "%s < %s" % (pf_dim_var, dim.length),
-                    "++%s" % pf_dim_var, 
+                    "%s < %s" % (pf_dim_var, ccm(dim.length, PREC_NONE)),
+                    "++%s" % pf_dim_var,
                     fetch_block)
 
             # }}}
@@ -1030,7 +1049,7 @@ def generate_code(kernel):
     # {{{ assign names, dim storage lengths to prefetches
 
     all_pf_list = kernel.prefetch.values()
-    all_pf_sizes = [opf.size(kernel) for opf in all_pf_list]
+    all_pf_sizes = [opf.size() for opf in all_pf_list]
 
     new_prefetch = {}
     for i_pf, pf in enumerate(kernel.prefetch.itervalues()):
@@ -1050,7 +1069,7 @@ def generate_code(kernel):
             dim_storage_lengths[-1] += 1
 
         new_prefetch[pf.input_vector, pf.index_expr] = \
-                pf.copy(dims=pf.dims, 
+                pf.copy(dims=pf.dims,
                         dim_storage_lengths=dim_storage_lengths,
                         name="prefetch_%s_%d" % (pf.input_vector, i_pf))
 
@@ -1086,7 +1105,7 @@ def generate_code(kernel):
             if dim.tag is None:
                 inner = For(
                         "int %s = 0" % dim.name,
-                        "%s < %s" % (dim.name, dim.length),
+                        "%s < %s" % (dim.name, ccm(dim.length, PREC_NONE)),
                         "++%s" % dim.name, inner)
 
         # write code for output writes
@@ -1156,11 +1175,11 @@ def generate_code(kernel):
 
     # {{{ symbolic names for group and local indices
 
-    mod.extend([Define(dim.name, "get_group_id(%d) /* 0..%d */"
-                % (dim.tag.axis, dim.length-1))
+    mod.extend([Define(dim.name, "get_group_id(%d) /* 0..%s */"
+                % (dim.tag.axis, ccm(dim.length-1, PREC_NONE)))
                 for dim in kernel.dims_by_tag_type(GROUP_IDX_TAG)]
-            + [Define(dim.name, "get_local_id(%d) /* 0..%d */"
-                % (dim.tag.axis, dim.length-1))
+            + [Define(dim.name, "get_local_id(%d) /* 0..%s */"
+                % (dim.tag.axis, ccm(dim.length-1, PREC_NONE)))
                 for dim in kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG)]
             + [Line()])
 
@@ -1210,7 +1229,7 @@ def split_dimension(knl, *args, **kwargs):
     return knl
 
 def get_input_access_descriptors(kernel):
-    """Return a dictionary mapping input vectors to 
+    """Return a dictionary mapping input vectors to
     a list of input access descriptor. An input access
     descriptor is a tuple (input_vec, index_expr).
     """
@@ -1253,6 +1272,7 @@ def add_prefetch_dims(kernel, input_access_descr, dims, loc_fetch_axes={}):
                 "already exists" % (ivec, iexpr))
 
     new_prefetch[input_access_descr] = PrefetchDescriptor(
+            kernel=kernel,
             input_vector=ivec,
             index_expr=iexpr,
             dims=dims,
@@ -1265,40 +1285,37 @@ def add_prefetch_dims(kernel, input_access_descr, dims, loc_fetch_axes={}):
 
 
 
-# {{{ speed measurement
-
-def make_cl_kernel(ctx, kernel, code):
-    return 
-
-
-
-
 class CompiledKernel:
-    def __init__(self, context, kernel):
+    def __init__(self, context, kernel, size_args=None):
         self.kernel = kernel
         self.code = generate_code(kernel)
-        print self.code
         self.cl_kernel = getattr(
                 cl.Program(context, self.code).build(),
                 kernel.name)
 
-    def time_run(self, queue, launcher, warmup_rounds=2, timing_rounds=5):
-        check = True
-        for i in range(warmup_rounds):
-            launcher(self.cl_kernel, 
-                    self.kernel.group_dims(), self.kernel.local_dims(),
-                    check=check)
-            check = False
+        arg_types = []
+        for arg in kernel.args:
+            if isinstance(arg, ScalarArg):
+                arg_types.append(arg.dtype)
+            else:
+                arg_types.append(None)
 
-        events = []
-        for i in range(timing_rounds):
-            events.append(
-                    launcher(self.cl_kernel,
-                        self.kernel.group_dims(), self.kernel.local_dims(),
-                        check=check))
-        queue.finish()
+        self.cl_kernel.set_scalar_arg_dtypes(arg_types)
 
-        return 1e-9*sum(evt.profile.END-evt.profile.START for evt in events)/timing_rounds
+        from pymbolic import compile
+        if size_args is None:
+            self.size_args = [arg.name for arg in kernel.args if isinstance(arg, ScalarArg)]
+        else:
+            self.size_args = size_args
+
+        self.global_size_func = compile(self.kernel.group_dims(), self.size_args)
+        self.local_size_func = compile(self.kernel.local_dims(), self.size_args)
+
+
+
+
+# {{{ speed measurement
+
 
 # }}}
 
@@ -1307,6 +1324,25 @@ class CompiledKernel:
 
 # driver ----------------------------------------------------------------------
 def drive_timing_run(kernel_generator, queue, launch, flop_count=None):
+
+    def time_run(compiled_knl, warmup_rounds=2, timing_rounds=5):
+        check = True
+        for i in range(warmup_rounds):
+            launch(compiled_knl.cl_kernel,
+                    compiled.global_size_func, compiled.local_size_func,
+                    check=check)
+            check = False
+
+        events = []
+        for i in range(timing_rounds):
+            events.append(
+                    launch(compiled_knl.cl_kernel,
+                        compiled.global_size_func, compiled.local_size_func,
+                        check=check))
+        queue.finish()
+
+        return 1e-9*sum(evt.profile.END-evt.profile.START for evt in events)/timing_rounds
+
     soln_count = 0
     for kernel in kernel_generator:
 
@@ -1318,7 +1354,7 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None):
         print compiled.code
         print "-----------------------------------------------"
 
-        elapsed = compiled.time_run(queue, launch)
+        elapsed = time_run(compiled)
 
         print "time: %f" % elapsed
         if flop_count is not None:

@@ -15,11 +15,10 @@ def make_well_condition_dev_matrix(queue, n, dtype=np.float32):
 
 
 
-def plain_matrix_mul():
+def plain_matrix_mul(ctx_factory=cl.create_some_context):
     dtype = np.float64
-    #ctx = cl.create_some_context()
-    ctx = cl.create_some_context(answers=[1])
-    queue = cl.CommandQueue(ctx, 
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = 16*100
@@ -31,8 +30,8 @@ def plain_matrix_mul():
         lp.LoopDimension("i", n),
         lp.LoopDimension("j", n),
         lp.LoopDimension("k", n),
-        ], [ 
-        (c[i*n+j], a[i*n+k]*b[k*n+j]) 
+        ], [
+        (c[i*n+j], a[i*n+k]*b[k*n+j])
         ],
         default_vector_type=dtype, name="matmul")
 
@@ -52,7 +51,64 @@ def plain_matrix_mul():
     refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
 
     def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize, lsize, a.data, b.data, c.data,
+        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
+                g_times_l=True)
+
+        if check:
+            sol = c.astype(np.float64).get()
+            rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
+            assert rel_err < 1e-5, rel_err
+
+        return evt
+
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+
+
+
+
+def fancy_matrix_mul(ctx_factory=cl.create_some_context):
+    dtype = np.float64
+    #ctx = cl.create_some_context()
+    ctx = cl.create_some_context(answers=[1])
+    queue = cl.CommandQueue(ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    n = 16*100
+    from pymbolic import var
+    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
+
+    knl = lp.LoopKernel(ctx.devices[0],
+        [
+        lp.LoopDimension("i", n_sym),
+        lp.LoopDimension("j", n_sym),
+        lp.LoopDimension("k", n_sym),
+        ], [
+        (c[i*n_sym+j], a[i*n_sym+k]*b[k*n_sym+j])
+        ],
+        [
+            lp.ArrayArg("a", dtype),
+            lp.ArrayArg("b", dtype),
+            lp.ArrayArg("c", dtype),
+            lp.ScalarArg("n", np.uint32, approximately=1000),
+        ], name="fancy_matmul")
+
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1", is_even_split=True)
+    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0", is_even_split=True)
+    knl = lp.split_dimension(knl, "k", 16, is_even_split=True)
+    knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
+    assert knl.get_invalid_reason() is None
+
+    kernel_gen = (lp.insert_register_prefetches(knl)
+            for knl in lp.generate_loop_schedules(knl))
+
+    a = make_well_condition_dev_matrix(queue, n, dtype=dtype)
+    b = make_well_condition_dev_matrix(queue, n, dtype=dtype)
+    c = cl_array.empty_like(a)
+    refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
+
+    def launcher(kernel, gsize, lsize, check):
+        evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
                 g_times_l=True)
 
         if check:
@@ -77,8 +133,8 @@ def main_elwise_scaled_matrix_mul():
         LoopDimension("i", Np),
         LoopDimension("j", Np),
         LoopDimension("k", K),
-        ], [ 
-        (v[i+Np*k], m[i+Np*j]*u[j+Np*k]*g[k]) 
+        ], [
+        (v[i+Np*k], m[i+Np*j]*u[j+Np*k]*g[k])
         ])
 
     gen_kwargs = {
@@ -101,7 +157,7 @@ def main_elwise_scaled_matrix_mul():
             kernel.prepared_call(grid, v.gpudata)
 
         drive_timing_run(
-                generate_all_kernels(knl, **gen_kwargs), 
+                generate_all_kernels(knl, **gen_kwargs),
                 launcher, 2*Np**2*K)
     else:
         show_kernel_codes(generate_all_kernels(knl, **gen_kwargs))
@@ -117,8 +173,8 @@ def main_transpose():
     k = make_loop_kernel([
         LoopDimension("i", n),
         LoopDimension("j", n),
-        ], [ 
-        (b[i+n*j], a[j+n*i]) 
+        ], [
+        (b[i+n*j], a[j+n*i])
         ])
 
     gen_kwargs = {
@@ -136,7 +192,7 @@ def main_transpose():
             kernel.prepared_call(grid, b.gpudata)
 
         drive_timing_run(
-                generate_all_kernels(k, **gen_kwargs), 
+                generate_all_kernels(k, **gen_kwargs),
                 launcher, 0)
     else:
         show_kernel_codes(generate_all_kernels(k, **gen_kwargs))
@@ -150,4 +206,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        plain_matrix_mul()
+        fancy_matrix_mul()
