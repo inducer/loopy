@@ -10,3 +10,5 @@ setuptools*egg
 setuptools.pth
 distribute*egg
 distribute*tar.gz
+*.log
+*profiler.conf

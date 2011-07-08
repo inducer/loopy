@@ -67,8 +67,7 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
 
 
 def fancy_matrix_mul(ctx_factory=cl.create_some_context):
-    dtype = np.float64
-    #ctx = cl.create_some_context()
+    dtype = np.float32
     ctx = cl.create_some_context(answers=[1])
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
@@ -92,9 +91,9 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
             lp.ScalarArg("n", np.uint32, approximately=1000),
         ], name="fancy_matmul")
 
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1", is_even_split=True)
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0", is_even_split=True)
-    knl = lp.split_dimension(knl, "k", 16, is_even_split=True)
+    knl = lp.split_dimension(knl, "i", 13, outer_tag="g.0", inner_tag="l.1", is_even_split=False)
+    knl = lp.split_dimension(knl, "j", 17, outer_tag="g.1", inner_tag="l.0", is_even_split=False)
+    knl = lp.split_dimension(knl, "k", 19, is_even_split=False)
     knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None

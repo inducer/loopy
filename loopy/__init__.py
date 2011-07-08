@@ -14,6 +14,7 @@ import pyopencl as cl
 
 # TODO: Multi-D array access
 # TODO: Non-multiple loop splits
+#       FIXME: Splitting an uneven-split loop?
 # TODO: nD Texture access
 # TODO: Functions
 # TODO: Common subexpressions
@@ -31,9 +32,28 @@ import pyopencl as cl
 
 
 
+NEG_RELATION = {
+        "==" : "!=",
+        "!=" : "==",
+        "<" : ">+",
+        "<=" : ">",
+        ">" : "<=",
+        ">=" : "<",
+        }
 
 
 
+def generate_condition_code(ccm, condition, negate=False, expr_map=None):
+    a, rel, b = condition
+
+    if negate:
+        rel = NEG_RELATION[rel]
+
+    if expr_map is not None:
+        a = expr_map(a)
+        b = expr_map(b)
+
+    return "%s %s %s" % (ccm(a, PREC_NONE), rel, ccm(b, PREC_NONE),)
 
 
 
@@ -92,10 +112,31 @@ def parse_tag(tag):
 # {{{ loop dim, loop domain, kernel
 
 class LoopDimension(Record):
-    __slots__ = ["name", "length", "tag"]
+    __slots__ = ["name", "length", "last_cond",  "tag", 
+            "end_cond", "end_cond_if_last_of"]
 
-    def __init__(self, name, length, tag=None):
-        Record.__init__(self, name=name, length=length, tag=tag)
+    def __init__(self, name, length=None, last_cond=None, end_cond=None, tag=None, 
+            end_cond_if_last_of=set()):
+        """
+        One of two end conditions governs a loop:
+
+        :arg length:
+        :arg last_cond: If not None, generate separate code for the 'last iteration'
+            of this loop, as indicated by last cond.
+
+        :arg end_cond: A condition indicating whether the loop has ended.
+            This is not used for loop termination, but to check in nested
+            blocks whether actions relating to this loop should be performed.
+
+        Any 'condition' above is a (value, comparison_op, other_value) triple.
+
+        All arguments except name are keyword-only.
+        """
+
+        # FIXME: Not sure what combinations of end conditions make sense
+
+        Record.__init__(self, name=name, length=length, last_cond=last_cond,
+                end_cond=end_cond, tag=tag, end_cond_if_last_of=end_cond_if_last_of)
 
         if tag is not None:
             assert isinstance(tag, IndexTag)
@@ -103,11 +144,8 @@ class LoopDimension(Record):
     def __hash__(self):
         return hash(self.name)
 
-    def __repr__(self):
-        if self.tag is not None:
-            return "LD(%r, %d, %s)" % (self.name, self.length, self.tag)
-        else:
-            return "LD(%r, %d)" % (self.name, self.length)
+
+
 
 
 class LoopDomain(Record):
@@ -144,7 +182,7 @@ class LoopDomain(Record):
         return [dim for dim in self.dims
                 if isinstance(dim.tag, tag_type)]
 
-    def ordered_dim_by_tag_type(self, tag_type):
+    def ordered_dims_by_tag_type(self, tag_type):
         result = []
         from itertools import count
         for i in count():
@@ -154,8 +192,6 @@ class LoopDomain(Record):
                 return result
             else:
                 result.append(dim)
-
-        return result
 
     def dims_by_tag(self, tag):
         return [dim for dim in self.dims if dim.tag == tag]
@@ -302,11 +338,11 @@ class LoopKernel(LoopDomain):
         return [dim for dim in self.dims if dim.name not in self.output_indices()]
 
     def group_dims(self):
-        dims = self.ordered_dim_by_tag_type(GROUP_IDX_TAG)
+        dims = self.ordered_dims_by_tag_type(GROUP_IDX_TAG)
         return tuple(dim.length for dim in dims)
 
     def local_dims(self):
-        dims = self.ordered_dim_by_tag_type(WORK_ITEM_IDX_TAG)
+        dims = self.ordered_dims_by_tag_type(WORK_ITEM_IDX_TAG)
         return tuple(dim.length for dim in dims)
 
     def group_size(self):
@@ -425,6 +461,9 @@ class LoopKernel(LoopDomain):
                 raise RuntimeError("repeated tag: %s" % d.tag)
 
         dim = self.dims[idx]
+        if dim.end_cond is not None or dim.last_cond is not None:
+            raise NotImplementedError("don't yet know how to split "
+                    "last_cond or end_cond loops")
 
         if dim.tag:
             raise ValueError("cannot split already-tagged dimension")
@@ -432,33 +471,50 @@ class LoopKernel(LoopDomain):
         if new_tags and dim.name not in self.output_indices():
             raise NotImplementedError("cannot yet tag a non-output dimension")
 
+        if is_even_split != False and dim.length % inner_length == 0:
+            is_even_split = True
+
         if outer_name is None:
             outer_name = dim.name+"_outer"
         if inner_name is None:
             inner_name = dim.name+"_inner"
-
-        if is_even_split != False and dim.length % inner_length == 0:
-            is_even_split = True
-
-        assert is_even_split
-
         from pymbolic import var
-        tgt_expr = var(inner_name) + var(outer_name)*inner_length
+        outer = var(outer_name)
+        inner = var(inner_name)
 
-        return self \
-                .substitute(dim.name, tgt_expr) \
-                .copy(dims=
-                        self.dims[:idx] + [
-                            LoopDimension(
-                                name=outer_name,
-                                length=dim.length//inner_length,
-                                tag=outer_tag),
-                            LoopDimension(
-                                name=inner_name,
-                                length=inner_length,
-                                tag=inner_tag),
-                            ]
-                        + self.dims[(idx+1):]), tgt_expr
+        new_loop_index = inner + outer*inner_length
+
+        if is_even_split:
+            new_dims = [
+                    LoopDimension(
+                        name=outer_name,
+                        length=dim.length//inner_length,
+                        tag=outer_tag),
+                    LoopDimension(
+                        name=inner_name,
+                        length=inner_length,
+                        tag=inner_tag),
+                    ]
+        else:
+            from pytools import div_ceil
+            new_dims = [
+                    LoopDimension(
+                        name=outer_name,
+                        length=div_ceil(dim.length, inner_length),
+                        last_cond=((outer+1)*inner_length, ">=", dim.length),
+                        tag=outer_tag),
+                    LoopDimension(
+                        name=inner_name,
+                        length=inner_length,
+                        end_cond=(new_loop_index, ">=", dim.length),
+                        tag=inner_tag,
+                        end_cond_if_last_of=dim.end_cond_if_last_of | set([outer_name])),
+                    ]
+
+        return (self
+                .substitute(dim.name, new_loop_index)
+                .copy(dims=self.dims[:idx] + new_dims + self.dims[(idx+1):]), 
+                new_loop_index)
 
     def get_invalid_reason(self):
         gdims = self.group_dims()
@@ -820,27 +876,25 @@ class RegisterPrefetch(Record):
 
 
 
-def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
+def generate_prefetch_code(ccm, kernel, sched_index, last_of):
     from pymbolic import var
 
-    from cgen import (POD, Block,
-            Initializer, Assign, Statement as S, ArrayOf,
-            For, If, Line, Comment, MaybeUnused)
-
-    from cgen.opencl import CLLocal
+    from cgen import (Block,
+            Assign, Statement as S,
+            For, If, Line, Comment)
 
     # find surrounding schedule items
-    if sched_index > 0:
-        next_inner_sched_item = schedule[sched_index-1]
-    else:
-        next_inner_sched_item = None
-
-    if sched_index+1 < len(schedule):
-        next_outer_sched_item = schedule[sched_index+1]
+    if sched_index-1 >= 0:
+        next_outer_sched_item = kernel.schedule[sched_index-1]
     else:
         next_outer_sched_item = None
 
-    scheduled_pf = schedule[sched_index]
+    if sched_index+1 < len(kernel.schedule):
+        next_inner_sched_item = kernel.schedule[sched_index+1]
+    else:
+        next_inner_sched_item = None
+
+    scheduled_pf = kernel.schedule[sched_index]
     pf = kernel.prefetch[
             scheduled_pf.input_vector, scheduled_pf.index_expr]
 
@@ -863,8 +917,7 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
 
     # {{{ first, fix the user-specified fetch dims
 
-    knl_work_item_dims = sorted(kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG),
-            key=lambda dim: dim.tag.axis)
+    knl_work_item_dims = kernel.ordered_dims_by_tag_type(WORK_ITEM_IDX_TAG)
 
     for realization_dim_idx, loc_fetch_axis_list in \
             getattr(pf, "loc_fetch_axes", {}).iteritems():
@@ -903,6 +956,13 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
         # for size reasons
         realization_dims[least_stride_pf_dim_idx] = [knl_work_item_dims.pop(0)]
 
+    if knl_work_item_dims:
+        # FIXME
+        from warnings import warn
+        warn("There were leftover work group dimensions in prefetch "
+                "assignment. For now, this won't lead to wrong code, "
+                "but it will lead to unnecessary memory bandwidth use.")
+
     # }}}
 
     # }}}
@@ -912,8 +972,8 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
     def make_fetch_loop_nest(pf_dim_idx, pf_dim_exprs=[], pf_idx_subst_map={}):
         # may mutate kernel for prefetch dim enlargement
 
+        from pymbolic.mapper.substitutor import substitute
         if pf_dim_idx >= len(pf.dims):
-            from pymbolic.mapper.substitutor import substitute
             # done, return
             return Assign(
                     pf.name + "".join("[%s]" % ccm(dexpr, PREC_NONE)
@@ -955,6 +1015,14 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
                             "%s < %s" % (ccm(pf_dim_expr, PREC_NONE), pf_dim.length),
                             inner)
 
+                if (pf_dim.end_cond is not None
+                        and pf_dim.end_cond_if_last_of <= last_of):
+                    inner = If(
+                            generate_condition_code(ccm,
+                                pf_dim.end_cond, negate=True,
+                                expr_map=lambda expr: substitute(expr, pf_idx_subst_map)),
+                            inner)
+
                 if result is None:
                     result = inner
                 elif isinstance(result, Block):
@@ -963,6 +1031,7 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
                     result = Block([result, inner])
 
                 start_index += total_realiz_size
+
 
             return result
 
@@ -991,15 +1060,6 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
 
     # }}}
 
-    # {{{ build lmem array declarator
-
-    smem_pf_array = POD(kernel.arg_dict[pf.input_vector].dtype, pf.name)
-    for l in pf.dim_storage_lengths:
-        smem_pf_array = ArrayOf(smem_pf_array, l)
-    smem_pf_array = CLLocal(smem_pf_array)
-
-    # }}}
-
     new_block = Block([
             Comment(("prefetch %s dim: " % pf.input_vector) + ", ".join(
                 "%s[%d]" % (pfdim.name, pfdim.length) for pfdim in pf.dims)),
@@ -1014,10 +1074,7 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
             "no sync needed"))
 
     new_block.extend([
-        Line(),
-        smem_pf_array,
         fetch_block,
-        Line(),
         ])
 
     # omit tail sync primitive if we're headed into another prefetch
@@ -1027,24 +1084,152 @@ def generate_prefetch_code(ccm, kernel, schedule, sched_index, inner):
         new_block.append(Comment("next inner schedule item is a prefetch: "
             "no sync needed"))
 
-    new_block.extend([Line(),inner])
+    new_block.extend([Line(), build_loop_nest(ccm, kernel, sched_index+1, last_of)])
 
     return new_block
 
 
 
 
+
+def generate_loop_dim_code(ccm, kernel, sched_index, last_of):
+    from cgen import (POD, Block, Initializer,
+            For, If, Line, Comment, add_comment)
+
+    dim = kernel.schedule[sched_index]
+
+    if dim.tag is None:
+        # regular loop
+        if dim.last_cond is not None:
+            return Block([
+                    Initializer(POD(np.uint32, dim.name), 0),
+                    For(
+                        "",
+                        generate_condition_code(ccm, dim.last_cond, negate=True),
+                        "++%s" % dim.name, 
+                        build_loop_nest(ccm, kernel, sched_index+1, last_of)),
+                    Line(),
+                    Comment("last iteration of %s loop, with added bounds checks" % dim.name),
+                    build_loop_nest(ccm, kernel, sched_index+1, 
+                        last_of=last_of | set([dim.name]))
+                    ])
+
+        elif dim.length is not None:
+            if dim.end_cond is not None and dim.end_cond_if_last_of <= last_of:
+                return For(
+                        "int %s = 0" % dim.name,
+                        generate_condition_code(ccm, dim.end_cond, negate=True),
+                        "++%s" % dim.name, 
+                        build_loop_nest(ccm, kernel, sched_index+1, last_of))
+            else:
+                return For(
+                        "int %s = 0" % dim.name,
+                        "%s < %s" % (dim.name, ccm(dim.length, PREC_NONE)),
+                        "++%s" % dim.name, 
+                        build_loop_nest(ccm, kernel, sched_index+1, last_of))
+        else:
+            raise RuntimeError("unsupported loop ending condition")
+    else:
+        if dim.last_cond is not None:
+            return If(generate_condition_code(ccm, dim.last_cond, negate=True),
+                add_comment(
+                    "not the last entry along the '%s' work group axis" % dim.name,
+                    build_loop_nest(ccm, kernel, sched_index+1, last_of)),
+                add_comment(
+                    "last entry along the '%s' work group axis" % dim.name,
+                    build_loop_nest(ccm, kernel, sched_index+1, 
+                        last_of=last_of | set([dim.name]))))
+        else:
+            return build_loop_nest(ccm, kernel, sched_index+1, last_of)
+
+
+
+
+def get_parallel_dim_bounds_checks(ccm, kernel, last_of, stmt):
+    from cgen import If
+
+    for dim in (
+            kernel.dims_by_tag_type(GROUP_IDX_TAG)
+            + kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG)):
+        if (dim.end_cond is not None
+                and dim.end_cond_if_last_of <= last_of):
+            stmt = If(
+                    generate_condition_code(ccm, dim.end_cond, negate=True),
+                    stmt)
+
+    return stmt
+
+
+
+
+def build_loop_nest(ccm, kernel, sched_index, last_of=set()):
+    from cgen import (POD, Block, Initializer, Assign, Statement as S,
+            block_if_necessary)
+
+    if sched_index >= len(kernel.schedule):
+        # write innermost loop body
+
+        from pymbolic.primitives import Subscript
+
+        insns = []
+        for lvalue, expr in kernel.instructions:
+            assert isinstance(lvalue, Subscript)
+            name = lvalue.aggregate.name
+            insns.append(S("tmp_%s += %s"
+                % (name, ccm(expr, PREC_NONE))))
+
+        return get_parallel_dim_bounds_checks(ccm, kernel, last_of, 
+                block_if_necessary(insns))
+
+        # }}}
+
+    sched_item = kernel.schedule[sched_index]
+
+    if isinstance(sched_item, LoopDimension):
+        return generate_loop_dim_code(ccm, kernel, sched_index, last_of)
+
+    elif isinstance(sched_item, WriteOutput):
+        return Block(
+                [Initializer(POD(kernel.arg_dict[lvalue.aggregate.name].dtype,
+                    "tmp_"+lvalue.aggregate.name), 0)
+                    for lvalue, expr in kernel.instructions]
+                +[build_loop_nest(ccm, kernel, sched_index+1, last_of)]+
+                [get_parallel_dim_bounds_checks(ccm, kernel, last_of,
+                    block_if_necessary([
+                        Assign(
+                            ccm(lvalue, PREC_NONE),
+                            "tmp_"+lvalue.aggregate.name)
+                        for lvalue, expr in kernel.instructions]))])
+
+    elif isinstance(sched_item, PrefetchDescriptor):
+        return generate_prefetch_code(ccm, kernel, sched_index, last_of)
+
+    elif isinstance(sched_item, RegisterPrefetch):
+        agg_name = sched_item.subscript_expr.aggregate.name
+        return Block([
+            get_parallel_dim_bounds_checks(ccm, kernel, last_of,
+                Initializer(POD(kernel.arg_dict[agg_name].dtype,
+                    sched_item.new_name),
+                    "%s[%s]"
+                    % (agg_name,
+                        ccm(sched_item.subscript_expr.index, PREC_NONE)))),
+
+            build_loop_nest(ccm, kernel, sched_index+1, last_of)])
+
+    else:
+        raise ValueError("invalid schedule item encountered")
+
+
+
+
+
 def generate_code(kernel):
-    from cgen import FunctionBody, FunctionDeclaration, \
-            POD, Value, RestrictPointer, Module, Block, \
-            Initializer, Assign, Statement, For, \
-            Define, Line, Const, LiteralLines
+    from cgen import (FunctionBody, FunctionDeclaration, \
+            POD, Value, RestrictPointer, ArrayOf, Module, Block,
+            Define, Line, Const, LiteralLines)
 
-    from cgen.opencl import CLKernel, CLGlobal, CLRequiredWorkGroupSize
+    from cgen.opencl import CLKernel, CLGlobal, CLRequiredWorkGroupSize, CLLocal
 
-    S = Statement
-
-    from pymbolic.primitives import Subscript
 
     # {{{ assign names, dim storage lengths to prefetches
 
@@ -1079,70 +1264,12 @@ def generate_code(kernel):
 
     ccm = LoopyCCodeMapper(kernel)
 
-    # {{{ write innermost loop body
-
-    inner = Block([])
-    for lvalue, expr in kernel.instructions:
-        assert isinstance(lvalue, Subscript)
-        name = lvalue.aggregate.name
-        inner.append(S("tmp_%s += %s"
-            % (name, ccm(expr, PREC_NONE))))
-
-    group_size = kernel.group_size()
-
-    # }}}
-
-    # {{{ nest loop bodies around existing code
-
-    # we're progressing from the innermost (last in the schedule)
-    # to the outermost loop
-
-    schedule = kernel.schedule[::-1]
-    for sched_index, sched_item in enumerate(schedule):
-        # write code for loops
-        if isinstance(sched_item, LoopDimension):
-            dim = sched_item
-            if dim.tag is None:
-                inner = For(
-                        "int %s = 0" % dim.name,
-                        "%s < %s" % (dim.name, ccm(dim.length, PREC_NONE)),
-                        "++%s" % dim.name, inner)
-
-        # write code for output writes
-        elif isinstance(sched_item, WriteOutput):
-            inner = Block(
-                    [Initializer(POD(kernel.arg_dict[lvalue.aggregate.name].dtype,
-                        "tmp_"+lvalue.aggregate.name), 0)
-                        for lvalue, expr in kernel.instructions]
-                    +[inner]+
-                    [Assign(
-                        ccm(lvalue, PREC_NONE),
-                        "tmp_"+lvalue.aggregate.name)
-                        for lvalue, expr in kernel.instructions])
-
-        # write code for prefetches
-        elif isinstance(sched_item, PrefetchDescriptor):
-            inner = generate_prefetch_code(
-                    ccm, kernel, schedule, sched_index, inner)
-
-        elif isinstance(sched_item, RegisterPrefetch):
-            agg_name = sched_item.subscript_expr.aggregate.name
-            inner = Block([
-                Initializer(POD(kernel.arg_dict[agg_name].dtype,
-                    sched_item.new_name),
-                    "%s[%s]"
-                    % (agg_name,
-                        ccm(sched_item.subscript_expr.index, PREC_NONE))),
-                inner])
-
-        else:
-            raise ValueError("invalid schedule item encountered")
-
-    # }}}
 
     # {{{ build top-level
 
     mod = Module()
+
+    group_size = kernel.group_size()
 
     # {{{ examine arg list
 
@@ -1175,23 +1302,40 @@ def generate_code(kernel):
 
     # {{{ symbolic names for group and local indices
 
-    mod.extend([Define(dim.name, "get_group_id(%d) /* 0..%s */"
+    mod.extend([Define(dim.name, "get_group_id(%d) /* 0..(%s) */"
                 % (dim.tag.axis, ccm(dim.length-1, PREC_NONE)))
-                for dim in kernel.dims_by_tag_type(GROUP_IDX_TAG)]
-            + [Define(dim.name, "get_local_id(%d) /* 0..%s */"
+                for dim in kernel.ordered_dims_by_tag_type(GROUP_IDX_TAG)]
+            + [Define(dim.name, "get_local_id(%d) /* 0..(%s) */"
                 % (dim.tag.axis, ccm(dim.length-1, PREC_NONE)))
-                for dim in kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG)]
+                for dim in kernel.ordered_dims_by_tag_type(WORK_ITEM_IDX_TAG)]
             + [Line()])
 
     # }}}
 
+    body = Block()
+
+    # {{{ build lmem array declarators for prefetches
+
+    for pf in kernel.prefetch.itervalues():
+        smem_pf_array = POD(kernel.arg_dict[pf.input_vector].dtype, pf.name)
+        for l in pf.dim_storage_lengths:
+            smem_pf_array = ArrayOf(smem_pf_array, l)
+        body.append(CLLocal(smem_pf_array))
+
+    # }}}
+
+    body.extend([
+        Line(),
+        build_loop_nest(ccm, kernel, 0)])
+
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
-                tuple(dim.length for dim in kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG)),
+                tuple(dim.length 
+                    for dim in kernel.ordered_dims_by_tag_type(WORK_ITEM_IDX_TAG)),
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),
-            Block([inner])))
+            body))
 
     # }}}
 
