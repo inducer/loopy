@@ -68,7 +68,7 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
 
 def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     dtype = np.float32
-    ctx = cl.create_some_context(answers=[1])
+    ctx = ctx_factory()
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
