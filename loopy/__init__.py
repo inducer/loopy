@@ -1483,9 +1483,10 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None):
                     launch(compiled_knl.cl_kernel,
                         compiled.global_size_func, compiled.local_size_func,
                         check=check))
-        queue.finish()
+        for evt in events:
+            evt.wait()
 
-        return 1e-9*sum(evt.profile.END-evt.profile.START for evt in events)/timing_rounds
+        return sum(1e-9*evt.profile.END-1e-9*evt.profile.START for evt in events)/timing_rounds
 
     soln_count = 0
     for kernel in kernel_generator:
