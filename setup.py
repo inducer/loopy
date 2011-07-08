@@ -33,7 +33,7 @@ setup(name="loopy",
         ],
 
       install_requires=[
-          "pyopencl>=2011.1", "pymbolic", "codepy"
+          "pyopencl>=2011.1", "pymbolic", "cgen"
           ],
 
       author="Andreas Kloeckner",
