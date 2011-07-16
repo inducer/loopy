@@ -22,9 +22,7 @@ import pyopencl as cl
 # TODO:   - Tricky: Convolution, FD
 # TODO: Try, fix indirect addressing
 
-# TODO: Play with multi-d data layout (optionally?)
 # TODO: Custom reductions per red. axis
-# TODO: Switch to sympy, serve multiple accesses with one prefetch
 # TODO: Vectorize
 # TODO: Unroll
 # TODO: Parallelize reduction
@@ -112,7 +110,7 @@ def parse_tag(tag):
 # {{{ loop dim, loop domain, kernel
 
 class LoopDimension(Record):
-    __slots__ = ["name", "length", "last_cond",  "tag", 
+    __slots__ = ["name", "length", "last_cond", "tag", 
             "end_cond", "end_cond_if_last_of"]
 
     def __init__(self, name, length=None, last_cond=None, end_cond=None, tag=None, 
@@ -232,11 +230,9 @@ class ArrayArg:
                     c_contiguous_strides)
 
             if order == "F":
-                strides = _f_contiguous_strides(
-                        dtype.itemsize, shape)
+                strides = f_contiguous_strides(1, shape)
             elif order == "C":
-                strides = _c_contiguous_strides(
-                        dtype.itemsize, shape)
+                strides = c_contiguous_strides(1, shape)
             else:
                 raise ValueError("invalid order: %s" % order)
 
@@ -274,7 +270,7 @@ class LoopKernel(LoopDomain):
     # - preamble
 
     def __init__(self, device, dims, instructions, args=None, prefetch={}, schedule=None,
-            register_prefetch=None, default_vector_type=None, name="loopy_kernel",
+            register_prefetch=None, name="loopy_kernel",
             preamble=None):
         from pymbolic import parse
 
@@ -294,12 +290,6 @@ class LoopKernel(LoopDomain):
                 prefetch=prefetch, schedule=schedule,
                 register_prefetch=register_prefetch, name=name,
                 preamble=preamble)
-
-        if args is None:
-            self.args = [
-                    ArrayArg(name, default_vector_type)
-                    for name in
-                    sorted(self.input_vectors()) + sorted(self.output_vectors())]
 
     @property
     @memoize_method
@@ -614,6 +604,9 @@ class VariableIndexExpressionCollector(CombineMapper):
 
 
 class StrideCollector(RecursiveMapper):
+    def __init__(self, arg):
+        self.arg = arg
+
     def map_sum(self, expr):
         stride_dicts = [self.rec(ch) for ch in expr.children]
 
@@ -660,6 +653,11 @@ class StrideCollector(RecursiveMapper):
 
     def map_variable(self, expr):
         return {expr.name: 1}
+
+    def map_tuple(self, expr):
+        return self.rec(sum(
+            stride*expr_i for stride, expr_i in zip(
+                self.arg.strides, expr)))
 
     def map_subscript(self, expr):
         raise RuntimeError("cannot gather strides--indirect addressing in use")
@@ -838,7 +836,7 @@ def insert_register_prefetches(kernel):
 # {{{ code generation
 
 class LoopyCCodeMapper(CCodeMapper):
-    def __init__(self, kernel):
+    def __init__(self, kernel, no_prefetch=False):
         def constant_mapper(c):
             if isinstance(c, float):
                 # FIXME: type-variable
@@ -849,9 +847,12 @@ class LoopyCCodeMapper(CCodeMapper):
         CCodeMapper.__init__(self, constant_mapper=constant_mapper)
         self.kernel = kernel
 
+        self.no_prefetch = no_prefetch
+
     def map_subscript(self, expr, enclosing_prec):
         from pymbolic.primitives import Variable
-        if (isinstance(expr.aggregate, Variable)
+        if (not self.no_prefetch
+                and isinstance(expr.aggregate, Variable)
                 and expr.aggregate.name in self.kernel.input_vectors()):
             try:
                 pf = self.kernel.prefetch[expr.aggregate.name, expr.index]
@@ -860,6 +861,16 @@ class LoopyCCodeMapper(CCodeMapper):
             else:
                 return pf.name+"".join(
                         "[%s]" % dim.name for dim in pf.dims)
+
+        if (isinstance(expr.aggregate, Variable)
+                and isinstance(expr.index, tuple)):
+            arg = self.kernel.arg_dict[expr.aggregate.name]
+
+            from pymbolic.primitives import Subscript
+            return CCodeMapper.map_subscript(self,
+                    Subscript(expr.aggregate, sum(
+                        stride*expr_i for stride, expr_i in zip(
+                            arg.strides, expr.index))), enclosing_prec)
 
         return CCodeMapper.map_subscript(self, expr, enclosing_prec)
 
@@ -928,7 +939,7 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
 
     # {{{ next use the work group dimensions, least-stride dim first
 
-    strides = StrideCollector()(pf.index_expr)
+    strides = StrideCollector(kernel.arg_dict[pf.input_vector])(pf.index_expr)
 
     approximate_arg_values = dict(
             (arg.name, arg.approximately)
@@ -969,19 +980,24 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
 
     # {{{ generate fetch code
 
+    no_pf_ccm = LoopyCCodeMapper(kernel, no_prefetch=True)
+
     def make_fetch_loop_nest(pf_dim_idx, pf_dim_exprs=[], pf_idx_subst_map={}):
         # may mutate kernel for prefetch dim enlargement
 
         from pymbolic.mapper.substitutor import substitute
         if pf_dim_idx >= len(pf.dims):
             # done, return
+            from pymbolic.primitives import Variable, Subscript
+
             return Assign(
                     pf.name + "".join("[%s]" % ccm(dexpr, PREC_NONE)
                         for dexpr in pf_dim_exprs),
-                    "%s[%s]"
-                    % (pf.input_vector,
-                        substitute(pf.index_expr, pf_idx_subst_map))
-                    )
+                    no_pf_ccm(
+                        Subscript(
+                            Variable(pf.input_vector),
+                            substitute(pf.index_expr, pf_idx_subst_map)),
+                        PREC_NONE))
 
         pf_dim = pf.dims[pf_dim_idx]
         realiz_dim_list = realization_dims[pf_dim_idx]
@@ -1433,6 +1449,7 @@ class CompiledKernel:
     def __init__(self, context, kernel, size_args=None):
         self.kernel = kernel
         self.code = generate_code(kernel)
+        print self.code
         self.cl_kernel = getattr(
                 cl.Program(context, self.code).build(),
                 kernel.name)

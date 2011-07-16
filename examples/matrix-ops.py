@@ -16,12 +16,12 @@ def make_well_condition_dev_matrix(queue, n, dtype=np.float32):
 
 
 def plain_matrix_mul(ctx_factory=cl.create_some_context):
-    dtype = np.float64
+    dtype = np.float32
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 16*100
+    n = 16*10
     from pymbolic import var
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
@@ -31,9 +31,14 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
         lp.LoopDimension("j", n),
         lp.LoopDimension("k", n),
         ], [
-        (c[i*n+j], a[i*n+k]*b[k*n+j])
+        (c[i, j], a[i, k]*b[k, j])
         ],
-        default_vector_type=dtype, name="matmul")
+        [
+            lp.ArrayArg("a", dtype, shape=(n, n)),
+            lp.ArrayArg("b", dtype, shape=(n, n)),
+            lp.ArrayArg("c", dtype, shape=(n, n)),
+        ],
+        name="matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
@@ -48,14 +53,14 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
     a = make_well_condition_dev_matrix(queue, n, dtype=dtype)
     b = make_well_condition_dev_matrix(queue, n, dtype=dtype)
     c = cl_array.empty_like(a)
-    refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
+    refsol = np.dot(a.get(), b.get())
 
     def launcher(kernel, gsize, lsize, check):
         evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
                 g_times_l=True)
 
         if check:
-            sol = c.astype(np.float64).get()
+            sol = c.get()
             rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
             assert rel_err < 1e-5, rel_err
 
@@ -205,4 +210,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        fancy_matrix_mul()
+        plain_matrix_mul()
