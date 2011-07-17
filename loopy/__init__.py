@@ -5,11 +5,19 @@ from pytools import Record, memoize_method
 from pymbolic.mapper.dependency import DependencyMapper
 from pymbolic.mapper.c_code import CCodeMapper
 from pymbolic.mapper.stringifier import PREC_NONE
-from pymbolic.mapper import CombineMapper, RecursiveMapper
+from pymbolic.mapper import IdentityMapper, CombineMapper, RecursiveMapper
 
 import pyopencl as cl
 import islpy as isl
 from islpy import dim_type
+
+def register_mpz_with_pymbolic():
+    from pymbolic.primitives import register_constant_class
+    import gmpy
+    mpz_type = type(gmpy.mpz(1))
+    register_constant_class(mpz_type)
+
+register_mpz_with_pymbolic()
 
 
 
@@ -76,7 +84,7 @@ class IndexTag(object):
         return hash(type(self)) ^ hash(self.axis)
 
 
-class GROUP_IDX_TAG(IndexTag):
+class TAG_GROUP_IDX(IndexTag):
     def __repr__(self):
         if self.axis is None:
             return "GROUP_IDX"
@@ -84,7 +92,7 @@ class GROUP_IDX_TAG(IndexTag):
             return "GROUP_IDX(%d)" % self.axis
 
 
-class WORK_ITEM_IDX_TAG(IndexTag):
+class TAG_WORK_ITEM_IDX(IndexTag):
     def __repr__(self):
         if self.axis is None:
             return "WORK_ITEM_IDX"
@@ -102,9 +110,9 @@ def parse_tag(tag):
         raise ValueError("cannot parse tag: %s" % tag)
 
     if tag.startswith("g."):
-        return GROUP_IDX_TAG(int(tag[2:]))
+        return TAG_GROUP_IDX(int(tag[2:]))
     if tag.startswith("l."):
-        return WORK_ITEM_IDX_TAG(int(tag[2:]))
+        return TAG_WORK_ITEM_IDX(int(tag[2:]))
     else:
         raise ValueError("cannot parse tag: %s" % tag)
 
@@ -172,9 +180,6 @@ class LoopDomain(Record):
                 return i
         raise KeyError("invalid tag: %s" % tag)
 
-    def tag_to_dim(self, tag):
-        return self.dims[self.tag_to_idx(tag)]
-
     def indices_by_tag_type(self, tag_type):
         return [i for i, dim in enumerate(self.dims)
                 if isinstance(dim.tag, tag_type)]
@@ -183,12 +188,12 @@ class LoopDomain(Record):
         return [dim for dim in self.dims
                 if isinstance(dim.tag, tag_type)]
 
-    def ordered_dims_by_tag_type(self, tag_type):
+    def ordered_inames_by_tag_type(self, tag_type):
         result = []
         from itertools import count
         for i in count():
             try:
-                dim = self.tag_to_dim(tag_type(i))
+                dim = self.tag_to_iname[tag_type(i)]
             except KeyError:
                 return result
             else:
@@ -264,7 +269,7 @@ class LoopKernel(LoopDomain):
     # possible attributes:
     # - device, a PyOpenCL target device
     # - domain
-    # - tags
+    # - iname_to_tag
     # - instructions
     # - args
     # - prefetch
@@ -275,12 +280,12 @@ class LoopKernel(LoopDomain):
 
     def __init__(self, device, domain, instructions, args=None, prefetch={}, schedule=None,
             register_prefetch=None, name="loopy_kernel",
-            tags={},
+            iname_to_tag={}, is_divisible=lambda dividend, divisor: False,
             preamble=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
-        :arg tags: a map from loop domain variables to subclasses of :class:`IndexTag`
+        :arg iname_to_tag: a map from loop domain variables to subclasses of :class:`IndexTag`
         """
         from pymbolic import parse
 
@@ -303,7 +308,9 @@ class LoopKernel(LoopDomain):
                 device=device, args=args, domain=domain, instructions=insns,
                 prefetch=prefetch, schedule=schedule,
                 register_prefetch=register_prefetch, name=name,
-                preamble=preamble, tags=tags)
+                iname_to_tag=iname_to_tag,
+                is_divisible=is_divisible,
+                preamble=preamble)
 
         # FIXME: assert empyt intersection of loop vars and args
         # FIXME: assert that isl knows about loop parameters
@@ -312,6 +319,12 @@ class LoopKernel(LoopDomain):
     @memoize_method
     def space(self):
         return self.domain.get_dim()
+
+    @property
+    @memoize_method
+    def tag_to_iname(self):
+        from pytools import reverse_dictionary
+        return reverse_dictionary(self.iname_to_tag)
 
     @property
     @memoize_method
@@ -327,7 +340,7 @@ class LoopKernel(LoopDomain):
 
     @memoize_method
     def all_indices(self):
-        return set(dim.name for dim in self.dims) - self.scalar_args()
+        return set(self.space.get_var_dict(dim_type.set).iterkeys())
 
     @memoize_method
     def output_indices(self):
@@ -349,41 +362,88 @@ class LoopKernel(LoopDomain):
     def reduction_dimensions(self):
         return [dim for dim in self.dims if dim.name not in self.output_indices()]
 
-    def group_dims(self):
-        dims = self.ordered_dims_by_tag_type(GROUP_IDX_TAG)
-        return tuple(dim.length for dim in dims)
+    def get_bounds(self, iname):
+        """Get an overapproximation of the loop bounds for the variable *iname*."""
 
-    def local_dims(self):
-        dims = self.ordered_dims_by_tag_type(WORK_ITEM_IDX_TAG)
-        return tuple(dim.length for dim in dims)
+        iname_dim_type, iname_idx = self.space.get_var_dict()[iname]
+        assert iname_dim_type == dim_type.set
 
-    def group_size(self):
+        # project out every variable except iname
+        projected_domain = (self.domain
+                # vars after iname
+                .project_out(
+                    iname_dim_type, iname_idx+1, self.space.size(iname_dim_type)-iname_idx-1)
+                .project_out(
+                    iname_dim_type, 0, iname_idx))
+
+        basic_sets = []
+        projected_domain.foreach_basic_set(basic_sets.append)
+
+        # FIXME perhaps use some form of hull here if there's more than one
+        # basic set?
+        bset, = basic_sets
+
+        # Python-style, half-open bounds
+        upper_bounds = []
+        lower_bounds = []
+        bset = bset.remove_divs()
+        print bset
+
+        bset_iname_dim_type, bset_iname_idx = bset.get_dim().get_var_dict()[iname]
+
+        def examine_constraint(cns):
+            coeffs = cns.get_coefficients_by_name()
+            print coeffs
+
+            iname_coeff = int(coeffs.get(iname, 0))
+            if iname_coeff == 0:
+                return
+
+            rhs = cns.get_constant()
+            from pymbolic import var
+            for var_name, coeff in coeffs.iteritems():
+                if var_name == iname:
+                    continue
+                rhs += int(coeff)*var(var_name)
+
+            if iname_coeff < 0:
+                from pytools import div_ceil
+                upper_bounds.append(div_ceil(rhs, -iname_coeff))
+            else: #  iname_coeff > 0
+                lower_bounds.append(rhs//iname_coeff)
+
+        bset.foreach_constraint(examine_constraint)
+
+        lb, = lower_bounds
+        ub, = upper_bounds
+        print iname, lb, ub
+        print "WRONG: Inclusive bounds!"
+
+        return lb, ub
+
+    def tag_type_bounds(self, tag_cls):
+        return [self.get_bounds(iname)
+                for iname in self.ordered_inames_by_tag_type(tag_cls)]
+
+    def tag_type_lengths(self, tag_cls):
+        return [stop-start for start, stop in self.tag_type_bounds(tag_cls)]
+
+    def tag_type_count(self, tag_cls):
         from pytools import product
-        return product(self.local_dims())
+        return product(self.tag_type_lengths(tag_cls))
 
-    def group_count(self):
-        from pytools import product
-        return product(self.group_dims())
+    def tag_or_iname_to_iname(self, s):
+        try:
+            tag = parse_tag(s)
+        except ValueError:
+            pass
+        else:
+            return self.tag_to_iname[tag]
 
-    def parse_sloppy_dim_to_dim_idx(self, dim):
-        if isinstance(dim, str):
-            try:
-                tag = parse_tag(dim)
-            except ValueError:
-                pass
-            else:
-                return self.tag_to_idx(tag)
+        if s not in self.all_indices():
+            raise RuntimeError("invalid index name '%s'" % s)
 
-            return self.name_to_idx(dim)
-
-        if isinstance(dim, LoopDimension):
-            return self.dims.index(dim)
-
-        if isinstance(dim, int):
-            return dim
-
-    def parse_sloppy_dim(self, dim):
-        return self.dims[self.parse_sloppy_dim_to_dim_idx(dim)]
+        return s
 
     def local_mem_use(self):
         return sum(pf.size() for pf in self.prefetch.itervalues())
@@ -466,87 +526,60 @@ class LoopKernel(LoopDomain):
 
         new_tags = set(tag for tag in [outer_tag, inner_tag] if tag is not None)
 
-        for d in self.dims:
-            if d.tag in new_tags:
-                raise RuntimeError("repeated tag: %s" % d.tag)
+        if self.iname_to_tag.get(name) is not None:
+            raise RuntimeError("cannot split tagged dimension '%s'" % name)
+
+        repeated_tags = new_tags & set(self.iname_to_tag.values())
+        if repeated_tags:
+            raise RuntimeError("repeated tag(s): %s" % repeated_tags)
 
         if outer_name is None:
             outer_name = name+"_outer"
         if inner_name is None:
             inner_name = name+"_inner"
 
-        nr_new_var = self.space.size(dim_type.set)
-        new_set = self.domain.add_dims
+        new_iname_to_tag = self.iname_to_tag.copy()
+        if inner_tag is not None:
+            new_iname_to_tag[inner_name] = inner_tag
+        if outer_tag is not None:
+            new_iname_to_tag[outer_name] = outer_tag
 
-        # {{{ make dim with same parameters and an equality constraint
+        outer_var_nr = self.space.size(dim_type.set)
+        inner_var_nr = self.space.size(dim_type.set)+1
+        new_domain = self.domain.add_dims(dim_type.set, 2)
+        new_domain.set_dim_name(dim_type.set, outer_var_nr, outer_name)
+        new_domain.set_dim_name(dim_type.set, inner_var_nr, inner_name)
 
-        new_space = isl.Dim.create_from_names(
-                params=self.space.get_var_dict(isl.dim_type.param).keys(),
-                set=[name, inner_name, outer_name])
+        space = new_domain.get_dim()
+        inner_constraint_set = (isl.Set.universe(space)
+                # name = inner + length*outer
+                .add_constraint(isl.Constraint.eq_from_names(
+                    space, 0, {name:1, inner_name: -1, outer_name:-inner_length}))
+                # 0 <= inner
+                .add_constraint(isl.Constraint.ineq_from_names(
+                    space, 0, {inner_name: 1}))
+                # inner < length
+                .add_constraint(isl.Constraint.ineq_from_names(
+                    space, inner_length-1, {inner_name: -1})))
 
-        #new_set = isl.
-
-
-
-
-
-        dim = self.dims[idx]
-        if dim.end_cond is not None or dim.last_cond is not None:
-            raise NotImplementedError("don't yet know how to split "
-                    "last_cond or end_cond loops")
-
-        # }}}
-
-        if dim.tag:
-            raise ValueError("cannot split already-tagged dimension")
-
-        if new_tags and dim.name not in self.output_indices():
-            raise NotImplementedError("cannot yet tag a non-output dimension")
-
-        if is_even_split != False and dim.length % inner_length == 0:
-            is_even_split = True
+        name_dim_type, name_idx = space.get_var_dict()[name]
+        new_domain = (new_domain
+                .intersect(inner_constraint_set)
+                .project_out(name_dim_type, name_idx, 1))
 
         from pymbolic import var
-        outer = var(outer_name)
         inner = var(inner_name)
-
+        outer = var(outer_name)
         new_loop_index = inner + outer*inner_length
 
-        if is_even_split:
-            new_dims = [
-                    LoopDimension(
-                        name=outer_name,
-                        length=dim.length//inner_length,
-                        tag=outer_tag),
-                    LoopDimension(
-                        name=inner_name,
-                        length=inner_length,
-                        tag=inner_tag),
-                    ]
-        else:
-            from pytools import div_ceil
-            new_dims = [
-                    LoopDimension(
-                        name=outer_name,
-                        length=div_ceil(dim.length, inner_length),
-                        last_cond=((outer+1)*inner_length, ">=", dim.length),
-                        tag=outer_tag),
-                    LoopDimension(
-                        name=inner_name,
-                        length=inner_length,
-                        end_cond=(new_loop_index, ">=", dim.length),
-                        tag=inner_tag,
-                        end_cond_if_last_of=dim.end_cond_if_last_of | set([outer_name])),
-                    ]
-
         return (self
-                .substitute(dim.name, new_loop_index)
-                .copy(dims=self.dims[:idx] + new_dims + self.dims[(idx+1):]), 
-                new_loop_index)
+                .substitute(name, new_loop_index)
+                .copy(domain=new_domain, iname_to_tag=new_iname_to_tag))
 
     def get_invalid_reason(self):
-        gdims = self.group_dims()
-        ldims = self.local_dims()
+        gdims = self.tag_type_count(TAG_GROUP_IDX)
+        ldims = self.tag_type_count(TAG_WORK_ITEM_IDX)
+        1/0
         if (max(len(gdims), len(ldims))
                 > self.device.max_work_item_dimensions):
             return "too many work item dimensions"
@@ -708,8 +741,8 @@ def generate_loop_schedules(kernel):
     prev_schedule = kernel.schedule
     if prev_schedule is None:
         prev_schedule = (
-            kernel.dims_by_tag_type(GROUP_IDX_TAG)
-            + kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG))
+            kernel.dims_by_tag_type(TAG_GROUP_IDX)
+            + kernel.dims_by_tag_type(TAG_WORK_ITEM_IDX))
 
     already_scheduled = set(sch_item
             for sch_item in prev_schedule
@@ -721,7 +754,7 @@ def generate_loop_schedules(kernel):
     had_usable_prefetch = False
     scheduled_work_item_dim_names = set(
             dim.name for dim in already_scheduled
-            if isinstance(dim.tag, WORK_ITEM_IDX_TAG))
+            if isinstance(dim.tag, TAG_WORK_ITEM_IDX))
 
     for pf in kernel.prefetch.itervalues():
         # already scheduled? never mind then.
@@ -950,7 +983,7 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
     # figure out dimension types
     from pytools import partition2
     work_item_pf_dims, non_work_item_pf_dims = partition2(
-            (isinstance(dim.tag, WORK_ITEM_IDX_TAG), dim)
+            (isinstance(dim.tag, TAG_WORK_ITEM_IDX), dim)
             for dim in pf.dims)
 
     # Prefetch has a good amount of flexibility over what axes it
@@ -966,7 +999,7 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
 
     # {{{ first, fix the user-specified fetch dims
 
-    knl_work_item_dims = kernel.ordered_dims_by_tag_type(WORK_ITEM_IDX_TAG)
+    knl_work_item_dims = kernel.ordered_dims_by_tag_type(TAG_WORK_ITEM_IDX)
 
     for realization_dim_idx, loc_fetch_axis_list in \
             getattr(pf, "loc_fetch_axes", {}).iteritems():
@@ -1052,7 +1085,7 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
             while start_index < pf_dim.length:
                 pf_dim_expr = 0
                 for realiz_dim in realiz_dim_list:
-                    assert isinstance(realiz_dim.tag, WORK_ITEM_IDX_TAG)
+                    assert isinstance(realiz_dim.tag, TAG_WORK_ITEM_IDX)
 
                     pf_dim_expr = (pf_dim_expr*realiz_dim.length
                             + var("get_local_id(%d)" % realiz_dim.tag.axis))
@@ -1203,8 +1236,8 @@ def get_parallel_dim_bounds_checks(ccm, kernel, last_of, stmt):
     from cgen import If
 
     for dim in (
-            kernel.dims_by_tag_type(GROUP_IDX_TAG)
-            + kernel.dims_by_tag_type(WORK_ITEM_IDX_TAG)):
+            kernel.dims_by_tag_type(TAG_GROUP_IDX)
+            + kernel.dims_by_tag_type(TAG_WORK_ITEM_IDX)):
         if (dim.end_cond is not None
                 and dim.end_cond_if_last_of <= last_of):
             stmt = If(
@@ -1358,10 +1391,10 @@ def generate_code(kernel):
 
     mod.extend([Define(dim.name, "get_group_id(%d) /* 0..(%s) */"
                 % (dim.tag.axis, ccm(dim.length-1, PREC_NONE)))
-                for dim in kernel.ordered_dims_by_tag_type(GROUP_IDX_TAG)]
+                for dim in kernel.ordered_dims_by_tag_type(TAG_GROUP_IDX)]
             + [Define(dim.name, "get_local_id(%d) /* 0..(%s) */"
                 % (dim.tag.axis, ccm(dim.length-1, PREC_NONE)))
-                for dim in kernel.ordered_dims_by_tag_type(WORK_ITEM_IDX_TAG)]
+                for dim in kernel.ordered_dims_by_tag_type(TAG_WORK_ITEM_IDX)]
             + [Line()])
 
     # }}}
@@ -1386,7 +1419,7 @@ def generate_code(kernel):
         FunctionBody(
             CLRequiredWorkGroupSize(
                 tuple(dim.length 
-                    for dim in kernel.ordered_dims_by_tag_type(WORK_ITEM_IDX_TAG)),
+                    for dim in kernel.ordered_dims_by_tag_type(TAG_WORK_ITEM_IDX)),
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),
             body))
@@ -1423,8 +1456,7 @@ def print_kernel_info(knl):
 # {{{ high-level modifiers
 
 def split_dimension(knl, *args, **kwargs):
-    knl, _ = knl.split_dimension(*args, **kwargs)
-    return knl
+    return knl.split_dimension(*args, **kwargs)
 
 def get_input_access_descriptors(kernel):
     """Return a dictionary mapping input vectors to
@@ -1461,7 +1493,7 @@ def add_prefetch_dims(kernel, input_access_descr, dims, loc_fetch_axes={}):
 
         input_access_descr, = var_iads
 
-    dims = [kernel.parse_sloppy_dim(dim) for dim in dims]
+    dims = [kernel.tag_or_iname_to_iname(s) for s in dims]
     ivec, iexpr = input_access_descr
 
     new_prefetch = getattr(kernel, "prefetch", {}).copy()
