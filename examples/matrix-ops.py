@@ -40,8 +40,8 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 16)
-    knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
 
     kernel_gen = (lp.insert_register_prefetches(knl)
