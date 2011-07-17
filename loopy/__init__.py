@@ -8,10 +8,13 @@ from pymbolic.mapper.stringifier import PREC_NONE
 from pymbolic.mapper import CombineMapper, RecursiveMapper
 
 import pyopencl as cl
+import islpy as isl
+from islpy import dim_type
 
 
 
 
+# TODO: Divisibility
 # TODO: Multi-D array access
 # TODO: Non-multiple loop splits
 #       FIXME: Splitting an uneven-split loop?
@@ -260,7 +263,8 @@ class ScalarArg:
 class LoopKernel(LoopDomain):
     # possible attributes:
     # - device, a PyOpenCL target device
-    # - dims from LoopDomain
+    # - domain
+    # - tags
     # - instructions
     # - args
     # - prefetch
@@ -269,9 +273,15 @@ class LoopKernel(LoopDomain):
     # - name
     # - preamble
 
-    def __init__(self, device, dims, instructions, args=None, prefetch={}, schedule=None,
+    def __init__(self, device, domain, instructions, args=None, prefetch={}, schedule=None,
             register_prefetch=None, name="loopy_kernel",
+            tags={},
             preamble=None):
+        """
+        :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
+            Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
+        :arg tags: a map from loop domain variables to subclasses of :class:`IndexTag`
+        """
         from pymbolic import parse
 
         def parse_if_necessary(v):
@@ -280,16 +290,28 @@ class LoopKernel(LoopDomain):
             else:
                 return v
 
+        if isinstance(domain, str):
+            ctx = isl.Context()
+            domain = isl.Set.read_from_str(ctx, domain, nparam=-1)
+
         insns = [
                 (parse_if_necessary(lvalue),
                     parse_if_necessary(expr))
                 for lvalue, expr in instructions]
 
         LoopDomain.__init__(self,
-                device=device, args=args, dims=dims, instructions=insns,
+                device=device, args=args, domain=domain, instructions=insns,
                 prefetch=prefetch, schedule=schedule,
                 register_prefetch=register_prefetch, name=name,
-                preamble=preamble)
+                preamble=preamble, tags=tags)
+
+        # FIXME: assert empyt intersection of loop vars and args
+        # FIXME: assert that isl knows about loop parameters
+
+    @property
+    @memoize_method
+    def space(self):
+        return self.domain.get_dim()
 
     @property
     @memoize_method
@@ -436,10 +458,8 @@ class LoopKernel(LoopDomain):
 
         return copy
 
-    def split_dimension(self, idx, inner_length, outer_name=None, inner_name=None,
-            outer_tag=None, inner_tag=None, is_even_split=None):
-        if isinstance(idx, str):
-            idx = self.name_to_idx(idx)
+    def split_dimension(self, name, inner_length, outer_name=None, inner_name=None,
+            outer_tag=None, inner_tag=None):
 
         outer_tag = parse_tag(outer_tag)
         inner_tag = parse_tag(inner_tag)
@@ -450,10 +470,32 @@ class LoopKernel(LoopDomain):
             if d.tag in new_tags:
                 raise RuntimeError("repeated tag: %s" % d.tag)
 
+        if outer_name is None:
+            outer_name = name+"_outer"
+        if inner_name is None:
+            inner_name = name+"_inner"
+
+        nr_new_var = self.space.size(dim_type.set)
+        new_set = self.domain.add_dims
+
+        # {{{ make dim with same parameters and an equality constraint
+
+        new_space = isl.Dim.create_from_names(
+                params=self.space.get_var_dict(isl.dim_type.param).keys(),
+                set=[name, inner_name, outer_name])
+
+        #new_set = isl.
+
+
+
+
+
         dim = self.dims[idx]
         if dim.end_cond is not None or dim.last_cond is not None:
             raise NotImplementedError("don't yet know how to split "
                     "last_cond or end_cond loops")
+
+        # }}}
 
         if dim.tag:
             raise ValueError("cannot split already-tagged dimension")
@@ -464,10 +506,6 @@ class LoopKernel(LoopDomain):
         if is_even_split != False and dim.length % inner_length == 0:
             is_even_split = True
 
-        if outer_name is None:
-            outer_name = dim.name+"_outer"
-        if inner_name is None:
-            inner_name = dim.name+"_inner"
         from pymbolic import var
         outer = var(outer_name)
         inner = var(inner_name)

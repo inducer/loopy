@@ -26,19 +26,16 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
-        [
-        lp.LoopDimension("i", n),
-        lp.LoopDimension("j", n),
-        lp.LoopDimension("k", n),
-        ], [
-        (c[i, j], a[i, k]*b[k, j])
-        ],
-        [
-            lp.ArrayArg("a", dtype, shape=(n, n)),
-            lp.ArrayArg("b", dtype, shape=(n, n)),
-            lp.ArrayArg("c", dtype, shape=(n, n)),
-        ],
-        name="matmul")
+            "[n] -> {[i,j,k]: 0<=i,j,k<n}",
+            [
+                (c[i, j], a[i, k]*b[k, j])
+                ],
+            [
+                lp.ArrayArg("a", dtype, shape=(n, n)),
+                lp.ArrayArg("b", dtype, shape=(n, n)),
+                lp.ArrayArg("c", dtype, shape=(n, n)),
+                ],
+            name="matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
