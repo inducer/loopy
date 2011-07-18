@@ -181,7 +181,7 @@ def get_bounds(set, iname):
         if iname_coeff == 0:
             return
 
-        rhs = int(cns.get_constant())
+        rhs = 0
         from pymbolic import var
         for var_name, coeff in coeffs.iteritems():
             if var_name == iname:
@@ -200,7 +200,7 @@ def get_bounds(set, iname):
 
     return lb, ub
 
-def cast_constraints_to_space(cns, new_space):
+def cast_constraint_to_space(cns, new_space):
     if cns.is_equality():
         factory = isl.Constraint.eq_from_names
     else:
@@ -246,6 +246,18 @@ def make_slab(space, iname, start, stop):
             # inner < length
             .add_constraint(ineq_constraint_from_expr(
                 space, stop-1 - var_iname)))
+
+def constraint_to_expr(cns):
+    result = 0
+    from pymbolic import var
+    for var_name, coeff in cns.get_coefficients_by_name().iteritems():
+        if isinstance(var_name, str):
+            result += int(coeff)*var(var_name)
+        else:
+            result += int(coeff)
+
+    return result
+
 
 # }}}
 
@@ -1021,6 +1033,10 @@ class LoopyCCodeMapper(CCodeMapper):
                 and isinstance(expr.index, tuple)):
             arg = self.kernel.arg_dict[expr.aggregate.name]
 
+            if arg.strides is None:
+                raise RuntimeError("tuple-indexed variable '%s' does not "
+                        "have stride information" % expr.aggregate.name)
+
             from pymbolic.primitives import Subscript
             return CCodeMapper.map_subscript(self,
                     Subscript(expr.aggregate, sum(
@@ -1272,8 +1288,8 @@ def generate_loop_dim_code(ccm, kernel, sched_index,
 
     iname = kernel.schedule[sched_index].iname
     lb_cns, ub_cns = kernel.get_bounds_constraints(iname)
-    lb_cns = cast_constraints_to_space(lb_cns, space)
-    ub_cns = cast_constraints_to_space(ub_cns, space)
+    lb_cns = cast_constraint_to_space(lb_cns, space)
+    ub_cns = cast_constraint_to_space(ub_cns, space)
 
     if 0:
         # FIXME jostle the constant to see if we can get a full slab
@@ -1315,27 +1331,42 @@ def generate_loop_dim_code(ccm, kernel, sched_index,
 
 
 
-def get_parallel_dim_bounds_checks(ccm, kernel,  implemented_domain, stmt):
+def wrap_in_bounds_checks(ccm, kernel, sched_index, implemented_domain, stmt):
     from cgen import If
     have_too_much = not implemented_domain.subtract(kernel.domain).is_empty()
-    if False:
-        print implemented_domain.subtract(kernel.domain)
-        print
-        print implemented_domain.subtract(kernel.domain).union(
-                implemented_domain.complement())
-        print have_too_much
-    from warnings import warn
-    warn("Ignoring restrictions")
-    return stmt
 
-    for dim in (
-            kernel.dims_by_tag_type(TAG_GROUP_IDX)
-            + kernel.dims_by_tag_type(TAG_WORK_ITEM_IDX)):
-        if (dim.end_cond is not None
-                and dim.end_cond_if_last_of <= last_of):
-            stmt = If(
-                    generate_condition_code(ccm, dim.end_cond, negate=True),
-                    stmt)
+    if not have_too_much:
+        return stmt
+
+    domain_bsets = []
+    kernel.domain.foreach_basic_set(domain_bsets.append)
+    domain_bset, = domain_bsets
+
+    valid_index_vars = [
+            sched_item.iname
+            for sched_item in kernel.schedule[:sched_index]
+            if isinstance(sched_item, ScheduledLoop)]
+
+    projected_domain_bset = isl.project_out_except(
+            domain_bset, valid_index_vars, [dim_type.set])
+
+    necessary_constraints = []
+
+    def examine_constraint(cns):
+        cast_cns = cast_constraint_to_space(cns, kernel.space)
+        cns_set = (isl.Set.universe(kernel.space)
+                .add_constraint(cast_cns))
+        if not implemented_domain.is_subset(cns_set):
+            necessary_constraints.append(cast_cns)
+
+    projected_domain_bset.foreach_constraint(examine_constraint)
+
+    if necessary_constraints:
+        stmt = If(
+                "\n&& ".join(
+                    "(%s >= 0)" % ccm(constraint_to_expr(cns))
+                    for cns in necessary_constraints),
+                stmt)
 
     return stmt
 
@@ -1358,7 +1389,7 @@ def build_loop_nest(ccm, kernel, sched_index, implemented_domain):
             insns.append(S("tmp_%s += %s"
                 % (name, ccm(expr))))
 
-        return get_parallel_dim_bounds_checks(ccm, kernel, implemented_domain,
+        return wrap_in_bounds_checks(ccm, kernel, sched_index, implemented_domain,
                 block_if_necessary(insns))
 
         # }}}
@@ -1375,7 +1406,7 @@ def build_loop_nest(ccm, kernel, sched_index, implemented_domain):
                     "tmp_"+lvalue.aggregate.name), 0)
                     for lvalue, expr in kernel.instructions]
                 +[build_loop_nest(ccm, kernel, sched_index+1, implemented_domain)]+
-                [get_parallel_dim_bounds_checks(ccm, kernel, implemented_domain,
+                [wrap_in_bounds_checks(ccm, kernel, sched_index, implemented_domain,
                     block_if_necessary([
                         Assign(
                             ccm(lvalue),
@@ -1388,7 +1419,7 @@ def build_loop_nest(ccm, kernel, sched_index, implemented_domain):
     elif isinstance(sched_item, RegisterPrefetch):
         agg_name = sched_item.subscript_expr.aggregate.name
         return Block([
-            get_parallel_dim_bounds_checks(ccm, kernel, implemented_domain,
+            wrap_in_bounds_checks(ccm, kernel, sched_index, implemented_domain,
                 Initializer(POD(kernel.arg_dict[agg_name].dtype,
                     sched_item.new_name),
                     "%s[%s]"
@@ -1410,7 +1441,6 @@ def generate_code(kernel):
             Define, Line, Const, LiteralLines)
 
     from cgen.opencl import CLKernel, CLGlobal, CLRequiredWorkGroupSize, CLLocal
-
 
     # {{{ assign names, dim storage lengths to prefetches
 
@@ -1621,7 +1651,6 @@ class CompiledKernel:
     def __init__(self, context, kernel, size_args=None):
         self.kernel = kernel
         self.code = generate_code(kernel)
-        print self.code
         self.cl_kernel = getattr(
                 cl.Program(context, self.code).build(),
                 kernel.name)
@@ -1641,8 +1670,16 @@ class CompiledKernel:
         else:
             self.size_args = size_args
 
-        self.global_size_func = compile(self.kernel.group_dims(), self.size_args)
-        self.local_size_func = compile(self.kernel.local_dims(), self.size_args)
+        gsize_expr = self.kernel.tag_type_lengths(TAG_GROUP_IDX)
+        lsize_expr = self.kernel.tag_type_lengths(TAG_WORK_ITEM_IDX)
+
+        if not gsize_expr: gsize_expr = (1,)
+        if not lsize_expr: lsize_expr = (1,)
+
+        self.global_size_func = compile(
+                gsize_expr, self.size_args)
+        self.local_size_func = compile(
+                lsize_expr, self.size_args)
 
 
 

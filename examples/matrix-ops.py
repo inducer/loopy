@@ -34,6 +34,7 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
                 lp.ArrayArg("a", dtype, shape=(n, n)),
                 lp.ArrayArg("b", dtype, shape=(n, n)),
                 lp.ArrayArg("c", dtype, shape=(n, n)),
+                lp.ScalarArg("n", np.uint32, approximately=1000),
                 ],
             name="matmul")
 
@@ -74,30 +75,27 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 16*100
+    n = 16*10
     from pymbolic import var
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
+        "[n] -> {[i,j,k]: 0<=i,j,k<n}",
         [
-        lp.LoopDimension("i", n_sym),
-        lp.LoopDimension("j", n_sym),
-        lp.LoopDimension("k", n_sym),
-        ], [
-        (c[i*n_sym+j], a[i*n_sym+k]*b[k*n_sym+j])
-        ],
+                (c[i, j], a[i, k]*b[k, j])
+                ],
         [
-            lp.ArrayArg("a", dtype),
-            lp.ArrayArg("b", dtype),
-            lp.ArrayArg("c", dtype),
-            lp.ScalarArg("n", np.uint32, approximately=1000),
+            lp.ArrayArg("a", dtype, shape=(n_sym, n_sym)),
+            lp.ArrayArg("b", dtype, shape=(n_sym, n_sym)),
+            lp.ArrayArg("c", dtype, shape=(n_sym, n_sym)),
+            lp.ScalarArg("n", np.int32, approximately=1000),
         ], name="fancy_matmul")
 
-    knl = lp.split_dimension(knl, "i", 13, outer_tag="g.0", inner_tag="l.1", is_even_split=False)
-    knl = lp.split_dimension(knl, "j", 17, outer_tag="g.1", inner_tag="l.0", is_even_split=False)
-    knl = lp.split_dimension(knl, "k", 19, is_even_split=False)
-    knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
+    knl = lp.split_dimension(knl, "i", 16) #, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_dimension(knl, "j", 16) #, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 16)
+    #knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
+    #knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
 
     kernel_gen = (lp.insert_register_prefetches(knl)
@@ -106,14 +104,14 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     a = make_well_condition_dev_matrix(queue, n, dtype=dtype)
     b = make_well_condition_dev_matrix(queue, n, dtype=dtype)
     c = cl_array.empty_like(a)
-    refsol = np.dot(a.astype(np.float64).get(), b.astype(np.float64).get())
+    refsol = np.dot(a.get(), b.get())
 
     def launcher(kernel, gsize, lsize, check):
         evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
                 g_times_l=True)
 
         if check:
-            sol = c.astype(np.float64).get()
+            sol = c.get()
             rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
             assert rel_err < 1e-5, rel_err
 
@@ -207,4 +205,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        plain_matrix_mul()
+        fancy_matrix_mul()
