@@ -62,7 +62,7 @@ def generate_condition_code(ccm, condition, negate=False, expr_map=None):
         a = expr_map(a)
         b = expr_map(b)
 
-    return "%s %s %s" % (ccm(a, PREC_NONE), rel, ccm(b, PREC_NONE),)
+    return "%s %s %s" % (ccm(a), rel, ccm(b),)
 
 
 
@@ -118,6 +118,137 @@ def parse_tag(tag):
 
 # }}}
 
+# {{{ isl helpers
+
+def get_bounds_constraints(set, iname):
+    """Get an overapproximation of the loop bounds for the variable *iname*,
+    as constraints.
+    """
+
+    # project out every variable except iname
+    projected_domain = isl.project_out_except(set, [iname], [dim_type.set])
+
+    basic_sets = []
+    projected_domain.foreach_basic_set(basic_sets.append)
+
+    # FIXME perhaps use some form of hull here if there's more than one
+    # basic set?
+    bset, = basic_sets
+
+    # Python-style, half-open bounds
+    upper_bounds = []
+    lower_bounds = []
+    bset = bset.remove_divs()
+
+    bset_iname_dim_type, bset_iname_idx = bset.get_dim().get_var_dict()[iname]
+
+    def examine_constraint(cns):
+        coeffs = cns.get_coefficients_by_name()
+
+        iname_coeff = int(coeffs.get(iname, 0))
+        if iname_coeff == 0:
+            return
+        elif iname_coeff < 0:
+            upper_bounds.append(cns)
+        else: # iname_coeff > 0:
+            lower_bounds.append(cns)
+
+    bset.foreach_constraint(examine_constraint)
+
+    lb, = lower_bounds
+    ub, = upper_bounds
+
+    return lb, ub
+
+
+
+
+def get_bounds(set, iname):
+    """Get an overapproximation of the loop bounds for the variable *iname*,
+    as actual bounds.
+    """
+
+    lb_cns, ub_cns = get_bounds_constraints(set, iname)
+
+    from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
+    from pymbolic import flatten
+    cfm = CommutativeConstantFoldingMapper()
+
+    for cns in [lb_cns, ub_cns]:
+        coeffs = cns.get_coefficients_by_name()
+
+        iname_coeff = int(coeffs.get(iname, 0))
+        if iname_coeff == 0:
+            return
+
+        rhs = int(cns.get_constant())
+        from pymbolic import var
+        for var_name, coeff in coeffs.iteritems():
+            if var_name == iname:
+                continue
+            if var_name == 1:
+                rhs += int(coeff)
+            else:
+                assert isinstance(var_name, str)
+                rhs += int(coeff)*var(var_name)
+
+        if iname_coeff < 0:
+            from pytools import div_ceil
+            ub = cfm(flatten(div_ceil(rhs+1, -iname_coeff)))
+        else: #  iname_coeff > 0
+            lb = cfm(flatten(rhs//iname_coeff))
+
+    return lb, ub
+
+def cast_constraints_to_space(cns, new_space):
+    if cns.is_equality():
+        factory = isl.Constraint.eq_from_names
+    else:
+        factory = isl.Constraint.ineq_from_names
+    return factory(new_space, cns.get_coefficients_by_name())
+
+def get_dim_bounds(set):
+    vars = set.get_dim().get_var_dict(dim_type.set).keys()
+    return [get_bounds(set, v) for v in vars]
+
+def count_box_from_bounds(bounds):
+    from pytools import product
+    return product(stop-start for start, stop in bounds)
+
+def make_index_map(set, index_expr):
+    if not isinstance(index_expr, tuple):
+        index_expr = (index_expr,)
+
+    amap = isl.Map.from_domain(set).add_dims(dim_type.out, len(index_expr))
+    out_names = ["_ary_idx_%d" % i for i in range(len(index_expr))]
+
+    dim = amap.get_dim()
+    all_constraints = tuple(
+            eq_constraint_from_expr(dim, iexpr_i) 
+            for iexpr_i in index_expr)
+
+    for i, out_name in enumerate(out_names):
+        amap = amap.set_dim_name(dim_type.out, i, out_name)
+
+    for i, (out_name, constr) in enumerate(zip(out_names, all_constraints)):
+        constr.set_coefficients_by_name({out_name: -1})
+        amap = amap.add_constraint(constr)
+
+    return amap
+
+def make_slab(space, iname, start, stop):
+    from pymbolic import var
+    var_iname = var(iname)
+    return (isl.Set.universe(space)
+            # 0 <= inner
+            .add_constraint(ineq_constraint_from_expr(
+                space, start + var_iname))
+            # inner < length
+            .add_constraint(ineq_constraint_from_expr(
+                space, stop-1 - var_iname)))
+
+# }}}
+
 # {{{ pymbolic mappers
 
 class CoefficientCollector(RecursiveMapper):
@@ -136,40 +267,58 @@ class CoefficientCollector(RecursiveMapper):
 
     def map_product(self, expr):
         result = {}
-        for i, ch in enumerate(expr.children):
-            strides = self.rec(ch)
-            from pymbolic import flattened_product
-            prod_other_children = flattened_product(
-                    expr.children[:i] + expr.children[(i+1):])
 
-            for var, stride in strides.iteritems():
-                if var in result:
-                    raise NotImplementedError(
-                            "nonlinear index expression")
-                else:
-                    result[var] = prod_other_children*stride
+        children_coeffs = [self.rec(child) for child in expr.children]
+
+        idx_of_child_with_vars = None
+        for i, child_coeffs in enumerate(children_coeffs):
+            for k in child_coeffs:
+                if isinstance(k, str):
+                    if (idx_of_child_with_vars is not None
+                            and idx_of_child_with_vars != i):
+                        raise RuntimeError(
+                                "nonlinear expression")
+                    idx_of_child_with_vars = i
+
+        other_coeffs = 1
+        for i, child_coeffs in enumerate(children_coeffs):
+            if i != idx_of_child_with_vars:
+                assert len(child_coeffs) == 1
+                other_coeffs *= child_coeffs[1]
+
+        if idx_of_child_with_vars is None:
+            return {1: other_coeffs}
+        else:
+            return dict(
+                    (var, other_coeffs*coeff) 
+                    for var, coeff in 
+                    children_coeffs[idx_of_child_with_vars].iteritems())
 
         return result
 
-    def map_divide(self, expr):
-        num_strides = self.rec(expr.numerator)
-        denom_strides = self.rec(expr.denominator)
-
-        if denom_strides:
-            raise NotImplementedError
-
-        return dict(
-                (var, stride/expr.denominator)
-                    for var, stride in num_strides.iteritems())
-
     def map_constant(self, expr):
-        return {}
+        return {1: expr}
 
     def map_variable(self, expr):
         return {expr.name: 1}
 
     def map_subscript(self, expr):
         raise RuntimeError("cannot gather coefficients--indirect addressing in use")
+
+
+
+
+def _constraint_from_expr(space, expr, constraint_factory):
+    return constraint_factory(space, 
+            CoefficientCollector()(expr))
+
+def eq_constraint_from_expr(space, expr):
+    return _constraint_from_expr(
+            space, expr, isl.Constraint.eq_from_names)
+
+def ineq_constraint_from_expr(space, expr):
+    return _constraint_from_expr(
+            space, expr, isl.Constraint.ineq_from_names)
 
 # }}}
 
@@ -215,7 +364,8 @@ class LoopDimension(Record):
 # {{{ arguments
 
 class ArrayArg:
-    def __init__(self, name, dtype, strides=None, shape=None, order="C"):
+    def __init__(self, name, dtype, strides=None, shape=None, order="C",
+            offset=0):
         """
         All of the following are optional. Specify either strides or shape.
 
@@ -223,6 +373,8 @@ class ArrayArg:
             data type size
         :arg shape:
         :arg order:
+        :arg offset: Offset from the beginning of the vector from which
+            the strides are counted.
         """
         self.name = name
         self.dtype = np.dtype(dtype)
@@ -246,6 +398,7 @@ class ArrayArg:
                 raise ValueError("invalid order: %s" % order)
 
         self.strides = strides
+        self.offset = offset
 
     def __repr__(self):
         return "<ArrayArg '%s' of type %s>" % (self.name, self.dtype)
@@ -374,77 +527,17 @@ class LoopKernel(Record):
             else:
                 result.append(dim)
 
+    @memoize_method
+    def get_bounds_constraints(self, iname):
+        """Get an overapproximation of the loop bounds for the variable *iname*."""
 
+        return get_bounds_constraints(self.domain, iname)
+
+    @memoize_method
     def get_bounds(self, iname):
         """Get an overapproximation of the loop bounds for the variable *iname*."""
 
-        # project out every variable except iname
-        projected_domain = isl.project_out_except(self.domain, [iname], [dim_type.set])
-
-        basic_sets = []
-        projected_domain.foreach_basic_set(basic_sets.append)
-
-        # FIXME perhaps use some form of hull here if there's more than one
-        # basic set?
-        bset, = basic_sets
-
-        # Python-style, half-open bounds
-        upper_bounds = []
-        lower_bounds = []
-        bset = bset.remove_divs()
-
-        bset_iname_dim_type, bset_iname_idx = bset.get_dim().get_var_dict()[iname]
-
-        from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
-        from pymbolic import flatten
-        cfm = CommutativeConstantFoldingMapper()
-
-        def examine_constraint(cns):
-            coeffs = cns.get_coefficients_by_name()
-
-            iname_coeff = int(coeffs.get(iname, 0))
-            if iname_coeff == 0:
-                return
-
-            rhs = int(cns.get_constant())
-            from pymbolic import var
-            for var_name, coeff in coeffs.iteritems():
-                if var_name == iname:
-                    continue
-                rhs += int(coeff)*var(var_name)
-
-            if iname_coeff < 0:
-                from pytools import div_ceil
-                upper_bounds.append(cfm(flatten(div_ceil(rhs+1, -iname_coeff))))
-            else: #  iname_coeff > 0
-                lower_bounds.append(cfm(flatten(rhs//iname_coeff)))
-
-        bset.foreach_constraint(examine_constraint)
-
-        lb, = lower_bounds
-        ub, = upper_bounds
-
-        return lb, ub
-
-    def address_map(self, index_expr):
-        if not isinstance(index_expr, tuple):
-            index_expr = (self.index_expr,)
-
-        coeff_coll = CoefficientCollector()
-        all_coeffs = tuple(coeff_coll(iexpr_i) for iexpr_i in index_expr)
-
-        amap = isl.Map.from_domain(self.domain).add_dims(dim_type.out, len(index_expr))
-        out_names = ["_ary_idx_%d" % i for i in range(len(index_expr))]
-
-        for i, out_name in enumerate(out_names):
-            amap = amap.set_dim_name(dim_type.out, i, out_name)
-
-        for i, (out_name, coeffs) in enumerate(zip(out_names, all_coeffs)):
-            coeffs[out_name] = -1
-            amap = amap.add_constraint(isl.Constraint.eq_from_names(
-                amap.get_dim(), 0, coeffs))
-
-        return amap
+        return get_bounds(self.domain, iname)
 
     def tag_type_bounds(self, tag_cls):
         return [self.get_bounds(iname)
@@ -579,16 +672,11 @@ class LoopKernel(Record):
         new_domain.set_dim_name(dim_type.set, inner_var_nr, inner_name)
 
         space = new_domain.get_dim()
-        inner_constraint_set = (isl.Set.universe(space)
+        inner_constraint_set = (
+                make_slab(space, inner_name, 0, inner_length)
                 # name = inner + length*outer
                 .add_constraint(isl.Constraint.eq_from_names(
-                    space, 0, {name:1, inner_name: -1, outer_name:-inner_length}))
-                # 0 <= inner
-                .add_constraint(isl.Constraint.ineq_from_names(
-                    space, 0, {inner_name: 1}))
-                # inner < length
-                .add_constraint(isl.Constraint.ineq_from_names(
-                    space, inner_length-1, {inner_name: -1})))
+                    space, {name:1, inner_name: -1, outer_name:-inner_length})))
 
         name_dim_type, name_idx = space.get_var_dict()[name]
         new_domain = (new_domain
@@ -651,16 +739,36 @@ class PrefetchDescriptor(Record):
     The latter two values are only assigned during code generation.
     """
 
-    def size(self):
-        my_image = (
-                isl.project_out_except(self.kernel.domain, self.inames, [dim_type.set])
+    @property
+    @memoize_method
+    def domain(self):
+        return (isl.project_out_except(self.kernel.domain, self.inames, [dim_type.set])
                 .remove_divs())
-        assert my_image.is_box()
 
-        print my_image
-        print my_image.is_box()
-        1/0
+    @property
+    @memoize_method
+    def index_map(self):
+        imap = make_index_map(self.kernel_domain, self.index_expr)
+        assert imap.is_bijective()
+        return imap
 
+    @property
+    @memoize_method
+    def restricted_index_map(self):
+        return self.index_map.intersect_domain(self.domain)
+
+    @property
+    @memoize_method
+    def dim_bounds(self):
+        return get_dim_bounds(self.domain)
+
+    @property
+    def itemsize(self):
+        return self.kernel.arg_dict[self.input_vector].dtype.itemsize
+    @property
+    @memoize_method
+    def nbytes(self):
+        return self.itemsize * count_box_from_bounds(self.dim_bounds)
 
     @memoize_method
     def free_variables(self):
@@ -776,7 +884,7 @@ def generate_loop_schedules(kernel):
             if kernel.iname_to_tag.get(oin) is None)
 
     if not serial_output_inames <= scheduled_inames:
-        schedulable -= kernel.reduction_dimensions()
+        schedulable -= kernel.reduction_inames()
     else:
         if not any(isinstance(sch_item, WriteOutput)
                 for sch_item in prev_schedule):
@@ -934,7 +1042,7 @@ class RegisterPrefetch(Record):
 
 
 
-def generate_prefetch_code(ccm, kernel, sched_index, last_of):
+def generate_prefetch_code(ccm, kernel, sched_index, implemented_domain):
     from pymbolic import var
 
     from cgen import (Block,
@@ -1038,7 +1146,7 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
             from pymbolic.primitives import Variable, Subscript
 
             return Assign(
-                    pf.name + "".join("[%s]" % ccm(dexpr, PREC_NONE)
+                    pf.name + "".join("[%s]" % ccm(dexpr)
                         for dexpr in pf_dim_exprs),
                     no_pf_ccm(
                         Subscript(
@@ -1075,7 +1183,7 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
 
                 if start_index+total_realiz_size > pf_dim.length:
                     inner = If(
-                            "%s < %s" % (ccm(pf_dim_expr, PREC_NONE), pf_dim.length),
+                            "%s < %s" % (ccm(pf_dim_expr), pf_dim.length),
                             inner)
 
                 if (pf_dim.end_cond is not None
@@ -1112,7 +1220,7 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
 
             return For(
                     "int %s = 0" % pf_dim_var,
-                    "%s < %s" % (pf_dim_var, ccm(dim.length, PREC_NONE)),
+                    "%s < %s" % (pf_dim_var, ccm(dim.length)),
                     "++%s" % pf_dim_var,
                     fetch_block)
 
@@ -1155,61 +1263,70 @@ def generate_prefetch_code(ccm, kernel, sched_index, last_of):
 
 
 
-def generate_loop_dim_code(ccm, kernel, sched_index, last_of):
+def generate_loop_dim_code(ccm, kernel, sched_index, 
+        implemented_domain):
     from cgen import (POD, Block, Initializer,
             For, If, Line, Comment, add_comment)
 
-    dim = kernel.schedule[sched_index]
+    space = implemented_domain.get_dim()
 
-    if dim.tag is None:
+    iname = kernel.schedule[sched_index].iname
+    lb_cns, ub_cns = kernel.get_bounds_constraints(iname)
+    lb_cns = cast_constraints_to_space(lb_cns, space)
+    ub_cns = cast_constraints_to_space(ub_cns, space)
+
+    if 0:
+        # FIXME jostle the constant to see if we can get a full slab
+        # test via slab.is_subset(...)
+
+        unconstrained_slab_found = False
+        for lower_incr, upper_incr in [
+                (0,0), 
+                #(0,-1), (1,0), (1,-1)
+                ]:
+            slab_start = start+start_incr
+            slab_stop = stop+stop_incr
+            print slab_start, slab_stop
+            print "SLAB", slab
+            slab_intersection = current_domain.intersect(slab)
+            if has_non_slab_constraints(iname, set, slab_start, slab_stop):
+                pass
+
+    loop_slab = (isl.Set.universe(kernel.space)
+            .add_constraint(lb_cns)
+            .add_constraint(ub_cns))
+
+    new_impl_domain = implemented_domain.intersect(loop_slab)
+
+    tag = kernel.iname_to_tag.get(iname)
+    if tag is None:
         # regular loop
-        if dim.last_cond is not None:
-            return Block([
-                    Initializer(POD(np.uint32, dim.name), 0),
-                    For(
-                        "",
-                        generate_condition_code(ccm, dim.last_cond, negate=True),
-                        "++%s" % dim.name, 
-                        build_loop_nest(ccm, kernel, sched_index+1, last_of)),
-                    Line(),
-                    Comment("last iteration of %s loop, with added bounds checks" % dim.name),
-                    build_loop_nest(ccm, kernel, sched_index+1, 
-                        last_of=last_of | set([dim.name]))
-                    ])
-
-        elif dim.length is not None:
-            if dim.end_cond is not None and dim.end_cond_if_last_of <= last_of:
-                return For(
-                        "int %s = 0" % dim.name,
-                        generate_condition_code(ccm, dim.end_cond, negate=True),
-                        "++%s" % dim.name, 
-                        build_loop_nest(ccm, kernel, sched_index+1, last_of))
-            else:
-                return For(
-                        "int %s = 0" % dim.name,
-                        "%s < %s" % (dim.name, ccm(dim.length, PREC_NONE)),
-                        "++%s" % dim.name, 
-                        build_loop_nest(ccm, kernel, sched_index+1, last_of))
-        else:
-            raise RuntimeError("unsupported loop ending condition")
+        start, stop = kernel.get_bounds(iname)
+        return For(
+                "int %s = %s" % (iname, ccm(start)),
+                "%s < %s" % (iname, ccm(stop)),
+                "++%s" % iname, 
+                build_loop_nest(ccm, kernel, sched_index+1,
+                    new_impl_domain))
     else:
-        if dim.last_cond is not None:
-            return If(generate_condition_code(ccm, dim.last_cond, negate=True),
-                add_comment(
-                    "not the last entry along the '%s' work group axis" % dim.name,
-                    build_loop_nest(ccm, kernel, sched_index+1, last_of)),
-                add_comment(
-                    "last entry along the '%s' work group axis" % dim.name,
-                    build_loop_nest(ccm, kernel, sched_index+1, 
-                        last_of=last_of | set([dim.name]))))
-        else:
-            return build_loop_nest(ccm, kernel, sched_index+1, last_of)
+        return build_loop_nest(ccm, kernel, sched_index+1, 
+                new_impl_domain)
 
 
 
 
-def get_parallel_dim_bounds_checks(ccm, kernel, last_of, stmt):
+def get_parallel_dim_bounds_checks(ccm, kernel,  implemented_domain, stmt):
     from cgen import If
+    have_too_much = not implemented_domain.subtract(kernel.domain).is_empty()
+    if False:
+        print implemented_domain.subtract(kernel.domain)
+        print
+        print implemented_domain.subtract(kernel.domain).union(
+                implemented_domain.complement())
+        print have_too_much
+    from warnings import warn
+    warn("Ignoring restrictions")
+    return stmt
 
     for dim in (
             kernel.dims_by_tag_type(TAG_GROUP_IDX)
@@ -1225,7 +1342,7 @@ def get_parallel_dim_bounds_checks(ccm, kernel, last_of, stmt):
 
 
 
-def build_loop_nest(ccm, kernel, sched_index, last_of=set()):
+def build_loop_nest(ccm, kernel, sched_index, implemented_domain):
     from cgen import (POD, Block, Initializer, Assign, Statement as S,
             block_if_necessary)
 
@@ -1239,45 +1356,46 @@ def build_loop_nest(ccm, kernel, sched_index, last_of=set()):
             assert isinstance(lvalue, Subscript)
             name = lvalue.aggregate.name
             insns.append(S("tmp_%s += %s"
-                % (name, ccm(expr, PREC_NONE))))
+                % (name, ccm(expr))))
 
-        return get_parallel_dim_bounds_checks(ccm, kernel, last_of, 
+        return get_parallel_dim_bounds_checks(ccm, kernel, implemented_domain,
                 block_if_necessary(insns))
 
         # }}}
 
     sched_item = kernel.schedule[sched_index]
 
-    if isinstance(sched_item, LoopDimension):
-        return generate_loop_dim_code(ccm, kernel, sched_index, last_of)
+    if isinstance(sched_item, ScheduledLoop):
+        return generate_loop_dim_code(ccm, kernel, sched_index, 
+                implemented_domain)
 
     elif isinstance(sched_item, WriteOutput):
         return Block(
                 [Initializer(POD(kernel.arg_dict[lvalue.aggregate.name].dtype,
                     "tmp_"+lvalue.aggregate.name), 0)
                     for lvalue, expr in kernel.instructions]
-                +[build_loop_nest(ccm, kernel, sched_index+1, last_of)]+
-                [get_parallel_dim_bounds_checks(ccm, kernel, last_of,
+                +[build_loop_nest(ccm, kernel, sched_index+1, implemented_domain)]+
+                [get_parallel_dim_bounds_checks(ccm, kernel, implemented_domain,
                     block_if_necessary([
                         Assign(
-                            ccm(lvalue, PREC_NONE),
+                            ccm(lvalue),
                             "tmp_"+lvalue.aggregate.name)
                         for lvalue, expr in kernel.instructions]))])
 
     elif isinstance(sched_item, PrefetchDescriptor):
-        return generate_prefetch_code(ccm, kernel, sched_index, last_of)
+        return generate_prefetch_code(ccm, kernel, sched_index, implemented_domain)
 
     elif isinstance(sched_item, RegisterPrefetch):
         agg_name = sched_item.subscript_expr.aggregate.name
         return Block([
-            get_parallel_dim_bounds_checks(ccm, kernel, last_of,
+            get_parallel_dim_bounds_checks(ccm, kernel, implemented_domain,
                 Initializer(POD(kernel.arg_dict[agg_name].dtype,
                     sched_item.new_name),
                     "%s[%s]"
                     % (agg_name,
-                        ccm(sched_item.subscript_expr.index, PREC_NONE)))),
+                        ccm(sched_item.subscript_expr.index)))),
 
-            build_loop_nest(ccm, kernel, sched_index+1, last_of)])
+            build_loop_nest(ccm, kernel, sched_index+1, implemented_domain)])
 
     else:
         raise ValueError("invalid schedule item encountered")
@@ -1297,44 +1415,44 @@ def generate_code(kernel):
     # {{{ assign names, dim storage lengths to prefetches
 
     all_pf_list = kernel.prefetch.values()
-    all_pf_sizes = [opf.size() for opf in all_pf_list]
+    all_pf_nbytes = [opf.nbytes for opf in all_pf_list]
 
     new_prefetch = {}
     for i_pf, pf in enumerate(kernel.prefetch.itervalues()):
-        amap = kernel.address_map(pf.index_expr)
-        1/0
-        dim_storage_lengths = [pfdim.length for pfdim in pf.dims]
+        dim_storage_lengths = [stop-start for start, stop in pf.dim_bounds]
 
-        other_pf_sizes = sum(all_pf_sizes[:i_pf]+all_pf_sizes[i_pf+1:])
+        other_pf_sizes = sum(all_pf_nbytes[:i_pf]+all_pf_nbytes[i_pf+1:])
 
+        # sizes of all dims except the last one, which we may change
+        # below to avoid bank conflicts
         from pytools import product
-        other_dim_sizes = (
-                kernel.arg_dict[pf.input_vector].dtype.itemsize
-                * product(odim.length for odim in pf.dims[:-1]))
+        other_dim_sizes = (pf.itemsize
+                * product(dim_storage_lengths[:-1]))
 
         from pyopencl.characterize import usable_local_mem_size
-        if (pf.dims[-1].length % 2 == 0
-                and other_pf_sizes+other_dim_sizes*(pf.dims[-1].length+1)
+        if (dim_storage_lengths[-1] % 2 == 0
+                and other_pf_sizes+other_dim_sizes*(dim_storage_lengths[-1]+1)
                 < usable_local_mem_size(kernel.device)):
             dim_storage_lengths[-1] += 1
 
         new_prefetch[pf.input_vector, pf.index_expr] = \
-                pf.copy(dims=pf.dims,
-                        dim_storage_lengths=dim_storage_lengths,
+                pf.copy(dim_storage_lengths=dim_storage_lengths,
                         name="prefetch_%s_%d" % (pf.input_vector, i_pf))
 
     kernel = kernel.copy(prefetch=new_prefetch)
 
     # }}}
 
-    ccm = LoopyCCodeMapper(kernel)
+    my_ccm = LoopyCCodeMapper(kernel)
 
+    def ccm(expr, prec=PREC_NONE):
+        return my_ccm(expr, prec)
 
     # {{{ build top-level
 
     mod = Module()
 
-    group_size = kernel.group_size()
+    group_size = kernel.tag_type_lengths(TAG_WORK_ITEM_IDX)
 
     # {{{ examine arg list
 
@@ -1367,13 +1485,19 @@ def generate_code(kernel):
 
     # {{{ symbolic names for group and local indices
 
-    mod.extend([Define(dim.name, "get_group_id(%d) /* 0..(%s) */"
-                % (dim.tag.axis, ccm(dim.length-1, PREC_NONE)))
-                for dim in kernel.ordered_dims_by_tag_type(TAG_GROUP_IDX)]
-            + [Define(dim.name, "get_local_id(%d) /* 0..(%s) */"
-                % (dim.tag.axis, ccm(dim.length-1, PREC_NONE)))
-                for dim in kernel.ordered_dims_by_tag_type(TAG_WORK_ITEM_IDX)]
-            + [Line()])
+    for what_cls, func in [
+            (TAG_GROUP_IDX, "get_group_id"),
+            (TAG_WORK_ITEM_IDX, "get_local_id")]:
+        for iname in kernel.ordered_inames_by_tag_type(what_cls):
+            start, stop = kernel.get_bounds(iname)
+            mod.append(Define(iname, "(%s + %s(%d)) /* [%s, %s) */"
+                        % (ccm(start),
+                            func,
+                            kernel.iname_to_tag[iname].axis,
+                            ccm(start),
+                            ccm(stop))))
+
+    mod.append(Line())
 
     # }}}
 
@@ -1391,13 +1515,13 @@ def generate_code(kernel):
 
     body.extend([
         Line(),
-        build_loop_nest(ccm, kernel, 0)])
+        build_loop_nest(ccm, kernel, 0, isl.Set.universe(kernel.space))])
 
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
                 tuple(dim.length 
-                    for dim in kernel.ordered_dims_by_tag_type(TAG_WORK_ITEM_IDX)),
+                    for dim in kernel.tag_type_lengths(TAG_WORK_ITEM_IDX)),
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),
             body))
