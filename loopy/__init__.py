@@ -1006,23 +1006,21 @@ class LoopyCCodeMapper(CCodeMapper):
 class FetchLoopNestData(Record):
     pass
 
-def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs=[], pf_idx_subst_map={}):
+def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
+        implemented_domain):
     pf = flnd.prefetch
     ccm = flnd.c_code_mapper
     no_pf_ccm = flnd.no_prefetch_c_code_mapper
 
     from pymbolic import var
-
-    from cgen import (Block,
-            Assign, Statement as S,
-            For, If, Line, Comment)
+    from cgen import Block, Assign, For, If
 
     from pymbolic.mapper.substitutor import substitute
     if pf_iname_idx >= len(pf.inames):
         # done, return
         from pymbolic.primitives import Variable, Subscript
 
-        return Assign(
+        result = Assign(
                 pf.name + "".join("[%s]" % ccm(dexpr)
                     for dexpr in pf_dim_exprs),
                 no_pf_ccm(
@@ -1030,6 +1028,13 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs=[], pf_idx_subst_map={
                         Variable(pf.input_vector),
                         substitute(pf.index_expr, pf_idx_subst_map)),
                     PREC_NONE))
+
+        def my_ccm(expr):
+            return ccm(substitute(expr, pf_idx_subst_map))
+
+        valid_index_vars = flnd.valid_index_vars + pf_idx_subst_map.keys()
+        return wrap_in_bounds_checks(my_ccm, pf.kernel.domain,
+                valid_index_vars, implemented_domain, result)
 
     pf_iname = pf.inames[pf_iname_idx]
     realiz_inames = flnd.realization_inames[pf_iname_idx]
@@ -1056,35 +1061,32 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs=[], pf_idx_subst_map={
 
         cur_index = 0
 
-        while cur_index < stop_index:
+        while start_index+cur_index < stop_index:
             pf_dim_expr = 0
             for realiz_iname, length in zip(realiz_inames, realiz_lengths):
                 tag = flnd.kernel.iname_to_tag[realiz_iname]
                 assert isinstance(tag, TAG_WORK_ITEM_IDX)
 
                 pf_dim_expr = (pf_dim_expr*length
-                        + var("get_local_id(%d)" % tag.axis))
+                        + var("(int) get_local_id(%d)" % tag.axis))
+
+            loop_slab = make_slab(pf.kernel.space, pf_iname,
+                    start_index+cur_index,
+                    min(stop_index, start_index+cur_index+total_realiz_size))
+            new_impl_domain = implemented_domain.intersect(loop_slab)
 
             pf_dim_expr += cur_index
 
             pf_idx_subst_map = pf_idx_subst_map.copy()
             pf_idx_subst_map[pf_iname] = pf_dim_expr + start_index
             inner = make_fetch_loop_nest(flnd, pf_iname_idx+1,
-                    pf_dim_exprs+[pf_dim_expr], pf_idx_subst_map)
+                    pf_dim_exprs+[pf_dim_expr], pf_idx_subst_map,
+                    new_impl_domain)
 
             if cur_index+total_realiz_size > dim_length:
                 inner = If(
                         "%s < %s" % (ccm(pf_dim_expr), stop_index),
                         inner)
-
-            if False:
-                if (pf_dim.end_cond is not None
-                        and pf_dim.end_cond_if_last_of <= last_of):
-                    inner = If(
-                            generate_condition_code(ccm,
-                                pf_dim.end_cond, negate=True,
-                                expr_map=lambda expr: substitute(expr, pf_idx_subst_map)),
-                            inner)
 
             if result is None:
                 result = inner
@@ -1104,10 +1106,17 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs=[], pf_idx_subst_map={
         pf_dim_var = "prefetch_dim_idx_%d" % pf_iname_idx
         pf_dim_expr = var(pf_dim_var)
 
+        lb_cns, ub_cns = flnd.kernel.get_bounds_constraints(pf_iname)
+        loop_slab = (isl.Set.universe(kernel.space)
+                .add_constraint(lb_cns)
+                .add_constraint(ub_cns))
+        new_impl_domain = implemented_domain.intersect(loop_slab)
+
         pf_idx_subst_map = pf_idx_subst_map.copy()
         pf_idx_subst_map[pf_iname] = pf_dim_expr + start_index
         inner = make_fetch_loop_nest(flnd, pf_iname_idx+1,
-                pf_dim_exprs+[pf_dim_expr], pf_idx_subst_map)
+                pf_dim_exprs+[pf_dim_expr], pf_idx_subst_map,
+                new_impl_domain)
 
         return For(
                 "int %s = 0" % pf_dim_var,
@@ -1219,20 +1228,29 @@ def generate_prefetch_code(ccm, kernel, sched_index, implemented_domain):
 
     # {{{ generate fetch code
 
+    valid_index_vars = get_valid_index_vars(kernel, sched_index,
+            exclude_tags=(TAG_WORK_ITEM_IDX,))
     flnd = FetchLoopNestData(prefetch=pf,
             no_prefetch_c_code_mapper=
             LoopyCCodeMapper(kernel, no_prefetch=True),
             c_code_mapper=ccm,
             realization_inames=realization_inames,
-            kernel=kernel)
+            kernel=kernel,
+            valid_index_vars=valid_index_vars)
 
-    fetch_block = make_fetch_loop_nest(flnd, 0)
+    fetch_block = make_fetch_loop_nest(flnd, 0, [], {}, implemented_domain)
 
     # }}}
 
     new_block = Block([
             Comment(("prefetch %s dim: " % pf.input_vector) 
-                + ", ".join(pf.inames)),
+                + ", ".join("%s -> %s"
+                    % (pf_iname, 
+                        " x ".join("%s(%s)" % (realiz_iname, kernel.iname_to_tag[realiz_iname])
+                            for realiz_iname in realiz_inames)
+                        if realiz_inames is not None else "loop")
+                    for pf_iname, realiz_inames in zip(pf.inames, realization_inames)
+                    )),
             Line(),
             ])
 
@@ -1251,6 +1269,7 @@ def generate_prefetch_code(ccm, kernel, sched_index, implemented_domain):
     if not isinstance(next_inner_sched_item, PrefetchDescriptor):
         new_block.append(S("barrier(CLK_LOCAL_MEM_FENCE)"))
     else:
+        new_block.append(Line())
         new_block.append(Comment("next inner schedule item is a prefetch: "
             "no sync needed"))
 
@@ -1316,30 +1335,37 @@ def generate_loop_dim_code(ccm, kernel, sched_index,
 
 # {{{ bounds check generator
 
-def wrap_in_bounds_checks(ccm, kernel, sched_index, implemented_domain, stmt):
+def get_valid_index_vars(kernel, sched_index, exclude_tags=()):
+    """
+    :param exclude_tags: a tuple of tag classes to exclude
+    """
+    return [
+            sched_item.iname
+            for sched_item in kernel.schedule[:sched_index]
+            if isinstance(sched_item, ScheduledLoop)
+            if not isinstance(kernel.iname_to_tag.get(sched_item.iname), exclude_tags)]
+
+def wrap_in_bounds_checks(ccm, domain, valid_index_vars, implemented_domain, stmt):
     from cgen import If
-    have_too_much = not implemented_domain.subtract(kernel.domain).is_empty()
+    have_too_much = not implemented_domain.subtract(domain).is_empty()
 
     if not have_too_much:
         return stmt
 
     domain_bsets = []
-    kernel.domain.foreach_basic_set(domain_bsets.append)
+    domain.foreach_basic_set(domain_bsets.append)
     domain_bset, = domain_bsets
-
-    valid_index_vars = [
-            sched_item.iname
-            for sched_item in kernel.schedule[:sched_index]
-            if isinstance(sched_item, ScheduledLoop)]
 
     projected_domain_bset = isl.project_out_except(
             domain_bset, valid_index_vars, [dim_type.set])
 
     necessary_constraints = []
 
+    space = domain.get_dim()
+
     def examine_constraint(cns):
-        cast_cns = cast_constraint_to_space(cns, kernel.space)
-        cns_set = (isl.Set.universe(kernel.space)
+        cast_cns = cast_constraint_to_space(cns, space)
+        cns_set = (isl.Set.universe(space)
                 .add_constraint(cast_cns))
         if not implemented_domain.is_subset(cns_set):
             necessary_constraints.append(cast_cns)
@@ -1375,8 +1401,9 @@ def build_loop_nest(ccm, kernel, sched_index, implemented_domain):
             insns.append(S("tmp_%s += %s"
                 % (name, ccm(expr))))
 
-        return wrap_in_bounds_checks(ccm, kernel, sched_index, implemented_domain,
-                block_if_necessary(insns))
+        return wrap_in_bounds_checks(ccm, kernel.domain, 
+                get_valid_index_vars(kernel, sched_index), 
+                implemented_domain, block_if_necessary(insns))
 
         # }}}
 
@@ -1392,7 +1419,9 @@ def build_loop_nest(ccm, kernel, sched_index, implemented_domain):
                     "tmp_"+lvalue.aggregate.name), 0)
                     for lvalue, expr in kernel.instructions]
                 +[build_loop_nest(ccm, kernel, sched_index+1, implemented_domain)]+
-                [wrap_in_bounds_checks(ccm, kernel, sched_index, implemented_domain,
+                [wrap_in_bounds_checks(ccm, kernel.domain, 
+                    get_valid_index_vars(kernel, sched_index),
+                    implemented_domain,
                     block_if_necessary([
                         Assign(
                             ccm(lvalue),

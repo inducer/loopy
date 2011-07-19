@@ -89,11 +89,11 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
             lp.ScalarArg("n", np.int32, approximately=1000),
         ], name="fancy_matmul")
 
-    knl = lp.split_dimension(knl, "i", 13, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 17, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 19)
-    #knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
-    #knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
+    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
 
     kernel_gen = (lp.insert_register_prefetches(knl)
@@ -110,6 +110,9 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
 
         if check:
             sol = c.get()
+            import matplotlib.pyplot as pt
+            pt.imshow(refsol-sol)
+            pt.show()
             rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
             assert rel_err < 1e-5, rel_err
 
