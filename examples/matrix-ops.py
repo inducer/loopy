@@ -2,7 +2,6 @@ import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.array as cl_array
-import pyopencl.clrandom as clrandom
 import loopy as lp
 
 
@@ -26,7 +25,7 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
-            "[n] -> {[i,j,k]: 0<=i,j,k<n}",
+            "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 (c[i, j], a[i, k]*b[k, j])
                 ],
@@ -34,15 +33,14 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
                 lp.ArrayArg("a", dtype, shape=(n, n)),
                 lp.ArrayArg("b", dtype, shape=(n, n)),
                 lp.ArrayArg("c", dtype, shape=(n, n)),
-                lp.ScalarArg("n", np.uint32, approximately=1000),
                 ],
             name="matmul")
 
-    knl = lp.split_dimension(knl, "i", 16)#, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16)#, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 16)
-    #knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    #knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
 
     kernel_gen = (lp.insert_register_prefetches(knl)
@@ -91,9 +89,9 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
             lp.ScalarArg("n", np.int32, approximately=1000),
         ], name="fancy_matmul")
 
-    knl = lp.split_dimension(knl, "i", 16) #, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16) #, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.split_dimension(knl, "i", 13, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_dimension(knl, "j", 17, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 19)
     #knl = lp.add_prefetch_dims(knl, 'a', ["i_inner", "k_inner"])
     #knl = lp.add_prefetch_dims(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
