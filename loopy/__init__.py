@@ -1506,7 +1506,7 @@ def generate_code(kernel):
             (TAG_WORK_ITEM_IDX, "get_local_id")]:
         for iname in kernel.ordered_inames_by_tag_type(what_cls):
             start, stop = kernel.get_bounds(iname)
-            mod.append(Define(iname, "(%s + %s(%d)) /* [%s, %s) */"
+            mod.append(Define(iname, "(%s + (int) %s(%d)) /* [%s, %s) */"
                         % (ccm(start),
                             func,
                             kernel.iname_to_tag[iname].axis,
