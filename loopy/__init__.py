@@ -23,20 +23,16 @@ register_mpz_with_pymbolic()
 
 
 # TODO: Divisibility
-# TODO: Non-multiple loop splits
-#       FIXME: Splitting an uneven-split loop?
 # TODO: nD Texture access
 # TODO: Functions
 # TODO: Common subexpressions
 # TODO: Try different kernels
 # TODO:   - Tricky: Convolution, FD
 # TODO: Try, fix indirect addressing
-# TODO: Recast slab checking in terms of # of conditionals
 
 # TODO: Custom reductions per red. axis
-# TODO: Vectorize
-# TODO: Unroll
-# TODO: Parallelize reduction
+# TODO: ILP Unroll
+# TODO: User controllable switch for 
 
 
 
@@ -58,7 +54,10 @@ class IndexTag(object):
         return hash(type(self)) ^ hash(self.axis)
 
 
-class TAG_GROUP_IDX(IndexTag):
+class ImplicitlyParallelTag(IndexTag):
+    pass
+
+class TAG_GROUP_IDX(ImplicitlyParallelTag):
     def __repr__(self):
         if self.axis is None:
             return "GROUP_IDX"
@@ -66,16 +65,27 @@ class TAG_GROUP_IDX(IndexTag):
             return "GROUP_IDX(%d)" % self.axis
 
 
-class TAG_WORK_ITEM_IDX(IndexTag):
+class TAG_WORK_ITEM_IDX(ImplicitlyParallelTag):
     def __repr__(self):
         if self.axis is None:
             return "WORK_ITEM_IDX"
         else:
             return "WORK_ITEM_IDX(%d)" % self.axis
 
-class TAG_UNROLL(IndexTag):
+class TAG_ILP_UNROLL(IndexTag):
     def __repr__(self):
-        return "TAG_UNROLL"
+        return "TAG_ILP_UNROLL"
+
+class BaseUnrollTag(IndexTag):
+    pass
+
+class TAG_UNROLL_ONE_VAR(BaseUnrollTag):
+    def __repr__(self):
+        return "TAG_UNROLL_1V"
+
+class TAG_UNROLL_MULTI_VAR(BaseUnrollTag):
+    def __repr__(self):
+        return "TAG_UNROLL_MV"
 
 def parse_tag(tag):
     if tag is None:
@@ -87,9 +97,15 @@ def parse_tag(tag):
     if not isinstance(tag, str):
         raise ValueError("cannot parse tag: %s" % tag)
 
-    if tag.startswith("g."):
+    if tag == "unr1":
+        return TAG_UNROLL_ONE_VAR()
+    elif tag == "unrm":
+        return TAG_UNROLL_MULTI_VAR()
+    elif tag == "ilp":
+        return TAG_ILP_UNROLL
+    elif tag.startswith("g."):
         return TAG_GROUP_IDX(int(tag[2:]))
-    if tag.startswith("l."):
+    elif tag.startswith("l."):
         return TAG_WORK_ITEM_IDX(int(tag[2:]))
     else:
         raise ValueError("cannot parse tag: %s" % tag)
@@ -98,7 +114,47 @@ def parse_tag(tag):
 
 # {{{ isl helpers
 
-def get_bounds_constraints(set, iname):
+def get_bounds_constraints(bset, iname, space=None, admissible_vars=None):
+    if isinstance(bset, isl.Set):
+        bset, = bset.get_basic_sets()
+
+    constraints = bset.get_constraints()
+
+    if not isinstance(admissible_vars, set):
+        admissible_vars = set(admissible_vars)
+
+    lower = []
+    upper = []
+    equality = []
+
+    if space is None:
+        space = bset.get_dim()
+
+    var_dict = space.get_var_dict()
+    iname_tp, iname_idx = var_dict[iname]
+
+    for cns in constraints:
+        iname_coeff = int(cns.get_coefficient(iname_tp, iname_idx))
+
+        if admissible_vars is not None:
+            if not (set(cns.get_coefficients_by_name().iterkeys()) 
+                    <= admissible_vars):
+                continue
+
+        if iname_coeff == 0:
+            continue
+
+        if cns.is_equality():
+            equality.append(cns)
+        elif iname_coeff < 0:
+            upper.append(cns)
+        else: #  iname_coeff > 0
+            lower.append(cns)
+
+    return lower, upper, equality
+
+
+def get_projected_bounds_constraints(set, iname):
     """Get an overapproximation of the loop bounds for the variable *iname*,
     as constraints.
     """
@@ -143,12 +199,36 @@ def get_bounds_constraints(set, iname):
 
 
 
-def get_bounds(set, iname):
+def solve_constraint_for_equality_bound(cns, iname):
+    rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
+
+    if iname_coeff == 0:
+        raise RuntimeError("cannot solve for bound in constraint "
+                "not containing variable")
+
+    assert iname_coeff > 0 or cns.is_equality()
+
+    from pymbolic import expand
+    return expand(-rhs)//iname_coeff
+
+def solve_constraint_for_upper_bound(cns, iname):
+    rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
+
+    if iname_coeff == 0:
+        raise RuntimeError("cannot solve for bound in constraint "
+                "not containing variable")
+
+    assert iname_coeff < 0
+
+    from pytools import div_ceil
+    return div_ceil(rhs+1, -iname_coeff)
+
+def get_projected_bounds(set, iname):
     """Get an overapproximation of the loop bounds for the variable *iname*,
     as actual bounds.
     """
 
-    lb_cns, ub_cns = get_bounds_constraints(set, iname)
+    lb_cns, ub_cns = get_projected_bounds_constraints(set, iname)
 
     from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
     from pymbolic import flatten
@@ -168,15 +248,18 @@ def get_bounds(set, iname):
 
     return lb, ub
 
-def cast_constraint_to_space(cns, new_space):
-    if cns.is_equality():
+def cast_constraint_to_space(cns, new_space, as_equality=None):
+    if as_equality is None:
+        as_equality = cns.is_equality()
+
+    if as_equality:
         factory = isl.Constraint.eq_from_names
     else:
         factory = isl.Constraint.ineq_from_names
     return factory(new_space, cns.get_coefficients_by_name())
 
-def block_shift_constraint(cns, iname, multiple):
-    cns = copy_constraint(cns)
+def block_shift_constraint(cns, iname, multiple, as_equality=None):
+    cns = copy_constraint(cns, as_equality=as_equality)
     cns.set_constant(cns.get_constant()
             + cns.get_coefficients_by_name()[iname]*multiple)
     return cns
@@ -195,12 +278,13 @@ def negate_constraint(cns):
     result, = results
     return result
 
-def copy_constraint(cns):
-    return cast_constraint_to_space(cns, cns.get_dim())
+def copy_constraint(cns, as_equality=None):
+    return cast_constraint_to_space(cns, cns.get_dim(),
+            as_equality=as_equality)
 
 def get_dim_bounds(set):
     vars = set.get_dim().get_var_dict(dim_type.set).keys()
-    return [get_bounds(set, v) for v in vars]
+    return [get_projected_bounds(set, v) for v in vars]
 
 def count_box_from_bounds(bounds):
     from pytools import product
@@ -506,19 +590,19 @@ class LoopKernel(Record):
                 result.append(dim)
 
     @memoize_method
-    def get_bounds_constraints(self, iname):
+    def get_projected_bounds_constraints(self, iname):
         """Get an overapproximation of the loop bounds for the variable *iname*."""
 
-        return get_bounds_constraints(self.domain, iname)
+        return get_projected_bounds_constraints(self.domain, iname)
 
     @memoize_method
-    def get_bounds(self, iname):
+    def get_projected_bounds(self, iname):
         """Get an overapproximation of the loop bounds for the variable *iname*."""
 
-        return get_bounds(self.domain, iname)
+        return get_projected_bounds(self.domain, iname)
 
     def tag_type_bounds(self, tag_cls):
-        return [self.get_bounds(iname)
+        return [self.get_projected_bounds(iname)
                 for iname in self.ordered_inames_by_tag_type(tag_cls)]
 
     def tag_type_lengths(self, tag_cls):
@@ -1049,7 +1133,7 @@ class LoopyCCodeMapper(CCodeMapper):
                 from pymbolic.mapper.stringifier import PREC_SUM
                 return pf.name+"".join(
                         "[%s - %s]" % (iname, self.rec(
-                            self.kernel.get_bounds(iname)[0],
+                            self.kernel.get_projected_bounds(iname)[0],
                             PREC_SUM))
                         for iname in pf.inames)
 
@@ -1117,7 +1201,7 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
     pf_iname = pf.inames[pf_iname_idx]
     realiz_inames = flnd.realization_inames[pf_iname_idx]
 
-    start_index, stop_index = flnd.kernel.get_bounds(pf_iname)
+    start_index, stop_index = flnd.kernel.get_projected_bounds(pf_iname)
     try:
         start_index = int(start_index)
         stop_index = int(stop_index)
@@ -1130,7 +1214,7 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
     if realiz_inames is not None:
         # {{{ parallel fetch
 
-        realiz_bounds = [flnd.kernel.get_bounds(rn) for rn in realiz_inames]
+        realiz_bounds = [flnd.kernel.get_projected_bounds(rn) for rn in realiz_inames]
         realiz_lengths = [stop-start for start, stop in realiz_bounds]
         from pytools import product
         total_realiz_size = product(realiz_lengths)
@@ -1179,7 +1263,7 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
         pf_dim_var = "prefetch_dim_idx_%d" % pf_iname_idx
         pf_dim_expr = var(pf_dim_var)
 
-        lb_cns, ub_cns = flnd.kernel.get_bounds_constraints(pf_iname)
+        lb_cns, ub_cns = flnd.kernel.get_projected_bounds_constraints(pf_iname)
         loop_slab = (isl.Set.universe(flnd.kernel.space)
                 .add_constraint(lb_cns)
                 .add_constraint(ub_cns))
@@ -1359,14 +1443,66 @@ def generate_prefetch_code(cgs, kernel, sched_index, implemented_domain):
 
 def generate_loop_dim_code(cgs, kernel, sched_index,
         implemented_domain):
-    from cgen import For, Comment, add_comment, make_multiple_ifs
+    from cgen import (Comment, add_comment, make_multiple_ifs,
+            POD, Initializer, Assign, Line, Const)
 
     ccm = cgs.c_code_mapper
 
     space = implemented_domain.get_dim()
 
     iname = kernel.schedule[sched_index].iname
-    lb_cns_orig, ub_cns_orig = kernel.get_bounds_constraints(iname)
+    tag = kernel.iname_to_tag.get(iname)
+
+    if isinstance(tag, BaseUnrollTag):
+        if 0:
+            # FIXME reactivate?
+            lower, upper, equality = get_bounds_constraints(kernel.domain, iname,
+                    admissible_vars=get_valid_index_vars(kernel, sched_index+1))
+
+            print lower
+            lower_cns, = filter_necessary_constraints(implemented_domain, lower)
+            upper_cns, = filter_necessary_constraints(implemented_domain, upper)
+        else:
+            lower_cns, upper_cns = kernel.get_projected_bounds_constraints(iname)
+            lower_cns = cast_constraint_to_space(lower_cns, space)
+            upper_cns = cast_constraint_to_space(upper_cns, space)
+
+        lower_bound = solve_constraint_for_equality_bound(lower_cns, iname)
+        upper_bound = solve_constraint_for_upper_bound(upper_cns, iname)
+
+        from pymbolic import flatten
+        from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
+        cfm = CommutativeConstantFoldingMapper()
+        length = int(cfm(flatten(upper_bound-lower_bound)))
+
+        if isinstance(tag, TAG_UNROLL_ONE_VAR):
+            result = [POD(np.int32, iname), Line()]
+        else:
+            result = []
+
+        for i in xrange(length):
+            slab = (isl.Set.universe(kernel.space)
+                    .add_constraint(
+                            block_shift_constraint(
+                                lower_cns, iname, -i, as_equality=True)))
+
+            new_impl_domain = implemented_domain.intersect(slab)
+            inner = build_loop_nest(cgs, kernel, sched_index+1,
+                    new_impl_domain)
+
+            if isinstance(tag, TAG_UNROLL_ONE_VAR):
+                result.extend([
+                    Assign(iname, ccm(lower_bound+i)),
+                    Line(), inner])
+            else:
+                result.append(gen_code_block([
+                    Initializer(Const(POD(np.int32, iname)),
+                        ccm(lower_bound+i)),
+                    Line(), inner]))
+
+        return gen_code_block(result)
+
+    lb_cns_orig, ub_cns_orig = kernel.get_projected_bounds_constraints(iname)
     lb_cns_orig = cast_constraint_to_space(lb_cns_orig, space)
     ub_cns_orig = cast_constraint_to_space(ub_cns_orig, space)
 
@@ -1376,16 +1512,12 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
     class TrialRecord(Record):
         pass
 
-    if cgs.try_slab_partition:
+    if (cgs.try_slab_partition 
+            and "outer" in iname):
         trial_cgs = cgs.copy(try_slab_partition=False)
         trials = []
 
-        if "outer" in iname:
-            variants = [ (0,0), (0,-1), ]
-        else:
-            variants = [(0,0)]
-
-        for lower_incr, upper_incr in variants:
+        for lower_incr, upper_incr in [ (0,0), (0,-1), ]:
 
             lb_cns = block_shift_constraint(lb_cns_orig, iname, -lower_incr)
             ub_cns = block_shift_constraint(ub_cns_orig, iname, -upper_incr)
@@ -1439,9 +1571,8 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
                         block_shift_constraint(
                             ub_cns_orig, iname, -chosen.upper_incr)))))
 
-    tag = kernel.iname_to_tag.get(iname)
 
-    if tag is not None:
+    if isinstance(tag, ImplicitlyParallelTag):
         # For a parallel loop dimension, the global loop bounds are
         # automatically obeyed--simply because no work items are launched
         # outside the requested grid.
@@ -1480,15 +1611,15 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
                         add_comment(cmt, inner.ast)))
 
     if tag is None:
-        # regular loop
+        # regular or unrolled loop
         return gen_code_block(result)
-    else:
+    elif isinstance(tag, ImplicitlyParallelTag):
         # parallel loop
         return GeneratedCode(
                 ast=make_multiple_ifs(result, base="last"),
                 num_conditionals=min(nums_of_conditionals))
-
-
+    else:
+        assert False, "we aren't supposed to get here"
 
 # }}}
 
@@ -1504,26 +1635,33 @@ def get_valid_index_vars(kernel, sched_index, exclude_tags=()):
             if isinstance(sched_item, ScheduledLoop)
             if not isinstance(kernel.iname_to_tag.get(sched_item.iname), exclude_tags)]
 
+def filter_necessary_constraints(implemented_domain, constraints):
+    space = implemented_domain.get_dim()
+    return [cns 
+        for cns in constraints
+        if not implemented_domain.is_subset(
+            isl.Set.universe(space)
+            .add_constraint(cns))]
+
 def generate_bounds_checks(ccm, domain, valid_index_vars, implemented_domain):
     domain_bset, = domain.get_basic_sets()
 
     projected_domain_bset = isl.project_out_except(
             domain_bset, valid_index_vars, [dim_type.set])
 
-    necessary_constraints = []
-
     space = domain.get_dim()
+
+    cast_constraints = []
 
     def examine_constraint(cns):
         assert not cns.is_div_constraint()
-
-        cast_cns = cast_constraint_to_space(cns, space)
-        cns_set = (isl.Set.universe(space)
-                .add_constraint(cast_cns))
-        if not implemented_domain.is_subset(cns_set):
-            necessary_constraints.append(cast_cns)
+        cast_constraints.append(
+                cast_constraint_to_space(cns, space))
 
     projected_domain_bset.foreach_constraint(examine_constraint)
+
+    necessary_constraints = filter_necessary_constraints(
+            implemented_domain, cast_constraints)
 
     return [constraint_to_code(ccm, cns) for cns in necessary_constraints]
 
@@ -1541,6 +1679,7 @@ def wrap_in_bounds_checks(ccm, domain, valid_index_vars, implemented_domain, stm
     return stmt
 
 def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
+    # FIXME add admissible vars
     if isinstance(constraint_bset, isl.Set):
         constraint_bset, = constraint_bset.get_basic_sets()
 
@@ -1680,13 +1819,13 @@ def generate_code(kernel):
         # below to avoid bank conflicts
         from pytools import product
         other_dim_sizes = (pf.itemsize
-                * product(dim_storage_lengths[:-1]))
+                * product(dim_storage_lengths[1:]))
 
         from pyopencl.characterize import usable_local_mem_size
-        if (dim_storage_lengths[-1] % 2 == 0
-                and other_pf_sizes+other_dim_sizes*(dim_storage_lengths[-1]+1)
+        if (dim_storage_lengths[0] % 2 == 0
+                and other_pf_sizes+other_dim_sizes*(dim_storage_lengths[0]+1)
                 < usable_local_mem_size(kernel.device)):
-            dim_storage_lengths[-1] += 1
+            dim_storage_lengths[0] += 1
 
         new_prefetch[pf.input_vector, pf.index_expr] = \
                 pf.copy(dim_storage_lengths=dim_storage_lengths,
@@ -1742,7 +1881,7 @@ def generate_code(kernel):
             (TAG_GROUP_IDX, "get_group_id"),
             (TAG_WORK_ITEM_IDX, "get_local_id")]:
         for iname in kernel.ordered_inames_by_tag_type(what_cls):
-            start, stop = kernel.get_bounds(iname)
+            start, stop = kernel.get_projected_bounds(iname)
             mod.append(Define(iname, "(%s + (int) %s(%d)) /* [%s, %s) */"
                         % (ccm(start),
                             func,
@@ -1760,7 +1899,7 @@ def generate_code(kernel):
 
     for pf in kernel.prefetch.itervalues():
         smem_pf_array = POD(kernel.arg_dict[pf.input_vector].dtype, pf.name)
-        for l in pf.dim_storage_lengths:
+        for l in pf.dim_storage_lengths[::-1]:
             smem_pf_array = ArrayOf(smem_pf_array, l)
         body.append(CLLocal(smem_pf_array))
 

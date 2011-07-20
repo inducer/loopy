@@ -91,7 +91,7 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.split_dimension(knl, "k", 16, inner_tag="unr1")
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
@@ -111,10 +111,12 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
         if check:
             sol = c.get()
             import matplotlib.pyplot as pt
-            #pt.imshow(refsol-sol)
-            #pt.show()
             rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
-            assert rel_err < 1e-5, rel_err
+            if rel_err > 1e-5:
+                pt.imshow(refsol-sol)
+                pt.colorbar()
+                pt.show()
+                raise RuntimeError("check failed")
 
         return evt
 
