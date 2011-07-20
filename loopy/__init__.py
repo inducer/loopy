@@ -73,6 +73,10 @@ class TAG_WORK_ITEM_IDX(IndexTag):
         else:
             return "WORK_ITEM_IDX(%d)" % self.axis
 
+class TAG_UNROLL(IndexTag):
+    def __repr__(self):
+        return "TAG_UNROLL"
+
 def parse_tag(tag):
     if tag is None:
         return tag
@@ -102,8 +106,7 @@ def get_bounds_constraints(set, iname):
     # project out every variable except iname
     projected_domain = isl.project_out_except(set, [iname], [dim_type.set])
 
-    basic_sets = []
-    projected_domain.foreach_basic_set(basic_sets.append)
+    basic_sets = projected_domain.get_basic_sets()
 
     # FIXME perhaps use some form of hull here if there's more than one
     # basic set?
@@ -118,6 +121,8 @@ def get_bounds_constraints(set, iname):
 
     def examine_constraint(cns):
         assert not cns.is_equality()
+        assert not cns.is_div_constraint()
+
         coeffs = cns.get_coefficients_by_name()
 
         iname_coeff = int(coeffs.get(iname, 0))
@@ -150,24 +155,11 @@ def get_bounds(set, iname):
     cfm = CommutativeConstantFoldingMapper()
 
     for cns in [lb_cns, ub_cns]:
-        coeffs = cns.get_coefficients_by_name()
+        rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
 
-        iname_coeff = int(coeffs.get(iname, 0))
         if iname_coeff == 0:
             return
-
-        rhs = 0
-        from pymbolic import var
-        for var_name, coeff in coeffs.iteritems():
-            if var_name == iname:
-                continue
-            if var_name == 1:
-                rhs += int(coeff)
-            else:
-                assert isinstance(var_name, str)
-                rhs += int(coeff)*var(var_name)
-
-        if iname_coeff < 0:
+        elif iname_coeff < 0:
             from pytools import div_ceil
             ub = cfm(flatten(div_ceil(rhs+1, -iname_coeff)))
         else: #  iname_coeff > 0
@@ -223,7 +215,7 @@ def make_index_map(set, index_expr):
 
     dim = amap.get_dim()
     all_constraints = tuple(
-            eq_constraint_from_expr(dim, iexpr_i) 
+            eq_constraint_from_expr(dim, iexpr_i)
             for iexpr_i in index_expr)
 
     for i, out_name in enumerate(out_names):
@@ -246,16 +238,31 @@ def make_slab(space, iname, start, stop):
             .add_constraint(ineq_constraint_from_expr(
                 space, stop-1 - var_iname)))
 
-def constraint_to_expr(cns):
+def constraint_to_expr(cns, except_name=None):
+    excepted_coeff = 0
     result = 0
     from pymbolic import var
     for var_name, coeff in cns.get_coefficients_by_name().iteritems():
         if isinstance(var_name, str):
-            result += int(coeff)*var(var_name)
+            if var_name == except_name:
+                excepted_coeff = int(coeff)
+            else:
+                result += int(coeff)*var(var_name)
         else:
             result += int(coeff)
 
-    return result
+    if except_name is not None:
+        return result, excepted_coeff
+    else:
+        return result
+
+def constraint_to_code(ccm, cns):
+    if cns.is_equality():
+        comp_op = "=="
+    else:
+        comp_op = ">="
+
+    return "%s %s 0" % (ccm(constraint_to_expr(cns)), comp_op)
 
 
 # }}}
@@ -301,8 +308,8 @@ class CoefficientCollector(RecursiveMapper):
             return {1: other_coeffs}
         else:
             return dict(
-                    (var, other_coeffs*coeff) 
-                    for var, coeff in 
+                    (var, other_coeffs*coeff)
+                    for var, coeff in
                     children_coeffs[idx_of_child_with_vars].iteritems())
 
         return result
@@ -320,7 +327,7 @@ class CoefficientCollector(RecursiveMapper):
 
 
 def _constraint_from_expr(space, expr, constraint_factory):
-    return constraint_factory(space, 
+    return constraint_factory(space,
             CoefficientCollector()(expr))
 
 def eq_constraint_from_expr(space, expr):
@@ -1084,7 +1091,7 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
     no_pf_ccm = flnd.no_prefetch_c_code_mapper
 
     from pymbolic import var
-    from cgen import Block, Assign, For, If
+    from cgen import Assign, For, If
 
     from pymbolic.mapper.substitutor import substitute
     if pf_iname_idx >= len(pf.inames):
@@ -1311,14 +1318,14 @@ def generate_prefetch_code(cgs, kernel, sched_index, implemented_domain):
     # }}}
 
     new_block = [
-            Comment(("prefetch %s dim: " % pf.input_vector) 
-                + ", ".join("%s -> %s"
-                    % (pf_iname, 
-                        " x ".join("%s(%s)" % (realiz_iname, kernel.iname_to_tag[realiz_iname])
-                            for realiz_iname in realiz_inames)
+            Comment("prefetch %s[%s] using %s" % (
+                pf.input_vector,
+                ", ".join(pf.inames),
+                ", ".join(
+                        (" x ".join("%s(%s)" % (realiz_iname, kernel.iname_to_tag[realiz_iname])
+                        for realiz_iname in realiz_inames)
                         if realiz_inames is not None else "loop")
-                    for pf_iname, realiz_inames in zip(pf.inames, realization_inames)
-                    )),
+                        for realiz_inames in realization_inames))),
             Line(),
             ]
 
@@ -1350,11 +1357,9 @@ def generate_prefetch_code(cgs, kernel, sched_index, implemented_domain):
 
 # {{{ per-axis loop nest code generation
 
-def generate_loop_dim_code(cgs, kernel, sched_index, 
+def generate_loop_dim_code(cgs, kernel, sched_index,
         implemented_domain):
-    from cgen import (POD, Block, Initializer,
-            For, Line, Comment, add_comment,
-            make_multiple_ifs)
+    from cgen import For, Comment, add_comment, make_multiple_ifs
 
     ccm = cgs.c_code_mapper
 
@@ -1390,7 +1395,7 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
                     .add_constraint(ub_cns))
             bulk_impl_domain = implemented_domain.intersect(bulk_slab)
             if not bulk_impl_domain.is_empty():
-                inner = build_loop_nest(trial_cgs, kernel, sched_index+1, 
+                inner = build_loop_nest(trial_cgs, kernel, sched_index+1,
                         bulk_impl_domain)
 
                 trials.append((TrialRecord(
@@ -1398,7 +1403,8 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
                     upper_incr=upper_incr,
                     bulk_slab=bulk_slab),
                     (inner.num_conditionals,
-                        # when all num_conditionals are equal, choose min increments
+                        # when all num_conditionals are equal, choose the
+                        # one with the smallest bounds changes
                         abs(upper_incr)+abs(lower_incr))))
 
         from pytools import argmin2
@@ -1414,53 +1420,64 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
 
     slabs = []
     if chosen.lower_incr:
-        slabs.append(isl.Set.universe(kernel.space)
+        slabs.append(("initial", isl.Set.universe(kernel.space)
                 .add_constraint(lb_cns_orig)
-                .add_constraint(
-                    negate_constraint(
-                        block_shift_constraint(
-                            lb_cns_orig, iname, -chosen.lower_incr))))
-
-    slabs.append(chosen.bulk_slab)
-
-    if chosen.upper_incr:
-        slabs.append(isl.Set.universe(kernel.space)
                 .add_constraint(ub_cns_orig)
                 .add_constraint(
                     negate_constraint(
                         block_shift_constraint(
-                            ub_cns_orig, iname, -chosen.upper_incr))))
+                            lb_cns_orig, iname, -chosen.lower_incr)))))
+
+    slabs.append(("bulk", chosen.bulk_slab))
+
+    if chosen.upper_incr:
+        slabs.append(("final", isl.Set.universe(kernel.space)
+                .add_constraint(ub_cns_orig)
+                .add_constraint(lb_cns_orig)
+                .add_constraint(
+                    negate_constraint(
+                        block_shift_constraint(
+                            ub_cns_orig, iname, -chosen.upper_incr)))))
+
+    tag = kernel.iname_to_tag.get(iname)
+
+    if tag is not None:
+        # For a parallel loop dimension, the global loop bounds are
+        # automatically obeyed--simply because no work items are launched
+        # outside the requested grid.
+
+        implemented_domain = implemented_domain.intersect(
+                isl.Set.universe(kernel.space)
+                .add_constraint(lb_cns_orig)
+                .add_constraint(ub_cns_orig))
 
     result = []
     nums_of_conditionals = []
 
-    for slab in slabs:
+    for slab_name, slab in slabs:
+        cmt = "%s slab for '%s'" % (slab_name, iname)
+        if len(slabs) == 1:
+            cmt = None
+
         new_impl_domain = implemented_domain.intersect(slab)
-        inner = build_loop_nest(cgs, kernel, sched_index+1, 
+        inner = build_loop_nest(cgs, kernel, sched_index+1,
                 new_impl_domain)
 
-        tag = kernel.iname_to_tag.get(iname)
-        start, stop = get_bounds(slab, iname)
-
-        # FIXME what about equality constraints
         if tag is None:
             # regular loop
-            result.append(wrap_with(For,
-                    "int %s = %s" % (iname, ccm(start)),
-                    "%s < %s" % (iname, ccm(stop)),
-                    "++%s" % iname, 
-                    inner))
+            if cmt is not None:
+                result.append(Comment(cmt))
+            result.append(
+                    wrap_in_for_from_constraints(ccm, iname, slab,inner))
         else:
             # parallel loop
             nums_of_conditionals.append(inner.num_conditionals)
-            if chosen.lower_incr == 0 and chosen.upper_incr == 0:
-                assert len(slabs) == 1
-                return inner
-            else:
-                result.append(
-                        ("%s <= %s && %s < %s"
-                            % (ccm(start), iname, iname, ccm(stop)), 
-                            inner.ast))
+            constraint_codelets = generate_bounds_checks(ccm,
+                    slab, get_valid_index_vars(kernel, sched_index+1),
+                    implemented_domain)
+            result.append(
+                    ("\n&& ".join(constraint_codelets),
+                        add_comment(cmt, inner.ast)))
 
     if tag is None:
         # regular loop
@@ -1487,12 +1504,8 @@ def get_valid_index_vars(kernel, sched_index, exclude_tags=()):
             if isinstance(sched_item, ScheduledLoop)
             if not isinstance(kernel.iname_to_tag.get(sched_item.iname), exclude_tags)]
 
-def wrap_in_bounds_checks(ccm, domain, valid_index_vars, implemented_domain, stmt):
-    from cgen import If
-
-    domain_bsets = []
-    domain.foreach_basic_set(domain_bsets.append)
-    domain_bset, = domain_bsets
+def generate_bounds_checks(ccm, domain, valid_index_vars, implemented_domain):
+    domain_bset, = domain.get_basic_sets()
 
     projected_domain_bset = isl.project_out_except(
             domain_bset, valid_index_vars, [dim_type.set])
@@ -1502,6 +1515,8 @@ def wrap_in_bounds_checks(ccm, domain, valid_index_vars, implemented_domain, stm
     space = domain.get_dim()
 
     def examine_constraint(cns):
+        assert not cns.is_div_constraint()
+
         cast_cns = cast_constraint_to_space(cns, space)
         cns_set = (isl.Set.universe(space)
                 .add_constraint(cast_cns))
@@ -1510,14 +1525,64 @@ def wrap_in_bounds_checks(ccm, domain, valid_index_vars, implemented_domain, stm
 
     projected_domain_bset.foreach_constraint(examine_constraint)
 
-    if necessary_constraints:
+    return [constraint_to_code(ccm, cns) for cns in necessary_constraints]
+
+def wrap_in_bounds_checks(ccm, domain, valid_index_vars, implemented_domain, stmt):
+    from cgen import If
+
+    constraint_codelets = generate_bounds_checks(ccm, domain, valid_index_vars,
+            implemented_domain)
+
+    if constraint_codelets:
         stmt = wrap_with(If,
-                "\n&& ".join(
-                    "(%s >= 0)" % ccm(constraint_to_expr(cns))
-                    for cns in necessary_constraints),
+                "\n&& ".join(constraint_codelets),
                 stmt)
 
     return stmt
+
+def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
+    if isinstance(constraint_bset, isl.Set):
+        constraint_bset, = constraint_bset.get_basic_sets()
+
+    constraints = constraint_bset.get_constraints()
+
+    from pymbolic import flatten, expand
+    from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
+    cfm = CommutativeConstantFoldingMapper()
+
+    from pytools import any
+    if any(cns.is_equality() for cns in constraints):
+        raise NotImplementedError("equality constraints for 'for' loops")
+    else:
+        start_exprs = []
+        end_conds = []
+
+        for cns in constraints:
+            rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
+
+            if iname_coeff == 0:
+                continue
+            elif iname_coeff < 0:
+                from pymbolic import var
+                rhs += iname_coeff*var(iname)
+                end_conds.append("%s >= 0" %
+                        ccm(cfm(expand(rhs))))
+            else: #  iname_coeff > 0
+                start_exprs.append(
+                        ccm(cfm(flatten(expand(-rhs)//iname_coeff))))
+
+    while len(start_exprs) >= 2:
+        start_exprs.append(
+                "max(%s, %s)" % (start_exprs.pop(), start_exprs.pop()))
+
+    start_expr, = start_exprs # there has to be at least one
+
+    from cgen import For
+    return wrap_with(For,
+            "int %s = %s" % (iname, start_expr),
+            " && ".join(end_conds),
+            "++%s" % iname,
+            stmt)
 
 # }}}
 
@@ -1540,8 +1605,8 @@ def build_loop_nest(cgs, kernel, sched_index, implemented_domain):
             insns.append(S("tmp_%s += %s"
                 % (name, ccm(expr))))
 
-        return wrap_in_bounds_checks(ccm, kernel.domain, 
-                get_valid_index_vars(kernel, sched_index), 
+        return wrap_in_bounds_checks(ccm, kernel.domain,
+                get_valid_index_vars(kernel, sched_index),
                 implemented_domain, gen_code_block(insns))
 
         # }}}
@@ -1549,7 +1614,7 @@ def build_loop_nest(cgs, kernel, sched_index, implemented_domain):
     sched_item = kernel.schedule[sched_index]
 
     if isinstance(sched_item, ScheduledLoop):
-        return generate_loop_dim_code(cgs, kernel, sched_index, 
+        return generate_loop_dim_code(cgs, kernel, sched_index,
                 implemented_domain)
 
     elif isinstance(sched_item, WriteOutput):
@@ -1558,7 +1623,7 @@ def build_loop_nest(cgs, kernel, sched_index, implemented_domain):
                     "tmp_"+lvalue.aggregate.name), 0)
                     for lvalue, expr in kernel.instructions]
                 +[build_loop_nest(cgs, kernel, sched_index+1, implemented_domain)]+
-                [wrap_in_bounds_checks(ccm, kernel.domain, 
+                [wrap_in_bounds_checks(ccm, kernel.domain,
                     get_valid_index_vars(kernel, sched_index),
                     implemented_domain,
                     gen_code_block([

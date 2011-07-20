@@ -78,7 +78,7 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
-            "[n] -> {[i,j,k]: 0<=i,j,k<n and n>0 }",
+            "[n] -> {[i,j,k]: 0<=i,j,k<n }",
             [
                 (c[i, j], a[i, k]*b[k, j])
                 ],
