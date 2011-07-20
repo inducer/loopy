@@ -73,24 +73,24 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 16*10
+    n = 16*30
     from pymbolic import var
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
-        "[n] -> {[i,j,k]: 0<=i,j,k<n}",
-        [
+            "[n] -> {[i,j,k]: 0<=i,j,k<n and n>0 }",
+            [
                 (c[i, j], a[i, k]*b[k, j])
                 ],
-        [
-            lp.ArrayArg("a", dtype, shape=(n_sym, n_sym)),
-            lp.ArrayArg("b", dtype, shape=(n_sym, n_sym)),
-            lp.ArrayArg("c", dtype, shape=(n_sym, n_sym)),
-            lp.ScalarArg("n", np.int32, approximately=1000),
-        ], name="fancy_matmul")
+            [
+                lp.ArrayArg("a", dtype, shape=(n_sym, n_sym)),
+                lp.ArrayArg("b", dtype, shape=(n_sym, n_sym)),
+                lp.ArrayArg("c", dtype, shape=(n_sym, n_sym)),
+                lp.ScalarArg("n", np.int32, approximately=1000),
+                ], name="fancy_matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 17, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
@@ -111,8 +111,8 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
         if check:
             sol = c.get()
             import matplotlib.pyplot as pt
-            pt.imshow(refsol-sol)
-            pt.show()
+            #pt.imshow(refsol-sol)
+            #pt.show()
             rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
             assert rel_err < 1e-5, rel_err
 
