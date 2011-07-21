@@ -7,6 +7,9 @@ import loopy as lp
 
 
 
+FAST_OPTIONS = ["-cl-mad-enable", "-cl-fast-relaxed-math", 
+        "-cl-no-signed-zeros", "-cl-strict-aliasing"]
+
 def make_well_conditioned_dev_matrix(queue, n, dtype=np.float32, order="C"):
     return cl_array.to_device(queue,
             np.asarray(np.random.randn(n, n) + 5*np.eye(n),
@@ -74,7 +77,8 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
 
         return evt
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
+            options=FAST_OPTIONS)
 
 
 
@@ -97,14 +101,14 @@ def image_matrix_mul(ctx_factory=cl.create_some_context):
                 ],
             [
                 lp.ImageArg("a", dtype, 2),
-                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
+                lp.ImageArg("b", dtype, 2),
                 lp.ArrayArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 4)
+    knl = lp.split_dimension(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
     assert knl.get_invalid_reason() is None
@@ -116,9 +120,11 @@ def image_matrix_mul(ctx_factory=cl.create_some_context):
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     c = cl_array.empty_like(a)
     refsol = np.dot(a.get(), b.get())
+    a_img = cl.image_from_array(ctx, a.get(), 1)
+    b_img = cl.image_from_array(ctx, b.get(), 1)
 
     def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
+        evt = kernel(queue, gsize(), lsize(), a_img, b_img, c.data,
                 g_times_l=True)
 
         if check:
@@ -126,7 +132,8 @@ def image_matrix_mul(ctx_factory=cl.create_some_context):
 
         return evt
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
+            options=FAST_OPTIONS)
 
 
 
@@ -180,7 +187,8 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
 
         return evt
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
+            options=FAST_OPTIONS)
 
 
 

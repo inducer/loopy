@@ -23,9 +23,11 @@ register_mpz_with_pymbolic()
 
 
 # TODO: Wrong 19
+# TODO: Restrict on/off
 # TODO: Try, fix reg. prefetch
+# TODO: 1D local arrays
+# TODO: doubles in textures? as_double
 # TODO: Divisibility
-# TODO: nD Texture access
 # TODO: Functions
 # TODO: Common subexpressions
 # TODO: Try different kernels
@@ -1163,7 +1165,7 @@ class LoopyCCodeMapper(CCodeMapper):
                 return ("read_imagef(%s, loopy_sampler, (float%d)(%s)).x"
                         % (arg.name, arg.dimensions, 
                             ", ".join(self.rec(idx, PREC_NONE) 
-                                for idx in expr.index)))
+                                for idx in expr.index[::-1])))
             else:
                 # ArrayArg
                 index_expr = expr.index
@@ -2066,7 +2068,7 @@ def add_prefetch(kernel, input_access_descr, tags_or_inames, loc_fetch_axes={}):
 
 
 class CompiledKernel:
-    def __init__(self, context, kernel, size_args=None):
+    def __init__(self, context, kernel, size_args=None, options=[]):
         self.kernel = kernel
         self.code = generate_code(kernel)
 
@@ -2074,7 +2076,7 @@ class CompiledKernel:
         #self.code = invoke_editor(self.code)
 
         self.cl_kernel = getattr(
-                cl.Program(context, self.code).build(),
+                cl.Program(context, self.code).build(options=options),
                 kernel.name)
 
         arg_types = []
@@ -2115,7 +2117,8 @@ class CompiledKernel:
 
 
 # driver ----------------------------------------------------------------------
-def drive_timing_run(kernel_generator, queue, launch, flop_count=None):
+def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
+        options=[]):
 
     def time_run(compiled_knl, warmup_rounds=2, timing_rounds=5):
         check = True
@@ -2139,7 +2142,7 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None):
     soln_count = 0
     for kernel in kernel_generator:
 
-        compiled = CompiledKernel(queue.context, kernel)
+        compiled = CompiledKernel(queue.context, kernel, options=options)
 
         print "-----------------------------------------------"
         print "SOLUTION #%d" % soln_count
