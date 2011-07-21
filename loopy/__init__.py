@@ -320,10 +320,10 @@ def make_slab(space, iname, start, stop):
     from pymbolic import var
     var_iname = var(iname)
     return (isl.Set.universe(space)
-            # 0 <= inner
+            # start <= inner
             .add_constraint(ineq_constraint_from_expr(
-                space, start + var_iname))
-            # inner < length
+                space, var_iname -start))
+            # inner < stop
             .add_constraint(ineq_constraint_from_expr(
                 space, stop-1 - var_iname)))
 
