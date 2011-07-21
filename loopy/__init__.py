@@ -1157,15 +1157,21 @@ class LoopyCCodeMapper(CCodeMapper):
             arg = self.kernel.arg_dict[expr.aggregate.name]
 
             if isinstance(arg, ImageArg):
-                if arg.dtype != np.float32:
-                    raise NotImplementedError(
-                            "non-float32 images not supported for now")
-
                 assert isinstance(expr.index, tuple)
-                return ("read_imagef(%s, loopy_sampler, (float%d)(%s)).x"
+
+                base_access = ("read_imagef(%s, loopy_sampler, (float%d)(%s))"
                         % (arg.name, arg.dimensions, 
                             ", ".join(self.rec(idx, PREC_NONE) 
                                 for idx in expr.index[::-1])))
+
+                if arg.dtype == np.float32:
+                    return base_access+".x"
+                elif arg.dtype == np.float64:
+                    return "as_double(%s.xy)" % base_access
+                else:
+                    raise NotImplementedError(
+                            "non-floating-point images not supported for now")
+
             else:
                 # ArrayArg
                 index_expr = expr.index
