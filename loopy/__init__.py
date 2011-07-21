@@ -26,7 +26,6 @@ register_mpz_with_pymbolic()
 # TODO: Restrict on/off
 # TODO: Try, fix reg. prefetch
 # TODO: 1D local arrays
-# TODO: doubles in textures? as_double
 # TODO: Divisibility
 # TODO: Functions
 # TODO: Common subexpressions
@@ -2081,9 +2080,19 @@ class CompiledKernel:
         #from pytools import invoke_editor
         #self.code = invoke_editor(self.code)
 
-        self.cl_kernel = getattr(
-                cl.Program(context, self.code).build(options=options),
-                kernel.name)
+        try:
+            self.cl_kernel = getattr(
+                    cl.Program(context, self.code).build(options=options),
+                    kernel.name)
+        except:
+            print "[Loopy] ----------------------------------------------------"
+            print "[Loopy] build failed, here's the source code:"
+            print "[Loopy] ----------------------------------------------------"
+            print self.code
+            print "[Loopy] ----------------------------------------------------"
+            print "[Loopy] end source code"
+            print "[Loopy] ----------------------------------------------------"
+            raise
 
         arg_types = []
         for arg in kernel.args:
