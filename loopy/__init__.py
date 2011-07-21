@@ -22,6 +22,7 @@ register_mpz_with_pymbolic()
 
 
 
+# TODO: Try, fix reg. prefetch
 # TODO: Divisibility
 # TODO: nD Texture access
 # TODO: Functions
@@ -29,10 +30,12 @@ register_mpz_with_pymbolic()
 # TODO: Try different kernels
 # TODO:   - Tricky: Convolution, FD
 # TODO: Try, fix indirect addressing
+# TODO: ILP Unroll
+# TODO: User controllable switch for slab opt
+# TODO: User control over schedule
+# TODO: Condition hoisting
 
 # TODO: Custom reductions per red. axis
-# TODO: ILP Unroll
-# TODO: User controllable switch for 
 
 
 
@@ -282,9 +285,9 @@ def copy_constraint(cns, as_equality=None):
     return cast_constraint_to_space(cns, cns.get_dim(),
             as_equality=as_equality)
 
-def get_dim_bounds(set):
+def get_dim_bounds(set, inames):
     vars = set.get_dim().get_var_dict(dim_type.set).keys()
-    return [get_projected_bounds(set, v) for v in vars]
+    return [get_projected_bounds(set, v) for v in inames]
 
 def count_box_from_bounds(bounds):
     from pytools import product
@@ -818,7 +821,7 @@ class PrefetchDescriptor(Record):
     @property
     @memoize_method
     def dim_bounds(self):
-        return get_dim_bounds(self.domain)
+        return get_dim_bounds(self.domain, self.inames)
 
     @property
     def itemsize(self):
@@ -1819,13 +1822,13 @@ def generate_code(kernel):
         # below to avoid bank conflicts
         from pytools import product
         other_dim_sizes = (pf.itemsize
-                * product(dim_storage_lengths[1:]))
+                * product(dim_storage_lengths[:-1]))
 
         from pyopencl.characterize import usable_local_mem_size
-        if (dim_storage_lengths[0] % 2 == 0
-                and other_pf_sizes+other_dim_sizes*(dim_storage_lengths[0]+1)
+        if (dim_storage_lengths[-1] % 2 == 0
+                and other_pf_sizes+other_dim_sizes*(dim_storage_lengths[-1]+1)
                 < usable_local_mem_size(kernel.device)):
-            dim_storage_lengths[0] += 1
+            dim_storage_lengths[-1] += 1
 
         new_prefetch[pf.input_vector, pf.index_expr] = \
                 pf.copy(dim_storage_lengths=dim_storage_lengths,
@@ -1908,7 +1911,7 @@ def generate_code(kernel):
 
     for pf in kernel.prefetch.itervalues():
         smem_pf_array = POD(kernel.arg_dict[pf.input_vector].dtype, pf.name)
-        for l in pf.dim_storage_lengths[::-1]:
+        for l in pf.dim_storage_lengths:
             smem_pf_array = ArrayOf(smem_pf_array, l)
         body.append(CLLocal(smem_pf_array))
 

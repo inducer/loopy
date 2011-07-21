@@ -40,7 +40,7 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.split_dimension(knl, "k", 4)
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
     assert knl.get_invalid_reason() is None
@@ -92,15 +92,15 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
                 (c[i, j], a[i, k]*b[k, j])
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n_sym, n_sym)),
-                lp.ArrayArg("b", dtype, shape=(n_sym, n_sym)),
-                lp.ArrayArg("c", dtype, shape=(n_sym, n_sym)),
+                lp.ArrayArg("a", dtype, shape=(n_sym, n_sym), order="F"),
+                lp.ArrayArg("b", dtype, shape=(n_sym, n_sym), order="F"),
+                lp.ArrayArg("c", dtype, shape=(n_sym, n_sym), order="F"),
                 lp.ScalarArg("n", np.int32, approximately=1000),
                 ], name="fancy_matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16, inner_tag="unr1")
+    knl = lp.split_dimension(knl, "k", 4, inner_tag="unr1")
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
@@ -217,4 +217,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        plain_matrix_mul()
+        fancy_matrix_mul()
