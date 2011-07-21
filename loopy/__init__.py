@@ -22,6 +22,7 @@ register_mpz_with_pymbolic()
 
 
 
+# TODO: Wrong 19
 # TODO: Try, fix reg. prefetch
 # TODO: Divisibility
 # TODO: nD Texture access
@@ -469,6 +470,16 @@ class ArrayArg:
     def __repr__(self):
         return "<ArrayArg '%s' of type %s>" % (self.name, self.dtype)
 
+
+
+class ImageArg:
+    def __init__(self, name, dtype, dimensions):
+        self.name = name
+        self.dtype = np.dtype(dtype)
+        self.dimensions = dimensions
+
+    def __repr__(self):
+        return "<ImageArg '%s' of type %s>" % (self.name, self.dtype)
 
 
 class ScalarArg:
@@ -1140,27 +1151,36 @@ class LoopyCCodeMapper(CCodeMapper):
                             PREC_SUM))
                         for iname in pf.inames)
 
-        offset = 0
-
         if isinstance(expr.aggregate, Variable):
             arg = self.kernel.arg_dict[expr.aggregate.name]
-            offset = arg.offset
 
-            index_expr = expr.index
-            if isinstance(expr.index, tuple):
-                ary_strides = arg.strides
-                if ary_strides is None:
-                    raise RuntimeError("tuple-indexed variable '%s' does not "
-                            "have stride information" % expr.aggregate.name)
+            if isinstance(arg, ImageArg):
+                if arg.dtype != np.float32:
+                    raise NotImplementedError(
+                            "non-float32 images not supported for now")
+
+                assert isinstance(expr.index, tuple)
+                return ("read_imagef(%s, loopy_sampler, (float%d)(%s)).x"
+                        % (arg.name, arg.dimensions, 
+                            ", ".join(self.rec(idx, PREC_NONE) 
+                                for idx in expr.index)))
             else:
-                ary_strides = (1,)
-                index_expr = (index_expr,)
+                # ArrayArg
+                index_expr = expr.index
+                if isinstance(expr.index, tuple):
+                    ary_strides = arg.strides
+                    if ary_strides is None:
+                        raise RuntimeError("tuple-indexed variable '%s' does not "
+                                "have stride information" % expr.aggregate.name)
+                else:
+                    ary_strides = (1,)
+                    index_expr = (index_expr,)
 
-            from pymbolic.primitives import Subscript
-            return CCodeMapper.map_subscript(self,
-                    Subscript(expr.aggregate, offset+sum(
-                        stride*expr_i for stride, expr_i in zip(
-                            ary_strides, index_expr))), enclosing_prec)
+                from pymbolic.primitives import Subscript
+                return CCodeMapper.map_subscript(self,
+                        Subscript(expr.aggregate, arg.offset+sum(
+                            stride*expr_i for stride, expr_i in zip(
+                                ary_strides, index_expr))), enclosing_prec)
 
         return CCodeMapper.map_subscript(self, expr, enclosing_prec)
 
@@ -1336,9 +1356,13 @@ def generate_prefetch_code(cgs, kernel, sched_index, implemented_domain):
         index_expr = (index_expr,)
 
     arg = kernel.arg_dict[pf.input_vector]
-    ary_strides = arg.strides
-    if ary_strides is None and len(index_expr) == 1:
-        ary_strides = (1,)
+    if isinstance(arg, ImageArg):
+        # arbitrary
+        ary_strides = (1, 1, 1)[:arg.dimensions]
+    else:
+        ary_strides = arg.strides
+        if ary_strides is None and len(index_expr) == 1:
+            ary_strides = (1,)
 
     iname_to_stride = {}
     for iexpr_i, stride in zip(index_expr, ary_strides):
@@ -1803,9 +1827,10 @@ class CodeGenerationState(Record):
 def generate_code(kernel):
     from cgen import (FunctionBody, FunctionDeclaration,
             POD, Value, ArrayOf, Module, Block,
-            Define, Line, Const, LiteralLines)
+            Define, Line, Const, LiteralLines, Initializer)
 
-    from cgen.opencl import CLKernel, CLGlobal, CLRequiredWorkGroupSize, CLLocal
+    from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize, 
+            CLLocal, CLImage)
 
     # {{{ assign names, dim storage lengths to prefetches
 
@@ -1847,11 +1872,12 @@ def generate_code(kernel):
 
     mod = Module()
 
+    body = Block()
+
     group_size = kernel.tag_type_lengths(TAG_WORK_ITEM_IDX)
 
     # {{{ examine arg list
 
-    has_double = False
 
     def restrict_ptr_if_not_nvidia(arg):
         from cgen import Pointer, RestrictPointer
@@ -1861,6 +1887,9 @@ def generate_code(kernel):
         else:
             return RestrictPointer(arg)
 
+    has_double = False
+    has_image = False
+
     args = []
     for arg in kernel.args:
         if isinstance(arg, ArrayArg):
@@ -1869,6 +1898,15 @@ def generate_code(kernel):
             if arg_decl.name in kernel.input_vectors():
                 arg_decl = Const(arg_decl)
             arg_decl = CLGlobal(arg_decl)
+        elif isinstance(arg, ImageArg):
+            if arg.name in kernel.input_vectors():
+                mode = "r"
+            else:
+                mode = "w"
+
+            arg_decl = CLImage(arg.dimensions, mode, arg.name)
+
+            has_image = True
         else:
             arg_decl = Const(POD(arg.dtype, arg.name))
 
@@ -1881,6 +1919,11 @@ def generate_code(kernel):
         mod.extend([
             Line("#pragma OPENCL EXTENSION cl_khr_fp64: enable"),
             Line()])
+
+    if has_image:
+        body.append(Initializer(Const(Value("sampler_t", "loopy_sampler")),
+            "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
+                "| CLK_FILTER_NEAREST"))
 
     # }}}
 
@@ -1904,8 +1947,6 @@ def generate_code(kernel):
     mod.append(Line())
 
     # }}}
-
-    body = Block()
 
     # {{{ build lmem array declarators for prefetches
 
