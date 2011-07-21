@@ -1798,8 +1798,8 @@ class CodeGenerationState(Record):
     __slots__ = ["c_code_mapper", "try_slab_partition"]
 
 def generate_code(kernel):
-    from cgen import (FunctionBody, FunctionDeclaration, \
-            POD, Value, RestrictPointer, ArrayOf, Module, Block,
+    from cgen import (FunctionBody, FunctionDeclaration,
+            POD, Value, ArrayOf, Module, Block,
             Define, Line, Const, LiteralLines)
 
     from cgen.opencl import CLKernel, CLGlobal, CLRequiredWorkGroupSize, CLLocal
@@ -1850,10 +1850,19 @@ def generate_code(kernel):
 
     has_double = False
 
+    def restrict_ptr_if_not_nvidia(arg):
+        from cgen import Pointer, RestrictPointer
+
+        if "nvidia" in kernel.device.platform.name.lower():
+            return Pointer(arg)
+        else:
+            return RestrictPointer(arg)
+
     args = []
     for arg in kernel.args:
         if isinstance(arg, ArrayArg):
-            arg_decl = RestrictPointer(POD(arg.dtype, arg.name))
+            arg_decl = restrict_ptr_if_not_nvidia(
+                    POD(arg.dtype, arg.name))
             if arg_decl.name in kernel.input_vectors():
                 arg_decl = Const(arg_decl)
             arg_decl = CLGlobal(arg_decl)
@@ -2016,6 +2025,10 @@ class CompiledKernel:
     def __init__(self, context, kernel, size_args=None):
         self.kernel = kernel
         self.code = generate_code(kernel)
+
+        #from pytools import invoke_editor
+        #self.code = invoke_editor(self.code)
+
         self.cl_kernel = getattr(
                 cl.Program(context, self.code).build(),
                 kernel.name)

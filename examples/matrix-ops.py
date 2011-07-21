@@ -7,9 +7,10 @@ import loopy as lp
 
 
 
-def make_well_condition_dev_matrix(queue, n, dtype=np.float32):
+def make_well_condition_dev_matrix(queue, n, dtype=np.float32, order="C"):
     return cl_array.to_device(queue,
-            np.random.randn(n, n).astype(dtype) + 5*np.eye(n, dtype=dtype))
+            np.asarray(np.random.randn(n, n) + 5*np.eye(n),
+                dtype=dtype, order=order))
 
 
 
@@ -17,10 +18,11 @@ def make_well_condition_dev_matrix(queue, n, dtype=np.float32):
 def plain_matrix_mul(ctx_factory=cl.create_some_context):
     dtype = np.float32
     ctx = ctx_factory()
+    order = "C"
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 16*10
+    n = 16*100
     from pymbolic import var
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
@@ -30,24 +32,24 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
                 (c[i, j], a[i, k]*b[k, j])
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n, n)),
-                lp.ArrayArg("b", dtype, shape=(n, n)),
-                lp.ArrayArg("c", dtype, shape=(n, n)),
+                lp.ArrayArg("a", dtype, shape=(n, n), order=order),
+                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
+                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 16)
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
     assert knl.get_invalid_reason() is None
 
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
 
-    a = make_well_condition_dev_matrix(queue, n, dtype=dtype)
-    b = make_well_condition_dev_matrix(queue, n, dtype=dtype)
+    a = make_well_condition_dev_matrix(queue, n, dtype=dtype, order=order)
+    b = make_well_condition_dev_matrix(queue, n, dtype=dtype, order=order)
     c = cl_array.empty_like(a)
     refsol = np.dot(a.get(), b.get())
 
@@ -58,7 +60,12 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
         if check:
             sol = c.get()
             rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
-            assert rel_err < 1e-5, rel_err
+            if rel_err > 1e-5:
+                import matplotlib.pyplot as pt
+                pt.imshow(refsol-sol)
+                pt.colorbar()
+                pt.show()
+                raise RuntimeError("check failed")
 
         return evt
 
@@ -72,6 +79,8 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    order = "F"
 
     n = 16*30
     from pymbolic import var
@@ -99,8 +108,8 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
 
-    a = make_well_condition_dev_matrix(queue, n, dtype=dtype)
-    b = make_well_condition_dev_matrix(queue, n, dtype=dtype)
+    a = make_well_condition_dev_matrix(queue, n, dtype=dtype, order=order)
+    b = make_well_condition_dev_matrix(queue, n, dtype=dtype, order=order)
     c = cl_array.empty_like(a)
     refsol = np.dot(a.get(), b.get())
 
@@ -110,9 +119,9 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
 
         if check:
             sol = c.get()
-            import matplotlib.pyplot as pt
             rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
             if rel_err > 1e-5:
+                import matplotlib.pyplot as pt
                 pt.imshow(refsol-sol)
                 pt.colorbar()
                 pt.show()
@@ -208,4 +217,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        fancy_matrix_mul()
+        plain_matrix_mul()
