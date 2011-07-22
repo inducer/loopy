@@ -40,6 +40,9 @@ register_mpz_with_pymbolic()
 
 
 
+class LoopyAdvisory(UserWarning):
+    pass
+
 # {{{ index tags
 
 class IndexTag(object):
@@ -1187,9 +1190,14 @@ class LoopyCCodeMapper(CCodeMapper):
         return CCodeMapper.map_subscript(self, expr, enclosing_prec)
 
     def map_floor_div(self, expr, prec):
-        return ("floor_int_div(%s, %s)" 
-                % (self.rec(expr.numerator, PREC_NONE),
-                    self.rec(expr.denominator, PREC_NONE)))
+        if isinstance(expr.denominator, int) and expr.denominator > 0:
+            return ("int_floor_div_pos_b(%s, %s)" 
+                    % (self.rec(expr.numerator, PREC_NONE),
+                        expr.denominator))
+        else:
+            return ("int_floor_div(%s, %s)" 
+                    % (self.rec(expr.numerator, PREC_NONE),
+                        self.rec(expr.denominator, PREC_NONE)))
 
 # }}}
 
@@ -1943,19 +1951,18 @@ def generate_code(kernel):
         mod.extend([LiteralLines(kernel.preamble), Line()])
 
     mod.extend([
-        LiteralLines("""
-        inline int floor_int_div(int a, int b)
-        {
-          if ((a<0) != (b<0))
-          {
-            if (b<0)
-              return (-a+b+1)/-b;
-            else
-              return (a-b+1)/b;
-          }
-          else
-            return a/b;
-        }
+        LiteralLines(r"""
+        #define int_floor_div(a,b) \
+          (( (a) - \
+             ( ( (a)<0 ) != ( (b)<0 )) \
+              *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
+           / (b) )
+
+
+        #define int_floor_div_pos_b(a,b) ( \
+            ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
+            )
+
         """),
         Line()])
 

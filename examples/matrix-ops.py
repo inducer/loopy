@@ -178,7 +178,7 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
 
     order = "F"
 
-    n = 16*10
+    n = 16*40
     from pymbolic import var
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
@@ -196,7 +196,7 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.split_dimension(knl, "k", 19)
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
