@@ -38,6 +38,9 @@ register_mpz_with_pymbolic()
 
 # TODO: Custom reductions per red. axis
 
+# TODO Tim: implement efficient div_ceil?
+# TODO Tim: why are corner cases inefficient?
+
 
 
 
@@ -1873,6 +1876,7 @@ def preprocess_prefetch(kernel):
         min_mult = cl_char.local_memory_bank_count(kernel.device)
         good_incr = None
         new_dsl = dim_storage_lengths
+        min_why_not = None
 
         for increment in range(dim_storage_lengths[-1]//2):
 
@@ -1884,21 +1888,22 @@ def preprocess_prefetch(kernel):
 
             # will choose smallest increment 'automatically'
             if new_mult < min_mult:
-                new_lmem_use = other_pf_sizes+pf.itemsize*product(new_dsl)
+                new_lmem_use = other_pf_sizes + pf.itemsize*product(new_dsl)
                 if new_lmem_use < lmem_size:
                     new_dsl = test_dsl
                     min_mult = new_mult
+                    min_why_not = why_not
                     good_incr = increment
 
         if min_mult != 1:
             from warnings import warn
             warn("could not find a conflict-free mem layout "
                     "for prefetch of '%s' "
-                    "(currently: %dx conflict, increment: %d)" 
-                    % (pf.input_vector, min_mult, good_incr),
+                    "(currently: %dx conflict, increment: %d, reason: %s)"
+                    % (pf.input_vector, min_mult, good_incr, min_why_not),
                     LoopyAdvisory)
 
-        new_pf = pf.copy(dim_storage_lengths=dim_storage_lengths,
+        new_pf = pf.copy(dim_storage_lengths=new_dsl,
                 name="prefetch_%s_%d" % (pf.input_vector, i_pf))
         new_prefetch_dict[pf.input_vector, pf.index_expr] = new_pf
         all_pf_list[i_pf] = new_pf
