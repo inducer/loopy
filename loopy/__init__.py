@@ -22,11 +22,9 @@ register_mpz_with_pymbolic()
 
 
 
-# TODO: Wrong 19
-# TODO: Restrict on/off
 # TODO: Try, fix reg. prefetch
-# TODO: 1D local arrays
 # TODO: Divisibility
+# TODO: Reasoning about bank conflicts
 # TODO: Functions
 # TODO: Common subexpressions
 # TODO: Try different kernels
@@ -204,29 +202,31 @@ def get_projected_bounds_constraints(set, iname):
 
 
 
-def solve_constraint_for_equality_bound(cns, iname):
+def solve_constraint_for_bound(cns, iname):
     rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
 
     if iname_coeff == 0:
-        raise RuntimeError("cannot solve for bound in constraint "
-                "not containing variable")
-
-    assert iname_coeff > 0 or cns.is_equality()
+        raise ValueError("cannot solve constraint for '%s'--"
+                "constraint does not contain variable"
+                % iname)
 
     from pymbolic import expand
-    return expand(-rhs)//iname_coeff
-
-def solve_constraint_for_upper_bound(cns, iname):
-    rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
-
-    if iname_coeff == 0:
-        raise RuntimeError("cannot solve for bound in constraint "
-                "not containing variable")
-
-    assert iname_coeff < 0
-
     from pytools import div_ceil
-    return div_ceil(rhs+1, -iname_coeff)
+    from pymbolic import flatten
+    from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
+    cfm = CommutativeConstantFoldingMapper()
+
+    if iname_coeff > 0 or cns.is_equality():
+        if cns.is_equality():
+            kind = "=="
+        else:
+            kind = ">="
+
+        return kind, cfm(flatten(div_ceil(expand(-rhs), iname_coeff)))
+    else: # iname_coeff < 0
+        from pytools import div_ceil
+        return "<", cfm(flatten(div_ceil(rhs+1, -iname_coeff)))
+
 
 def get_projected_bounds(set, iname):
     """Get an overapproximation of the loop bounds for the variable *iname*,
@@ -235,21 +235,20 @@ def get_projected_bounds(set, iname):
 
     lb_cns, ub_cns = get_projected_bounds_constraints(set, iname)
 
-    from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
-    from pymbolic import flatten
-    cfm = CommutativeConstantFoldingMapper()
-
     for cns in [lb_cns, ub_cns]:
-        rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
+        iname_tp, iname_idx = lb_cns.get_dim().get_var_dict()[iname]
+        iname_coeff = cns.get_coefficient(iname_tp, iname_idx)
 
         if iname_coeff == 0:
-            return
-        elif iname_coeff < 0:
-            from pytools import div_ceil
-            ub = cfm(flatten(div_ceil(rhs+1, -iname_coeff)))
-        else: #  iname_coeff > 0
-            from pymbolic import expand
-            lb = cfm(flatten(expand(-rhs)//iname_coeff))
+            continue
+
+        kind, bound = solve_constraint_for_bound(cns, iname)
+        if kind == "<":
+            ub = bound
+        elif kind == ">=":
+            lb = bound
+        else:
+            raise ValueError("unsupported constraint kind")
 
     return lb, ub
 
@@ -622,10 +621,6 @@ class LoopKernel(Record):
 
     def tag_type_lengths(self, tag_cls):
         return [stop-start for start, stop in self.tag_type_bounds(tag_cls)]
-
-    def tag_type_count(self, tag_cls):
-        from pytools import product
-        return product(self.tag_type_lengths(tag_cls))
 
     def tag_or_iname_to_iname(self, s):
         try:
@@ -1191,6 +1186,11 @@ class LoopyCCodeMapper(CCodeMapper):
 
         return CCodeMapper.map_subscript(self, expr, enclosing_prec)
 
+    def map_floor_div(self, expr, prec):
+        return ("floor_int_div(%s, %s)" 
+                % (self.rec(expr.numerator, PREC_NONE),
+                    self.rec(expr.denominator, PREC_NONE)))
+
 # }}}
 
 # {{{ prefetch code generation
@@ -1501,8 +1501,11 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
             lower_cns = cast_constraint_to_space(lower_cns, space)
             upper_cns = cast_constraint_to_space(upper_cns, space)
 
-        lower_bound = solve_constraint_for_equality_bound(lower_cns, iname)
-        upper_bound = solve_constraint_for_upper_bound(upper_cns, iname)
+        lower_kind, lower_bound = solve_constraint_for_bound(lower_cns, iname)
+        upper_kind, upper_bound = solve_constraint_for_bound(upper_cns, iname)
+
+        assert lower_kind == ">="
+        assert upper_kind == "<"
 
         from pymbolic import flatten
         from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
@@ -1604,7 +1607,6 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
                     negate_constraint(
                         block_shift_constraint(
                             ub_cns_orig, iname, -chosen.upper_incr)))))
-
 
     if isinstance(tag, ImplicitlyParallelTag):
         # For a parallel loop dimension, the global loop bounds are
@@ -1719,7 +1721,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
 
     constraints = constraint_bset.get_constraints()
 
-    from pymbolic import flatten, expand
+    from pymbolic import expand
     from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
     cfm = CommutativeConstantFoldingMapper()
 
@@ -1741,12 +1743,15 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
                 end_conds.append("%s >= 0" %
                         ccm(cfm(expand(rhs))))
             else: #  iname_coeff > 0
-                start_exprs.append(
-                        ccm(cfm(flatten(expand(-rhs)//iname_coeff))))
+                kind, bound = solve_constraint_for_bound(cns, iname)
+                assert kind == ">="
+                start_exprs.append(bound)
 
     while len(start_exprs) >= 2:
         start_exprs.append(
-                "max(%s, %s)" % (start_exprs.pop(), start_exprs.pop()))
+                "max(%s, %s)" % (
+                    ccm(start_exprs.pop()),
+                    ccm(start_exprs.pop())))
 
     start_expr, = start_exprs # there has to be at least one
 
@@ -1937,6 +1942,23 @@ def generate_code(kernel):
     if kernel.preamble is not None:
         mod.extend([LiteralLines(kernel.preamble), Line()])
 
+    mod.extend([
+        LiteralLines("""
+        inline int floor_int_div(int a, int b)
+        {
+          if ((a<0) != (b<0))
+          {
+            if (b<0)
+              return (-a+b+1)/-b;
+            else
+              return (a-b+1)/b;
+          }
+          else
+            return a/b;
+        }
+        """),
+        Line()])
+
     # {{{ symbolic names for group and local indices
 
     for what_cls, func in [
@@ -1968,7 +1990,7 @@ def generate_code(kernel):
     cgs = CodeGenerationState(c_code_mapper=ccm, try_slab_partition=True)
     gen_code = build_loop_nest(cgs, kernel, 0, isl.Set.universe(kernel.space))
     body.extend([Line(), gen_code.ast])
-    print "# conditionals: %d" % gen_code.num_conditionals
+    #print "# conditionals: %d" % gen_code.num_conditionals
 
     mod.append(
         FunctionBody(
@@ -1984,29 +2006,6 @@ def generate_code(kernel):
     return str(mod)
 
 # }}}
-
-# }}}
-
-# {{{ debugging
-
-def print_kernel_info(knl):
-    if hasattr(knl, "prefetch"):
-        print "PREFETCH", knl.local_mem_use()
-        for pf in knl.prefetch.itervalues():
-            print "   %s[%s]: %s" % (pf.input_vector, pf.index_expr, pf.dims)
-        print
-
-    if hasattr(knl, "schedule"):
-        print "Scheduling: ---------------------"
-        for sched_item in knl.schedule:
-            print sched_item
-        print
-
-    for ld in knl.dims:
-        print ld
-    print
-    for t, e in knl.instructions:
-        print "%s <- %s" % (t, e)
 
 # }}}
 
@@ -2133,7 +2132,7 @@ class CompiledKernel:
 
 # driver ----------------------------------------------------------------------
 def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
-        options=[]):
+        options=[], print_code=True):
 
     def time_run(compiled_knl, warmup_rounds=2, timing_rounds=5):
         check = True
@@ -2162,8 +2161,9 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
         print "-----------------------------------------------"
         print "SOLUTION #%d" % soln_count
         print "-----------------------------------------------"
-        print compiled.code
-        print "-----------------------------------------------"
+        if print_code:
+            print compiled.code
+            print "-----------------------------------------------"
 
         elapsed = time_run(compiled)
 

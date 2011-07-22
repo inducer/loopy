@@ -10,21 +10,46 @@ import loopy as lp
 FAST_OPTIONS = ["-cl-mad-enable", "-cl-fast-relaxed-math", 
         "-cl-no-signed-zeros", "-cl-strict-aliasing"]
 
-def make_well_conditioned_dev_matrix(queue, n, dtype=np.float32, order="C"):
-    return cl_array.to_device(queue,
-            np.asarray(np.random.randn(n, n) + 5*np.eye(n),
-                dtype=dtype, order=order))
+def make_well_conditioned_dev_matrix(queue, n, dtype=np.float32, order="C", ran_factor=1, od=0):
+    ary = np.asarray(
+        ran_factor*np.random.randn(n, n)
+        + 5*np.eye(n, k=od),
+        dtype=dtype, order=order)
+
+    return cl_array.to_device(queue, ary)
+
+
+
+
+DO_CHECK = True
+
+DEBUG_PREAMBLE = r"""
+    #pragma OPENCL EXTENSION cl_amd_printf: enable
+    #define IFDIAG if (i_outer*16+i_inner == j_outer*16+j_inner)
+    #define TST(S) IFDIAG if (i_outer*16+i_inner == 0) \
+            printf("ko=%d ki=%d" #S "\n", k_outer, k_inner);
+    """
 
 
 
 
 def check_error(refsol, sol):
     rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
-    if rel_err > 1e-5:
-        import matplotlib.pyplot as pt
-        pt.imshow(refsol-sol)
-        pt.colorbar()
-        pt.show()
+    if DO_CHECK and rel_err > 1e-5:
+        if 0:
+            import matplotlib.pyplot as pt
+            pt.imshow(refsol-sol)
+            pt.colorbar()
+            pt.show()
+        elif 0:
+            print "---------------------------"
+            print "ACTUAL"
+            print "---------------------------"
+            print sol
+            print "---------------------------"
+            print "CORRECT"
+            print "---------------------------"
+            print refsol
         raise RuntimeError("check failed, rel err=%g" % rel_err)
 
 
@@ -102,15 +127,21 @@ def image_matrix_mul(ctx_factory=cl.create_some_context):
             [
                 lp.ImageArg("a", dtype, 2),
                 lp.ImageArg("b", dtype, 2),
+                #lp.ArrayArg("a", dtype, shape=(n, n), order=order),
+                #lp.ArrayArg("b", dtype, shape=(n, n), order=order),
                 lp.ArrayArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.split_dimension(knl, "k", 32)
+    # slow
+    #knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    #knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
+    # fast
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
+    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner", ])
     assert knl.get_invalid_reason() is None
 
     kernel_gen = (lp.insert_register_prefetches(knl)
@@ -147,7 +178,7 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
 
     order = "F"
 
-    n = 16*100
+    n = 16*10
     from pymbolic import var
     a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
@@ -165,7 +196,7 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 19)
+    knl = lp.split_dimension(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
@@ -173,8 +204,10 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
+    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order, 
+            ran_factor=0)
+    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order,
+            ran_factor=0)
     c = cl_array.empty_like(a)
     refsol = np.dot(a.get(), b.get())
 
@@ -276,4 +309,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        image_matrix_mul()
+        fancy_matrix_mul()
