@@ -5,9 +5,10 @@ from pytools import Record, memoize_method
 from pymbolic.mapper.dependency import DependencyMapper
 from pymbolic.mapper.c_code import CCodeMapper
 from pymbolic.mapper.stringifier import PREC_NONE
-from pymbolic.mapper import IdentityMapper, CombineMapper, RecursiveMapper
+from pymbolic.mapper import CombineMapper, RecursiveMapper
 
 import pyopencl as cl
+import pyopencl.characterize as cl_char
 import islpy as isl
 from islpy import dim_type
 
@@ -24,7 +25,6 @@ register_mpz_with_pymbolic()
 
 # TODO: Try, fix reg. prefetch
 # TODO: Divisibility
-# TODO: Reasoning about bank conflicts
 # TODO: Functions
 # TODO: Common subexpressions
 # TODO: Try different kernels
@@ -34,6 +34,7 @@ register_mpz_with_pymbolic()
 # TODO: User controllable switch for slab opt
 # TODO: User control over schedule
 # TODO: Condition hoisting
+# TODO: Separate all-bulk from non-bulk kernels.
 
 # TODO: Custom reductions per red. axis
 
@@ -143,7 +144,7 @@ def get_bounds_constraints(bset, iname, space=None, admissible_vars=None):
         iname_coeff = int(cns.get_coefficient(iname_tp, iname_idx))
 
         if admissible_vars is not None:
-            if not (set(cns.get_coefficients_by_name().iterkeys()) 
+            if not (set(cns.get_coefficients_by_name().iterkeys())
                     <= admissible_vars):
                 continue
 
@@ -1071,7 +1072,12 @@ def insert_register_prefetches(kernel):
 
 # {{{ code generation
 
+# {{{ support code for AST wrapper objects
+
 class GeneratedCode(Record):
+    """Objects of this type are wrapped around ASTs upon
+    return from generation calls to collect information about them.
+    """
     __slots__ = ["ast", "num_conditionals"]
 
 def gen_code_block(elements):
@@ -1117,6 +1123,8 @@ def wrap_with(cls, *args):
 
     return GeneratedCode(ast=ast, num_conditionals=num_conditionals)
 
+# }}}
+
 # {{{ C code mapper
 
 class LoopyCCodeMapper(CCodeMapper):
@@ -1157,8 +1165,8 @@ class LoopyCCodeMapper(CCodeMapper):
                 assert isinstance(expr.index, tuple)
 
                 base_access = ("read_imagef(%s, loopy_sampler, (float%d)(%s))"
-                        % (arg.name, arg.dimensions, 
-                            ", ".join(self.rec(idx, PREC_NONE) 
+                        % (arg.name, arg.dimensions,
+                            ", ".join(self.rec(idx, PREC_NONE)
                                 for idx in expr.index[::-1])))
 
                 if arg.dtype == np.float32:
@@ -1191,11 +1199,11 @@ class LoopyCCodeMapper(CCodeMapper):
 
     def map_floor_div(self, expr, prec):
         if isinstance(expr.denominator, int) and expr.denominator > 0:
-            return ("int_floor_div_pos_b(%s, %s)" 
+            return ("int_floor_div_pos_b(%s, %s)"
                     % (self.rec(expr.numerator, PREC_NONE),
                         expr.denominator))
         else:
-            return ("int_floor_div(%s, %s)" 
+            return ("int_floor_div(%s, %s)"
                     % (self.rec(expr.numerator, PREC_NONE),
                         self.rec(expr.denominator, PREC_NONE)))
 
@@ -1557,7 +1565,7 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
     class TrialRecord(Record):
         pass
 
-    if (cgs.try_slab_partition 
+    if (cgs.try_slab_partition
             and "outer" in iname):
         trial_cgs = cgs.copy(try_slab_partition=False)
         trials = []
@@ -1681,7 +1689,7 @@ def get_valid_index_vars(kernel, sched_index, exclude_tags=()):
 
 def filter_necessary_constraints(implemented_domain, constraints):
     space = implemented_domain.get_dim()
-    return [cns 
+    return [cns
         for cns in constraints
         if not implemented_domain.is_subset(
             isl.Set.universe(space)
@@ -1772,7 +1780,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
 
 # }}}
 
-# {{{ codegen top-level dispatch
+# {{{ loop nest build top-level dispatch
 
 def build_loop_nest(cgs, kernel, sched_index, implemented_domain):
     ccm = cgs.c_code_mapper
@@ -1839,29 +1847,22 @@ def build_loop_nest(cgs, kernel, sched_index, implemented_domain):
 
 # }}}
 
-# {{{ main code generation entrypoint
+# {{{ prefetch preprocessing
 
-class CodeGenerationState(Record):
-    __slots__ = ["c_code_mapper", "try_slab_partition"]
-
-def generate_code(kernel):
-    from cgen import (FunctionBody, FunctionDeclaration,
-            POD, Value, ArrayOf, Module, Block,
-            Define, Line, Const, LiteralLines, Initializer)
-
-    from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize, 
-            CLLocal, CLImage)
-
-    # {{{ assign names, dim storage lengths to prefetches
+def preprocess_prefetch(kernel):
+    """Assign names, dim storage lengths to prefetches.
+    """
 
     all_pf_list = kernel.prefetch.values()
-    all_pf_nbytes = [opf.nbytes for opf in all_pf_list]
+    new_prefetch_dict = {}
+    lmem_size = cl_char.usable_local_mem_size(kernel.device)
 
-    new_prefetch = {}
     for i_pf, pf in enumerate(kernel.prefetch.itervalues()):
-        dim_storage_lengths = [stop-start for start, stop in pf.dim_bounds]
-
+        all_pf_nbytes = [opf.nbytes for opf in all_pf_list]
         other_pf_sizes = sum(all_pf_nbytes[:i_pf]+all_pf_nbytes[i_pf+1:])
+
+        shape = [stop-start for start, stop in pf.dim_bounds]
+        dim_storage_lengths = shape[:]
 
         # sizes of all dims except the last one, which we may change
         # below to avoid bank conflicts
@@ -1869,19 +1870,57 @@ def generate_code(kernel):
         other_dim_sizes = (pf.itemsize
                 * product(dim_storage_lengths[:-1]))
 
-        from pyopencl.characterize import usable_local_mem_size
-        if (dim_storage_lengths[-1] % 2 == 0
-                and other_pf_sizes+other_dim_sizes*(dim_storage_lengths[-1]+1)
-                < usable_local_mem_size(kernel.device)):
-            dim_storage_lengths[-1] += 1
+        min_mult = cl_char.local_memory_bank_count(kernel.device)
+        good_incr = None
+        new_dsl = dim_storage_lengths
 
-        new_prefetch[pf.input_vector, pf.index_expr] = \
-                pf.copy(dim_storage_lengths=dim_storage_lengths,
-                        name="prefetch_%s_%d" % (pf.input_vector, i_pf))
+        for increment in range(dim_storage_lengths[-1]//2):
 
-    kernel = kernel.copy(prefetch=new_prefetch)
+            test_dsl = dim_storage_lengths[:]
+            test_dsl[-1] = test_dsl[-1] + increment
+            new_mult, why_not = cl_char.why_not_local_access_conflict_free(
+                    kernel.device, pf.itemsize,
+                    shape, test_dsl)
 
-    # }}}
+            # will choose smallest increment 'automatically'
+            if new_mult < min_mult:
+                new_lmem_use = other_pf_sizes+pf.itemsize*product(new_dsl)
+                if new_lmem_use < lmem_size:
+                    new_dsl = test_dsl
+                    min_mult = new_mult
+                    good_incr = increment
+
+        if min_mult != 1:
+            from warnings import warn
+            warn("could not find a conflict-free mem layout "
+                    "for prefetch of '%s' "
+                    "(currently: %dx conflict, increment: %d)" 
+                    % (pf.input_vector, min_mult, good_incr),
+                    LoopyAdvisory)
+
+        new_pf = pf.copy(dim_storage_lengths=dim_storage_lengths,
+                name="prefetch_%s_%d" % (pf.input_vector, i_pf))
+        new_prefetch_dict[pf.input_vector, pf.index_expr] = new_pf
+        all_pf_list[i_pf] = new_pf
+
+    return kernel.copy(prefetch=new_prefetch_dict)
+
+# }}}
+
+# {{{ main code generation entrypoint
+
+class CodeGenerationState(Record):
+    __slots__ = ["c_code_mapper", "try_slab_partition"]
+
+def generate_code(kernel):
+    kernel = preprocess_prefetch(kernel)
+
+    from cgen import (FunctionBody, FunctionDeclaration,
+            POD, Value, ArrayOf, Module, Block,
+            Define, Line, Const, LiteralLines, Initializer)
+
+    from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
+            CLLocal, CLImage)
 
     my_ccm = LoopyCCodeMapper(kernel)
 
@@ -2075,13 +2114,17 @@ def add_prefetch(kernel, input_access_descr, tags_or_inames, loc_fetch_axes={}):
 
 # }}}
 
-
-
+# {{{ compiled kernel object
 
 class CompiledKernel:
-    def __init__(self, context, kernel, size_args=None, options=[]):
+    def __init__(self, context, kernel, size_args=None, options=[],
+            force_rebuild=False):
         self.kernel = kernel
         self.code = generate_code(kernel)
+
+        if force_rebuild:
+            from time import time
+            self.code = "/* %s */\n%s" % (time(), self.code)
 
         #from pytools import invoke_editor
         #self.code = invoke_editor(self.code)
@@ -2126,20 +2169,11 @@ class CompiledKernel:
         self.local_size_func = compile(
                 lsize_expr, self.size_args)
 
-
-
-
-# {{{ speed measurement
-
-
 # }}}
 
-
-
-
-# driver ----------------------------------------------------------------------
+# {{{ timing driver
 def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
-        options=[], print_code=True):
+        options=[], print_code=True, force_rebuild=False):
 
     def time_run(compiled_knl, warmup_rounds=2, timing_rounds=5):
         check = True
@@ -2163,7 +2197,8 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
     soln_count = 0
     for kernel in kernel_generator:
 
-        compiled = CompiledKernel(queue.context, kernel, options=options)
+        compiled = CompiledKernel(queue.context, kernel, options=options,
+                force_rebuild=force_rebuild)
 
         print "-----------------------------------------------"
         print "SOLUTION #%d" % soln_count
@@ -2184,6 +2219,7 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
 
     print "%d solutions" % soln_count
 
+# }}}
 
 
 

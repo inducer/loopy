@@ -136,7 +136,7 @@ def image_matrix_mul(ctx_factory=cl.create_some_context):
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 32)
-    # slow
+    # slow, but conflict-free
     #knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     #knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
     # fast
@@ -164,7 +164,8 @@ def image_matrix_mul(ctx_factory=cl.create_some_context):
         return evt
 
     lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
-            options=FAST_OPTIONS)
+            options=FAST_OPTIONS + ["-cl-nv-verbose"],
+            force_rebuild=True)
 
 
 
@@ -176,7 +177,7 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    order = "F"
+    order = "C"
 
     n = 16*40
     from pymbolic import var
@@ -188,15 +189,15 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
                 (c[i, j], a[i, k]*b[k, j])
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n_sym, n_sym), order="F"),
-                lp.ArrayArg("b", dtype, shape=(n_sym, n_sym), order="F"),
-                lp.ArrayArg("c", dtype, shape=(n_sym, n_sym), order="F"),
+                lp.ArrayArg("a", dtype, shape=(n_sym, n_sym), order=order),
+                lp.ArrayArg("b", dtype, shape=(n_sym, n_sym), order=order),
+                lp.ArrayArg("c", dtype, shape=(n_sym, n_sym), order=order),
                 lp.ScalarArg("n", np.int32, approximately=1000),
                 ], name="fancy_matmul")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 19)
+    knl = lp.split_dimension(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None
@@ -221,7 +222,8 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
         return evt
 
     lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
-            options=FAST_OPTIONS)
+            options=FAST_OPTIONS + ["-cl-nv-verbose"],
+            force_rebuild=True)
 
 
 
@@ -309,4 +311,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        fancy_matrix_mul()
+        image_matrix_mul()
