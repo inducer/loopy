@@ -22,14 +22,12 @@ register_mpz_with_pymbolic()
 
 
 
-# TODO: ILP Unroll
-
+# TODO: Fetch dim merging
 # TODO: Try, fix reg. prefetch (DG example) / CSEs
 # TODO: Custom reductions per red. axis
 # TODO: Functions
 # TODO: Common subexpressions
 # TODO: Parse ops from string
-# TODO: Why u take so long?
 
 # TODO: Condition hoisting
 # TODO: Don't emit spurious barriers (no for scheduled before)
@@ -44,8 +42,10 @@ register_mpz_with_pymbolic()
 # TODO: User control over schedule
 # TODO: Separate all-bulk from non-bulk kernels.
 
-# TODO Tim: implement efficient div_ceil?
-# TODO Tim: why are corner cases inefficient?
+# TODO: ILP Unroll
+
+# TODO: implement efficient div_ceil?
+# TODO: why are corner cases inefficient?
 
 
 
@@ -100,13 +100,13 @@ class TAG_ILP_UNROLL(IndexTag):
 class BaseUnrollTag(IndexTag):
     pass
 
-class TAG_UNROLL_ONE_VAR(BaseUnrollTag):
+class TAG_UNROLL_STATIC(BaseUnrollTag):
     def __repr__(self):
-        return "TAG_UNROLL_1V"
+        return "TAG_UNROLL_STATIC"
 
-class TAG_UNROLL_MULTI_VAR(BaseUnrollTag):
+class TAG_UNROLL_INCR(BaseUnrollTag):
     def __repr__(self):
-        return "TAG_UNROLL_MV"
+        return "TAG_UNROLL_INCR"
 
 def parse_tag(tag):
     if tag is None:
@@ -118,10 +118,10 @@ def parse_tag(tag):
     if not isinstance(tag, str):
         raise ValueError("cannot parse tag: %s" % tag)
 
-    if tag == "unr1":
-        return TAG_UNROLL_ONE_VAR()
-    elif tag == "unrm":
-        return TAG_UNROLL_MULTI_VAR()
+    if tag in ["unrs", "unr"]:
+        return TAG_UNROLL_STATIC()
+    elif tag == "unri":
+        return TAG_UNROLL_INCR()
     elif tag == "ilp":
         return TAG_ILP_UNROLL
     elif tag.startswith("g."):
@@ -1254,6 +1254,7 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
     pf = flnd.prefetch
     ccm = flnd.c_code_mapper
     no_pf_ccm = flnd.no_prefetch_c_code_mapper
+    kernel = flnd.kernel
 
     from pymbolic import var
     from cgen import Assign, For, If
@@ -1346,8 +1347,8 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
 
         lb_cns, ub_cns = flnd.kernel.get_projected_bounds_constraints(pf_iname)
         loop_slab = (isl.Set.universe(flnd.kernel.space)
-                .add_constraint(lb_cns)
-                .add_constraint(ub_cns))
+                .add_constraint(cast_constraint_to_space(lb_cns, kernel.space))
+                .add_constraint(cast_constraint_to_space(ub_cns, kernel.space)))
         new_impl_domain = implemented_domain.intersect(loop_slab)
 
         pf_idx_subst_map = pf_idx_subst_map.copy()
@@ -1563,10 +1564,7 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
         cfm = CommutativeConstantFoldingMapper()
         length = int(cfm(flatten(upper_bound-lower_bound)))
 
-        if isinstance(tag, TAG_UNROLL_ONE_VAR):
-            result = [POD(np.int32, iname), Line()]
-        else:
-            result = []
+        result = [POD(np.int32, iname), Line()]
 
         for i in xrange(length):
             slab = (isl.Set.universe(kernel.space)
@@ -1578,15 +1576,12 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
             inner = build_loop_nest(cgs, kernel, sched_index+1,
                     new_impl_domain)
 
-            if isinstance(tag, TAG_UNROLL_ONE_VAR):
+            if isinstance(tag, TAG_UNROLL_STATIC):
                 result.extend([
                     Assign(iname, ccm(lower_bound+i)),
                     Line(), inner])
-            else:
-                result.append(gen_code_block([
-                    Initializer(Const(POD(np.int32, iname)),
-                        ccm(lower_bound+i)),
-                    Line(), inner]))
+            elif isinstance(tag, TAG_UNROLL_INCR):
+                result.append(S("++%s" % iname))
 
         return gen_code_block(result)
 
@@ -1695,7 +1690,7 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
             if cmt is not None:
                 result.append(Comment(cmt))
             result.append(
-                    wrap_in_for_from_constraints(ccm, iname, slab,inner))
+                    wrap_in_for_from_constraints(ccm, iname, slab, inner))
         else:
             # parallel loop
             nums_of_conditionals.append(inner.num_conditionals)
