@@ -168,7 +168,6 @@ def image_matrix_mul(ctx_factory=cl.create_some_context):
             force_rebuild=True)
 
 
-
 def dg_matrix_mul(ctx_factory=cl.create_some_context):
     dtype = np.float32
     ctx = ctx_factory()
@@ -180,7 +179,7 @@ def dg_matrix_mul(ctx_factory=cl.create_some_context):
     Np_padded = 96
     K = 20000
     dim = 3
-    num_flds = 6
+    num_flds = 2
 
     from pymbolic import var
     fld = var("fld")
@@ -209,8 +208,11 @@ def dg_matrix_mul(ctx_factory=cl.create_some_context):
                 ],
             name="dg_matmul")
 
+    ilp = 4
     knl = lp.split_dimension(knl, "i", 30, 32, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16, outer_tag="g.1", inner_tag="l.1")
+    knl = lp.split_dimension(knl, "k", 16*ilp, outer_tag="g.1")
+    knl = lp.split_dimension(knl, "k_inner", 16, outer_tag="ilp", inner_tag="l.1")
+
     assert Np % 2 == 0
     #knl = lp.split_dimension(knl, "j", Np//2)
     #knl = lp.split_dimension(knl, "k", 32)
@@ -218,7 +220,8 @@ def dg_matrix_mul(ctx_factory=cl.create_some_context):
     #for mn in matrix_names:
         #knl = lp.add_prefetch(knl, mn, ["j", "i_inner"])
     for ifld in range(num_flds):
-        knl = lp.add_prefetch(knl, 'fld%d' % ifld, ["k_inner", "j"])
+        knl = lp.add_prefetch(knl, 'fld%d' % ifld,
+                ["k_inner_outer", "k_inner_inner", "j"])
     assert knl.get_invalid_reason() is None
 
     kernel_gen = list(lp.insert_register_prefetches(knl)
@@ -254,7 +257,8 @@ def dg_matrix_mul(ctx_factory=cl.create_some_context):
 
     lp.drive_timing_run(kernel_gen, queue, launcher, num_flds*dim*2*(Np**2)*K,
             options=FAST_OPTIONS + ["-cl-nv-verbose"],
-            force_rebuild=True, edit=True
+            force_rebuild=True, #, edit=True
+            print_code=False
             )
 
 
@@ -286,10 +290,10 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
                 ],
             name="matmul")
 
-    ilp = 4
+    ilp = 8
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", ilp*16, outer_tag="g.1")
-    knl = lp.split_dimension(knl, "j_inner", ilp, outer_tag="unr", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "j_inner", 16, outer_tag="ilp", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 32)
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
@@ -316,8 +320,8 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
         return evt
 
     lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
-            options=FAST_OPTIONS + ["-cl-nv-verbose"],
-            force_rebuild=True)
+            options=FAST_OPTIONS,# + ["-cl-nv-verbose"],
+            force_rebuild=True, edit_code=False)
 
 
 
