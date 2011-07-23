@@ -10,10 +10,12 @@ import loopy as lp
 FAST_OPTIONS = ["-cl-mad-enable", "-cl-fast-relaxed-math", 
         "-cl-no-signed-zeros", "-cl-strict-aliasing"]
 
-def make_well_conditioned_dev_matrix(queue, n, dtype=np.float32, order="C", ran_factor=1, od=0):
+def make_well_conditioned_dev_matrix(queue, shape, dtype=np.float32, order="C", ran_factor=1, od=0):
+    if isinstance(shape, int):
+        shape = (shape, shape)
     ary = np.asarray(
-        ran_factor*np.random.randn(n, n)
-        + 5*np.eye(n, k=od),
+        ran_factor*np.random.randn(*shape)
+        + 5*np.eye(max(shape), k=od)[:shape[0], :shape[1]],
         dtype=dtype, order=order)
 
     return cl_array.to_device(queue, ary)
@@ -36,7 +38,7 @@ DEBUG_PREAMBLE = r"""
 def check_error(refsol, sol):
     rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
     if DO_CHECK and rel_err > 1e-5:
-        if 0:
+        if 1:
             import matplotlib.pyplot as pt
             pt.imshow(refsol-sol)
             pt.colorbar()
@@ -108,61 +110,93 @@ def plain_matrix_mul(ctx_factory=cl.create_some_context):
 
 
 
-def image_matrix_mul(ctx_factory=cl.create_some_context):
+def dg_matrix_mul(ctx_factory=cl.create_some_context):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 16*100
+    Np = 84
+    Np_padded = 96
+    K = 20000
+    dim = 3
+    num_flds = 6
+
     from pymbolic import var
-    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
+    fld = var("fld")
+    matrix_names = ["d%d" % i for i in range(dim)]
+    i, j, k = [var(s) for s in "i j k".split()]
+
+    fld_strides = (1, Np_padded)
 
     knl = lp.LoopKernel(ctx.devices[0],
-            "{[i,j,k]: 0<=i,j,k<%d}" % n,
+            "{[i,j,k]: 0<=i,j< %d and 0<=k<%d}" % (Np, K),
             [
-                (c[i, j], a[i, k]*b[k, j])
+                (var(mn+"fld%d" % ifld)[i, k], 
+                    var(mn)[i, j]*var("fld%d" % ifld)[j, k])
+                for mn in matrix_names
+                for ifld in range(num_flds)
                 ],
-            [
-                lp.ImageArg("a", dtype, 2),
-                lp.ImageArg("b", dtype, 2),
-                #lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                #lp.ArrayArg("b", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+            [lp.ImageArg(mn, dtype, 2) for mn in matrix_names]
+            + [lp.ArrayArg("fld%d" % ifld, dtype,
+                strides=fld_strides)
+                for ifld in range(num_flds)
+                ]
+            + [lp.ArrayArg(mn+"fld%d" % ifld, dtype,
+                strides=fld_strides)
+                for ifld in range(num_flds)
+                for mn in matrix_names
                 ],
-            name="matmul")
+            name="dg_matmul")
 
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 32)
-    # conflict-free
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
+    knl = lp.split_dimension(knl, "i", 30, 32, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 16, outer_tag="g.1", inner_tag="l.1")
+    assert Np % 2 == 0
+    #knl = lp.split_dimension(knl, "j", Np//2)
+    #knl = lp.split_dimension(knl, "k", 32)
+
+    #for mn in matrix_names:
+        #knl = lp.add_prefetch(knl, mn, ["j", "i_inner"])
+    for ifld in range(num_flds):
+        knl = lp.add_prefetch(knl, 'fld%d' % ifld, ["k_inner", "j"])
     assert knl.get_invalid_reason() is None
 
-    kernel_gen = (lp.insert_register_prefetches(knl)
-            for knl in lp.generate_loop_schedules(knl))
+    kernel_gen = list(lp.insert_register_prefetches(knl)
+            for knl in lp.generate_loop_schedules(knl))[:1]
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
-    a_img = cl.image_from_array(ctx, a.get(), 1)
-    b_img = cl.image_from_array(ctx, b.get(), 1)
+    matrices = [
+            make_well_conditioned_dev_matrix(queue, Np, dtype=dtype, order="C")
+            for mn in matrix_names]
+    flds = [
+            make_well_conditioned_dev_matrix(queue, (Np_padded, K), dtype=dtype, order="F")
+            for ifld in range(num_flds)]
+    outputs = [cl_array.empty_like(flds[0])
+            for ifld in range(num_flds)
+            for mn in matrix_names]
+
+    ref_soln = [np.dot(mat.get(), fld.get()[:Np]) 
+            for fld in flds
+            for mat in matrices]
+
+    mat_images = [
+            cl.image_from_array(ctx, mat.get(), 1) for mat in matrices]
 
     def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a_img, b_img, c.data,
-                g_times_l=True)
+        args = mat_images + [fld.data for fld in flds] + [out.data for out in outputs]
+        kwargs = dict(g_times_l=True)
+        evt = kernel(queue, gsize(), lsize(), *args, g_times_l=True)
 
         if check:
-            check_error(refsol, c.get())
+            for out, ref in zip(outputs, ref_soln):
+                check_error(ref, out.get()[:Np])
 
         return evt
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
+    lp.drive_timing_run(kernel_gen, queue, launcher, num_flds*dim*2*(Np**2)*K,
             options=FAST_OPTIONS + ["-cl-nv-verbose"],
-            force_rebuild=True)
+            force_rebuild=True, edit=True
+            )
 
 
 
@@ -195,6 +229,8 @@ def fancy_matrix_mul(ctx_factory=cl.create_some_context):
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
     assert knl.get_invalid_reason() is None

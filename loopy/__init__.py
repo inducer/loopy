@@ -22,21 +22,27 @@ register_mpz_with_pymbolic()
 
 
 
+# TODO: ILP Unroll
 
-# TODO: Try, fix reg. prefetch
-# TODO: Divisibility
+# TODO: Try, fix reg. prefetch (DG example) / CSEs
+# TODO: Custom reductions per red. axis
 # TODO: Functions
 # TODO: Common subexpressions
+# TODO: Parse ops from string
+# TODO: Why u take so long?
+
+# TODO: Condition hoisting
+# TODO: Don't emit spurious barriers (no for scheduled before)
+# TODO: Make code more readable
+
+# TODO: Split into multiple files.
+# TODO: Divisibility
 # TODO: Try different kernels
 # TODO:   - Tricky: Convolution, FD
 # TODO: Try, fix indirect addressing
-# TODO: ILP Unroll
 # TODO: User controllable switch for slab opt
 # TODO: User control over schedule
-# TODO: Condition hoisting
 # TODO: Separate all-bulk from non-bulk kernels.
-
-# TODO: Custom reductions per red. axis
 
 # TODO Tim: implement efficient div_ceil?
 # TODO Tim: why are corner cases inefficient?
@@ -49,38 +55,43 @@ class LoopyAdvisory(UserWarning):
 
 # {{{ index tags
 
-class IndexTag(object):
-    def __init__(self, axis=None):
-        self.axis = axis
-
-    def __eq__(self, other):
-        return (self.__class__ == other.__class__
-                and self.axis == other.axis)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
+class IndexTag(Record):
+    __slots__ = []
 
     def __hash__(self):
-        return hash(type(self)) ^ hash(self.axis)
+        raise RuntimeError("use .key to hash index tags")
+
+    @property
+    def key(self):
+        return type(self)
 
 
-class ImplicitlyParallelTag(IndexTag):
-    pass
 
-class TAG_GROUP_IDX(ImplicitlyParallelTag):
+class AxisParallelTag(IndexTag):
+    __slots__ = ["axis", "forced_length"]
+
+    def __init__(self, axis, forced_length=None):
+        Record.__init__(self,
+                axis=axis, forced_length=forced_length)
+
+    @property
+    def key(self):
+        return (type(self), self.axis)
+
     def __repr__(self):
-        if self.axis is None:
-            return "GROUP_IDX"
+        if self.forced_length:
+            return "%s(%d, flen=%d)" % (
+                    self.print_name, self.axis,
+                    self.forced_length)
         else:
-            return "GROUP_IDX(%d)" % self.axis
+            return "%s(%d)" % (
+                    self.print_name, self.axis)
 
+class TAG_GROUP_IDX(AxisParallelTag):
+    print_name = "GROUP_IDX"
 
-class TAG_WORK_ITEM_IDX(ImplicitlyParallelTag):
-    def __repr__(self):
-        if self.axis is None:
-            return "WORK_ITEM_IDX"
-        else:
-            return "WORK_ITEM_IDX(%d)" % self.axis
+class TAG_WORK_ITEM_IDX(AxisParallelTag):
+    print_name = "WORK_ITEM_IDX"
 
 class TAG_ILP_UNROLL(IndexTag):
     def __repr__(self):
@@ -233,6 +244,8 @@ def solve_constraint_for_bound(cns, iname):
     else: # iname_coeff < 0
         from pytools import div_ceil
         return "<", cfm(flatten(div_ceil(rhs+1, -iname_coeff)))
+
+
 
 
 def get_projected_bounds(set, iname):
@@ -503,17 +516,18 @@ class ScalarArg:
 # {{{ loop kernel object
 
 class LoopKernel(Record):
-    # possible attributes:
-    # - device, a PyOpenCL target device
-    # - domain
-    # - iname_to_tag
-    # - instructions
-    # - args
-    # - prefetch
-    # - schedule
-    # - register_prefetch
-    # - name
-    # - preamble
+    """
+    :ivar device: :class:`pyopencl.Device`
+    :ivar domain: :class:`islpy.BasicSet`
+    :ivar iname_to_tag:
+    :ivar instructions:
+    :ivar args:
+    :ivar prefetch:
+    :ivar schedule:
+    :ivar register_prefetch:
+    :ivar name:
+    :ivar preamble:
+    """
 
     def __init__(self, device, domain, instructions, args=None, prefetch={}, schedule=None,
             register_prefetch=None, name="loopy_kernel",
@@ -559,9 +573,10 @@ class LoopKernel(Record):
 
     @property
     @memoize_method
-    def tag_to_iname(self):
-        from pytools import reverse_dictionary
-        return reverse_dictionary(self.iname_to_tag)
+    def tag_key_to_iname(self):
+        return dict(
+                (tag.key, iname)
+                for iname, tag in self.iname_to_tag.iteritems())
 
     @property
     @memoize_method
@@ -604,7 +619,7 @@ class LoopKernel(Record):
         from itertools import count
         for i in count():
             try:
-                dim = self.tag_to_iname[tag_type(i)]
+                dim = self.tag_key_to_iname[tag_type(i).key]
             except KeyError:
                 return result
             else:
@@ -622,12 +637,17 @@ class LoopKernel(Record):
 
         return get_projected_bounds(self.domain, iname)
 
-    def tag_type_bounds(self, tag_cls):
-        return [self.get_projected_bounds(iname)
-                for iname in self.ordered_inames_by_tag_type(tag_cls)]
-
     def tag_type_lengths(self, tag_cls):
-        return [stop-start for start, stop in self.tag_type_bounds(tag_cls)]
+        def get_length(iname):
+            tag = self.iname_to_tag[iname]
+            if tag.forced_length is not None:
+                return tag.forced_length
+
+            start, stop = self.get_projected_bounds(iname)
+            return stop-start
+
+        return [get_length(iname)
+                for iname in self.ordered_inames_by_tag_type(tag_cls)]
 
     def tag_or_iname_to_iname(self, s):
         try:
@@ -635,7 +655,7 @@ class LoopKernel(Record):
         except ValueError:
             pass
         else:
-            return self.tag_to_iname[tag]
+            return self.tag_key_to_iname[tag.key]
 
         if s not in self.all_inames():
             raise RuntimeError("invalid index name '%s'" % s)
@@ -715,20 +735,33 @@ class LoopKernel(Record):
 
         return copy
 
-    def split_dimension(self, name, inner_length, outer_name=None, inner_name=None,
+    def split_dimension(self, name, inner_length, padded_length=None,
+            outer_name=None, inner_name=None,
             outer_tag=None, inner_tag=None):
 
         outer_tag = parse_tag(outer_tag)
         inner_tag = parse_tag(inner_tag)
 
-        new_tags = set(tag for tag in [outer_tag, inner_tag] if tag is not None)
-
         if self.iname_to_tag.get(name) is not None:
             raise RuntimeError("cannot split tagged dimension '%s'" % name)
 
-        repeated_tags = new_tags & set(self.iname_to_tag.values())
-        if repeated_tags:
-            raise RuntimeError("repeated tag(s): %s" % repeated_tags)
+        # {{{ check for repeated tag keys
+
+        new_tag_keys = set(tag.key
+                for tag in [outer_tag, inner_tag]
+                if tag is not None)
+
+        repeated_tag_keys = new_tag_keys & set(
+                tag.key for tag in
+                self.iname_to_tag.itervalues())
+
+        if repeated_tag_keys:
+            raise RuntimeError("repeated tag(s): %s" % repeated_tag_keys)
+
+        # }}}
+
+        if padded_length is not None:
+            inner_tag = inner_tag.copy(forced_length=padded_length)
 
         if outer_name is None:
             outer_name = name+"_outer"
@@ -945,9 +978,8 @@ def generate_loop_schedules(kernel):
             # in this branch. at least one of its loop dimensions
             # was already scheduled, and that dimension is not
             # borrowable.
-            print "UNSCHEDULABLE:"
-            print_kernel_info(kernel)
-            raw_input()
+
+            #print "UNSCHEDULABLE", kernel.schedule
             return
 
         new_kernel = kernel.copy(schedule=prev_schedule+[pf])
@@ -1627,15 +1659,24 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
                         block_shift_constraint(
                             ub_cns_orig, iname, -chosen.upper_incr)))))
 
-    if isinstance(tag, ImplicitlyParallelTag):
+    if isinstance(tag, AxisParallelTag):
         # For a parallel loop dimension, the global loop bounds are
         # automatically obeyed--simply because no work items are launched
         # outside the requested grid.
+        #
+        # For a forced length, this is actually implemented
+        # by an if below.
 
-        implemented_domain = implemented_domain.intersect(
-                isl.Set.universe(kernel.space)
-                .add_constraint(lb_cns_orig)
-                .add_constraint(ub_cns_orig))
+        if tag.forced_length is None:
+            implemented_domain = implemented_domain.intersect(
+                    isl.Set.universe(kernel.space)
+                    .add_constraint(lb_cns_orig)
+                    .add_constraint(ub_cns_orig))
+        else:
+            impl_len = tag.forced_length
+            start, _ = kernel.get_projected_bounds(iname)
+            implemented_domain = implemented_domain.intersect(
+                    make_slab(kernel.space, iname, start, start+impl_len))
 
     result = []
     nums_of_conditionals = []
@@ -1668,11 +1709,17 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
     if tag is None:
         # regular or unrolled loop
         return gen_code_block(result)
-    elif isinstance(tag, ImplicitlyParallelTag):
+
+    elif isinstance(tag, AxisParallelTag):
         # parallel loop
+        if tag.forced_length is None:
+            base = "last"
+        else:
+            base = None
         return GeneratedCode(
-                ast=make_multiple_ifs(result, base="last"),
+                ast=make_multiple_ifs(result, base=base),
                 num_conditionals=min(nums_of_conditionals))
+
     else:
         assert False, "we aren't supposed to get here"
 
@@ -1938,10 +1985,7 @@ def generate_code(kernel):
 
     body = Block()
 
-    group_size = kernel.tag_type_lengths(TAG_WORK_ITEM_IDX)
-
     # {{{ examine arg list
-
 
     def restrict_ptr_if_not_nvidia(arg):
         from cgen import Pointer, RestrictPointer
@@ -2073,12 +2117,12 @@ def get_input_access_descriptors(kernel):
     from pytools import flatten
     result = {}
     for ivec in kernel.input_vectors():
-        result[ivec] = [
+        result[ivec] = set(
                 (ivec, iexpr)
                 for iexpr in flatten(
                     VariableIndexExpressionCollector(ivec)(expression)
                     for lvalue, expression in kernel.instructions
-                    )]
+                    ))
 
     return result
 
@@ -2123,7 +2167,7 @@ def add_prefetch(kernel, input_access_descr, tags_or_inames, loc_fetch_axes={}):
 
 class CompiledKernel:
     def __init__(self, context, kernel, size_args=None, options=[],
-            force_rebuild=False):
+            force_rebuild=False, edit=False):
         self.kernel = kernel
         self.code = generate_code(kernel)
 
@@ -2131,8 +2175,9 @@ class CompiledKernel:
             from time import time
             self.code = "/* %s */\n%s" % (time(), self.code)
 
-        #from pytools import invoke_editor
-        #self.code = invoke_editor(self.code)
+        if edit:
+            from pytools import invoke_editor
+            self.code = invoke_editor(self.code)
 
         try:
             self.cl_kernel = getattr(
@@ -2178,7 +2223,8 @@ class CompiledKernel:
 
 # {{{ timing driver
 def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
-        options=[], print_code=True, force_rebuild=False):
+        options=[], print_code=True, force_rebuild=False,
+        edit=False):
 
     def time_run(compiled_knl, warmup_rounds=2, timing_rounds=5):
         check = True
@@ -2203,7 +2249,7 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
     for kernel in kernel_generator:
 
         compiled = CompiledKernel(queue.context, kernel, options=options,
-                force_rebuild=force_rebuild)
+                force_rebuild=force_rebuild, edit=edit)
 
         print "-----------------------------------------------"
         print "SOLUTION #%d" % soln_count
