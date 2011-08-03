@@ -10,12 +10,17 @@ import loopy as lp
 FAST_OPTIONS = ["-cl-mad-enable", "-cl-fast-relaxed-math", 
         "-cl-no-signed-zeros", "-cl-strict-aliasing"]
 
-def make_well_conditioned_dev_matrix(queue, shape, dtype=np.float32, order="C", ran_factor=1, od=0):
+def make_well_conditioned_dev_matrix(queue, shape, dtype=np.float32, 
+        order="C", ran_factor=1, id_factor=5, inc_factor=0, od=0):
     if isinstance(shape, int):
         shape = (shape, shape)
+    l = max(shape)
+    eye_ish = id_factor*np.eye(l, k=od)
+    if inc_factor:
+        eye_ish[np.arange(l), np.arange(l)] = inc_factor*np.arange(l)
     ary = np.asarray(
         ran_factor*np.random.randn(*shape)
-        + 5*np.eye(max(shape), k=od)[:shape[0], :shape[1]],
+        + eye_ish[:shape[0], :shape[1]],
         dtype=dtype, order=order)
 
     return cl_array.to_device(queue, ary)
@@ -27,9 +32,12 @@ DO_CHECK = True
 
 DEBUG_PREAMBLE = r"""
     #pragma OPENCL EXTENSION cl_amd_printf: enable
-    #define IFDIAG if (i_outer*16+i_inner == j_outer*16+j_inner)
-    #define TST(S) IFDIAG if (i_outer*16+i_inner == 0) \
-            printf("ko=%d ki=%d" #S "\n", k_outer, k_inner);
+    #define MY_J (j_outer*64+j_inner_outer*16+j_inner_inner)
+    #define MY_I (i_outer*16+i_inner)
+    #define IFDIAG if (MY_I == MY_J)
+    #define TST(S) if (MY_J == 144 && MY_I == 16-48) \
+            for (int aa = 0; aa < 16: ++ab) \
+                for (int bb = 0; bb < 16: ++bb) 
     """
 
 
@@ -38,20 +46,21 @@ DEBUG_PREAMBLE = r"""
 def check_error(refsol, sol):
     rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
     if DO_CHECK and rel_err > 1e-5:
-        if 1:
+        if 0:
             import matplotlib.pyplot as pt
             pt.imshow(refsol-sol)
             pt.colorbar()
             pt.show()
-        elif 0:
+        elif 1:
             print "---------------------------"
             print "ACTUAL"
             print "---------------------------"
-            print sol
+            np.set_printoptions(threshold=1000000, linewidth=200)
+            print sol[:,-16:]
             print "---------------------------"
             print "CORRECT"
             print "---------------------------"
-            print refsol
+            print refsol[-16:,-16:]
         raise RuntimeError("check failed, rel err=%g" % rel_err)
 
 
@@ -168,6 +177,133 @@ def image_matrix_mul(ctx_factory=cl.create_some_context):
             force_rebuild=True)
 
 
+
+
+def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
+    dtype = np.float32
+    ctx = ctx_factory()
+    order = "C"
+    queue = cl.CommandQueue(ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    n = 16*10
+    from pymbolic import var
+    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
+
+    knl = lp.LoopKernel(ctx.devices[0],
+            "{[i,j,k]: 0<=i,j,k<%d}" % n,
+            [
+                (c[i, j], a[i, k]*b[k, j])
+                ],
+            [
+                lp.ImageArg("a", dtype, 2),
+                lp.ImageArg("b", dtype, 2),
+                #lp.ArrayArg("a", dtype, shape=(n, n), order=order),
+                #lp.ArrayArg("b", dtype, shape=(n, n), order=order),
+                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                ],
+            name="matmul", preamble=DEBUG_PREAMBLE)
+
+    ilp = 4
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_dimension(knl, "j", ilp*16, outer_tag="g.1")
+    knl = lp.split_dimension(knl, "j_inner", 16, outer_tag="ilp", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 32)
+    # conflict-free
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    #knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
+    inv_reason = knl.get_invalid_reason()
+    assert inv_reason is None, inv_reason
+
+    kernel_gen = (lp.insert_register_prefetches(knl)
+            for knl in lp.generate_loop_schedules(knl))
+
+    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order,
+            ran_factor=0, id_factor=1)
+    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order,
+            ran_factor=0, id_factor=0, inc_factor=1000)
+    c = cl_array.empty_like(a)
+    c.fill(-17)
+    refsol = np.dot(a.get(), b.get())
+    a_img = cl.image_from_array(ctx, a.get(), 1)
+    b_img = cl.image_from_array(ctx, b.get(), 1)
+
+    def launcher(kernel, gsize, lsize, check):
+        evt = kernel(queue, gsize(), lsize(), a_img, b_img, c.data,
+                g_times_l=True)
+
+        if check:
+            check_error(refsol, c.get())
+
+        return evt
+
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
+            options=FAST_OPTIONS,# + ["-cl-nv-verbose"],
+            force_rebuild=True, edit_code=True)
+
+
+
+
+
+def fancy_matrix_mul(ctx_factory=cl.create_some_context):
+    dtype = np.float32
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    order = "C"
+
+    n = 16*40
+    from pymbolic import var
+    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
+
+    knl = lp.LoopKernel(ctx.devices[0],
+            "[n] -> {[i,j,k]: 0<=i,j,k<n }",
+            [
+                (c[i, j], a[i, k]*b[k, j])
+                ],
+            [
+                lp.ArrayArg("a", dtype, shape=(n_sym, n_sym), order=order),
+                lp.ArrayArg("b", dtype, shape=(n_sym, n_sym), order=order),
+                lp.ArrayArg("c", dtype, shape=(n_sym, n_sym), order=order),
+                lp.ScalarArg("n", np.int32, approximately=1000),
+                ], name="fancy_matmul")
+
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
+    assert knl.get_invalid_reason() is None
+
+    kernel_gen = (lp.insert_register_prefetches(knl)
+            for knl in lp.generate_loop_schedules(knl))
+
+    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order, 
+            ran_factor=0)
+    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order,
+            ran_factor=0)
+    c = cl_array.empty_like(a)
+    refsol = np.dot(a.get(), b.get())
+
+    def launcher(kernel, gsize, lsize, check):
+        evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
+                g_times_l=True)
+
+        if check:
+            check_error(refsol, c.get())
+
+        return evt
+
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
+            options=FAST_OPTIONS + ["-cl-nv-verbose"],
+            force_rebuild=True)
+
+
+
+
 def dg_matrix_mul(ctx_factory=cl.create_some_context):
     dtype = np.float32
     ctx = ctx_factory()
@@ -265,127 +401,6 @@ def dg_matrix_mul(ctx_factory=cl.create_some_context):
 
 
 
-def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
-    dtype = np.float32
-    ctx = ctx_factory()
-    order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
-
-    n = 16*100
-    from pymbolic import var
-    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
-
-    knl = lp.LoopKernel(ctx.devices[0],
-            "{[i,j,k]: 0<=i,j,k<%d}" % n,
-            [
-                (c[i, j], a[i, k]*b[k, j])
-                ],
-            [
-                lp.ImageArg("a", dtype, 2),
-                lp.ImageArg("b", dtype, 2),
-                #lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                #lp.ArrayArg("b", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
-                ],
-            name="matmul")
-
-    ilp = 8
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", ilp*16, outer_tag="g.1")
-    knl = lp.split_dimension(knl, "j_inner", 16, outer_tag="ilp", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 32)
-    # conflict-free
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
-    assert knl.get_invalid_reason() is None
-
-    kernel_gen = (lp.insert_register_prefetches(knl)
-            for knl in lp.generate_loop_schedules(knl))
-
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
-    a_img = cl.image_from_array(ctx, a.get(), 1)
-    b_img = cl.image_from_array(ctx, b.get(), 1)
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a_img, b_img, c.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
-            options=FAST_OPTIONS,# + ["-cl-nv-verbose"],
-            force_rebuild=True, edit_code=False)
-
-
-
-
-
-def fancy_matrix_mul(ctx_factory=cl.create_some_context):
-    dtype = np.float32
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
-
-    order = "C"
-
-    n = 16*40
-    from pymbolic import var
-    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
-
-    knl = lp.LoopKernel(ctx.devices[0],
-            "[n] -> {[i,j,k]: 0<=i,j,k<n }",
-            [
-                (c[i, j], a[i, k]*b[k, j])
-                ],
-            [
-                lp.ArrayArg("a", dtype, shape=(n_sym, n_sym), order=order),
-                lp.ArrayArg("b", dtype, shape=(n_sym, n_sym), order=order),
-                lp.ArrayArg("c", dtype, shape=(n_sym, n_sym), order=order),
-                lp.ScalarArg("n", np.int32, approximately=1000),
-                ], name="fancy_matmul")
-
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
-    assert knl.get_invalid_reason() is None
-
-    kernel_gen = (lp.insert_register_prefetches(knl)
-            for knl in lp.generate_loop_schedules(knl))
-
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order, 
-            ran_factor=0)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order,
-            ran_factor=0)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
-            options=FAST_OPTIONS + ["-cl-nv-verbose"],
-            force_rebuild=True)
-
-
-
-
 def main_elwise_scaled_matrix_mul():
     Np = 64
     K = 2000
@@ -469,4 +484,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:
-        plain_matrix_mul()
+        image_matrix_mul_ilp()

@@ -22,6 +22,7 @@ register_mpz_with_pymbolic()
 
 
 
+# TODO: Constant memory
 # TODO: Reuse of previously split dimensions for prefetch
 #   (Or general merging)
 # TODO: ILP Unroll
@@ -31,6 +32,8 @@ register_mpz_with_pymbolic()
 #     ILP must be outside of reduction loops
 #     Therfore, there are prefetches inside ILPs
 # TODO: Debug 1 ILP
+# FIXME: Random equality constraints
+# TODO: Use increment for ILP?
 
 # TODO: Try, fix reg. prefetch (DG example) / CSEs
 # TODO: Custom reductions per red. axis
