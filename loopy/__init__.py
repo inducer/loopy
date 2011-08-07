@@ -1326,9 +1326,9 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
         def my_ccm(expr):
             return ccm(substitute(expr, pf_idx_subst_map))
 
-        valid_index_vars = flnd.valid_index_vars + pf_idx_subst_map.keys()
+        check_vars = [v.name for v in DependencyMapper()(pf.index_expr)]
         return wrap_in_bounds_checks(my_ccm, pf.kernel.domain,
-                valid_index_vars, implemented_domain, result)
+                check_vars, implemented_domain, result)
 
     pf_iname = pf.inames[pf_iname_idx]
     realiz_inames = flnd.realization_inames[pf_iname_idx]
@@ -1586,7 +1586,7 @@ class ExecutionDomain(object):
             i.e. all constraints that have been enforced so far.
         :param assignments_and_impl_domains: a list of tuples 
             (assignments, implemented_domain), where *assignments*
-            is a list of :class:`cgen.Assignment` instances
+            is a list of :class:`cgen.Initializer` instances
             and *implemented_domain* is the implemented domain to which
             the situation produced by the assignments corresponds.
 
@@ -1622,7 +1622,7 @@ class ExecutionDomain(object):
 def generate_loop_dim_code(cgs, kernel, sched_index,
         exec_domain):
     from cgen import (Comment, add_comment, make_multiple_ifs,
-            POD, Assign, Line, Statement as S)
+            POD, Assign, Line, Statement as S, Initializer, Const)
 
     ccm = cgs.c_code_mapper
 
@@ -1676,7 +1676,7 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
             for assignments, implemented_domain in exec_domain:
                 for i, single_slab in generate_idx_eq_slabs():
                     assignments = assignments + [
-                            Assign(iname, ccm(lower_bound+i))]
+                            Initializer(Const(POD(np.int32, iname)), ccm(lower_bound+i))]
                     new_aaid.append((assignments, 
                         implemented_domain.intersect(single_slab)))
 
@@ -1686,15 +1686,10 @@ def generate_loop_dim_code(cgs, kernel, sched_index,
                     .add_constraint(lower_cns)
                     .add_constraint(upper_cns))
 
-            return gen_code_block([
-                Comment("declare ILP'd variable"),
-                POD(np.int32, iname),
-                Line(),
-                build_loop_nest(cgs, kernel, sched_index+1,
+            return build_loop_nest(cgs, kernel, sched_index+1,
                     ExecutionDomain(
                         exec_domain.implemented_domain.intersect(overall_slab),
                         new_aaid))
-                ])
         else:
             assert False, "not supposed to get here"
 
@@ -1854,11 +1849,11 @@ def filter_necessary_constraints(implemented_domain, constraints):
             isl.Set.universe(space)
             .add_constraint(cns))]
 
-def generate_bounds_checks(ccm, domain, valid_index_vars, implemented_domain):
+def generate_bounds_checks(ccm, domain, check_vars, implemented_domain):
     domain_bset, = domain.get_basic_sets()
 
     projected_domain_bset = isl.project_out_except(
-            domain_bset, valid_index_vars, [dim_type.set])
+            domain_bset, check_vars, [dim_type.set])
 
     space = domain.get_dim()
 
@@ -1876,9 +1871,9 @@ def generate_bounds_checks(ccm, domain, valid_index_vars, implemented_domain):
 
     return [constraint_to_code(ccm, cns) for cns in necessary_constraints]
 
-def wrap_in_bounds_checks(ccm, domain, valid_index_vars, implemented_domain, stmt):
+def wrap_in_bounds_checks(ccm, domain, check_vars, implemented_domain, stmt):
     return wrap_in_if(
-            generate_bounds_checks(ccm, domain, valid_index_vars,
+            generate_bounds_checks(ccm, domain, check_vars,
                 implemented_domain),
             stmt)
 
@@ -1961,15 +1956,16 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
             for i, (assignments, impl_domain) in \
                     enumerate(exec_domain):
 
-                result.extend(assignments+[Line()])
+                my_block = assignments+[Line()]
 
                 assert isinstance(lvalue, Subscript)
                 name = lvalue.aggregate.name
-                result.append(
+                my_block.append(
                         wrap_in_if(
                             bounds_check_lists[i],
                             S("tmp_%s_%d += %s"
                                 % (name, i, ccm(expr)))))
+                result.append(gen_code_block(my_block))
 
         return gen_code_block(result)
 
@@ -2002,12 +1998,9 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
                         get_valid_index_vars(kernel, sched_index),
                         impl_domain, assignment)
 
-                result.extend(idx_assignments)
-                result.extend([
-                    Line(),
-                    wrapped_assign,
-                    Line(),
-                    ])
+                result.append(
+                        gen_code_block(
+                            idx_assignments+[ Line(), wrapped_assign, Line()]))
 
         return gen_code_block(result)
 
