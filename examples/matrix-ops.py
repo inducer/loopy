@@ -46,21 +46,21 @@ DEBUG_PREAMBLE = r"""
 def check_error(refsol, sol):
     rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
     if DO_CHECK and rel_err > 1e-5:
-        if 0:
+        if 1:
             import matplotlib.pyplot as pt
             pt.imshow(refsol-sol)
             pt.colorbar()
             pt.show()
-        elif 1:
+        elif 0:
             print "---------------------------"
             print "ACTUAL"
             print "---------------------------"
             np.set_printoptions(threshold=1000000, linewidth=200)
-            print sol[:,-16:]
+            print sol[:16,:16]
             print "---------------------------"
             print "CORRECT"
             print "---------------------------"
-            print refsol[-16:,-16:]
+            print refsol[:16,:16]
         raise RuntimeError("check failed, rel err=%g" % rel_err)
 
 
@@ -196,19 +196,20 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
                 (c[i, j], a[i, k]*b[k, j])
                 ],
             [
-                lp.ImageArg("a", dtype, 2),
-                lp.ImageArg("b", dtype, 2),
-                #lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                #lp.ArrayArg("b", dtype, shape=(n, n), order=order),
+                #lp.ImageArg("a", dtype, 2),
+                #lp.ImageArg("b", dtype, 2),
+                lp.ArrayArg("a", dtype, shape=(n, n), order=order),
+                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
                 lp.ArrayArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul", preamble=DEBUG_PREAMBLE)
 
     ilp = 4
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", ilp*16, outer_tag="g.1")
-    knl = lp.split_dimension(knl, "j_inner", 16, outer_tag="ilp", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 32)
+    knl = lp.split_dimension(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
+    j_inner_split = 16
+    knl = lp.split_dimension(knl, "j", ilp*j_inner_split, outer_tag="g.1")
+    knl = lp.split_dimension(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 2)
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     #knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
@@ -219,17 +220,17 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
             for knl in lp.generate_loop_schedules(knl))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order,
-            ran_factor=0, id_factor=1)
+            ran_factor=1, id_factor=5)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order,
-            ran_factor=0, id_factor=0, inc_factor=1000)
+            ran_factor=1, id_factor=5, inc_factor=0)
     c = cl_array.empty_like(a)
     c.fill(-17)
     refsol = np.dot(a.get(), b.get())
-    a_img = cl.image_from_array(ctx, a.get(), 1)
-    b_img = cl.image_from_array(ctx, b.get(), 1)
+    #a_img = cl.image_from_array(ctx, a.get(), 1)
+    #b_img = cl.image_from_array(ctx, b.get(), 1)
 
     def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a_img, b_img, c.data,
+        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
                 g_times_l=True)
 
         if check:
