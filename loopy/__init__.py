@@ -299,7 +299,7 @@ def cast_constraint_to_space(cns, new_space, as_equality=None):
 
 def block_shift_constraint(cns, iname, multiple, as_equality=None):
     cns = copy_constraint(cns, as_equality=as_equality)
-    cns.set_constant(cns.get_constant()
+    cns = cns.set_constant(cns.get_constant()
             + cns.get_coefficients_by_name()[iname]*multiple)
     return cns
 
