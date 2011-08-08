@@ -56,8 +56,7 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
 
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
-    inv_reason = knl.get_invalid_reason()
-    assert inv_reason is None, inv_reason
+    assert knl.get_problems()[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
@@ -78,8 +77,7 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
 
     from pyopencl.characterize import get_fast_inaccurate_build_options
     lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
-            options=get_fast_inaccurate_build_options(ctx.devices[0]),
-            force_rebuild=True)
+            options=get_fast_inaccurate_build_options(ctx.devices[0]))
 
 
 

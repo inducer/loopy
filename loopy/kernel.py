@@ -450,33 +450,47 @@ class LoopKernel(Record):
                 .substitute(name, new_loop_index)
                 .copy(domain=new_domain, iname_to_tag=new_iname_to_tag))
 
-    def get_invalid_reason(self):
+    def get_problems(self, emit_warnings=True):
+        """
+        :return: *(max_severity, list of (severity, msg))*, where *severity* ranges from 1-5.
+            '5' means 'will certainly not run'.
+        """
+        msgs = []
+
+        def msg(severity, s):
+            if emit_warnings:
+                from warnings import warn
+                from loopy import LoopyAdvisory
+                warn(s, LoopyAdvisory)
+
+            msgs.append((severity, s))
+
         glens = self.tag_type_lengths(TAG_GROUP_IDX)
         llens = self.tag_type_lengths(TAG_WORK_ITEM_IDX)
         if (max(len(glens), len(llens))
                 > self.device.max_work_item_dimensions):
-            return "too many work item dimensions"
+            msg(5, "too many work item dimensions")
 
         for i in range(len(llens)):
             if llens[i] > self.device.max_work_item_sizes[i]:
-                return "group axis %d too big"
+                msg(5, "group axis %d too big")
 
         from pytools import product
         if product(llens) > self.device.max_work_group_size:
-            return "work group too big"
+            msg(5, "work group too big")
 
         from pyopencl.characterize import usable_local_mem_size
         if self.local_mem_use() > usable_local_mem_size(self.device):
             if self.device.local_mem_type == cl.device_local_mem_type.LOCAL:
-                return "using too much local memory"
+                msg(5, "using too much local memory")
             else:
-                from warnings import warn
-                from loopy import LoopyAdvisory
-                warn("using more local memory than available--"
-                        "possibly OK due to cache nature",
-                        LoopyAdvisory)
+                msg(4, "using more local memory than available--"
+                        "possibly OK due to cache nature")
 
-        return None
+        max_severity = 0
+        for sev, msg in msgs:
+            max_severity = max(sev, max_severity)
+        return max_severity, msgs
 
 # }}}
 
