@@ -4,8 +4,9 @@ from __future__ import division
 
 import numpy as np
 from pytools import Record, memoize_method
-
 from pymbolic.mapper.dependency import DependencyMapper
+import pyopencl as cl
+
 
 
 
@@ -466,7 +467,14 @@ class LoopKernel(Record):
 
         from pyopencl.characterize import usable_local_mem_size
         if self.local_mem_use() > usable_local_mem_size(self.device):
-            return "using too much local memory"
+            if self.device.local_mem_type == cl.device_local_mem_type.LOCAL:
+                return "using too much local memory"
+            else:
+                from warnings import warn
+                from loopy import LoopyAdvisory
+                warn("using more local memory than available--"
+                        "possibly OK due to cache nature",
+                        LoopyAdvisory)
 
         return None
 
