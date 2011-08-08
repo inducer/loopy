@@ -36,7 +36,9 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
             for i, (assignments, impl_domain) in \
                     enumerate(exec_domain):
 
-                my_block = assignments+[Line()]
+                my_block = []
+                if assignments:
+                    my_block.extend(assignments+[Line()])
 
                 assert isinstance(lvalue, Subscript)
                 name = lvalue.aggregate.name
@@ -80,8 +82,10 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
                     "tmp_%s_%d" % (lvalue.aggregate.name, i)), 0)
                     for i in range(len(exec_domain))
                     for lvalue, expr in kernel.instructions]
+                +[Line()]
                 +[build_loop_nest(cgs, kernel, sched_index+1, 
-                    exec_domain)])
+                    exec_domain)]
+                +[Line()])
 
 
         for i, (idx_assignments, impl_domain) in \
@@ -95,9 +99,12 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
                         get_valid_index_vars(kernel, sched_index),
                         impl_domain, assignment)
 
-                result.append(
-                        gen_code_block(
-                            idx_assignments+[ Line(), wrapped_assign]))
+                cb = []
+                if idx_assignments:
+                    cb.extend(idx_assignments+[Line()])
+                cb.append(wrapped_assign)
+
+                result.append(gen_code_block(cb))
 
         return gen_code_block(result)
 
