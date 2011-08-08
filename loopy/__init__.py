@@ -23,7 +23,6 @@ register_mpz_with_pymbolic()
 # FIXME: support non-reductive dimensions
 # FIXME: write names should be assigned during scheduling
 
-# TODO: Condition hoisting
 # TODO: Don't emit spurious barriers (no for scheduled before)
 # TODO: Make code more readable
 

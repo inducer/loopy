@@ -205,7 +205,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
                 lp.ImageArg("b", dtype, 2),
                 lp.ArrayArg("c", dtype, shape=(n, n), order=order),
                 ],
-            name="matmul", preamble=DEBUG_PREAMBLE)
+            name="matmul")
 
     ilp = 4
     knl = lp.split_dimension(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
@@ -214,8 +214,8 @@ def test_image_matrix_mul_ilp(ctx_factory):
     knl = lp.split_dimension(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 2)
     # conflict-free
-    #knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    #knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
     assert knl.get_problems()[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)
@@ -397,8 +397,7 @@ def test_dg_matrix_mul(ctx_factory):
 
         return evt
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, num_flds*dim*2*(Np**2)*K,
-            edit_code=True)
+    lp.drive_timing_run(kernel_gen, queue, launcher, num_flds*dim*2*(Np**2)*K)
 
 
 

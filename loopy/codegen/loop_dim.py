@@ -10,91 +10,11 @@ from loopy.codegen.dispatch import build_loop_nest
 
 
 
-# {{{ generate code for unrolled/ILP loops
+# {{{ conditional-minimizing slab decomposition
 
-def generate_unroll_or_ilp_code(cgs, kernel, sched_index, exec_domain):
-    from loopy.isl import (
-            cast_constraint_to_space, solve_constraint_for_bound,
-            block_shift_constraint)
-
-    from cgen import (POD, Assign, Line, Statement as S, Initializer, Const)
-
-    ccm = cgs.c_code_mapper
-    space = kernel.space
-    iname = kernel.schedule[sched_index].iname
-    tag = kernel.iname_to_tag.get(iname)
-
-    lower_cns, upper_cns = kernel.get_projected_bounds_constraints(iname)
-    lower_cns = cast_constraint_to_space(lower_cns, space)
-    upper_cns = cast_constraint_to_space(upper_cns, space)
-
-    lower_kind, lower_bound = solve_constraint_for_bound(lower_cns, iname)
-    upper_kind, upper_bound = solve_constraint_for_bound(upper_cns, iname)
-
-    assert lower_kind == ">="
-    assert upper_kind == "<"
-
-    from pymbolic import flatten
-    from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
-    cfm = CommutativeConstantFoldingMapper()
-    length = int(cfm(flatten(upper_bound-lower_bound)))
-
-    def generate_idx_eq_slabs():
-        for i in xrange(length):
-            yield (i, isl.Set.universe(kernel.space)
-                    .add_constraint(
-                            block_shift_constraint(
-                                lower_cns, iname, -i, as_equality=True)))
-
-    from loopy.kernel import BaseUnrollTag, TAG_ILP, TAG_UNROLL_STATIC, TAG_UNROLL_INCR
-    if isinstance(tag, BaseUnrollTag):
-        result = [POD(np.int32, iname), Line()]
-
-        for i, slab in generate_idx_eq_slabs():
-            new_exec_domain = exec_domain.intersect(slab)
-            inner = build_loop_nest(cgs, kernel, sched_index+1,
-                    new_exec_domain)
-
-            if isinstance(tag, TAG_UNROLL_STATIC):
-                result.extend([
-                    Assign(iname, ccm(lower_bound+i)),
-                    Line(), inner])
-            elif isinstance(tag, TAG_UNROLL_INCR):
-                result.append(S("++%s" % iname))
-
-        return gen_code_block(result)
-
-    elif isinstance(tag, TAG_ILP):
-        new_aaid = []
-        for assignments, implemented_domain in exec_domain:
-            for i, single_slab in generate_idx_eq_slabs():
-                assignments = assignments + [
-                        Initializer(Const(POD(np.int32, iname)), ccm(lower_bound+i))]
-                new_aaid.append((assignments, 
-                    implemented_domain.intersect(single_slab)))
-
-                assignments = []
-
-        overall_slab = (isl.Set.universe(kernel.space)
-                .add_constraint(lower_cns)
-                .add_constraint(upper_cns))
-
-        return build_loop_nest(cgs, kernel, sched_index+1,
-                ExecutionDomain(
-                    exec_domain.implemented_domain.intersect(overall_slab),
-                    new_aaid))
-    else:
-        assert False, "not supposed to get here"
-
-# }}}
-
-# {{{ generate code for all other loops
-
-def generate_non_unroll_loop_dim_code(cgs, kernel, sched_index, exec_domain):
+def get_slab_decomposition(cgs, kernel, sched_index, exec_domain):
     from loopy.isl import (cast_constraint_to_space,
-            block_shift_constraint, negate_constraint, make_slab)
-
-    from cgen import (Comment, add_comment, make_multiple_ifs)
+            block_shift_constraint, negate_constraint)
 
     ccm = cgs.c_code_mapper
     space = kernel.space
@@ -177,27 +97,152 @@ def generate_non_unroll_loop_dim_code(cgs, kernel, sched_index, exec_domain):
 
     # }}}
 
-    # {{{ generate code
+    return lb_cns_orig, ub_cns_orig, slabs
 
-    from loopy.kernel import AxisParallelTag
-    if isinstance(tag, AxisParallelTag):
-        # For a parallel loop dimension, the global loop bounds are
-        # automatically obeyed--simply because no work items are launched
-        # outside the requested grid.
-        #
-        # For a forced length, this is actually implemented
-        # by an if below.
+# }}}
 
-        if tag.forced_length is None:
-            exec_domain = exec_domain.intersect(
-                    isl.Set.universe(kernel.space)
-                    .add_constraint(lb_cns_orig)
-                    .add_constraint(ub_cns_orig))
-        else:
-            impl_len = tag.forced_length
-            start, _ = kernel.get_projected_bounds(iname)
-            exec_domain = exec_domain.intersect(
-                    make_slab(kernel.space, iname, start, start+impl_len))
+# {{{ unrolled/ILP loops
+
+def generate_unroll_or_ilp_code(cgs, kernel, sched_index, exec_domain):
+    from loopy.isl import (
+            cast_constraint_to_space, solve_constraint_for_bound,
+            block_shift_constraint)
+
+    from cgen import (POD, Assign, Line, Statement as S, Initializer, Const)
+
+    ccm = cgs.c_code_mapper
+    space = kernel.space
+    iname = kernel.schedule[sched_index].iname
+    tag = kernel.iname_to_tag.get(iname)
+
+    lower_cns, upper_cns = kernel.get_projected_bounds_constraints(iname)
+    lower_cns = cast_constraint_to_space(lower_cns, space)
+    upper_cns = cast_constraint_to_space(upper_cns, space)
+
+    lower_kind, lower_bound = solve_constraint_for_bound(lower_cns, iname)
+    upper_kind, upper_bound = solve_constraint_for_bound(upper_cns, iname)
+
+    assert lower_kind == ">="
+    assert upper_kind == "<"
+
+    from pymbolic import flatten
+    from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
+    cfm = CommutativeConstantFoldingMapper()
+    length = int(cfm(flatten(upper_bound-lower_bound)))
+
+    def generate_idx_eq_slabs():
+        for i in xrange(length):
+            yield (i, isl.Set.universe(kernel.space)
+                    .add_constraint(
+                            block_shift_constraint(
+                                lower_cns, iname, -i, as_equality=True)))
+
+    from loopy.kernel import BaseUnrollTag, TAG_ILP, TAG_UNROLL_STATIC, TAG_UNROLL_INCR
+    if isinstance(tag, BaseUnrollTag):
+        result = [POD(np.int32, iname), Line()]
+
+        for i, slab in generate_idx_eq_slabs():
+            new_exec_domain = exec_domain.intersect(slab)
+            inner = build_loop_nest(cgs, kernel, sched_index+1,
+                    new_exec_domain)
+
+            if isinstance(tag, TAG_UNROLL_STATIC):
+                result.extend([
+                    Assign(iname, ccm(lower_bound+i)),
+                    Line(), inner])
+            elif isinstance(tag, TAG_UNROLL_INCR):
+                result.append(S("++%s" % iname))
+
+        return gen_code_block(result)
+
+    elif isinstance(tag, TAG_ILP):
+        new_aaid = []
+        for assignments, implemented_domain in exec_domain:
+            for i, single_slab in generate_idx_eq_slabs():
+                assignments = assignments + [
+                        Initializer(Const(POD(np.int32, iname)), ccm(lower_bound+i))]
+                new_aaid.append((assignments, 
+                    implemented_domain.intersect(single_slab)))
+
+                assignments = []
+
+        overall_slab = (isl.Set.universe(kernel.space)
+                .add_constraint(lower_cns)
+                .add_constraint(upper_cns))
+
+        return build_loop_nest(cgs, kernel, sched_index+1,
+                ExecutionDomain(
+                    exec_domain.implemented_domain.intersect(overall_slab),
+                    new_aaid))
+    else:
+        assert False, "not supposed to get here"
+
+# }}}
+
+# {{{ parallel loop
+
+def generate_parallel_loop_dim_code(cgs, kernel, sched_index, exec_domain):
+    from loopy.isl import make_slab
+
+
+    ccm = cgs.c_code_mapper
+    space = kernel.space
+    iname = kernel.schedule[sched_index].iname
+    tag = kernel.iname_to_tag.get(iname)
+
+    lb_cns_orig, ub_cns_orig, slabs = get_slab_decomposition(
+            cgs, kernel, sched_index, exec_domain)
+
+    # For a parallel loop dimension, the global loop bounds are
+    # automatically obeyed--simply because no work items are launched
+    # outside the requested grid.
+    #
+    # For a forced length, this is implemented by an if below.
+
+    if tag.forced_length is None:
+        exec_domain = exec_domain.intersect(
+                isl.Set.universe(kernel.space)
+                .add_constraint(lb_cns_orig)
+                .add_constraint(ub_cns_orig))
+    else:
+        impl_len = tag.forced_length
+        start, _ = kernel.get_projected_bounds(iname)
+        exec_domain = exec_domain.intersect(
+                make_slab(kernel.space, iname, start, start+impl_len))
+
+    result = []
+    nums_of_conditionals = []
+
+    from loopy.codegen import add_comment
+
+    for slab_name, slab in slabs:
+        cmt = "%s slab for '%s'" % (slab_name, iname)
+        if len(slabs) == 1:
+            cmt = None
+
+        new_kernel = kernel.copy(
+                domain=kernel.domain.intersect(slab))
+        result.append(
+                add_comment(cmt,
+                    build_loop_nest(cgs, kernel, sched_index+1,
+                        exec_domain)))
+
+    from loopy.codegen import gen_code_block
+    return gen_code_block(result, is_alternatives=True)
+
+# }}}
+
+# {{{ sequential loop
+
+def generate_sequential_loop_dim_code(cgs, kernel, sched_index, exec_domain):
+
+    ccm = cgs.c_code_mapper
+    space = kernel.space
+    iname = kernel.schedule[sched_index].iname
+    tag = kernel.iname_to_tag.get(iname)
+
+    lb_cns_orig, ub_cns_orig, slabs = get_slab_decomposition(
+            cgs, kernel, sched_index, exec_domain)
 
     result = []
     nums_of_conditionals = []
@@ -211,49 +256,16 @@ def generate_non_unroll_loop_dim_code(cgs, kernel, sched_index, exec_domain):
         inner = build_loop_nest(cgs, kernel, sched_index+1,
                 new_exec_domain)
 
-        if tag is None:
-            from loopy.codegen.bounds import wrap_in_for_from_constraints
+        from loopy.codegen.bounds import wrap_in_for_from_constraints
 
-            # regular loop
-            if cmt is not None:
-                result.append(Comment(cmt))
-            result.append(
-                    wrap_in_for_from_constraints(ccm, iname, slab, inner))
-        else:
-            # parallel loop
-            par_impl_domain = exec_domain.get_the_one_domain()
+        # regular loop
+        if cmt is not None:
+            from cgen import Comment
+            result.append(Comment(cmt))
+        result.append(
+                wrap_in_for_from_constraints(ccm, iname, slab, inner))
 
-            from loopy.schedule import get_valid_index_vars
-            from loopy.codegen.bounds import generate_bounds_checks
-
-            nums_of_conditionals.append(inner.num_conditionals)
-            constraint_codelets = generate_bounds_checks(ccm,
-                    slab, get_valid_index_vars(kernel, sched_index+1),
-                    par_impl_domain)
-            result.append(
-                    ("\n&& ".join(constraint_codelets),
-                        add_comment(cmt, inner.ast)))
-
-    if tag is None:
-        # regular or unrolled loop
-        return gen_code_block(result)
-
-    elif isinstance(tag, AxisParallelTag):
-        # parallel loop
-        if tag.forced_length is None:
-            base = "last"
-        else:
-            base = None
-
-        from loopy.codegen import GeneratedCode
-        return GeneratedCode(
-                ast=make_multiple_ifs(result, base=base),
-                num_conditionals=min(nums_of_conditionals))
-
-    else:
-        assert False, "we aren't supposed to get here"
-
-    # }}}
+    return gen_code_block(result)
 
 # }}}
 

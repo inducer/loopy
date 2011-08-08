@@ -15,24 +15,35 @@ class GeneratedCode(Record):
     """
     __slots__ = ["ast", "num_conditionals"]
 
-def gen_code_block(elements):
+def gen_code_block(elements, is_alternatives=False):
+    """
+    :param is_alternatives: a :class:`bool` indicating that
+        only one of the *elements* will effectively be executed.
+    """
+
     from cgen import Generable, Block
 
-    num_conditionals = 0
+    conditional_counts = []
     block_els = []
     for el in elements:
         if isinstance(el, GeneratedCode):
-            num_conditionals = num_conditionals + el.num_conditionals
+            conditional_counts.append(el.num_conditionals)
             block_els.append(el.ast)
         elif isinstance(el, Generable):
             block_els.append(el)
         else:
             raise ValueError("unidentifiable object in block")
 
+    if is_alternatives:
+        num_conditionals = min(conditional_counts)
+    else:
+        num_conditionals = sum(conditional_counts)
+
     if len(block_els) == 1:
         ast, = block_els
     else:
         ast = Block(block_els)
+
     return GeneratedCode(ast=ast, num_conditionals=num_conditionals)
 
 def wrap_in(cls, *args):
@@ -67,6 +78,15 @@ def wrap_in_if(condition_codelets, inner):
                 inner)
 
     return inner
+
+def add_comment(cmt, code):
+    if cmt is None:
+        return code
+
+    from cgen import add_comment, Block
+    block_with_comment = add_comment(cmt, code.ast)
+    assert isinstance(block_with_comment, Block)
+    return gen_code_block(block_with_comment.contents)
 
 # }}}
 

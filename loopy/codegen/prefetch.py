@@ -325,9 +325,10 @@ def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
 
     # {{{ generate fetch code
 
-    from loopy.schedule import get_valid_index_vars
-    valid_index_vars = get_valid_index_vars(kernel, sched_index,
-            exclude_tags=(TAG_WORK_ITEM_IDX,))
+    from loopy.codegen.bounds import get_valid_check_vars
+    valid_index_vars = get_valid_check_vars(kernel, sched_index,
+            allow_ilp=True,
+            exclude_tag_classes=(TAG_WORK_ITEM_IDX,))
 
     from loopy.symbolic import LoopyCCodeMapper
     flnd = FetchLoopNestData(prefetch=pf,

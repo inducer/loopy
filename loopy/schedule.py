@@ -5,8 +5,6 @@ from pytools import Record
 
 
 
-# {{{ loop scheduling
-
 # {{{ schedule items
 
 class ScheduledLoop(Record):
@@ -143,21 +141,6 @@ def generate_loop_schedules(kernel, hints=[]):
 
         if all_inames_scheduled and all_pf_scheduled and output_scheduled:
             yield kernel
-
-# }}}
-
-
-
-
-def get_valid_index_vars(kernel, sched_index, exclude_tags=()):
-    """
-    :param exclude_tags: a tuple of tag classes to exclude
-    """
-    return [
-            sched_item.iname
-            for sched_item in kernel.schedule[:sched_index]
-            if isinstance(sched_item, ScheduledLoop)
-            if not isinstance(kernel.iname_to_tag.get(sched_item.iname), exclude_tags)]
 
 
 

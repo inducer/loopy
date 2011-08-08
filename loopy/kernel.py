@@ -92,7 +92,7 @@ class IndexTag(Record):
 class ParallelTag(IndexTag):
     pass
 
-class AxisParallelTag(ParallelTag):
+class ParallelTagWithAxis(ParallelTag):
     __slots__ = ["axis", "forced_length"]
 
     def __init__(self, axis, forced_length=None):
@@ -112,10 +112,10 @@ class AxisParallelTag(ParallelTag):
             return "%s(%d)" % (
                     self.print_name, self.axis)
 
-class TAG_GROUP_IDX(AxisParallelTag):
+class TAG_GROUP_IDX(ParallelTagWithAxis):
     print_name = "GROUP_IDX"
 
-class TAG_WORK_ITEM_IDX(AxisParallelTag):
+class TAG_WORK_ITEM_IDX(ParallelTagWithAxis):
     print_name = "WORK_ITEM_IDX"
 
 class TAG_ILP(ParallelTag):
@@ -355,6 +355,7 @@ class LoopKernel(Record):
         return False
 
     def _subst_prefetch(self, old_var, new_expr):
+        # FIXME delete me
         from pymbolic.mapper.substitutor import substitute
         subst_map = {old_var: new_expr}
 
@@ -373,7 +374,8 @@ class LoopKernel(Record):
     def substitute(self, old_var, new_expr):
         copy = self.copy(instructions=self._subst_insns(old_var, new_expr))
         if self.prefetch:
-            copy.prefetch = self._subst_prefetch(old_var, new_expr)
+            raise RuntimeError("cannot substitute-prefetches already generated")
+            #copy.prefetch = self._subst_prefetch(old_var, new_expr)
 
         if self.schedule is not None:
             raise RuntimeError("cannot substitute-schedule already generated")

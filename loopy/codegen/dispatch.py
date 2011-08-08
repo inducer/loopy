@@ -6,7 +6,7 @@ from loopy.codegen import ExecutionDomain, gen_code_block
 
 
 
-def build_loop_nest(cgs, kernel, sched_index, exec_domain):
+def build_loop_nest(cgs, kernel, sched_index, exec_domain, no_conditional_check=False):
     assert isinstance(exec_domain, ExecutionDomain)
 
     ccm = cgs.c_code_mapper
@@ -14,8 +14,39 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
     from cgen import (POD, Initializer, Assign, Statement as S,
             Line)
 
-    from loopy.schedule import get_valid_index_vars
-    from loopy.codegen.bounds import generate_bounds_checks
+    from loopy.codegen.bounds import (
+            generate_bounds_checks,
+            generate_bounds_checks_code,
+            get_valid_check_vars,
+            constraint_to_code)
+
+    if not no_conditional_check:
+        # {{{ see if there are any applicable conditionals
+
+        applicable_constraints = generate_bounds_checks(
+                kernel.domain,
+                get_valid_check_vars(kernel, sched_index, allow_ilp=False),
+                exec_domain.implemented_domain)
+
+        if applicable_constraints:
+            import islpy as isl
+            exec_domain_restriction = isl.Set.universe(kernel.space)
+            for cns in applicable_constraints:
+                exec_domain_restriction = (exec_domain_restriction
+                        .add_constraint(cns))
+
+            exec_domain = exec_domain.intersect(exec_domain_restriction)
+
+            inner = build_loop_nest(cgs, kernel, sched_index, exec_domain,
+                    no_conditional_check=True)
+
+            from loopy.codegen import wrap_in_if
+            return wrap_in_if([
+                constraint_to_code(ccm, cns)
+                for cns in applicable_constraints],
+                inner)
+
+        # }}}
 
     if sched_index >= len(kernel.schedule):
         # {{{ write innermost loop body
@@ -24,9 +55,9 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
 
         # FIXME revert to unroll if actual bounds checks are needed?
 
-        valid_index_vars = get_valid_index_vars(kernel, sched_index)
+        valid_index_vars = get_valid_check_vars(kernel, sched_index, allow_ilp=True)
         bounds_check_lists = [
-                generate_bounds_checks(ccm, kernel.domain,
+                generate_bounds_checks_code(ccm, kernel.domain,
                     valid_index_vars, impl_domain)
                 for assignments, impl_domain in
                     exec_domain]
@@ -64,15 +95,19 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
     if isinstance(sched_item, ScheduledLoop):
         from loopy.codegen.loop_dim import (
                 generate_unroll_or_ilp_code,
-                generate_non_unroll_loop_dim_code)
-        from loopy.kernel import BaseUnrollTag, TAG_ILP
+                generate_parallel_loop_dim_code,
+                generate_sequential_loop_dim_code)
+        from loopy.kernel import (BaseUnrollTag, TAG_ILP,
+                ParallelTagWithAxis)
 
         tag = kernel.iname_to_tag.get(sched_item.iname)
 
         if isinstance(tag, (BaseUnrollTag, TAG_ILP)):
             func = generate_unroll_or_ilp_code
+        elif isinstance(tag, ParallelTagWithAxis):
+            func = generate_parallel_loop_dim_code
         else:
-            func = generate_non_unroll_loop_dim_code
+            func = generate_sequential_loop_dim_code
 
         return func(cgs, kernel, sched_index, exec_domain)
 
@@ -87,7 +122,6 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
                     exec_domain)]
                 +[Line()])
 
-
         for i, (idx_assignments, impl_domain) in \
                 enumerate(exec_domain):
             for lvalue, expr in kernel.instructions:
@@ -96,7 +130,7 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
 
                 wrapped_assign = wrap_in_bounds_checks(
                         ccm, kernel.domain,
-                        get_valid_index_vars(kernel, sched_index),
+                        get_valid_check_vars(kernel, sched_index, allow_ilp=True),
                         impl_domain, assignment)
 
                 cb = []
