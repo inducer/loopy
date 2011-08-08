@@ -10,6 +10,7 @@ register_mpz_with_pymbolic()
 
 
 
+
 # TODO: Constant memory
 # TODO: Reuse of previously split dimensions for prefetch
 #   (Or general merging)
@@ -31,8 +32,7 @@ register_mpz_with_pymbolic()
 # TODO:   - Tricky: Convolution, FD
 # TODO: Try, fix indirect addressing
 # TODO: User controllable switch for slab opt
-# TODO: Separate all-bulk from non-bulk kernels.
-
+# TODO: Separate all-bulk from non-bulk kernels. (maybe?) (#ifdef?)
 
 # TODO: implement efficient div_ceil?
 # TODO: why are corner cases inefficient?

@@ -97,7 +97,7 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain):
 
                 result.append(
                         gen_code_block(
-                            idx_assignments+[ Line(), wrapped_assign, Line()]))
+                            idx_assignments+[ Line(), wrapped_assign]))
 
         return gen_code_block(result)
 

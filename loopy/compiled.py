@@ -7,14 +7,10 @@ from __future__ import division
 
 class CompiledKernel:
     def __init__(self, context, kernel, size_args=None, options=[],
-            force_rebuild=False, edit_code=False):
+             edit_code=False):
         self.kernel = kernel
         from loopy.codegen import generate_code
         self.code = generate_code(kernel)
-
-        if force_rebuild:
-            from time import time
-            self.code = "/* %s */\n%s" % (time(), self.code)
 
         if edit_code:
             from pytools import invoke_editor
@@ -72,8 +68,7 @@ class CompiledKernel:
 # {{{ timing driver
 
 def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
-        options=[], print_code=True, force_rebuild=False,
-        edit_code=False):
+        options=[], print_code=True, edit_code=False):
 
     def time_run(compiled_knl, warmup_rounds=2, timing_rounds=5):
         check = True
@@ -98,7 +93,7 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
     for kernel in kernel_generator:
 
         compiled = CompiledKernel(queue.context, kernel, options=options,
-                force_rebuild=force_rebuild, edit_code=edit_code)
+                edit_code=edit_code)
 
         print "-----------------------------------------------"
         print "SOLUTION #%d" % soln_count
