@@ -14,7 +14,7 @@ import pyopencl as cl
 
 class ArrayArg:
     def __init__(self, name, dtype, strides=None, shape=None, order="C",
-            offset=0):
+            offset=0, constant_mem=False):
         """
         All of the following are optional. Specify either strides or shape.
 
@@ -48,6 +48,8 @@ class ArrayArg:
 
         self.strides = strides
         self.offset = offset
+
+        self.constant_mem = constant_mem
 
     def __repr__(self):
         return "<ArrayArg '%s' of type %s>" % (self.name, self.dtype)
@@ -492,6 +494,13 @@ class LoopKernel(Record):
             else:
                 msg(4, "using more local memory than available--"
                         "possibly OK due to cache nature")
+
+        const_arg_count = sum(
+                1 for arg in self.args
+                if isinstance(arg, ArrayArg) and arg.constant_mem)
+
+        if const_arg_count > self.device.max_constant_args:
+            msg(5, "too many constant arguments")
 
         max_severity = 0
         for sev, msg in msgs:

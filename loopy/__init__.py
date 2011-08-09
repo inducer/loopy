@@ -11,7 +11,6 @@ register_mpz_with_pymbolic()
 
 
 
-# TODO: Constant memory (plus check for count)
 # TODO: Reuse of previously split dimensions for prefetch
 #   (Or general merging)
 

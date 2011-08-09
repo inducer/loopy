@@ -145,7 +145,7 @@ def generate_code(kernel):
             Define, Line, Const, LiteralLines, Initializer)
 
     from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
-            CLLocal, CLImage)
+            CLLocal, CLImage, CLConstant)
 
     from loopy.symbolic import LoopyCCodeMapper
     my_ccm = LoopyCCodeMapper(kernel)
@@ -180,7 +180,10 @@ def generate_code(kernel):
             arg_decl = restrict_ptr_if_not_nvidia(
                     POD(arg.dtype, arg.name))
             if arg_decl.name in kernel.input_vectors():
-                arg_decl = Const(arg_decl)
+                if arg.constant_mem:
+                    arg_decl = CLConstant(Const(arg_decl))
+                else:
+                    arg_decl = Const(arg_decl)
             arg_decl = CLGlobal(arg_decl)
         elif isinstance(arg, ImageArg):
             if arg.name in kernel.input_vectors():
