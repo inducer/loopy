@@ -83,16 +83,18 @@ class IndexTag(Record):
     def __hash__(self):
         raise RuntimeError("use .key to hash index tags")
 
-    @property
-    def key(self):
-        return type(self)
 
 
 
 class ParallelTag(IndexTag):
     pass
 
-class ParallelTagWithAxis(ParallelTag):
+class UniqueTag(IndexTag):
+    @property
+    def key(self):
+        return type(self)
+
+class ParallelTagWithAxis(ParallelTag, UniqueTag):
     __slots__ = ["axis", "forced_length"]
 
     def __init__(self, axis, forced_length=None):
@@ -222,7 +224,8 @@ class LoopKernel(Record):
     def tag_key_to_iname(self):
         return dict(
                 (tag.key, iname)
-                for iname, tag in self.iname_to_tag.iteritems())
+                for iname, tag in self.iname_to_tag.iteritems()
+                if isinstance(tag, UniqueTag))
 
     @property
     @memoize_method
@@ -396,11 +399,12 @@ class LoopKernel(Record):
 
         new_tag_keys = set(tag.key
                 for tag in [outer_tag, inner_tag]
-                if tag is not None)
+                if tag is not None
+                if isinstance(tag, UniqueTag))
 
         repeated_tag_keys = new_tag_keys & set(
-                tag.key for tag in
-                self.iname_to_tag.itervalues())
+                tag.key for tag in self.iname_to_tag.itervalues()
+                if isinstance(tag, UniqueTag))
 
         if repeated_tag_keys:
             raise RuntimeError("repeated tag(s): %s" % repeated_tag_keys)
