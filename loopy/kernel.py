@@ -395,7 +395,7 @@ class LoopKernel(Record):
         if self.iname_to_tag.get(name) is not None:
             raise RuntimeError("cannot split tagged dimension '%s'" % name)
 
-        # {{{ check for repeated tag keys
+        # {{{ check for repeated unique tag keys
 
         new_tag_keys = set(tag.key
                 for tag in [outer_tag, inner_tag]

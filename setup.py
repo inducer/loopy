@@ -12,8 +12,17 @@ except ImportError:
     # 2.x
     from distutils.command.build_py import build_py
 
+ver_dic = {}
+version_file = open("pyopencl/version.py")
+try:
+    version_file_contents = version_file.read()
+finally:
+    version_file.close()
+
+exec(compile(version_file_contents, "pyopencl/version.py", 'exec'), ver_dic)
+
 setup(name="loopy",
-      version="2011.1",
+      version=ver_dic["VERSION_TEXT"],
       description="An automatic loop generator for OpenCL",
       long_description="",
       classifiers=[
