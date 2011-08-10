@@ -32,7 +32,7 @@ register_mpz_with_pymbolic()
 # TODO: User controllable switch for slab opt
 # TODO: Separate all-bulk from non-bulk kernels. (maybe?) (#ifdef?)
 
-# TODO: implement efficient div_ceil?
+# TODO: implement efficient div_ceil? (as opposed to floor_div)
 # TODO: why are corner cases inefficient?
 # TODO: Use gists
 # TODO: Imitate codegen bulk slab handling in bulk slab trials
