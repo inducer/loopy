@@ -125,21 +125,20 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
     pf_iname = pf.inames[pf_iname_idx]
     realiz_inames = flnd.realization_inames[pf_iname_idx]
 
-    start_index, stop_index = flnd.kernel.get_projected_bounds(pf_iname)
-    try:
-        start_index = int(start_index)
-        stop_index = int(stop_index)
-    except TypeError:
-        raise RuntimeError("loop bounds for prefetch must be "
-                "known statically at code gen time")
+    start_index, stop_index = pf.dim_bounds_by_iname[pf_iname]
 
     dim_length = stop_index-start_index
 
     if realiz_inames is not None:
         # {{{ parallel fetch
 
-        realiz_bounds = [flnd.kernel.get_projected_bounds(rn) for rn in realiz_inames]
-        realiz_lengths = [stop-start for start, stop in realiz_bounds]
+        realiz_bounds = [
+                flnd.kernel.get_bounds(rn, (rn,), allow_parameters=False)
+                for rn in realiz_inames]
+        for realiz_start, realiz_stop, realiz_equality in realiz_bounds:
+            assert not realiz_equality
+
+        realiz_lengths = [stop-start for start, stop, equality in realiz_bounds]
         from pytools import product
         total_realiz_size = product(realiz_lengths)
 
@@ -189,12 +188,13 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
         pf_dim_var = "prefetch_dim_idx_%d" % pf_iname_idx
         pf_dim_expr = var(pf_dim_var)
 
-        lb_cns, ub_cns = flnd.kernel.get_projected_bounds_constraints(pf_iname)
+        lb_cns, ub_cns = pf.get_dim_bounds_constraints_by_iname(pf_iname)
+
         import islpy as isl
         from loopy.isl import cast_constraint_to_space
         loop_slab = (isl.Set.universe(flnd.kernel.space)
-                .add_constraint(cast_constraint_to_space(lb_cns, kernel.space))
-                .add_constraint(cast_constraint_to_space(ub_cns, kernel.space)))
+                .add_constraints([cast_constraint_to_space(cns, kernel.space)
+                    for cns in [lb_cns, ub_cns]]))
         new_impl_domain = implemented_domain.intersect(loop_slab)
 
         pf_idx_subst_map = pf_idx_subst_map.copy()

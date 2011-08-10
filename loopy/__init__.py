@@ -34,6 +34,8 @@ register_mpz_with_pymbolic()
 
 # TODO: implement efficient div_ceil?
 # TODO: why are corner cases inefficient?
+# TODO: Use gists
+# TODO: Imitate codegen bulk slab handling in bulk slab trials
 
 
 

@@ -56,7 +56,7 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
 
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
-    assert knl.get_problems()[0] <= 2
+    assert knl.get_problems({})[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))

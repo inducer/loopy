@@ -278,27 +278,29 @@ class LoopKernel(Record):
                 result.append(dim)
 
     @memoize_method
-    def get_projected_bounds_constraints(self, iname):
+    def get_bounds_constraints(self, iname, admissible_vars, allow_parameters):
         """Get an overapproximation of the loop bounds for the variable *iname*."""
 
-        from loopy.isl import get_projected_bounds_constraints
-        return get_projected_bounds_constraints(self.domain, iname)
+        from loopy.codegen.bounds import get_bounds_constraints
+        return get_bounds_constraints(self.domain, iname, admissible_vars,
+                allow_parameters)
 
     @memoize_method
-    def get_projected_bounds(self, iname):
+    def get_bounds(self, iname, admissible_vars, allow_parameters):
         """Get an overapproximation of the loop bounds for the variable *iname*."""
 
-        from loopy.isl import get_projected_bounds
-        return get_projected_bounds(self.domain, iname)
+        from loopy.codegen.bounds import get_bounds
+        return get_bounds(self.domain, iname, admissible_vars, allow_parameters)
 
-    def tag_type_lengths(self, tag_cls):
+    def tag_type_lengths(self, tag_cls, allow_parameters):
         def get_length(iname):
             tag = self.iname_to_tag[iname]
             if tag.forced_length is not None:
                 return tag.forced_length
 
-            start, stop = self.get_projected_bounds(iname)
-            return stop-start
+            lower, upper, equality = self.get_bounds(iname, (iname,), 
+                    allow_parameters=allow_parameters)
+            return upper-lower
 
         return [get_length(iname)
                 for iname in self.ordered_inames_by_tag_type(tag_cls)]
@@ -458,7 +460,7 @@ class LoopKernel(Record):
                 .substitute(name, new_loop_index)
                 .copy(domain=new_domain, iname_to_tag=new_iname_to_tag))
 
-    def get_problems(self, emit_warnings=True):
+    def get_problems(self, parameters, emit_warnings=True):
         """
         :return: *(max_severity, list of (severity, msg))*, where *severity* ranges from 1-5.
             '5' means 'will certainly not run'.
@@ -473,8 +475,13 @@ class LoopKernel(Record):
 
             msgs.append((severity, s))
 
-        glens = self.tag_type_lengths(TAG_GROUP_IDX)
-        llens = self.tag_type_lengths(TAG_WORK_ITEM_IDX)
+        glens = self.tag_type_lengths(TAG_GROUP_IDX, allow_parameters=True)
+        llens = self.tag_type_lengths(TAG_WORK_ITEM_IDX, allow_parameters=False)
+
+        from pymbolic import evaluate
+        glens = evaluate(glens, parameters)
+        llens = evaluate(llens, parameters)
+
         if (max(len(glens), len(llens))
                 > self.device.max_work_item_dimensions):
             msg(5, "too many work item dimensions")

@@ -1,7 +1,6 @@
 from __future__ import division
 
 from pytools import Record, memoize_method
-import islpy as isl
 from islpy import dim_type
 
 
@@ -90,8 +89,10 @@ class LocalMemoryPrefetch(Record):
     @property
     @memoize_method
     def domain(self):
-        return (isl.project_out_except(self.kernel.domain, self.inames, [dim_type.set])
-                .remove_divs())
+        return (self.kernel.domain
+                .project_out_except(self.inames, [dim_type.set])
+                .compute_divs()
+                .remove_divs_of_dim_type(dim_type.set))
 
     @property
     @memoize_method
@@ -106,20 +107,55 @@ class LocalMemoryPrefetch(Record):
     def restricted_index_map(self):
         return self.index_map.intersect_domain(self.domain)
 
+    @memoize_method
+    def get_dim_bounds_constraints_by_iname(self, iname):
+        from loopy.codegen.bounds import get_bounds_constraints
+        lower, upper, equality = get_bounds_constraints(
+                self.domain, iname, (iname,),
+                allow_parameters=False)
+
+        assert not equality
+
+        lower, = lower
+        upper, = upper
+        return lower, upper
+
+    @property
+    @memoize_method
+    def dim_bounds_by_iname(self):
+        from loopy.codegen.bounds import solve_constraint_for_bound
+        result = {}
+        for iname in self.inames:
+            lower, upper = self.get_dim_bounds_constraints_by_iname(iname)
+
+            lower_kind, lower_bound = solve_constraint_for_bound(lower, iname)
+            upper_kind, upper_bound = solve_constraint_for_bound(upper, iname)
+
+            try:
+                lower_bound = int(lower_bound)
+                upper_bound = int(upper_bound)
+            except TypeError:
+                raise RuntimeError("loop bounds for prefetch must be known statically")
+
+            result[iname] = (lower_bound, upper_bound)
+
+        return result
+
     @property
     @memoize_method
     def dim_bounds(self):
-        from loopy.isl import get_dim_bounds
-        return get_dim_bounds(self.domain, self.inames)
+        dbbi = self.dim_bounds_by_iname
+        return [dbbi[iname] for iname in self.inames]
 
     @property
     def itemsize(self):
         return self.kernel.arg_dict[self.input_vector].dtype.itemsize
+
     @property
     @memoize_method
     def nbytes(self):
-        from loopy.isl import count_box_from_bounds
-        return self.itemsize * count_box_from_bounds(self.dim_bounds)
+        from pytools import product
+        return self.itemsize * product(upper-lower for lower, upper in self.dim_bounds)
 
     @memoize_method
     def free_variables(self):

@@ -6,6 +6,7 @@ from pymbolic.mapper import CombineMapper, RecursiveMapper
 from pymbolic.mapper.c_code import CCodeMapper
 from pymbolic.mapper.stringifier import PREC_NONE
 import numpy as np
+import islpy as isl
 
 
 
@@ -145,7 +146,7 @@ class LoopyCCodeMapper(CCodeMapper):
                 from pymbolic.mapper.stringifier import PREC_SUM
                 return pf.name+"".join(
                         "[%s - %s]" % (iname, self.rec(
-                            self.kernel.get_projected_bounds(iname)[0],
+                            pf.dim_bounds_by_iname[iname][0],
                             PREC_SUM))
                         for iname in pf.inames)
 
@@ -199,6 +200,59 @@ class LoopyCCodeMapper(CCodeMapper):
                     % (self.rec(expr.numerator, PREC_NONE),
                         self.rec(expr.denominator, PREC_NONE)))
 
+    def map_min(self, expr, prec):
+        what = type(expr).__name__.lower()
+
+        children = expr.children[:]
+
+        result = self.rec(children.pop(), PREC_NONE)
+        while children:
+            result = "%s(%s, %s)" % (what,
+                        self.rec(children.pop(), PREC_NONE),
+                        result)
+
+        return result
+
+    map_max = map_min
+
 # }}}
+
+# {{{ expression <-> constraint conversion
+
+def _constraint_from_expr(space, expr, constraint_factory):
+    from loopy.symbolic import CoefficientCollector
+    return constraint_factory(space,
+            CoefficientCollector()(expr))
+
+def eq_constraint_from_expr(space, expr):
+    return _constraint_from_expr(
+            space, expr, isl.Constraint.eq_from_names)
+
+def ineq_constraint_from_expr(space, expr):
+    return _constraint_from_expr(
+            space, expr, isl.Constraint.ineq_from_names)
+
+def constraint_to_expr(cns, except_name=None):
+    excepted_coeff = 0
+    result = 0
+    from pymbolic import var
+    for var_name, coeff in cns.get_coefficients_by_name().iteritems():
+        if isinstance(var_name, str):
+            if var_name == except_name:
+                excepted_coeff = int(coeff)
+            else:
+                result += int(coeff)*var(var_name)
+        else:
+            result += int(coeff)
+
+    if except_name is not None:
+        return result, excepted_coeff
+    else:
+        return result
+
+# }}}
+
+
+
 
 # vim: foldmethod=marker

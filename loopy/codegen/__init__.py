@@ -240,13 +240,14 @@ def generate_code(kernel):
             (TAG_GROUP_IDX, "get_group_id"),
             (TAG_WORK_ITEM_IDX, "get_local_id")]:
         for iname in kernel.ordered_inames_by_tag_type(what_cls):
-            start, stop = kernel.get_projected_bounds(iname)
+            lower, upper, equality = kernel.get_bounds(iname, (iname,), allow_parameters=True)
+            assert not equality
             mod.append(Define(iname, "(%s + (int) %s(%d)) /* [%s, %s) */"
-                        % (ccm(start),
+                        % (ccm(lower),
                             func,
                             kernel.iname_to_tag[iname].axis,
-                            ccm(start),
-                            ccm(stop))))
+                            ccm(lower),
+                            ccm(upper))))
 
     mod.append(Line())
 
@@ -277,7 +278,9 @@ def generate_code(kernel):
         FunctionBody(
             CLRequiredWorkGroupSize(
                 tuple(dim_length
-                    for dim_length in kernel.tag_type_lengths(TAG_WORK_ITEM_IDX)),
+                    for dim_length in kernel.tag_type_lengths(
+                        TAG_WORK_ITEM_IDX,
+                        allow_parameters=False)),
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),
             body))

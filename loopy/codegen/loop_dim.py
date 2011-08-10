@@ -4,17 +4,36 @@ import numpy as np
 from loopy.codegen import ExecutionDomain, gen_code_block
 from pytools import Record
 import islpy as isl
+from islpy import dim_type
 from loopy.codegen.dispatch import build_loop_nest
 
 
 
 
 
+def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
+    from loopy.isl import cast_constraint_to_space
+    from loopy.codegen.bounds import get_bounds_constraints, get_defined_vars
+    lower_constraints_orig, upper_constraints_orig, equality_constraints_orig = \
+            get_bounds_constraints(kernel.domain, iname,
+                    frozenset([iname])
+                    | frozenset(get_defined_vars(kernel, sched_index+1, allow_ilp=False)),
+                    allow_parameters=True)
+
+    assert not equality_constraints_orig
+    from loopy.codegen.bounds import pick_simple_constraint
+    lb_cns_orig = pick_simple_constraint(lower_constraints_orig, iname)
+    ub_cns_orig = pick_simple_constraint(upper_constraints_orig, iname)
+
+    lb_cns_orig = cast_constraint_to_space(lb_cns_orig, kernel.space)
+    ub_cns_orig = cast_constraint_to_space(ub_cns_orig, kernel.space)
+
+    return lb_cns_orig, ub_cns_orig
+
 # {{{ conditional-minimizing slab decomposition
 
 def get_slab_decomposition(cgs, kernel, sched_index, exec_domain):
-    from loopy.isl import (cast_constraint_to_space,
-            block_shift_constraint, negate_constraint)
+    from loopy.isl import block_shift_constraint, negate_constraint
 
     ccm = cgs.c_code_mapper
     space = kernel.space
@@ -23,9 +42,8 @@ def get_slab_decomposition(cgs, kernel, sched_index, exec_domain):
 
     # {{{ attempt slab partition to reduce conditional count
 
-    lb_cns_orig, ub_cns_orig = kernel.get_projected_bounds_constraints(iname)
-    lb_cns_orig = cast_constraint_to_space(lb_cns_orig, space)
-    ub_cns_orig = cast_constraint_to_space(ub_cns_orig, space)
+    lb_cns_orig, ub_cns_orig = get_simple_loop_bounds(kernel, sched_index, iname,
+            exec_domain.implemented_domain)
 
     # jostle the constant in {lb,ub}_cns to see if we can get
     # fewer conditionals in the bulk middle segment
@@ -104,9 +122,8 @@ def get_slab_decomposition(cgs, kernel, sched_index, exec_domain):
 # {{{ unrolled/ILP loops
 
 def generate_unroll_or_ilp_code(cgs, kernel, sched_index, exec_domain):
-    from loopy.isl import (
-            cast_constraint_to_space, solve_constraint_for_bound,
-            block_shift_constraint)
+    from loopy.isl import block_shift_constraint
+    from loopy.codegen.bounds import solve_constraint_for_bound
 
     from cgen import (POD, Assign, Line, Statement as S, Initializer, Const)
 
@@ -115,9 +132,8 @@ def generate_unroll_or_ilp_code(cgs, kernel, sched_index, exec_domain):
     iname = kernel.schedule[sched_index].iname
     tag = kernel.iname_to_tag.get(iname)
 
-    lower_cns, upper_cns = kernel.get_projected_bounds_constraints(iname)
-    lower_cns = cast_constraint_to_space(lower_cns, space)
-    upper_cns = cast_constraint_to_space(upper_cns, space)
+    lower_cns, upper_cns = get_simple_loop_bounds(kernel, sched_index, iname,
+            exec_domain.implemented_domain)
 
     lower_kind, lower_bound = solve_constraint_for_bound(lower_cns, iname)
     upper_kind, upper_bound = solve_constraint_for_bound(upper_cns, iname)
@@ -125,10 +141,8 @@ def generate_unroll_or_ilp_code(cgs, kernel, sched_index, exec_domain):
     assert lower_kind == ">="
     assert upper_kind == "<"
 
-    from pymbolic import flatten
-    from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
-    cfm = CommutativeConstantFoldingMapper()
-    length = int(cfm(flatten(upper_bound-lower_bound)))
+    success, length = kernel.domain.project_out_except([iname], [dim_type.set]).count()
+    assert success == 0
 
     def generate_idx_eq_slabs():
         for i in xrange(length):
@@ -184,7 +198,6 @@ def generate_unroll_or_ilp_code(cgs, kernel, sched_index, exec_domain):
 def generate_parallel_loop_dim_code(cgs, kernel, sched_index, exec_domain):
     from loopy.isl import make_slab
 
-
     ccm = cgs.c_code_mapper
     space = kernel.space
     iname = kernel.schedule[sched_index].iname
@@ -206,7 +219,7 @@ def generate_parallel_loop_dim_code(cgs, kernel, sched_index, exec_domain):
                 .add_constraint(ub_cns_orig))
     else:
         impl_len = tag.forced_length
-        start, _ = kernel.get_projected_bounds(iname)
+        start, _, _ = kernel.get_bounds(iname, (iname,), allow_parameters=True)
         exec_domain = exec_domain.intersect(
                 make_slab(kernel.space, iname, start, start+impl_len))
 
@@ -224,7 +237,7 @@ def generate_parallel_loop_dim_code(cgs, kernel, sched_index, exec_domain):
                 domain=kernel.domain.intersect(slab))
         result.append(
                 add_comment(cmt,
-                    build_loop_nest(cgs, kernel, sched_index+1,
+                    build_loop_nest(cgs, new_kernel, sched_index+1,
                         exec_domain)))
 
     from loopy.codegen import gen_code_block

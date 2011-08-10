@@ -104,7 +104,7 @@ def test_plain_matrix_mul(ctx_factory):
     knl = lp.split_dimension(knl, "k", 4)
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
-    assert knl.get_problems()[0] <= 2
+    assert knl.get_problems({})[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
@@ -158,7 +158,7 @@ def test_image_matrix_mul(ctx_factory):
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
-    assert knl.get_problems()[0] <= 2
+    assert knl.get_problems({})[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
@@ -216,7 +216,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
-    assert knl.get_problems()[0] <= 2
+    assert knl.get_problems({})[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
@@ -273,7 +273,7 @@ def test_fancy_matrix_mul(ctx_factory):
     knl = lp.split_dimension(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
-    assert knl.get_problems()[0] <= 2
+    assert knl.get_problems(dict(n=n))[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
@@ -357,7 +357,7 @@ def test_dg_matrix_mul(ctx_factory):
         knl = lp.add_prefetch(knl, 'fld%d' % ifld,
                 #["k_inner_outer", "k_inner_inner", "j"])
                 ["k_inner", "j"])
-    assert knl.get_problems()[0] <= 2
+    assert knl.get_problems({})[0] <= 2
 
     kernel_gen = list(lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))[:1]
