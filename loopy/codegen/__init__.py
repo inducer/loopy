@@ -15,7 +15,7 @@ class GeneratedCode(Record):
     """
     __slots__ = ["ast", "num_conditionals"]
 
-def gen_code_block(elements, is_alternatives=False):
+def gen_code_block(elements, is_alternatives=False, denest=False):
     """
     :param is_alternatives: a :class:`bool` indicating that
         only one of the *elements* will effectively be executed.
@@ -28,7 +28,10 @@ def gen_code_block(elements, is_alternatives=False):
     for el in elements:
         if isinstance(el, GeneratedCode):
             conditional_counts.append(el.num_conditionals)
-            block_els.append(el.ast)
+            if isinstance(el.ast, Block) and denest:
+                block_els.extend(el.ast.contents)
+            else:
+                block_els.append(el.ast)
         elif isinstance(el, Generable):
             block_els.append(el)
         else:

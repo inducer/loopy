@@ -72,8 +72,10 @@ class LocalMemoryPrefetch(Record):
     :ivar input_vector: A string indicating the input vector variable name.
     :ivar index_expr: An expression identifying the access which this prefetch
       serves.
-    :ivar inames: A sequence of inames (i.e. loop dimensions) identifying which
-        part of the input vector, given the index_expr, should be prefetched.
+    :ivar fetch_dims: A sequence of tuples of inames (i.e. loop dimensions)
+        identifying which part of the input vector, given the index_expr, should
+        be prefetched. Non-length-1 tuples indicate that these indices should
+        share a dimension in the prefetch array.
     :ivar loc_fetch_axes: dictionary from integers 0..len(inames) to lists of
       local index axes which should be used to realize that dimension of the
       prefetch. The last dimension in this list is used as the fastest-changing
@@ -86,11 +88,21 @@ class LocalMemoryPrefetch(Record):
     The latter two values are only assigned during code generation.
     """
 
+    @memoize_method
+    def all_inames(self):
+        """Order matters as this will be the order of indices into the
+        prefetch array.
+        """
+        return [
+                iname
+                for fetch_dim in self.fetch_dims
+                for iname in fetch_dim]
+
     @property
     @memoize_method
     def domain(self):
         return (self.kernel.domain
-                .project_out_except(self.inames, [dim_type.set])
+                .project_out_except(self.all_inames(), [dim_type.set])
                 .compute_divs()
                 .remove_divs_of_dim_type(dim_type.set))
 
@@ -125,7 +137,7 @@ class LocalMemoryPrefetch(Record):
     def dim_bounds_by_iname(self):
         from loopy.codegen.bounds import solve_constraint_for_bound
         result = {}
-        for iname in self.inames:
+        for iname in self.all_inames():
             lower, upper = self.get_dim_bounds_constraints_by_iname(iname)
 
             lower_kind, lower_bound = solve_constraint_for_bound(lower, iname)
@@ -142,27 +154,31 @@ class LocalMemoryPrefetch(Record):
         return result
 
     @property
-    @memoize_method
-    def dim_bounds(self):
-        dbbi = self.dim_bounds_by_iname
-        return [dbbi[iname] for iname in self.inames]
-
-    @property
     def itemsize(self):
         return self.kernel.arg_dict[self.input_vector].dtype.itemsize
+
+    def dim_lengths(self):
+        result = []
+        for fetch_dim in self.fetch_dims:
+            fd_result = 1
+            for iname in fetch_dim:
+                start, stop = self.dim_bounds_by_iname[iname]
+                fd_result *= stop-start
+            result.append(fd_result)
+        return result
 
     @property
     @memoize_method
     def nbytes(self):
         from pytools import product
-        return self.itemsize * product(upper-lower for lower, upper in self.dim_bounds)
+        return self.itemsize * product(self.dim_lengths())
 
     @memoize_method
     def free_variables(self):
         from pymbolic.mapper.dependency import DependencyMapper
         return set(var.name
                 for var in DependencyMapper()(self.index_expr)
-                ) - set(self.inames) - self.kernel.scalar_args()
+                ) - set(self.all_inames()) - self.kernel.scalar_args()
 
     def hash(self):
         return (hash(type(self)) ^ hash(self.input_vector)

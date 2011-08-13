@@ -4,6 +4,9 @@ from pytools import Record
 import pyopencl as cl
 import pyopencl.characterize as cl_char
 from loopy.codegen import wrap_in, gen_code_block
+import islpy as isl
+from islpy import dim_type
+import numpy as np
 
 
 
@@ -22,8 +25,8 @@ def preprocess_prefetch(kernel):
         all_pf_nbytes = [opf.nbytes for opf in all_pf_list]
         other_pf_sizes = sum(all_pf_nbytes[:i_pf]+all_pf_nbytes[i_pf+1:])
 
-        shape = [stop-start for start, stop in pf.dim_bounds]
-        dim_storage_lengths = shape[:]
+        dim_storage_lengths = [stop-start for start, stop in
+                [pf.dim_bounds_by_iname[iname] for iname in pf.all_inames()]]
 
         # sizes of all dims except the last one, which we may change
         # below to avoid bank conflicts
@@ -47,7 +50,7 @@ def preprocess_prefetch(kernel):
                 test_dsl[-1] = test_dsl[-1] + increment
                 new_mult, why_not = cl_char.why_not_local_access_conflict_free(
                         kernel.device, pf.itemsize,
-                        shape, test_dsl)
+                        pf.dim_lengths(), test_dsl)
 
                 # will choose smallest increment 'automatically'
                 if new_mult < min_mult:
@@ -87,7 +90,7 @@ def preprocess_prefetch(kernel):
 class FetchLoopNestData(Record):
     pass
 
-def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
+def make_fetch_loop_nest(flnd, fetch_dim_idx, pf_dim_exprs, iname_subst_map,
         implemented_domain):
     pf = flnd.prefetch
     ccm = flnd.c_code_mapper
@@ -98,7 +101,7 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
     from cgen import Assign, For, If
 
     from pymbolic.mapper.substitutor import substitute
-    if pf_iname_idx >= len(pf.inames):
+    if fetch_dim_idx >= len(pf.fetch_dims):
         # done, return
         from pymbolic.primitives import Variable, Subscript
 
@@ -109,11 +112,11 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
                 no_pf_ccm(
                     Subscript(
                         Variable(pf.input_vector),
-                        substitute(pf.index_expr, pf_idx_subst_map)),
+                        substitute(pf.index_expr, iname_subst_map)),
                     PREC_NONE))
 
         def my_ccm(expr):
-            return ccm(substitute(expr, pf_idx_subst_map))
+            return ccm(substitute(expr, iname_subst_map))
 
         from pymbolic.mapper.dependency import DependencyMapper
         check_vars = [v.name for v in DependencyMapper()(pf.index_expr)]
@@ -122,15 +125,72 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
         return wrap_in_bounds_checks(my_ccm, pf.kernel.domain,
                 check_vars, implemented_domain, result)
 
-    pf_iname = pf.inames[pf_iname_idx]
-    realiz_inames = flnd.realization_inames[pf_iname_idx]
+    fetch_inames = pf.fetch_dims[fetch_dim_idx]
+    realiz_inames = flnd.realization_inames[fetch_dim_idx]
 
-    start_index, stop_index = pf.dim_bounds_by_iname[pf_iname]
+    fetch_iname_lengths = [stop-start
+            for start, stop in 
+            [pf.dim_bounds_by_iname[iname] for iname in fetch_inames]]
 
-    dim_length = stop_index-start_index
+    from pytools import product
+    dim_length = product(fetch_iname_lengths)
+
+    idx_var_name = "loopy_prefetch_dim_idx_%d" % fetch_dim_idx
+    idx_var = var(idx_var_name)
 
     if realiz_inames is not None:
         # {{{ parallel fetch
+
+        # {{{ find strides per fetch iname
+
+        fetch_iname_strides = [1]
+        for fil in fetch_iname_lengths[:0:-1]:
+            fetch_iname_strides.insert(0,
+                    fetch_iname_strides[0]*fil)
+
+        # }}}
+
+        idx_var_expr_from_inames = sum(stride*var(iname)
+                for iname, stride in zip(fetch_inames, fetch_iname_strides))
+
+        # {{{ find expressions for each iname from idx_var
+
+        pf_dim_exprs = pf_dim_exprs[:]
+        iname_subst_map = iname_subst_map.copy()
+
+        for i, iname in enumerate(fetch_inames):
+            iname_lower, iname_upper = pf.dim_bounds_by_iname[iname]
+            iname_len = iname_upper-iname_lower
+            iname_val_base = (idx_var // fetch_iname_strides[i])
+            if i != 0:
+                # the outermost iname is the 'largest', no need to
+                # 'modulo away' any larger ones
+                iname_val_base = iname_val_base % iname_len
+
+            pf_dim_exprs.append(iname_val_base)
+            iname_subst_map[iname] = iname_val_base + iname_lower
+
+        # }}}
+
+        # {{{ build an implemented domain with an extra index variable
+
+        from loopy.symbolic import eq_constraint_from_expr
+        idx_var_dim_idx = implemented_domain.get_dim().size(dim_type.set)
+        impl_domain_with_index_var = implemented_domain.add_dims(dim_type.set, 1)
+        impl_domain_with_index_var = (
+                impl_domain_with_index_var
+                .set_dim_name(dim_type.set, idx_var_dim_idx, idx_var_name))
+        aug_space = impl_domain_with_index_var.get_dim()
+        impl_domain_with_index_var = (
+                impl_domain_with_index_var
+                .intersect(
+                    isl.Set.universe(aug_space)
+                    .add_constraint(
+                        eq_constraint_from_expr(
+                            aug_space,
+                            idx_var_expr_from_inames - idx_var))))
+
+        # }}}
 
         realiz_bounds = [
                 flnd.kernel.get_bounds(rn, (rn,), allow_parameters=False)
@@ -146,34 +206,42 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
 
         cur_index = 0
 
-        while start_index+cur_index < stop_index:
-            pf_dim_expr = 0
+        while cur_index < dim_length:
+            pf_idx_expr = 0
             for realiz_iname, length in zip(realiz_inames, realiz_lengths):
                 tag = flnd.kernel.iname_to_tag[realiz_iname]
                 from loopy.kernel import TAG_WORK_ITEM_IDX
                 assert isinstance(tag, TAG_WORK_ITEM_IDX)
 
-                pf_dim_expr = (pf_dim_expr*length
+                pf_idx_expr = (pf_idx_expr*length
                         + var("(int) get_local_id(%d)" % tag.axis))
 
+            pf_idx_expr += cur_index
+
             from loopy.isl import make_slab
-            loop_slab = make_slab(pf.kernel.space, pf_iname,
-                    start_index+cur_index,
-                    min(stop_index, start_index+cur_index+total_realiz_size))
-            new_impl_domain = implemented_domain.intersect(loop_slab)
+            new_impl_domain = (
+                    impl_domain_with_index_var
+                    .intersect(
+                        make_slab(
+                            impl_domain_with_index_var.get_dim(), idx_var_name,
+                            cur_index,
+                            min(dim_length, cur_index+total_realiz_size)))
+                    .project_out(dim_type.set, idx_var_dim_idx, 1))
 
-            pf_dim_expr += cur_index
-
-            pf_idx_subst_map = pf_idx_subst_map.copy()
-            pf_idx_subst_map[pf_iname] = pf_dim_expr + start_index
-            inner = make_fetch_loop_nest(flnd, pf_iname_idx+1,
-                    pf_dim_exprs+[pf_dim_expr], pf_idx_subst_map,
+            inner = make_fetch_loop_nest(flnd, fetch_dim_idx+1,
+                    pf_dim_exprs, iname_subst_map,
                     new_impl_domain)
 
             if cur_index+total_realiz_size > dim_length:
                 inner = wrap_in(If,
-                        "%s < %s" % (ccm(pf_dim_expr), stop_index),
+                        "%s < %s" % (idx_var_name, dim_length),
                         inner)
+
+            from cgen import Initializer, Const, POD
+            inner = gen_code_block([
+                Initializer(Const(POD(np.int32, idx_var_name)),
+                    ccm(pf_idx_expr)),
+                inner], denest=True)
 
             result.append(inner)
 
@@ -185,28 +253,28 @@ def make_fetch_loop_nest(flnd, pf_iname_idx, pf_dim_exprs, pf_idx_subst_map,
     else:
         # {{{ sequential fetch
 
-        pf_dim_var = "prefetch_dim_idx_%d" % pf_iname_idx
-        pf_dim_expr = var(pf_dim_var)
+        if len(fetch_inames) > 1:
+            raise NotImplementedError("merged sequential fetches are not supported")
+        pf_iname, = fetch_inames
 
         lb_cns, ub_cns = pf.get_dim_bounds_constraints_by_iname(pf_iname)
 
-        import islpy as isl
         from loopy.isl import cast_constraint_to_space
         loop_slab = (isl.Set.universe(flnd.kernel.space)
                 .add_constraints([cast_constraint_to_space(cns, kernel.space)
                     for cns in [lb_cns, ub_cns]]))
         new_impl_domain = implemented_domain.intersect(loop_slab)
 
-        pf_idx_subst_map = pf_idx_subst_map.copy()
-        pf_idx_subst_map[pf_iname] = pf_dim_expr + start_index
-        inner = make_fetch_loop_nest(flnd, pf_iname_idx+1,
-                pf_dim_exprs+[pf_dim_expr], pf_idx_subst_map,
+        iname_subst_map = iname_subst_map.copy()
+        iname_subst_map[pf_iname] = idx_var + pf.dim_bounds_by_iname[pf_iname][0]
+        inner = make_fetch_loop_nest(flnd, fetch_dim_idx+1,
+                pf_dim_exprs+[idx_var], iname_subst_map,
                 new_impl_domain)
 
         return wrap_in(For,
-                "int %s = 0" % pf_dim_var,
-                "%s < %s" % (pf_dim_var, ccm(dim_length)),
-                "++%s" % pf_dim_var,
+                "int %s = 0" % idx_var_name,
+                "%s < %s" % (idx_var_name, ccm(dim_length)),
+                "++%s" % idx_var_name,
                 inner)
 
         # }}}
@@ -218,17 +286,6 @@ def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
     from cgen import Statement as S, Line, Comment
 
     ccm = cgs.c_code_mapper
-
-    # find surrounding schedule items
-    if sched_index-1 >= 0:
-        next_outer_sched_item = kernel.schedule[sched_index-1]
-    else:
-        next_outer_sched_item = None
-
-    if sched_index+1 < len(kernel.schedule):
-        next_inner_sched_item = kernel.schedule[sched_index+1]
-    else:
-        next_inner_sched_item = None
 
     scheduled_pf = kernel.schedule[sched_index]
     pf = kernel.prefetch[
@@ -243,7 +300,7 @@ def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
     # realization_dims is a list of lists of inames, to represent when two dims jointly
     # make up one fetch axis
 
-    realization_inames = [None] * len(pf.inames)
+    realization_inames = [None] * len(pf.fetch_dims)
 
     # {{{ first, fix the user-specified fetch dims
 
@@ -290,26 +347,28 @@ def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
             for arg in kernel.args
             if isinstance(arg, ScalarArg))
 
-    def stride_key(iname):
-        iname_stride = iname_to_stride[iname]
+    def stride_key(fetch_dim_idx):
+        fetch_dim = pf.fetch_dims[fetch_dim_idx]
 
         from pymbolic import evaluate
-        key = evaluate(iname_stride, approximate_arg_values)
+        key = min(
+                evaluate(iname_to_stride[iname], approximate_arg_values)
+                for iname in fetch_dim)
         assert isinstance(key, int)
         return key
 
-    pf_iname_strides = sorted((iname
-        for dim_idx, iname in enumerate(pf.inames)
+    pf_fetch_dim_strides = sorted((dim_idx
+        for dim_idx in range(len(pf.fetch_dims))
         if realization_inames[dim_idx] is None),
         key=stride_key)
 
-    while knl_work_item_inames and pf_iname_strides:
+    while knl_work_item_inames and pf_fetch_dim_strides:
         # grab least-stride prefetch dim
-        least_stride_pf_iname = pf_iname_strides.pop(0)
+        least_stride_pf_fetch_dim_idx = pf_fetch_dim_strides.pop(0)
 
         # FIXME: It might be good to join multiple things together here
         # for size reasons
-        realization_inames[pf.inames.index(least_stride_pf_iname)] \
+        realization_inames[least_stride_pf_fetch_dim_idx] \
                 = [knl_work_item_inames.pop(0)]
 
     if knl_work_item_inames:
@@ -343,38 +402,83 @@ def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
 
     # }}}
 
-    new_block = [
-            Comment("prefetch %s[%s] using %s" % (
-                pf.input_vector,
-                ", ".join(pf.inames),
-                ", ".join(
-                        (" x ".join("%s(%s)" % (realiz_iname, kernel.iname_to_tag[realiz_iname])
-                        for realiz_iname in realiz_inames)
-                        if realiz_inames is not None else "loop")
-                        for realiz_inames in realization_inames))),
-            Line(),
-            ]
+    new_block = []
 
-    # omit head sync primitive if we just came out of a prefetch
+    # {{{ generate comments explaining dimension mapping
+
+    new_block.append(Comment("prefetch %s -- using dimension mapping:" % pf.input_vector))
+    for iaxis, (fetch_dim, realiz_inames) in enumerate(zip(pf.fetch_dims, realization_inames)):
+        new_block.append(Comment("  fetch axis %d:" % iaxis))
+        for iname in fetch_dim:
+            iname_lwr, iname_upr = pf.dim_bounds_by_iname[iname]
+            new_block.append(Comment("      %s [%d..%d)" % (iname, iname_lwr, iname_upr)))
+        new_block.append(Comment("    using:"))
+        for realiz_iname in realiz_inames:
+
+            if realiz_iname is None:
+                new_block.append(Comment("      loop"))
+            else:
+                rd_iname_descr = "loop"
+                iname_lwr, iname_upr, iname_eq = flnd.kernel.get_bounds(realiz_iname, (realiz_iname,),
+                        allow_parameters=False)
+                assert not iname_eq
+
+                new_block.append(Comment("      %s (%s) [%s..%s)"
+                    % (realiz_iname, kernel.iname_to_tag[realiz_iname],
+                        iname_lwr, iname_upr)))
+
+    new_block.append(Line())
+
+    # }}}
+
+    # {{{ omit head sync primitive if possible
+
+    head_sync_unneeded_because = None
 
     from loopy.prefetch import LocalMemoryPrefetch
-    if not isinstance(next_outer_sched_item, LocalMemoryPrefetch):
+    if (sched_index-1 >= 0 
+            and isinstance(kernel.schedule[sched_index-1], LocalMemoryPrefetch)):
+        head_sync_unneeded_because = "next outer schedule item is a prefetch"
+
+    from pytools import all
+    from loopy.kernel import ParallelTag
+    from loopy.schedule import ScheduledLoop
+    outer_tags = [
+            kernel.iname_to_tag.get(sched_item.iname)
+            for sched_item in kernel.schedule[:sched_index]
+            if isinstance(sched_item, ScheduledLoop)]
+
+    if not [tag
+            for tag in outer_tags
+            if not isinstance(tag, ParallelTag)]:
+        head_sync_unneeded_because = "no sequential axes nested around fetch"
+
+    # generate (no) head sync code
+    if head_sync_unneeded_because is None:
         new_block.append(S("barrier(CLK_LOCAL_MEM_FENCE)"))
     else:
-        new_block.append(Comment("next outer schedule item is a prefetch: "
-            "no sync needed"))
+        new_block.append(Comment("no sync needed: " + head_sync_unneeded_because))
+        new_block.append(Line())
 
-    new_block.extend([
-        fetch_block,
-        ])
+    # }}}
 
-    # omit tail sync primitive if we're headed into another prefetch
-    if not isinstance(next_inner_sched_item, LocalMemoryPrefetch):
+    new_block.append(fetch_block)
+
+    # {{{ omit tail sync primitive if possible
+
+    tail_sync_unneeded_because = None
+
+    if (sched_index+1 < len(kernel.schedule)
+            and isinstance(kernel.schedule[sched_index+1], LocalMemoryPrefetch)):
+        tail_sync_unneeded_because = "next inner schedule item is a prefetch"
+
+    if tail_sync_unneeded_because is None:
         new_block.append(S("barrier(CLK_LOCAL_MEM_FENCE)"))
     else:
         new_block.append(Line())
-        new_block.append(Comment("next inner schedule item is a prefetch: "
-            "no sync needed"))
+        new_block.append(Comment("no sync needed: " + tail_sync_unneeded_because))
+
+    # }}}
 
     from loopy.codegen.dispatch import build_loop_nest
     new_block.extend([Line(),
@@ -383,3 +487,5 @@ def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
     return gen_code_block(new_block)
 
 # }}}
+
+# vim: foldmethod=marker

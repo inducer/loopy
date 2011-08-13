@@ -44,8 +44,11 @@ DEBUG_PREAMBLE = r"""
 
 
 def check_error(refsol, sol):
+    if not DO_CHECK:
+        return
+
     rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
-    if DO_CHECK and rel_err > 1e-5:
+    if rel_err > 1e-5 or np.isinf(rel_err) or np.isnan(rel_err):
         if 1:
             import matplotlib.pyplot as pt
             pt.imshow(refsol-sol)
@@ -215,7 +218,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
     knl = lp.split_dimension(knl, "k", 2)
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', [("j_inner_outer", "j_inner_inner"), "k_inner"])
     assert knl.get_problems({})[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)

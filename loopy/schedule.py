@@ -51,7 +51,7 @@ def generate_loop_schedules(kernel, hints=[]):
         # a prefetch variable already scheduled, but not borrowable?
         # (only work item index variables are borrowable)
 
-        if set(pf.inames) & (scheduled_inames - locally_parallel_inames):
+        if set(pf.all_inames()) & (scheduled_inames - locally_parallel_inames):
             # dead end: we won't be able to schedule this prefetch
             # in this branch. at least one of its loop dimensions
             # was already scheduled, and that dimension is not
@@ -104,7 +104,7 @@ def generate_loop_schedules(kernel, hints=[]):
     unsched_prefetch_axes = set(iname
             for pf in kernel.prefetch.itervalues()
             if pf not in prev_schedule
-            for iname in pf.inames
+            for iname in pf.all_inames()
             if not isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
     schedulable -= unsched_prefetch_axes
 

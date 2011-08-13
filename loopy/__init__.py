@@ -11,30 +11,25 @@ register_mpz_with_pymbolic()
 
 
 
-# TODO: Reuse of previously split dimensions for prefetch
-#   (Or general merging)
-
 # TODO: Try, fix reg. prefetch (DG example) / CSEs
+#   ILP and reg. prefetch (might) interact!
 # TODO: Custom reductions per red. axis
 # TODO: Functions
 # TODO: Common subexpressions
 # TODO: Parse ops from string
-# FIXME: support non-reductive dimensions
+# FIXME: support non-reductive dimensions (what did I mean here?)
 # FIXME: write names should be assigned during scheduling
-
-# TODO: Don't emit spurious barriers (no for scheduled before)
-# TODO: Make code more readable
 
 # TODO: Divisibility
 # TODO: Try different kernels
 # TODO:   - Tricky: Convolution, FD
 # TODO: Try, fix indirect addressing
-# TODO: User controllable switch for slab opt
+# TODO: More user control for slab opt
 # TODO: Separate all-bulk from non-bulk kernels. (maybe?) (#ifdef?)
 
-# TODO: implement efficient div_ceil? (as opposed to floor_div)
+# TODO: implement efficient ceil_div? (as opposed to floor_div)
 # TODO: why are corner cases inefficient?
-# TODO: Use gists
+# TODO: Use gists (why do disjoint sets arise?)
 # TODO: Imitate codegen bulk slab handling in bulk slab trials
 
 
@@ -78,12 +73,13 @@ def get_input_access_descriptors(kernel):
 
     return result
 
-def add_prefetch(kernel, input_access_descr, tags_or_inames, loc_fetch_axes={}):
+def add_prefetch(kernel, input_access_descr, fetch_dims, loc_fetch_axes={}):
     """
     :arg input_access_descr: see :func:`get_input_access_descriptors`.
         May also be the name of the variable if there is only one
         reference to that variable.
-    :arg tags_or_inames: loop dimensions that are used to carry out the prefetch
+    :arg fetch_dims: loop dimensions indexing the input variable on which
+        the prefetch is to be carried out.
     """
 
     if isinstance(input_access_descr, str):
@@ -96,7 +92,13 @@ def add_prefetch(kernel, input_access_descr, tags_or_inames, loc_fetch_axes={}):
 
         input_access_descr, = var_iads
 
-    inames = [kernel.tag_or_iname_to_iname(s) for s in tags_or_inames]
+    def parse_fetch_dim(iname):
+        if isinstance(iname, str):
+            iname = (iname,)
+
+        return tuple(kernel.tag_or_iname_to_iname(s) for s in iname)
+
+    fetch_dims = [parse_fetch_dim(fd) for fd in fetch_dims]
     ivec, iexpr = input_access_descr
 
     new_prefetch = getattr(kernel, "prefetch", {}).copy()
@@ -109,7 +111,7 @@ def add_prefetch(kernel, input_access_descr, tags_or_inames, loc_fetch_axes={}):
             kernel=kernel,
             input_vector=ivec,
             index_expr=iexpr,
-            inames=inames,
+            fetch_dims=fetch_dims,
             loc_fetch_axes={})
 
     return kernel.copy(prefetch=new_prefetch)

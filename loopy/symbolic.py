@@ -148,7 +148,7 @@ class LoopyCCodeMapper(CCodeMapper):
                         "[%s - %s]" % (iname, self.rec(
                             pf.dim_bounds_by_iname[iname][0],
                             PREC_SUM))
-                        for iname in pf.inames)
+                        for iname in pf.all_inames())
 
         if isinstance(expr.aggregate, Variable):
             arg = self.kernel.arg_dict[expr.aggregate.name]
