@@ -13,7 +13,7 @@ except ImportError:
     from distutils.command.build_py import build_py
 
 ver_dic = {}
-version_file = open("pyopencl/version.py")
+version_file = open("loopy/version.py")
 try:
     version_file_contents = version_file.read()
 finally:
@@ -49,7 +49,7 @@ setup(name="loopy",
       url="http://pypi.python.org/pypi/pytools",
       author_email="inform@tiker.net",
       license = "MIT",
-      packages=["loopy"],
+      packages=["loopy", "loopy.codegen"],
 
       # 2to3 invocation
       cmdclass={'build_py': build_py})
