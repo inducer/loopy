@@ -141,7 +141,12 @@ def generate_unroll_or_ilp_code(cgs, kernel, sched_index, exec_domain):
     assert lower_kind == ">="
     assert upper_kind == "<"
 
-    success, length = kernel.domain.project_out_except([iname], [dim_type.set]).count()
+    proj_domain = (kernel.domain
+            .project_out_except([iname], [dim_type.set])
+            .project_out_except([], [dim_type.param])
+            .remove_divs())
+    assert proj_domain.is_bounded()
+    success, length = proj_domain.count()
     assert success == 0
 
     def generate_idx_eq_slabs():

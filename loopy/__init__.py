@@ -10,9 +10,14 @@ register_mpz_with_pymbolic()
 
 
 
+# Immediately:
+# ------------
+# TODO: Imitate codegen bulk slab handling in bulk slab trials
 
+# For writeup:
+# ------------
 # TODO: Try, fix reg. prefetch (DG example) / CSEs
-#   ILP and reg. prefetch (might) interact!
+#   ILP and reg. prefetch interact!
 # TODO: Custom reductions per red. axis
 # TODO: Functions
 # TODO: Common subexpressions
@@ -21,16 +26,20 @@ register_mpz_with_pymbolic()
 # FIXME: write names should be assigned during scheduling
 
 # TODO: Divisibility
-# TODO: Try different kernels
-# TODO:   - Tricky: Convolution, FD
 # TODO: Try, fix indirect addressing
 # TODO: More user control for slab opt
-# TODO: Separate all-bulk from non-bulk kernels. (maybe?) (#ifdef?)
 
+# TODO: Implement GT200 matmul, Fermi matmul, DG
+# TODO: DMA engine threads?
+
+# Later:
+# ------
+# TODO: Try different kernels
+# TODO:   - Tricky: Convolution, FD
+# TODO: Separate all-bulk from non-bulk kernels. (maybe?) (#ifdef?)
 # TODO: implement efficient ceil_div? (as opposed to floor_div)
 # TODO: why are corner cases inefficient?
 # TODO: Use gists (why do disjoint sets arise?)
-# TODO: Imitate codegen bulk slab handling in bulk slab trials
 
 
 

@@ -413,11 +413,11 @@ def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
             iname_lwr, iname_upr = pf.dim_bounds_by_iname[iname]
             new_block.append(Comment("      %s [%d..%d)" % (iname, iname_lwr, iname_upr)))
         new_block.append(Comment("    using:"))
-        for realiz_iname in realiz_inames:
 
-            if realiz_iname is None:
-                new_block.append(Comment("      loop"))
-            else:
+        if realiz_inames is None:
+            new_block.append(Comment("      loop"))
+        else:
+            for realiz_iname in realiz_inames:
                 rd_iname_descr = "loop"
                 iname_lwr, iname_upr, iname_eq = flnd.kernel.get_bounds(realiz_iname, (realiz_iname,),
                         allow_parameters=False)

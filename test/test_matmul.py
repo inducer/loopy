@@ -79,6 +79,63 @@ def get_suitable_size(ctx):
 
 
 
+def test_axpy(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+    order = "C"
+    queue = cl.CommandQueue(ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    n = get_suitable_size(ctx)
+    from pymbolic import var
+    x, y, z, n_sym, i = [var(s) for s in "xyzni"]
+
+    n_approx = 10**6
+
+    knl = lp.LoopKernel(ctx.devices[0],
+            "[n] -> {[i]: 0<=i<n}",
+            [
+                (z[i], x[i]+y[i]) # FIXME: Add scalars
+                ],
+            [
+                lp.ArrayArg("x", dtype, shape=(n,)),
+                lp.ArrayArg("y", dtype, shape=(n,)),
+                lp.ArrayArg("z", dtype, shape=(n,)),
+                lp.ScalarArg("n", np.int32, approximately=n_approx),
+                ],
+            name="matmul")
+
+    unroll = 16
+    block_size = 256
+    knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0")
+    knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
+    assert knl.get_problems({"n": n_approx})[0] <= 2
+
+    kernel_gen = (lp.insert_register_prefetches(knl)
+            for knl in lp.generate_loop_schedules(knl))
+
+    #a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
+    #b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
+    #c = cl_array.empty_like(a)
+    #refsol = np.dot(a.get(), b.get())
+
+    def launcher(kernel, gsize, lsize, check):
+        #evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
+                #g_times_l=True)
+
+        #if check:
+            #check_error(refsol, c.get())
+
+        #return evt
+        1/0
+
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
+            edit_code=True)
+
+
+
+
+
 def test_plain_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
@@ -104,7 +161,7 @@ def test_plain_matrix_mul(ctx_factory):
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 4)
+    knl = lp.split_dimension(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
     assert knl.get_problems({})[0] <= 2
