@@ -127,10 +127,9 @@ def test_axpy(ctx_factory):
             #check_error(refsol, c.get())
 
         #return evt
-        1/0
+        pass
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3,
-            edit_code=True)
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
 
 
 

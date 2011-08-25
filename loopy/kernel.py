@@ -488,7 +488,7 @@ class LoopKernel(Record):
 
         for i in range(len(llens)):
             if llens[i] > self.device.max_work_item_sizes[i]:
-                msg(5, "group axis %d too big")
+                msg(5, "group axis %d too big" % i)
 
         from pytools import product
         if product(llens) > self.device.max_work_group_size:

@@ -31,6 +31,9 @@ register_mpz_with_pymbolic()
 
 # TODO: Implement GT200 matmul, Fermi matmul, DG
 # TODO: DMA engine threads?
+# TODO: Specify initial implemented domain.
+#   (to filter away unnecessary conditions on parameters)
+# TODO: Deal with equalities that crop up.
 
 # Later:
 # ------
