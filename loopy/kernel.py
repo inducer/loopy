@@ -209,11 +209,13 @@ class LoopKernel(Record):
                 device=device, args=args, domain=domain, instructions=insns,
                 prefetch=prefetch, schedule=schedule,
                 register_prefetch=register_prefetch, name=name,
-                iname_to_tag=iname_to_tag,
+                iname_to_tag=dict(
+                    (iname, parse_tag(tag))
+                    for iname, tag in iname_to_tag.iteritems()),
                 is_divisible=is_divisible,
                 preamble=preamble)
 
-        # FIXME: assert empyt intersection of loop vars and args
+        # FIXME: assert empty intersection of loop vars and args
         # FIXME: assert that isl knows about loop parameters
 
     @property
