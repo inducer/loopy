@@ -123,7 +123,7 @@ def add_prefetch(kernel, input_access_descr, fetch_dims, loc_fetch_axes={}):
             input_vector=ivec,
             index_expr=iexpr,
             fetch_dims=fetch_dims,
-            loc_fetch_axes={})
+            loc_fetch_axes=loc_fetch_axes)
 
     return kernel.copy(prefetch=new_prefetch)
 

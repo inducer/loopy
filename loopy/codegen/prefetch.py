@@ -303,11 +303,17 @@ def generate_prefetch_code(kernel, sched_index, exec_domain):
 
     from loopy.kernel import TAG_WORK_ITEM_IDX
     knl_work_item_inames = kernel.ordered_inames_by_tag_type(TAG_WORK_ITEM_IDX)
+    used_kernel_work_item_inames = []
 
     for realization_dim_idx, loc_fetch_axis_list in \
-            getattr(pf, "loc_fetch_axes", {}).iteritems():
-        realization_inames[realization_dim_idx] = [knl_work_item_inames.pop(axis)
+            pf.loc_fetch_axes.iteritems():
+        loc_fetch_inames = [knl_work_item_inames[axis]
             for axis in loc_fetch_axis_list]
+        realization_inames[realization_dim_idx] = loc_fetch_inames
+        used_kernel_work_item_inames.extend(loc_fetch_inames)
+
+    for inm in used_kernel_work_item_inames:
+        knl_work_item_inames.remove(inm)
 
     # }}}
 

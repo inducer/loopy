@@ -60,7 +60,8 @@ def build_mass_mat_maker(ctx_factory=cl.create_some_context):
             outer_slab_increments=(0,0))
 
     # fix reg prefetch
-    knl = lp.add_prefetch(knl, "det_j", ["c_inner"])
+    knl = lp.add_prefetch(knl, "det_j", ["c_inner"],
+            loc_fetch_axes={0: (0, 1)})
 
     #ilp = 4
     #knl = lp.split_dimension(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
