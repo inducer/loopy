@@ -44,7 +44,7 @@ class CompiledKernel:
 
         from pymbolic import compile
         if size_args is None:
-            self.size_args = [arg.name for arg in kernel.args if isinstance(arg, ScalarArg)]
+            self.size_args = kernel.scalar_loop_args
         else:
             self.size_args = size_args
 

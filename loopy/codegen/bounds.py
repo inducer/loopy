@@ -2,7 +2,7 @@ from __future__ import division
 
 import islpy as isl
 from islpy import dim_type
-from pymbolic.mapper.stringifier import PREC_NONE
+import numpy as np
 
 
 
@@ -192,45 +192,61 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
     cfm = CommutativeConstantFoldingMapper()
 
     from loopy.symbolic import constraint_to_expr
-    from pytools import any
 
-    if any(cns.is_equality() for cns in constraints):
-        raise NotImplementedError("equality constraints for 'for' loops")
+    start_exprs = []
+    end_conds = []
+    equality_exprs = []
+
+    for cns in constraints:
+        rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
+
+        if iname_coeff == 0:
+            continue
+
+        if cns.is_equality():
+            kind, bound = solve_constraint_for_bound(cns, iname)
+            assert kind == "=="
+            equality_exprs.append(bound)
+        elif iname_coeff < 0:
+            from pymbolic import var
+            rhs += iname_coeff*var(iname)
+            end_conds.append("%s >= 0" %
+                    ccm(cfm(expand(rhs))))
+        else: #  iname_coeff > 0
+            kind, bound = solve_constraint_for_bound(cns, iname)
+            assert kind == ">="
+            start_exprs.append(bound)
+
+    if equality_exprs:
+        assert len(equality_exprs) == 1
+
+        equality_expr, = equality_exprs
+
+        from loopy.codegen import gen_code_block
+        from cgen import Initializer, POD, Const, Line
+        return gen_code_block([
+            Initializer(Const(POD(np.int32, iname)),
+                ccm(equality_expr)),
+            Line(),
+            stmt,
+            ])
     else:
-        start_exprs = []
-        end_conds = []
+        if len(start_exprs) > 1:
+            from pymbolic.primitives import Max
+            start_expr = Max(start_exprs)
+        elif len(start_exprs) == 1:
+            start_expr, = start_exprs
+        else:
+            raise RuntimeError("no starting value found for 'for' loop in '%s'"
+                    % iname)
 
-        for cns in constraints:
-            rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
-
-            if iname_coeff == 0:
-                continue
-            elif iname_coeff < 0:
-                from pymbolic import var
-                rhs += iname_coeff*var(iname)
-                end_conds.append("%s >= 0" %
-                        ccm(cfm(expand(rhs))))
-            else: #  iname_coeff > 0
-                kind, bound = solve_constraint_for_bound(cns, iname)
-                assert kind == ">="
-                start_exprs.append(bound)
-
-    if len(start_exprs) > 1:
-        from pymbolic.primitives import Max
-        start_expr = Max(start_exprs)
-    elif len(start_exprs) == 1:
-        start_expr, = start_exprs
-    else:
-        raise RuntimeError("no starting value found for 'for' loop in '%s'"
-                % iname)
-
-    from cgen import For
-    from loopy.codegen import wrap_in
-    return wrap_in(For,
-            "int %s = %s" % (iname, ccm(start_expr, PREC_NONE)),
-            " && ".join(end_conds),
-            "++%s" % iname,
-            stmt)
+        from cgen import For
+        from loopy.codegen import wrap_in
+        return wrap_in(For,
+                "int %s = %s" % (iname, ccm(start_expr)),
+                " && ".join(end_conds),
+                "++%s" % iname,
+                stmt)
 
 # }}}
 

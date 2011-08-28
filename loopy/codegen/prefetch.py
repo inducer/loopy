@@ -105,24 +105,21 @@ def make_fetch_loop_nest(flnd, fetch_dim_idx, pf_dim_exprs, iname_subst_map,
         # done, return
         from pymbolic.primitives import Variable, Subscript
 
-        from pymbolic.mapper.stringifier import PREC_NONE
         result = Assign(
                 pf.name + "".join("[%s]" % ccm(dexpr)
                     for dexpr in pf_dim_exprs),
                 no_pf_ccm(
                     Subscript(
                         Variable(pf.input_vector),
-                        substitute(pf.index_expr, iname_subst_map)),
-                    PREC_NONE))
-
-        def my_ccm(expr):
-            return ccm(substitute(expr, iname_subst_map))
+                        substitute(pf.index_expr, iname_subst_map))))
 
         from pymbolic.mapper.dependency import DependencyMapper
         check_vars = [v.name for v in DependencyMapper()(pf.index_expr)]
 
         from loopy.codegen.bounds import wrap_in_bounds_checks
-        return wrap_in_bounds_checks(my_ccm, pf.kernel.domain,
+        return wrap_in_bounds_checks(
+                ccm.copy_and_assign_many(iname_subst_map),
+                pf.kernel.domain,
                 check_vars, implemented_domain, result)
 
     fetch_inames = pf.fetch_dims[fetch_dim_idx]
@@ -280,12 +277,12 @@ def make_fetch_loop_nest(flnd, fetch_dim_idx, pf_dim_exprs, iname_subst_map,
         # }}}
 
 
-def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
+def generate_prefetch_code(kernel, sched_index, exec_domain):
     implemented_domain = exec_domain.implemented_domain
 
     from cgen import Statement as S, Line, Comment
 
-    ccm = cgs.c_code_mapper
+    ccm = exec_domain.c_code_mapper
 
     scheduled_pf = kernel.schedule[sched_index]
     pf = kernel.prefetch[
@@ -482,7 +479,7 @@ def generate_prefetch_code(cgs, kernel, sched_index, exec_domain):
 
     from loopy.codegen.dispatch import build_loop_nest
     new_block.extend([Line(),
-        build_loop_nest(cgs, kernel, sched_index+1, exec_domain)])
+        build_loop_nest(kernel, sched_index+1, exec_domain)])
 
     return gen_code_block(new_block)
 

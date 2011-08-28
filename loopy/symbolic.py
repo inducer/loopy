@@ -2,7 +2,7 @@
 
 from __future__ import division
 
-from pymbolic.mapper import CombineMapper, RecursiveMapper
+from pymbolic.mapper import CombineMapper, RecursiveMapper, IdentityMapper
 from pymbolic.mapper.c_code import CCodeMapper
 from pymbolic.mapper.stringifier import PREC_NONE
 import numpy as np
@@ -120,7 +120,8 @@ class VariableIndexExpressionCollector(CombineMapper):
 # {{{ C code mapper
 
 class LoopyCCodeMapper(CCodeMapper):
-    def __init__(self, kernel, no_prefetch=False):
+    def __init__(self, kernel, no_prefetch=False, cse_name_list=[],
+            var_subst_map={}):
         def constant_mapper(c):
             if isinstance(c, float):
                 # FIXME: type-variable
@@ -128,10 +129,38 @@ class LoopyCCodeMapper(CCodeMapper):
             else:
                 return repr(c)
 
-        CCodeMapper.__init__(self, constant_mapper=constant_mapper)
+        CCodeMapper.__init__(self, constant_mapper=constant_mapper,
+                cse_name_list=cse_name_list)
         self.kernel = kernel
 
+        self.var_subst_map = var_subst_map.copy()
+
         self.no_prefetch = no_prefetch
+
+    def copy(self, var_subst_map=None, cse_name_list=None):
+        if var_subst_map is None:
+            var_subst_map = self.var_subst_map
+        if cse_name_list is None:
+            cse_name_list = self.cse_name_list
+        return LoopyCCodeMapper(self.kernel, no_prefetch=self.no_prefetch,
+                cse_name_list=cse_name_list, var_subst_map=var_subst_map)
+
+    def copy_and_assign(self, name, value):
+        var_subst_map = self.var_subst_map.copy()
+        var_subst_map[name] = value
+        return self.copy(var_subst_map=var_subst_map)
+
+    def copy_and_assign_many(self, assignments):
+        var_subst_map = self.var_subst_map.copy()
+        var_subst_map.update(assignments)
+        return self.copy(var_subst_map=var_subst_map)
+
+    def map_variable(self, expr, prec):
+        if expr.name in self.var_subst_map:
+            return " /* %s */ %s" % (
+                    expr.name, self.rec(self.var_subst_map[expr.name], prec))
+        else:
+            return CCodeMapper.map_variable(self, expr, prec)
 
     def map_subscript(self, expr, enclosing_prec):
         from pymbolic.primitives import Variable
@@ -143,11 +172,11 @@ class LoopyCCodeMapper(CCodeMapper):
             except KeyError:
                 pass
             else:
-                from pymbolic.mapper.stringifier import PREC_SUM
+                from pymbolic import var
                 return pf.name+"".join(
-                        "[%s - %s]" % (iname, self.rec(
-                            pf.dim_bounds_by_iname[iname][0],
-                            PREC_SUM))
+                        "[%s]" % self.rec(
+                            var(iname) - pf.dim_bounds_by_iname[iname][0],
+                            PREC_NONE)
                         for iname in pf.all_inames())
 
         if isinstance(expr.aggregate, Variable):
@@ -249,6 +278,26 @@ def constraint_to_expr(cns, except_name=None):
         return result, excepted_coeff
     else:
         return result
+
+# }}}
+
+# {{{ CSE "realizer"
+
+class CSERealizer(IdentityMapper):
+    """Looks for invocations of a function called 'cse' and turns those into
+    CommonSubexpression objects.
+    """
+
+    def map_call(self, expr):
+        from pymbolic import Variable
+        if isinstance(expr.function, Variable) and expr.function.name == "cse":
+            from pymbolic.primitives import CommonSubexpression
+            if len(expr.parameters) == 1:
+                return CommonSubexpression(expr.parameters[0])
+            else:
+                raise TypeError("cse takes exactly one argument")
+        else:
+            return IdentityMapper.map_call(self, expr)
 
 # }}}
 

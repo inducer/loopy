@@ -6,10 +6,10 @@ from loopy.codegen import ExecutionDomain, gen_code_block
 
 
 
-def build_loop_nest(cgs, kernel, sched_index, exec_domain, no_conditional_check=False):
+def build_loop_nest(kernel, sched_index, exec_domain, no_conditional_check=False):
     assert isinstance(exec_domain, ExecutionDomain)
 
-    ccm = cgs.c_code_mapper
+    ccm = exec_domain.c_code_mapper
 
     from cgen import (POD, Initializer, Assign, Statement as S,
             Line)
@@ -37,7 +37,7 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain, no_conditional_check=
 
             exec_domain = exec_domain.intersect(exec_domain_restriction)
 
-            inner = build_loop_nest(cgs, kernel, sched_index, exec_domain,
+            inner = build_loop_nest(kernel, sched_index, exec_domain,
                     no_conditional_check=True)
 
             from loopy.codegen import wrap_in_if
@@ -57,30 +57,21 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain, no_conditional_check=
 
         valid_index_vars = get_valid_check_vars(kernel, sched_index, allow_ilp=True)
         bounds_check_lists = [
-                generate_bounds_checks_code(ccm, kernel.domain,
-                    valid_index_vars, impl_domain)
-                for assignments, impl_domain in
-                    exec_domain]
+                generate_bounds_checks_code(subd.c_code_mapper, kernel.domain,
+                    valid_index_vars, subd.implemented_domain)
+                for subd in exec_domain.subdomains]
 
         result = []
         for lvalue, expr in kernel.instructions:
-            for i, (assignments, impl_domain) in \
-                    enumerate(exec_domain):
-
-                my_block = []
-                if assignments:
-                    my_block.extend(assignments+[Line()])
-
+            for i, subd in enumerate(exec_domain.subdomains):
                 assert isinstance(lvalue, Subscript)
                 name = lvalue.aggregate.name
 
                 from loopy.codegen import wrap_in_if
-                my_block.append(
-                        wrap_in_if(
+                result.append(wrap_in_if(
                             bounds_check_lists[i],
                             S("tmp_%s_%d += %s"
-                                % (name, i, ccm(expr)))))
-                result.append(gen_code_block(my_block))
+                                % (name, i, subd.c_code_mapper(expr)))))
 
         return gen_code_block(result)
 
@@ -109,42 +100,36 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain, no_conditional_check=
         else:
             func = generate_sequential_loop_dim_code
 
-        return func(cgs, kernel, sched_index, exec_domain)
+        return func(kernel, sched_index, exec_domain)
 
     elif isinstance(sched_item, WriteOutput):
         result = (
                 [Initializer(POD(kernel.arg_dict[lvalue.aggregate.name].dtype,
                     "tmp_%s_%d" % (lvalue.aggregate.name, i)), 0)
-                    for i in range(len(exec_domain))
+                    for i in range(len(exec_domain.subdomains))
                     for lvalue, expr in kernel.instructions]
                 +[Line()]
-                +[build_loop_nest(cgs, kernel, sched_index+1, 
+                +[build_loop_nest(kernel, sched_index+1, 
                     exec_domain)]
                 +[Line()])
 
-        for i, (idx_assignments, impl_domain) in \
-                enumerate(exec_domain):
+        for i, subd in enumerate(exec_domain.subdomains):
             for lvalue, expr in kernel.instructions:
-                assignment = Assign(ccm(lvalue), "tmp_%s_%d" % (
+                assignment = Assign(subd.c_code_mapper(lvalue), "tmp_%s_%d" % (
                     lvalue.aggregate.name, i))
 
                 wrapped_assign = wrap_in_bounds_checks(
-                        ccm, kernel.domain,
+                        subd.c_code_mapper, kernel.domain,
                         get_valid_check_vars(kernel, sched_index, allow_ilp=True),
-                        impl_domain, assignment)
+                        subd.implemented_domain, assignment)
 
-                cb = []
-                if idx_assignments:
-                    cb.extend(idx_assignments+[Line()])
-                cb.append(wrapped_assign)
-
-                result.append(gen_code_block(cb))
+                result.append(wrapped_assign)
 
         return gen_code_block(result)
 
     elif isinstance(sched_item, LocalMemoryPrefetch):
         from loopy.codegen.prefetch import generate_prefetch_code
-        return generate_prefetch_code(cgs, kernel, sched_index, 
+        return generate_prefetch_code(kernel, sched_index, 
                 exec_domain)
 
     elif isinstance(sched_item, RegisterPrefetch):
@@ -159,7 +144,7 @@ def build_loop_nest(cgs, kernel, sched_index, exec_domain, no_conditional_check=
                     % (agg_name,
                         ccm(sched_item.subscript_expr.index)))),
 
-            build_loop_nest(cgs, kernel, sched_index+1, exec_domain)
+            build_loop_nest(kernel, sched_index+1, exec_domain)
             ])
 
     else:

@@ -2,6 +2,7 @@ import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.array as cl_array
+import pyopencl.clrandom as cl_random
 import loopy as lp
 
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
@@ -47,7 +48,12 @@ def check_error(refsol, sol):
     if not DO_CHECK:
         return
 
-    rel_err = la.norm(refsol-sol, "fro")/la.norm(refsol, "fro")
+    if sol.shape == 2:
+        norm_order = "fro"
+    else:
+        norm_order = 2
+
+    rel_err = la.norm(refsol-sol, norm_order)/la.norm(refsol, norm_order)
     if rel_err > 1e-5 or np.isinf(rel_err) or np.isnan(rel_err):
         if 1:
             import matplotlib.pyplot as pt
@@ -86,22 +92,20 @@ def test_axpy(ctx_factory):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = get_suitable_size(ctx)
-    from pymbolic import var
-    x, y, z, n_sym, i = [var(s) for s in "xyzni"]
-
-    n_approx = 10**6
+    n = get_suitable_size(ctx)**3
 
     knl = lp.LoopKernel(ctx.devices[0],
             "[n] -> {[i]: 0<=i<n}",
             [
-                (z[i], x[i]+y[i]) # FIXME: Add scalars
+                "z[i] = a*x[i]+b*y[i]"
                 ],
             [
-                lp.ArrayArg("x", dtype, shape=(n,)),
-                lp.ArrayArg("y", dtype, shape=(n,)),
-                lp.ArrayArg("z", dtype, shape=(n,)),
-                lp.ScalarArg("n", np.int32, approximately=n_approx),
+                lp.ScalarArg("a", dtype),
+                lp.ArrayArg("x", dtype, shape="n,"),
+                lp.ScalarArg("b", dtype),
+                lp.ArrayArg("y", dtype, shape="n,"),
+                lp.ArrayArg("z", dtype, shape="n,"),
+                lp.ScalarArg("n", np.int32, approximately=n),
                 ],
             name="matmul")
 
@@ -109,27 +113,26 @@ def test_axpy(ctx_factory):
     block_size = 256
     knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0")
     knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
-    assert knl.get_problems({"n": n_approx})[0] <= 2
+    assert knl.get_problems({"n": n})[0] <= 2
 
     kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
 
-    #a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    #b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    #c = cl_array.empty_like(a)
-    #refsol = np.dot(a.get(), b.get())
+    a = cl_random.rand(queue, n, dtype=dtype)
+    b = cl_random.rand(queue, n, dtype=dtype)
+    c = cl_array.empty_like(a)
+    refsol = (2*a+3*b).get()
 
     def launcher(kernel, gsize, lsize, check):
-        #evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
-                #g_times_l=True)
+        evt = kernel(queue, gsize(n), lsize(n), 2, a.data, 3, b.data, c.data, n,
+                g_times_l=True)
 
-        #if check:
-            #check_error(refsol, c.get())
+        if check:
+            check_error(refsol, c.get())
 
-        #return evt
-        pass
+        return evt
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+    lp.drive_timing_run(kernel_gen, queue, launcher, 5*n)
 
 
 
@@ -143,13 +146,11 @@ def test_plain_matrix_mul(ctx_factory):
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = get_suitable_size(ctx)
-    from pymbolic import var
-    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                (c[i, j], a[i, k]*b[k, j])
+                "c[i, j] = a[i, k]*b[k, j]"
                 ],
             [
                 lp.ArrayArg("a", dtype, shape=(n, n), order=order),
@@ -196,13 +197,11 @@ def test_image_matrix_mul(ctx_factory):
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = get_suitable_size(ctx)
-    from pymbolic import var
-    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                (c[i, j], a[i, k]*b[k, j])
+                "c[i, j] = a[i, k]*b[k, j]"
                 ],
             [
                 lp.ImageArg("a", dtype, 2),
@@ -251,13 +250,11 @@ def test_image_matrix_mul_ilp(ctx_factory):
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = get_suitable_size(ctx)
-    from pymbolic import var
-    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                (c[i, j], a[i, k]*b[k, j])
+                "c[i, j] = a[i, k]*b[k, j]"
                 ],
             [
                 lp.ImageArg("a", dtype, 2),
@@ -312,18 +309,16 @@ def test_fancy_matrix_mul(ctx_factory):
     order = "C"
 
     n = get_suitable_size(ctx)
-    from pymbolic import var
-    a, b, c, i, j, k, n_sym = [var(s) for s in "abcijkn"]
 
     knl = lp.LoopKernel(ctx.devices[0],
             "[n] -> {[i,j,k]: 0<=i,j,k<n }",
             [
-                (c[i, j], a[i, k]*b[k, j])
+                "c[i, j] = a[i, k]*b[k, j]"
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n_sym, n_sym), order=order),
-                lp.ArrayArg("b", dtype, shape=(n_sym, n_sym), order=order),
-                lp.ArrayArg("c", dtype, shape=(n_sym, n_sym), order=order),
+                lp.ArrayArg("a", dtype, shape="(n, n)", order=order),
+                lp.ArrayArg("b", dtype, shape="(n, n)", order=order),
+                lp.ArrayArg("c", dtype, shape="(n, n)", order=order),
                 lp.ScalarArg("n", np.int32, approximately=1000),
                 ], name="fancy_matmul")
 

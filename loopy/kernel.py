@@ -6,6 +6,8 @@ import numpy as np
 from pytools import Record, memoize_method
 from pymbolic.mapper.dependency import DependencyMapper
 import pyopencl as cl
+import islpy as isl
+from islpy import dim_type
 
 
 
@@ -32,9 +34,17 @@ class ArrayArg:
             raise ValueError("can only specify one of shape and strides")
 
         if strides is not None:
+            if isinstance(strides, str):
+                from pymbolic import parse
+                strides = parse(strides)
+
             strides = tuple(strides)
 
         if shape is not None:
+            if isinstance(shape, str):
+                from pymbolic import parse
+                shape = parse(shape)
+
             from pyopencl.compyte.array import (
                     f_contiguous_strides,
                     c_contiguous_strides)
@@ -67,7 +77,7 @@ class ImageArg:
 
 
 class ScalarArg:
-    def __init__(self, name, dtype, approximately):
+    def __init__(self, name, dtype, approximately=None):
         self.name = name
         self.dtype = np.dtype(dtype)
         self.approximately = approximately
@@ -176,34 +186,57 @@ class LoopKernel(Record):
     :ivar register_prefetch:
     :ivar name:
     :ivar preamble:
+    :ivar assumptions: the initial implemented_domain, captures assumptions
+        on the parameters. (an isl.Set)
+    :ivar iname_slab_increments: a dictionary mapping inames to (lower_incr,
+        upper_incr) tuples that will be separated out in the execution to generate
+        'bulk' slabs with fewer conditionals.
     """
 
     def __init__(self, device, domain, instructions, args=None, prefetch={}, schedule=None,
             register_prefetch=None, name="loopy_kernel",
             iname_to_tag={}, is_divisible=lambda dividend, divisor: False,
-            preamble=None):
+            preamble=None, assumptions=None,
+            iname_slab_increments={}):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
         :arg iname_to_tag: a map from loop domain variables to subclasses of :class:`IndexTag`
         """
-        from pymbolic import parse
 
-        def parse_if_necessary(v):
-            if isinstance(v, str):
-                return parse(v)
-            else:
-                return v
+        def parse_if_necessary(insn):
+            from pymbolic import parse
+            if isinstance(insn, str):
+                lhs, rhs = insn.split("=")
+            elif isinstance(insn, tuple):
+                lhs, rhs = insn
+
+            if isinstance(lhs, str):
+                lhs = parse(lhs)
+            if isinstance(rhs, str):
+                from loopy.symbolic import CSERealizer
+                rhs = CSERealizer()(parse(rhs))
+
+            return lhs, rhs
 
         if isinstance(domain, str):
-            import islpy as isl
             ctx = isl.Context()
             domain = isl.Set.read_from_str(ctx, domain, nparam=-1)
 
-        insns = [
-                (parse_if_necessary(lvalue),
-                    parse_if_necessary(expr))
-                for lvalue, expr in instructions]
+        insns = [parse_if_necessary(insn) for insn in instructions]
+
+        if assumptions is None:
+            assumptions = isl.Set.universe(domain.get_dim())
+        elif isinstance(assumptions, str):
+            s = domain.get_dim()
+            assumptions = isl.BasicSet.read_from_str(domain.get_ctx(),
+                    "[%s] -> {[%s]: %s}"
+                    % (",".join(s.get_name(dim_type.param, i)
+                        for i in range(s.size(dim_type.param))),
+                       ",".join(s.get_name(dim_type.set, i) 
+                           for i in range(s.size(dim_type.set))),
+                       assumptions),
+                       nparam=-1)
 
         Record.__init__(self,
                 device=device, args=args, domain=domain, instructions=insns,
@@ -213,7 +246,9 @@ class LoopKernel(Record):
                     (iname, parse_tag(tag))
                     for iname, tag in iname_to_tag.iteritems()),
                 is_divisible=is_divisible,
-                preamble=preamble)
+                preamble=preamble,
+                assumptions=assumptions,
+                iname_slab_increments=iname_slab_increments)
 
         # FIXME: assert empty intersection of loop vars and args
         # FIXME: assert that isl knows about loop parameters
@@ -236,12 +271,16 @@ class LoopKernel(Record):
     def arg_dict(self):
         return dict((arg.name, arg) for arg in self.args)
 
+    @property
     @memoize_method
-    def scalar_args(self):
+    def scalar_loop_args(self):
         if self.args is None:
-            return set()
+            return []
         else:
-            return set(arg.name for arg in self.args if isinstance(arg, ScalarArg))
+            loop_arg_names = [self.space.get_name(dim_type.param, i)
+                    for i in range(self.space.size(dim_type.param))]
+            return [arg.name for arg in self.args if isinstance(arg, ScalarArg)
+                    if arg.name in loop_arg_names]
 
     @memoize_method
     def all_inames(self):
@@ -332,7 +371,7 @@ class LoopKernel(Record):
             input_vectors.update(
                     set(v.name for v in dm(expr)))
 
-        return input_vectors - self.all_inames() - self.scalar_args()
+        return input_vectors - self.all_inames() - set(self.scalar_loop_args)
 
     @memoize_method
     def output_vectors(self):
@@ -343,7 +382,7 @@ class LoopKernel(Record):
             output_vectors.update(
                     set(v.name for v in dm(lvalue)))
 
-        return output_vectors - self.all_inames() - self.scalar_args()
+        return output_vectors - self.all_inames() - self.scalar_loop_args
 
     def _subst_insns(self, old_var, new_expr):
         from pymbolic.mapper.substitutor import substitute
@@ -393,7 +432,8 @@ class LoopKernel(Record):
 
     def split_dimension(self, name, inner_length, padded_length=None,
             outer_name=None, inner_name=None,
-            outer_tag=None, inner_tag=None):
+            outer_tag=None, inner_tag=None,
+            outer_slab_increments=(0, -1)):
 
         outer_tag = parse_tag(outer_tag)
         inner_tag = parse_tag(inner_tag)
@@ -434,33 +474,41 @@ class LoopKernel(Record):
         from islpy import dim_type
         outer_var_nr = self.space.size(dim_type.set)
         inner_var_nr = self.space.size(dim_type.set)+1
-        new_domain = self.domain.add_dims(dim_type.set, 2)
-        new_domain.set_dim_name(dim_type.set, outer_var_nr, outer_name)
-        new_domain.set_dim_name(dim_type.set, inner_var_nr, inner_name)
 
-        import islpy as isl
-        from loopy.isl import make_slab
+        def process_set(s):
+            s = s.add_dims(dim_type.set, 2)
+            s.set_dim_name(dim_type.set, outer_var_nr, outer_name)
+            s.set_dim_name(dim_type.set, inner_var_nr, inner_name)
 
-        space = new_domain.get_dim()
-        inner_constraint_set = (
-                make_slab(space, inner_name, 0, inner_length)
-                # name = inner + length*outer
-                .add_constraint(isl.Constraint.eq_from_names(
-                    space, {name:1, inner_name: -1, outer_name:-inner_length})))
+            from loopy.isl import make_slab
 
-        name_dim_type, name_idx = space.get_var_dict()[name]
-        new_domain = (new_domain
-                .intersect(inner_constraint_set)
-                .project_out(name_dim_type, name_idx, 1))
+            space = s.get_dim()
+            inner_constraint_set = (
+                    make_slab(space, inner_name, 0, inner_length)
+                    # name = inner + length*outer
+                    .add_constraint(isl.Constraint.eq_from_names(
+                        space, {name:1, inner_name: -1, outer_name:-inner_length})))
+
+            name_dim_type, name_idx = space.get_var_dict()[name]
+            return (s
+                    .intersect(inner_constraint_set)
+                    .project_out(name_dim_type, name_idx, 1))
+
+        new_domain = process_set(self.domain) 
+        new_assumptions = process_set(self.assumptions)
 
         from pymbolic import var
         inner = var(inner_name)
         outer = var(outer_name)
         new_loop_index = inner + outer*inner_length
 
+        iname_slab_increments = self.iname_slab_increments.copy()
+        iname_slab_increments[outer_name] = outer_slab_increments
         return (self
                 .substitute(name, new_loop_index)
-                .copy(domain=new_domain, iname_to_tag=new_iname_to_tag))
+                .copy(domain=new_domain, iname_to_tag=new_iname_to_tag,
+                    assumptions=new_assumptions,
+                    iname_slab_increments=iname_slab_increments))
 
     def get_problems(self, parameters, emit_warnings=True):
         """

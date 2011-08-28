@@ -2,7 +2,6 @@ from __future__ import division
 
 from pytools import Record
 import numpy as np
-from pymbolic.mapper.stringifier import PREC_NONE
 
 
 
@@ -95,46 +94,52 @@ def add_comment(cmt, code):
 
 # {{{ main code generation entrypoint
 
-class CodeGenerationState(Record):
-    __slots__ = ["c_code_mapper", "try_slab_partition"]
+class ExecutionSubdomain(Record):
+    __slots__ = ["implemented_domain", "c_code_mapper"]
+
+    def __init__(self, implemented_domain, c_code_mapper):
+        Record.__init__(self,
+                implemented_domain=implemented_domain,
+                c_code_mapper=c_code_mapper)
+
+    def intersect(self, set):
+        return ExecutionSubdomain(
+                self.implemented_domain.intersect(set),
+                self.c_code_mapper)
 
 class ExecutionDomain(object):
-    def __init__(self, implemented_domain, assignments_and_impl_domains=None):
+    def __init__(self, implemented_domain, c_code_mapper, subdomains=None):
         """
         :param implemented_domain: The entire implemented domain,
             i.e. all constraints that have been enforced so far.
-        :param assignments_and_impl_domains: a list of tuples 
-            (assignments, implemented_domain), where *assignments*
-            is a list of :class:`cgen.Initializer` instances
-            and *implemented_domain* is the implemented domain to which
-            the situation produced by the assignments corresponds.
+        :param subdomains: a list of :class:`ExecutionSubdomain`
+            instances.
 
-            The point of this being is a list is the implementation of
+            The point of this being a list is the implementation of
             ILP, and each entry represents a 'fake-parallel' trip through the 
-            ILP'd loop.
+            ILP'd loop, with the requisite implemented_domain
+            and a C code mapper that realizes the necessary assignments.
+        :param c_code_mapper: A C code mapper that does not take per-ILP
+            assignments into account.
         """
-        if assignments_and_impl_domains is None:
-            assignments_and_impl_domains = [([], implemented_domain)]
         self.implemented_domain = implemented_domain
-        self.assignments_and_impl_domains = assignments_and_impl_domains
+        if subdomains is None:
+            self.subdomains = [
+                    ExecutionSubdomain(implemented_domain, c_code_mapper)]
+        else:
+            self.subdomains = subdomains
 
-    def __len__(self):
-        return len(self.assignments_and_impl_domains)
-
-    def __iter__(self):
-        return iter(self.assignments_and_impl_domains)
+        self.c_code_mapper = c_code_mapper
 
     def intersect(self, set):
         return ExecutionDomain(
                 self.implemented_domain.intersect(set),
-                [(assignments, implemented_domain.intersect(set))
-                for assignments, implemented_domain
-                in self.assignments_and_impl_domains])
+                self.c_code_mapper,
+                [subd.intersect(set) for subd in self.subdomains])
 
     def get_the_one_domain(self):
-        assert len(self.assignments_and_impl_domains) == 1
+        assert len(self.subdomains) == 1
         return self.implemented_domain
-
 
 
 
@@ -151,10 +156,7 @@ def generate_code(kernel):
             CLLocal, CLImage, CLConstant)
 
     from loopy.symbolic import LoopyCCodeMapper
-    my_ccm = LoopyCCodeMapper(kernel)
-
-    def ccm(expr, prec=PREC_NONE):
-        return my_ccm(expr, prec)
+    ccm = LoopyCCodeMapper(kernel)
 
     # {{{ build top-level
 
@@ -266,13 +268,10 @@ def generate_code(kernel):
 
     # }}}
 
-    cgs = CodeGenerationState(c_code_mapper=ccm, try_slab_partition=True)
-
     from loopy.codegen.dispatch import build_loop_nest
-    import islpy as isl
 
-    gen_code = build_loop_nest(cgs, kernel, 0, 
-            ExecutionDomain(isl.Set.universe(kernel.space)))
+    gen_code = build_loop_nest(kernel, 0,
+            ExecutionDomain( kernel.assumptions, c_code_mapper=ccm))
     body.extend([Line(), gen_code.ast])
     #print "# conditionals: %d" % gen_code.num_conditionals
 

@@ -9,7 +9,7 @@ from islpy import dim_type
 # {{{ register prefetches
 
 class RegisterPrefetch(Record):
-    __slots__ = ["subscript_expr", "new_name"]
+    __slots__ = ["subexprs", "new_names"]
 
 def insert_register_prefetches(kernel):
     reg_pf = {}
@@ -54,7 +54,7 @@ def insert_register_prefetches(kernel):
                     reg_pf[iexpr] = new_name
                     schedule.insert(sched_index,
                             RegisterPrefetch(
-                                index_expr=iexpr, new_name=new_name))
+                                subexprs=[iexpr], new_names=[new_name]))
                     sched_index += 1
                 else:
                     i += 1
@@ -178,7 +178,7 @@ class LocalMemoryPrefetch(Record):
         from pymbolic.mapper.dependency import DependencyMapper
         return set(var.name
                 for var in DependencyMapper()(self.index_expr)
-                ) - set(self.all_inames()) - self.kernel.scalar_args()
+                ) - set(self.all_inames()) - set(self.kernel.scalar_loop_args)
 
     def hash(self):
         return (hash(type(self)) ^ hash(self.input_vector)

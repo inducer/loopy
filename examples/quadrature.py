@@ -34,17 +34,14 @@ def build_mass_mat_maker(ctx_factory=cl.create_some_context):
     Nb = 3
     Nv = 3
     Nq = 3*3
-
     Nc = 1600
-    from pymbolic import var
-    m, w, det_j, phi, c, i, j, q = [var(s) for s in "m w det_j phi c i j q".split()]
 
     knl = lp.LoopKernel(ctx.devices[0],
             "[ncells] -> {[c,i,j,q]: 0<=c<ncells and 0 <= i < %(Nv)s "
             "and 0<=j<%(Nb)s and 0<=q<%(Nq)s}" % dict(
                 Nv=Nv, Nb=Nb, Nq=Nq),
             [
-                (m[c, i, j], w[q]*det_j[c]*phi[i,q]*phi[j,q])
+                "m[c,i,j] = w[q]*det_j[c]*phi[i,q]*phi[j,q]",
                 ],
             [
                 lp.ArrayArg("m", dtype, shape=(Nc, Nv, Nb)),
@@ -54,17 +51,16 @@ def build_mass_mat_maker(ctx_factory=cl.create_some_context):
                 lp.ScalarArg("ncells", np.int32, approximately=1000),
                 ],
             name="mass_mat",
-            iname_to_tag=dict(i="l.0", j="l.1")
+            iname_to_tag=dict(i="l.0", j="l.1"),
+            assumptions="ncells >= 1"
             )
-    knl = lp.split_dimension(knl, "c", 8, outer_tag="g.0", inner_tag="l.2")
-    knl = lp.add_prefetch(knl, "det_j", ["c_inner"])
+    knl = lp.split_dimension(knl, "c", 8, inner_tag="l.2", 
+            outer_slab_increments=(0,0))
+    knl = lp.split_dimension(knl, "c_outer", 8, outer_tag="g.0",
+            outer_slab_increments=(0,0))
 
     # fix reg prefetch
-    # fix redundant slab generation
-
-    # FIXME
-    #knl = lp.split_dimension(knl, "c", 8, inner_tag="l.2")
-    #knl = lp.split_dimension(knl, "c_outer", 8, outer_tag="g.0")
+    knl = lp.add_prefetch(knl, "det_j", ["c_inner"])
 
     #ilp = 4
     #knl = lp.split_dimension(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
@@ -77,7 +73,8 @@ def build_mass_mat_maker(ctx_factory=cl.create_some_context):
     #knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
     #assert knl.get_problems({})[0] <= 2
 
-    kernel_gen = (lp.insert_register_prefetches(knl)
+    kernel_gen = (knl
+    #kernel_gen = (lp.insert_register_prefetches(knl)
             for knl in lp.generate_loop_schedules(knl))
 
     if False:

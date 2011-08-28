@@ -21,24 +21,23 @@ register_mpz_with_pymbolic()
 # TODO: Custom reductions per red. axis
 # TODO: Functions
 # TODO: Common subexpressions
-# TODO: Parse ops from string
+# TODO: Array common subexpressions
 # FIXME: support non-reductive dimensions (what did I mean here?)
 # FIXME: write names should be assigned during scheduling
+# FIXME: screwy lower bounds in ILP
 
 # TODO: Divisibility
 # TODO: Try, fix indirect addressing
-# TODO: More user control for slab opt
 
 # TODO: Implement GT200 matmul, Fermi matmul, DG
 # TODO: DMA engine threads?
-# TODO: Specify initial implemented domain.
-#   (to filter away unnecessary conditions on parameters)
 # TODO: Deal with equalities that crop up.
+# TODO: Better user feedback.
 
 # Later:
 # ------
 # TODO: Try different kernels
-# TODO:   - Tricky: Convolution, FD
+# TODO:   - Tricky: Convolution, Stencil
 # TODO: Separate all-bulk from non-bulk kernels. (maybe?) (#ifdef?)
 # TODO: implement efficient ceil_div? (as opposed to floor_div)
 # TODO: why are corner cases inefficient?
