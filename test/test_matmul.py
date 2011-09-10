@@ -191,6 +191,59 @@ def test_plain_matrix_mul(ctx_factory):
 
 
 
+def test_plain_matrix_mul_new_ui(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+    order = "C"
+    queue = cl.CommandQueue(ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    n = get_suitable_size(ctx)
+
+    knl = lp.LoopKernel(ctx.devices[0],
+            "{[i,j,k]: 0<=i,j,k<%d}" % n,
+            [
+                "c[i, j] = reduce(sum, k, cse(a[i, k], 'lhsmat')*cse(b[k, j], 'rhsmat'))"
+                ],
+            [
+                lp.ArrayArg("a", dtype, shape=(n, n), order=order),
+                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
+                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                ],
+            name="matmul")
+
+    knl = lp.split_dimension(knl, "i", 16,
+            outer_tag="g.0", inner_tag="l.1", no_slabs=True)
+    knl = lp.split_dimension(knl, "j", 16,
+            outer_tag="g.1", inner_tag="l.0", no_slabs=True)
+    knl = lp.split_dimension(knl, "k", 16, no_slabs=True)
+    #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
+    #knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
+    assert knl.get_problems({})[0] <= 2
+
+    kernel_gen = (lp.insert_register_prefetches(knl)
+            for knl in lp.generate_loop_schedules(knl))
+
+    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
+    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
+    c = cl_array.empty_like(a)
+    refsol = np.dot(a.get(), b.get())
+
+    def launcher(kernel, gsize, lsize, check):
+        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
+                g_times_l=True)
+
+        if check:
+            check_error(refsol, c.get())
+
+        return evt
+
+    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+
+
+
+
+
 def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
