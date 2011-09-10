@@ -112,7 +112,7 @@ def generate_loop_schedules(kernel, hints=[]):
         hints = hints[1:]
 
     if hints and hints[0] in schedulable:
-        schedulable = set(hints[0])
+        schedulable = set([hints[0]])
 
     if schedulable:
         # have a schedulable variable? schedule a loop for it, recurse
