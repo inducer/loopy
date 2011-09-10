@@ -433,7 +433,13 @@ class LoopKernel(Record):
     def split_dimension(self, name, inner_length, padded_length=None,
             outer_name=None, inner_name=None,
             outer_tag=None, inner_tag=None,
-            outer_slab_increments=(0, -1)):
+            outer_slab_increments=(0, -1), no_slabs=None):
+
+        if name not in self.all_inames():
+            raise ValueError("cannot split loop for unknown variable '%s'" % name)
+
+        if no_slabs:
+            outer_slab_increments = (0, 0)
 
         outer_tag = parse_tag(outer_tag)
         inner_tag = parse_tag(inner_tag)
