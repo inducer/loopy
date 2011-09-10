@@ -92,7 +92,7 @@ def test_axpy(ctx_factory):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = get_suitable_size(ctx)**3
+    n = get_suitable_size(ctx)**2
 
     knl = lp.LoopKernel(ctx.devices[0],
             "[n] -> {[i]: 0<=i<n}",
