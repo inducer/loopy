@@ -21,10 +21,12 @@ register_mpz_with_pymbolic()
 # TODO: Custom reductions per red. axis
 # TODO: Functions
 # TODO: Common subexpressions
-# TODO: Array common subexpressions
+# TODO: Array common subexpressions (shared and private!)
+# TODO: ILP arrays
 # FIXME: support non-reductive dimensions (what did I mean here?)
 # FIXME: write names should be assigned during scheduling
 # FIXME: screwy lower bounds in ILP
+# FIXME: Leading syncthreads elimination
 
 # TODO: Divisibility
 # TODO: Try, fix indirect addressing
