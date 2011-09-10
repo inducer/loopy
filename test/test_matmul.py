@@ -159,9 +159,11 @@ def test_plain_matrix_mul(ctx_factory):
                 ],
             name="matmul")
 
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.split_dimension(knl, "i", 16,
+            outer_tag="g.0", inner_tag="l.1", no_slabs=True)
+    knl = lp.split_dimension(knl, "j", 16,
+            outer_tag="g.1", inner_tag="l.0", no_slabs=True)
+    knl = lp.split_dimension(knl, "k", 16, no_slabs=True)
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
     assert knl.get_problems({})[0] <= 2
