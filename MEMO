@@ -55,12 +55,14 @@ Things to consider
 
 - Implement get_problems()
 
-- CSE iname duplication might be unnecessary?
-  (don't think so: It might be desired to do a full fetch before a mxm k loop
-  even if that requires going iterative.)
+- FIXME: Deal with insns losing a seq iname dep in a CSE realization
 
 Dealt with
 ^^^^^^^^^^
+
+- CSE iname duplication might be unnecessary?
+  (don't think so: It might be desired to do a full fetch before a mxm k loop
+  even if that requires going iterative.)
 
 - Reduction needs to know a neutral element
 

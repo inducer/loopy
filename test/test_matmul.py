@@ -217,21 +217,14 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
             outer_tag="g.0", inner_tag="l.1", no_slabs=True)
     knl = lp.split_dimension(knl, "j", 16,
             outer_tag="g.1", inner_tag="l.0", no_slabs=True)
-    for insn in knl.instructions:
-        print insn
-    print
-    knl = lp.realize_reduction(knl, "k")
-    for insn in knl.instructions:
-        print insn
-    print
     knl = lp.split_dimension(knl, "k", 16, no_slabs=True)
 
     knl = lp.realize_cse(knl, "lhsmat", dtype, ["k_inner", "i_inner"])
     knl = lp.realize_cse(knl, "rhsmat", dtype, ["j_inner", "k_inner"])
 
-    for insn in knl.instructions:
-        print insn
-
+    #print
+    #for insn in knl.instructions:
+        #print insn
     #assert lp.get_problems(knl, {})[0] <= 2
 
     kernel_gen = lp.generate_loop_schedules(knl)

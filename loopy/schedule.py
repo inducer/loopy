@@ -77,21 +77,23 @@ def generate_loop_schedules_internal(kernel, entered_loops=[]):
 
 
 def generate_loop_schedules(kernel):
-    # {{{ check that all CSEs and reductions are realized
+    from loopy import realize_reduction
+    kernel = realize_reduction(kernel)
 
-    from loopy.symbolic import CSECallbackMapper, ReductionCallbackMapper
+    # {{{ check that all CSEs
 
-    def map_reduction(expr, rec):
-        raise RuntimeError("all reductions must be realized before scheduling")
+    from loopy.symbolic import CSECallbackMapper
 
     def map_cse(expr, rec):
         raise RuntimeError("all CSEs must be realized before scheduling")
 
     for insn in kernel.instructions:
-        ReductionCallbackMapper(map_reduction)(insn.expression)
         CSECallbackMapper(map_cse)(insn.expression)
 
     # }}}
+
+    for i, insn_a in enumerate(kernel.instructions):
+        print i, insn_a
 
     kernel = fix_grid_sizes(kernel)
 
@@ -100,6 +102,8 @@ def generate_loop_schedules(kernel):
         for k, v in loop_dep_graph.iteritems():
             print "%s: %s" % (k, ",".join(v))
         1/0
+
+    kernel = find_automatic_dependencies(kernel)
 
     #grid_size, group_size = find_known_grid_and_group_sizes(kernel)
 

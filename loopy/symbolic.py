@@ -148,10 +148,10 @@ class ReductionLoopSplitter(IdentityMapper):
 
     def map_reduction(self, expr):
         if self.old_iname in expr.inames:
-            new_inames = expr.inames[:]
+            new_inames = list(expr.inames)
             new_inames.remove(self.old_iname)
             new_inames.extend([self.outer_iname, self.inner_iname])
-            return Reduction(expr.operation, new_inames,
+            return Reduction(expr.operation, tuple(new_inames),
                         expr.expr, expr.tag)
         else:
             return IdentityMapper.map_reduction(self, expr)
@@ -489,6 +489,9 @@ class IndexVariableFinder(CombineMapper):
             else:
                 raise RuntimeError("index variable not understood: %s" % idx_var)
         return result
+
+    def map_reduction(self, expr):
+        return set(expr.inames) | self.rec(expr.expr)
 
 # }}}
 

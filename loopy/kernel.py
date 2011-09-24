@@ -284,21 +284,6 @@ class Instruction(Record):
 
         return result
 
-    def substitute(self, old_var, new_expr, tagged_ok=False):
-        from loopy.symbolic import SubstitutionMapper
-
-        prev_tag = self.iname_to_tag.get(old_var)
-        if prev_tag is not None and not tagged_ok:
-            raise RuntimeError("cannot substitute already tagged variable '%s'"
-                    % old_var)
-
-        subst_map = {var(old_var): new_expr}
-
-        subst_mapper = SubstitutionMapper(subst_map.get)
-        return self.copy(
-                assignee=subst_mapper(self.assignee),
-                expression=subst_mapper(self.expression))
-
     def __str__(self):
         loop_descrs = []
         for iname in sorted(self.all_inames()):
@@ -632,14 +617,6 @@ class LoopKernel(Record):
     def local_mem_use(self):
         return sum(lv.nbytes for lv in self.temporary_variables
                 if lv.is_local)
-
-    def substitute(self, old_var, new_expr):
-        if self.schedule is not None:
-            raise RuntimeError("cannot substitute-schedule already generated")
-
-        return self.copy(instructions=[
-            insn.substitute(old_var, new_expr)
-            for insn in self.instructions])
 
 # }}}
 
