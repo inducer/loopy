@@ -2,33 +2,157 @@
 
 from __future__ import division
 
-from pymbolic.mapper import CombineMapper, RecursiveMapper, IdentityMapper
+from pymbolic.primitives import AlgebraicLeaf
+from pymbolic.mapper import (
+        CombineMapper as CombineMapperBase,
+        IdentityMapper as IdentityMapperBase,
+        RecursiveMapper)
 from pymbolic.mapper.c_code import CCodeMapper
 from pymbolic.mapper.stringifier import PREC_NONE
+from pymbolic.mapper.substitutor import \
+        SubstitutionMapper as SubstitutionMapperBase
+from pymbolic.mapper.stringifier import \
+        StringifyMapper as StringifyMapperBase
 import numpy as np
 import islpy as isl
+from islpy import dim_type
 
 
 
+# {{{ loopy-specific primitives
 
-# {{{ subscript expression collector
+class Reduction(AlgebraicLeaf):
+    def __init__(self, operation, iname, expr, tag=None):
+        self.operation = operation
+        self.iname = iname
+        self.expr = expr
+        self.tag = tag
 
-class AllSubscriptExpressionCollector(CombineMapper):
-    def combine(self, values):
-        from pytools import flatten
-        return set(flatten(values))
+    def __getinitargs__(self):
+        return (self.operation, self.iname, self.expr, self.tag)
 
-    def map_constant(self, expr):
-        return set()
+    def get_hash(self):
+        return hash((self.__class__, self.operation, self.iname,
+            self.expr, self.tag))
 
-    def map_algebraic_leaf(self, expr):
-        return set()
+    def is_equal(self, other):
+        return (other.__class__ == self.__class__
+                and other.operation == self.operation
+                and other.iname == self.iname
+                and other.expr == self.expr
+                and other.tag == self.tag)
 
-    def map_subscript(self, expr):
+    def stringifier(self):
+        return StringifyMapper
+
+    mapper_method = intern("map_reduction")
+
+# }}}
+
+# {{{ mappers with support for loopy-specific primitives
+
+class IdentityMapperMixin(object):
+    def map_reduction(self, expr):
+        return Reduction(expr.operation, expr.iname,
+                self.rec(expr.expr), expr.tag)
+
+class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
+    pass
+
+class CombineMapper(CombineMapperBase):
+    def map_reduction(self, expr):
+        return self.rec(expr.expr)
+
+class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
+    pass
+
+class StringifyMapper(StringifyMapperBase):
+    def map_reduction(self, expr, prec):
+        return "reduce(%s, %s, %s, tag=%s)" % (
+                expr.operation, expr.iname, expr.expr, expr.tag)
+
+# }}}
+
+# {{{ functions to primitives
+
+class FunctionToPrimitiveMapper(IdentityMapper):
+    """Looks for invocations of a function called 'cse' or 'reduce' and 
+    turns those into the actual pymbolic primitives used for that.
+    """
+
+    def map_call(self, expr):
         from pymbolic.primitives import Variable
-        assert isinstance(expr.aggregate, Variable)
+        if isinstance(expr.function, Variable) and expr.function.name == "cse":
+            from pymbolic.primitives import CommonSubexpression
+            if len(expr.parameters) == 2:
+                if not isinstance(expr.parameters[1], Variable):
+                    raise TypeError("second argument to cse() must be a symbol")
+                return CommonSubexpression(
+                        expr.parameters[0], expr.parameters[1].name)
+            else:
+                raise TypeError("cse takes two arguments")
 
-        return set([expr])
+        elif isinstance(expr.function, Variable) and expr.function.name == "reduce":
+            if len(expr.parameters) == 3:
+                operation, iname, red_expr = expr.parameters
+                tag = None
+            elif len(expr.parameters) == 4:
+                operation, iname, red_expr, tag = expr.parameters
+            else:
+                raise TypeError("reduce takes three or four arguments")
+
+            red_expr = self.rec(red_expr)
+
+            if not isinstance(operation, Variable):
+                raise TypeError("operation argument to reduce() must be a symbol")
+            operation = operation.name
+            if not isinstance(iname, Variable):
+                raise TypeError("iname argument to reduce() must be a symbol")
+            iname = iname.name
+            if tag is not None:
+                if  not isinstance(tag, Variable):
+                    raise TypeError("tag argument to reduce() must be a symbol")
+                tag = tag.name
+
+            return Reduction(operation, iname, red_expr, tag)
+        else:
+            return IdentityMapper.map_call(self, expr)
+
+# }}}
+
+# {{{ reduction loop splitter
+
+class ReductionLoopSplitter(IdentityMapper):
+    def __init__(self, old_iname, outer_iname, inner_iname, do_warn=True):
+        self.old_iname = old_iname
+        self.outer_iname = outer_iname
+        self.inner_iname = inner_iname
+        self.do_warn = do_warn
+
+    def map_reduction(self, expr):
+        if expr.iname == self.old_iname:
+            if self.do_warn:
+                from warnings import warn
+                from loopy import LoopyAdvisory
+                warn("The reduction loop for iname '%s' (with tag '%s') "
+                        "was split into two nested reductions with separate "
+                        "state variables. It might be advantageous to "
+                        "'realize' the reduction first before splitting "
+                        "this loop." % (expr.iname, expr.tag), LoopyAdvisory)
+
+            if expr.tag is not None:
+                outer_tag = expr.tag + "_outer"
+                inner_tag = expr.tag + "_inner"
+            else:
+                outer_tag = None
+                inner_tag = None
+
+            return Reduction(expr.operation, self.outer_iname,
+                    Reduction(expr.operation, self.inner_iname,
+                        expr.expr, inner_tag),
+                    outer_tag)
+        else:
+            return IdentityMapper.map_reduction(self, expr)
 
 # }}}
 
@@ -93,7 +217,7 @@ class CoefficientCollector(RecursiveMapper):
 # {{{ variable index expression collector
 
 class VariableIndexExpressionCollector(CombineMapper):
-    def __init__(self, tgt_vector_name):
+    def __init__(self, tgt_vector_name=None):
         self.tgt_vector_name = tgt_vector_name
 
     def combine(self, values):
@@ -110,8 +234,8 @@ class VariableIndexExpressionCollector(CombineMapper):
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)
 
-        if expr.aggregate.name == self.tgt_vector_name:
-            return set([expr.index])
+        if self.tgt_vector_name is None or expr.aggregate.name == self.tgt_vector_name:
+            return set([expr.index]) | self.rec(expr.index)
         else:
             return CombineMapper.map_subscript(self, expr)
 
@@ -246,60 +370,111 @@ class LoopyCCodeMapper(CCodeMapper):
 
 # }}}
 
+# {{{ aff -> expr conversion
+
+def aff_to_expr(aff):
+    from pymbolic import var
+
+    result = int(aff.get_constant())
+    for dt in [dim_type.in_, dim_type.param]:
+        for i in xrange(aff.dim(dim_type.in_)):
+            coeff = int(aff.get_coefficient(dt, i))
+            if coeff:
+                result += coeff*var(aff.get_dim_name(dt, i))
+
+    for i in xrange(aff.dim(dim_type.div)):
+        coeff = int(aff.get_coefficient(dim_type.div, i))
+        if coeff:
+            result += coeff*aff_to_expr(aff.get_div(i))
+
+    denom = aff.get_denominator()
+    if denom == 1:
+        return result
+    else:
+        return result // denom
+
+
+
+
+def pw_aff_to_expr(pw_aff):
+    pieces = pw_aff.get_pieces()
+
+    if len(pieces) != 1:
+        raise NotImplementedError("pw_aff_to_expr for multi-piece PwAff instances")
+
+    (set, aff), = pieces
+    return aff_to_expr(aff)
+
+def aff_from_expr(space, expr):
+    n = space.dim(dim_type.set)
+
+    zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
+    context = {}
+    for name, (dt, pos) in space.get_var_dict().iteritems():
+        if dt == dim_type.set:
+            dt = dim_type.in_
+
+        context[name] = zero.set_coefficient(dt, pos, 1)
+
+    from pymbolic import evaluate
+    return evaluate(expr, context)
+
+# }}}
+
 # {{{ expression <-> constraint conversion
 
-def _constraint_from_expr(space, expr, constraint_factory):
-    from loopy.symbolic import CoefficientCollector
-    return constraint_factory(space,
-            CoefficientCollector()(expr))
-
 def eq_constraint_from_expr(space, expr):
-    return _constraint_from_expr(
-            space, expr, isl.Constraint.eq_from_names)
+    return isl.Constraint.equality_from_aff(aff_from_expr(space,expr))
 
 def ineq_constraint_from_expr(space, expr):
-    return _constraint_from_expr(
-            space, expr, isl.Constraint.ineq_from_names)
+    return isl.Constraint.inequality_from_aff(aff_from_expr(space,expr))
 
 def constraint_to_expr(cns, except_name=None):
-    excepted_coeff = 0
-    result = 0
-    from pymbolic import var
-    for var_name, coeff in cns.get_coefficients_by_name().iteritems():
-        if isinstance(var_name, str):
-            if var_name == except_name:
-                excepted_coeff = int(coeff)
-            else:
-                result += int(coeff)*var(var_name)
-        else:
-            result += int(coeff)
+    return aff_to_expr(cns.get_aff())
 
-    if except_name is not None:
-        return result, excepted_coeff
-    else:
+# }}}
+
+# {{{ CSE callback mapper
+
+class CSECallbackMapper(IdentityMapper):
+    def __init__(self, callback):
+        self.callback = callback
+
+    def map_common_subexpression(self, expr):
+        result = self.callback(expr, self.rec)
+        if result is None:
+            return IdentityMapper.map_common_subexpression(self, expr)
         return result
 
 # }}}
 
-# {{{ CSE "realizer"
+# {{{ Reduction callback mapper
 
-class CSERealizer(IdentityMapper):
-    """Looks for invocations of a function called 'cse' and turns those into
-    CommonSubexpression objects.
-    """
+class ReductionCallbackMapper(IdentityMapper):
+    def __init__(self, callback):
+        self.callback = callback
 
-    def map_call(self, expr):
-        from pymbolic import Variable
-        if isinstance(expr.function, Variable) and expr.function.name == "cse":
-            from pymbolic.primitives import CommonSubexpression
-            if len(expr.parameters) == 1:
-                return CommonSubexpression(expr.parameters[0])
-            else:
-                raise TypeError("cse takes exactly one argument")
-        else:
-            return IdentityMapper.map_call(self, expr)
+    def map_reduction(self, expr):
+        result = self.callback(expr, self.rec)
+        if result is None:
+            return IdentityMapper.map_reduction(self, expr)
+        return result
 
 # }}}
+
+# {{{ index dependency finding
+
+class IndexVariableFinder(CombineMapper):
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, set())
+
+    def map_subscript(self, expr):
+        from pymbolic.mapper.dependency import DependencyMapper
+        return DependencyMapper()(expr)
+
+# }}}
+
 
 
 

@@ -4,13 +4,100 @@ from __future__ import division
 
 import numpy as np
 from pytools import Record, memoize_method
-from pymbolic.mapper.dependency import DependencyMapper
-import pyopencl as cl
 import islpy as isl
 from islpy import dim_type
+from pymbolic import var
 
 
 
+
+
+# {{{ index tags
+
+class IndexTag(Record):
+    __slots__ = []
+
+    def __hash__(self):
+        raise RuntimeError("use .key to hash index tags")
+
+
+
+
+class SequentialTag(IndexTag):
+    pass
+
+class ParallelTag(IndexTag):
+    pass
+
+class UniqueTag(IndexTag):
+    @property
+    def key(self):
+        return type(self)
+
+class ParallelTagWithAxis(ParallelTag, UniqueTag):
+    __slots__ = ["axis"]
+
+    def __init__(self, axis):
+        Record.__init__(self,
+                axis=axis)
+
+    @property
+    def key(self):
+        return (type(self), self.axis)
+
+    def __str__(self):
+        return "%s.%d" % (
+                self.print_name, self.axis)
+
+class TAG_GROUP_IDX(ParallelTagWithAxis):
+    print_name = "g"
+
+class TAG_WORK_ITEM_IDX(ParallelTagWithAxis):
+    print_name = "l"
+
+class TAG_AUTO_WORK_ITEM_IDX(ParallelTag):
+    def __str__(self):
+        return "l.auto"
+
+class TAG_ILP(ParallelTag):
+    def __str__(self):
+        return "ilp"
+
+class BaseUnrollTag(IndexTag):
+    pass
+
+class TAG_UNROLL_STATIC(BaseUnrollTag):
+    def __str__(self):
+        return "unr"
+
+class TAG_UNROLL_INCR(BaseUnrollTag):
+    def __str__(self):
+        return "unri"
+
+def parse_tag(tag):
+    if tag is None:
+        return tag
+
+    if isinstance(tag, IndexTag):
+        return tag
+
+    if not isinstance(tag, str):
+        raise ValueError("cannot parse tag: %s" % tag)
+
+    if tag in ["unrs", "unr"]:
+        return TAG_UNROLL_STATIC()
+    elif tag == "unri":
+        return TAG_UNROLL_INCR()
+    elif tag == "ilp":
+        return TAG_ILP()
+    elif tag.startswith("g."):
+        return TAG_GROUP_IDX(int(tag[2:]))
+    elif tag.startswith("l."):
+        return TAG_WORK_ITEM_IDX(int(tag[2:]))
+    else:
+        raise ValueError("cannot parse tag: %s" % tag)
+
+# }}}
 
 # {{{ arguments
 
@@ -87,88 +174,225 @@ class ScalarArg:
 
 # }}}
 
-# {{{ index tags
+# {{{ temporary variable
 
-class IndexTag(Record):
-    __slots__ = []
+class TemporaryVariable(Record):
+    """
+    :ivar name:
+    :ivar dtype:
+    :ivar shape:
+    :ivar base_indices:
+    :ivar is_local:
+    """
 
-    def __hash__(self):
-        raise RuntimeError("use .key to hash index tags")
+    def __init__(self, name, dtype, shape, is_local, base_indices=None):
+        if base_indices is None:
+            base_indices = (0,) * len(shape)
 
+        Record.__init__(self, name=name, dtype=dtype, shape=shape, is_local=is_local)
 
-
-
-class ParallelTag(IndexTag):
-    pass
-
-class UniqueTag(IndexTag):
     @property
-    def key(self):
-        return type(self)
+    def nbytes(self):
+        from pytools import product
+        return product(self.shape)*self.dtype.itemsize
 
-class ParallelTagWithAxis(ParallelTag, UniqueTag):
-    __slots__ = ["axis", "forced_length"]
+# }}}
 
-    def __init__(self, axis, forced_length=None):
+# {{{ instruction
+
+class Instruction(Record):
+    #:ivar kernel: handle to the :class:`LoopKernel` of which this instruction
+        #is a part. (not yet)
+    """
+    :ivar id: An (otherwise meaningless) identifier that is unique within 
+        a :class:`LoopKernel`.
+    :ivar assignee:
+    :ivar expression:
+    :ivar use_auto_dependencies:
+    :ivar forced_iname_deps: a list of inames that are added to the list of iname
+        dependencies
+    :ivar forced_insn_deps: a list of ids of :class:`Instruction` instances that
+        *must* be executed before this one. Note that loop scheduling augments this
+        by adding dependencies on any writes to temporaries read by this instruction
+        *if* use_auto_dependencies is True.
+    :ivar iname_to_tag: a map from loop domain variables to subclasses
+        of :class:`IndexTag`
+    """
+    def __init__(self,
+            id, assignee, expression,
+            use_auto_dependencies=True,
+            forced_iname_deps=[], forced_insn_deps=[],
+            iname_to_tag={}):
+
+        # {{{ find and properly tag reduction inames
+
+        reduction_inames = set()
+
+        from loopy.symbolic import ReductionCallbackMapper
+
+        def map_reduction(expr, rec):
+            rec(expr.expr)
+            reduction_inames.add(expr.iname)
+
+        ReductionCallbackMapper(map_reduction)(expression)
+
+        if reduction_inames:
+            iname_to_tag = iname_to_tag.copy()
+
+            for iname in reduction_inames:
+                tag = iname_to_tag.get(iname)
+                if not (tag is None or isinstance(tag, SequentialTag)):
+                    raise RuntimeError("inconsistency detected: "
+                            "sequential/reduction iname '%s' was "
+                            "tagged otherwise" % iname)
+
+                iname_to_tag[iname] = SequentialTag()
+
+        # }}}
+
         Record.__init__(self,
-                axis=axis, forced_length=forced_length)
+                id=id, assignee=assignee, expression=expression,
+                use_auto_dependencies=use_auto_dependencies,
+                forced_iname_deps=forced_iname_deps,
+                forced_insn_deps=forced_insn_deps,
+                iname_to_tag=dict(
+                    (iname, parse_tag(tag))
+                    for iname, tag in iname_to_tag.iteritems()))
 
-    @property
-    def key(self):
-        return (type(self), self.axis)
+        unused_tags = set(self.iname_to_tag.iterkeys()) - self.all_inames()
+        if unused_tags:
+            raise RuntimeError("encountered tags for unused inames: "
+                    + ", ".join(unused_tags))
 
-    def __repr__(self):
-        if self.forced_length:
-            return "%s(%d, flen=%d)" % (
-                    self.print_name, self.axis,
-                    self.forced_length)
-        else:
-            return "%s(%d)" % (
-                    self.print_name, self.axis)
+    @memoize_method
+    def all_inames(self):
+        from loopy.symbolic import VariableIndexExpressionCollector
+        idx_exprs = (
+                VariableIndexExpressionCollector()(self.expression)
+                | VariableIndexExpressionCollector()(self.assignee))
+        from pymbolic.mapper.dependency import DependencyMapper
+        index_vars = set()
 
-class TAG_GROUP_IDX(ParallelTagWithAxis):
-    print_name = "GROUP_IDX"
+        from pymbolic.primitives import Variable
+        for idx_expr in idx_exprs:
+            for i in DependencyMapper()(idx_expr):
+                if isinstance(i, Variable):
+                    index_vars.add(i.name)
 
-class TAG_WORK_ITEM_IDX(ParallelTagWithAxis):
-    print_name = "WORK_ITEM_IDX"
+        return index_vars | set(self.forced_iname_deps)
 
-class TAG_ILP(ParallelTag):
-    def __repr__(self):
-        return "TAG_ILP"
+    @memoize_method
+    def sequential_inames(self):
+        result = set()
 
-class BaseUnrollTag(IndexTag):
-    pass
+        for iname, tag in self.iname_to_tag.iteritems():
+            if isinstance(tag, SequentialTag):
+                result.add(iname)
 
-class TAG_UNROLL_STATIC(BaseUnrollTag):
-    def __repr__(self):
-        return "TAG_UNROLL_STATIC"
+        return result
 
-class TAG_UNROLL_INCR(BaseUnrollTag):
-    def __repr__(self):
-        return "TAG_UNROLL_INCR"
+    def substitute(self, old_var, new_expr, tagged_ok=False):
+        from loopy.symbolic import SubstitutionMapper
 
-def parse_tag(tag):
-    if tag is None:
-        return tag
+        prev_tag = self.iname_to_tag.get(old_var)
+        if prev_tag is not None and not tagged_ok:
+            raise RuntimeError("cannot substitute already tagged variable '%s'"
+                    % old_var)
 
-    if isinstance(tag, IndexTag):
-        return tag
+        subst_map = {var(old_var): new_expr}
 
-    if not isinstance(tag, str):
-        raise ValueError("cannot parse tag: %s" % tag)
+        subst_mapper = SubstitutionMapper(subst_map.get)
+        return self.copy(
+                assignee=subst_mapper(self.assignee),
+                expression=subst_mapper(self.expression))
 
-    if tag in ["unrs", "unr"]:
-        return TAG_UNROLL_STATIC()
-    elif tag == "unri":
-        return TAG_UNROLL_INCR()
-    elif tag == "ilp":
-        return TAG_ILP()
-    elif tag.startswith("g."):
-        return TAG_GROUP_IDX(int(tag[2:]))
-    elif tag.startswith("l."):
-        return TAG_WORK_ITEM_IDX(int(tag[2:]))
-    else:
-        raise ValueError("cannot parse tag: %s" % tag)
+    def __str__(self):
+        loop_descrs = []
+        for iname in self.all_inames():
+            tag = self.iname_to_tag.get(iname)
+
+            if tag is None:
+                loop_descrs.append(iname)
+            else:
+                loop_descrs.append("%s: %s" % (iname, tag))
+
+        result = "%s: %s <- %s\n    [%s]" % (self.id,
+                self.assignee, self.expression, ", ".join(loop_descrs))
+
+        return result
+
+# }}}
+
+# {{{ reduction operations
+
+class ReductionOperation:
+    """
+    :ivar neutral_element:
+    """
+
+    def __call__(self, operand1, operand2):
+        raise NotImplementedError
+
+class SumReductionOperation:
+    neutral_element = 0
+
+    def __call__(self, operand1, operand2):
+        return operand1 + operand2
+
+class ProductReductionOperation:
+    neutral_element = 1
+
+    def __call__(self, operand1, operand2):
+        return operand1 * operand2
+
+class FloatingPointMaxOperation:
+    neutral_element = -var("INFINITY")
+
+    def __call__(self, operand1, operand2):
+        return var("max")(operand1, operand2)
+
+class FloatingPointMaxOperation:
+    # OpenCL 1.1, section 6.11.2
+    neutral_element = -var("INFINITY")
+
+    def __call__(self, operand1, operand2):
+        from pymbolic.primitives import FunctionSymbol
+        return FunctionSymbol("max")(operand1, operand2)
+
+class FloatingPointMinOperation:
+    # OpenCL 1.1, section 6.11.2
+    neutral_element = var("INFINITY")
+
+    def __call__(self, operand1, operand2):
+        from pymbolic.primitives import FunctionSymbol
+        return FunctionSymbol("min")(operand1, operand2)
+
+
+
+
+REGISTERED_REDUCTION_OPS = {
+        "sum": SumReductionOperation(),
+        "product": ProductReductionOperation(),
+        "fp_max": FloatingPointMaxOperation(),
+        "fp_min": FloatingPointMinOperation(),
+        }
+
+
+
+def register_reduction(prefix, op):
+    """Register a new :class:`ReductionOperation`.
+
+    :arg prefix: the desired name of the operation
+    :return: the name actually assigned to the operation,
+        will start with *prefix*.
+    """
+
+    from loopy.tools import generate_unique_possibilities
+
+    for name in generate_unique_possibilities(prefix):
+        if name not in REGISTERED_REDUCTION_OPS:
+            REGISTERED_REDUCTION_OPS[name] = op
+            return name
 
 # }}}
 
@@ -178,12 +402,9 @@ class LoopKernel(Record):
     """
     :ivar device: :class:`pyopencl.Device`
     :ivar domain: :class:`islpy.BasicSet`
-    :ivar iname_to_tag:
     :ivar instructions:
     :ivar args:
-    :ivar prefetch:
     :ivar schedule:
-    :ivar register_prefetch:
     :ivar name:
     :ivar preamble:
     :ivar assumptions: the initial implemented_domain, captures assumptions
@@ -191,21 +412,29 @@ class LoopKernel(Record):
     :ivar iname_slab_increments: a dictionary mapping inames to (lower_incr,
         upper_incr) tuples that will be separated out in the execution to generate
         'bulk' slabs with fewer conditionals.
+    :ivar temporary_variables:
+    :ivar workgroup_size:
+    :ivar name_to_dim: A lookup table from inames to ISL-style
+        (dim_type, index) tuples
     """
 
-    def __init__(self, device, domain, instructions, args=None, prefetch={}, schedule=None,
-            register_prefetch=None, name="loopy_kernel",
-            iname_to_tag={}, is_divisible=lambda dividend, divisor: False,
+    def __init__(self, device, domain, instructions, args=None, schedule=None,
+            name="loopy_kernel",
             preamble=None, assumptions=None,
-            iname_slab_increments={}):
+            iname_slab_increments={},
+            temporary_variables=[],
+            workgroup_size=None,
+            name_to_dim=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
-        :arg iname_to_tag: a map from loop domain variables to subclasses of :class:`IndexTag`
         """
 
         def parse_if_necessary(insn):
             from pymbolic import parse
+
+            if isinstance(insn, Instruction):
+                return insn
             if isinstance(insn, str):
                 lhs, rhs = insn.split("=")
             elif isinstance(insn, tuple):
@@ -213,22 +442,35 @@ class LoopKernel(Record):
 
             if isinstance(lhs, str):
                 lhs = parse(lhs)
-            if isinstance(rhs, str):
-                from loopy.symbolic import CSERealizer
-                rhs = CSERealizer()(parse(rhs))
 
-            return lhs, rhs
+            if isinstance(rhs, str):
+                from loopy.symbolic import FunctionToPrimitiveMapper
+                rhs = parse(rhs)
+                rhs = FunctionToPrimitiveMapper()(rhs)
+
+            return Instruction(
+                    id=self.make_unique_instruction_id(insns),
+                    assignee=lhs, expression=rhs)
 
         if isinstance(domain, str):
             ctx = isl.Context()
             domain = isl.Set.read_from_str(ctx, domain, nparam=-1)
 
-        insns = [parse_if_necessary(insn) for insn in instructions]
+        if name_to_dim is None:
+            name_to_dim = domain.get_space().get_var_dict()
+
+        insns = []
+        for insn in instructions:
+            # must construct list one-by-one to facilitate unique id generation
+            insns.append(parse_if_necessary(insn))
+
+        if len(set(insn.id for insn in insns)) != len(insns):
+            raise RuntimeError("instruction ids do not appear to be unique")
 
         if assumptions is None:
-            assumptions = isl.Set.universe(domain.get_dim())
+            assumptions = isl.Set.universe(domain.get_space())
         elif isinstance(assumptions, str):
-            s = domain.get_dim()
+            s = domain.get_space()
             assumptions = isl.BasicSet.read_from_str(domain.get_ctx(),
                     "[%s] -> {[%s]: %s}"
                     % (",".join(s.get_name(dim_type.param, i)
@@ -239,24 +481,50 @@ class LoopKernel(Record):
                        nparam=-1)
 
         Record.__init__(self,
-                device=device, args=args, domain=domain, instructions=insns,
-                prefetch=prefetch, schedule=schedule,
-                register_prefetch=register_prefetch, name=name,
-                iname_to_tag=dict(
-                    (iname, parse_tag(tag))
-                    for iname, tag in iname_to_tag.iteritems()),
-                is_divisible=is_divisible,
+                device=device,  domain=domain, instructions=insns,
+                args=args,
+                schedule=schedule,
+                name=name,
                 preamble=preamble,
                 assumptions=assumptions,
-                iname_slab_increments=iname_slab_increments)
+                iname_slab_increments=iname_slab_increments,
+                temporary_variables=temporary_variables,
+                workgroup_size=workgroup_size,
+                name_to_dim=name_to_dim)
 
-        # FIXME: assert empty intersection of loop vars and args
-        # FIXME: assert that isl knows about loop parameters
+    def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
+        if insns is None:
+            insns = self.instructions
+
+        used_ids = set(insn.id for insn in insns) | extra_used_ids
+
+        from loopy.tools import generate_unique_possibilities
+        for id_str in generate_unique_possibilities(based_on):
+            if id_str not in used_ids:
+                return id_str
+
+    def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
+        used_vars = (
+                set(lv.name for lv in self.temporary_variables)
+                | set(arg.name for arg in self.args)
+                | set(self.name_to_dim.keys())
+                | extra_used_vars)
+
+        from loopy.tools import generate_unique_possibilities
+        for var_name in generate_unique_possibilities(based_on):
+            if var_name not in used_vars:
+                return var_name
+
+    @property
+    @memoize_method
+    def dim_to_name(self):
+        from pytools import reverse_dict
+        return reverse_dict(self.name_to_dim)
 
     @property
     @memoize_method
     def space(self):
-        return self.domain.get_dim()
+        return self.domain.get_space()
 
     @property
     @memoize_method
@@ -286,22 +554,6 @@ class LoopKernel(Record):
     def all_inames(self):
         from islpy import dim_type
         return set(self.space.get_var_dict(dim_type.set).iterkeys())
-
-    @memoize_method
-    def output_inames(self):
-        dm = DependencyMapper(include_subscripts=False)
-
-        output_indices = set()
-        for lvalue, expr in self.instructions:
-            output_indices.update(
-                    set(v.name for v in dm(lvalue))
-                    & self.all_inames())
-
-        return output_indices - set(arg.name for arg in self.args)
-
-    @memoize_method
-    def reduction_inames(self):
-        return self.all_inames() - self.output_inames()
 
     def inames_by_tag_type(self, tag_type):
         return [iname for iname in self.all_inames()
@@ -360,216 +612,18 @@ class LoopKernel(Record):
         return s
 
     def local_mem_use(self):
-        return sum(pf.nbytes for pf in self.prefetch.itervalues())
-
-    @memoize_method
-    def input_vectors(self):
-        dm = DependencyMapper(include_subscripts=False)
-
-        input_vectors = set()
-        for lvalue, expr in self.instructions:
-            input_vectors.update(
-                    set(v.name for v in dm(expr)))
-
-        return input_vectors - self.all_inames() - set(self.scalar_loop_args)
-
-    @memoize_method
-    def output_vectors(self):
-        dm = DependencyMapper(include_subscripts=False)
-
-        output_vectors = set()
-        for lvalue, expr in self.instructions:
-            output_vectors.update(
-                    set(v.name for v in dm(lvalue)))
-
-        return output_vectors - self.all_inames() - self.scalar_loop_args
-
-    def _subst_insns(self, old_var, new_expr):
-        from pymbolic.mapper.substitutor import substitute
-
-        subst_map = {old_var: new_expr}
-
-        return [(substitute(lvalue, subst_map),
-            substitute(expr, subst_map))
-            for lvalue, expr in self.instructions]
-
-    def is_prefetch_variable(self, varname):
-        if self.prefetch:
-            for pf in self.prefetch.itervalues():
-                for pfdim in pf.dims:
-                    if pfdim.name == varname:
-                        return True
-
-        return False
-
-    def _subst_prefetch(self, old_var, new_expr):
-        # FIXME delete me
-        from pymbolic.mapper.substitutor import substitute
-        subst_map = {old_var: new_expr}
-
-        result = {}
-        for pf in self.prefetch.itervalues():
-            for pfdim in pf.dims:
-                if pfdim.name == old_var:
-                    raise RuntimeError("can't substitute prefetch dimension %s"
-                            % old_var)
-
-            new_pf = pf.copy(index_expr=substitute(pf.index_expr, subst_map))
-            result[pf.input_vector, new_pf.index_expr] = new_pf
-
-        return result
+        return sum(lv.nbytes for lv in self.temporary_variables
+                if lv.is_local)
 
     def substitute(self, old_var, new_expr):
-        copy = self.copy(instructions=self._subst_insns(old_var, new_expr))
-        if self.prefetch:
-            raise RuntimeError("cannot substitute-prefetches already generated")
-            #copy.prefetch = self._subst_prefetch(old_var, new_expr)
-
         if self.schedule is not None:
             raise RuntimeError("cannot substitute-schedule already generated")
 
-        return copy
-
-    def split_dimension(self, name, inner_length, padded_length=None,
-            outer_name=None, inner_name=None,
-            outer_tag=None, inner_tag=None,
-            outer_slab_increments=(0, -1), no_slabs=None):
-
-        if name not in self.all_inames():
-            raise ValueError("cannot split loop for unknown variable '%s'" % name)
-
-        if no_slabs:
-            outer_slab_increments = (0, 0)
-
-        outer_tag = parse_tag(outer_tag)
-        inner_tag = parse_tag(inner_tag)
-
-        if self.iname_to_tag.get(name) is not None:
-            raise RuntimeError("cannot split tagged dimension '%s'" % name)
-
-        # {{{ check for repeated unique tag keys
-
-        new_tag_keys = set(tag.key
-                for tag in [outer_tag, inner_tag]
-                if tag is not None
-                if isinstance(tag, UniqueTag))
-
-        repeated_tag_keys = new_tag_keys & set(
-                tag.key for tag in self.iname_to_tag.itervalues()
-                if isinstance(tag, UniqueTag))
-
-        if repeated_tag_keys:
-            raise RuntimeError("repeated tag(s): %s" % repeated_tag_keys)
-
-        # }}}
-
-        if padded_length is not None:
-            inner_tag = inner_tag.copy(forced_length=padded_length)
-
-        if outer_name is None:
-            outer_name = name+"_outer"
-        if inner_name is None:
-            inner_name = name+"_inner"
-
-        new_iname_to_tag = self.iname_to_tag.copy()
-        if inner_tag is not None:
-            new_iname_to_tag[inner_name] = inner_tag
-        if outer_tag is not None:
-            new_iname_to_tag[outer_name] = outer_tag
-
-        from islpy import dim_type
-        outer_var_nr = self.space.size(dim_type.set)
-        inner_var_nr = self.space.size(dim_type.set)+1
-
-        def process_set(s):
-            s = s.add_dims(dim_type.set, 2)
-            s.set_dim_name(dim_type.set, outer_var_nr, outer_name)
-            s.set_dim_name(dim_type.set, inner_var_nr, inner_name)
-
-            from loopy.isl import make_slab
-
-            space = s.get_dim()
-            inner_constraint_set = (
-                    make_slab(space, inner_name, 0, inner_length)
-                    # name = inner + length*outer
-                    .add_constraint(isl.Constraint.eq_from_names(
-                        space, {name:1, inner_name: -1, outer_name:-inner_length})))
-
-            name_dim_type, name_idx = space.get_var_dict()[name]
-            return (s
-                    .intersect(inner_constraint_set)
-                    .project_out(name_dim_type, name_idx, 1))
-
-        new_domain = process_set(self.domain) 
-        new_assumptions = process_set(self.assumptions)
-
-        from pymbolic import var
-        inner = var(inner_name)
-        outer = var(outer_name)
-        new_loop_index = inner + outer*inner_length
-
-        iname_slab_increments = self.iname_slab_increments.copy()
-        iname_slab_increments[outer_name] = outer_slab_increments
-        return (self
-                .substitute(name, new_loop_index)
-                .copy(domain=new_domain, iname_to_tag=new_iname_to_tag,
-                    assumptions=new_assumptions,
-                    iname_slab_increments=iname_slab_increments))
-
-    def get_problems(self, parameters, emit_warnings=True):
-        """
-        :return: *(max_severity, list of (severity, msg))*, where *severity* ranges from 1-5.
-            '5' means 'will certainly not run'.
-        """
-        msgs = []
-
-        def msg(severity, s):
-            if emit_warnings:
-                from warnings import warn
-                from loopy import LoopyAdvisory
-                warn(s, LoopyAdvisory)
-
-            msgs.append((severity, s))
-
-        glens = self.tag_type_lengths(TAG_GROUP_IDX, allow_parameters=True)
-        llens = self.tag_type_lengths(TAG_WORK_ITEM_IDX, allow_parameters=False)
-
-        from pymbolic import evaluate
-        glens = evaluate(glens, parameters)
-        llens = evaluate(llens, parameters)
-
-        if (max(len(glens), len(llens))
-                > self.device.max_work_item_dimensions):
-            msg(5, "too many work item dimensions")
-
-        for i in range(len(llens)):
-            if llens[i] > self.device.max_work_item_sizes[i]:
-                msg(5, "group axis %d too big" % i)
-
-        from pytools import product
-        if product(llens) > self.device.max_work_group_size:
-            msg(5, "work group too big")
-
-        from pyopencl.characterize import usable_local_mem_size
-        if self.local_mem_use() > usable_local_mem_size(self.device):
-            if self.device.local_mem_type == cl.device_local_mem_type.LOCAL:
-                msg(5, "using too much local memory")
-            else:
-                msg(4, "using more local memory than available--"
-                        "possibly OK due to cache nature")
-
-        const_arg_count = sum(
-                1 for arg in self.args
-                if isinstance(arg, ArrayArg) and arg.constant_mem)
-
-        if const_arg_count > self.device.max_constant_args:
-            msg(5, "too many constant arguments")
-
-        max_severity = 0
-        for sev, msg in msgs:
-            max_severity = max(sev, max_severity)
-        return max_severity, msgs
+        return self.copy(instructions=[
+            insn.substitute(old_var, new_expr)
+            for insn in self.instructions])
 
 # }}}
+
 
 # vim: foldmethod=marker

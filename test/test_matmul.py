@@ -201,14 +201,15 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
     n = get_suitable_size(ctx)
 
     knl = lp.LoopKernel(ctx.devices[0],
-            "{[i,j,k]: 0<=i,j,k<%d}" % n,
+            "[n] -> {[i,j,k]: 0<=i,j,k<n}",
             [
-                "c[i, j] = reduce(sum, k, cse(a[i, k], 'lhsmat')*cse(b[k, j], 'rhsmat'))"
+                "c[i, j] = reduce(sum, k, cse(a[i, k], lhsmat)*cse(b[k, j], rhsmat))"
                 ],
             [
                 lp.ArrayArg("a", dtype, shape=(n, n), order=order),
                 lp.ArrayArg("b", dtype, shape=(n, n), order=order),
                 lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.ScalarArg("n", np.int32, approximately=n),
                 ],
             name="matmul")
 
@@ -216,13 +217,24 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
             outer_tag="g.0", inner_tag="l.1", no_slabs=True)
     knl = lp.split_dimension(knl, "j", 16,
             outer_tag="g.1", inner_tag="l.0", no_slabs=True)
+    for insn in knl.instructions:
+        print insn
+    print
+    knl = lp.realize_reduction(knl, "k", dtype)
+    for insn in knl.instructions:
+        print insn
+    print
     knl = lp.split_dimension(knl, "k", 16, no_slabs=True)
-    #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
-    #knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
-    assert knl.get_problems({})[0] <= 2
 
-    kernel_gen = (lp.insert_register_prefetches(knl)
-            for knl in lp.generate_loop_schedules(knl))
+    knl = lp.realize_cse(knl, "lhsmat", dtype, ["k_inner", "i_inner"])
+    knl = lp.realize_cse(knl, "rhsmat", dtype, ["j_inner", "k_inner"])
+
+    for insn in knl.instructions:
+        print insn
+
+    #assert lp.get_problems(knl, {})[0] <= 2
+
+    kernel_gen = lp.generate_loop_schedules(knl)
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)

@@ -172,12 +172,12 @@ def make_fetch_loop_nest(flnd, fetch_dim_idx, pf_dim_exprs, iname_subst_map,
         # {{{ build an implemented domain with an extra index variable
 
         from loopy.symbolic import eq_constraint_from_expr
-        idx_var_dim_idx = implemented_domain.get_dim().size(dim_type.set)
+        idx_var_dim_idx = implemented_domain.get_space().size(dim_type.set)
         impl_domain_with_index_var = implemented_domain.add_dims(dim_type.set, 1)
         impl_domain_with_index_var = (
                 impl_domain_with_index_var
                 .set_dim_name(dim_type.set, idx_var_dim_idx, idx_var_name))
-        aug_space = impl_domain_with_index_var.get_dim()
+        aug_space = impl_domain_with_index_var.get_space()
         impl_domain_with_index_var = (
                 impl_domain_with_index_var
                 .intersect(
@@ -220,7 +220,7 @@ def make_fetch_loop_nest(flnd, fetch_dim_idx, pf_dim_exprs, iname_subst_map,
                     impl_domain_with_index_var
                     .intersect(
                         make_slab(
-                            impl_domain_with_index_var.get_dim(), idx_var_name,
+                            impl_domain_with_index_var.get_space(), idx_var_name,
                             cur_index,
                             min(dim_length, cur_index+total_realiz_size)))
                     .project_out(dim_type.set, idx_var_dim_idx, 1))

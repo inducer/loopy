@@ -1,0 +1,83 @@
+TODO list
+^^^^^^^^^
+
+Immediately:
+------------
+TODO: Imitate codegen bulk slab handling in bulk slab trials
+
+For writeup:
+------------
+TODO: Reimplement forced lengths
+TODO: Try, fix reg. prefetch (DG example) / CSEs
+  ILP and reg. prefetch interact!
+TODO: Custom reductions per red. axis
+TODO: Functions
+TODO: Common subexpressions
+TODO: Array common subexpressions (shared and private!)
+TODO: ILP arrays
+FIXME: support non-reductive dimensions (what did I mean here?)
+FIXME: write names should be assigned during scheduling
+FIXME: screwy lower bounds in ILP
+FIXME: Leading syncthreads elimination
+
+TODO: Divisibility
+TODO: Try, fix indirect addressing
+
+TODO: Implement GT200 matmul, Fermi matmul, DG
+TODO: DMA engine threads?
+TODO: Deal with equalities that crop up.
+TODO: Better user feedback.
+
+Later:
+------
+TODO: Try different kernels
+TODO:   - Tricky: Convolution, Stencil
+TODO: Separate all-bulk from non-bulk kernels. (maybe?) (#ifdef?)
+TODO: implement efficient ceil_div? (as opposed to floor_div)
+TODO: why are corner cases inefficient?
+TODO: Use gists (why do disjoint sets arise?)
+TODO: variable shuffle detection
+
+Things to consider
+^^^^^^^^^^^^^^^^^^
+
+- implemented_domain may end up being smaller than requested in cse
+  evaluations--check that!
+
+- Instructions must agree on all iname tags except the parallel ones
+
+- Auto tag assignment depends on known work group size
+
+- Depedencies are pointwise for shared loop dimensions
+  and global over non-shared ones (between dependent and ancestor)
+
+- Parallel dimension splitting/merging via tags
+
+- Generalize reduction to be over multiplie variables
+
+- Implement get_problems()
+
+
+Dealt with
+^^^^^^^^^^
+
+- Reduction needs to know a neutral element
+
+- Types of reduction variables?
+
+How to represent the schedule
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Focus everything on instructions
+  - Each instruction can have its own interpretation of global/local ids.
+- Loop variables/splits and such are and remain global
+- What about grouped dimensions?
+- UniqueTag is the wrong idea! (not really--it's ok per-insn)
+
+Scheduling:
+- Find insns whose dependencies are satisfied
+- Find maximally shareable loop
+- Open that one
+- For that opened loop, check if an available insn can run
+  - If not, open another loop
+  - Else, schedule that instruction

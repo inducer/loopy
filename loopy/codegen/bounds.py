@@ -41,7 +41,7 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
     upper = []
     equality = []
 
-    space = bset.get_dim()
+    space = bset.get_space()
 
     var_dict = space.get_var_dict()
     iname_tp, iname_idx = var_dict[iname]
@@ -64,6 +64,9 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
     return lower, upper, equality
 
 def solve_constraint_for_bound(cns, iname):
+    from warnings import warn
+    warn("deprecated")
+
     from loopy.symbolic import constraint_to_expr
     rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
 
@@ -93,6 +96,9 @@ def get_bounds(set, iname, admissible_inames, allow_parameters):
     """Get an overapproximation of the loop bounds for the variable *iname*,
     as actual bounds.
     """
+
+    from warnings import warn
+    warn("deprecated")
 
     lower, upper, equality = get_bounds_constraints(
             set, iname, admissible_inames, allow_parameters)
@@ -137,7 +143,7 @@ def constraint_to_code(ccm, cns):
     return "%s %s 0" % (ccm(constraint_to_expr(cns)), comp_op)
 
 def filter_necessary_constraints(implemented_domain, constraints):
-    space = implemented_domain.get_dim()
+    space = implemented_domain.get_space()
     return [cns
         for cns in constraints
         if not implemented_domain.is_subset(
@@ -152,7 +158,7 @@ def generate_bounds_checks(domain, check_vars, implemented_domain):
             .coalesce()
             .get_basic_sets())
 
-    space = domain.get_dim()
+    space = domain.get_space()
 
     cast_constraints = []
 

@@ -7,17 +7,113 @@ from pytools import Record
 
 # {{{ schedule items
 
-class ScheduledLoop(Record):
+class EnterLoop(Record):
     __slots__ = ["iname"]
 
-class WriteOutput(Record):
-    pass
+class LeaveLoop(Record):
+    __slots__ = []
 
-# plus loopy.prefetch.{Register,LocalMemory}Prefetch
+class RunInstruction(Record):
+    __slots__ = ["id"]
+
+class Barrier(Record):
+    __slots__ = []
 
 # }}}
 
-def generate_loop_schedules(kernel, hints=[]):
+
+
+
+def fix_grid_sizes(kernel):
+    from warnings import warn
+    warn("fix_grid_sizes is unimplemented")
+    return kernel
+
+
+
+
+def generate_loop_dep_graph(kernel):
+    """
+    :return: a dict mapping an iname to the ones that need to be entered
+        before it.
+    """
+    result = {}
+
+    print "------------------------------------------------------"
+    for i, insn_a in enumerate(kernel.instructions):
+        print i, insn_a
+        print insn_a.all_inames()
+
+    print "------------------------------------------------------"
+    all_inames = kernel.all_inames()
+    for i_a, insn_a in enumerate(kernel.instructions):
+        for i_b, insn_b in enumerate(kernel.instructions):
+            if i_a == i_b:
+                continue
+
+            a = insn_a.all_inames()
+            b = insn_b.all_inames()
+            intersection = a & b
+            sym_difference = (a|b) - intersection
+
+            print i_a, i_b, intersection, sym_difference
+            if a <= b or b <= a:
+                for sd in sym_difference:
+                    result.setdefault(sd, set()).update(intersection)
+
+    print "------------------------------------------------------"
+    return result
+
+
+
+
+def generate_loop_schedules_internal(kernel, entered_loops=[]):
+    scheduled_insn_ids = set(sched_item.id for sched_item in kernel.schedule
+            if isinstance(sched_item, RunInstruction))
+
+    all_inames = kernel.all_inames()
+
+
+
+
+def generate_loop_schedules(kernel):
+    # {{{ check that all CSEs and reductions are realized
+
+    from loopy.symbolic import CSECallbackMapper, ReductionCallbackMapper
+
+    def map_reduction(expr, rec):
+        raise RuntimeError("all reductions must be realized before scheduling")
+
+    def map_cse(expr, rec):
+        raise RuntimeError("all CSEs must be realized before scheduling")
+
+    for insn in kernel.instructions:
+        ReductionCallbackMapper(map_reduction)(insn.expression)
+        CSECallbackMapper(map_cse)(insn.expression)
+
+    # }}}
+
+    kernel = fix_grid_sizes(kernel)
+
+    if 0:
+        loop_dep_graph = generate_loop_dep_graph(kernel)
+        for k, v in loop_dep_graph.iteritems():
+            print "%s: %s" % (k, ",".join(v))
+        1/0
+
+    #grid_size, group_size = find_known_grid_and_group_sizes(kernel)
+
+    #kernel = assign_grid_and_group_indices(kernel)
+
+    for gen_knl in generate_loop_schedules_internal(kernel):
+        yield gen_knl
+
+
+
+
+
+def generate_loop_schedules_old(kernel, hints=[]):
+    # OLD!
     from loopy.kernel import TAG_GROUP_IDX, TAG_WORK_ITEM_IDX, TAG_ILP, ParallelTag
 
     prev_schedule = kernel.schedule
