@@ -22,23 +22,29 @@ from islpy import dim_type
 # {{{ loopy-specific primitives
 
 class Reduction(AlgebraicLeaf):
-    def __init__(self, operation, iname, expr, tag=None):
+    def __init__(self, operation, inames, expr, tag=None):
+        assert isinstance(inames, tuple)
+
+        if isinstance(operation, str):
+            from loopy.kernel import parse_reduction_op
+            operation = parse_reduction_op(operation)
+
         self.operation = operation
-        self.iname = iname
+        self.inames = inames
         self.expr = expr
         self.tag = tag
 
     def __getinitargs__(self):
-        return (self.operation, self.iname, self.expr, self.tag)
+        return (self.operation, self.inames, self.expr, self.tag)
 
     def get_hash(self):
-        return hash((self.__class__, self.operation, self.iname,
+        return hash((self.__class__, self.operation, self.inames,
             self.expr, self.tag))
 
     def is_equal(self, other):
         return (other.__class__ == self.__class__
                 and other.operation == self.operation
-                and other.iname == self.iname
+                and other.inames == self.inames
                 and other.expr == self.expr
                 and other.tag == self.tag)
 
@@ -53,7 +59,7 @@ class Reduction(AlgebraicLeaf):
 
 class IdentityMapperMixin(object):
     def map_reduction(self, expr):
-        return Reduction(expr.operation, expr.iname,
+        return Reduction(expr.operation, expr.inames,
                 self.rec(expr.expr), expr.tag)
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
@@ -68,8 +74,8 @@ class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
 
 class StringifyMapper(StringifyMapperBase):
     def map_reduction(self, expr, prec):
-        return "reduce(%s, %s, %s, tag=%s)" % (
-                expr.operation, expr.iname, expr.expr, expr.tag)
+        return "reduce(%s, [%s], %s, tag=%s)" % (
+                expr.operation, ", ".join(expr.inames), expr.expr, expr.tag)
 
 # }}}
 
@@ -94,10 +100,10 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
         elif isinstance(expr.function, Variable) and expr.function.name == "reduce":
             if len(expr.parameters) == 3:
-                operation, iname, red_expr = expr.parameters
+                operation, inames, red_expr = expr.parameters
                 tag = None
             elif len(expr.parameters) == 4:
-                operation, iname, red_expr, tag = expr.parameters
+                operation, inames, red_expr, tag = expr.parameters
             else:
                 raise TypeError("reduce takes three or four arguments")
 
@@ -106,15 +112,27 @@ class FunctionToPrimitiveMapper(IdentityMapper):
             if not isinstance(operation, Variable):
                 raise TypeError("operation argument to reduce() must be a symbol")
             operation = operation.name
-            if not isinstance(iname, Variable):
-                raise TypeError("iname argument to reduce() must be a symbol")
-            iname = iname.name
+            if isinstance(inames, Variable):
+                inames = (inames,)
+
+            if not isinstance(inames, (tuple)):
+                raise TypeError("iname argument to reduce() must be a symbol "
+                        "or a tuple of symbols")
+
+            processed_inames = []
+            for iname in inames:
+                if not isinstance(iname, Variable):
+                    raise TypeError("iname argument to reduce() must be a symbol "
+                            "or a tuple or a tuple of symbols")
+
+                processed_inames.append(iname.name)
+
             if tag is not None:
                 if  not isinstance(tag, Variable):
                     raise TypeError("tag argument to reduce() must be a symbol")
                 tag = tag.name
 
-            return Reduction(operation, iname, red_expr, tag)
+            return Reduction(operation, tuple(processed_inames), red_expr, tag)
         else:
             return IdentityMapper.map_call(self, expr)
 
@@ -123,34 +141,18 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 # {{{ reduction loop splitter
 
 class ReductionLoopSplitter(IdentityMapper):
-    def __init__(self, old_iname, outer_iname, inner_iname, do_warn=True):
+    def __init__(self, old_iname, outer_iname, inner_iname):
         self.old_iname = old_iname
         self.outer_iname = outer_iname
         self.inner_iname = inner_iname
-        self.do_warn = do_warn
 
     def map_reduction(self, expr):
-        if expr.iname == self.old_iname:
-            if self.do_warn:
-                from warnings import warn
-                from loopy import LoopyAdvisory
-                warn("The reduction loop for iname '%s' (with tag '%s') "
-                        "was split into two nested reductions with separate "
-                        "state variables. It might be advantageous to "
-                        "'realize' the reduction first before splitting "
-                        "this loop." % (expr.iname, expr.tag), LoopyAdvisory)
-
-            if expr.tag is not None:
-                outer_tag = expr.tag + "_outer"
-                inner_tag = expr.tag + "_inner"
-            else:
-                outer_tag = None
-                inner_tag = None
-
-            return Reduction(expr.operation, self.outer_iname,
-                    Reduction(expr.operation, self.inner_iname,
-                        expr.expr, inner_tag),
-                    outer_tag)
+        if self.old_iname in expr.inames:
+            new_inames = expr.inames[:]
+            new_inames.remove(self.old_iname)
+            new_inames.extend([self.outer_iname, self.inner_iname])
+            return Reduction(expr.operation, new_inames,
+                        expr.expr, expr.tag)
         else:
             return IdentityMapper.map_reduction(self, expr)
 
@@ -469,9 +471,24 @@ class IndexVariableFinder(CombineMapper):
         import operator
         return reduce(operator.or_, values, set())
 
+    def map_constant(self, expr):
+        return set()
+
+    def map_algebraic_leaf(self, expr):
+        return set()
+
     def map_subscript(self, expr):
         from pymbolic.mapper.dependency import DependencyMapper
-        return DependencyMapper()(expr)
+        idx_vars = DependencyMapper()(expr.index)
+
+        from pymbolic.primitives import Variable
+        result = set()
+        for idx_var in idx_vars:
+            if isinstance(idx_var, Variable):
+                result.add(idx_var.name)
+            else:
+                raise RuntimeError("index variable not understood: %s" % idx_var)
+        return result
 
 # }}}
 

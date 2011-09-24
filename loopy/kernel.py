@@ -24,7 +24,8 @@ class IndexTag(Record):
 
 
 class SequentialTag(IndexTag):
-    pass
+    def __str__(self):
+        return "seq"
 
 class ParallelTag(IndexTag):
     pass
@@ -232,7 +233,7 @@ class Instruction(Record):
 
         def map_reduction(expr, rec):
             rec(expr.expr)
-            reduction_inames.add(expr.iname)
+            reduction_inames.update(expr.inames)
 
         ReductionCallbackMapper(map_reduction)(expression)
 
@@ -266,18 +267,10 @@ class Instruction(Record):
 
     @memoize_method
     def all_inames(self):
-        from loopy.symbolic import VariableIndexExpressionCollector
-        idx_exprs = (
-                VariableIndexExpressionCollector()(self.expression)
-                | VariableIndexExpressionCollector()(self.assignee))
-        from pymbolic.mapper.dependency import DependencyMapper
-        index_vars = set()
-
-        from pymbolic.primitives import Variable
-        for idx_expr in idx_exprs:
-            for i in DependencyMapper()(idx_expr):
-                if isinstance(i, Variable):
-                    index_vars.add(i.name)
+        from loopy.symbolic import IndexVariableFinder
+        index_vars = (
+                IndexVariableFinder()(self.expression)
+                | IndexVariableFinder()(self.assignee))
 
         return index_vars | set(self.forced_iname_deps)
 
@@ -308,7 +301,7 @@ class Instruction(Record):
 
     def __str__(self):
         loop_descrs = []
-        for iname in self.all_inames():
+        for iname in sorted(self.all_inames()):
             tag = self.iname_to_tag.get(iname)
 
             if tag is None:
@@ -325,33 +318,42 @@ class Instruction(Record):
 
 # {{{ reduction operations
 
-class ReductionOperation:
+class ReductionOperation(object):
     """
     :ivar neutral_element:
+    :ivar dtype:
     """
 
     def __call__(self, operand1, operand2):
         raise NotImplementedError
 
-class SumReductionOperation:
+class TypedReductionOperation(ReductionOperation):
+    def __init__(self, dtype):
+        self.dtype = dtype
+
+    def __str__(self):
+        return (type(self).__name__.replace("ReductionOperation", "").lower()
+                + "_" + str(self.dtype))
+
+class SumReductionOperation(TypedReductionOperation):
     neutral_element = 0
 
     def __call__(self, operand1, operand2):
         return operand1 + operand2
 
-class ProductReductionOperation:
+class ProductReductionOperation(TypedReductionOperation):
     neutral_element = 1
 
     def __call__(self, operand1, operand2):
         return operand1 * operand2
 
-class FloatingPointMaxOperation:
+class FloatingPointMaxOperation(TypedReductionOperation):
     neutral_element = -var("INFINITY")
 
     def __call__(self, operand1, operand2):
         return var("max")(operand1, operand2)
 
-class FloatingPointMaxOperation:
+class FloatingPointMaxOperation(TypedReductionOperation):
     # OpenCL 1.1, section 6.11.2
     neutral_element = -var("INFINITY")
 
@@ -359,7 +361,7 @@ class FloatingPointMaxOperation:
         from pymbolic.primitives import FunctionSymbol
         return FunctionSymbol("max")(operand1, operand2)
 
-class FloatingPointMinOperation:
+class FloatingPointMinOperation(TypedReductionOperation):
     # OpenCL 1.1, section 6.11.2
     neutral_element = var("INFINITY")
 
@@ -370,29 +372,45 @@ class FloatingPointMinOperation:
 
 
 
-REGISTERED_REDUCTION_OPS = {
-        "sum": SumReductionOperation(),
-        "product": ProductReductionOperation(),
-        "fp_max": FloatingPointMaxOperation(),
-        "fp_min": FloatingPointMinOperation(),
+_REDUCTION_OPS = {
+        "sum": SumReductionOperation,
+        "product": ProductReductionOperation,
+        "fpmax": FloatingPointMaxOperation,
+        "fpmin": FloatingPointMinOperation,
         }
 
+_REDUCTION_OP_PARSERS = [
+        ]
 
 
-def register_reduction(prefix, op):
+def register_reduction_parser(parser):
     """Register a new :class:`ReductionOperation`.
 
-    :arg prefix: the desired name of the operation
-    :return: the name actually assigned to the operation,
-        will start with *prefix*.
+    :arg parser: A function that receives a string and returns
+        a subclass of ReductionOperation.
     """
+    _REDUCTION_OP_PARSERS.append(parser)
 
-    from loopy.tools import generate_unique_possibilities
+def parse_reduction_op(name):
+    import re
+    red_op_match = re.match(r"^([a-z]+)_([a-z0-9]+)$", name)
+    if red_op_match:
+        op_name = red_op_match.group(1)
+        op_type = red_op_match.group(2)
+        try:
+            op_dtype = np.dtype(op_type)
+        except TypeError:
+            op_dtype = None
 
-    for name in generate_unique_possibilities(prefix):
-        if name not in REGISTERED_REDUCTION_OPS:
-            REGISTERED_REDUCTION_OPS[name] = op
-            return name
+        if op_name in _REDUCTION_OPS and op_dtype is not None:
+            return _REDUCTION_OPS[op_name](op_dtype)
+
+    for parser in _REDUCTION_OP_PARSERS:
+        result = parser(name)
+        if result is not None:
+            return result
+
+    raise RuntimeError("could not parse reudction operation '%s'" % name)
 
 # }}}
 

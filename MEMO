@@ -53,10 +53,11 @@ Things to consider
 
 - Parallel dimension splitting/merging via tags
 
-- Generalize reduction to be over multiplie variables
-
 - Implement get_problems()
 
+- CSE iname duplication might be unnecessary?
+  (don't think so: It might be desired to do a full fetch before a mxm k loop
+  even if that requires going iterative.)
 
 Dealt with
 ^^^^^^^^^^
@@ -64,6 +65,8 @@ Dealt with
 - Reduction needs to know a neutral element
 
 - Types of reduction variables?
+
+- Generalize reduction to be over multiple variables
 
 How to represent the schedule
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -78,7 +78,7 @@ def split_dimension(kernel, name, inner_length, padded_length=None,
                 .intersect(inner_constraint_set)
                 .project_out(name_dim_type, name_idx, 1))
 
-    new_domain = process_set(kernel.domain) 
+    new_domain = process_set(kernel.domain)
     new_assumptions = process_set(kernel.assumptions)
 
     from pymbolic import var
@@ -272,21 +272,21 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         # {{{ build the new instruction's iname_to tag
 
         from loopy.symbolic import IndexVariableFinder
-        insn_iname_to_tag = {}
+        new_iname_to_tag = {}
         for old_iname, new_iname in zip(duplicate_inames, new_inames):
-            insn_iname_to_tag[new_iname] = dup_iname_to_tag[old_iname]
+            new_iname_to_tag[new_iname] = dup_iname_to_tag[old_iname]
 
         index_deps = (
-                IndexVariableFinder()(new_outer_expr) 
+                IndexVariableFinder()(new_inner_expr)
                 | set(new_inames))
 
         for iname in index_deps:
-            if iname not in insn_iname_to_tag:
+            if iname not in new_iname_to_tag:
                 # assume generating instruction's view on
                 # inames on which we don't have an opinion.
 
                 if iname in insn.iname_to_tag:
-                    insn_iname_to_tag[iname] = insn.iname_to_tag[iname]
+                    new_iname_to_tag[iname] = insn.iname_to_tag[iname]
 
         # }}}
 
@@ -295,7 +295,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
                 id=kernel.make_unique_instruction_id(based_on=cse_tag),
                 assignee=assignee,
                 expression=new_inner_expr,
-                iname_to_tag=insn_iname_to_tag,
+                iname_to_tag=new_iname_to_tag,
                 )
 
         cse_result_insns.append(new_insn)
@@ -401,9 +401,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
 
 
-def realize_reduction(kernel, loop_iname, dtype, reduction_tag=None):
-    dtype = np.dtype(dtype)
-
+def realize_reduction(kernel, loop_iname, reduction_tag=None):
     new_insns = []
     new_temporary_variables = kernel.temporary_variables[:]
 
@@ -415,9 +413,6 @@ def realize_reduction(kernel, loop_iname, dtype, reduction_tag=None):
 
         from pymbolic import var
 
-        from loopy.kernel import REGISTERED_REDUCTION_OPS
-        red_op = REGISTERED_REDUCTION_OPS[expr.operation]
-
         target_var_name = kernel.make_unique_var_name("red_"+loop_iname,
                 extra_used_vars=set(tv.name for tv in new_temporary_variables))
         target_var = var(target_var_name)
@@ -428,35 +423,38 @@ def realize_reduction(kernel, loop_iname, dtype, reduction_tag=None):
         new_temporary_variables.append(
                 TemporaryVariable(
                     name=target_var_name,
-                    dtype=dtype,
+                    dtype=expr.operation.dtype,
                     shape=(),
                     is_local=False))
 
         init_iname_to_tag = insn.iname_to_tag.copy()
+        for iname in expr.inames:
+            del init_iname_to_tag[iname]
 
         init_insn = Instruction(
                 id=kernel.make_unique_instruction_id(
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
-                forced_iname_deps=list(insn.all_inames() - set(expr.iname)),
-                expression=red_op.neutral_element)
+                forced_iname_deps=list(insn.all_inames() - set(expr.inames)),
+                expression=expr.operation.neutral_element,
+                iname_to_tag=init_iname_to_tag)
 
         new_insns.append(init_insn)
 
-        from loopy.kernel import SequentialTag
         reduction_insn = Instruction(
                 id=kernel.make_unique_instruction_id(
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
-                expression=red_op(target_var, sub_expr),
+                expression=expr.operation(target_var, sub_expr),
                 forced_insn_deps=[init_insn.id],
                 use_auto_dependencies=False,
                 forced_iname_deps=list(insn.all_inames()),
-                iname_to_tag={expr.iname: SequentialTag()})
+                iname_to_tag=insn.iname_to_tag)
 
         new_insns.append(reduction_insn)
 
         new_insn_forced_insn_deps.append(reduction_insn.id)
+        new_insn_removed_inames.extend(expr.inames)
 
         return target_var
 
@@ -465,12 +463,20 @@ def realize_reduction(kernel, loop_iname, dtype, reduction_tag=None):
 
     for insn in kernel.instructions:
         new_insn_forced_insn_deps = []
+        new_insn_removed_inames = []
+
+        new_expression = cb_mapper(insn.expression)
+
+        new_iname_to_tag = insn.iname_to_tag.copy()
+        for iname in new_insn_removed_inames:
+            del new_iname_to_tag[iname]
 
         new_insns.append(
                 insn.copy(
-                    expression=cb_mapper(insn.expression),
+                    expression=new_expression,
                     forced_insn_deps=insn.forced_insn_deps
                         + new_insn_forced_insn_deps,
+                    iname_to_tag=new_iname_to_tag,
                     ))
 
     return kernel.copy(
