@@ -37,6 +37,7 @@ def generate_loop_dep_graph(kernel):
     :return: a dict mapping an iname to the ones that need to be entered
         before it.
     """
+    # FIXME likely not useful
     result = {}
 
     print "------------------------------------------------------"
@@ -67,6 +68,82 @@ def generate_loop_dep_graph(kernel):
 
 
 
+def find_writers(kernel):
+    """
+    :return: a dict that maps variable names to ids of insns that
+        write to that variable.
+    """
+    writer_insn_ids = {}
+
+    admissible_write_vars = (
+            set(arg.name for arg in kernel.args)
+            | set(tv.name for tv in kernel.temporary_variables))
+
+    from pymbolic.primitives import Variable, Subscript
+    for insn in kernel.instructions:
+        if isinstance(insn.assignee, Variable):
+            var_name = insn.assignee.name
+        elif isinstance(insn.assignee, Subscript):
+            var = insn.assignee.aggregate
+            assert isinstance(var, Variable)
+            var_name = var.name
+        else:
+            raise RuntimeError("invalid lvalue '%s'" % insn.assignee)
+
+        if var_name not in admissible_write_vars:
+            raise RuntimeError("writing to '%s' is not allowed" % var_name)
+
+        writer_insn_ids.setdefault(var_name, set()).add(insn.id)
+
+    return writer_insn_ids
+
+
+
+
+def add_automatic_dependencies(kernel):
+    writer_map = find_writers(kernel)
+
+    arg_names = set(arg.name for arg in kernel.args)
+
+    var_names = arg_names | set(tv.name for tv in kernel.temporary_variables)
+
+    from loopy.symbolic import DependencyMapper
+    dep_map = DependencyMapper(composite_leaves=False)
+    new_insns = []
+    for insn in kernel.instructions:
+        read_vars = (
+                set(var.name for var in dep_map(insn.expression)) 
+                & var_names)
+
+        auto_deps = []
+        for var in read_vars:
+            var_writers = writer_map.get(var, set())
+
+            if not var_writers and var not in var_names:
+                from warnings import warn
+                warn("'%s' is read, but never written." % var)
+
+            if len(var_writers) > 1 and not var_writers & set(insn.insn_deps):
+                from warnings import warn
+                warn("'%s' is written from more than one place, "
+                        "but instruction '%s' (which reads this variable) "
+                        "does not specify a dependency on any of the writers."
+                        % (var, insn.id))
+
+            if len(var_writers) == 1:
+                auto_deps.extend(var_writers)
+
+        new_insns.append(
+                insn.copy(
+                    insn_deps=insn.insn_deps + auto_deps))
+
+    return kernel.copy(instructions=new_insns)
+
+
+
+
+
+
 def generate_loop_schedules_internal(kernel, entered_loops=[]):
     scheduled_insn_ids = set(sched_item.id for sched_item in kernel.schedule
             if isinstance(sched_item, RunInstruction))
@@ -92,9 +169,6 @@ def generate_loop_schedules(kernel):
 
     # }}}
 
-    for i, insn_a in enumerate(kernel.instructions):
-        print i, insn_a
-
     kernel = fix_grid_sizes(kernel)
 
     if 0:
@@ -103,7 +177,10 @@ def generate_loop_schedules(kernel):
             print "%s: %s" % (k, ",".join(v))
         1/0
 
-    kernel = find_automatic_dependencies(kernel)
+    kernel = add_automatic_dependencies(kernel)
+
+    for insn_a in kernel.instructions:
+        print insn_a
 
     #grid_size, group_size = find_known_grid_and_group_sizes(kernel)
 

@@ -13,6 +13,8 @@ from pymbolic.mapper.substitutor import \
         SubstitutionMapper as SubstitutionMapperBase
 from pymbolic.mapper.stringifier import \
         StringifyMapper as StringifyMapperBase
+from pymbolic.mapper.dependency import \
+        DependencyMapper as DependencyMapperBase
 import numpy as np
 import islpy as isl
 from islpy import dim_type
@@ -76,6 +78,10 @@ class StringifyMapper(StringifyMapperBase):
     def map_reduction(self, expr, prec):
         return "reduce(%s, [%s], %s, tag=%s)" % (
                 expr.operation, ", ".join(expr.inames), expr.expr, expr.tag)
+
+class DependencyMapper(DependencyMapperBase):
+    def map_reduction(self, expr):
+        return set(expr.inames) | self.rec(expr.expr)
 
 # }}}
 
@@ -478,7 +484,6 @@ class IndexVariableFinder(CombineMapper):
         return set()
 
     def map_subscript(self, expr):
-        from pymbolic.mapper.dependency import DependencyMapper
         idx_vars = DependencyMapper()(expr.index)
 
         from pymbolic.primitives import Variable

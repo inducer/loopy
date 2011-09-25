@@ -452,14 +452,13 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
                 expression=expr.operation(target_var, sub_expr),
-                forced_insn_deps=[init_insn.id],
-                use_auto_dependencies=False,
+                insn_deps=[init_insn.id],
                 forced_iname_deps=list(insn.all_inames()),
                 iname_to_tag=insn.iname_to_tag)
 
         new_insns.append(reduction_insn)
 
-        new_insn_forced_insn_deps.append(reduction_insn.id)
+        new_insn_insn_deps.append(reduction_insn.id)
         new_insn_removed_inames.extend(expr.inames)
 
         return target_var
@@ -468,7 +467,7 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
     cb_mapper = ReductionCallbackMapper(map_reduction)
 
     for insn in kernel.instructions:
-        new_insn_forced_insn_deps = []
+        new_insn_insn_deps = []
         new_insn_removed_inames = []
 
         new_expression = cb_mapper(insn.expression)
@@ -480,8 +479,8 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
         new_insns.append(
                 insn.copy(
                     expression=new_expression,
-                    forced_insn_deps=insn.forced_insn_deps
-                        + new_insn_forced_insn_deps,
+                    insn_deps=insn.insn_deps
+                        + new_insn_insn_deps,
                     iname_to_tag=new_iname_to_tag,
                     ))
 

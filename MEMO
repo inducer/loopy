@@ -57,6 +57,8 @@ Things to consider
 
 - FIXME: Deal with insns losing a seq iname dep in a CSE realization
 
+- Every loop in loopy is opened at most once.
+
 Dealt with
 ^^^^^^^^^^
 

@@ -209,20 +209,17 @@ class Instruction(Record):
         a :class:`LoopKernel`.
     :ivar assignee:
     :ivar expression:
-    :ivar use_auto_dependencies:
     :ivar forced_iname_deps: a list of inames that are added to the list of iname
         dependencies
-    :ivar forced_insn_deps: a list of ids of :class:`Instruction` instances that
+    :ivar insn_deps: a list of ids of :class:`Instruction` instances that
         *must* be executed before this one. Note that loop scheduling augments this
-        by adding dependencies on any writes to temporaries read by this instruction
-        *if* use_auto_dependencies is True.
+        by adding dependencies on any writes to temporaries read by this instruction.
     :ivar iname_to_tag: a map from loop domain variables to subclasses
         of :class:`IndexTag`
     """
     def __init__(self,
             id, assignee, expression,
-            use_auto_dependencies=True,
-            forced_iname_deps=[], forced_insn_deps=[],
+            forced_iname_deps=[], insn_deps=[],
             iname_to_tag={}):
 
         # {{{ find and properly tag reduction inames
@@ -253,9 +250,8 @@ class Instruction(Record):
 
         Record.__init__(self,
                 id=id, assignee=assignee, expression=expression,
-                use_auto_dependencies=use_auto_dependencies,
                 forced_iname_deps=forced_iname_deps,
-                forced_insn_deps=forced_insn_deps,
+                insn_deps=insn_deps,
                 iname_to_tag=dict(
                     (iname, parse_tag(tag))
                     for iname, tag in iname_to_tag.iteritems()))
@@ -296,6 +292,9 @@ class Instruction(Record):
 
         result = "%s: %s <- %s\n    [%s]" % (self.id,
                 self.assignee, self.expression, ", ".join(loop_descrs))
+
+        if self.insn_deps:
+            result += "\n    : " + ", ".join(self.insn_deps)
 
         return result
 
