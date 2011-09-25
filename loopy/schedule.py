@@ -11,10 +11,10 @@ class EnterLoop(Record):
     __slots__ = ["iname"]
 
 class LeaveLoop(Record):
-    __slots__ = []
+    __slots__ = ["iname"]
 
 class RunInstruction(Record):
-    __slots__ = ["id"]
+    __slots__ = ["insn_id"]
 
 class Barrier(Record):
     __slots__ = []
@@ -142,13 +142,96 @@ def add_automatic_dependencies(kernel):
 
 
 
+def generate_loop_schedules_internal(kernel, schedule=[]):
+    all_insn_ids = set(insn.id for insn in kernel.instructions)
 
-
-def generate_loop_schedules_internal(kernel, entered_loops=[]):
-    scheduled_insn_ids = set(sched_item.id for sched_item in kernel.schedule
+    print schedule
+    scheduled_insn_ids = set(sched_item.insn_id for sched_item in schedule
             if isinstance(sched_item, RunInstruction))
 
-    all_inames = kernel.all_inames()
+    # {{{ find active and entered loops
+
+    active_loops = set()
+    entered_loops = set()
+
+    for sched_item in schedule:
+        if isinstance(sched_item, EnterLoop):
+            active_loops.add(sched_item.iname)
+            entered_loops.add(sched_item.iname)
+        if isinstance(sched_item, LeaveLoop):
+            active_loops.remove(sched_item.iname)
+
+    # }}}
+
+    made_progress = False
+
+    # {{{ see if any insn can be scheduled now
+
+    available_insn_ids = list(all_insn_ids - scheduled_insn_ids)
+
+    for insn_id in available_insn_ids:
+        insn = kernel.id_to_insn[insn_id]
+        if (active_loops == set(insn.all_inames())
+                and set(insn.insn_deps) <= scheduled_insn_ids):
+            scheduled_insn_ids.add(insn.id)
+            schedule = schedule + [RunInstruction(insn_id=insn.id)]
+            made_progress = True
+
+    available_insn_ids = list(all_insn_ids - scheduled_insn_ids)
+
+    # }}}
+
+    # {{{ see if any loop can be scheduled now
+
+    available_loops = kernel.all_inames() - entered_loops
+
+    if available_loops:
+        for iname in available_loops:
+            new_schedule = schedule + [EnterLoop(iname=iname)]
+            for sub_sched in generate_loop_schedules_internal(
+                    kernel, new_schedule):
+                yield sub_sched
+        return
+
+    # }}}
+
+    # {{{ see if we're ready to leave a loop
+
+    leavable_loops = set()
+
+    for iname in active_loops:
+        leavable = True
+        for insn_id in available_insn_ids:
+            insn = kernel.id_to_insn[insn_id]
+            if iname in insn.all_inames():
+                leavable = False
+                break
+
+        if leavable:
+            leavable_loops.add(iname)
+
+    if leavable_loops:
+        for iname in leavable_loops:
+            new_schedule = schedule + [LeaveLoop(iname=iname)]
+            for sub_sched in generate_loop_schedules_internal(
+                    kernel, new_schedule):
+                yield sub_sched
+        return
+
+    # }}}
+
+    if not active_loops and not available_loops and not available_insn_ids:
+        # if done, yield result
+        yield schedule
+    else:
+        # if not done, but made some progress--try from the top
+        if made_progress:
+            for sub_sched in generate_loop_schedules_internal(kernel, schedule):
+                yield sub_sched
+
+
+
+
 
 
 
@@ -186,8 +269,11 @@ def generate_loop_schedules(kernel):
 
     #kernel = assign_grid_and_group_indices(kernel)
 
-    for gen_knl in generate_loop_schedules_internal(kernel):
-        yield gen_knl
+    for gen_sched in generate_loop_schedules_internal(kernel):
+        #yield kernel.copy(schedule=gen_sched)
+        print gen_sched
+
+    1/0
 
 
 

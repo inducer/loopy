@@ -525,6 +525,11 @@ class LoopKernel(Record):
 
     @property
     @memoize_method
+    def id_to_insn(self):
+        return dict((insn.id, insn) for insn in self.instructions)
+
+    @property
+    @memoize_method
     def space(self):
         return self.domain.get_space()
 
