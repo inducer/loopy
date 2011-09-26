@@ -100,18 +100,6 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
 
         new_expr = subst_mapper(rls(insn.expression))
 
-        old_iname_tag = insn.iname_to_tag.get(iname)
-        new_iname_to_tag = insn.iname_to_tag.copy()
-
-        from loopy.kernel import UniqueTag
-        if not isinstance(old_iname_tag, UniqueTag):
-            new_iname_to_tag.pop(iname, None)
-            new_iname_to_tag[outer_iname] = old_iname_tag
-            new_iname_to_tag[inner_iname] = old_iname_tag
-        else:
-            raise RuntimeError("cannot split already unique-tagged iname '%s'"
-                    % iname)
-
         if iname in insn.forced_iname_deps:
             new_forced_iname_deps = insn.forced_iname_deps[:]
             new_forced_iname_deps.remove(iname)
@@ -122,7 +110,6 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
         insn = insn.copy(
                 assignee=subst_mapper(insn.assignee),
                 expression=new_expr,
-                iname_to_tag=new_iname_to_tag,
                 forced_iname_deps=new_forced_iname_deps
                 )
 
@@ -144,43 +131,28 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
 
 
 
-def tag_dimensions(kernel, iname_to_tag, insn_id=None):
-    from loopy.kernel import UniqueTag, ParallelTag, parse_tag
+def tag_dimensions(kernel, iname_to_tag):
+    from loopy.kernel import parse_tag
 
     iname_to_tag = dict((iname, parse_tag(tag))
             for iname, tag in iname_to_tag.iteritems())
 
-    new_insns = []
-    for insn in kernel.instructions:
-        if insn_id is None or insn_id == insn.id:
-            new_iname_to_tag = insn.iname_to_tag.copy()
+    new_iname_to_tag = kernel.iname_to_tag.copy()
+    for iname, new_tag in iname_to_tag.iteritems():
+        if new_tag is None:
+            continue
 
-            existing_unique_tag_keys = set(
-                    tag.key for tag in new_iname_to_tag.itervalues()
-                    if isinstance(tag, UniqueTag))
+        if iname not in kernel.all_inames():
+            raise ValueError("cannot tag '%s'--not known" % iname)
 
-            for iname, tag in iname_to_tag.iteritems():
-                if iname not in insn.all_inames():
-                    continue
+        old_tag = kernel.iname_to_tag.get(iname)
+        if old_tag is not None and (old_tag != new_tag):
+            raise RuntimeError("'%s' is already tagged '%s'--cannot retag"
+                    % (iname, old_tag))
 
-                if isinstance(tag, ParallelTag) and iname in insn.sequential_inames():
-                    raise NotImplementedError("cannot parallelize reduction dimension (yet)")
+        new_iname_to_tag[iname] = new_tag
 
-                new_iname_to_tag[iname] = tag
-
-                if isinstance(tag, UniqueTag):
-                    tag_key = tag.key
-                    if tag_key in existing_unique_tag_keys:
-                        raise RuntimeError("repeated unique tag key: %s" % tag_key)
-
-                    existing_unique_tag_keys.add(tag_key)
-
-            new_insns.append(
-                    insn.copy(iname_to_tag=new_iname_to_tag))
-        else:
-            new_insns.append(insn)
-
-    return kernel.copy(instructions=new_insns)
+    return kernel.copy(iname_to_tag=new_iname_to_tag)
 
 
 
@@ -189,8 +161,8 @@ def tag_dimensions(kernel, iname_to_tag, insn_id=None):
 def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=None,
         dup_iname_to_tag={}, new_inames=None):
     """
-    :arg duplicate_inames:
-        also determines index order of temporary array
+    :arg duplicate_inames: which inames are supposed to be separate loops
+        in the CSE. Also determines index order of temporary array.
     :arg parallel_inames: only a convenient interface for dup_iname_to_tag
     """
 
@@ -233,9 +205,17 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     new_inames = temp_new_inames
 
+    old_to_new_iname = dict(zip(duplicate_inames, new_inames))
+
     # }}}
 
     target_var_name = kernel.make_unique_var_name(cse_tag)
+
+    from loopy.kernel import (TAG_WORK_ITEM_IDX, TAG_AUTO_WORK_ITEM_IDX,
+            TAG_GROUP_IDX)
+    target_var_is_local = any(
+            isinstance(tag, (TAG_WORK_ITEM_IDX, TAG_AUTO_WORK_ITEM_IDX))
+            for tag in dup_iname_to_tag.itervalues())
 
     cse_lookup_table = {}
 
@@ -256,6 +236,58 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
         if cse_result_insns:
             raise RuntimeError("CSE tag '%s' is not unique" % cse_tag)
+
+
+        # {{{ decide what to do with each iname
+
+        parent_inames = insn.all_inames()
+        forced_iname_deps = []
+
+        from loopy.symbolic import IndexVariableFinder
+        dependencies = IndexVariableFinder()(expr.child)
+
+        assert dependencies <= parent_inames
+
+        for iname in parent_inames:
+            if iname in duplicate_inames:
+                tag = dup_iname_to_tag[iname]
+            else:
+                tag = kernel.iname_to_tag[iname]
+
+            if isinstance(tag, (TAG_WORK_ITEM_IDX, TAG_AUTO_WORK_ITEM_IDX)):
+                kind = "l"
+            elif isinstance(tag, TAG_GROUP_IDX):
+                kind = "g"
+            else:
+                kind = "o"
+
+            if iname in duplicate_inames and kind == "g":
+                raise RuntimeError("duplicating inames into "
+                        "group index axes is not helpful, as they cannot "
+                        "collaborate in computing a local variable")
+
+            if iname in dependencies:
+                if not target_var_is_local and iname in duplicate_inames and kind == "l":
+                    raise RuntimeError("invalid: parallelized "
+                            "fetch into private variable")
+
+                # otherwise: all happy
+                continue
+
+            # the iname is *not* a dependency of the fetch expression
+            if iname in duplicate_inames:
+                raise RuntimeError("duplicating an iname "
+                        "that the CSE does not depend on "
+                        "does not make sense")
+
+            force_dependency = True
+            if kind == "l" and target_var_is_local:
+                force_dependency = False
+
+            if force_dependency:
+                forced_iname_deps.append(iname)
+
+        # }}}
 
         # {{{ concoct new inner and outer expressions
 
@@ -278,34 +310,12 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
         # }}}
 
-        # {{{ build the new instruction's iname_to tag
-
-        from loopy.symbolic import IndexVariableFinder
-        new_iname_to_tag = {}
-        for old_iname, new_iname in zip(duplicate_inames, new_inames):
-            new_iname_to_tag[new_iname] = dup_iname_to_tag[old_iname]
-
-        index_deps = (
-                IndexVariableFinder()(new_inner_expr)
-                | set(new_inames))
-
-        for iname in index_deps:
-            if iname not in new_iname_to_tag:
-                # assume generating instruction's view on
-                # inames on which we don't have an opinion.
-
-                if iname in insn.iname_to_tag:
-                    new_iname_to_tag[iname] = insn.iname_to_tag[iname]
-
-        # }}}
-
         from loopy.kernel import Instruction
         new_insn = Instruction(
                 id=kernel.make_unique_instruction_id(based_on=cse_tag),
                 assignee=assignee,
                 expression=new_inner_expr,
-                iname_to_tag=new_iname_to_tag,
-                )
+                forced_iname_deps=forced_iname_deps)
 
         cse_result_insns.append(new_insn)
 
@@ -368,8 +378,8 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     # {{{ set up data for temp variable
 
-    temp_var_base_indices = []
-    temp_var_shape = []
+    target_var_base_indices = []
+    target_var_shape = []
 
     for iname in new_inames:
         lower_bound_pw_aff = new_domain.dim_min(new_name_to_dim[iname][1])
@@ -378,28 +388,32 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         from loopy.isl import static_max_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
 
-        temp_var_shape.append(static_max_of_pw_aff(
+        target_var_shape.append(static_max_of_pw_aff(
                 upper_bound_pw_aff - lower_bound_pw_aff + 1))
-        temp_var_base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
+        target_var_base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
 
-    from loopy.kernel import TemporaryVariable, ParallelTag
+    from loopy.kernel import TemporaryVariable
     new_temporary_variables = kernel.temporary_variables + [
             TemporaryVariable(
                 name=target_var_name,
                 dtype=dtype,
-                base_indices=temp_var_base_indices,
-                shape=temp_var_shape,
-                is_local=any(isinstance(tag, ParallelTag)
-                    for tag in dup_iname_to_tag.iterkeys()))
+                base_indices=target_var_base_indices,
+                shape=target_var_shape,
+                is_local=target_var_is_local)
             ]
 
     # }}}
+
+    new_iname_to_tag = kernel.iname_to_tag.copy()
+    for old_iname, new_iname in zip(duplicate_inames, new_inames):
+        new_iname_to_tag[new_iname] = dup_iname_to_tag[old_iname]
 
     return kernel.copy(
             domain=new_domain,
             instructions=new_insns,
             temporary_variables=new_temporary_variables,
-            name_to_dim=new_name_to_dim)
+            name_to_dim=new_name_to_dim,
+            iname_to_tag=new_iname_to_tag)
 
 
 
@@ -433,17 +447,12 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
                     shape=(),
                     is_local=False))
 
-        init_iname_to_tag = insn.iname_to_tag.copy()
-        for iname in expr.inames:
-            del init_iname_to_tag[iname]
-
         init_insn = Instruction(
                 id=kernel.make_unique_instruction_id(
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
                 forced_iname_deps=list(insn.all_inames() - set(expr.inames)),
-                expression=expr.operation.neutral_element,
-                iname_to_tag=init_iname_to_tag)
+                expression=expr.operation.neutral_element)
 
         new_insns.append(init_insn)
 
@@ -453,8 +462,7 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
                 assignee=target_var,
                 expression=expr.operation(target_var, sub_expr),
                 insn_deps=[init_insn.id],
-                forced_iname_deps=list(insn.all_inames()),
-                iname_to_tag=insn.iname_to_tag)
+                forced_iname_deps=list(insn.all_inames()))
 
         new_insns.append(reduction_insn)
 
@@ -472,17 +480,11 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
 
         new_expression = cb_mapper(insn.expression)
 
-        new_iname_to_tag = insn.iname_to_tag.copy()
-        for iname in new_insn_removed_inames:
-            del new_iname_to_tag[iname]
-
         new_insns.append(
                 insn.copy(
                     expression=new_expression,
                     insn_deps=insn.insn_deps
-                        + new_insn_insn_deps,
-                    iname_to_tag=new_iname_to_tag,
-                    ))
+                        + new_insn_insn_deps))
 
     return kernel.copy(
             instructions=new_insns,

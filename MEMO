@@ -57,6 +57,8 @@ Things to consider
 
 - FIXME: Deal with insns losing a seq iname dep in a CSE realization
 
+  a <- cse(reduce(stuff))
+
 - Every loop in loopy is opened at most once.
 
 Dealt with
@@ -71,6 +73,32 @@ Dealt with
 - Types of reduction variables?
 
 - Generalize reduction to be over multiple variables
+
+Should a dependency on an iname be forced in a CSE?
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Local var:
+
+l  | n
+g  | y
+dl | Err
+d  | Err
+
+Private var:
+
+l  | y
+g  | y
+dl | Err
+d  | Err
+
+dg: Invalid-> error
+
+d: is duplicate
+l: is tagged as local idx
+g: is tagged as group idx
+
+Raise error if dl is targeting a private variable, regardless of whether it's
+a dependency or not.
 
 How to represent the schedule
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

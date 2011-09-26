@@ -37,7 +37,7 @@ def generate_loop_dep_graph(kernel):
     :return: a dict mapping an iname to the ones that need to be entered
         before it.
     """
-    # FIXME likely not useful
+    # FIXME perhaps useful?
     result = {}
 
     print "------------------------------------------------------"
@@ -64,6 +64,14 @@ def generate_loop_dep_graph(kernel):
 
     print "------------------------------------------------------"
     return result
+
+
+
+
+def adjust_local_temp_var_storage(kernel):
+    from warnings import warn
+    warn("adjust_local_temp_var_storage is unimplemented")
+    return kernel
 
 
 
@@ -143,23 +151,33 @@ def add_automatic_dependencies(kernel):
 
 
 def generate_loop_schedules_internal(kernel, schedule=[]):
+    print schedule
+
+    #if len(schedule) == 8:
+        #from pudb import set_trace; set_trace()
+
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
-    print schedule
     scheduled_insn_ids = set(sched_item.insn_id for sched_item in schedule
             if isinstance(sched_item, RunInstruction))
 
     # {{{ find active and entered loops
 
-    active_loops = set()
+    active_loops = []
     entered_loops = set()
 
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
-            active_loops.add(sched_item.iname)
+            active_loops.append(sched_item.iname)
             entered_loops.add(sched_item.iname)
         if isinstance(sched_item, LeaveLoop):
-            active_loops.remove(sched_item.iname)
+            active_loops.pop()
+
+    if active_loops:
+        last_entered_loop = active_loops[-1]
+    else:
+        last_entered_loop = None
+    active_loops = set(active_loops)
 
     # }}}
 
@@ -167,17 +185,17 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 
     # {{{ see if any insn can be scheduled now
 
-    available_insn_ids = list(all_insn_ids - scheduled_insn_ids)
+    unscheduled_insn_ids = list(all_insn_ids - scheduled_insn_ids)
 
-    for insn_id in available_insn_ids:
+    for insn_id in unscheduled_insn_ids:
         insn = kernel.id_to_insn[insn_id]
-        if (active_loops == set(insn.all_inames())
+        if (active_loops == insn.all_inames()
                 and set(insn.insn_deps) <= scheduled_insn_ids):
             scheduled_insn_ids.add(insn.id)
             schedule = schedule + [RunInstruction(insn_id=insn.id)]
             made_progress = True
 
-    available_insn_ids = list(all_insn_ids - scheduled_insn_ids)
+    unscheduled_insn_ids = list(all_insn_ids - scheduled_insn_ids)
 
     # }}}
 
@@ -186,41 +204,54 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
     available_loops = kernel.all_inames() - entered_loops
 
     if available_loops:
+        found_something_useful = False
+
         for iname in available_loops:
+            # {{{ determine if that gets us closer to being able to scheduling an insn
+
+            useful = False
+
+            hypothetical_active_loops = active_loops | set([iname])
+            for insn_id in unscheduled_insn_ids:
+                insn = kernel.id_to_insn[insn_id]
+                if hypothetical_active_loops <= insn.all_inames():
+                    useful = True
+                    break
+
+            if not useful:
+                continue
+
+            found_something_useful = True
+
+            # }}}
+
             new_schedule = schedule + [EnterLoop(iname=iname)]
             for sub_sched in generate_loop_schedules_internal(
                     kernel, new_schedule):
                 yield sub_sched
-        return
+
+        if found_something_useful:
+            return
 
     # }}}
 
     # {{{ see if we're ready to leave a loop
 
-    leavable_loops = set()
-
-    for iname in active_loops:
-        leavable = True
-        for insn_id in available_insn_ids:
+    if  last_entered_loop is not None:
+        can_leave = True
+        for insn_id in unscheduled_insn_ids:
             insn = kernel.id_to_insn[insn_id]
-            if iname in insn.all_inames():
-                leavable = False
+            if last_entered_loop in insn.all_inames():
+                can_leave = False
                 break
 
-        if leavable:
-            leavable_loops.add(iname)
-
-    if leavable_loops:
-        for iname in leavable_loops:
-            new_schedule = schedule + [LeaveLoop(iname=iname)]
-            for sub_sched in generate_loop_schedules_internal(
-                    kernel, new_schedule):
-                yield sub_sched
-        return
+        if can_leave:
+            schedule = schedule + [LeaveLoop(iname=last_entered_loop)]
+            made_progress = True
 
     # }}}
 
-    if not active_loops and not available_loops and not available_insn_ids:
+    if not active_loops and not available_loops and not unscheduled_insn_ids:
         # if done, yield result
         yield schedule
     else:
@@ -240,7 +271,9 @@ def generate_loop_schedules(kernel):
     from loopy import realize_reduction
     kernel = realize_reduction(kernel)
 
-    # {{{ check that all CSEs
+    kernel = adjust_local_temp_var_storage(kernel)
+
+    # {{{ check that all CSEs have been realized
 
     from loopy.symbolic import CSECallbackMapper
 
@@ -262,16 +295,20 @@ def generate_loop_schedules(kernel):
 
     kernel = add_automatic_dependencies(kernel)
 
-    for insn_a in kernel.instructions:
-        print insn_a
+    print kernel
 
     #grid_size, group_size = find_known_grid_and_group_sizes(kernel)
 
     #kernel = assign_grid_and_group_indices(kernel)
 
     for gen_sched in generate_loop_schedules_internal(kernel):
-        #yield kernel.copy(schedule=gen_sched)
         print gen_sched
+
+        if False:
+            gen_sched = insert_barriers(gen_sched)
+            schedule = insert_parallel_dim_check_points(schedule=gen_sched)
+            yield kernel.copy(schedule=gen_sched)
+
 
     1/0
 

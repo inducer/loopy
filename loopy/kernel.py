@@ -214,52 +214,16 @@ class Instruction(Record):
     :ivar insn_deps: a list of ids of :class:`Instruction` instances that
         *must* be executed before this one. Note that loop scheduling augments this
         by adding dependencies on any writes to temporaries read by this instruction.
-    :ivar iname_to_tag: a map from loop domain variables to subclasses
-        of :class:`IndexTag`
     """
     def __init__(self,
             id, assignee, expression,
-            forced_iname_deps=[], insn_deps=[],
-            iname_to_tag={}):
-
-        # {{{ find and properly tag reduction inames
-
-        reduction_inames = set()
-
-        from loopy.symbolic import ReductionCallbackMapper
-
-        def map_reduction(expr, rec):
-            rec(expr.expr)
-            reduction_inames.update(expr.inames)
-
-        ReductionCallbackMapper(map_reduction)(expression)
-
-        if reduction_inames:
-            iname_to_tag = iname_to_tag.copy()
-
-            for iname in reduction_inames:
-                tag = iname_to_tag.get(iname)
-                if not (tag is None or isinstance(tag, SequentialTag)):
-                    raise RuntimeError("inconsistency detected: "
-                            "sequential/reduction iname '%s' was "
-                            "tagged otherwise" % iname)
-
-                iname_to_tag[iname] = SequentialTag()
-
-        # }}}
+            forced_iname_deps=[], insn_deps=[]):
 
         Record.__init__(self,
                 id=id, assignee=assignee, expression=expression,
                 forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps,
-                iname_to_tag=dict(
-                    (iname, parse_tag(tag))
-                    for iname, tag in iname_to_tag.iteritems()))
-
-        unused_tags = set(self.iname_to_tag.iterkeys()) - self.all_inames()
-        if unused_tags:
-            raise RuntimeError("encountered tags for unused inames: "
-                    + ", ".join(unused_tags))
+                )
 
     @memoize_method
     def all_inames(self):
@@ -271,27 +235,19 @@ class Instruction(Record):
         return index_vars | set(self.forced_iname_deps)
 
     @memoize_method
-    def sequential_inames(self):
+    def sequential_inames(self, iname_to_tag):
         result = set()
 
-        for iname, tag in self.iname_to_tag.iteritems():
+        for iname in self.all_inames():
+            tag = iname_to_tag.get(iname)
             if isinstance(tag, SequentialTag):
                 result.add(iname)
 
         return result
 
     def __str__(self):
-        loop_descrs = []
-        for iname in sorted(self.all_inames()):
-            tag = self.iname_to_tag.get(iname)
-
-            if tag is None:
-                loop_descrs.append(iname)
-            else:
-                loop_descrs.append("%s: %s" % (iname, tag))
-
         result = "%s: %s <- %s\n    [%s]" % (self.id,
-                self.assignee, self.expression, ", ".join(loop_descrs))
+                self.assignee, self.expression, ", ".join(sorted(self.all_inames())))
 
         if self.insn_deps:
             result += "\n    : " + ", ".join(self.insn_deps)
@@ -418,6 +374,7 @@ class LoopKernel(Record):
     :ivar workgroup_size:
     :ivar name_to_dim: A lookup table from inames to ISL-style
         (dim_type, index) tuples
+    :ivar iname_to_tag:
     """
 
     def __init__(self, device, domain, instructions, args=None, schedule=None,
@@ -426,7 +383,8 @@ class LoopKernel(Record):
             iname_slab_increments={},
             temporary_variables=[],
             workgroup_size=None,
-            name_to_dim=None):
+            name_to_dim=None,
+            iname_to_tag={}):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -469,6 +427,33 @@ class LoopKernel(Record):
         if len(set(insn.id for insn in insns)) != len(insns):
             raise RuntimeError("instruction ids do not appear to be unique")
 
+        # {{{ find and properly tag reduction inames
+
+        reduction_inames = set()
+
+        from loopy.symbolic import ReductionCallbackMapper
+
+        def map_reduction(expr, rec):
+            rec(expr.expr)
+            reduction_inames.update(expr.inames)
+
+        for insn in insns:
+            ReductionCallbackMapper(map_reduction)(insn.expression)
+
+        iname_to_tag = iname_to_tag.copy()
+
+        if reduction_inames:
+            for iname in reduction_inames:
+                tag = iname_to_tag.get(iname)
+                if not (tag is None or isinstance(tag, SequentialTag)):
+                    raise RuntimeError("inconsistency detected: "
+                            "sequential/reduction iname '%s' was "
+                            "tagged otherwise" % iname)
+
+                iname_to_tag[iname] = SequentialTag()
+
+        # }}}
+
         if assumptions is None:
             assumptions = isl.Set.universe(domain.get_space())
         elif isinstance(assumptions, str):
@@ -492,7 +477,8 @@ class LoopKernel(Record):
                 iname_slab_increments=iname_slab_increments,
                 temporary_variables=temporary_variables,
                 workgroup_size=workgroup_size,
-                name_to_dim=name_to_dim)
+                name_to_dim=name_to_dim,
+                iname_to_tag=iname_to_tag)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:
@@ -621,6 +607,17 @@ class LoopKernel(Record):
     def local_mem_use(self):
         return sum(lv.nbytes for lv in self.temporary_variables
                 if lv.is_local)
+
+    def __str__(self):
+        lines = []
+
+        for insn in self.instructions:
+            lines.append(str(insn))
+        lines.append("")
+        for iname in sorted(self.all_inames()):
+            lines.append("%s: %s" % (iname, self.iname_to_tag.get(iname)))
+
+        return "\n".join(lines)
 
 # }}}
 
