@@ -32,38 +32,20 @@ def fix_grid_sizes(kernel):
 
 
 
-def generate_loop_dep_graph(kernel):
-    """
-    :return: a dict mapping an iname to the ones that need to be entered
-        before it.
-    """
-    # FIXME perhaps useful?
-    result = {}
+def check_double_use_of_hw_dimensions(kernel):
+    from loopy.kernel import UniqueTag
 
-    print "------------------------------------------------------"
-    for i, insn_a in enumerate(kernel.instructions):
-        print i, insn_a
-        print insn_a.all_inames()
+    for insn in kernel.instructions:
+        insn_tag_keys = set()
+        for iname in insn.all_inames():
+            tag = kernel.iname_to_tag.get(iname)
+            if isinstance(tag, UniqueTag):
+                key = tag.key
+                if key in insn_tag_keys:
+                    raise RuntimeError("instruction '%s' has two "
+                            "inames tagged '%s'" % (insn.id, tag))
 
-    print "------------------------------------------------------"
-    all_inames = kernel.all_inames()
-    for i_a, insn_a in enumerate(kernel.instructions):
-        for i_b, insn_b in enumerate(kernel.instructions):
-            if i_a == i_b:
-                continue
-
-            a = insn_a.all_inames()
-            b = insn_b.all_inames()
-            intersection = a & b
-            sym_difference = (a|b) - intersection
-
-            print i_a, i_b, intersection, sym_difference
-            if a <= b or b <= a:
-                for sd in sym_difference:
-                    result.setdefault(sd, set()).update(intersection)
-
-    print "------------------------------------------------------"
-    return result
+                insn_tag_keys.add(key)
 
 
 
@@ -85,18 +67,10 @@ def find_writers(kernel):
 
     admissible_write_vars = (
             set(arg.name for arg in kernel.args)
-            | set(tv.name for tv in kernel.temporary_variables))
+            | set(kernel.temporary_variables.iterkeys()))
 
-    from pymbolic.primitives import Variable, Subscript
     for insn in kernel.instructions:
-        if isinstance(insn.assignee, Variable):
-            var_name = insn.assignee.name
-        elif isinstance(insn.assignee, Subscript):
-            var = insn.assignee.aggregate
-            assert isinstance(var, Variable)
-            var_name = var.name
-        else:
-            raise RuntimeError("invalid lvalue '%s'" % insn.assignee)
+        var_name = insn.get_assignee_var_name()
 
         if var_name not in admissible_write_vars:
             raise RuntimeError("writing to '%s' is not allowed" % var_name)
@@ -113,7 +87,7 @@ def add_automatic_dependencies(kernel):
 
     arg_names = set(arg.name for arg in kernel.args)
 
-    var_names = arg_names | set(tv.name for tv in kernel.temporary_variables)
+    var_names = arg_names | set(kernel.temporary_variables.iterkeys())
 
     from loopy.symbolic import DependencyMapper
     dep_map = DependencyMapper(composite_leaves=False)
@@ -151,11 +125,6 @@ def add_automatic_dependencies(kernel):
 
 
 def generate_loop_schedules_internal(kernel, schedule=[]):
-    print schedule
-
-    #if len(schedule) == 8:
-        #from pudb import set_trace; set_trace()
-
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
     scheduled_insn_ids = set(sched_item.insn_id for sched_item in schedule
@@ -163,21 +132,26 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 
     # {{{ find active and entered loops
 
-    active_loops = []
-    entered_loops = set()
+    active_inames = []
+    entered_inames = set()
 
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
-            active_loops.append(sched_item.iname)
-            entered_loops.add(sched_item.iname)
+            active_inames.append(sched_item.iname)
+            entered_inames.add(sched_item.iname)
         if isinstance(sched_item, LeaveLoop):
-            active_loops.pop()
+            active_inames.pop()
 
-    if active_loops:
-        last_entered_loop = active_loops[-1]
+    if active_inames:
+        last_entered_loop = active_inames[-1]
     else:
         last_entered_loop = None
-    active_loops = set(active_loops)
+    active_inames = set(active_inames)
+
+    from loopy.kernel import ParallelTag
+    parallel_inames = set(
+            iname for iname in kernel.all_inames()
+            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
 
     # }}}
 
@@ -189,7 +163,8 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 
     for insn_id in unscheduled_insn_ids:
         insn = kernel.id_to_insn[insn_id]
-        if (active_loops == insn.all_inames()
+        if (active_inames - parallel_inames 
+                == insn.all_inames() - parallel_inames
                 and set(insn.insn_deps) <= scheduled_insn_ids):
             scheduled_insn_ids.add(insn.id)
             schedule = schedule + [RunInstruction(insn_id=insn.id)]
@@ -199,9 +174,14 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 
     # }}}
 
-    # {{{ see if any loop can be scheduled now
+    # {{{ see if any loop can be entered now
 
-    available_loops = kernel.all_inames() - entered_loops
+    available_loops = (kernel.all_inames()
+            # loops can only be entered once
+            - entered_inames
+            # there's no notion of 'entering' a parallel loop
+            - parallel_inames
+            )
 
     if available_loops:
         found_something_useful = False
@@ -211,7 +191,7 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 
             useful = False
 
-            hypothetical_active_loops = active_loops | set([iname])
+            hypothetical_active_loops = active_inames | set([iname])
             for insn_id in unscheduled_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
                 if hypothetical_active_loops <= insn.all_inames():
@@ -251,7 +231,7 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 
     # }}}
 
-    if not active_loops and not available_loops and not unscheduled_insn_ids:
+    if not active_inames and not available_loops and not unscheduled_insn_ids:
         # if done, yield result
         yield schedule
     else:
@@ -263,6 +243,130 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 
 
 
+def gather_schedule_subloop(schedule, start_idx):
+    assert isinstance(schedule[start_idx], EnterLoop)
+    level = 0
+
+    i = start_idx
+    while i < len(schedule):
+        if isinstance(schedule[i], EnterLoop):
+            level += 1
+        if isinstance(schedule[i], LeaveLoop):
+            level -= 1
+
+            if level == 0:
+                return schedule[start_idx:i+1], i+1
+
+        i += 1
+
+    assert False
+
+
+
+def has_dependent_in_schedule(kernel, insn_id, schedule):
+    from pytools import any
+    return any(sched_item
+            for sched_item in schedule
+            if isinstance(sched_item, RunInstruction)
+            and kernel.id_to_insn[sched_item.insn_id].insn_deps)
+
+
+
+
+def insert_barriers(kernel, schedule, level=0):
+    result = []
+    owed_barriers = set()
+
+    loop_had_barrier = [False]
+
+    # A 'pre-barrier' is a special case that is only necessary once per loop
+    # iteration to protect the tops of local-mem variable assignments from
+    # being entered before all reads in the previous loop iteration are
+    # complete.  Once the loop has had a barrier, this is not a concern any
+    # more, and any further write-after-read hazards will be covered by
+    # dependencies for which the 'normal' mechanism below will generate
+    # barriers.
+
+    def issue_barrier(is_pre_barrier):
+        owed_barriers.clear()
+        if result and isinstance(result[-1], Barrier):
+            return
+
+        if is_pre_barrier:
+            if loop_had_barrier[0] or level == 0:
+                return
+
+        loop_had_barrier[0] = True
+        result.append(Barrier())
+
+    i = 0
+    while i < len(schedule):
+        sched_item = schedule[i]
+
+        if isinstance(sched_item, EnterLoop):
+            subloop, new_i = gather_schedule_subloop(schedule, i)
+
+            # {{{ issue dependency-based barriers for contents of nested loop
+
+            for insn_id in owed_barriers:
+                if has_dependent_in_schedule(kernel, insn_id, subloop):
+                    issue_barrier(is_pre_barrier=False)
+                    break
+
+            # }}}
+
+            subresult, sub_owed_barriers = insert_barriers(
+                    kernel, subloop[1:-1], level+1)
+
+            # {{{ issue pre-barriers for contents of nested loop
+
+            if not loop_had_barrier:
+                for insn_id in sub_owed_barriers:
+                    if has_dependent_in_schedule(
+                            kernel, insn_id, schedule):
+                        issue_barrier(is_pre_barrier=True)
+
+            # }}}
+
+            result.append(subloop[0])
+            result.extend(subresult)
+            result.append(subloop[-1])
+
+            owed_barriers.update(sub_owed_barriers)
+
+            i = new_i
+
+        elif isinstance(sched_item, RunInstruction):
+            i += 1
+
+            insn = kernel.id_to_insn[sched_item.insn_id]
+
+            # {{{ issue dependency-based barriers for this instruction
+
+            if insn.id in owed_barriers:
+                issue_barrier(is_pre_barrier=False)
+
+            # }}}
+
+            assignee_temp_var = kernel.temporary_variables.get(
+                    insn.get_assignee_var_name())
+            if assignee_temp_var is not None and assignee_temp_var.is_local:
+                if level == 0:
+                    assert has_dependent_in_schedule(
+                            kernel, insn.id, schedule)
+
+                if has_dependent_in_schedule(kernel, insn.id, schedule):
+                    issue_barrier(is_pre_barrier=True)
+
+                result.append(sched_item)
+                owed_barriers.add(insn.id)
+            else:
+                result.append(sched_item)
+
+        else:
+            assert False
+
+    return result, owed_barriers
 
 
 
@@ -270,6 +374,8 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 def generate_loop_schedules(kernel):
     from loopy import realize_reduction
     kernel = realize_reduction(kernel)
+
+    check_double_use_of_hw_dimensions(kernel)
 
     kernel = adjust_local_temp_var_storage(kernel)
 
@@ -302,145 +408,18 @@ def generate_loop_schedules(kernel):
     #kernel = assign_grid_and_group_indices(kernel)
 
     for gen_sched in generate_loop_schedules_internal(kernel):
+        gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
+        assert not owed_barriers
+
         print gen_sched
 
         if False:
-            gen_sched = insert_barriers(gen_sched)
             schedule = insert_parallel_dim_check_points(schedule=gen_sched)
             yield kernel.copy(schedule=gen_sched)
 
 
     1/0
 
-
-
-
-
-def generate_loop_schedules_old(kernel, hints=[]):
-    # OLD!
-    from loopy.kernel import TAG_GROUP_IDX, TAG_WORK_ITEM_IDX, TAG_ILP, ParallelTag
-
-    prev_schedule = kernel.schedule
-    if prev_schedule is None:
-        prev_schedule = [
-                ScheduledLoop(iname=iname)
-                for iname in (
-                    kernel.ordered_inames_by_tag_type(TAG_GROUP_IDX)
-                    + kernel.ordered_inames_by_tag_type(TAG_WORK_ITEM_IDX))]
-
-    scheduled_inames = set(sch_item.iname
-            for sch_item in prev_schedule
-            if isinstance(sch_item, ScheduledLoop))
-
-    # have a schedulable prefetch? load, schedule it
-    had_usable_prefetch = False
-    locally_parallel_inames = set(
-            iname for iname in scheduled_inames
-            if isinstance(kernel.iname_to_tag.get(iname), 
-                (TAG_ILP, TAG_WORK_ITEM_IDX)))
-
-    for pf in kernel.prefetch.itervalues():
-        # already scheduled? never mind then.
-        if pf in prev_schedule:
-            continue
-
-        # a free variable not known yet? then we're not ready
-        if not pf.free_variables() <= scheduled_inames:
-            continue
-
-        # a prefetch variable already scheduled, but not borrowable?
-        # (only work item index variables are borrowable)
-
-        if set(pf.all_inames()) & (scheduled_inames - locally_parallel_inames):
-            # dead end: we won't be able to schedule this prefetch
-            # in this branch. at least one of its loop dimensions
-            # was already scheduled, and that dimension is not
-            # borrowable.
-
-            #print "UNSCHEDULABLE", kernel.schedule
-            return
-
-        new_kernel = kernel.copy(schedule=prev_schedule+[pf])
-        for knl in generate_loop_schedules(new_kernel):
-            had_usable_prefetch = True
-            yield knl
-
-    if had_usable_prefetch:
-        # because we've already recursed
-        return
-
-    # Build set of potentially schedulable variables
-    # Don't re-schedule already scheduled variables
-    schedulable = kernel.all_inames() - scheduled_inames
-
-    # Schedule in the following order:
-    # - serial output inames
-    # - remaining parallel output inames (i.e. ILP)
-    # - output write
-    # - reduction
-    # Don't schedule reduction variables until all output
-    # variables are taken care of. Once they are, schedule
-    # output writing.
-    parallel_output_inames = set(oin for oin in kernel.output_inames()
-            if isinstance(kernel.iname_to_tag.get(oin), ParallelTag))
-
-    serial_output_inames = kernel.output_inames() - parallel_output_inames
-
-    if schedulable & serial_output_inames:
-        schedulable = schedulable & serial_output_inames
-
-    if schedulable & parallel_output_inames:
-        schedulable  = schedulable & parallel_output_inames
-
-    if kernel.output_inames() <= scheduled_inames:
-        if not any(isinstance(sch_item, WriteOutput)
-                for sch_item in prev_schedule):
-            kernel = kernel.copy(
-                    schedule=prev_schedule + [WriteOutput()])
-            prev_schedule = kernel.schedule
-
-    # Don't schedule variables that are prefetch axes
-    # for not-yet-scheduled prefetches.
-    unsched_prefetch_axes = set(iname
-            for pf in kernel.prefetch.itervalues()
-            if pf not in prev_schedule
-            for iname in pf.all_inames()
-            if not isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
-    schedulable -= unsched_prefetch_axes
-
-    while hints and hints[0] in scheduled_inames:
-        hints = hints[1:]
-
-    if hints and hints[0] in schedulable:
-        schedulable = set([hints[0]])
-
-    if schedulable:
-        # have a schedulable variable? schedule a loop for it, recurse
-        for iname in schedulable:
-            new_kernel = kernel.copy(schedule=prev_schedule+[ScheduledLoop(iname=iname)])
-            for knl in generate_loop_schedules(new_kernel, hints):
-                yield knl
-    else:
-        # all loop dimensions and prefetches scheduled?
-        # great! yield the finished product if it is complete
-
-        from loopy import LoopyAdvisory
-
-        if hints:
-            from warnings import warn
-            warn("leftover schedule hints: "+ (", ".join(hints)),
-                    LoopyAdvisory)
-
-        all_inames_scheduled = len(scheduled_inames) == len(kernel.all_inames())
-
-        from loopy.prefetch import LocalMemoryPrefetch
-        all_pf_scheduled =  len(set(sch_item for sch_item in prev_schedule
-            if isinstance(sch_item, LocalMemoryPrefetch))) == len(kernel.prefetch)
-        output_scheduled = len(set(sch_item for sch_item in prev_schedule
-            if isinstance(sch_item, WriteOutput))) == 1
-
-        if all_inames_scheduled and all_pf_scheduled and output_scheduled:
-            yield kernel
 
 
 

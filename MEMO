@@ -61,6 +61,8 @@ Things to consider
 
 - Every loop in loopy is opened at most once.
 
+- Syntax to declare insn deps
+
 Dealt with
 ^^^^^^^^^^
 

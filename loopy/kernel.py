@@ -254,6 +254,21 @@ class Instruction(Record):
 
         return result
 
+    def get_assignee_var_name(self):
+        from pymbolic.primitives import Variable, Subscript
+
+        if isinstance(self.assignee, Variable):
+            var_name = self.assignee.name
+        elif isinstance(self.assignee, Subscript):
+            var = self.assignee.aggregate
+            assert isinstance(var, Variable)
+            var_name = var.name
+        else:
+            raise RuntimeError("invalid lvalue '%s'" % self.assignee)
+
+        return var_name
+
+
 # }}}
 
 # {{{ reduction operations
@@ -381,7 +396,7 @@ class LoopKernel(Record):
             name="loopy_kernel",
             preamble=None, assumptions=None,
             iname_slab_increments={},
-            temporary_variables=[],
+            temporary_variables={},
             workgroup_size=None,
             name_to_dim=None,
             iname_to_tag={}):
@@ -493,7 +508,7 @@ class LoopKernel(Record):
 
     def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
         used_vars = (
-                set(lv.name for lv in self.temporary_variables)
+                set(self.temporary_variables.iterkeys())
                 | set(arg.name for arg in self.args)
                 | set(self.name_to_dim.keys())
                 | extra_used_vars)
@@ -605,7 +620,7 @@ class LoopKernel(Record):
         return s
 
     def local_mem_use(self):
-        return sum(lv.nbytes for lv in self.temporary_variables
+        return sum(lv.nbytes for lv in self.temporary_variables.itervalues()
                 if lv.is_local)
 
     def __str__(self):

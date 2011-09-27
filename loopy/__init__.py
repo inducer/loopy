@@ -393,14 +393,13 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         target_var_base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
 
     from loopy.kernel import TemporaryVariable
-    new_temporary_variables = kernel.temporary_variables + [
-            TemporaryVariable(
-                name=target_var_name,
-                dtype=dtype,
-                base_indices=target_var_base_indices,
-                shape=target_var_shape,
-                is_local=target_var_is_local)
-            ]
+    new_temporary_variables = kernel.temporary_variables.copy()
+    new_temporary_variables[target_var_name] = TemporaryVariable(
+            name=target_var_name,
+            dtype=dtype,
+            base_indices=target_var_base_indices,
+            shape=target_var_shape,
+            is_local=target_var_is_local)
 
     # }}}
 
@@ -420,7 +419,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
 def realize_reduction(kernel, inames=None, reduction_tag=None):
     new_insns = []
-    new_temporary_variables = kernel.temporary_variables[:]
+    new_temporary_variables = kernel.temporary_variables.copy()
 
     def map_reduction(expr, rec):
         sub_expr = rec(expr.expr)
@@ -434,18 +433,17 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
         from pymbolic import var
 
         target_var_name = kernel.make_unique_var_name("red",
-                extra_used_vars=set(tv.name for tv in new_temporary_variables))
+                extra_used_vars=set(tv for tv in new_temporary_variables))
         target_var = var(target_var_name)
 
         from loopy.kernel import Instruction
 
         from loopy.kernel import TemporaryVariable
-        new_temporary_variables.append(
-                TemporaryVariable(
-                    name=target_var_name,
-                    dtype=expr.operation.dtype,
-                    shape=(),
-                    is_local=False))
+        new_temporary_variables[target_var_name] = TemporaryVariable(
+                name=target_var_name,
+                dtype=expr.operation.dtype,
+                shape=(),
+                is_local=False)
 
         init_insn = Instruction(
                 id=kernel.make_unique_instruction_id(
