@@ -44,8 +44,6 @@ Things to consider
 - implemented_domain may end up being smaller than requested in cse
   evaluations--check that!
 
-- Instructions must agree on all iname tags except the parallel ones
-
 - Auto tag assignment depends on known work group size
 
 - Depedencies are pointwise for shared loop dimensions
@@ -62,6 +60,8 @@ Things to consider
 - Every loop in loopy is opened at most once.
 
 - Syntax to declare insn deps
+
+- Make CSE tags replaceable by array names if the access is unique
 
 Dealt with
 ^^^^^^^^^^
