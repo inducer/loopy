@@ -110,12 +110,21 @@ def set_is_universe(set):
 
 
 
-def static_max_of_pw_aff(pw_aff):
-    for set, aff in pw_aff.get_pieces():
-        candidate_pw_aff = isl.PwAff.from_aff(aff)
+def static_min_of_pw_aff(pw_aff):
+    for set, candidate_aff in pw_aff.get_pieces():
+        if set_is_universe(candidate_aff.le_set(pw_aff)):
+            return candidate_aff
 
-        if set_is_universe(candidate_pw_aff.ge_set(pw_aff)):
-            return aff
+    raise ValueError("a static minimum was not found for PwAff '%s'"
+            % pw_aff)
+
+
+
+
+def static_max_of_pw_aff(pw_aff):
+    for set, candidate_aff in pw_aff.get_pieces():
+        if set_is_universe(candidate_aff.ge_set(pw_aff)):
+            return candidate_aff
 
     raise ValueError("a static maximum was not found for PwAff '%s'"
             % pw_aff)

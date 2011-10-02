@@ -177,9 +177,9 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         parallel_inames = duplicate_inames
 
     dup_iname_to_tag = dup_iname_to_tag.copy()
-    from loopy.kernel import TAG_AUTO_WORK_ITEM_IDX
+    from loopy.kernel import TAG_AUTO_LOCAL_IDX
     for piname in parallel_inames:
-        dup_iname_to_tag[piname] = TAG_AUTO_WORK_ITEM_IDX()
+        dup_iname_to_tag[piname] = TAG_AUTO_LOCAL_IDX()
 
     for diname in duplicate_inames:
         dup_iname_to_tag.setdefault(diname, None)
@@ -211,10 +211,10 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     target_var_name = kernel.make_unique_var_name(cse_tag)
 
-    from loopy.kernel import (TAG_WORK_ITEM_IDX, TAG_AUTO_WORK_ITEM_IDX,
+    from loopy.kernel import (TAG_LOCAL_IDX, TAG_AUTO_LOCAL_IDX,
             TAG_GROUP_IDX)
     target_var_is_local = any(
-            isinstance(tag, (TAG_WORK_ITEM_IDX, TAG_AUTO_WORK_ITEM_IDX))
+            isinstance(tag, (TAG_LOCAL_IDX, TAG_AUTO_LOCAL_IDX))
             for tag in dup_iname_to_tag.itervalues())
 
     cse_lookup_table = {}
@@ -254,7 +254,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
             else:
                 tag = kernel.iname_to_tag[iname]
 
-            if isinstance(tag, (TAG_WORK_ITEM_IDX, TAG_AUTO_WORK_ITEM_IDX)):
+            if isinstance(tag, (TAG_LOCAL_IDX, TAG_AUTO_LOCAL_IDX)):
                 kind = "l"
             elif isinstance(tag, TAG_GROUP_IDX):
                 kind = "g"
@@ -507,7 +507,7 @@ def get_problems(kernel, parameters, emit_warnings=True):
         msgs.append((severity, s))
 
     glens = kernel.tag_type_lengths(TAG_GROUP_IDX, allow_parameters=True)
-    llens = kernel.tag_type_lengths(TAG_WORK_ITEM_IDX, allow_parameters=False)
+    llens = kernel.tag_type_lengths(TAG_LOCAL_IDX, allow_parameters=False)
 
     from pymbolic import evaluate
     glens = evaluate(glens, parameters)

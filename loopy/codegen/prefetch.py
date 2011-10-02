@@ -207,8 +207,8 @@ def make_fetch_loop_nest(flnd, fetch_dim_idx, pf_dim_exprs, iname_subst_map,
             pf_idx_expr = 0
             for realiz_iname, length in zip(realiz_inames, realiz_lengths):
                 tag = flnd.kernel.iname_to_tag[realiz_iname]
-                from loopy.kernel import TAG_WORK_ITEM_IDX
-                assert isinstance(tag, TAG_WORK_ITEM_IDX)
+                from loopy.kernel import TAG_LOCAL_IDX
+                assert isinstance(tag, TAG_LOCAL_IDX)
 
                 pf_idx_expr = (pf_idx_expr*length
                         + var("(int) get_local_id(%d)" % tag.axis))
@@ -301,8 +301,8 @@ def generate_prefetch_code(kernel, sched_index, exec_domain):
 
     # {{{ first, fix the user-specified fetch dims
 
-    from loopy.kernel import TAG_WORK_ITEM_IDX
-    knl_work_item_inames = kernel.ordered_inames_by_tag_type(TAG_WORK_ITEM_IDX)
+    from loopy.kernel import TAG_LOCAL_IDX
+    knl_work_item_inames = kernel.ordered_inames_by_tag_type(TAG_LOCAL_IDX)
     used_kernel_work_item_inames = []
 
     for realization_dim_idx, loc_fetch_axis_list in \
@@ -390,7 +390,7 @@ def generate_prefetch_code(kernel, sched_index, exec_domain):
     from loopy.codegen.bounds import get_valid_check_vars
     valid_index_vars = get_valid_check_vars(kernel, sched_index,
             allow_ilp=True,
-            exclude_tag_classes=(TAG_WORK_ITEM_IDX,))
+            exclude_tag_classes=(TAG_LOCAL_IDX,))
 
     from loopy.symbolic import LoopyCCodeMapper
     flnd = FetchLoopNestData(prefetch=pf,

@@ -1,10 +1,6 @@
 TODO list
 ^^^^^^^^^
 
-Immediately:
-------------
-TODO: Imitate codegen bulk slab handling in bulk slab trials
-
 For writeup:
 ------------
 TODO: Reimplement forced lengths
@@ -61,7 +57,14 @@ Things to consider
 
 - Syntax to declare insn deps
 
-- Make CSE tags replaceable by array names if the access is unique
+- reimplement add_prefetch
+
+- user interface for dim length prescription
+
+- make syntax for explicit loop dependencies
+
+- multiple insns could fight over which iname gets local axis 0
+  -> complicated optimization problem
 
 Dealt with
 ^^^^^^^^^^

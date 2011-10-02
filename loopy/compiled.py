@@ -48,11 +48,11 @@ class CompiledKernel:
         else:
             self.size_args = size_args
 
-        from loopy.kernel import TAG_GROUP_IDX, TAG_WORK_ITEM_IDX
+        from loopy.kernel import TAG_GROUP_IDX, TAG_LOCAL_IDX
         gsize_expr = tuple(self.kernel.tag_type_lengths(
             TAG_GROUP_IDX, allow_parameters=True))
         lsize_expr = tuple(self.kernel.tag_type_lengths(
-            TAG_WORK_ITEM_IDX, allow_parameters=False))
+            TAG_LOCAL_IDX, allow_parameters=False))
 
         if not gsize_expr: gsize_expr = (1,)
         if not lsize_expr: lsize_expr = (1,)

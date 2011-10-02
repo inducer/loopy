@@ -50,13 +50,19 @@ class ParallelTagWithAxis(ParallelTag, UniqueTag):
         return "%s.%d" % (
                 self.print_name, self.axis)
 
+#class MultiTag(IndexTag):
+    
+#class SplitTag(IndexTag):
+    
+
+
 class TAG_GROUP_IDX(ParallelTagWithAxis):
     print_name = "g"
 
-class TAG_WORK_ITEM_IDX(ParallelTagWithAxis):
+class TAG_LOCAL_IDX(ParallelTagWithAxis):
     print_name = "l"
 
-class TAG_AUTO_WORK_ITEM_IDX(ParallelTag):
+class TAG_AUTO_LOCAL_IDX(ParallelTag):
     def __str__(self):
         return "l.auto"
 
@@ -94,7 +100,7 @@ def parse_tag(tag):
     elif tag.startswith("g."):
         return TAG_GROUP_IDX(int(tag[2:]))
     elif tag.startswith("l."):
-        return TAG_WORK_ITEM_IDX(int(tag[2:]))
+        return TAG_LOCAL_IDX(int(tag[2:]))
     else:
         raise ValueError("cannot parse tag: %s" % tag)
 
@@ -386,7 +392,6 @@ class LoopKernel(Record):
         upper_incr) tuples that will be separated out in the execution to generate
         'bulk' slabs with fewer conditionals.
     :ivar temporary_variables:
-    :ivar workgroup_size:
     :ivar name_to_dim: A lookup table from inames to ISL-style
         (dim_type, index) tuples
     :ivar iname_to_tag:
@@ -520,6 +525,11 @@ class LoopKernel(Record):
 
     @property
     @memoize_method
+    def arg_dict(self):
+        return dict((arg.name, arg) for arg in self.args)
+
+    @property
+    @memoize_method
     def dim_to_name(self):
         from pytools import reverse_dict
         return reverse_dict(self.name_to_dim)
@@ -533,14 +543,6 @@ class LoopKernel(Record):
     @memoize_method
     def space(self):
         return self.domain.get_space()
-
-    @property
-    @memoize_method
-    def tag_key_to_iname(self):
-        return dict(
-                (tag.key, iname)
-                for iname, tag in self.iname_to_tag.iteritems()
-                if isinstance(tag, UniqueTag))
 
     @property
     @memoize_method
@@ -567,57 +569,93 @@ class LoopKernel(Record):
         return [iname for iname in self.all_inames()
                 if isinstance(self.iname_to_tag.get(iname), tag_type)]
 
-    def ordered_inames_by_tag_type(self, tag_type):
-        result = []
-        from itertools import count
-        for i in count():
-            try:
-                dim = self.tag_key_to_iname[tag_type(i).key]
-            except KeyError:
-                return result
-            else:
-                result.append(dim)
-
     @memoize_method
-    def get_bounds_constraints(self, iname, admissible_vars, allow_parameters):
-        """Get an overapproximation of the loop bounds for the variable *iname*."""
+    def get_iname_bounds(self, iname):
+        lower_bound_pw_aff = self.domain.dim_min(self.name_to_dim[iname][1])
+        upper_bound_pw_aff = self.domain.dim_max(self.name_to_dim[iname][1])
 
-        from loopy.codegen.bounds import get_bounds_constraints
-        return get_bounds_constraints(self.domain, iname, admissible_vars,
-                allow_parameters)
-
-    @memoize_method
-    def get_bounds(self, iname, admissible_vars, allow_parameters):
-        """Get an overapproximation of the loop bounds for the variable *iname*."""
-
-        from loopy.codegen.bounds import get_bounds
-        return get_bounds(self.domain, iname, admissible_vars, allow_parameters)
-
-    def tag_type_lengths(self, tag_cls, allow_parameters):
-        def get_length(iname):
-            tag = self.iname_to_tag[iname]
-            if tag.forced_length is not None:
-                return tag.forced_length
-
-            lower, upper, equality = self.get_bounds(iname, (iname,), 
-                    allow_parameters=allow_parameters)
-            return upper-lower
-
-        return [get_length(iname)
-                for iname in self.ordered_inames_by_tag_type(tag_cls)]
-
-    def tag_or_iname_to_iname(self, s):
-        try:
-            tag = parse_tag(s)
-        except ValueError:
+        class BoundsRecord(Record):
             pass
-        else:
-            return self.tag_key_to_iname[tag.key]
 
-        if s not in self.all_inames():
-            raise RuntimeError("invalid index name '%s'" % s)
+        size = upper_bound_pw_aff - lower_bound_pw_aff + 1
 
-        return s
+        return BoundsRecord(
+                lower_bound_pw_aff=lower_bound_pw_aff,
+                upper_bound_pw_aff=upper_bound_pw_aff,
+                size=size)
+
+    def fix_grid_sizes(kernel):
+        all_inames_by_insns = set()
+        for insn in kernel.instructions:
+            all_inames_by_insns |= insn.all_inames()
+
+        if all_inames_by_insns != kernel.all_inames():
+            raise RuntimeError("inames collected from instructions "
+                    "do not match domain inames")
+
+        global_sizes = {}
+        local_sizes = {}
+
+        from loopy.kernel import (
+                TAG_GROUP_IDX, TAG_LOCAL_IDX,
+                TAG_AUTO_LOCAL_IDX)
+
+        for iname in kernel.all_inames():
+            tag = kernel.iname_to_tag.get(iname)
+
+            if isinstance(tag, TAG_GROUP_IDX):
+                tgt_dict = global_sizes
+            elif isinstance(tag, TAG_LOCAL_IDX):
+                tgt_dict = local_sizes
+            elif isinstance(tag, TAG_AUTO_LOCAL_IDX):
+                #raise RuntimeError("cannot find grid sizes if AUTO_LOCAL_IDX tags are "
+                        #"present")
+                pass
+                tgt_dict = None
+            else:
+                tgt_dict = None
+
+            if tgt_dict is None:
+                continue
+
+            bounds = kernel.get_iname_bounds(iname)
+
+            size = bounds.size
+
+            from loopy.isl import static_max_of_pw_aff
+            try:
+                size = static_max_of_pw_aff(size)
+            except ValueError:
+                pass
+
+            if tag.axis in tgt_dict:
+                tgt_dict[tag.axis] = tgt_dict[tag.axis].max(size)
+            else:
+                tgt_dict[tag.axis] = size
+
+        max_dims = kernel.device.max_work_item_dimensions
+
+        def to_dim_tuple(size_dict, which):
+            size_list = []
+            sorted_axes = sorted(size_dict.iterkeys())
+            while sorted_axes:
+                cur_axis = sorted_axes.pop(0)
+                while cur_axis > len(size_list):
+                    from loopy import LoopyAdvisory
+                    warn("%s axis %d unassigned--assuming length 1" % len(size_list),
+                            LoopyAdvisory)
+                    size_list.append(1)
+
+                size_list.append(size_dict[cur_axis])
+
+            if len(size_list) > max_dims:
+                raise ValueError("more %s dimensions assigned than supported "
+                        "by hardware (%d > %d)" % (which, len(size_list), max_dims))
+
+            return tuple(size_list)
+
+        return (to_dim_tuple(global_sizes, "global"),
+                to_dim_tuple(local_sizes, "local"))
 
     def local_mem_use(self):
         return sum(lv.nbytes for lv in self.temporary_variables.itervalues()

@@ -301,8 +301,8 @@ def get_valid_check_vars(kernel, sched_index, allow_ilp, exclude_tag_classes=())
         # prefetches are scheduled, we may not check work item indices
         # (and thereby conceivably mask out some work items).
 
-        from loopy.kernel import TAG_WORK_ITEM_IDX
-        allowed_vars -= set(kernel.inames_by_tag_type(TAG_WORK_ITEM_IDX))
+        from loopy.kernel import TAG_LOCAL_IDX
+        allowed_vars -= set(kernel.inames_by_tag_type(TAG_LOCAL_IDX))
 
     return allowed_vars
 

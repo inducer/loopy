@@ -240,10 +240,10 @@ def generate_code(kernel):
 
     # {{{ symbolic names for group and local indices
 
-    from loopy.kernel import TAG_GROUP_IDX, TAG_WORK_ITEM_IDX
+    from loopy.kernel import TAG_GROUP_IDX, TAG_LOCAL_IDX
     for what_cls, func in [
             (TAG_GROUP_IDX, "get_group_id"),
-            (TAG_WORK_ITEM_IDX, "get_local_id")]:
+            (TAG_LOCAL_IDX, "get_local_id")]:
         for iname in kernel.ordered_inames_by_tag_type(what_cls):
             lower, upper, equality = kernel.get_bounds(iname, (iname,), allow_parameters=True)
             assert not equality
@@ -275,13 +275,13 @@ def generate_code(kernel):
     body.extend([Line(), gen_code.ast])
     #print "# conditionals: %d" % gen_code.num_conditionals
 
-    from loopy.kernel import TAG_WORK_ITEM_IDX
+    from loopy.kernel import TAG_LOCAL_IDX
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
                 tuple(dim_length
                     for dim_length in kernel.tag_type_lengths(
-                        TAG_WORK_ITEM_IDX,
+                        TAG_LOCAL_IDX,
                         allow_parameters=False)),
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),

@@ -24,14 +24,6 @@ class Barrier(Record):
 
 
 
-def fix_grid_sizes(kernel):
-    from warnings import warn
-    warn("fix_grid_sizes is unimplemented")
-    return kernel
-
-
-
-
 def check_double_use_of_hw_dimensions(kernel):
     from loopy.kernel import UniqueTag
 
@@ -120,6 +112,176 @@ def add_automatic_dependencies(kernel):
                     insn_deps=insn.insn_deps + auto_deps))
 
     return kernel.copy(instructions=new_insns)
+
+
+
+
+def guess_good_iname_for_axis_0(kernel, insn):
+    from loopy.kernel import ImageArg, ScalarArg
+
+    approximate_arg_values = dict(
+            (arg.name, arg.approximately)
+            for arg in kernel.args
+            if isinstance(arg, ScalarArg))
+
+    # {{{ find all array accesses in insn
+
+    from loopy.symbolic import ArrayAccessFinder
+    ary_acc_exprs = list(ArrayAccessFinder()(insn.expression))
+
+    from pymbolic.primitives import Subscript
+
+    if isinstance(insn.assignee, Subscript):
+        ary_acc_exprs.append(insn.assignee)
+    print ary_acc_exprs
+
+    # }}}
+
+    # {{{ filter array accesses to only the global ones
+
+    global_ary_acc_exprs = []
+
+    for aae in ary_acc_exprs:
+        ary_name = aae.aggregate.name
+        arg = kernel.arg_dict.get(ary_name)
+        if arg is None:
+            continue
+
+        if isinstance(arg, ImageArg):
+            continue
+
+        global_ary_acc_exprs.append(aae)
+
+    # }}}
+
+    # {{{ figure out which iname should get mapped to local axis 0
+
+    # maps inames to vote counts
+    vote_count_for_l0 = {}
+
+    from loopy.symbolic import CoefficientCollector
+
+    from pytools import argmin2, argmax2
+
+    for aae in global_ary_acc_exprs:
+        index_expr = aae.index
+        if not isinstance(index_expr, tuple):
+            index_expr = (index_expr,)
+
+        ary_name = aae.aggregate.name
+        arg = kernel.arg_dict.get(ary_name)
+
+        ary_strides = arg.strides
+        if ary_strides is None and len(index_expr) == 1:
+            ary_strides = (1,)
+
+        iname_to_stride = {}
+        for iexpr_i, stride in zip(index_expr, ary_strides):
+            coeffs = CoefficientCollector()(iexpr_i)
+            for var_name, coeff in coeffs.iteritems():
+                if var_name != 1:
+                    new_stride = coeff*stride
+                    old_stride = iname_to_stride.get(var_name, None)
+                    if old_stride is None or new_stride < old_stride:
+                        iname_to_stride[var_name] = new_stride
+
+        from pymbolic import evaluate
+        least_stride_iname, least_stride = argmin2((
+                (iname,
+                    evaluate(iname_to_stride[iname], approximate_arg_values))
+                for iname in iname_to_stride),
+                return_value=True)
+
+        if least_stride == 1:
+            vote_strength = 1
+        else:
+            vote_strength = 0.5
+
+        vote_count_for_l0[least_stride_iname] = (
+                vote_count_for_l0.get(least_stride_iname, 0)
+                + vote_strength)
+
+    return argmax2(vote_count_for_l0.iteritems())
+
+    # }}}
+
+
+
+
+
+def find_inadmissible_tag_keys(kernel, iname, iname_to_tag=None):
+    if iname_to_tag is None:
+        iname_to_tag = kernel.iname_to_tag
+
+    result = set()
+
+    from loopy.kernel import UniqueTag
+
+    for insn in kernel.instructions:
+        if iname in insn.all_inames():
+            for insn_iname in insn.all_inames():
+                if insn_iname == iname:
+                    continue
+
+                tag = iname_to_tag.get(insn_iname)
+                if isinstance(tag, UniqueTag):
+                    result.add(tag.key)
+
+    return result
+
+
+
+
+def assign_automatic_axes(kernel):
+    from loopy.kernel import (
+            TAG_AUTO_LOCAL_IDX, TAG_LOCAL_IDX)
+
+    new_iname_to_tag = kernel.iname_to_tag
+
+    # first assign each insn's axis 0, then the rest
+    for only_axis_0 in [True, False]:
+
+        for insn in kernel.instructions:
+            auto_axis_inames = [
+                    iname
+                    for iname in insn.all_inames()
+                    if isinstance(new_iname_to_tag.get(iname), TAG_AUTO_LOCAL_IDX)]
+
+            if not auto_axis_inames:
+                continue
+
+            local_assigned_axes = set()
+
+            for iname in insn.all_inames():
+                tag = new_iname_to_tag.get(iname)
+                if isinstance(tag, TAG_LOCAL_IDX):
+                    local_assigned_axes.add(tag.axis)
+
+            if 0 not in local_assigned_axes:
+                axis0_iname = guess_good_iname_for_axis_0(kernel, insn)
+
+                axis0_iname_tag = new_iname_to_tag.get(axis0_iname)
+                ax0_tag = TAG_LOCAL_IDX(0)
+                if (isinstance(axis0_iname_tag, TAG_AUTO_LOCAL_IDX)
+                        and ax0_tag.key not in find_inadmissible_tag_keys(
+                            kernel, axis0_iname, new_iname_to_tag)):
+                    new_iname_to_tag[axis0_iname] = ax0_tag
+                    local_assigned_axes.add(0)
+                    auto_axis_inames.remove(axis0_iname)
+
+            if only_axis_0:
+                continue
+
+            next_axis = 0
+            while auto_axis_inames:
+                iname = auto_axis_inames.pop()
+                while next_axis in local_assigned_axes:
+                    next_axis += 1
+
+                new_iname_to_tag[iname] = TAG_LOCAL_IDX(next_axis)
+                local_assigned_axes.add(next_axis)
+
+    return kernel.copy(iname_to_tag=new_iname_to_tag)
 
 
 
@@ -391,21 +553,9 @@ def generate_loop_schedules(kernel):
 
     # }}}
 
-    kernel = fix_grid_sizes(kernel)
-
-    if 0:
-        loop_dep_graph = generate_loop_dep_graph(kernel)
-        for k, v in loop_dep_graph.iteritems():
-            print "%s: %s" % (k, ",".join(v))
-        1/0
-
     kernel = add_automatic_dependencies(kernel)
 
-    print kernel
-
-    #grid_size, group_size = find_known_grid_and_group_sizes(kernel)
-
-    #kernel = assign_grid_and_group_indices(kernel)
+    kernel = assign_automatic_axes(kernel)
 
     for gen_sched in generate_loop_schedules_internal(kernel):
         gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)

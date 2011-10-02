@@ -224,7 +224,7 @@ class CoefficientCollector(RecursiveMapper):
 
 # {{{ variable index expression collector
 
-class VariableIndexExpressionCollector(CombineMapper):
+class ArrayAccessFinder(CombineMapper):
     def __init__(self, tgt_vector_name=None):
         self.tgt_vector_name = tgt_vector_name
 
@@ -243,7 +243,7 @@ class VariableIndexExpressionCollector(CombineMapper):
         assert isinstance(expr.aggregate, Variable)
 
         if self.tgt_vector_name is None or expr.aggregate.name == self.tgt_vector_name:
-            return set([expr.index]) | self.rec(expr.index)
+            return set([expr]) | self.rec(expr.index)
         else:
             return CombineMapper.map_subscript(self, expr)
 
