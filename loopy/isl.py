@@ -35,6 +35,7 @@ def block_shift_constraint(cns, type, pos, multiple, as_equality=None):
 
     cns = cns.set_constant(cns.get_constant()
             + cns.get_coefficient(type, pos)*multiple)
+
     return cns
 
 
@@ -85,17 +86,37 @@ def make_index_map(set, index_expr):
 
 
 
+def pw_aff_to_aff(pw_aff):
+    assert isinstance(pw_aff, isl.PwAff)
+    pieces = pw_aff.get_pieces()
+
+    if len(pieces) != 1:
+        raise NotImplementedError("only single-piece PwAff instances are supported here")
+
+    return pieces[0][1]
+
+
+
+
 def make_slab(space, iname, start, stop):
-    from loopy.symbolic import ineq_constraint_from_expr
-    from pymbolic import var
-    var_iname = var(iname)
+    if isinstance(start, isl.PwAff): start = pw_aff_to_aff(start)
+    if isinstance(stop, isl.PwAff): stop = pw_aff_to_aff(stop)
+
+    zero = isl.Aff.zero_on_domain(space)
+
+    if isinstance(start, int): start = zero + start
+    if isinstance(stop, int): stop = zero + stop
+
+    iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
+    iname_aff = zero.add_coefficient(iname_dt, iname_idx, 1)
+
     return (isl.Set.universe(space)
             # start <= inner
-            .add_constraint(ineq_constraint_from_expr(
-                space, var_iname -start))
+            .add_constraint(isl.Constraint.inequality_from_aff(
+                iname_aff - start))
             # inner < stop
-            .add_constraint(ineq_constraint_from_expr(
-                space, stop-1 - var_iname)))
+            .add_constraint(isl.Constraint.inequality_from_aff(
+                stop-1 - iname_aff)))
 
 
 

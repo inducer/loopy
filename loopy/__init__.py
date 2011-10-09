@@ -123,7 +123,7 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
             .copy(domain=new_domain,
                 assumptions=new_assumptions,
                 iname_slab_increments=iname_slab_increments,
-                name_to_dim=None,
+                iname_to_dim=None,
                 instructions=new_insns))
 
     return tag_dimensions(result, {outer_iname: outer_tag, inner_iname: inner_tag})
@@ -338,41 +338,49 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     # {{{ build new domain, duplicating each constraint on duplicated inames
 
-    start_idx = kernel.domain.dim(dim_type.set)
-    new_domain = kernel.domain.insert_dims(
-            dim_type.set, start_idx,
-            len(duplicate_inames))
-    new_name_to_dim = kernel.name_to_dim.copy()
-    for i, iname in enumerate(new_inames):
-        new_idx = start_idx+i
-        new_domain = new_domain.set_dim_name(
-                dim_type.set, new_idx, iname)
-        new_name_to_dim[iname] = (dim_type.set, new_idx)
-
-    dup_iname_dims = [kernel.name_to_dim[iname]
+    dup_iname_dims = [kernel.iname_to_dim[iname]
             for iname in duplicate_inames]
     old_to_new = dict((old_iname, new_iname)
         for old_iname, new_iname in zip(duplicate_inames, new_inames))
 
-    new_domain_bs, = new_domain.get_basic_sets()
+    def realize_duplication(set):
+        start_idx = set.dim(dim_type.set)
+        result = set.insert_dims(
+                dim_type.set, start_idx,
+                len(duplicate_inames))
 
-    for cns in new_domain_bs.get_constraints():
-        if any(cns.involves_dims(*dim+(1,)) for dim in dup_iname_dims):
-            assert not cns.is_div_constraint()
-            if cns.is_equality():
-                new_cns = cns.equality_alloc(new_domain.get_space())
-            else:
-                new_cns = cns.inequality_alloc(new_domain.get_space())
+        new_iname_to_dim = kernel.iname_to_dim.copy()
+        for i, iname in enumerate(new_inames):
+            new_idx = start_idx+i
+            result = result.set_dim_name(
+                    dim_type.set, new_idx, iname)
+            new_iname_to_dim[iname] = (dim_type.set, new_idx)
 
-            new_coeffs = {}
-            for key, val in cns.get_coefficients_by_name().iteritems():
-                if key in old_to_new:
-                    new_coeffs[old_to_new[key]] = val
+
+        set_bs, = set.get_basic_sets()
+
+        for cns in set_bs.get_constraints():
+            if any(cns.involves_dims(*dim+(1,)) for dim in dup_iname_dims):
+                assert not cns.is_div_constraint()
+                if cns.is_equality():
+                    new_cns = cns.equality_alloc(result.get_space())
                 else:
-                    new_coeffs[key] = val
+                    new_cns = cns.inequality_alloc(result.get_space())
 
-            new_cns = new_cns.set_coefficients_by_name(new_coeffs)
-            new_domain = new_domain.add_constraint(new_cns)
+                new_coeffs = {}
+                for key, val in cns.get_coefficients_by_name().iteritems():
+                    if key in old_to_new:
+                        new_coeffs[old_to_new[key]] = val
+                    else:
+                        new_coeffs[key] = val
+
+                new_cns = new_cns.set_coefficients_by_name(new_coeffs)
+                result = result.add_constraint(new_cns)
+
+        return result, new_iname_to_dim
+
+    new_domain, new_iname_to_dim = realize_duplication(kernel.domain)
+    new_assumptions, _ = realize_duplication(kernel.assumptions)
 
     # }}}
 
@@ -382,8 +390,8 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
     target_var_shape = []
 
     for iname in new_inames:
-        lower_bound_pw_aff = new_domain.dim_min(new_name_to_dim[iname][1])
-        upper_bound_pw_aff = new_domain.dim_max(new_name_to_dim[iname][1])
+        lower_bound_pw_aff = new_domain.dim_min(new_iname_to_dim[iname][1])
+        upper_bound_pw_aff = new_domain.dim_max(new_iname_to_dim[iname][1])
 
         from loopy.isl import static_max_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
@@ -409,9 +417,10 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     return kernel.copy(
             domain=new_domain,
+            assumptions=new_assumptions,
             instructions=new_insns,
             temporary_variables=new_temporary_variables,
-            name_to_dim=new_name_to_dim,
+            iname_to_dim=new_iname_to_dim,
             iname_to_tag=new_iname_to_tag)
 
 

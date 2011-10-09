@@ -70,16 +70,9 @@ class TAG_ILP(ParallelTag):
     def __str__(self):
         return "ilp"
 
-class BaseUnrollTag(IndexTag):
-    pass
-
-class TAG_UNROLL_STATIC(BaseUnrollTag):
+class TAG_UNROLL(IndexTag):
     def __str__(self):
         return "unr"
-
-class TAG_UNROLL_INCR(BaseUnrollTag):
-    def __str__(self):
-        return "unri"
 
 def parse_tag(tag):
     if tag is None:
@@ -91,10 +84,8 @@ def parse_tag(tag):
     if not isinstance(tag, str):
         raise ValueError("cannot parse tag: %s" % tag)
 
-    if tag in ["unrs", "unr"]:
-        return TAG_UNROLL_STATIC()
-    elif tag == "unri":
-        return TAG_UNROLL_INCR()
+    if tag in ["unr"]:
+        return TAG_UNROLL()
     elif tag == "ilp":
         return TAG_ILP()
     elif tag.startswith("g."):
@@ -188,15 +179,19 @@ class TemporaryVariable(Record):
     :ivar name:
     :ivar dtype:
     :ivar shape:
+    :ivar storage_shape:
     :ivar base_indices:
     :ivar is_local:
     """
 
-    def __init__(self, name, dtype, shape, is_local, base_indices=None):
+    def __init__(self, name, dtype, shape, is_local, base_indices=None,
+            storage_shape=None):
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
-        Record.__init__(self, name=name, dtype=dtype, shape=shape, is_local=is_local)
+        Record.__init__(self, name=name, dtype=dtype, shape=shape, is_local=is_local,
+                base_indices=base_indices,
+                storage_shape=storage_shape)
 
     @property
     def nbytes(self):
@@ -208,8 +203,6 @@ class TemporaryVariable(Record):
 # {{{ instruction
 
 class Instruction(Record):
-    #:ivar kernel: handle to the :class:`LoopKernel` of which this instruction
-        #is a part. (not yet)
     """
     :ivar id: An (otherwise meaningless) identifier that is unique within 
         a :class:`LoopKernel`.
@@ -392,7 +385,7 @@ class LoopKernel(Record):
         upper_incr) tuples that will be separated out in the execution to generate
         'bulk' slabs with fewer conditionals.
     :ivar temporary_variables:
-    :ivar name_to_dim: A lookup table from inames to ISL-style
+    :ivar iname_to_dim: A lookup table from inames to ISL-style
         (dim_type, index) tuples
     :ivar iname_to_tag:
     """
@@ -403,7 +396,7 @@ class LoopKernel(Record):
             iname_slab_increments={},
             temporary_variables={},
             workgroup_size=None,
-            name_to_dim=None,
+            iname_to_dim=None,
             iname_to_tag={}):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
@@ -434,10 +427,10 @@ class LoopKernel(Record):
 
         if isinstance(domain, str):
             ctx = isl.Context()
-            domain = isl.Set.read_from_str(ctx, domain, nparam=-1)
+            domain = isl.Set.read_from_str(ctx, domain)
 
-        if name_to_dim is None:
-            name_to_dim = domain.get_space().get_var_dict()
+        if iname_to_dim is None:
+            iname_to_dim = domain.get_space().get_var_dict()
 
         insns = []
         for insn in instructions:
@@ -484,8 +477,7 @@ class LoopKernel(Record):
                         for i in range(s.size(dim_type.param))),
                        ",".join(s.get_name(dim_type.set, i) 
                            for i in range(s.size(dim_type.set))),
-                       assumptions),
-                       nparam=-1)
+                       assumptions))
 
         Record.__init__(self,
                 device=device,  domain=domain, instructions=insns,
@@ -497,7 +489,7 @@ class LoopKernel(Record):
                 iname_slab_increments=iname_slab_increments,
                 temporary_variables=temporary_variables,
                 workgroup_size=workgroup_size,
-                name_to_dim=name_to_dim,
+                iname_to_dim=iname_to_dim,
                 iname_to_tag=iname_to_tag)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
@@ -511,11 +503,17 @@ class LoopKernel(Record):
             if id_str not in used_ids:
                 return id_str
 
+    @memoize_method
+    def get_written_variables(self):
+        return set(
+            insn.get_assignee_var_name()
+            for insn in self.instructions)
+
     def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
         used_vars = (
                 set(self.temporary_variables.iterkeys())
                 | set(arg.name for arg in self.args)
-                | set(self.name_to_dim.keys())
+                | set(self.iname_to_dim.keys())
                 | extra_used_vars)
 
         from loopy.tools import generate_unique_possibilities
@@ -525,14 +523,9 @@ class LoopKernel(Record):
 
     @property
     @memoize_method
-    def arg_dict(self):
-        return dict((arg.name, arg) for arg in self.args)
-
-    @property
-    @memoize_method
     def dim_to_name(self):
         from pytools import reverse_dict
-        return reverse_dict(self.name_to_dim)
+        return reverse_dict(self.iname_to_dim)
 
     @property
     @memoize_method
@@ -571,8 +564,12 @@ class LoopKernel(Record):
 
     @memoize_method
     def get_iname_bounds(self, iname):
-        lower_bound_pw_aff = self.domain.dim_min(self.name_to_dim[iname][1])
-        upper_bound_pw_aff = self.domain.dim_max(self.name_to_dim[iname][1])
+        lower_bound_pw_aff = (self.domain
+                .dim_min(self.iname_to_dim[iname][1])
+                .coalesce())
+        upper_bound_pw_aff = (self.domain
+                .dim_max(self.iname_to_dim[iname][1])
+                .coalesce())
 
         class BoundsRecord(Record):
             pass
@@ -584,12 +581,12 @@ class LoopKernel(Record):
                 upper_bound_pw_aff=upper_bound_pw_aff,
                 size=size)
 
-    def fix_grid_sizes(kernel):
+    def get_grid_sizes(self):
         all_inames_by_insns = set()
-        for insn in kernel.instructions:
+        for insn in self.instructions:
             all_inames_by_insns |= insn.all_inames()
 
-        if all_inames_by_insns != kernel.all_inames():
+        if all_inames_by_insns != self.all_inames():
             raise RuntimeError("inames collected from instructions "
                     "do not match domain inames")
 
@@ -600,8 +597,8 @@ class LoopKernel(Record):
                 TAG_GROUP_IDX, TAG_LOCAL_IDX,
                 TAG_AUTO_LOCAL_IDX)
 
-        for iname in kernel.all_inames():
-            tag = kernel.iname_to_tag.get(iname)
+        for iname in self.all_inames():
+            tag = self.iname_to_tag.get(iname)
 
             if isinstance(tag, TAG_GROUP_IDX):
                 tgt_dict = global_sizes
@@ -618,7 +615,7 @@ class LoopKernel(Record):
             if tgt_dict is None:
                 continue
 
-            bounds = kernel.get_iname_bounds(iname)
+            bounds = self.get_iname_bounds(iname)
 
             size = bounds.size
 
@@ -633,7 +630,7 @@ class LoopKernel(Record):
             else:
                 tgt_dict[tag.axis] = size
 
-        max_dims = kernel.device.max_work_item_dimensions
+        max_dims = self.device.max_work_item_dimensions
 
         def to_dim_tuple(size_dict, which):
             size_list = []
@@ -642,6 +639,7 @@ class LoopKernel(Record):
                 cur_axis = sorted_axes.pop(0)
                 while cur_axis > len(size_list):
                     from loopy import LoopyAdvisory
+                    from warnings import warn
                     warn("%s axis %d unassigned--assuming length 1" % len(size_list),
                             LoopyAdvisory)
                     size_list.append(1)

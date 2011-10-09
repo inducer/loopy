@@ -66,6 +66,13 @@ Things to consider
 - multiple insns could fight over which iname gets local axis 0
   -> complicated optimization problem
 
+- How to determine which variables need to be duplicated for ILP?
+  -> Only reduction
+
+- Slab decomposition for parallel dimensions
+
+- Sharing of checks across ILP instances
+
 Dealt with
 ^^^^^^^^^^
 

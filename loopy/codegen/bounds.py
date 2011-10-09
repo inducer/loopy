@@ -20,10 +20,7 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
         if not allow_parameters:
             proj_type.append(dim_type.param)
 
-        set = (set
-                .project_out_except(admissible_inames, proj_type)
-                .compute_divs()
-                .remove_divs_of_dim_type(dim_type.set))
+        set = set.eliminate_except(admissible_inames, proj_type)
 
     basic_sets = set.get_basic_sets()
     if len(basic_sets) > 1:
@@ -33,6 +30,10 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
             raise RuntimeError("got non-convex set in bounds generation")
 
     bset, = basic_sets
+
+    # FIXME: hackety hack--elimination leaves the set in an 
+    # invalid ('non-final'?) state
+    bset = bset.intersect(isl.BasicSet.universe(bset.get_space()))
 
     # FIXME perhaps use some form of hull here if there's more than one
     # basic set?
@@ -65,7 +66,7 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
 
 def solve_constraint_for_bound(cns, iname):
     from warnings import warn
-    warn("deprecated")
+    warn("solve_constraint_for_bound deprecated?")
 
     from loopy.symbolic import constraint_to_expr
     rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
@@ -147,32 +148,21 @@ def filter_necessary_constraints(implemented_domain, constraints):
     return [cns
         for cns in constraints
         if not implemented_domain.is_subset(
-            isl.Set.universe(space)
-            .add_constraint(cns))]
+            isl.Set.universe(space).add_constraint(cns))]
 
 def generate_bounds_checks(domain, check_vars, implemented_domain):
-    projected_domain_bset, = (domain
-            .project_out_except(check_vars, [dim_type.set])
-            .compute_divs()
-            .remove_divs_of_dim_type(dim_type.set)
+    domain_bset, = (domain
+            .eliminate_except(check_vars, [dim_type.set])
             .coalesce()
             .get_basic_sets())
 
-    space = domain.get_space()
-
-    cast_constraints = []
-
-    from loopy.isl import cast_constraint_to_space
-
-    def examine_constraint(cns):
-        assert not cns.is_div_constraint()
-        cast_constraints.append(
-                cast_constraint_to_space(cns, space))
-
-    projected_domain_bset.foreach_constraint(examine_constraint)
+    # FIXME: hackety hack--elimination leaves the set in an 
+    # invalid ('non-final'?) state
+    domain_bset = domain_bset.intersect(
+            isl.BasicSet.universe(domain_bset.get_space()))
 
     return filter_necessary_constraints(
-            implemented_domain, cast_constraints)
+            implemented_domain, domain_bset.get_constraints())
 
 def generate_bounds_checks_code(ccm, domain, check_vars, implemented_domain):
     return [constraint_to_code(ccm, cns) for cns in 
@@ -258,53 +248,35 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
 
 # {{{ on which variables may a conditional depend?
 
-def get_defined_vars(kernel, sched_index, allow_ilp, exclude_tag_classes=()):
+def get_defined_inames(kernel, sched_index, allow_ilp, exclude_tag_classes=()):
     """
     :param exclude_tags: a tuple of tag classes to exclude
     """
+    from loopy.schedule import EnterLoop, LeaveLoop
 
-    if not allow_ilp:
-        from loopy.kernel import TAG_ILP
-        exclude_tag_classes = exclude_tag_classes + (TAG_ILP,)
+    result = set()
 
-    from loopy.schedule import ScheduledLoop
-    defined_vars = set(
-            sched_item.iname
-            for sched_item in kernel.schedule[:sched_index]
-            if isinstance(sched_item, ScheduledLoop))
+    for i, sched_item in enumerate(kernel.schedule):
+        if i >= sched_index:
+            break
+        if isinstance(sched_item, EnterLoop):
+            result.add(sched_item.iname)
+        elif isinstance(sched_item, LeaveLoop):
+            result.remove(sched_item.iname)
 
-    defined_vars = set(
-            iname
-            for iname in defined_vars
-            if not isinstance(
-                kernel.iname_to_tag.get(iname),
-                exclude_tag_classes))
+    from loopy.kernel import TAG_ILP, ParallelTagWithAxis
+    for iname in kernel.all_inames():
+        tag = kernel.iname_to_tag.get(iname)
 
-    return defined_vars
+        if isinstance(tag, exclude_tag_classes):
+            continue
 
-def get_valid_check_vars(kernel, sched_index, allow_ilp, exclude_tag_classes=()):
-    """
-    :param exclude_tags: a tuple of tag classes to exclude
-    """
+        if isinstance(tag, ParallelTagWithAxis):
+            result.add(iname)
+        elif isinstance(tag, TAG_ILP) and allow_ilp:
+            result.add(iname)
 
-    allowed_vars = get_defined_vars(kernel, sched_index, allow_ilp, exclude_tag_classes)
-
-    from pytools import any
-    from loopy.prefetch import LocalMemoryPrefetch
-    all_lmem_prefetches_scheduled = not any(
-            isinstance(sched_item, LocalMemoryPrefetch)
-            for sched_item in kernel.schedule[sched_index:])
-
-    if not all_lmem_prefetches_scheduled:
-        # Lmem prefetches use barriers. Barriers are only allowed if *all* work
-        # items in a work group hit them. Therefore, as long as not all lmem
-        # prefetches are scheduled, we may not check work item indices
-        # (and thereby conceivably mask out some work items).
-
-        from loopy.kernel import TAG_LOCAL_IDX
-        allowed_vars -= set(kernel.inames_by_tag_type(TAG_LOCAL_IDX))
-
-    return allowed_vars
+    return result
 
 # }}}
 

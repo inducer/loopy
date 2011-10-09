@@ -252,8 +252,7 @@ class ArrayAccessFinder(CombineMapper):
 # {{{ C code mapper
 
 class LoopyCCodeMapper(CCodeMapper):
-    def __init__(self, kernel, no_prefetch=False, cse_name_list=[],
-            var_subst_map={}):
+    def __init__(self, kernel, cse_name_list=[], var_subst_map={}):
         def constant_mapper(c):
             if isinstance(c, float):
                 # FIXME: type-variable
@@ -267,14 +266,12 @@ class LoopyCCodeMapper(CCodeMapper):
 
         self.var_subst_map = var_subst_map.copy()
 
-        self.no_prefetch = no_prefetch
-
     def copy(self, var_subst_map=None, cse_name_list=None):
         if var_subst_map is None:
             var_subst_map = self.var_subst_map
         if cse_name_list is None:
             cse_name_list = self.cse_name_list
-        return LoopyCCodeMapper(self.kernel, no_prefetch=self.no_prefetch,
+        return LoopyCCodeMapper(self.kernel,
                 cse_name_list=cse_name_list, var_subst_map=var_subst_map)
 
     def copy_and_assign(self, name, value):
@@ -296,22 +293,10 @@ class LoopyCCodeMapper(CCodeMapper):
 
     def map_subscript(self, expr, enclosing_prec):
         from pymbolic.primitives import Variable
-        if (not self.no_prefetch
-                and isinstance(expr.aggregate, Variable)
-                and expr.aggregate.name in self.kernel.input_vectors()):
-            try:
-                pf = self.kernel.prefetch[expr.aggregate.name, expr.index]
-            except KeyError:
-                pass
-            else:
-                from pymbolic import var
-                return pf.name+"".join(
-                        "[%s]" % self.rec(
-                            var(iname) - pf.dim_bounds_by_iname[iname][0],
-                            PREC_NONE)
-                        for iname in pf.all_inames())
+        if not isinstance(expr.aggregate, Variable):
+            return CCodeMapper.map_subscript(self, expr, enclosing_prec)
 
-        if isinstance(expr.aggregate, Variable):
+        if expr.aggregate.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.aggregate.name]
 
             from loopy.kernel import ImageArg
@@ -349,7 +334,12 @@ class LoopyCCodeMapper(CCodeMapper):
                             stride*expr_i for stride, expr_i in zip(
                                 ary_strides, index_expr))), enclosing_prec)
 
-        return CCodeMapper.map_subscript(self, expr, enclosing_prec)
+
+        if expr.aggregate.name in self.kernel.temporary_variables:
+            temp_var = self.kernel.temporary_variables[expr.aggregate.name]
+
+            return (temp_var.name + "".join("[%s]" % self.rec(idx, PREC_NONE)
+                for idx in expr.index))
 
     def map_floor_div(self, expr, prec):
         if isinstance(expr.denominator, int) and expr.denominator > 0:
@@ -380,24 +370,42 @@ class LoopyCCodeMapper(CCodeMapper):
 
 # {{{ aff -> expr conversion
 
-def aff_to_expr(aff):
+def aff_to_expr(aff, except_name=None, error_on_name=None):
+    if except_name is not None and error_on_name is not None:
+        raise ValueError("except_name and error_on_name may not be specified "
+                "at the same time")
     from pymbolic import var
+
+    except_coeff = 0
 
     result = int(aff.get_constant())
     for dt in [dim_type.in_, dim_type.param]:
-        for i in xrange(aff.dim(dim_type.in_)):
+        for i in xrange(aff.dim(dt)):
             coeff = int(aff.get_coefficient(dt, i))
             if coeff:
-                result += coeff*var(aff.get_dim_name(dt, i))
+                dim_name = aff.get_dim_name(dt, i)
+                if dim_name == except_name:
+                    except_coeff += coeff
+                elif dim_name == error_on_name:
+                    raise RuntimeError("'%s' occurred in this subexpression--"
+                            "this is not allowed" % dim_name)
+                else:
+                    result += coeff*var(dim_name)
+
+    error_on_name = error_on_name or except_name
 
     for i in xrange(aff.dim(dim_type.div)):
         coeff = int(aff.get_coefficient(dim_type.div, i))
         if coeff:
-            result += coeff*aff_to_expr(aff.get_div(i))
+            result += coeff*aff_to_expr(aff.get_div(i), error_on_name=error_on_name)
 
-    denom = aff.get_denominator()
-    if denom == 1:
-        return result
+    denom = int(aff.get_denominator())
+    if except_name is not None:
+        if except_coeff % denom != 0:
+            raise RuntimeError("coefficient of '%s' is not divisible by "
+                    "aff denominator" % except_name)
+
+        return result // denom, except_coeff // denom
     else:
         return result // denom
 
@@ -438,7 +446,7 @@ def ineq_constraint_from_expr(space, expr):
     return isl.Constraint.inequality_from_aff(aff_from_expr(space,expr))
 
 def constraint_to_expr(cns, except_name=None):
-    return aff_to_expr(cns.get_aff())
+    return aff_to_expr(cns.get_aff(), except_name=except_name)
 
 # }}}
 

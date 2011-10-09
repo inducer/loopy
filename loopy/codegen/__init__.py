@@ -2,6 +2,7 @@ from __future__ import division
 
 from pytools import Record
 import numpy as np
+import islpy as isl
 
 
 
@@ -92,65 +93,46 @@ def add_comment(cmt, code):
 
 # }}}
 
-# {{{ main code generation entrypoint
+# {{{ code generation state
 
-class ExecutionSubdomain(Record):
-    __slots__ = ["implemented_domain", "c_code_mapper"]
-
+class CodeGenerationState(object):
     def __init__(self, implemented_domain, c_code_mapper):
-        Record.__init__(self,
-                implemented_domain=implemented_domain,
-                c_code_mapper=c_code_mapper)
-
-    def intersect(self, set):
-        return ExecutionSubdomain(
-                self.implemented_domain.intersect(set),
-                self.c_code_mapper)
-
-class ExecutionDomain(object):
-    def __init__(self, implemented_domain, c_code_mapper, subdomains=None):
         """
         :param implemented_domain: The entire implemented domain,
             i.e. all constraints that have been enforced so far.
-        :param subdomains: a list of :class:`ExecutionSubdomain`
-            instances.
-
-            The point of this being a list is the implementation of
-            ILP, and each entry represents a 'fake-parallel' trip through the 
-            ILP'd loop, with the requisite implemented_domain
-            and a C code mapper that realizes the necessary assignments.
         :param c_code_mapper: A C code mapper that does not take per-ILP
             assignments into account.
         """
         self.implemented_domain = implemented_domain
-        if subdomains is None:
-            self.subdomains = [
-                    ExecutionSubdomain(implemented_domain, c_code_mapper)]
-        else:
-            self.subdomains = subdomains
 
         self.c_code_mapper = c_code_mapper
 
     def intersect(self, set):
-        return ExecutionDomain(
+        return CodeGenerationState(
                 self.implemented_domain.intersect(set),
-                self.c_code_mapper,
-                [subd.intersect(set) for subd in self.subdomains])
+                self.c_code_mapper)
 
-    def get_the_one_domain(self):
-        assert len(self.subdomains) == 1
-        return self.implemented_domain
+    def fix(self, iname, aff):
+        dt, pos = aff.get_space().get_var_dict()[iname]
+        iname_plus_lb_aff = aff.add_coefficient(
+                dt, pos, -1)
 
+        from loopy.symbolic import pw_aff_to_expr
+        cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
+        expr = pw_aff_to_expr(aff)
 
+        return CodeGenerationState(
+                self.implemented_domain.add_constraint(cns),
+                self.c_code_mapper.copy_and_assign(iname, expr))
 
+# }}}
+
+# {{{ main code generation entrypoint
 
 def generate_code(kernel):
-    from loopy.codegen.prefetch import preprocess_prefetch
-    kernel = preprocess_prefetch(kernel)
-
     from cgen import (FunctionBody, FunctionDeclaration,
             POD, Value, ArrayOf, Module, Block,
-            Define, Line, Const, LiteralLines, Initializer)
+            Line, Const, LiteralLines, Initializer)
 
     from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
             CLLocal, CLImage, CLConstant)
@@ -184,7 +166,7 @@ def generate_code(kernel):
         if isinstance(arg, ArrayArg):
             arg_decl = restrict_ptr_if_not_nvidia(
                     POD(arg.dtype, arg.name))
-            if arg_decl.name in kernel.input_vectors():
+            if arg_decl.name not in kernel.get_written_variables():
                 if arg.constant_mem:
                     arg_decl = CLConstant(Const(arg_decl))
                 else:
@@ -238,51 +220,38 @@ def generate_code(kernel):
         """),
         Line()])
 
-    # {{{ symbolic names for group and local indices
-
-    from loopy.kernel import TAG_GROUP_IDX, TAG_LOCAL_IDX
-    for what_cls, func in [
-            (TAG_GROUP_IDX, "get_group_id"),
-            (TAG_LOCAL_IDX, "get_local_id")]:
-        for iname in kernel.ordered_inames_by_tag_type(what_cls):
-            lower, upper, equality = kernel.get_bounds(iname, (iname,), allow_parameters=True)
-            assert not equality
-            mod.append(Define(iname, "(%s + (int) %s(%d)) /* [%s, %s) */"
-                        % (ccm(lower),
-                            func,
-                            kernel.iname_to_tag[iname].axis,
-                            ccm(lower),
-                            ccm(upper))))
-
-    mod.append(Line())
-
-    # }}}
-
     # {{{ build lmem array declarators for prefetches
 
-    for pf in kernel.prefetch.itervalues():
-        smem_pf_array = POD(kernel.arg_dict[pf.input_vector].dtype, pf.name)
-        for l in pf.dim_storage_lengths:
-            smem_pf_array = ArrayOf(smem_pf_array, l)
-        body.append(CLLocal(smem_pf_array))
+    for tv in kernel.temporary_variables.itervalues():
+        temp_var_decl = POD(tv.dtype, tv.name)
+
+        try:
+            storage_shape = tv.storage_shape
+        except AttributeError:
+            storage_shape = tv.shape
+
+        from loopy.symbolic import pw_aff_to_expr
+        for l in storage_shape:
+            temp_var_decl = ArrayOf(temp_var_decl, int(pw_aff_to_expr(l)))
+
+        if tv.is_local:
+            temp_var_decl = CLLocal(temp_var_decl)
+
+        body.append(temp_var_decl)
 
     # }}}
 
     from loopy.codegen.dispatch import build_loop_nest
 
     gen_code = build_loop_nest(kernel, 0,
-            ExecutionDomain( kernel.assumptions, c_code_mapper=ccm))
+            CodeGenerationState(kernel.assumptions, c_code_mapper=ccm))
     body.extend([Line(), gen_code.ast])
-    #print "# conditionals: %d" % gen_code.num_conditionals
 
-    from loopy.kernel import TAG_LOCAL_IDX
+    from loopy.symbolic import pw_aff_to_expr
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
-                tuple(dim_length
-                    for dim_length in kernel.tag_type_lengths(
-                        TAG_LOCAL_IDX,
-                        allow_parameters=False)),
+                tuple(pw_aff_to_expr(sz) for sz in kernel.fix_grid_sizes()[1]),
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),
             body))

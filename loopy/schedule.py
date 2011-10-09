@@ -1,6 +1,8 @@
 from __future__ import division
 
 from pytools import Record
+import pyopencl as cl
+import pyopencl.characterize as cl_char
 
 
 
@@ -43,9 +45,68 @@ def check_double_use_of_hw_dimensions(kernel):
 
 
 def adjust_local_temp_var_storage(kernel):
-    from warnings import warn
-    warn("adjust_local_temp_var_storage is unimplemented")
-    return kernel
+    new_temp_vars = {}
+
+    lmem_size = cl_char.usable_local_mem_size(kernel.device)
+    for temp_var in kernel.temporary_variables.itervalues():
+        other_loctemp_nbytes = [tv.nbytes for tv in kernel.temporary_variables.itervalues()
+                if tv.is_local and tv.name != temp_var.name]
+
+        storage_shape = temp_var.storage_shape
+        if storage_shape is None:
+            storage_shape = temp_var.shape
+
+        # sizes of all dims except the last one, which we may change
+        # below to avoid bank conflicts
+        from pytools import product
+        other_dim_sizes = (tv.dtype.itemsize
+                * product(storage_shape[:-1]))
+
+        if kernel.device.local_mem_type == cl.device_local_mem_type.GLOBAL:
+            # FIXME: could try to avoid cache associativity disasters
+            new_storage_shape = storage_shape
+
+        elif kernel.device.local_mem_type == cl.device_local_mem_type.LOCAL:
+            min_mult = cl_char.local_memory_bank_count(kernel.device)
+            good_incr = None
+            new_storage_shape = storage_shape
+            min_why_not = None
+
+            for increment in range(storage_shape[-1]//2):
+
+                test_storage_shape = storage_shape[:]
+                test_storage_shape[-1] = test_storage_shape[-1] + increment
+                new_mult, why_not = cl_char.why_not_local_access_conflict_free(
+                        kernel.device, temp_var.dtype.itemsize,
+                        temp_var.shape, test_storage_shape)
+
+                # will choose smallest increment 'automatically'
+                if new_mult < min_mult:
+                    new_lmem_use = (other_loctemp_nbytes
+                            + temp_var.dtype.itemsize*product(test_storage_shape))
+                    if new_lmem_use < lmem_size:
+                        new_storage_shape = test_storage_shape
+                        min_mult = new_mult
+                        min_why_not = why_not
+                        good_incr = increment
+
+            if min_mult != 1:
+                from warnings import warn
+                from loopy import LoopyAdvisory
+                warn("could not find a conflict-free mem layout "
+                        "for local variable '%s' "
+                        "(currently: %dx conflict, increment: %d, reason: %s)"
+                        % (temp_var.name, min_mult, good_incr, min_why_not),
+                        LoopyAdvisory)
+        else:
+            from warnings import warn
+            warn("unknown type of local memory")
+
+            new_storage_shape = storage_shape
+
+        new_temp_vars[temp_var.name] = temp_var.copy(storage_shape=new_storage_shape)
+
+    return kernel.copy(temporary_variables=new_temp_vars)
 
 
 
@@ -133,7 +194,6 @@ def guess_good_iname_for_axis_0(kernel, insn):
 
     if isinstance(insn.assignee, Subscript):
         ary_acc_exprs.append(insn.assignee)
-    print ary_acc_exprs
 
     # }}}
 
@@ -533,6 +593,14 @@ def insert_barriers(kernel, schedule, level=0):
 
 
 
+def insert_parallel_dim_check_points(kernel, schedule):
+    from warnings import warn
+    warn("insert_parallel_dim_check_points is unimplemented")
+    return kernel
+
+
+
+
 def generate_loop_schedules(kernel):
     from loopy import realize_reduction
     kernel = realize_reduction(kernel)
@@ -561,14 +629,9 @@ def generate_loop_schedules(kernel):
         gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
         assert not owed_barriers
 
-        print gen_sched
+        schedule = insert_parallel_dim_check_points(kernel, gen_sched)
 
-        if False:
-            schedule = insert_parallel_dim_check_points(schedule=gen_sched)
-            yield kernel.copy(schedule=gen_sched)
-
-
-    1/0
+        yield kernel.copy(schedule=gen_sched)
 
 
 

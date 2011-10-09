@@ -1,7 +1,7 @@
 from __future__ import division
 
 import numpy as np
-from loopy.codegen import ExecutionDomain, gen_code_block
+from loopy.codegen import CodeGenerationState, gen_code_block
 from pytools import Record
 import islpy as isl
 from islpy import dim_type
@@ -13,20 +13,17 @@ from loopy.codegen.dispatch import build_loop_nest
 
 def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
     from loopy.isl import cast_constraint_to_space
-    from loopy.codegen.bounds import get_bounds_constraints, get_defined_vars
+    from loopy.codegen.bounds import get_bounds_constraints, get_defined_inames
     lower_constraints_orig, upper_constraints_orig, equality_constraints_orig = \
             get_bounds_constraints(kernel.domain, iname,
                     frozenset([iname])
-                    | frozenset(get_defined_vars(kernel, sched_index+1, allow_ilp=False)),
+                    | frozenset(get_defined_inames(kernel, sched_index+1, allow_ilp=False)),
                     allow_parameters=True)
 
     assert not equality_constraints_orig
     from loopy.codegen.bounds import pick_simple_constraint
     lb_cns_orig = pick_simple_constraint(lower_constraints_orig, iname)
     ub_cns_orig = pick_simple_constraint(upper_constraints_orig, iname)
-
-    lb_cns_orig = cast_constraint_to_space(lb_cns_orig, kernel.space)
-    ub_cns_orig = cast_constraint_to_space(ub_cns_orig, kernel.space)
 
     return lb_cns_orig, ub_cns_orig
 
@@ -47,6 +44,8 @@ def get_slab_decomposition(kernel, sched_index, exec_domain):
 
     # {{{ build slabs
 
+    iname_tp, iname_idx = kernel.iname_to_dim[iname]
+
     slabs = []
     if lower_incr:
         slabs.append(("initial", isl.Set.universe(kernel.space)
@@ -55,14 +54,14 @@ def get_slab_decomposition(kernel, sched_index, exec_domain):
                 .add_constraint(
                     negate_constraint(
                         block_shift_constraint(
-                            lb_cns_orig, iname, -lower_incr)))))
+                            lb_cns_orig, iname_tp, iname_idx, -lower_incr)))))
 
-    slabs.append(("bulk", 
+    slabs.append(("bulk",
         (isl.Set.universe(kernel.space)
             .add_constraint(
-                block_shift_constraint(lb_cns_orig, iname, -lower_incr))
+                block_shift_constraint(lb_cns_orig, iname_tp, iname_idx, -lower_incr))
             .add_constraint(
-                block_shift_constraint(ub_cns_orig, iname, -upper_incr)))))
+                block_shift_constraint(ub_cns_orig, iname_tp, iname_idx, -upper_incr)))))
 
     if upper_incr:
         slabs.append(("final", isl.Set.universe(kernel.space)
@@ -71,7 +70,7 @@ def get_slab_decomposition(kernel, sched_index, exec_domain):
                 .add_constraint(
                     negate_constraint(
                         block_shift_constraint(
-                            ub_cns_orig, iname, -upper_incr)))))
+                            ub_cns_orig, iname_tp, iname_idx, -upper_incr)))))
 
     # }}}
 
@@ -81,19 +80,19 @@ def get_slab_decomposition(kernel, sched_index, exec_domain):
 
 # {{{ unrolled/ILP loops
 
-def generate_unroll_or_ilp_code(kernel, sched_index, exec_domain):
+def generate_unroll_or_ilp_code(kernel, sched_index, codegen_state):
     from loopy.isl import block_shift_constraint
     from loopy.codegen.bounds import solve_constraint_for_bound
 
     from cgen import (POD, Assign, Line, Statement as S, Initializer, Const)
 
-    ccm = exec_domain.c_code_mapper
+    ccm = codegen_state.c_code_mapper
     space = kernel.space
     iname = kernel.schedule[sched_index].iname
     tag = kernel.iname_to_tag.get(iname)
 
     lower_cns, upper_cns = get_simple_loop_bounds(kernel, sched_index, iname,
-            exec_domain.implemented_domain)
+            codegen_state.implemented_domain)
 
     lower_kind, lower_bound = solve_constraint_for_bound(lower_cns, iname)
     upper_kind, upper_bound = solve_constraint_for_bound(upper_cns, iname)
@@ -101,13 +100,17 @@ def generate_unroll_or_ilp_code(kernel, sched_index, exec_domain):
     assert lower_kind == ">="
     assert upper_kind == "<"
 
-    proj_domain = (kernel.domain
-            .project_out_except([iname], [dim_type.set])
-            .project_out_except([], [dim_type.param])
-            .remove_divs())
-    assert proj_domain.is_bounded()
-    success, length = proj_domain.count()
-    assert success == 0
+    bounds = kernel.get_iname_bounds(iname)
+    from loopy.isl import static_max_of_pw_aff
+    from loopy.symbolic import pw_aff_to_expr
+
+    length = int(pw_aff_to_expr(static_max_of_pw_aff(bounds.length)))
+    lower_bound_pw_aff_pieces = bounds.lower_bound_pw_aff.coalesce().get_pieces()
+
+    if len(lower_bound_pw_aff_pieces) > 1:
+        raise NotImplementedError("lower bound for ILP/unroll needed conditional")
+
+    (_, lower_bound_aff), = lower_bound_pw_aff_pieces
 
     def generate_idx_eq_slabs():
         for i in xrange(length):
@@ -116,45 +119,37 @@ def generate_unroll_or_ilp_code(kernel, sched_index, exec_domain):
                             block_shift_constraint(
                                 lower_cns, iname, -i, as_equality=True)))
 
-    from loopy.kernel import BaseUnrollTag, TAG_ILP, TAG_UNROLL_STATIC, TAG_UNROLL_INCR
-    if isinstance(tag, BaseUnrollTag):
+    from loopy.kernel import TAG_ILP, TAG_UNROLL
+    if isinstance(tag, TAG_UNROLL):
         result = [POD(np.int32, iname), Line()]
 
-        for i, slab in generate_idx_eq_slabs():
-            new_exec_domain = exec_domain.intersect(slab)
-            inner = build_loop_nest(kernel, sched_index+1, new_exec_domain)
-
-            if isinstance(tag, TAG_UNROLL_STATIC):
-                result.extend([
-                    Assign(iname, ccm(lower_bound+i)),
-                    Line(), inner])
-            elif isinstance(tag, TAG_UNROLL_INCR):
-                result.append(S("++%s" % iname))
+        for i in range(length):
+            idx_aff = lower_bound_aff + i
+            new_codegen_state = codegen_state.fix(iname, idx_aff)
+            result.append(
+                    build_loop_nest(kernel, sched_index+1, new_codegen_state))
 
         return gen_code_block(result)
 
     elif isinstance(tag, TAG_ILP):
-        new_subdomains = []
-        for subd in exec_domain.subdomains:
-            for i, single_slab in generate_idx_eq_slabs():
-                from loopy.codegen import ExecutionSubdomain
-                new_subdomains.append(
-                        ExecutionSubdomain(
-                            subd.implemented_domain.intersect(single_slab),
-                            subd.c_code_mapper.copy_and_assign(
-                                iname, lower_bound+i)))
+        new_ilp_instances = []
+        for ilpi in codegen_state.ilp_instances:
+            for i in range(length):
+                idx_aff = lower_bound_aff + i
+                new_ilp_instances.append(ilpi.fix(iname, idx_aff))
 
         overall_slab = (isl.Set.universe(kernel.space)
                 .add_constraint(lower_cns)
                 .add_constraint(upper_cns))
 
         return build_loop_nest(kernel, sched_index+1,
-                ExecutionDomain(
-                    exec_domain.implemented_domain.intersect(overall_slab),
-                    exec_domain.c_code_mapper,
-                    new_subdomains))
+                CodeGenerationState(
+                    codegen_state.implemented_domain.intersect(overall_slab),
+                    codegen_state.c_code_mapper,
+                    new_ilp_instances))
+
     else:
-        assert False, "not supposed to get here"
+        raise RuntimeError("unexpected tag")
 
 # }}}
 
