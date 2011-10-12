@@ -49,10 +49,7 @@ class CompiledKernel:
             self.size_args = size_args
 
         from loopy.kernel import TAG_GROUP_IDX, TAG_LOCAL_IDX
-        gsize_expr = tuple(self.kernel.tag_type_lengths(
-            TAG_GROUP_IDX, allow_parameters=True))
-        lsize_expr = tuple(self.kernel.tag_type_lengths(
-            TAG_LOCAL_IDX, allow_parameters=False))
+        gsize_expr, lsize_expr = kernel.get_grid_sizes_as_exprs()
 
         if not gsize_expr: gsize_expr = (1,)
         if not lsize_expr: lsize_expr = (1,)

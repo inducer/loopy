@@ -468,16 +468,17 @@ class LoopKernel(Record):
         # }}}
 
         if assumptions is None:
-            assumptions = isl.Set.universe(domain.get_space())
+            assumptions_space = domain.get_space()
+            assumptions_space = assumptions_space.remove_dims(
+                    dim_type.set, 0, assumptions_space.dim(dim_type.set))
+            assumptions = isl.Set.universe(assumptions_space)
         elif isinstance(assumptions, str):
             s = domain.get_space()
             assumptions = isl.BasicSet.read_from_str(domain.get_ctx(),
-                    "[%s] -> {[%s]: %s}"
-                    % (",".join(s.get_name(dim_type.param, i)
-                        for i in range(s.size(dim_type.param))),
-                       ",".join(s.get_name(dim_type.set, i) 
-                           for i in range(s.size(dim_type.set))),
-                       assumptions))
+                    "[%s] -> { : %s}"
+                    % (",".join(s.get_dim_name(dim_type.param, i)
+                        for i in range(s.dim(dim_type.param))),
+                        assumptions))
 
         Record.__init__(self,
                 device=device,  domain=domain, instructions=insns,
@@ -548,8 +549,8 @@ class LoopKernel(Record):
         if self.args is None:
             return []
         else:
-            loop_arg_names = [self.space.get_name(dim_type.param, i)
-                    for i in range(self.space.size(dim_type.param))]
+            loop_arg_names = [self.space.get_dim_name(dim_type.param, i)
+                    for i in range(self.space.dim(dim_type.param))]
             return [arg.name for arg in self.args if isinstance(arg, ScalarArg)
                     if arg.name in loop_arg_names]
 
@@ -565,22 +566,26 @@ class LoopKernel(Record):
     @memoize_method
     def get_iname_bounds(self, iname):
         lower_bound_pw_aff = (self.domain
+                .intersect(self.assumptions)
                 .dim_min(self.iname_to_dim[iname][1])
                 .coalesce())
         upper_bound_pw_aff = (self.domain
+                .intersect(self.assumptions)
                 .dim_max(self.iname_to_dim[iname][1])
                 .coalesce())
 
         class BoundsRecord(Record):
             pass
 
-        size = upper_bound_pw_aff - lower_bound_pw_aff + 1
+        size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
+        size = size.intersect_domain(self.assumptions)
 
         return BoundsRecord(
                 lower_bound_pw_aff=lower_bound_pw_aff,
                 upper_bound_pw_aff=upper_bound_pw_aff,
                 size=size)
 
+    @memoize_method
     def get_grid_sizes(self):
         all_inames_by_insns = set()
         for insn in self.instructions:
@@ -605,30 +610,28 @@ class LoopKernel(Record):
             elif isinstance(tag, TAG_LOCAL_IDX):
                 tgt_dict = local_sizes
             elif isinstance(tag, TAG_AUTO_LOCAL_IDX):
-                #raise RuntimeError("cannot find grid sizes if AUTO_LOCAL_IDX tags are "
-                        #"present")
-                pass
-                tgt_dict = None
+                raise RuntimeError("cannot find grid sizes if AUTO_LOCAL_IDX tags are "
+                        "present")
             else:
                 tgt_dict = None
 
             if tgt_dict is None:
                 continue
 
-            bounds = self.get_iname_bounds(iname)
+            size = self.get_iname_bounds(iname).size
 
-            size = bounds.size
+            if tag.axis in tgt_dict:
+                size = tgt_dict[tag.axis].max(size)
 
             from loopy.isl import static_max_of_pw_aff
             try:
-                size = static_max_of_pw_aff(size)
+                # insist block size is constant
+                size = static_max_of_pw_aff(size, 
+                        constants_only=isinstance(tag, TAG_LOCAL_IDX))
             except ValueError:
                 pass
 
-            if tag.axis in tgt_dict:
-                tgt_dict[tag.axis] = tgt_dict[tag.axis].max(size)
-            else:
-                tgt_dict[tag.axis] = size
+            tgt_dict[tag.axis] = size
 
         max_dims = self.device.max_work_item_dimensions
 
@@ -654,6 +657,15 @@ class LoopKernel(Record):
 
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local"))
+
+    def get_grid_sizes_as_exprs(self):
+        grid_size, group_size = self.get_grid_sizes()
+
+        def tup_to_exprs(tup):
+            from loopy.symbolic import pw_aff_to_expr
+            return tuple(pw_aff_to_expr(i) for i in tup)
+
+        return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
     def local_mem_use(self):
         return sum(lv.nbytes for lv in self.temporary_variables.itervalues()

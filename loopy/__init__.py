@@ -79,7 +79,6 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
                 .project_out(name_dim_type, name_idx, 1))
 
     new_domain = process_set(kernel.domain)
-    new_assumptions = process_set(kernel.assumptions)
 
     from pymbolic import var
     inner = var(inner_iname)
@@ -121,7 +120,6 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
     iname_slab_increments[outer_iname] = outer_slab_increments
     result = (kernel
             .copy(domain=new_domain,
-                assumptions=new_assumptions,
                 iname_slab_increments=iname_slab_increments,
                 iname_to_dim=None,
                 instructions=new_insns))
@@ -380,7 +378,6 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         return result, new_iname_to_dim
 
     new_domain, new_iname_to_dim = realize_duplication(kernel.domain)
-    new_assumptions, _ = realize_duplication(kernel.assumptions)
 
     # }}}
 
@@ -397,7 +394,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         from loopy.symbolic import pw_aff_to_expr
 
         target_var_shape.append(static_max_of_pw_aff(
-                upper_bound_pw_aff - lower_bound_pw_aff + 1))
+                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True))
         target_var_base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
 
     from loopy.kernel import TemporaryVariable
@@ -417,7 +414,6 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     return kernel.copy(
             domain=new_domain,
-            assumptions=new_assumptions,
             instructions=new_insns,
             temporary_variables=new_temporary_variables,
             iname_to_dim=new_iname_to_dim,
@@ -426,81 +422,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
 
 
-def realize_reduction(kernel, inames=None, reduction_tag=None):
-    new_insns = []
-    new_temporary_variables = kernel.temporary_variables.copy()
-
-    def map_reduction(expr, rec):
-        sub_expr = rec(expr.expr)
-
-        if reduction_tag is not None and expr.tag != reduction_tag:
-            return
-
-        if inames is not None and set(inames) != set(expr.inames):
-            return
-
-        from pymbolic import var
-
-        target_var_name = kernel.make_unique_var_name("red",
-                extra_used_vars=set(tv for tv in new_temporary_variables))
-        target_var = var(target_var_name)
-
-        from loopy.kernel import Instruction
-
-        from loopy.kernel import TemporaryVariable
-        new_temporary_variables[target_var_name] = TemporaryVariable(
-                name=target_var_name,
-                dtype=expr.operation.dtype,
-                shape=(),
-                is_local=False)
-
-        init_insn = Instruction(
-                id=kernel.make_unique_instruction_id(
-                    extra_used_ids=set(ni.id for ni in new_insns)),
-                assignee=target_var,
-                forced_iname_deps=list(insn.all_inames() - set(expr.inames)),
-                expression=expr.operation.neutral_element)
-
-        new_insns.append(init_insn)
-
-        reduction_insn = Instruction(
-                id=kernel.make_unique_instruction_id(
-                    extra_used_ids=set(ni.id for ni in new_insns)),
-                assignee=target_var,
-                expression=expr.operation(target_var, sub_expr),
-                insn_deps=[init_insn.id],
-                forced_iname_deps=list(insn.all_inames()))
-
-        new_insns.append(reduction_insn)
-
-        new_insn_insn_deps.append(reduction_insn.id)
-        new_insn_removed_inames.extend(expr.inames)
-
-        return target_var
-
-    from loopy.symbolic import ReductionCallbackMapper
-    cb_mapper = ReductionCallbackMapper(map_reduction)
-
-    for insn in kernel.instructions:
-        new_insn_insn_deps = []
-        new_insn_removed_inames = []
-
-        new_expression = cb_mapper(insn.expression)
-
-        new_insns.append(
-                insn.copy(
-                    expression=new_expression,
-                    insn_deps=insn.insn_deps
-                        + new_insn_insn_deps))
-
-    return kernel.copy(
-            instructions=new_insns,
-            temporary_variables=new_temporary_variables)
-
-
-
-
-def get_problems(kernel, parameters, emit_warnings=True):
+def get_problems(kernel, parameters):
     """
     :return: *(max_severity, list of (severity, msg))*, where *severity* ranges from 1-5.
         '5' means 'will certainly not run'.
@@ -508,15 +430,9 @@ def get_problems(kernel, parameters, emit_warnings=True):
     msgs = []
 
     def msg(severity, s):
-        if emit_warnings:
-            from warnings import warn
-            from loopy import LoopyAdvisory
-            warn(s, LoopyAdvisory)
-
         msgs.append((severity, s))
 
-    glens = kernel.tag_type_lengths(TAG_GROUP_IDX, allow_parameters=True)
-    llens = kernel.tag_type_lengths(TAG_LOCAL_IDX, allow_parameters=False)
+    glens, llens = kernel.get_grid_sizes_as_exprs()
 
     from pymbolic import evaluate
     glens = evaluate(glens, parameters)
@@ -534,6 +450,7 @@ def get_problems(kernel, parameters, emit_warnings=True):
     if product(llens) > kernel.device.max_work_group_size:
         msg(5, "work group too big")
 
+    import pyopencl as cl
     from pyopencl.characterize import usable_local_mem_size
     if kernel.local_mem_use() > usable_local_mem_size(kernel.device):
         if kernel.device.local_mem_type == cl.device_local_mem_type.LOCAL:
@@ -553,6 +470,23 @@ def get_problems(kernel, parameters, emit_warnings=True):
     for sev, msg in msgs:
         max_severity = max(sev, max_severity)
     return max_severity, msgs
+
+
+
+
+def check_kernels(kernel_gen, parameters, kill_level_min=3,
+        warn_level_min=1):
+    for kernel in kernel_gen:
+        max_severity, msgs = get_problems(kernel, parameters)
+
+        for severity, msg in msgs:
+            if severity >= warn_level_min:
+                from warnings import warn
+                from loopy import LoopyAdvisory
+                warn(msg, LoopyAdvisory)
+
+        if max_severity < kill_level_min:
+            yield kernel
 
 # }}}
 

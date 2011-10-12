@@ -31,10 +31,6 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
 
     bset, = basic_sets
 
-    # FIXME: hackety hack--elimination leaves the set in an 
-    # invalid ('non-final'?) state
-    bset = bset.intersect(isl.BasicSet.universe(bset.get_space()))
-
     # FIXME perhaps use some form of hull here if there's more than one
     # basic set?
 
@@ -156,11 +152,6 @@ def generate_bounds_checks(domain, check_vars, implemented_domain):
             .coalesce()
             .get_basic_sets())
 
-    # FIXME: hackety hack--elimination leaves the set in an 
-    # invalid ('non-final'?) state
-    domain_bset = domain_bset.intersect(
-            isl.BasicSet.universe(domain_bset.get_space()))
-
     return filter_necessary_constraints(
             implemented_domain, domain_bset.get_constraints())
 
@@ -248,7 +239,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
 
 # {{{ on which variables may a conditional depend?
 
-def get_defined_inames(kernel, sched_index, allow_ilp, exclude_tag_classes=()):
+def get_defined_inames(kernel, sched_index, allow_tag_classes=()):
     """
     :param exclude_tags: a tuple of tag classes to exclude
     """
@@ -264,16 +255,10 @@ def get_defined_inames(kernel, sched_index, allow_ilp, exclude_tag_classes=()):
         elif isinstance(sched_item, LeaveLoop):
             result.remove(sched_item.iname)
 
-    from loopy.kernel import TAG_ILP, ParallelTagWithAxis
     for iname in kernel.all_inames():
         tag = kernel.iname_to_tag.get(iname)
 
-        if isinstance(tag, exclude_tag_classes):
-            continue
-
-        if isinstance(tag, ParallelTagWithAxis):
-            result.add(iname)
-        elif isinstance(tag, TAG_ILP) and allow_ilp:
+        if isinstance(tag, allow_tag_classes):
             result.add(iname)
 
     return result

@@ -90,19 +90,35 @@ def pw_aff_to_aff(pw_aff):
     assert isinstance(pw_aff, isl.PwAff)
     pieces = pw_aff.get_pieces()
 
-    if len(pieces) != 1:
-        raise NotImplementedError("only single-piece PwAff instances are supported here")
+    if len(pieces) == 0:
+        raise RuntimeError("PwAff does not have any pieces")
+    if len(pieces) > 1:
+        _, first_aff = pieces[0]
+        for _, other_aff in pieces[1:]:
+            if not first_aff.plain_is_equal(other_aff):
+                raise NotImplementedError("only single-valued piecewise affine "
+                        "expressions are supported here--encountered "
+                        "multi-valued expression '%s'" % pw_aff)
+
+        return first_aff
 
     return pieces[0][1]
 
 
 
 
-def make_slab(space, iname, start, stop):
-    if isinstance(start, isl.PwAff): start = pw_aff_to_aff(start)
-    if isinstance(stop, isl.PwAff): stop = pw_aff_to_aff(stop)
+def dump_local_space(ls):
+    return " ".join("%s: %d" % (dt, ls.dim(getattr(dim_type, dt))) 
+            for dt in dim_type.names)
 
+def make_slab(space, iname, start, stop):
     zero = isl.Aff.zero_on_domain(space)
+
+    from islpy import align_spaces
+    if isinstance(start, isl.PwAff):
+        start = align_spaces(pw_aff_to_aff(start), zero)
+    if isinstance(stop, isl.PwAff):
+        stop = align_spaces(pw_aff_to_aff(stop), zero)
 
     if isinstance(start, int): start = zero + start
     if isinstance(stop, int): stop = zero + stop
@@ -110,45 +126,45 @@ def make_slab(space, iname, start, stop):
     iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
     iname_aff = zero.add_coefficient(iname_dt, iname_idx, 1)
 
-    return (isl.Set.universe(space)
-            # start <= inner
+    result = (isl.Set.universe(space)
+            # start <= iname
             .add_constraint(isl.Constraint.inequality_from_aff(
                 iname_aff - start))
-            # inner < stop
+            # iname < stop
             .add_constraint(isl.Constraint.inequality_from_aff(
                 stop-1 - iname_aff)))
 
-
-
-
-def set_is_universe(set):
-    bs = set.get_basic_sets()
-    if len(bs) == 1:
-        return bs[0].is_universe()
-    else:
-        return isl.Set.universe_like(set).is_subset(set)
+    return result
 
 
 
 
-def static_min_of_pw_aff(pw_aff):
-    for set, candidate_aff in pw_aff.get_pieces():
-        if set_is_universe(candidate_aff.le_set(pw_aff)):
+def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what):
+    pieces = pw_aff.get_pieces()
+    if len(pieces) == 1:
+        return pieces[0][1]
+
+    agg_domain = pw_aff.get_aggregate_domain()
+    for set, candidate_aff in pieces:
+        if constants_only and not candidate_aff.is_cst():
+            continue
+
+        if set_method(pw_aff, candidate_aff) == agg_domain:
             return candidate_aff
 
-    raise ValueError("a static minimum was not found for PwAff '%s'"
-            % pw_aff)
+    raise ValueError("a static %s was not found for PwAff '%s'"
+            % (what, pw_aff))
 
 
 
 
-def static_max_of_pw_aff(pw_aff):
-    for set, candidate_aff in pw_aff.get_pieces():
-        if set_is_universe(candidate_aff.ge_set(pw_aff)):
-            return candidate_aff
+def static_min_of_pw_aff(pw_aff, constants_only):
+    return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.ge_set,
+            "minimum")
 
-    raise ValueError("a static maximum was not found for PwAff '%s'"
-            % pw_aff)
+def static_max_of_pw_aff(pw_aff, constants_only):
+    return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.le_set,
+            "maximum")
 
 
 

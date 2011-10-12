@@ -26,6 +26,80 @@ class Barrier(Record):
 
 
 
+def realize_reduction(kernel, inames=None, reduction_tag=None):
+    new_insns = []
+    new_temporary_variables = kernel.temporary_variables.copy()
+
+    def map_reduction(expr, rec):
+        sub_expr = rec(expr.expr)
+
+        if reduction_tag is not None and expr.tag != reduction_tag:
+            return
+
+        if inames is not None and set(inames) != set(expr.inames):
+            return
+
+        from pymbolic import var
+
+        target_var_name = kernel.make_unique_var_name("acc",
+                extra_used_vars=set(tv for tv in new_temporary_variables))
+        target_var = var(target_var_name)
+
+        from loopy.kernel import Instruction
+
+        from loopy.kernel import TemporaryVariable
+        new_temporary_variables[target_var_name] = TemporaryVariable(
+                name=target_var_name,
+                dtype=expr.operation.dtype,
+                shape=(),
+                is_local=False)
+
+        init_insn = Instruction(
+                id=kernel.make_unique_instruction_id(
+                    extra_used_ids=set(ni.id for ni in new_insns)),
+                assignee=target_var,
+                forced_iname_deps=list(insn.all_inames() - set(expr.inames)),
+                expression=expr.operation.neutral_element)
+
+        new_insns.append(init_insn)
+
+        reduction_insn = Instruction(
+                id=kernel.make_unique_instruction_id(
+                    extra_used_ids=set(ni.id for ni in new_insns)),
+                assignee=target_var,
+                expression=expr.operation(target_var, sub_expr),
+                insn_deps=[init_insn.id],
+                forced_iname_deps=list(insn.all_inames()))
+
+        new_insns.append(reduction_insn)
+
+        new_insn_insn_deps.append(reduction_insn.id)
+        new_insn_removed_inames.extend(expr.inames)
+
+        return target_var
+
+    from loopy.symbolic import ReductionCallbackMapper
+    cb_mapper = ReductionCallbackMapper(map_reduction)
+
+    for insn in kernel.instructions:
+        new_insn_insn_deps = []
+        new_insn_removed_inames = []
+
+        new_expression = cb_mapper(insn.expression)
+
+        new_insns.append(
+                insn.copy(
+                    expression=new_expression,
+                    insn_deps=insn.insn_deps
+                        + new_insn_insn_deps))
+
+    return kernel.copy(
+            instructions=new_insns,
+            temporary_variables=new_temporary_variables)
+
+
+
+
 def check_double_use_of_hw_dimensions(kernel):
     from loopy.kernel import UniqueTag
 
@@ -602,7 +676,6 @@ def insert_parallel_dim_check_points(kernel, schedule):
 
 
 def generate_loop_schedules(kernel):
-    from loopy import realize_reduction
     kernel = realize_reduction(kernel)
 
     check_double_use_of_hw_dimensions(kernel)

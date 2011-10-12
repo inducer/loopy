@@ -17,7 +17,7 @@ def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
     lower_constraints_orig, upper_constraints_orig, equality_constraints_orig = \
             get_bounds_constraints(kernel.domain, iname,
                     frozenset([iname])
-                    | frozenset(get_defined_inames(kernel, sched_index+1, allow_ilp=False)),
+                    | frozenset(get_defined_inames(kernel, sched_index+1)),
                     allow_parameters=True)
 
     assert not equality_constraints_orig
@@ -26,6 +26,9 @@ def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
     ub_cns_orig = pick_simple_constraint(upper_constraints_orig, iname)
 
     return lb_cns_orig, ub_cns_orig
+
+
+
 
 # {{{ conditional-minimizing slab decomposition
 

@@ -217,6 +217,9 @@ def generate_code(kernel):
             ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
             )
 
+        #define lid(N) ((int) get_local_id(N))
+        #define gid(N) ((int) get_group_id(N))
+
         """),
         Line()])
 
@@ -243,15 +246,23 @@ def generate_code(kernel):
 
     from loopy.codegen.dispatch import build_loop_nest
 
+    from islpy import align_spaces
+    initial_implemented_domain = align_spaces(kernel.assumptions, kernel.domain)
     gen_code = build_loop_nest(kernel, 0,
-            CodeGenerationState(kernel.assumptions, c_code_mapper=ccm))
-    body.extend([Line(), gen_code.ast])
+            CodeGenerationState(initial_implemented_domain, c_code_mapper=ccm))
+
+    body.append(Line())
+
+    if isinstance(gen_code.ast, Block):
+        body.extend(gen_code.ast.contents)
+    else:
+        body.append(gen_code.ast)
 
     from loopy.symbolic import pw_aff_to_expr
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
-                tuple(pw_aff_to_expr(sz) for sz in kernel.fix_grid_sizes()[1]),
+                tuple(pw_aff_to_expr(sz) for sz in kernel.get_grid_sizes()[1]),
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),
             body))

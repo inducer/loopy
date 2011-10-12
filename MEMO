@@ -70,8 +70,13 @@ Things to consider
   -> Only reduction
 
 - Slab decomposition for parallel dimensions
+  - implement at the outermost nesting level regardless
+  - bound *all* tagged inames
 
 - Sharing of checks across ILP instances
+
+- Loop bounds currently may not depend on parallel dimensions
+  Does it make sense to relax this?
 
 Dealt with
 ^^^^^^^^^^

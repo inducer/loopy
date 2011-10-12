@@ -211,7 +211,7 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
                 lp.ArrayArg("c", dtype, shape=(n, n), order=order),
                 lp.ScalarArg("n", np.int32, approximately=n),
                 ],
-            name="matmul")
+            name="matmul", assumptions="n >= 1")
 
     knl = lp.split_dimension(knl, "i", 16,
             outer_tag="g.0", inner_tag="l.1", no_slabs=True)
@@ -222,12 +222,8 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
     knl = lp.realize_cse(knl, "lhsmat", dtype, ["k_inner", "i_inner"])
     knl = lp.realize_cse(knl, "rhsmat", dtype, ["j_inner", "k_inner"])
 
-    #print
-    #for insn in knl.instructions:
-        #print insn
-    #assert lp.get_problems(knl, {})[0] <= 2
-
     kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=6)
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -235,7 +231,7 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
     refsol = np.dot(a.get(), b.get())
 
     def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
+        evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
                 g_times_l=True)
 
         if check:

@@ -57,11 +57,11 @@ def generate_ilp_instances(kernel, insn, codegen_state):
         tag = kernel.iname_to_tag.get(iname)
 
         if isinstance(tag, TAG_LOCAL_IDX):
-            hw_axis_expr = var("(int) get_local_id")(tag.axis)
+            hw_axis_expr = var("lid")(tag.axis)
             hw_axis_size = local_size[tag.axis]
 
         elif isinstance(tag, TAG_GROUP_IDX):
-            hw_axis_expr = var("(int) get_group_id")(tag.axis)
+            hw_axis_expr = var("gid")(tag.axis)
             hw_axis_size = global_size[tag.axis]
 
         else:
@@ -70,12 +70,12 @@ def generate_ilp_instances(kernel, insn, codegen_state):
         bounds = kernel.get_iname_bounds(iname)
 
         from loopy.isl import make_slab
-        impl_domain = impl_domain.intersect(
-                make_slab(impl_domain.get_space(), iname,
-                    bounds.lower_bound_pw_aff, bounds.lower_bound_pw_aff+hw_axis_size))
+        slab = make_slab(impl_domain.get_space(), iname,
+                bounds.lower_bound_pw_aff, bounds.lower_bound_pw_aff+hw_axis_size)
+        impl_domain = impl_domain.intersect(slab)
 
         from loopy.symbolic import pw_aff_to_expr
-        assignments[iname] = pw_aff_to_expr(bounds.lower_bound_pw_aff + hw_axis_expr)
+        assignments[iname] = pw_aff_to_expr(bounds.lower_bound_pw_aff) + hw_axis_expr
 
     # }}} 
 
