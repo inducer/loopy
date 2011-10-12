@@ -244,7 +244,6 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
 
 
 
-
 def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()

@@ -61,9 +61,6 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
     return lower, upper, equality
 
 def solve_constraint_for_bound(cns, iname):
-    from warnings import warn
-    warn("solve_constraint_for_bound deprecated?")
-
     from loopy.symbolic import constraint_to_expr
     rhs, iname_coeff = constraint_to_expr(cns, except_name=iname)
 
@@ -265,7 +262,7 @@ def get_defined_inames(kernel, sched_index, allow_tag_classes=()):
 
 # }}}
 
-# {{{
+# {{{ pick_simple_constraint
 
 def pick_simple_constraint(constraints, iname):
     if len(constraints) == 0:
@@ -280,6 +277,8 @@ def pick_simple_constraint(constraints, iname):
     return argmin2(
             (cns, count_flops(solve_constraint_for_bound(cns, iname)[1]))
             for cns in constraints)
+
+# }}}
 
 
 

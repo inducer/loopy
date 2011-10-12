@@ -47,8 +47,6 @@ Things to consider
 
 - Parallel dimension splitting/merging via tags
 
-- Implement get_problems()
-
 - FIXME: Deal with insns losing a seq iname dep in a CSE realization
 
   a <- cse(reduce(stuff))
@@ -80,6 +78,8 @@ Things to consider
 
 Dealt with
 ^^^^^^^^^^
+
+- Implement get_problems()
 
 - CSE iname duplication might be unnecessary?
   (don't think so: It might be desired to do a full fetch before a mxm k loop
