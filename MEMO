@@ -40,10 +40,14 @@ Things to consider
 - implemented_domain may end up being smaller than requested in cse
   evaluations--check that!
 
-- Auto tag assignment depends on known work group size
-
 - Depedencies are pointwise for shared loop dimensions
   and global over non-shared ones (between dependent and ancestor)
+
+- multiple insns could fight over which iname gets local axis 0
+  -> complicated optimization problem
+
+TODO
+^^^^
 
 - Parallel dimension splitting/merging via tags
 
@@ -53,19 +57,13 @@ Things to consider
 
 - Every loop in loopy is opened at most once.
 
-- Syntax to declare insn deps
-
 - reimplement add_prefetch
 
 - user interface for dim length prescription
 
-- make syntax for explicit loop dependencies
-
-- multiple insns could fight over which iname gets local axis 0
-  -> complicated optimization problem
-
 - How to determine which variables need to be duplicated for ILP?
-  -> Only reduction
+  -> Reduction
+  -> CSEs?
 
 - Slab decomposition for parallel dimensions
   - implement at the outermost nesting level regardless
@@ -78,6 +76,8 @@ Things to consider
 
 Dealt with
 ^^^^^^^^^^
+
+- make syntax for explicit loop dependencies
 
 - Implement get_problems()
 

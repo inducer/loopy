@@ -30,7 +30,6 @@ from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
 from loopy.kernel import LoopKernel
 from loopy.schedule import generate_loop_schedules
-from loopy.prefetch import insert_register_prefetches
 from loopy.compiled import CompiledKernel, drive_timing_run
 
 # }}}

@@ -402,27 +402,39 @@ class LoopKernel(Record):
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
         """
+        import re
+        LABEL_DEP_RE = re.compile(
+                r"^(?:\{(?P<label>\w+)\})?"
+                "\s*(?P<lhs>.+)\s*=\s*(?P<rhs>.+)\s*"
+                "(?:\:\s*(?P<deps>[\s\w,]+))?$"
+                )
 
         def parse_if_necessary(insn):
             from pymbolic import parse
 
+            deps = []
+            label = "insn"
+
             if isinstance(insn, Instruction):
                 return insn
             if isinstance(insn, str):
-                lhs, rhs = insn.split("=")
-            elif isinstance(insn, tuple):
-                lhs, rhs = insn
+                label_dep_match = LABEL_DEP_RE.match(insn)
+                if label_dep_match is None:
+                    raise RuntimeError("insn parse error")
 
-            if isinstance(lhs, str):
-                lhs = parse(lhs)
+                groups = label_dep_match.groupdict()
+                if groups["label"] is not None:
+                    label = groups["label"]
+                if groups["deps"] is not None:
+                    deps = [dep.trim() for dep in groups["deps"].split(",")]
 
-            if isinstance(rhs, str):
+                lhs = parse(groups["lhs"])
                 from loopy.symbolic import FunctionToPrimitiveMapper
-                rhs = parse(rhs)
-                rhs = FunctionToPrimitiveMapper()(rhs)
+                rhs = FunctionToPrimitiveMapper()(parse(groups["rhs"]))
 
             return Instruction(
-                    id=self.make_unique_instruction_id(insns),
+                    id=self.make_unique_instruction_id(insns, based_on=label),
+                    insn_deps=deps,
                     assignee=lhs, expression=rhs)
 
         if isinstance(domain, str):
@@ -524,12 +536,6 @@ class LoopKernel(Record):
 
     @property
     @memoize_method
-    def dim_to_name(self):
-        from pytools import reverse_dict
-        return reverse_dict(self.iname_to_dim)
-
-    @property
-    @memoize_method
     def id_to_insn(self):
         return dict((insn.id, insn) for insn in self.instructions)
 
@@ -558,10 +564,6 @@ class LoopKernel(Record):
     def all_inames(self):
         from islpy import dim_type
         return set(self.space.get_var_dict(dim_type.set).iterkeys())
-
-    def inames_by_tag_type(self, tag_type):
-        return [iname for iname in self.all_inames()
-                if isinstance(self.iname_to_tag.get(iname), tag_type)]
 
     @memoize_method
     def get_iname_bounds(self, iname):
