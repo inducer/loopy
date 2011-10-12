@@ -404,15 +404,17 @@ class LoopKernel(Record):
         """
         import re
         LABEL_DEP_RE = re.compile(
-                r"^(?:\{(?P<label>\w+)\})?"
+                r"^\s*(?:(?P<label>\w+):)?"
+                "\s*(?:\[(?P<iname_deps>[\s\w,]+)\])?"
                 "\s*(?P<lhs>.+)\s*=\s*(?P<rhs>.+?)\s*?"
-                "(?:\:\s*(?P<deps>[\s\w,]+))?$"
+                "(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
                 )
 
         def parse_if_necessary(insn):
             from pymbolic import parse
 
-            deps = []
+            insn_deps = []
+            forced_iname_deps = []
             label = "insn"
 
             if isinstance(insn, Instruction):
@@ -425,8 +427,10 @@ class LoopKernel(Record):
                 groups = label_dep_match.groupdict()
                 if groups["label"] is not None:
                     label = groups["label"]
-                if groups["deps"] is not None:
-                    deps = [dep.strip() for dep in groups["deps"].split(",")]
+                if groups["insn_deps"] is not None:
+                    insn_deps = [dep.strip() for dep in groups["insn_deps"].split(",")]
+                if groups["iname_deps"] is not None:
+                    forced_iname_deps = [dep.strip() for dep in groups["iname_deps"].split(",")]
 
                 lhs = parse(groups["lhs"])
                 from loopy.symbolic import FunctionToPrimitiveMapper
@@ -434,7 +438,8 @@ class LoopKernel(Record):
 
             return Instruction(
                     id=self.make_unique_instruction_id(insns, based_on=label),
-                    insn_deps=deps,
+                    insn_deps=insn_deps,
+                    forced_iname_deps=forced_iname_deps,
                     assignee=lhs, expression=rhs)
 
         if isinstance(domain, str):

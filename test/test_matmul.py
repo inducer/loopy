@@ -203,7 +203,7 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
     knl = lp.LoopKernel(ctx.devices[0],
             "[n] -> {[i,j,k]: 0<=i,j,k<n}",
             [
-                "{label} c[i, j] = sum_float32(k, cse(a[i, k], lhsmat)*cse(b[k, j], rhsmat))"
+                "label: c[i, j] = sum_float32(k, cse(a[i, k], lhsmat)*cse(b[k, j], rhsmat))"
                 ],
             [
                 lp.ArrayArg("a", dtype, shape=(n, n), order=order),
