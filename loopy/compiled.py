@@ -98,7 +98,16 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
         print "SOLUTION #%d" % soln_count
         print "-----------------------------------------------"
         if print_code:
-            print compiled.code
+            try:
+                from pygments import highlight
+            except ImportError:
+                print compiled.code
+            else:
+                from pygments.lexers import CLexer
+                from pygments.formatters import TerminalFormatter
+
+                print highlight(compiled.code, CLexer(), TerminalFormatter())
+
             print "-----------------------------------------------"
 
         elapsed = time_run(compiled)

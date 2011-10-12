@@ -668,8 +668,7 @@ def insert_barriers(kernel, schedule, level=0):
 
 
 def insert_parallel_dim_check_points(kernel, schedule):
-    from warnings import warn
-    warn("insert_parallel_dim_check_points is unimplemented")
+    # FIXME: Unimplemented
     return kernel
 
 

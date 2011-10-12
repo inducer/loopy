@@ -217,7 +217,7 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
             outer_tag="g.0", inner_tag="l.1", no_slabs=True)
     knl = lp.split_dimension(knl, "j", 16,
             outer_tag="g.1", inner_tag="l.0", no_slabs=True)
-    knl = lp.split_dimension(knl, "k", 16, no_slabs=True)
+    knl = lp.split_dimension(knl, "k", 16)
 
     knl = lp.realize_cse(knl, "lhsmat", dtype, ["k_inner", "i_inner"])
     knl = lp.realize_cse(knl, "rhsmat", dtype, ["j_inner", "k_inner"])

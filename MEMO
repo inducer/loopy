@@ -80,6 +80,9 @@ TODO
 
 - Flag, exploit idempotence
 
+- Implement insert_parallel_dim_check_points
+  (but first: find a kernel that needs it)
+
 Dealt with
 ^^^^^^^^^^
 
