@@ -667,13 +667,6 @@ def insert_barriers(kernel, schedule, level=0):
 
 
 
-def insert_parallel_dim_check_points(kernel, schedule):
-    # FIXME: Unimplemented
-    return kernel
-
-
-
-
 def generate_loop_schedules(kernel):
     kernel = realize_reduction(kernel)
 
@@ -701,10 +694,44 @@ def generate_loop_schedules(kernel):
         gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
         assert not owed_barriers
 
-        schedule = insert_parallel_dim_check_points(kernel, gen_sched)
-
         yield kernel.copy(schedule=gen_sched)
 
+
+
+
+
+# {{{ schedule utilities
+
+def find_active_inames_at(kernel, sched_index):
+    active_inames = []
+
+    from loopy.schedule import EnterLoop, LeaveLoop
+    for sched_item in kernel.schedule[:sched_index]:
+        if isinstance(sched_item, EnterLoop):
+            active_inames.append(sched_item.iname)
+        if isinstance(sched_item, LeaveLoop):
+            active_inames.pop()
+
+    return set(active_inames)
+
+
+
+
+def has_barrier_within(kernel, sched_index):
+    sched_item = kernel.schedule[sched_index]
+
+    if isinstance(sched_item, EnterLoop):
+        loop_contents, _ = gather_schedule_subloop(
+                kernel.schedule, sched_index)
+        from pytools import any
+        return any(isinstance(subsched_item, Barrier)
+                for subsched_item in loop_contents)
+    elif isinstance(sched_item, Barrier):
+        return True
+    else:
+        return False
+
+# }}}
 
 
 

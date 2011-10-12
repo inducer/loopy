@@ -35,7 +35,7 @@ class UniqueTag(IndexTag):
     def key(self):
         return type(self)
 
-class ParallelTagWithAxis(ParallelTag, UniqueTag):
+class HardwareParallelTag(ParallelTag, UniqueTag):
     __slots__ = ["axis"]
 
     def __init__(self, axis):
@@ -56,10 +56,10 @@ class ParallelTagWithAxis(ParallelTag, UniqueTag):
     
 
 
-class TAG_GROUP_IDX(ParallelTagWithAxis):
+class TAG_GROUP_IDX(HardwareParallelTag):
     print_name = "g"
 
-class TAG_LOCAL_IDX(ParallelTagWithAxis):
+class TAG_LOCAL_IDX(HardwareParallelTag):
     print_name = "l"
 
 class TAG_AUTO_LOCAL_IDX(ParallelTag):

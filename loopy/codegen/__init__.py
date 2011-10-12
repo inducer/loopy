@@ -127,6 +127,39 @@ class CodeGenerationState(object):
 
 # }}}
 
+# {{{ initial assignments
+
+def make_initial_assignments(kernel):
+    assignments = {}
+
+    global_size, local_size = kernel.get_grid_sizes()
+
+    from loopy.kernel import TAG_LOCAL_IDX, TAG_GROUP_IDX
+    from pymbolic import var
+
+    for iname in kernel.all_inames():
+        tag = kernel.iname_to_tag.get(iname)
+
+        if isinstance(tag, TAG_LOCAL_IDX):
+            hw_axis_expr = var("lid")(tag.axis)
+            hw_axis_size = local_size[tag.axis]
+
+        elif isinstance(tag, TAG_GROUP_IDX):
+            hw_axis_expr = var("gid")(tag.axis)
+            hw_axis_size = global_size[tag.axis]
+
+        else:
+            continue
+
+        bounds = kernel.get_iname_bounds(iname)
+
+        from loopy.symbolic import pw_aff_to_expr
+        assignments[iname] = pw_aff_to_expr(bounds.lower_bound_pw_aff) + hw_axis_expr
+
+    return assignments
+
+# }}}
+
 # {{{ main code generation entrypoint
 
 def generate_code(kernel):
@@ -138,9 +171,8 @@ def generate_code(kernel):
             CLLocal, CLImage, CLConstant)
 
     from loopy.symbolic import LoopyCCodeMapper
-    ccm = LoopyCCodeMapper(kernel)
-
-    # {{{ build top-level
+    ccm = LoopyCCodeMapper(kernel).copy_and_assign_many(
+            make_initial_assignments(kernel))
 
     mod = Module()
 
@@ -244,12 +276,12 @@ def generate_code(kernel):
 
     # }}}
 
-    from loopy.codegen.dispatch import build_loop_nest
-
     from islpy import align_spaces
     initial_implemented_domain = align_spaces(kernel.assumptions, kernel.domain)
-    gen_code = build_loop_nest(kernel, 0,
-            CodeGenerationState(initial_implemented_domain, c_code_mapper=ccm))
+    codegen_state = CodeGenerationState(initial_implemented_domain, c_code_mapper=ccm)
+
+    from loopy.codegen.loop import set_up_hw_parallel_loops
+    gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)
 
     body.append(Line())
 

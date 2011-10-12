@@ -49,6 +49,13 @@ Things to consider
 - Loop bounds currently may not depend on parallel dimensions
   Does it make sense to relax this?
 
+- Why do CSEs necessarily have to duplicate the inames?
+  -> because that would be necessary for a sequential prefetch
+
+- Cannot do slab decomposition on inames that share a tag with
+  other inames
+  -> Is that reasonable?
+
 TODO
 ^^^^
 
@@ -69,10 +76,6 @@ TODO
   -> Reduction
   -> CSEs?
 
-- Slab decomposition for parallel dimensions
-  - implement at the outermost nesting level regardless
-  - bound *all* tagged inames
-
 - Sharing of checks across ILP instances
 
 - Some things involving CSEs might be impossible to schedule
@@ -80,11 +83,23 @@ TODO
 
 - Flag, exploit idempotence
 
-- Implement insert_parallel_dim_check_points
-  (but first: find a kernel that needs it)
+- How should we implement the dim shuffling for odd-size prefetches?
+
+- Slab decomposition for ILP
+
+- Better for loop bound generation
+  -> Try a triangular loop
+
+- Implement condition hoisting
+  (needed, e.g., by slab decomposition)
 
 Dealt with
 ^^^^^^^^^^
+
+- Slab decomposition for parallel dimensions
+  - implement at the outermost nesting level regardless
+  - bound *all* tagged inames
+  - can't slab inames that share tags with other inames (for now)
 
 - Make syntax for iname dependencies
 

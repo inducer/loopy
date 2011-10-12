@@ -143,23 +143,23 @@ def filter_necessary_constraints(implemented_domain, constraints):
         if not implemented_domain.is_subset(
             isl.Set.universe(space).add_constraint(cns))]
 
-def generate_bounds_checks(domain, check_vars, implemented_domain):
+def generate_bounds_checks(domain, check_inames, implemented_domain):
     domain_bset, = (domain
-            .eliminate_except(check_vars, [dim_type.set])
+            .eliminate_except(check_inames, [dim_type.set])
             .coalesce()
             .get_basic_sets())
 
     return filter_necessary_constraints(
             implemented_domain, domain_bset.get_constraints())
 
-def generate_bounds_checks_code(ccm, domain, check_vars, implemented_domain):
+def generate_bounds_checks_code(ccm, domain, check_inames, implemented_domain):
     return [constraint_to_code(ccm, cns) for cns in 
-            generate_bounds_checks(domain, check_vars, implemented_domain)]
+            generate_bounds_checks(domain, check_inames, implemented_domain)]
 
-def wrap_in_bounds_checks(ccm, domain, check_vars, implemented_domain, stmt):
+def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
     from loopy.codegen import wrap_in_if
     return wrap_in_if(
-            generate_bounds_checks_code(ccm, domain, check_vars,
+            generate_bounds_checks_code(ccm, domain, check_inames,
                 implemented_domain),
             stmt)
 

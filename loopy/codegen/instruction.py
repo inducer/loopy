@@ -41,45 +41,11 @@ class ILPInstance(Record):
 
 
 def generate_ilp_instances(kernel, insn, codegen_state):
-    assignments = {}
     impl_domain = codegen_state.implemented_domain
 
-    from loopy.kernel import (TAG_ILP,
-            TAG_LOCAL_IDX, TAG_GROUP_IDX)
+    from loopy.kernel import TAG_ILP
 
-    from pymbolic import var
-
-    # {{{ pass 1: assign all hw-parallel dimensions
-
-    global_size, local_size = kernel.get_grid_sizes()
-
-    for iname in insn.all_inames():
-        tag = kernel.iname_to_tag.get(iname)
-
-        if isinstance(tag, TAG_LOCAL_IDX):
-            hw_axis_expr = var("lid")(tag.axis)
-            hw_axis_size = local_size[tag.axis]
-
-        elif isinstance(tag, TAG_GROUP_IDX):
-            hw_axis_expr = var("gid")(tag.axis)
-            hw_axis_size = global_size[tag.axis]
-
-        else:
-            continue
-
-        bounds = kernel.get_iname_bounds(iname)
-
-        from loopy.isl import make_slab
-        slab = make_slab(impl_domain.get_space(), iname,
-                bounds.lower_bound_pw_aff, bounds.lower_bound_pw_aff+hw_axis_size)
-        impl_domain = impl_domain.intersect(slab)
-
-        from loopy.symbolic import pw_aff_to_expr
-        assignments[iname] = pw_aff_to_expr(bounds.lower_bound_pw_aff) + hw_axis_expr
-
-    # }}} 
-
-    result = [ILPInstance(impl_domain, assignments, frozenset())]
+    result = [ILPInstance(impl_domain, {}, frozenset())]
 
     # {{{ pass 2: treat all ILP dimensions
 
@@ -118,3 +84,9 @@ def generate_instruction_code(kernel, insn, codegen_state):
 
     from loopy.codegen import gen_code_block
     return gen_code_block(result)
+
+
+
+
+
+# vim: foldmethod=marker

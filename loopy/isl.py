@@ -9,21 +9,6 @@ from islpy import dim_type
 
 
 
-def cast_constraint_to_space(cns, new_space, as_equality=None):
-    1/0 # bad routine, shouldn't be used
-
-    if as_equality is None:
-        as_equality = cns.is_equality()
-
-    if as_equality:
-        factory = isl.Constraint.eq_from_names
-    else:
-        factory = isl.Constraint.ineq_from_names
-    return factory(new_space, cns.get_coefficients_by_name())
-
-
-
-
 def block_shift_constraint(cns, type, pos, multiple, as_equality=None):
     if as_equality != cns.is_equality():
         if as_equality:
@@ -107,9 +92,12 @@ def pw_aff_to_aff(pw_aff):
 
 
 
-def dump_local_space(ls):
+def dump_space(ls):
     return " ".join("%s: %d" % (dt, ls.dim(getattr(dim_type, dt))) 
             for dt in dim_type.names)
+
+
+
 
 def make_slab(space, iname, start, stop):
     zero = isl.Aff.zero_on_domain(space)
