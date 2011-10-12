@@ -364,7 +364,7 @@ def parse_reduction_op(name):
         if result is not None:
             return result
 
-    raise RuntimeError("could not parse reudction operation '%s'" % name)
+    return None
 
 # }}}
 
@@ -405,7 +405,7 @@ class LoopKernel(Record):
         import re
         LABEL_DEP_RE = re.compile(
                 r"^(?:\{(?P<label>\w+)\})?"
-                "\s*(?P<lhs>.+)\s*=\s*(?P<rhs>.+)\s*"
+                "\s*(?P<lhs>.+)\s*=\s*(?P<rhs>.+?)\s*?"
                 "(?:\:\s*(?P<deps>[\s\w,]+))?$"
                 )
 
@@ -426,7 +426,7 @@ class LoopKernel(Record):
                 if groups["label"] is not None:
                     label = groups["label"]
                 if groups["deps"] is not None:
-                    deps = [dep.trim() for dep in groups["deps"].split(",")]
+                    deps = [dep.strip() for dep in groups["deps"].split(",")]
 
                 lhs = parse(groups["lhs"])
                 from loopy.symbolic import FunctionToPrimitiveMapper
