@@ -53,13 +53,14 @@ Things to consider
   other inames
   -> Is that reasonable?
 
+- Parallel dimension splitting/merging via tags
+  -> unnecessary?
+
 TODO
 ^^^^
 
 - implemented_domain may end up being smaller than requested in cse
   evaluations--check that!
-
-- Parallel dimension splitting/merging via tags
 
 - FIXME: Deal with insns losing a seq iname dep in a CSE realization
 
@@ -75,6 +76,8 @@ TODO
 
 - Sharing of checks across ILP instances
 
+- Slab decomposition for ILP
+
 - Some things involving CSEs might be impossible to schedule
   a[i,j] = cse(b[i]) * cse(c[j])
 
@@ -82,16 +85,14 @@ TODO
 
 - How should we implement the dim shuffling for odd-size prefetches?
 
-- Slab decomposition for ILP
-
 - Better for loop bound generation
   -> Try a triangular loop
 
-- Implement condition hoisting
-  (needed, e.g., by slab decomposition)
-
 Dealt with
 ^^^^^^^^^^
+
+- Implement condition hoisting
+  (needed, e.g., by slab decomposition)
 
 - Check for non-use of hardware axes
 

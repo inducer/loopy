@@ -69,7 +69,43 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
 
 
 
+def remove_inames_for_shared_hw_axes(kernel, cond_inames):
+    """
+    See if cond_inames contains references to two (or more) inames that
+    boil down to the same tag. If so, exclude them. (We shouldn't be writing
+    conditionals for such inames because we would be implicitly restricting
+    the other inames as well.)
+    """
+
+    tag_key_use_count = {}
+
+    from loopy.kernel import HardwareParallelTag
+
+    for iname in cond_inames:
+        tag = kernel.iname_to_tag.get(iname)
+
+        if isinstance(tag, HardwareParallelTag):
+            tag_key_use_count[tag.key] = tag_key_use_count.get(tag.key, 0) + 1
+
+    multi_use_keys = set(
+            key for key, count in tag_key_use_count.iteritems()
+            if count > 1)
+
+    multi_use_inames = set()
+    for iname in cond_inames:
+        tag = kernel.iname_to_tag.get(iname)
+        if isinstance(tag, HardwareParallelTag) and tag.key in multi_use_keys:
+            multi_use_inames.add(iname)
+
+    return cond_inames - multi_use_inames
+
+
+
+
 def build_loop_nest(kernel, sched_index, codegen_state):
+    # Most of the complexity of this function goes towards finding groups of
+    # instructions that can be nested inside a shared conditional.
+
     assert isinstance(codegen_state, CodeGenerationState)
 
     from loopy.schedule import (EnterLoop, LeaveLoop, RunInstruction, Barrier,
@@ -101,10 +137,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     # }}}
 
-    # {{{ pass 2: find admissible conditional inames
-
-    # FIXME: See if another inner insn relies on a different iname
-    # boiling down to the same tag. If so, exclude that.
+    # {{{ pass 2: find admissible conditional inames for each schedule item
 
     admissible_cond_inames = [
             get_admissible_conditional_inames_for(kernel, sched_index)
@@ -112,7 +145,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     # }}}
 
-    # {{{ pass 3: greedily group instructions that share admissible conditionals
+    # {{{ pass 3: greedily group schedule items that share admissible inames
 
     def build_insn_group(sched_indices_and_cond_inames, codegen_state,
             min_iname_count=1):
@@ -124,7 +157,10 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
         sched_index, cond_inames = sched_indices_and_cond_inames[0]
 
-        # {{{ keep growing instruction group as long as shared inames exist
+        # {{{ grow schedule item group
+
+        # Keep growing schedule item group as long as group fulfills minimum
+        # size requirement.
 
         current_iname_set = cond_inames
 
@@ -146,14 +182,20 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             # Success: found a big enough group of inames for a conditional.
             # See if there are bounds checks available for that set.
 
+            # {{{ see which inames were actually used in group
+
+            # And only generate conditionals for those.
             from loopy.schedule import find_used_inames_within
             used_inames = set()
             for subsched_index, _ in sched_indices_and_cond_inames[0:idx]:
                 used_inames |= find_used_inames_within(kernel, subsched_index)
 
+            # }}}
+
             from loopy.codegen.bounds import generate_bounds_checks
             bounds_checks = generate_bounds_checks(kernel.domain,
-                    current_iname_set & used_inames,
+                    remove_inames_for_shared_hw_axes(kernel,
+                        current_iname_set & used_inames),
                     codegen_state.implemented_domain)
         else:
             bounds_checks = []
