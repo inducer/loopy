@@ -211,7 +211,7 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
                 lp.ArrayArg("c", dtype, shape=(n, n), order=order),
                 lp.ScalarArg("n", np.int32, approximately=n),
                 ],
-            name="matmul", assumptions="n >= 1")
+            name="matmul", assumptions="n >= 16")
 
     knl = lp.split_dimension(knl, "i", 16,
             outer_tag="g.0", inner_tag="l.1", no_slabs=True)

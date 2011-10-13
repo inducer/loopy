@@ -146,8 +146,14 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             # Success: found a big enough group of inames for a conditional.
             # See if there are bounds checks available for that set.
 
+            from loopy.schedule import find_used_inames_within
+            used_inames = set()
+            for subsched_index, _ in sched_indices_and_cond_inames[0:idx]:
+                used_inames |= find_used_inames_within(kernel, subsched_index)
+
             from loopy.codegen.bounds import generate_bounds_checks
-            bounds_checks = generate_bounds_checks(kernel.domain, current_iname_set,
+            bounds_checks = generate_bounds_checks(kernel.domain,
+                    current_iname_set & used_inames,
                     codegen_state.implemented_domain)
         else:
             bounds_checks = []

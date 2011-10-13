@@ -759,6 +759,29 @@ def has_barrier_within(kernel, sched_index):
     else:
         return False
 
+
+
+
+def find_used_inames_within(kernel, sched_index):
+    sched_item = kernel.schedule[sched_index]
+
+    if isinstance(sched_item, EnterLoop):
+        loop_contents, _ = gather_schedule_subloop(
+                kernel.schedule, sched_index)
+        run_insns = [subsched_item
+                for subsched_item in loop_contents
+                if isinstance(subsched_item, RunInstruction)]
+    elif isinstance(sched_item, RunInstruction):
+        run_insns = [sched_item]
+    else:
+        return set()
+
+    result = set()
+    for sched_item in run_insns:
+        result.update(kernel.id_to_insn[sched_item.insn_id].all_inames())
+
+    return result
+
 # }}}
 
 
