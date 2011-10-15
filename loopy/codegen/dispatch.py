@@ -12,7 +12,7 @@ def get_admissible_conditional_inames_for(kernel, sched_index):
     inames if there is a barrier nested somewhere within.
     """
 
-    from loopy.kernel import TAG_LOCAL_IDX, ParallelTag
+    from loopy.kernel import LocalIndexTag, ParallelTag
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
     result = find_active_inames_at(kernel, sched_index)
@@ -21,7 +21,7 @@ def get_admissible_conditional_inames_for(kernel, sched_index):
 
     for iname, tag in kernel.iname_to_tag.iteritems():
         if isinstance(tag, ParallelTag):
-            if not has_barrier or not isinstance(tag, TAG_LOCAL_IDX):
+            if not has_barrier or not isinstance(tag, LocalIndexTag):
                 result.add(iname)
 
     return result
@@ -41,8 +41,8 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
                 generate_unroll_loop,
                 generate_sequential_loop_dim_code)
 
-        from loopy.kernel import TAG_UNROLL, SequentialTag
-        if isinstance(tag, TAG_UNROLL):
+        from loopy.kernel import UnrollTag, SequentialTag
+        if isinstance(tag, UnrollTag):
             func = generate_unroll_loop
         elif tag is None or isinstance(tag, SequentialTag):
             func = generate_sequential_loop_dim_code
@@ -213,7 +213,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             # group only contains starting schedule item
             result = [generate_code_for_sched_index(kernel, sched_index, new_codegen_state)]
         else:
-            # recurse with a bigger iname count
+            # recurse with a bigger minimum iname count
             result = build_insn_group(sched_indices_and_cond_inames[0:idx],
                     new_codegen_state, len(current_iname_set)+1)
 

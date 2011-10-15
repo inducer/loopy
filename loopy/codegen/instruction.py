@@ -43,7 +43,7 @@ class ILPInstance(Record):
 def generate_ilp_instances(kernel, insn, codegen_state):
     impl_domain = codegen_state.implemented_domain
 
-    from loopy.kernel import TAG_ILP
+    from loopy.kernel import IlpTag
 
     result = [ILPInstance(impl_domain, {}, frozenset())]
 
@@ -52,7 +52,7 @@ def generate_ilp_instances(kernel, insn, codegen_state):
     for iname in insn.all_inames():
         tag = kernel.iname_to_tag.get(iname)
 
-        if not isinstance(tag, TAG_ILP):
+        if not isinstance(tag, IlpTag):
             continue
 
         from warnings import warn

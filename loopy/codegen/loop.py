@@ -32,7 +32,7 @@ def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
 # {{{ conditional-minimizing slab decomposition
 
 def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
-    from loopy.isl import block_shift_constraint, negate_constraint
+    from loopy.isl_helpers import block_shift_constraint, negate_constraint
 
     ccm = codegen_state.c_code_mapper
     space = kernel.space
@@ -82,7 +82,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 # {{{ unrolled/ILP loops
 
 def generate_unroll_loop(kernel, sched_index, codegen_state):
-    from loopy.isl import block_shift_constraint
+    from loopy.isl_helpers import block_shift_constraint
 
     from cgen import (POD, Line)
 
@@ -95,7 +95,7 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
             codegen_state.implemented_domain)
 
     bounds = kernel.get_iname_bounds(iname)
-    from loopy.isl import static_max_of_pw_aff
+    from loopy.isl_helpers import static_max_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
     length = int(pw_aff_to_expr(static_max_of_pw_aff(bounds.length)))
@@ -114,8 +114,8 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
                             block_shift_constraint(
                                 lower_cns, iname, -i, as_equality=True)))
 
-    from loopy.kernel import TAG_UNROLL
-    if isinstance(tag, TAG_UNROLL):
+    from loopy.kernel import UnrollTag
+    if isinstance(tag, UnrollTag):
         result = [POD(np.int32, iname), Line()]
 
         for i in range(length):
@@ -134,7 +134,7 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
 # {{{ parallel loop
 
 def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=None):
-    from loopy.kernel import UniqueTag, HardwareParallelTag, TAG_LOCAL_IDX, TAG_GROUP_IDX
+    from loopy.kernel import UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag
 
     if hw_inames_left is None:
         hw_inames_left = [iname
@@ -160,9 +160,9 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
 
     # {{{ 'implement' hardware axis boundaries
 
-    if isinstance(tag, TAG_LOCAL_IDX):
+    if isinstance(tag, LocalIndexTag):
         hw_axis_size = local_size[tag.axis]
-    elif isinstance(tag, TAG_GROUP_IDX):
+    elif isinstance(tag, GroupIndexTag):
         hw_axis_size = global_size[tag.axis]
     else:
         raise RuntimeError("unknown hardware parallel tag")
@@ -171,7 +171,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
 
     bounds = kernel.get_iname_bounds(iname)
 
-    from loopy.isl import make_slab
+    from loopy.isl_helpers import make_slab
     slab = make_slab(kernel.space, iname,
             bounds.lower_bound_pw_aff, bounds.lower_bound_pw_aff+hw_axis_size)
     codegen_state = codegen_state.intersect(slab)

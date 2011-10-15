@@ -134,17 +134,17 @@ def make_initial_assignments(kernel):
 
     global_size, local_size = kernel.get_grid_sizes()
 
-    from loopy.kernel import TAG_LOCAL_IDX, TAG_GROUP_IDX
+    from loopy.kernel import LocalIndexTag, GroupIndexTag
     from pymbolic import var
 
     for iname in kernel.all_inames():
         tag = kernel.iname_to_tag.get(iname)
 
-        if isinstance(tag, TAG_LOCAL_IDX):
+        if isinstance(tag, LocalIndexTag):
             hw_axis_expr = var("lid")(tag.axis)
             hw_axis_size = local_size[tag.axis]
 
-        elif isinstance(tag, TAG_GROUP_IDX):
+        elif isinstance(tag, GroupIndexTag):
             hw_axis_expr = var("gid")(tag.axis)
             hw_axis_size = global_size[tag.axis]
 

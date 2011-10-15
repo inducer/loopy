@@ -1,5 +1,4 @@
 from __future__ import division
-import isl
 
 def register_mpz_with_pymbolic():
     from pymbolic.primitives import register_constant_class
@@ -28,7 +27,7 @@ class LoopyAdvisory(UserWarning):
 
 from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
-from loopy.kernel import LoopKernel
+from loopy.kernel import LoopKernel, AutoFitLocalIndexTag
 from loopy.schedule import generate_loop_schedules
 from loopy.compiled import CompiledKernel, drive_timing_run
 
@@ -63,7 +62,7 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
         s.set_dim_name(dim_type.set, outer_var_nr, outer_iname)
         s.set_dim_name(dim_type.set, inner_var_nr, inner_iname)
 
-        from loopy.isl import make_slab
+        from loopy.isl_helpers import make_slab
 
         space = s.get_space()
         inner_constraint_set = (
@@ -156,7 +155,7 @@ def tag_dimensions(kernel, iname_to_tag):
 
 
 def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=None,
-        dup_iname_to_tag={}, new_inames=None):
+        dup_iname_to_tag={}, new_inames=None, default_tag_class=AutoFitLocalIndexTag):
     """
     :arg duplicate_inames: which inames are supposed to be separate loops
         in the CSE. Also determines index order of temporary array.
@@ -174,9 +173,8 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         parallel_inames = duplicate_inames
 
     dup_iname_to_tag = dup_iname_to_tag.copy()
-    from loopy.kernel import TAG_AUTO_LOCAL_IDX
     for piname in parallel_inames:
-        dup_iname_to_tag[piname] = TAG_AUTO_LOCAL_IDX()
+        dup_iname_to_tag[piname] = default_tag_class()
 
     for diname in duplicate_inames:
         dup_iname_to_tag.setdefault(diname, None)
@@ -208,10 +206,9 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     target_var_name = kernel.make_unique_var_name(cse_tag)
 
-    from loopy.kernel import (TAG_LOCAL_IDX, TAG_AUTO_LOCAL_IDX,
-            TAG_GROUP_IDX)
+    from loopy.kernel import (LocalIndexTagBase, GroupIndexTag)
     target_var_is_local = any(
-            isinstance(tag, (TAG_LOCAL_IDX, TAG_AUTO_LOCAL_IDX))
+            isinstance(tag, LocalIndexTagBase)
             for tag in dup_iname_to_tag.itervalues())
 
     cse_lookup_table = {}
@@ -234,7 +231,6 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         if cse_result_insns:
             raise RuntimeError("CSE tag '%s' is not unique" % cse_tag)
 
-
         # {{{ decide what to do with each iname
 
         parent_inames = insn.all_inames()
@@ -251,9 +247,9 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
             else:
                 tag = kernel.iname_to_tag[iname]
 
-            if isinstance(tag, (TAG_LOCAL_IDX, TAG_AUTO_LOCAL_IDX)):
+            if isinstance(tag, LocalIndexTagBase):
                 kind = "l"
-            elif isinstance(tag, TAG_GROUP_IDX):
+            elif isinstance(tag, GroupIndexTag):
                 kind = "g"
             else:
                 kind = "o"
@@ -389,7 +385,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         lower_bound_pw_aff = new_domain.dim_min(new_iname_to_dim[iname][1])
         upper_bound_pw_aff = new_domain.dim_max(new_iname_to_dim[iname][1])
 
-        from loopy.isl import static_max_of_pw_aff
+        from loopy.isl_helpers import static_max_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
 
         target_var_shape.append(static_max_of_pw_aff(

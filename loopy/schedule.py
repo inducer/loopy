@@ -100,13 +100,13 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
 
 
 
-def check_non_use_of_hw_axes(kernel):
+def check_for_unused_hw_axes(kernel):
     group_size, local_size = kernel.get_grid_sizes_as_exprs()
 
     group_axes = set(range(len(group_size)))
     local_axes = set(range(len(local_size)))
 
-    from loopy.kernel import TAG_LOCAL_IDX, TAG_AUTO_LOCAL_IDX, TAG_GROUP_IDX
+    from loopy.kernel import LocalIndexTag, AutoLocalIndexTagBase, GroupIndexTag
     for insn in kernel.instructions:
         group_axes_used = set()
         local_axes_used = set()
@@ -114,11 +114,11 @@ def check_non_use_of_hw_axes(kernel):
         for iname in insn.all_inames():
             tag = kernel.iname_to_tag.get(iname)
 
-            if isinstance(tag, TAG_LOCAL_IDX):
+            if isinstance(tag, LocalIndexTag):
                 local_axes_used.add(tag.axis)
-            elif isinstance(tag, TAG_GROUP_IDX):
+            elif isinstance(tag, GroupIndexTag):
                 group_axes_used.add(tag.axis)
-            elif isinstance(tag, TAG_AUTO_LOCAL_IDX):
+            elif isinstance(tag, AutoLocalIndexTagBase):
                 raise RuntimeError("auto local tag encountered")
 
         if group_axes != group_axes_used:
@@ -131,13 +131,13 @@ def check_non_use_of_hw_axes(kernel):
 
 
 def check_double_use_of_hw_axes(kernel):
-    from loopy.kernel import HardwareParallelTag
+    from loopy.kernel import UniqueTag
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
         for iname in insn.all_inames():
             tag = kernel.iname_to_tag.get(iname)
-            if isinstance(tag, HardwareParallelTag):
+            if isinstance(tag, UniqueTag):
                 key = tag.key
                 if key in insn_tag_keys:
                     raise RuntimeError("instruction '%s' has two "
@@ -398,7 +398,7 @@ def find_inadmissible_tag_keys(kernel, iname, iname_to_tag=None):
 
 def assign_automatic_axes(kernel):
     from loopy.kernel import (
-            TAG_AUTO_LOCAL_IDX, TAG_LOCAL_IDX)
+            TAG_AUTO_LOCAL_IDX, LocalIndexTag)
 
     new_iname_to_tag = kernel.iname_to_tag
 
@@ -418,14 +418,14 @@ def assign_automatic_axes(kernel):
 
             for iname in insn.all_inames():
                 tag = new_iname_to_tag.get(iname)
-                if isinstance(tag, TAG_LOCAL_IDX):
+                if isinstance(tag, LocalIndexTag):
                     local_assigned_axes.add(tag.axis)
 
             if 0 not in local_assigned_axes:
                 axis0_iname = guess_good_iname_for_axis_0(kernel, insn)
 
                 axis0_iname_tag = new_iname_to_tag.get(axis0_iname)
-                ax0_tag = TAG_LOCAL_IDX(0)
+                ax0_tag = LocalIndexTag(0)
                 if (isinstance(axis0_iname_tag, TAG_AUTO_LOCAL_IDX)
                         and ax0_tag.key not in find_inadmissible_tag_keys(
                             kernel, axis0_iname, new_iname_to_tag)):
@@ -442,7 +442,7 @@ def assign_automatic_axes(kernel):
                 while next_axis in local_assigned_axes:
                     next_axis += 1
 
-                new_iname_to_tag[iname] = TAG_LOCAL_IDX(next_axis)
+                new_iname_to_tag[iname] = LocalIndexTag(next_axis)
                 local_assigned_axes.add(next_axis)
 
     return kernel.copy(iname_to_tag=new_iname_to_tag)
@@ -716,7 +716,7 @@ def generate_loop_schedules(kernel):
 
     kernel = add_automatic_dependencies(kernel)
     kernel = assign_automatic_axes(kernel)
-    check_non_use_of_hw_axes(kernel)
+    check_for_unused_hw_axes(kernel)
 
     for gen_sched in generate_loop_schedules_internal(kernel):
         gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)

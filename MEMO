@@ -88,6 +88,10 @@ TODO
 - Better for loop bound generation
   -> Try a triangular loop
 
+- AUTO_PICK or AUTO_FIT
+
+- What if we run out of axes to assign for AUTO_PICK/AUTO_FIT
+
 Dealt with
 ^^^^^^^^^^
 

@@ -30,12 +30,15 @@ class SequentialTag(IndexTag):
 class ParallelTag(IndexTag):
     pass
 
+class HardwareParallelTag(ParallelTag):
+    pass
+
 class UniqueTag(IndexTag):
     @property
     def key(self):
         return type(self)
 
-class HardwareParallelTag(ParallelTag, UniqueTag):
+class AxisTag(UniqueTag):
     __slots__ = ["axis"]
 
     def __init__(self, axis):
@@ -50,27 +53,31 @@ class HardwareParallelTag(ParallelTag, UniqueTag):
         return "%s.%d" % (
                 self.print_name, self.axis)
 
-#class MultiTag(IndexTag):
-    
-#class SplitTag(IndexTag):
-    
-
-
-class TAG_GROUP_IDX(HardwareParallelTag):
+class GroupIndexTag(HardwareParallelTag, AxisTag):
     print_name = "g"
 
-class TAG_LOCAL_IDX(HardwareParallelTag):
+class LocalIndexTagBase(HardwareParallelTag):
+    pass
+
+class LocalIndexTag(LocalIndexTagBase, AxisTag):
     print_name = "l"
 
-class TAG_AUTO_LOCAL_IDX(ParallelTag):
-    def __str__(self):
-        return "l.auto"
+class AutoLocalIndexTagBase(LocalIndexTagBase):
+    pass
 
-class TAG_ILP(ParallelTag):
+class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
+    def __str__(self):
+        return "l.fit"
+
+class AutoPickLocalIndexTag(AutoLocalIndexTagBase):
+    def __str__(self):
+        return "l.pick"
+
+class IlpTag(ParallelTag):
     def __str__(self):
         return "ilp"
 
-class TAG_UNROLL(IndexTag):
+class UnrollTag(IndexTag):
     def __str__(self):
         return "unr"
 
@@ -85,13 +92,19 @@ def parse_tag(tag):
         raise ValueError("cannot parse tag: %s" % tag)
 
     if tag in ["unr"]:
-        return TAG_UNROLL()
+        return UnrollTag()
     elif tag == "ilp":
-        return TAG_ILP()
+        return IlpTag()
     elif tag.startswith("g."):
-        return TAG_GROUP_IDX(int(tag[2:]))
+        return GroupIndexTag(int(tag[2:]))
     elif tag.startswith("l."):
-        return TAG_LOCAL_IDX(int(tag[2:]))
+        axis = tag[2:]
+        if axis == "pick":
+            return AutoPickLocalIndexTag()
+        elif axis == "fit":
+            return AutoFitLocalIndexTag()
+        else:
+            return LocalIndexTag(int(axis))
     else:
         raise ValueError("cannot parse tag: %s" % tag)
 
@@ -593,7 +606,7 @@ class LoopKernel(Record):
                 size=size)
 
     @memoize_method
-    def get_grid_sizes(self):
+    def get_grid_sizes(self, ignore_auto=False):
         all_inames_by_insns = set()
         for insn in self.instructions:
             all_inames_by_insns |= insn.all_inames()
@@ -606,18 +619,18 @@ class LoopKernel(Record):
         local_sizes = {}
 
         from loopy.kernel import (
-                TAG_GROUP_IDX, TAG_LOCAL_IDX,
-                TAG_AUTO_LOCAL_IDX)
+                GroupIndexTag, LocalIndexTag,
+                AutoLocalIndexTagBase)
 
         for iname in self.all_inames():
             tag = self.iname_to_tag.get(iname)
 
-            if isinstance(tag, TAG_GROUP_IDX):
+            if isinstance(tag, GroupIndexTag):
                 tgt_dict = global_sizes
-            elif isinstance(tag, TAG_LOCAL_IDX):
+            elif isinstance(tag, LocalIndexTag):
                 tgt_dict = local_sizes
-            elif isinstance(tag, TAG_AUTO_LOCAL_IDX):
-                raise RuntimeError("cannot find grid sizes if AUTO_LOCAL_IDX tags are "
+            elif isinstance(tag, AutoLocalIndexTagBase) and not ignore_auto:
+                raise RuntimeError("cannot find grid sizes if automatic local index tags are "
                         "present")
             else:
                 tgt_dict = None
@@ -630,11 +643,11 @@ class LoopKernel(Record):
             if tag.axis in tgt_dict:
                 size = tgt_dict[tag.axis].max(size)
 
-            from loopy.isl import static_max_of_pw_aff
+            from loopy.isl_helpers import static_max_of_pw_aff
             try:
                 # insist block size is constant
                 size = static_max_of_pw_aff(size, 
-                        constants_only=isinstance(tag, TAG_LOCAL_IDX))
+                        constants_only=isinstance(tag, LocalIndexTag))
             except ValueError:
                 pass
 
