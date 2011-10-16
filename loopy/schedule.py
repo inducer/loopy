@@ -23,8 +23,7 @@ class Barrier(Record):
 
 # }}}
 
-
-
+# {{{ rewrite reduction to imperative form
 
 def realize_reduction(kernel, inames=None, reduction_tag=None):
     new_insns = []
@@ -97,8 +96,95 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
             instructions=new_insns,
             temporary_variables=new_temporary_variables)
 
+# }}}
+
+# {{{ schedule utilities
+
+def gather_schedule_subloop(schedule, start_idx):
+    assert isinstance(schedule[start_idx], EnterLoop)
+    level = 0
+
+    i = start_idx
+    while i < len(schedule):
+        if isinstance(schedule[i], EnterLoop):
+            level += 1
+        if isinstance(schedule[i], LeaveLoop):
+            level -= 1
+
+            if level == 0:
+                return schedule[start_idx:i+1], i+1
+
+        i += 1
+
+    assert False
 
 
+
+def has_dependent_in_schedule(kernel, insn_id, schedule):
+    from pytools import any
+    return any(sched_item
+            for sched_item in schedule
+            if isinstance(sched_item, RunInstruction)
+            and kernel.id_to_insn[sched_item.insn_id].insn_deps)
+
+
+
+
+def find_active_inames_at(kernel, sched_index):
+    active_inames = []
+
+    from loopy.schedule import EnterLoop, LeaveLoop
+    for sched_item in kernel.schedule[:sched_index]:
+        if isinstance(sched_item, EnterLoop):
+            active_inames.append(sched_item.iname)
+        if isinstance(sched_item, LeaveLoop):
+            active_inames.pop()
+
+    return set(active_inames)
+
+
+
+
+def has_barrier_within(kernel, sched_index):
+    sched_item = kernel.schedule[sched_index]
+
+    if isinstance(sched_item, EnterLoop):
+        loop_contents, _ = gather_schedule_subloop(
+                kernel.schedule, sched_index)
+        from pytools import any
+        return any(isinstance(subsched_item, Barrier)
+                for subsched_item in loop_contents)
+    elif isinstance(sched_item, Barrier):
+        return True
+    else:
+        return False
+
+
+
+
+def find_used_inames_within(kernel, sched_index):
+    sched_item = kernel.schedule[sched_index]
+
+    if isinstance(sched_item, EnterLoop):
+        loop_contents, _ = gather_schedule_subloop(
+                kernel.schedule, sched_index)
+        run_insns = [subsched_item
+                for subsched_item in loop_contents
+                if isinstance(subsched_item, RunInstruction)]
+    elif isinstance(sched_item, RunInstruction):
+        run_insns = [sched_item]
+    else:
+        return set()
+
+    result = set()
+    for sched_item in run_insns:
+        result.update(kernel.id_to_insn[sched_item.insn_id].all_inames())
+
+    return result
+
+# }}}
+
+# {{{ hw axis sanity checks
 
 def check_for_unused_hw_axes(kernel):
     group_size, local_size = kernel.get_grid_sizes_as_exprs()
@@ -145,8 +231,9 @@ def check_for_double_use_of_hw_axes(kernel):
 
                 insn_tag_keys.add(key)
 
+# }}}
 
-
+# {{{ temp storage adjust for bank conflict
 
 def adjust_local_temp_var_storage(kernel):
     new_temp_vars = {}
@@ -212,8 +299,9 @@ def adjust_local_temp_var_storage(kernel):
 
     return kernel.copy(temporary_variables=new_temp_vars)
 
+# }}}
 
-
+# {{{ automatic dependencies
 
 def find_writers(kernel):
     """
@@ -235,6 +323,7 @@ def find_writers(kernel):
         writer_insn_ids.setdefault(var_name, set()).add(insn.id)
 
     return writer_insn_ids
+
 
 
 
@@ -278,8 +367,9 @@ def add_automatic_dependencies(kernel):
 
     return kernel.copy(instructions=new_insns)
 
+# }}}
 
-
+# {{{ guess good iname for local axis 0
 
 def guess_good_iname_for_axis_0(kernel, insn):
     from loopy.kernel import ImageArg, ScalarArg
@@ -369,9 +459,9 @@ def guess_good_iname_for_axis_0(kernel, insn):
 
     # }}}
 
+# }}}
 
-
-
+# {{{ assign automatic axes
 
 def assign_automatic_axes(kernel, only_axis_0=True):
     from loopy.kernel import (AutoLocalIndexTagBase, LocalIndexTag,
@@ -381,7 +471,6 @@ def assign_automatic_axes(kernel, only_axis_0=True):
             ignore_auto=True)
 
     def assign_axis(iname, axis=None):
-        print "assign", iname
         desired_length = kernel.get_constant_iname_length(iname)
 
         if axis is None:
@@ -417,7 +506,6 @@ def assign_automatic_axes(kernel, only_axis_0=True):
             new_tag = None
         else:
             new_tag = LocalIndexTag(axis)
-            print iname, desired_length, local_size[axis]
             if desired_length > local_size[axis]:
                 from loopy import split_dimension
                 return assign_automatic_axes(
@@ -477,8 +565,9 @@ def assign_automatic_axes(kernel, only_axis_0=True):
         # All automatic axes are assigned.
         return kernel
 
+# }}}
 
-
+# {{{ scheduling algorithm
 
 def generate_loop_schedules_internal(kernel, schedule=[]):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
@@ -596,38 +685,9 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
             for sub_sched in generate_loop_schedules_internal(kernel, schedule):
                 yield sub_sched
 
+# }}}
 
-
-
-def gather_schedule_subloop(schedule, start_idx):
-    assert isinstance(schedule[start_idx], EnterLoop)
-    level = 0
-
-    i = start_idx
-    while i < len(schedule):
-        if isinstance(schedule[i], EnterLoop):
-            level += 1
-        if isinstance(schedule[i], LeaveLoop):
-            level -= 1
-
-            if level == 0:
-                return schedule[start_idx:i+1], i+1
-
-        i += 1
-
-    assert False
-
-
-
-def has_dependent_in_schedule(kernel, insn_id, schedule):
-    from pytools import any
-    return any(sched_item
-            for sched_item in schedule
-            if isinstance(sched_item, RunInstruction)
-            and kernel.id_to_insn[sched_item.insn_id].insn_deps)
-
-
-
+# {{{ barrier insertion
 
 def insert_barriers(kernel, schedule, level=0):
     result = []
@@ -664,6 +724,8 @@ def insert_barriers(kernel, schedule, level=0):
 
             # {{{ issue dependency-based barriers for contents of nested loop
 
+            # (i.e. if anything *in* the loop depends on something beforehand)
+
             for insn_id in owed_barriers:
                 if has_dependent_in_schedule(kernel, insn_id, subloop):
                     issue_barrier(is_pre_barrier=False)
@@ -676,7 +738,7 @@ def insert_barriers(kernel, schedule, level=0):
 
             # {{{ issue pre-barriers for contents of nested loop
 
-            if not loop_had_barrier:
+            if not loop_had_barrier[0]:
                 for insn_id in sub_owed_barriers:
                     if has_dependent_in_schedule(
                             kernel, insn_id, schedule):
@@ -724,8 +786,9 @@ def insert_barriers(kernel, schedule, level=0):
 
     return result, owed_barriers
 
+# }}}
 
-
+# {{{ main scheduling entrypoint
 
 def generate_loop_schedules(kernel):
     kernel = realize_reduction(kernel)
@@ -746,7 +809,6 @@ def generate_loop_schedules(kernel):
     kernel = add_automatic_dependencies(kernel)
     kernel = adjust_local_temp_var_storage(kernel)
 
-    print kernel
     check_for_double_use_of_hw_axes(kernel)
     check_for_unused_hw_axes(kernel)
 
@@ -756,64 +818,8 @@ def generate_loop_schedules(kernel):
 
         yield kernel.copy(schedule=gen_sched)
 
-
-
-
-# {{{ schedule utilities
-
-def find_active_inames_at(kernel, sched_index):
-    active_inames = []
-
-    from loopy.schedule import EnterLoop, LeaveLoop
-    for sched_item in kernel.schedule[:sched_index]:
-        if isinstance(sched_item, EnterLoop):
-            active_inames.append(sched_item.iname)
-        if isinstance(sched_item, LeaveLoop):
-            active_inames.pop()
-
-    return set(active_inames)
-
-
-
-
-def has_barrier_within(kernel, sched_index):
-    sched_item = kernel.schedule[sched_index]
-
-    if isinstance(sched_item, EnterLoop):
-        loop_contents, _ = gather_schedule_subloop(
-                kernel.schedule, sched_index)
-        from pytools import any
-        return any(isinstance(subsched_item, Barrier)
-                for subsched_item in loop_contents)
-    elif isinstance(sched_item, Barrier):
-        return True
-    else:
-        return False
-
-
-
-
-def find_used_inames_within(kernel, sched_index):
-    sched_item = kernel.schedule[sched_index]
-
-    if isinstance(sched_item, EnterLoop):
-        loop_contents, _ = gather_schedule_subloop(
-                kernel.schedule, sched_index)
-        run_insns = [subsched_item
-                for subsched_item in loop_contents
-                if isinstance(subsched_item, RunInstruction)]
-    elif isinstance(sched_item, RunInstruction):
-        run_insns = [sched_item]
-    else:
-        return set()
-
-    result = set()
-    for sched_item in run_insns:
-        result.update(kernel.id_to_insn[sched_item.insn_id].all_inames())
-
-    return result
-
 # }}}
+
 
 
 
