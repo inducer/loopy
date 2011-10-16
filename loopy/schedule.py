@@ -130,7 +130,7 @@ def check_for_unused_hw_axes(kernel):
 
 
 
-def check_double_use_of_hw_axes(kernel):
+def check_for_double_use_of_hw_axes(kernel):
     from loopy.kernel import UniqueTag
 
     for insn in kernel.instructions:
@@ -373,79 +373,109 @@ def guess_good_iname_for_axis_0(kernel, insn):
 
 
 
-def find_inadmissible_tag_keys(kernel, iname, iname_to_tag=None):
-    if iname_to_tag is None:
-        iname_to_tag = kernel.iname_to_tag
+def assign_automatic_axes(kernel, only_axis_0=True):
+    from loopy.kernel import (AutoLocalIndexTagBase, LocalIndexTag,
+            UnrollTag)
 
-    result = set()
+    global_size, local_size = kernel.get_grid_sizes_as_exprs(
+            ignore_auto=True)
 
-    from loopy.kernel import UniqueTag
+    def assign_axis(iname, axis=None):
+        print "assign", iname
+        desired_length = kernel.get_constant_iname_length(iname)
 
-    for insn in kernel.instructions:
-        if iname in insn.all_inames():
-            for insn_iname in insn.all_inames():
-                if insn_iname == iname:
+        if axis is None:
+            # {{{ find a suitable axis
+
+            # find already assigned local axes (to avoid them)
+            shorter_possible_axes = []
+            test_axis = 0
+            while True:
+                if test_axis >= len(local_size):
+                    break
+                if test_axis in assigned_local_axes:
+                    test_axis += 1
                     continue
 
-                tag = iname_to_tag.get(insn_iname)
-                if isinstance(tag, UniqueTag):
-                    result.add(tag.key)
+                if local_size[test_axis] < desired_length:
+                    shorter_possible_axes.append(test_axis)
+                    test_axis += 1
+                    continue
+                else:
+                    axis = test_axis
+                    break
 
-    return result
+            # longest first
+            shorter_possible_axes.sort(key=lambda ax: local_size[ax])
 
+            if axis is None and shorter_possible_axes:
+                axis = shorter_possible_axes[0]
 
+            # }}}
 
+        if axis is None:
+            new_tag = None
+        else:
+            new_tag = LocalIndexTag(axis)
+            print iname, desired_length, local_size[axis]
+            if desired_length > local_size[axis]:
+                from loopy import split_dimension
+                return assign_automatic_axes(
+                        split_dimension(kernel, iname, inner_length=local_size[axis],
+                            outer_tag=UnrollTag(), inner_tag=new_tag, no_slabs=True),
+                        only_axis_0=only_axis_0)
 
-def assign_automatic_axes(kernel):
-    from loopy.kernel import (
-            TAG_AUTO_LOCAL_IDX, LocalIndexTag)
+        new_iname_to_tag = kernel.iname_to_tag.copy()
+        new_iname_to_tag[iname] = new_tag
+        return assign_automatic_axes(kernel.copy(iname_to_tag=new_iname_to_tag),
+                only_axis_0=only_axis_0)
 
-    new_iname_to_tag = kernel.iname_to_tag
+    for insn in kernel.instructions:
+        auto_axis_inames = [
+                iname
+                for iname in insn.all_inames()
+                if isinstance(kernel.iname_to_tag.get(iname),
+                    AutoLocalIndexTagBase)]
 
-    # first assign each insn's axis 0, then the rest
-    for only_axis_0 in [True, False]:
+        if not auto_axis_inames:
+            continue
 
-        for insn in kernel.instructions:
-            auto_axis_inames = [
-                    iname
-                    for iname in insn.all_inames()
-                    if isinstance(new_iname_to_tag.get(iname), TAG_AUTO_LOCAL_IDX)]
+        assigned_local_axes = set()
 
-            if not auto_axis_inames:
-                continue
+        for iname in insn.all_inames():
+            tag = kernel.iname_to_tag.get(iname)
+            if isinstance(tag, LocalIndexTag):
+                assigned_local_axes.add(tag.axis)
 
-            local_assigned_axes = set()
+        axis0_iname = guess_good_iname_for_axis_0(kernel, insn)
 
-            for iname in insn.all_inames():
-                tag = new_iname_to_tag.get(iname)
-                if isinstance(tag, LocalIndexTag):
-                    local_assigned_axes.add(tag.axis)
+        axis0_iname_tag = kernel.iname_to_tag.get(axis0_iname)
+        ax0_tag = LocalIndexTag(0)
+        if (isinstance(axis0_iname_tag, AutoLocalIndexTagBase)
+                and 0 not in assigned_local_axes):
+            return assign_axis(axis0_iname, 0)
 
-            if 0 not in local_assigned_axes:
-                axis0_iname = guess_good_iname_for_axis_0(kernel, insn)
+        if only_axis_0:
+            continue
 
-                axis0_iname_tag = new_iname_to_tag.get(axis0_iname)
-                ax0_tag = LocalIndexTag(0)
-                if (isinstance(axis0_iname_tag, TAG_AUTO_LOCAL_IDX)
-                        and ax0_tag.key not in find_inadmissible_tag_keys(
-                            kernel, axis0_iname, new_iname_to_tag)):
-                    new_iname_to_tag[axis0_iname] = ax0_tag
-                    local_assigned_axes.add(0)
-                    auto_axis_inames.remove(axis0_iname)
+        # assign longest auto axis inames first
+        auto_axis_inames.sort(key=kernel.get_constant_iname_length, reverse=True)
 
-            if only_axis_0:
-                continue
+        next_axis = 0
+        if auto_axis_inames:
+            return assign_axis(auto_axis_inames.pop())
 
-            next_axis = 0
-            while auto_axis_inames:
-                iname = auto_axis_inames.pop()
-                while next_axis in local_assigned_axes:
-                    next_axis += 1
+    # We've seen all instructions and not punted to recursion/restart because
+    # of a new axis assignment.
 
-                new_iname_to_tag[iname] = LocalIndexTag(next_axis)
-                local_assigned_axes.add(next_axis)
-
-    return kernel.copy(iname_to_tag=new_iname_to_tag)
+    if only_axis_0:
+        # If we were only assigining axis 0, then assign all the remaining 
+        # axes next.
+        return assign_automatic_axes(kernel, only_axis_0=False)
+    else:
+        # If were already assigning all axes and got here, we're now done.
+        # All automatic axes are assigned.
+        return kernel
 
 
 
@@ -699,8 +729,6 @@ def insert_barriers(kernel, schedule, level=0):
 
 def generate_loop_schedules(kernel):
     kernel = realize_reduction(kernel)
-    check_double_use_of_hw_axes(kernel)
-    kernel = adjust_local_temp_var_storage(kernel)
 
     # {{{ check that all CSEs have been realized
 
@@ -714,8 +742,12 @@ def generate_loop_schedules(kernel):
 
     # }}}
 
-    kernel = add_automatic_dependencies(kernel)
     kernel = assign_automatic_axes(kernel)
+    kernel = add_automatic_dependencies(kernel)
+    kernel = adjust_local_temp_var_storage(kernel)
+
+    print kernel
+    check_for_double_use_of_hw_axes(kernel)
     check_for_unused_hw_axes(kernel)
 
     for gen_sched in generate_loop_schedules_internal(kernel):
@@ -723,7 +755,6 @@ def generate_loop_schedules(kernel):
         assert not owed_barriers
 
         yield kernel.copy(schedule=gen_sched)
-
 
 
 

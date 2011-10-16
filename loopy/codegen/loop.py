@@ -79,12 +79,10 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
 # }}}
 
-# {{{ unrolled/ILP loops
+# {{{ unrolled loops
 
 def generate_unroll_loop(kernel, sched_index, codegen_state):
     from loopy.isl_helpers import block_shift_constraint
-
-    from cgen import (POD, Line)
 
     ccm = codegen_state.c_code_mapper
     space = kernel.space
@@ -98,7 +96,8 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
     from loopy.isl_helpers import static_max_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
-    length = int(pw_aff_to_expr(static_max_of_pw_aff(bounds.length)))
+    length = int(pw_aff_to_expr(
+        static_max_of_pw_aff(bounds.size, constants_only=True)))
     lower_bound_pw_aff_pieces = bounds.lower_bound_pw_aff.coalesce().get_pieces()
 
     if len(lower_bound_pw_aff_pieces) > 1:
@@ -116,11 +115,11 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
 
     from loopy.kernel import UnrollTag
     if isinstance(tag, UnrollTag):
-        result = [POD(np.int32, iname), Line()]
+        result = []
 
         for i in range(length):
             idx_aff = lower_bound_aff + i
-            new_codegen_state = codegen_state.fix(iname, idx_aff)
+            new_codegen_state = codegen_state.fix(iname, idx_aff, kernel.space)
             result.append(
                     build_loop_nest(kernel, sched_index+1, new_codegen_state))
 

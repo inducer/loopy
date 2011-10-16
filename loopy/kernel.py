@@ -67,11 +67,7 @@ class AutoLocalIndexTagBase(LocalIndexTagBase):
 
 class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
     def __str__(self):
-        return "l.fit"
-
-class AutoPickLocalIndexTag(AutoLocalIndexTagBase):
-    def __str__(self):
-        return "l.pick"
+        return "l.auto"
 
 class IlpTag(ParallelTag):
     def __str__(self):
@@ -99,9 +95,7 @@ def parse_tag(tag):
         return GroupIndexTag(int(tag[2:]))
     elif tag.startswith("l."):
         axis = tag[2:]
-        if axis == "pick":
-            return AutoPickLocalIndexTag()
-        elif axis == "fit":
+        if axis == "auto":
             return AutoFitLocalIndexTag()
         else:
             return LocalIndexTag(int(axis))
@@ -606,6 +600,14 @@ class LoopKernel(Record):
                 size=size)
 
     @memoize_method
+    def get_constant_iname_length(self, iname):
+        from loopy.isl_helpers import static_max_of_pw_aff
+        from loopy.symbolic import aff_to_expr
+        return int(aff_to_expr(static_max_of_pw_aff(
+                self.get_iname_bounds(iname).size,
+                constants_only=True)))
+
+    @memoize_method
     def get_grid_sizes(self, ignore_auto=False):
         all_inames_by_insns = set()
         for insn in self.instructions:
@@ -678,8 +680,8 @@ class LoopKernel(Record):
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local"))
 
-    def get_grid_sizes_as_exprs(self):
-        grid_size, group_size = self.get_grid_sizes()
+    def get_grid_sizes_as_exprs(self, ignore_auto=False):
+        grid_size, group_size = self.get_grid_sizes(ignore_auto=ignore_auto)
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
