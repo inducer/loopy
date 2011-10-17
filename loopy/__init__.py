@@ -245,7 +245,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
             if iname in duplicate_inames:
                 tag = dup_iname_to_tag[iname]
             else:
-                tag = kernel.iname_to_tag[iname]
+                tag = kernel.iname_to_tag.get(iname)
 
             if isinstance(tag, LocalIndexTagBase):
                 kind = "l"
@@ -273,9 +273,22 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
                         "that the CSE does not depend on "
                         "does not make sense")
 
-            force_dependency = True
-            if kind == "l" and target_var_is_local:
-                force_dependency = False
+            # Which iname dependencies are carried over from CSE host
+            # to the CSE compute instruction?
+
+            if not target_var_is_local:
+                # If we're writing to a private variable, then each
+                # hardware-parallel iname must execute its own copy of
+                # the CSE compute instruction. After all, each work item
+                # has its own set of private variables.
+
+                force_dependency = kind in "gl"
+            else:
+                # If we're writing to a local variable, then all other local
+                # dimensions see our updates, and thus they do *not* need to
+                # execute their own copy of this instruction.
+
+                force_dependency = kind == "g"
 
             if force_dependency:
                 forced_iname_deps.append(iname)
@@ -308,7 +321,8 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
                 id=kernel.make_unique_instruction_id(based_on=cse_tag),
                 assignee=assignee,
                 expression=new_inner_expr,
-                forced_iname_deps=forced_iname_deps)
+                forced_iname_deps=forced_iname_deps,
+                idempotent=True)
 
         cse_result_insns.append(new_insn)
 

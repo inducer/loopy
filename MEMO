@@ -56,6 +56,8 @@ Things to consider
 - Parallel dimension splitting/merging via tags
   -> unnecessary?
 
+- All user-supplied commands are assumed to be idempotent.
+
 TODO
 ^^^^
 
@@ -78,22 +80,19 @@ TODO
 
 - Slab decomposition for ILP
 
-- Some things involving CSEs might be impossible to schedule
-  a[i,j] = cse(b[i]) * cse(c[j])
-
-- Flag, exploit idempotence
-
-- How should we implement the dim shuffling for odd-size prefetches?
-
 - Better for loop bound generation
   -> Try a triangular loop
 
-- AUTO_PICK or AUTO_FIT
-
-- What if we run out of axes to assign for AUTO_PICK/AUTO_FIT
-
 Dealt with
 ^^^^^^^^^^
+
+- Flag, exploit idempotence
+
+- Some things involving CSEs might be impossible to schedule
+  a[i,j] = cse(b[i]) * cse(c[j])
+
+- Be smarter about automatic local axis choice
+  -> What if we run out of axes?
 
 - Implement condition hoisting
   (needed, e.g., by slab decomposition)

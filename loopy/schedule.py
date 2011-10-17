@@ -58,7 +58,8 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
                 forced_iname_deps=list(insn.all_inames() - set(expr.inames)),
-                expression=expr.operation.neutral_element)
+                expression=expr.operation.neutral_element,
+                idempotent=True)
 
         new_insns.append(init_insn)
 
@@ -68,7 +69,8 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
                 assignee=target_var,
                 expression=expr.operation(target_var, sub_expr),
                 insn_deps=[init_insn.id],
-                forced_iname_deps=list(insn.all_inames()))
+                forced_iname_deps=list(insn.all_inames()),
+                idempotent=False)
 
         new_insns.append(reduction_insn)
 
@@ -208,9 +210,11 @@ def check_for_unused_hw_axes(kernel):
                 raise RuntimeError("auto local tag encountered")
 
         if group_axes != group_axes_used:
-            raise RuntimeError("instruction '%s' does not use all hw group axes")
+            raise RuntimeError("instruction '%s' does not use all hw group axes"
+                    % insn.id)
         if local_axes != local_axes_used:
-            raise RuntimeError("instruction '%s' does not use all hw local axes")
+            raise RuntimeError("instruction '%s' does not use all hw local axes"
+                    % insn.id)
 
 
 
@@ -608,8 +612,25 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
 
     for insn_id in unscheduled_insn_ids:
         insn = kernel.id_to_insn[insn_id]
-        if (active_inames - parallel_inames 
-                == insn.all_inames() - parallel_inames
+
+        if insn.idempotent:
+            # If insn is idempotent, it may be placed inside a more deeply
+            # nested loop without harm.
+
+            iname_deps_satisfied = (
+                    insn.all_inames() - parallel_inames
+                    <=
+                    active_inames - parallel_inames)
+        else:
+            # If insn is not idempotent, we must insist that it is placed inside
+            # the exactly correct set of loops.
+
+            iname_deps_satisfied = (
+                    insn.all_inames() - parallel_inames
+                    ==
+                    active_inames - parallel_inames)
+
+        if (iname_deps_satisfied
                 and set(insn.insn_deps) <= scheduled_insn_ids):
             scheduled_insn_ids.add(insn.id)
             schedule = schedule + [RunInstruction(insn_id=insn.id)]
@@ -812,11 +833,18 @@ def generate_loop_schedules(kernel):
     check_for_double_use_of_hw_axes(kernel)
     check_for_unused_hw_axes(kernel)
 
+    schedule_count = 0
+
     for gen_sched in generate_loop_schedules_internal(kernel):
         gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
         assert not owed_barriers
 
         yield kernel.copy(schedule=gen_sched)
+
+        schedule_count += 1
+
+    if not schedule_count:
+        raise RuntimeError("no valid schedules found")
 
 # }}}
 

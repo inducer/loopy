@@ -220,16 +220,19 @@ class Instruction(Record):
     :ivar insn_deps: a list of ids of :class:`Instruction` instances that
         *must* be executed before this one. Note that loop scheduling augments this
         by adding dependencies on any writes to temporaries read by this instruction.
+    :ivar idempotent: Whether the instruction may be executed repeatedly (while obeying
+        dependencies) without changing the meaning of the program.
     """
     def __init__(self,
-            id, assignee, expression,
+            id, assignee, expression, idempotent,
             forced_iname_deps=[], insn_deps=[]):
+
+        assert isinstance(idempotent, bool)
 
         Record.__init__(self,
                 id=id, assignee=assignee, expression=expression,
                 forced_iname_deps=forced_iname_deps,
-                insn_deps=insn_deps,
-                )
+                insn_deps=insn_deps, idempotent=idempotent)
 
     @memoize_method
     def all_inames(self):
@@ -447,7 +450,8 @@ class LoopKernel(Record):
                     id=self.make_unique_instruction_id(insns, based_on=label),
                     insn_deps=insn_deps,
                     forced_iname_deps=forced_iname_deps,
-                    assignee=lhs, expression=rhs)
+                    assignee=lhs, expression=rhs,
+                    idempotent=True)
 
         if isinstance(domain, str):
             ctx = isl.Context()

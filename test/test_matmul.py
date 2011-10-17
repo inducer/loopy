@@ -244,6 +244,60 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
 
 
 
+def test_rank_one(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+    order = "C"
+    queue = cl.CommandQueue(ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    n = int(get_suitable_size(ctx)**(3/2))
+    print n
+
+    knl = lp.LoopKernel(ctx.devices[0],
+            "[n] -> {[i,j]: 0<=i,j<n}",
+            [
+                "label: c[i, j] = cse(a[i], a)*cse(b[j], b)"
+                ],
+            [
+                lp.ArrayArg("a", dtype, shape=(n,), order=order),
+                lp.ArrayArg("b", dtype, shape=(n,), order=order),
+                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.ScalarArg("n", np.int32, approximately=n),
+                ],
+            name="rank_one", assumptions="n >= 16")
+
+    #knl = lp.split_dimension(knl, "i", 16,
+            #outer_tag="g.0", inner_tag="l.1", no_slabs=True)
+    #knl = lp.split_dimension(knl, "j", 8,
+            #outer_tag="g.1", inner_tag="l.0", no_slabs=True)
+    #knl = lp.split_dimension(knl, "k", 32, no_slabs=True)
+
+    knl = lp.realize_cse(knl, "a", dtype)#, ["i_inner"])
+    knl = lp.realize_cse(knl, "b", dtype)#, ["j_inner"])
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=6)
+
+    a = cl_random.rand(queue, n, dtype=dtype)
+    b = cl_random.rand(queue, n, dtype=dtype)
+    refsol = a.get()[:, np.newaxis] * b.get()
+    c = cl_array.empty(queue, refsol.shape, refsol.dtype)
+
+    def launcher(kernel, gsize, lsize, check):
+        evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
+                g_times_l=True)
+
+        if check:
+            check_error(refsol, c.get())
+
+        return evt
+
+    lp.drive_timing_run(kernel_gen, queue, launcher, n**2)
+
+
+
+
 def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()

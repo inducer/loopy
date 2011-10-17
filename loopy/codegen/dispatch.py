@@ -35,7 +35,7 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
     sched_item = kernel.schedule[sched_index]
 
     if isinstance(sched_item, EnterLoop):
-        tag = kernel.iname_to_tag[sched_item.iname]
+        tag = kernel.iname_to_tag.get(sched_item.iname)
 
         from loopy.codegen.loop import (
                 generate_unroll_loop,
