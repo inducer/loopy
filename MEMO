@@ -56,7 +56,8 @@ Things to consider
 - Parallel dimension splitting/merging via tags
   -> unnecessary?
 
-- All user-supplied commands are assumed to be idempotent.
+- Not using all hw loop dimensions causes an error, as
+  is the case for variant 3 in the rank_one test.
 
 TODO
 ^^^^
@@ -82,6 +83,9 @@ TODO
 
 - Better for loop bound generation
   -> Try a triangular loop
+
+- Nested slab decomposition (in conjunction with conditional hoisting) could
+  generate nested conditional code.
 
 Dealt with
 ^^^^^^^^^^

@@ -58,8 +58,7 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
                 forced_iname_deps=list(insn.all_inames() - set(expr.inames)),
-                expression=expr.operation.neutral_element,
-                idempotent=True)
+                expression=expr.operation.neutral_element)
 
         new_insns.append(init_insn)
 
@@ -69,8 +68,7 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
                 assignee=target_var,
                 expression=expr.operation(target_var, sub_expr),
                 insn_deps=[init_insn.id],
-                forced_iname_deps=list(insn.all_inames()),
-                idempotent=False)
+                forced_iname_deps=list(insn.all_inames()))
 
         new_insns.append(reduction_insn)
 
@@ -210,10 +208,10 @@ def check_for_unused_hw_axes(kernel):
                 raise RuntimeError("auto local tag encountered")
 
         if group_axes != group_axes_used:
-            raise RuntimeError("instruction '%s' does not use all hw group axes"
+            raise RuntimeError("instruction '%s' does not use all group hw axes"
                     % insn.id)
         if local_axes != local_axes_used:
-            raise RuntimeError("instruction '%s' does not use all hw local axes"
+            raise RuntimeError("instruction '%s' does not use all local hw axes"
                     % insn.id)
 
 
@@ -305,53 +303,65 @@ def adjust_local_temp_var_storage(kernel):
 
 # }}}
 
-# {{{ automatic dependencies
+# {{{ automatic dependencies, find idempotent instructions
 
-def find_writers(kernel):
+def find_accessors(kernel, readers):
     """
     :return: a dict that maps variable names to ids of insns that
         write to that variable.
     """
-    writer_insn_ids = {}
+    result = {}
 
-    admissible_write_vars = (
+    admissible_vars = (
             set(arg.name for arg in kernel.args)
             | set(kernel.temporary_variables.iterkeys()))
 
     for insn in kernel.instructions:
-        var_name = insn.get_assignee_var_name()
+        if readers:
+            from loopy.symbolic import DependencyMapper
+            var_names = DependencyMapper()(insn.expression) & admissible_vars
+        else:
+            var_name = insn.get_assignee_var_name()
 
-        if var_name not in admissible_write_vars:
-            raise RuntimeError("writing to '%s' is not allowed" % var_name)
+            if var_name not in admissible_vars:
+                raise RuntimeError("writing to '%s' is not allowed" % var_name)
+            var_names = [var_name]
 
-        writer_insn_ids.setdefault(var_name, set()).add(insn.id)
+        for var_name in var_names:
+            result.setdefault(var_name, set()).add(insn.id)
 
-    return writer_insn_ids
-
-
-
+    return result
 
 
-def add_automatic_dependencies(kernel):
-    writer_map = find_writers(kernel)
+
+
+def add_idempotence_and_automatic_dependencies(kernel):
+    writer_map = find_accessors(kernel, readers=False)
 
     arg_names = set(arg.name for arg in kernel.args)
 
     var_names = arg_names | set(kernel.temporary_variables.iterkeys())
 
     from loopy.symbolic import DependencyMapper
-    dep_map = DependencyMapper(composite_leaves=False)
-    new_insns = []
+    dm = DependencyMapper(composite_leaves=False)
+    dep_map = {}
+
     for insn in kernel.instructions:
-        read_vars = (
-                set(var.name for var in dep_map(insn.expression)) 
+        dep_map[insn.id] = (
+                set(var.name for var in dm(insn.expression))
                 & var_names)
 
+    new_insns = []
+    for insn in kernel.instructions:
         auto_deps = []
-        for var in read_vars:
-            var_writers = writer_map.get(var, set())
 
-            if not var_writers and var not in var_names:
+        # {{{ add automatic dependencies
+        all_my_var_writers = set()
+        for var in dep_map[insn.id]:
+            var_writers = writer_map.get(var, set())
+            all_my_var_writers |= var_writers
+
+            if not var_writers and var not in arg_names:
                 from warnings import warn
                 warn("'%s' is read, but never written." % var)
 
@@ -365,9 +375,26 @@ def add_automatic_dependencies(kernel):
             if len(var_writers) == 1:
                 auto_deps.extend(var_writers)
 
+        # }}}
+
+        # {{{ find dependency loops, flag idempotence
+
+        while True:
+            last_all_my_var_writers = all_my_var_writers
+
+            for writer_insn_id in last_all_my_var_writers:
+                for var in dep_map[writer_insn_id]:
+                    all_my_var_writers = all_my_var_writers | writer_map.get(var, set())
+
+            if last_all_my_var_writers == all_my_var_writers:
+                break
+
+        # }}}
+
         new_insns.append(
                 insn.copy(
-                    insn_deps=insn.insn_deps + auto_deps))
+                    insn_deps=insn.insn_deps + auto_deps,
+                    idempotent=insn.id not in all_my_var_writers))
 
     return kernel.copy(instructions=new_insns)
 
@@ -514,7 +541,7 @@ def assign_automatic_axes(kernel, only_axis_0=True):
                 from loopy import split_dimension
                 return assign_automatic_axes(
                         split_dimension(kernel, iname, inner_length=local_size[axis],
-                            outer_tag=UnrollTag(), inner_tag=new_tag, no_slabs=True),
+                            outer_tag=UnrollTag(), inner_tag=new_tag),
                         only_axis_0=only_axis_0)
 
         new_iname_to_tag = kernel.iname_to_tag.copy()
@@ -613,7 +640,7 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
     for insn_id in unscheduled_insn_ids:
         insn = kernel.id_to_insn[insn_id]
 
-        if insn.idempotent:
+        if insn.idempotent == True:
             # If insn is idempotent, it may be placed inside a more deeply
             # nested loop without harm.
 
@@ -621,7 +648,8 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
                     insn.all_inames() - parallel_inames
                     <=
                     active_inames - parallel_inames)
-        else:
+
+        elif insn.idempotent == False:
             # If insn is not idempotent, we must insist that it is placed inside
             # the exactly correct set of loops.
 
@@ -629,6 +657,10 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
                     insn.all_inames() - parallel_inames
                     ==
                     active_inames - parallel_inames)
+
+        else:
+            raise RuntimeError("instruction '%s' has undetermined idempotence"
+                    % insn.id)
 
         if (iname_deps_satisfied
                 and set(insn.insn_deps) <= scheduled_insn_ids):
@@ -782,7 +814,7 @@ def insert_barriers(kernel, schedule, level=0):
 
             # {{{ issue dependency-based barriers for this instruction
 
-            if insn.id in owed_barriers:
+            if set(insn.insn_deps) & owed_barriers:
                 issue_barrier(is_pre_barrier=False)
 
             # }}}
@@ -827,7 +859,7 @@ def generate_loop_schedules(kernel):
     # }}}
 
     kernel = assign_automatic_axes(kernel)
-    kernel = add_automatic_dependencies(kernel)
+    kernel = add_idempotence_and_automatic_dependencies(kernel)
     kernel = adjust_local_temp_var_storage(kernel)
 
     check_for_double_use_of_hw_axes(kernel)

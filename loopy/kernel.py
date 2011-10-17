@@ -224,10 +224,8 @@ class Instruction(Record):
         dependencies) without changing the meaning of the program.
     """
     def __init__(self,
-            id, assignee, expression, idempotent,
-            forced_iname_deps=[], insn_deps=[]):
-
-        assert isinstance(idempotent, bool)
+            id, assignee, expression,
+            forced_iname_deps=[], insn_deps=[], idempotent=None):
 
         Record.__init__(self,
                 id=id, assignee=assignee, expression=expression,
@@ -257,6 +255,15 @@ class Instruction(Record):
     def __str__(self):
         result = "%s: %s <- %s\n    [%s]" % (self.id,
                 self.assignee, self.expression, ", ".join(sorted(self.all_inames())))
+
+        if self.idempotent == True:
+            result += " (idempotent)"
+        elif self.idempotent == False:
+            result += " (not idempotent)"
+        elif self.idempotent is None:
+            result += " (idempotence unknown)"
+        else:
+            raise RuntimeError("unexpected value for Instruction.idempotent")
 
         if self.insn_deps:
             result += "\n    : " + ", ".join(self.insn_deps)
@@ -450,8 +457,7 @@ class LoopKernel(Record):
                     id=self.make_unique_instruction_id(insns, based_on=label),
                     insn_deps=insn_deps,
                     forced_iname_deps=forced_iname_deps,
-                    assignee=lhs, expression=rhs,
-                    idempotent=True)
+                    assignee=lhs, expression=rhs)
 
         if isinstance(domain, str):
             ctx = isl.Context()

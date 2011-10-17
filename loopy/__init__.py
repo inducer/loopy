@@ -38,13 +38,10 @@ from loopy.compiled import CompiledKernel, drive_timing_run
 def split_dimension(kernel, iname, inner_length, padded_length=None,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
-        outer_slab_increments=(0, -1), no_slabs=None):
+        slabs=(0, 0)):
 
     if iname not in kernel.all_inames():
         raise ValueError("cannot split loop for unknown variable '%s'" % iname)
-
-    if no_slabs:
-        outer_slab_increments = (0, 0)
 
     if padded_length is not None:
         inner_tag = inner_tag.copy(forced_length=padded_length)
@@ -115,7 +112,7 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
     # }}}
 
     iname_slab_increments = kernel.iname_slab_increments.copy()
-    iname_slab_increments[outer_iname] = outer_slab_increments
+    iname_slab_increments[outer_iname] = slabs
     result = (kernel
             .copy(domain=new_domain,
                 iname_slab_increments=iname_slab_increments,
@@ -321,8 +318,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
                 id=kernel.make_unique_instruction_id(based_on=cse_tag),
                 assignee=assignee,
                 expression=new_inner_expr,
-                forced_iname_deps=forced_iname_deps,
-                idempotent=True)
+                forced_iname_deps=forced_iname_deps)
 
         cse_result_insns.append(new_insn)
 

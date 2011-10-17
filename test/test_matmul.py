@@ -1,3 +1,5 @@
+from __future__ import division
+
 import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
@@ -214,16 +216,16 @@ def test_plain_matrix_mul_new_ui(ctx_factory):
             name="matmul", assumptions="n >= 16")
 
     knl = lp.split_dimension(knl, "i", 16,
-            outer_tag="g.0", inner_tag="l.1", no_slabs=True)
+            outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 8,
-            outer_tag="g.1", inner_tag="l.0", no_slabs=True)
-    knl = lp.split_dimension(knl, "k", 32, no_slabs=True)
+            outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 32)
 
     knl = lp.realize_cse(knl, "lhsmat", dtype, ["k_inner", "i_inner"])
     knl = lp.realize_cse(knl, "rhsmat", dtype, ["j_inner", "k_inner"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=6)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -251,8 +253,7 @@ def test_rank_one(ctx_factory):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = int(get_suitable_size(ctx)**(3/2))
-    print n
+    n = int(get_suitable_size(ctx)**(2.7/2))
 
     knl = lp.LoopKernel(ctx.devices[0],
             "[n] -> {[i,j]: 0<=i,j<n}",
@@ -267,33 +268,71 @@ def test_rank_one(ctx_factory):
                 ],
             name="rank_one", assumptions="n >= 16")
 
-    #knl = lp.split_dimension(knl, "i", 16,
-            #outer_tag="g.0", inner_tag="l.1", no_slabs=True)
-    #knl = lp.split_dimension(knl, "j", 8,
-            #outer_tag="g.1", inner_tag="l.0", no_slabs=True)
-    #knl = lp.split_dimension(knl, "k", 32, no_slabs=True)
+    def variant_1(knl):
+        knl = lp.realize_cse(knl, "a", dtype)
+        knl = lp.realize_cse(knl, "b", dtype)
+        return knl
 
-    knl = lp.realize_cse(knl, "a", dtype)#, ["i_inner"])
-    knl = lp.realize_cse(knl, "b", dtype)#, ["j_inner"])
+    def variant_2(knl):
+        knl = lp.split_dimension(knl, "i", 16,
+                outer_tag="g.0", inner_tag="l.0")
+        knl = lp.split_dimension(knl, "j", 16,
+                outer_tag="g.1", inner_tag="l.1")
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=6)
+        knl = lp.realize_cse(knl, "a", dtype)
+        knl = lp.realize_cse(knl, "b", dtype)
+        return knl
 
-    a = cl_random.rand(queue, n, dtype=dtype)
-    b = cl_random.rand(queue, n, dtype=dtype)
-    refsol = a.get()[:, np.newaxis] * b.get()
-    c = cl_array.empty(queue, refsol.shape, refsol.dtype)
+    def variant_3(knl):
+        knl = lp.split_dimension(knl, "i", 16,
+                outer_tag="g.0", inner_tag="l.0")
+        knl = lp.split_dimension(knl, "j", 16,
+                outer_tag="g.1", inner_tag="l.1")
 
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
-                g_times_l=True)
+        knl = lp.realize_cse(knl, "a", dtype, ["i_inner"])
+        knl = lp.realize_cse(knl, "b", dtype, ["j_inner"])
+        return knl
 
-        if check:
-            check_error(refsol, c.get())
+    def variant_4(knl):
+        knl = lp.split_dimension(knl, "i", 256,
+                outer_tag="g.0", slabs=(0, -1))
+        knl = lp.split_dimension(knl, "j", 256,
+                outer_tag="g.1", slabs=(0, -1))
 
-        return evt
+        knl = lp.realize_cse(knl, "a", dtype, ["i_inner"])
+        knl = lp.realize_cse(knl, "b", dtype, ["j_inner"])
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, n**2)
+        knl = lp.split_dimension(knl, "i_inner", 16,
+                inner_tag="l.0")
+        knl = lp.split_dimension(knl, "j_inner", 16,
+                inner_tag="l.1")
+
+        knl = lp.split_dimension(knl, "j_inner_0", 16,
+                outer_tag="l.1", inner_tag="l.0")
+        knl = lp.split_dimension(knl, "i_inner_0", 16,
+                outer_tag="l.1", inner_tag="l.0")
+        return knl
+
+    #for variant in [variant_1, variant_2, variant_3]:
+    for variant in [variant_4]:
+        kernel_gen = lp.generate_loop_schedules(variant(knl))
+        kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
+
+        a = cl_random.rand(queue, n, dtype=dtype)
+        b = cl_random.rand(queue, n, dtype=dtype)
+        refsol = a.get()[:, np.newaxis] * b.get()
+        c = cl_array.empty(queue, refsol.shape, refsol.dtype)
+
+        def launcher(kernel, gsize, lsize, check):
+            evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
+                    g_times_l=True)
+
+            if check:
+                check_error(refsol, c.get())
+
+            return evt
+
+        lp.drive_timing_run(kernel_gen, queue, launcher, n**2)
 
 
 
