@@ -506,6 +506,30 @@ class IndexVariableFinder(CombineMapper):
 
 # }}}
 
+# {{{ variable-fetch CSE mapper
+
+class VariableFetchCSEMapper(IdentityMapper):
+    def __init__(self, var_name, cse_tag_getter):
+        self.var_name = var_name
+        self.cse_tag_getter = cse_tag_getter
+
+    def map_variable(self, expr):
+        from pymbolic.primitives import CommonSubexpression
+        if expr.name == self.var_name:
+            return CommonSubexpression(expr, self.cse_tag_getter())
+        else:
+            return IdentityMapper.map_variable(self, expr)
+
+    def map_subscript(self, expr):
+        from pymbolic.primitives import CommonSubexpression, Variable, Subscript
+        if (isinstance(expr.aggregate, Variable)
+                and expr.aggregate.name == self.var_name):
+            return CommonSubexpression(
+                    Subscript(expr.aggregate, self.rec(expr.index)), self.cse_tag_getter())
+        else:
+            return IdentityMapper.map_subscript(self, expr)
+
+# }}}
 
 
 

@@ -266,9 +266,9 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
             # the iname is *not* a dependency of the fetch expression
             if iname in duplicate_inames:
-                raise RuntimeError("duplicating an iname "
-                        "that the CSE does not depend on "
-                        "does not make sense")
+                raise RuntimeError("duplicating an iname ('%s')"
+                        "that the CSE ('%s') does not depend on "
+                        "does not make sense" % (iname, expr.child))
 
             # Which iname dependencies are carried over from CSE host
             # to the CSE compute instruction?
@@ -495,72 +495,39 @@ def check_kernels(kernel_gen, parameters, kill_level_min=3,
 
 # }}}
 
-# {{{ high-level modifiers
+# {{{ convenience
 
-def get_input_access_descriptors(kernel):
-    """Return a dictionary mapping input vectors to
-    a list of input access descriptor. An input access
-    descriptor is a tuple (input_vec, index_expr).
-    """
-    1/0 # broken
+def add_prefetch(kernel, var_name, fetch_dims=[]):
+    used_cse_tags = set()
+    def map_cse(expr, rec):
+        used_cse_tags.add(expr.tag)
+        rec(expr.child)
 
-    from loopy.symbolic import VariableIndexExpressionCollector
+    new_cse_tags = set()
 
-    from pytools import flatten
-    result = {}
-    for ivec in kernel.input_vectors():
-        result[ivec] = set(
-                (ivec, iexpr)
-                for iexpr in flatten(
-                    VariableIndexExpressionCollector(ivec)(expression)
-                    for lvalue, expression in kernel.instructions
-                    ))
+    def get_unique_cse_tag():
+        from loopy.tools import generate_unique_possibilities
+        for cse_tag in generate_unique_possibilities(prefix="fetch_"+var_name):
+            if cse_tag not in used_cse_tags:
+                used_cse_tags.add(cse_tag)
+                new_cse_tags.add(cse_tag)
+                return cse_tag
 
-    return result
+    from loopy.symbolic import VariableFetchCSEMapper
+    vf_cse_mapper = VariableFetchCSEMapper(var_name, get_unique_cse_tag)
+    kernel = kernel.copy(instructions=[
+            insn.copy(expression=vf_cse_mapper(insn.expression))
+            for insn in kernel.instructions])
 
-def add_prefetch(kernel, input_access_descr, fetch_dims, loc_fetch_axes={}):
-    """
-    :arg input_access_descr: see :func:`get_input_access_descriptors`.
-        May also be the name of the variable if there is only one
-        reference to that variable.
-    :arg fetch_dims: loop dimensions indexing the input variable on which
-        the prefetch is to be carried out.
-    """
-    1/0 # broken
+    if var_name in kernel.arg_dict:
+        dtype = kernel.arg_dict[var_name].dtype
+    else:
+        dtype = kernel.temporary_variables[var_name].dtype
 
-    if isinstance(input_access_descr, str):
-        var_name = input_access_descr
-        var_iads = get_input_access_descriptors(kernel)[var_name]
+    for cse_tag in new_cse_tags:
+        kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims)
 
-        if len(var_iads) != 1:
-            raise ValueError("input access descriptor for variable %s is "
-                    "not unique" % var_name)
-
-        input_access_descr, = var_iads
-
-    def parse_fetch_dim(iname):
-        if isinstance(iname, str):
-            iname = (iname,)
-
-        return tuple(kernel.tag_or_iname_to_iname(s) for s in iname)
-
-    fetch_dims = [parse_fetch_dim(fd) for fd in fetch_dims]
-    ivec, iexpr = input_access_descr
-
-    new_prefetch = getattr(kernel, "prefetch", {}).copy()
-    if input_access_descr in new_prefetch:
-        raise ValueError("a prefetch descriptor for the input access %s[%s] "
-                "already exists" % (ivec, iexpr))
-
-    from loopy.prefetch import LocalMemoryPrefetch
-    new_prefetch[input_access_descr] = LocalMemoryPrefetch(
-            kernel=kernel,
-            input_vector=ivec,
-            index_expr=iexpr,
-            fetch_dims=fetch_dims,
-            loc_fetch_axes=loc_fetch_axes)
-
-    return kernel.copy(prefetch=new_prefetch)
+    return kernel
 
 # }}}
 

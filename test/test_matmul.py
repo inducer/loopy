@@ -258,7 +258,7 @@ def test_rank_one(ctx_factory):
     knl = lp.LoopKernel(ctx.devices[0],
             "[n] -> {[i,j]: 0<=i,j<n}",
             [
-                "label: c[i, j] = cse(a[i], a)*cse(b[j], b)"
+                "label: c[i, j] = a[i]*b[j]"
                 ],
             [
                 lp.ArrayArg("a", dtype, shape=(n,), order=order),
@@ -269,8 +269,8 @@ def test_rank_one(ctx_factory):
             name="rank_one", assumptions="n >= 16")
 
     def variant_1(knl):
-        knl = lp.realize_cse(knl, "a", dtype)
-        knl = lp.realize_cse(knl, "b", dtype)
+        knl = lp.add_prefetch(knl, "a")
+        knl = lp.add_prefetch(knl, "b")
         return knl
 
     def variant_2(knl):
@@ -279,8 +279,8 @@ def test_rank_one(ctx_factory):
         knl = lp.split_dimension(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
-        knl = lp.realize_cse(knl, "a", dtype)
-        knl = lp.realize_cse(knl, "b", dtype)
+        knl = lp.add_prefetch(knl, "a")
+        knl = lp.add_prefetch(knl, "b")
         return knl
 
     def variant_3(knl):
@@ -289,8 +289,8 @@ def test_rank_one(ctx_factory):
         knl = lp.split_dimension(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
-        knl = lp.realize_cse(knl, "a", dtype, ["i_inner"])
-        knl = lp.realize_cse(knl, "b", dtype, ["j_inner"])
+        knl = lp.add_prefetch(knl, "a", ["i_inner"])
+        knl = lp.add_prefetch(knl, "b", ["j_inner"])
         return knl
 
     def variant_4(knl):
@@ -299,8 +299,8 @@ def test_rank_one(ctx_factory):
         knl = lp.split_dimension(knl, "j", 256,
                 outer_tag="g.1", slabs=(0, -1))
 
-        knl = lp.realize_cse(knl, "a", dtype, ["i_inner"])
-        knl = lp.realize_cse(knl, "b", dtype, ["j_inner"])
+        knl = lp.add_prefetch(knl, "a", ["i_inner"])
+        knl = lp.add_prefetch(knl, "b", ["j_inner"])
 
         knl = lp.split_dimension(knl, "i_inner", 16,
                 inner_tag="l.0")

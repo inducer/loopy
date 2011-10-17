@@ -69,8 +69,6 @@ TODO
 
   a <- cse(reduce(stuff))
 
-- reimplement add_prefetch
-
 - user interface for dim length prescription
 
 - How to determine which variables need to be duplicated for ILP?
@@ -89,6 +87,8 @@ TODO
 
 Dealt with
 ^^^^^^^^^^
+
+- reimplement add_prefetch
 
 - Flag, exploit idempotence
 
