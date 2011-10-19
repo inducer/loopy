@@ -94,7 +94,7 @@ def test_axpy(ctx_factory):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = get_suitable_size(ctx)**2
+    n = get_suitable_size(ctx)**3
 
     knl = lp.LoopKernel(ctx.devices[0],
             "[n] -> {[i]: 0<=i<n}",
@@ -111,14 +111,13 @@ def test_axpy(ctx_factory):
                 ],
             name="matmul")
 
-    unroll = 16
+    unroll = 4
     block_size = 256
-    knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0")
-    knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
-    assert knl.get_problems({"n": n})[0] <= 2
+    knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0", slabs=(0, -1))
+    knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0", slabs=(0, -1))
 
-    kernel_gen = (lp.insert_register_prefetches(knl)
-            for knl in lp.generate_loop_schedules(knl))
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
 
     a = cl_random.rand(queue, n, dtype=dtype)
     b = cl_random.rand(queue, n, dtype=dtype)

@@ -503,9 +503,10 @@ class LoopKernel(Record):
 
         if assumptions is None:
             assumptions_space = domain.get_space()
-            assumptions_space = assumptions_space.remove_dims(
+            assumptions_space = assumptions_space.drop_dims(
                     dim_type.set, 0, assumptions_space.dim(dim_type.set))
             assumptions = isl.Set.universe(assumptions_space)
+
         elif isinstance(assumptions, str):
             s = domain.get_space()
             assumptions = isl.BasicSet.read_from_str(domain.get_ctx(),

@@ -149,6 +149,8 @@ def generate_bounds_checks(domain, check_inames, implemented_domain):
             .coalesce()
             .get_basic_sets())
 
+    domain_bset = domain_bset.remove_redundancies()
+
     return filter_necessary_constraints(
             implemented_domain, domain_bset.get_constraints())
 
