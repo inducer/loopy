@@ -109,19 +109,19 @@ def test_axpy(ctx_factory):
                 lp.ArrayArg("z", dtype, shape="n,"),
                 lp.ScalarArg("n", np.int32, approximately=n),
                 ],
-            name="matmul")
+            name="matmul", assumptions="n>=4096")
 
     unroll = 4
     block_size = 256
-    knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0", slabs=(0, -1))
-    knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0", slabs=(0, -1))
+    knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0", slabs=(0, 1))
+    knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
 
     a = cl_random.rand(queue, n, dtype=dtype)
     b = cl_random.rand(queue, n, dtype=dtype)
-    c = cl_array.empty_like(a)
+    c = cl_array.zeros_like(a)
     refsol = (2*a+3*b).get()
 
     def launcher(kernel, gsize, lsize, check):

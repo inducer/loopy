@@ -32,9 +32,6 @@ def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
 # {{{ conditional-minimizing slab decomposition
 
 def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
-    from loopy.isl_helpers import block_shift_constraint, negate_constraint
-
-    ccm = codegen_state.c_code_mapper
     space = kernel.space
     tag = kernel.iname_to_tag.get(iname)
 
@@ -47,35 +44,79 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
     iname_tp, iname_idx = kernel.iname_to_dim[iname]
 
-    slabs = []
-    if lower_incr:
-        slabs.append(("initial", isl.Set.universe(kernel.space)
-                .add_constraint(lb_cns_orig)
-                .add_constraint(ub_cns_orig)
-                .add_constraint(
-                    negate_constraint(
-                        block_shift_constraint(
-                            lb_cns_orig, iname_tp, iname_idx, -lower_incr)))))
+    constraints = [lb_cns_orig]
+    if lower_incr or upper_incr:
+        bounds = kernel.get_iname_bounds(iname)
 
-    slabs.append(("bulk",
-        (isl.Set.universe(kernel.space)
-            .add_constraint(
-                block_shift_constraint(lb_cns_orig, iname_tp, iname_idx, -lower_incr))
-            .add_constraint(
-                block_shift_constraint(ub_cns_orig, iname_tp, iname_idx, -upper_incr)))))
+        lower_bound_pw_aff_pieces = bounds.lower_bound_pw_aff.coalesce().get_pieces()
+        upper_bound_pw_aff_pieces = bounds.upper_bound_pw_aff.coalesce().get_pieces()
 
-    if upper_incr:
-        slabs.append(("final", isl.Set.universe(kernel.space)
-                .add_constraint(ub_cns_orig)
-                .add_constraint(lb_cns_orig)
-                .add_constraint(
-                    negate_constraint(
-                        block_shift_constraint(
-                            ub_cns_orig, iname_tp, iname_idx, -upper_incr)))))
+        if len(lower_bound_pw_aff_pieces) > 1:
+            raise NotImplementedError("lower bound for slab decomp of '%s' needs "
+                    "conditional/has more than one piece" % iname)
+        if len(upper_bound_pw_aff_pieces) > 1:
+            raise NotImplementedError("upper bound for slab decomp of '%s' needs "
+                    "conditional/has more than one piece" % iname)
 
-    # }}}
+        (_, lower_bound_aff), = lower_bound_pw_aff_pieces
+        (_, upper_bound_aff), = upper_bound_pw_aff_pieces
 
-    return lb_cns_orig, ub_cns_orig, slabs
+        lower_bulk_bound = lb_cns_orig
+        upper_bulk_bound = lb_cns_orig
+
+        from loopy.isl_helpers import iname_rel_aff
+
+        if lower_incr:
+            assert lower_incr > 0
+            lower_slab = ("initial", isl.Set.universe(kernel.space)
+                    .add_constraint(lb_cns_orig)
+                    .add_constraint(ub_cns_orig)
+                    .add_constraint(
+                        isl.Constraint.inequality_from_aff(
+                            iname_rel_aff(kernel.space,
+                                iname, "<", lower_bound_aff+lower_incr))))
+            lower_bulk_bound = (
+                    isl.Constraint.inequality_from_aff(
+                        iname_rel_aff(kernel.space,
+                            iname, ">=", lower_bound_aff+lower_incr)))
+        else:
+            lower_slab = None
+
+        if upper_incr:
+            assert upper_incr > 0
+            upper_slab = ("final", isl.Set.universe(kernel.space)
+                    .add_constraint(lb_cns_orig)
+                    .add_constraint(ub_cns_orig)
+                    .add_constraint(
+                        isl.Constraint.inequality_from_aff(
+                            iname_rel_aff(kernel.space,
+                                iname, ">=", upper_bound_aff-upper_incr))))
+            upper_bulk_bound = (
+                    isl.Constraint.inequality_from_aff(
+                        iname_rel_aff(kernel.space,
+                            iname, "<", upper_bound_aff-upper_incr)))
+        else:
+            lower_slab = None
+
+        slabs = []
+
+        if lower_slab:
+            slabs.append(lower_slab)
+        slabs.append((
+            ("bulk",
+                (isl.Set.universe(kernel.space)
+                    .add_constraint(lower_bulk_bound)
+                    .add_constraint(upper_bulk_bound)))))
+        if upper_slab:
+            slabs.append(upper_slab)
+
+        return slabs
+
+    else:
+        return [("bulk",
+            (isl.Set.universe(kernel.space)
+            .add_constraint(lb_cns_orig)
+            .add_constraint(ub_cns_orig)))]
 
 # }}}
 
@@ -166,7 +207,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
 
     # }}}
 
-    lb_cns_orig, ub_cns_orig, slabs = get_slab_decomposition(
+    slabs = get_slab_decomposition(
             kernel, iname, sched_index, codegen_state)
 
     if other_inames_with_same_tag and len(slabs) > 1:
@@ -202,7 +243,7 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
     iname = kernel.schedule[sched_index].iname
     tag = kernel.iname_to_tag.get(iname)
 
-    lb_cns_orig, ub_cns_orig, slabs = get_slab_decomposition(
+    slabs = get_slab_decomposition(
             kernel, iname, sched_index, codegen_state)
 
     result = []
