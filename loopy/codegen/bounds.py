@@ -86,43 +86,6 @@ def solve_constraint_for_bound(cns, iname):
         from pytools import div_ceil
         return "<", cfm(flatten(div_ceil(rhs+1, -iname_coeff)))
 
-def get_bounds(set, iname, admissible_inames, allow_parameters):
-    """Get an overapproximation of the loop bounds for the variable *iname*,
-    as actual bounds.
-    """
-
-    from warnings import warn
-    warn("deprecated")
-
-    lower, upper, equality = get_bounds_constraints(
-            set, iname, admissible_inames, allow_parameters)
-
-    def do_solve(cns_list, assert_kind):
-        result = []
-        for cns in cns_list:
-            kind, bound = solve_constraint_for_bound(cns, iname)
-            assert kind == assert_kind
-            result.append(bound)
-
-        return result
-
-    lower_bounds = do_solve(lower, ">=")
-    upper_bounds = do_solve(upper, "<")
-    equalities = do_solve(equality, "==")
-
-    def agg_if_more_than_one(descr, agg_func, l):
-        if len(l) == 0:
-            raise ValueError("no %s bound found for '%s'" % (descr, iname))
-        elif len(l) == 1:
-            return l[0]
-        else:
-            return agg_func(l)
-
-    from pymbolic.primitives import Min, Max
-    return (agg_if_more_than_one("lower", Max, lower_bounds),
-            agg_if_more_than_one("upper", Min, upper_bounds),
-            equalities)
-
 # }}}
 
 # {{{ bounds check generator
