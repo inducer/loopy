@@ -82,15 +82,10 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 # {{{ unrolled loops
 
 def generate_unroll_loop(kernel, sched_index, codegen_state):
-    from loopy.isl_helpers import block_shift_constraint
-
     ccm = codegen_state.c_code_mapper
     space = kernel.space
     iname = kernel.schedule[sched_index].iname
     tag = kernel.iname_to_tag.get(iname)
-
-    lower_cns, upper_cns = get_simple_loop_bounds(kernel, sched_index, iname,
-            codegen_state.implemented_domain)
 
     bounds = kernel.get_iname_bounds(iname)
     from loopy.isl_helpers import static_max_of_pw_aff
@@ -101,17 +96,11 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
     lower_bound_pw_aff_pieces = bounds.lower_bound_pw_aff.coalesce().get_pieces()
 
     if len(lower_bound_pw_aff_pieces) > 1:
-        raise NotImplementedError("lower bound for unroll needs conditional/"
-                "has more than one piece")
+        raise NotImplementedError("lower bound for unroll of '%s'"
+                "needs conditional/has more than one piece:\n%s" % (
+                    iname, "\n".join(str(piece) for piece in lower_bound_pw_aff_pieces)))
 
     (_, lower_bound_aff), = lower_bound_pw_aff_pieces
-
-    def generate_idx_eq_slabs():
-        for i in xrange(length):
-            yield (i, isl.Set.universe(kernel.space)
-                    .add_constraint(
-                            block_shift_constraint(
-                                lower_cns, iname, -i, as_equality=True)))
 
     from loopy.kernel import UnrollTag
     if isinstance(tag, UnrollTag):
