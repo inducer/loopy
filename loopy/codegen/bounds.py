@@ -10,17 +10,18 @@ import numpy as np
 # {{{ find bounds from set
 
 def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
+    """May overapproximate."""
     if admissible_inames is not None or not allow_parameters:
         if admissible_inames is None:
-            proj_type = []
+            elim_type = []
         else:
             assert iname in admissible_inames
-            proj_type = [dim_type.set]
+            elim_type = [dim_type.set]
 
         if not allow_parameters:
-            proj_type.append(dim_type.param)
+            elim_type.append(dim_type.param)
 
-        set = set.eliminate_except(admissible_inames, proj_type)
+        set = set.eliminate_except(admissible_inames, elim_type)
 
     basic_sets = set.get_basic_sets()
     if len(basic_sets) > 1:
@@ -42,6 +43,11 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
 
     var_dict = space.get_var_dict()
     iname_tp, iname_idx = var_dict[iname]
+
+
+    from pytools import any
+    if any(cns.is_div_constraint() for cns in bset.get_constraints()):
+        bset = bset.remove_divs()
 
     for cns in bset.get_constraints():
         assert not cns.is_div_constraint()
@@ -107,6 +113,7 @@ def filter_necessary_constraints(implemented_domain, constraints):
             isl.Set.universe(space).add_constraint(cns))]
 
 def generate_bounds_checks(domain, check_inames, implemented_domain):
+    """Will not overapproximate."""
     domain_bset, = (domain
             .eliminate_except(check_inames, [dim_type.set])
             .coalesce()
