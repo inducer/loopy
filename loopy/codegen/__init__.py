@@ -9,68 +9,82 @@ import islpy as isl
 
 # {{{ support code for AST wrapper objects
 
+class GeneratedInstruction(Record):
+    """Objects of this type are wrapped around ASTs upon
+    return from generation calls to collect information about them.
+
+    :ivar implemented_domains: A map from an insn id to a list of
+        implemented domains, with the purpose of checking that
+        each instruction's exact iteration space has been covered.
+    """
+    __slots__ = ["insn_id", "implemented_domain", "ast"]
+
 class GeneratedCode(Record):
     """Objects of this type are wrapped around ASTs upon
     return from generation calls to collect information about them.
-    """
-    __slots__ = ["ast", "num_conditionals"]
 
-def gen_code_block(elements, is_alternatives=False, denest=False):
+    :ivar implemented_domains: A map from an insn id to a list of
+        implemented domains, with the purpose of checking that
+        each instruction's exact iteration space has been covered.
+    """
+    __slots__ = ["ast", "implemented_domains"]
+
+def gen_code_block(elements):
     """
     :param is_alternatives: a :class:`bool` indicating that
         only one of the *elements* will effectively be executed.
     """
 
-    from cgen import Generable, Block
+    from cgen import Block, Comment, Line
 
-    conditional_counts = []
     block_els = []
+    implemented_domains = {}
+
     for el in elements:
         if isinstance(el, GeneratedCode):
-            conditional_counts.append(el.num_conditionals)
-            if isinstance(el.ast, Block) and denest:
+            for insn_id, idoms in el.implemented_domains.iteritems():
+                implemented_domains.setdefault(insn_id, []).extend(idoms)
+
+            if isinstance(el.ast, Block):
                 block_els.extend(el.ast.contents)
             else:
                 block_els.append(el.ast)
-        elif isinstance(el, Generable):
-            block_els.append(el)
-        else:
-            raise ValueError("unidentifiable object in block")
 
-    if is_alternatives:
-        num_conditionals = min(conditional_counts)
-    else:
-        num_conditionals = sum(conditional_counts)
+        elif isinstance(el, Comment):
+            block_els.append(el)
+
+        elif isinstance(el, Line):
+            assert not el.text
+            block_els.append(el)
+
+        elif isinstance(el, GeneratedInstruction):
+            block_els.append(el.ast)
+            implemented_domains.setdefault(el.insn_id, []).append(
+                    el.implemented_domain)
+
+        else:
+            raise ValueError("unrecognized object of type '%s' in block"
+                    % type(el))
 
     if len(block_els) == 1:
         ast, = block_els
     else:
         ast = Block(block_els)
 
-    return GeneratedCode(ast=ast, num_conditionals=num_conditionals)
+    return GeneratedCode(ast=ast, implemented_domains=implemented_domains)
 
 def wrap_in(cls, *args):
     inner = args[-1]
     args = args[:-1]
 
-    from cgen import If, Generable
+    if not isinstance(inner, GeneratedCode):
+        raise ValueError("unrecognized object of type '%s' in block"
+                % type(inner))
 
-    if isinstance(inner, GeneratedCode):
-        num_conditionals = inner.num_conditionals
-        ast = inner.ast
-    elif isinstance(inner, Generable):
-        num_conditionals = 0
-        ast = inner
+    args = args + (inner.ast,)
 
-    args = args + (ast,)
-    ast = cls(*args)
-
-    if isinstance(ast, If):
-        import re
-        cond_joiner_re = re.compile(r"\|\||\&\&")
-        num_conditionals += len(cond_joiner_re.split(ast.condition))
-
-    return GeneratedCode(ast=ast, num_conditionals=num_conditionals)
+    return GeneratedCode(ast=cls(*args),
+            implemented_domains=inner.implemented_domains)
 
 def wrap_in_if(condition_codelets, inner):
     from cgen import If
@@ -86,10 +100,12 @@ def add_comment(cmt, code):
     if cmt is None:
         return code
 
-    from cgen import add_comment, Block
-    block_with_comment = add_comment(cmt, code.ast)
-    assert isinstance(block_with_comment, Block)
-    return gen_code_block(block_with_comment.contents)
+    from cgen import add_comment
+    assert isinstance(code, GeneratedCode)
+
+    return GeneratedCode(
+            ast=add_comment(cmt, code.ast),
+            implemented_domains=code.implemented_domains)
 
 # }}}
 
@@ -109,7 +125,7 @@ class CodeGenerationState(object):
 
     def intersect(self, set):
         return CodeGenerationState(
-                self.implemented_domain.intersect(set),
+                self.implemented_domain & set,
                 self.c_code_mapper)
 
     def fix(self, iname, aff, space):
@@ -157,6 +173,32 @@ def make_initial_assignments(kernel):
         assignments[iname] = pw_aff_to_expr(bounds.lower_bound_pw_aff) + hw_axis_expr
 
     return assignments
+
+# }}}
+
+# {{{ sanity-check for implemented domains of each instruction
+
+def check_implemented_domains(kernel, implemented_domains):
+    for insn_id, idomains in implemented_domains.iteritems():
+        assert idomains
+
+        insn_impl_domain = idomains[0]
+        for idomain in idomains[1:]:
+            insn_impl_domain = insn_impl_domain | idomain
+        insn_impl_domain = insn_impl_domain.coalesce()
+
+        insn = kernel.id_to_insn[insn_id]
+        desired_domain = (kernel.domain
+            .eliminate_except(insn.all_inames(), [isl.dim_type.set]))
+
+        if insn_impl_domain != desired_domain:
+            raise RuntimeError("sanity check failed--implemented and desired "
+                    "domain for insn '%s' do not match\n  implemented: %s\n"
+                    "  desired:%s"
+                    % (insn_id, insn_impl_domain, desired_domain))
+
+    # placate the assert at the call site
+    return True
 
 # }}}
 
@@ -300,6 +342,8 @@ def generate_code(kernel):
             body))
 
     # }}}
+
+    assert check_implemented_domains(kernel, gen_code.implemented_domains)
 
     return str(mod)
 

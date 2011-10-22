@@ -221,13 +221,13 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
         if len(slabs) == 1:
             cmt = None
 
-        new_kernel = kernel.copy(domain=kernel.domain.intersect(slab))
+        new_kernel = kernel.copy(domain=kernel.domain & slab)
         inner = set_up_hw_parallel_loops(
                 new_kernel, sched_index, codegen_state, hw_inames_left)
         result.append(add_comment(cmt, inner))
 
     from loopy.codegen import gen_code_block
-    return gen_code_block(result, is_alternatives=True)
+    return gen_code_block(result)
 
 # }}}
 

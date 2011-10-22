@@ -67,6 +67,7 @@ def generate_ilp_instances(kernel, insn, codegen_state):
 
 def generate_instruction_code(kernel, insn, codegen_state):
     result = []
+    from loopy.codegen import GeneratedInstruction
 
     for ilpi in generate_ilp_instances(kernel, insn, codegen_state):
         ccm = codegen_state.c_code_mapper.copy_and_assign_many(ilpi.assignments)
@@ -80,7 +81,10 @@ def generate_instruction_code(kernel, insn, codegen_state):
                 ccm, kernel.domain, insn.all_inames(), ilpi.implemented_domain,
                 insn_code)
 
-        result.append(insn_code)
+        result.append(GeneratedInstruction(
+            insn_id=insn.id,
+            implemented_domain=ilpi.implemented_domain,
+            ast=insn_code))
 
     from loopy.codegen import gen_code_block
     return gen_code_block(result)

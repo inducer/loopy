@@ -62,9 +62,6 @@ Things to consider
 TODO
 ^^^^
 
-- implemented_domain may end up being smaller than requested in cse
-  evaluations--check that!
-
 - FIXME: Deal with insns losing a seq iname dep in a CSE realization
 
   a <- cse(reduce(stuff))
@@ -87,6 +84,9 @@ TODO
 
 Dealt with
 ^^^^^^^^^^
+
+- implemented_domain may end up being smaller than requested in cse
+  evaluations--check that!
 
 - Allow prioritization of loops in scheduling.
 

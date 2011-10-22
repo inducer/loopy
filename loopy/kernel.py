@@ -590,12 +590,12 @@ class LoopKernel(Record):
 
     @memoize_method
     def get_iname_bounds(self, iname):
-        lower_bound_pw_aff = (self.domain
-                .intersect(self.assumptions)
+        lower_bound_pw_aff = (
+                (self.domain & self.assumptions)
                 .dim_min(self.iname_to_dim[iname][1])
                 .coalesce())
-        upper_bound_pw_aff = (self.domain
-                .intersect(self.assumptions)
+        upper_bound_pw_aff = (
+                (self.domain & self.assumptions)
                 .dim_max(self.iname_to_dim[iname][1])
                 .coalesce())
 
