@@ -113,14 +113,9 @@ class CodeGenerationState(object):
                 self.c_code_mapper)
 
     def fix(self, iname, aff, space):
-        dt, pos = space.get_var_dict()[iname]
-        assert dt == isl.dim_type.set
-
-        zero = isl.Aff.zero_on_domain(space)
-
-        from islpy import align_spaces
-        iname_plus_lb_aff = align_spaces(aff, zero).add_coefficient(
-                isl.dim_type.in_, pos, -1)
+        from loopy.isl_helpers import iname_rel_aff
+        iname_plus_lb_aff = iname_rel_aff(
+                space, iname, "==", aff)
 
         from loopy.symbolic import pw_aff_to_expr
         cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)

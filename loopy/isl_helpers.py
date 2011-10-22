@@ -127,6 +127,29 @@ def make_slab(space, iname, start, stop):
 
 
 
+def iname_rel_aff(space, iname, rel, aff):
+    """*aff*'s domain space is allowed to not match *space*."""
+
+    dt, pos = space.get_var_dict()[iname]
+    assert dt == isl.dim_type.set
+
+    from islpy import align_spaces
+    aff = align_spaces(aff, isl.Aff.zero_on_domain(space))
+
+    if rel in ["==", "<="]:
+        return aff.add_coefficient(isl.dim_type.in_, pos, -1)
+    elif rel == ">=":
+        return aff.neg().add_coefficient(isl.dim_type.in_, pos, 1)
+    elif rel == "<":
+        return (aff-1).add_coefficient(isl.dim_type.in_, pos, -1)
+    elif rel == ">":
+        return (aff+1).neg().add_coefficient(isl.dim_type.in_, pos, 1)
+    else:
+        raise ValueError("unknown value of 'rel': %s" % rel)
+
+
+
+
 def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what):
     pieces = pw_aff.get_pieces()
     if len(pieces) == 1:
