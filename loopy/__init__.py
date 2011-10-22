@@ -71,7 +71,8 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
         name_dim_type, name_idx = space.get_var_dict()[iname]
         return (s
                 .intersect(inner_constraint_set)
-                .project_out(name_dim_type, name_idx, 1))
+                .eliminate(name_dim_type, name_idx, 1)
+                .remove_dims(name_dim_type, name_idx, 1))
 
     new_domain = process_set(kernel.domain)
 
