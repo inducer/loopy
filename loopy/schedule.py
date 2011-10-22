@@ -600,7 +600,7 @@ def assign_automatic_axes(kernel, only_axis_0=True):
 
 # {{{ scheduling algorithm
 
-def generate_loop_schedules_internal(kernel, schedule=[]):
+def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
     scheduled_insn_ids = set(sched_item.insn_id for sched_item in schedule
@@ -682,7 +682,7 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
             )
 
     if available_loops:
-        found_something_useful = False
+        useful_loops = []
 
         for iname in available_loops:
             # {{{ determine if that gets us closer to being able to scheduling an insn
@@ -699,16 +699,26 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
             if not useful:
                 continue
 
-            found_something_useful = True
+            useful_loops.append(iname)
 
             # }}}
 
+        useful_and_desired = set(useful_loops) & set(loop_priority)
+        if useful_and_desired:
+            # restrict to the first ('highest-priority') loop that's useful
+
+            for iname in loop_priority:
+                if iname in useful_and_desired:
+                    useful_loops = [iname]
+                    break
+
+        for iname in useful_loops:
             new_schedule = schedule + [EnterLoop(iname=iname)]
             for sub_sched in generate_loop_schedules_internal(
-                    kernel, new_schedule):
+                    kernel, loop_priority, new_schedule):
                 yield sub_sched
 
-        if found_something_useful:
+        if useful_loops:
             return
 
     # }}}
@@ -735,7 +745,8 @@ def generate_loop_schedules_internal(kernel, schedule=[]):
     else:
         # if not done, but made some progress--try from the top
         if made_progress:
-            for sub_sched in generate_loop_schedules_internal(kernel, schedule):
+            for sub_sched in generate_loop_schedules_internal(
+                    kernel, loop_priority, schedule):
                 yield sub_sched
 
 # }}}
@@ -843,7 +854,7 @@ def insert_barriers(kernel, schedule, level=0):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel):
+def generate_loop_schedules(kernel, loop_priority=[]):
     kernel = realize_reduction(kernel)
 
     # {{{ check that all CSEs have been realized
@@ -867,7 +878,7 @@ def generate_loop_schedules(kernel):
 
     schedule_count = 0
 
-    for gen_sched in generate_loop_schedules_internal(kernel):
+    for gen_sched in generate_loop_schedules_internal(kernel, loop_priority):
         gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
         assert not owed_barriers
 

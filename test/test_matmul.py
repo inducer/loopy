@@ -131,7 +131,8 @@ def test_axpy(ctx_factory):
     refsol = (2*a+3*b).get()
 
     for variant in [variant_cpu, variant_gpu]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl))
+        kernel_gen = lp.generate_loop_schedules(variant(knl),
+                loop_priority=["i_inner_outer"])
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
 
         def launcher(kernel, gsize, lsize, check):

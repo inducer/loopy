@@ -62,8 +62,6 @@ Things to consider
 TODO
 ^^^^
 
-- Make axpy better.
-
 - implemented_domain may end up being smaller than requested in cse
   evaluations--check that!
 
@@ -89,6 +87,10 @@ TODO
 
 Dealt with
 ^^^^^^^^^^
+
+- Allow prioritization of loops in scheduling.
+
+- Make axpy better.
 
 - Screwy lower bounds in slab decomposition
 
