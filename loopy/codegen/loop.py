@@ -129,19 +129,15 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
     tag = kernel.iname_to_tag.get(iname)
 
     bounds = kernel.get_iname_bounds(iname)
-    from loopy.isl_helpers import static_max_of_pw_aff
+    from loopy.isl_helpers import (
+            static_max_of_pw_aff, static_value_of_pw_aff)
     from loopy.symbolic import pw_aff_to_expr
 
     length = int(pw_aff_to_expr(
         static_max_of_pw_aff(bounds.size, constants_only=True)))
-    lower_bound_pw_aff_pieces = bounds.lower_bound_pw_aff.coalesce().get_pieces()
-
-    if len(lower_bound_pw_aff_pieces) > 1:
-        raise NotImplementedError("lower bound for unroll of '%s'"
-                "needs conditional/has more than one piece:\n%s" % (
-                    iname, "\n".join(str(piece) for piece in lower_bound_pw_aff_pieces)))
-
-    (_, lower_bound_aff), = lower_bound_pw_aff_pieces
+    lower_bound_aff = static_value_of_pw_aff(
+            bounds.lower_bound_pw_aff.coalesce(),
+            constants_only=False)
 
     from loopy.kernel import UnrollTag
     if isinstance(tag, UnrollTag):

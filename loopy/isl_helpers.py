@@ -156,6 +156,7 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what):
         return pieces[0][1]
 
     agg_domain = pw_aff.get_aggregate_domain()
+
     for set, candidate_aff in pieces:
         if constants_only and not candidate_aff.is_cst():
             continue
@@ -176,6 +177,10 @@ def static_min_of_pw_aff(pw_aff, constants_only):
 def static_max_of_pw_aff(pw_aff, constants_only):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.le_set,
             "maximum")
+
+def static_value_of_pw_aff(pw_aff, constants_only):
+    return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.eq_set,
+            "value")
 
 
 
