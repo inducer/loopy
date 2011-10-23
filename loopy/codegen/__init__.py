@@ -59,8 +59,9 @@ def gen_code_block(elements):
 
         elif isinstance(el, GeneratedInstruction):
             block_els.append(el.ast)
-            implemented_domains.setdefault(el.insn_id, []).append(
-                    el.implemented_domain)
+            if el.implemented_domain is not None:
+                implemented_domains.setdefault(el.insn_id, []).append(
+                        el.implemented_domain)
 
         else:
             raise ValueError("unrecognized object of type '%s' in block"
