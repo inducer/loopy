@@ -162,7 +162,7 @@ def test_plain_matrix_mul(ctx_factory):
     knl = lp.LoopKernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = a[i, k]*b[k, j]"
+                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.ArrayArg("a", dtype, shape=(n, n), order=order),
@@ -172,16 +172,15 @@ def test_plain_matrix_mul(ctx_factory):
             name="matmul")
 
     knl = lp.split_dimension(knl, "i", 16,
-            outer_tag="g.0", inner_tag="l.1", no_slabs=True)
+            outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16,
-            outer_tag="g.1", inner_tag="l.0", no_slabs=True)
-    knl = lp.split_dimension(knl, "k", 16, no_slabs=True)
+            outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
-    assert knl.get_problems({})[0] <= 2
 
-    kernel_gen = (lp.insert_register_prefetches(knl)
-            for knl in lp.generate_loop_schedules(knl))
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, {}, kill_level_min=5)
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -203,7 +202,7 @@ def test_plain_matrix_mul(ctx_factory):
 
 
 
-def test_plain_matrix_mul_new_ui(ctx_factory):
+def test_variable_size_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
@@ -294,6 +293,9 @@ def test_rank_one(ctx_factory):
         return knl
 
     def variant_3(knl):
+        # Throws an error--doesn't use all hardware axis.
+        # Probably the right thing to do.
+
         knl = lp.split_dimension(knl, "i", 16,
                 outer_tag="g.0", inner_tag="l.0")
         knl = lp.split_dimension(knl, "j", 16,
@@ -305,9 +307,9 @@ def test_rank_one(ctx_factory):
 
     def variant_4(knl):
         knl = lp.split_dimension(knl, "i", 256,
-                outer_tag="g.0", slabs=(0, -1))
+                outer_tag="g.0", slabs=(0, 1))
         knl = lp.split_dimension(knl, "j", 256,
-                outer_tag="g.1", slabs=(0, -1))
+                outer_tag="g.1", slabs=(0, 1))
 
         knl = lp.add_prefetch(knl, "a", ["i_inner"])
         knl = lp.add_prefetch(knl, "b", ["j_inner"])
@@ -323,8 +325,8 @@ def test_rank_one(ctx_factory):
                 outer_tag="l.1", inner_tag="l.0")
         return knl
 
-    #for variant in [variant_1, variant_2, variant_3]:
-    for variant in [variant_4]:
+    for variant in [variant_1, variant_2, variant_4]:
+
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
 
