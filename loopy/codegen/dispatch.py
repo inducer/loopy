@@ -53,8 +53,11 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
         return func(kernel, sched_index, codegen_state)
 
     elif isinstance(sched_item, Barrier):
+        from loopy.codegen import GeneratedInstruction
         from cgen import Statement as S
-        return S("barrier(CLK_LOCAL_MEM_FENCE)")
+        return GeneratedInstruction(
+                ast=S("barrier(CLK_LOCAL_MEM_FENCE)"),
+                implemented_domain=None)
 
     elif isinstance(sched_item, RunInstruction):
         insn = kernel.id_to_insn[sched_item.insn_id]
