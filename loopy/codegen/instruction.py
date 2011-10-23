@@ -77,13 +77,13 @@ def generate_instruction_code(kernel, insn, codegen_state):
         from cgen import Assign
         insn_code = Assign(ccm(insn.assignee), ccm(insn.expression))
         from loopy.codegen.bounds import wrap_in_bounds_checks
-        insn_code = wrap_in_bounds_checks(
+        insn_code, impl_domain = wrap_in_bounds_checks(
                 ccm, kernel.domain, insn.all_inames(), ilpi.implemented_domain,
                 insn_code)
 
         result.append(GeneratedInstruction(
             insn_id=insn.id,
-            implemented_domain=ilpi.implemented_domain,
+            implemented_domain=impl_domain,
             ast=insn_code))
 
     from loopy.codegen import gen_code_block

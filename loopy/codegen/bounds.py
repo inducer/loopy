@@ -124,16 +124,23 @@ def generate_bounds_checks(domain, check_inames, implemented_domain):
     return filter_necessary_constraints(
             implemented_domain, domain_bset.get_constraints())
 
-def generate_bounds_checks_code(ccm, domain, check_inames, implemented_domain):
-    return [constraint_to_code(ccm, cns) for cns in 
+def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
+    bounds_checks = generate_bounds_checks(
+            domain, check_inames,
+            implemented_domain)
+
+    new_implemented_domain = implemented_domain & (
+            isl.Set.universe(domain.get_space()).add_constraints(bounds_checks))
+
+    condition_codelets = [
+            constraint_to_code(ccm, cns) for cns in
             generate_bounds_checks(domain, check_inames, implemented_domain)]
 
-def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
-    from loopy.codegen import wrap_in_if
-    return wrap_in_if(
-            generate_bounds_checks_code(ccm, domain, check_inames,
-                implemented_domain),
-            stmt)
+    if condition_codelets:
+        from cgen import If
+        stmt = If("\n&& ".join(condition_codelets), stmt)
+
+    return stmt, new_implemented_domain
 
 def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
     # FIXME add admissible vars
