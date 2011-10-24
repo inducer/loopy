@@ -22,18 +22,21 @@ class ILPInstance(Record):
                 ilp_key=ilp_key)
 
     def fix(self, iname, aff):
-        dt, pos = aff.get_space().get_var_dict()[iname]
-        iname_plus_lb_aff = aff.add_coefficient(
-                dt, pos, -1)
+        from loopy.isl_helpers import iname_rel_aff
+        iname_plus_lb_aff = iname_rel_aff(
+                self.implemented_domain.get_space(), iname, "==", aff)
 
         from loopy.symbolic import pw_aff_to_expr
-        cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
         expr = pw_aff_to_expr(aff)
 
+        cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
+
+        new_assignments = self.assignments.copy()
+        new_assignments[iname] = expr
         return ILPInstance(
                 implemented_domain=self.implemented_domain.add_constraint(cns),
-                c_code_mapper=self.c_code_mapper.copy_and_assign(iname, expr),
-                ilp_key=self.ilp_key | frozenset([(iname, expr)]))
+                assignments=new_assignments,
+                ilp_key=self.ilp_key | set([(iname, expr)]))
 
 # }}}
 
@@ -55,8 +58,26 @@ def generate_ilp_instances(kernel, insn, codegen_state):
         if not isinstance(tag, IlpTag):
             continue
 
-        from warnings import warn
-        warn("implement ILP instance generation")
+
+        bounds = kernel.get_iname_bounds(iname)
+
+        from loopy.isl_helpers import (
+                static_max_of_pw_aff, static_value_of_pw_aff)
+        from loopy.symbolic import pw_aff_to_expr
+
+        length = int(pw_aff_to_expr(
+            static_max_of_pw_aff(bounds.size, constants_only=True)))
+        lower_bound_aff = static_value_of_pw_aff(
+                bounds.lower_bound_pw_aff.coalesce(),
+                constants_only=False)
+
+        new_result = []
+        for ilpi in result:
+            for i in range(length):
+                idx_aff = lower_bound_aff + i
+                new_result.append(ilpi.fix(iname, idx_aff))
+
+        result = new_result
 
     # }}}
 

@@ -131,8 +131,7 @@ class CodeGenerationState(object):
 
     def fix(self, iname, aff, space):
         from loopy.isl_helpers import iname_rel_aff
-        iname_plus_lb_aff = iname_rel_aff(
-                space, iname, "==", aff)
+        iname_plus_lb_aff = iname_rel_aff(space, iname, "==", aff)
 
         from loopy.symbolic import pw_aff_to_expr
         cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)

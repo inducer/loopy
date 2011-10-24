@@ -129,6 +129,7 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
     tag = kernel.iname_to_tag.get(iname)
 
     bounds = kernel.get_iname_bounds(iname)
+
     from loopy.isl_helpers import (
             static_max_of_pw_aff, static_value_of_pw_aff)
     from loopy.symbolic import pw_aff_to_expr
