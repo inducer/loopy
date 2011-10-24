@@ -176,69 +176,6 @@ def make_initial_assignments(kernel):
 
 # }}}
 
-# {{{ sanity-check for implemented domains of each instruction
-
-def check_implemented_domains(kernel, implemented_domains):
-    from islpy import dim_type
-
-    parameter_inames = set(
-            kernel.domain.get_dim_name(dim_type.param, i)
-            for i in range(kernel.domain.dim(dim_type.param)))
-
-    from islpy import align_spaces
-    assumptions = align_spaces(kernel.assumptions, kernel.domain)
-
-    for insn_id, idomains in implemented_domains.iteritems():
-        insn = kernel.id_to_insn[insn_id]
-
-        assert idomains
-
-        insn_impl_domain = idomains[0]
-        for idomain in idomains[1:]:
-            insn_impl_domain = insn_impl_domain | idomain
-        insn_impl_domain = (
-                (insn_impl_domain & assumptions)
-                .project_out_except(insn.all_inames(), [dim_type.set]))
-
-        desired_domain = ((kernel.domain & assumptions)
-            .project_out_except(insn.all_inames(), [dim_type.set]))
-
-        if insn_impl_domain != desired_domain:
-            i_minus_d = insn_impl_domain - desired_domain
-            d_minus_i = desired_domain - insn_impl_domain
-
-            lines = []
-            for kind, diff_set in [
-                    ("implemented, but not desired", i_minus_d),
-                    ("desired, but not implemented", d_minus_i)]:
-                diff_set = diff_set.coalesce()
-                pt = diff_set.sample_point()
-                if pt.is_void():
-                    continue
-
-                #pt_set = isl.Set.from_point(pt)
-                #lines.append("point implemented: %s" % (pt_set <= insn_impl_domain))
-                #lines.append("point desired: %s" % (pt_set <= desired_domain))
-
-                point_axes = []
-                for iname in insn.all_inames() | parameter_inames:
-                    tp, dim = kernel.iname_to_dim[iname]
-                    point_axes.append("%s=%d" % (iname, pt.get_coordinate(tp, dim)))
-
-                lines.append(
-                        "sample point %s: %s" % (kind, ", ".join(point_axes)))
-
-            raise RuntimeError("sanity check failed--implemented and desired "
-                    "domain for instruction '%s' do not match\n\n"
-                    "implemented: %s\n\n"
-                    "desired:%s\n\n%s"
-                    % (insn_id, insn_impl_domain, desired_domain, "\n".join(lines)))
-
-    # placate the assert at the call site
-    return True
-
-# }}}
-
 # {{{ main code generation entrypoint
 
 def generate_code(kernel):
@@ -380,6 +317,7 @@ def generate_code(kernel):
 
     # }}}
 
+    from loopy.check import check_implemented_domains
     assert check_implemented_domains(kernel, gen_code.implemented_domains)
 
     return str(mod)
