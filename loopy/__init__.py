@@ -204,7 +204,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     target_var_name = kernel.make_unique_var_name(cse_tag)
 
-    from loopy.kernel import (LocalIndexTagBase, GroupIndexTag)
+    from loopy.kernel import (LocalIndexTagBase, GroupIndexTag, IlpTag)
     target_var_is_local = any(
             isinstance(tag, LocalIndexTagBase)
             for tag in dup_iname_to_tag.itervalues())
@@ -249,17 +249,34 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
                 kind = "l"
             elif isinstance(tag, GroupIndexTag):
                 kind = "g"
+            elif isinstance(tag, IlpTag):
+                kind = "i"
             else:
                 kind = "o"
 
+            if iname not in duplicate_inames and iname in dependencies:
+                if (
+                        (target_var_is_local and kind in "li")
+                        or
+                        (not target_var_is_local and kind in "i")):
+                    raise RuntimeError(
+                            "When realizing CSE with tag '%s', encountered iname "
+                            "'%s' which is depended upon by the CSE and tagged "
+                            "'%s', but not duplicated. The CSE would "
+                            "inherit this iname, which would lead to a write race. "
+                            "A likely solution of this problem is to also duplicate this "
+                            "iname."
+                            % (expr.prefix, iname, tag))
+
             if iname in duplicate_inames and kind == "g":
-                raise RuntimeError("duplicating inames into "
+                raise RuntimeError("duplicating the iname '%s' into "
                         "group index axes is not helpful, as they cannot "
-                        "collaborate in computing a local variable")
+                        "collaborate in computing a local variable"
+                        %iname)
 
             if iname in dependencies:
                 if not target_var_is_local and iname in duplicate_inames and kind == "l":
-                    raise RuntimeError("invalid: parallelized "
+                    raise RuntimeError("invalid: hardware-parallelized "
                             "fetch into private variable")
 
                 # otherwise: all happy
