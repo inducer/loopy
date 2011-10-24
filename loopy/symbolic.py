@@ -73,8 +73,8 @@ class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
 
 class StringifyMapper(StringifyMapperBase):
     def map_reduction(self, expr, prec):
-        return "reduce(%s, [%s], %s, tag=%s)" % (
-                expr.operation, ", ".join(expr.inames), expr.expr, expr.tag)
+        return "reduce(%s, [%s], %s)" % (
+                expr.operation, ", ".join(expr.inames), expr.expr)
 
 class DependencyMapper(DependencyMapperBase):
     def map_reduction(self, expr):
