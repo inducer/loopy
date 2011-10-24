@@ -60,7 +60,7 @@ def check_for_inactive_iname_access(kernel):
     depmap = DependencyMapper()
 
     for insn in kernel.instructions:
-        expression_indices = depmap(insn.assignee.index)
+        expression_indices = depmap(insn.expression)
         expression_inames = expression_indices & kernel.all_inames()
 
         if not expression_inames <= insn.all_inames():
