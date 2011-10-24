@@ -741,7 +741,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
         last_entered_loop = active_inames[-1]
     else:
         last_entered_loop = None
-    active_inames = set(active_inames)
+    active_inames_set = set(active_inames)
 
     from loopy.kernel import ParallelTag
     parallel_inames = set(
@@ -759,30 +759,43 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
     for insn_id in unscheduled_insn_ids:
         insn = kernel.id_to_insn[insn_id]
 
+        schedule_now = set(insn.insn_deps) <= scheduled_insn_ids
+
         if insn.idempotent == True:
             # If insn is idempotent, it may be placed inside a more deeply
             # nested loop without harm.
 
-            iname_deps_satisfied = (
-                    insn.all_inames() - parallel_inames
-                    <=
-                    active_inames - parallel_inames)
+            # But if it can be scheduled on the way *out* of the currently
+            # active loops, now is not the right moment.
+
+            schedulable_at_loop_levels = []
+
+            for active_loop_count in xrange(len(active_inames), -1, -1):
+                outer_active_inames = set(active_inames[:active_loop_count])
+                if (
+                        insn.all_inames() - parallel_inames
+                        <=
+                        outer_active_inames - parallel_inames):
+
+                    schedulable_at_loop_levels.append(active_loop_count)
+
+            if schedulable_at_loop_levels != [len(active_inames)]:
+                schedule_now = False
 
         elif insn.idempotent == False:
             # If insn is not idempotent, we must insist that it is placed inside
             # the exactly correct set of loops.
 
-            iname_deps_satisfied = (
+            schedule_now = schedule_now and (
                     insn.all_inames() - parallel_inames
                     ==
-                    active_inames - parallel_inames)
+                    active_inames_set - parallel_inames)
 
         else:
             raise RuntimeError("instruction '%s' has undetermined idempotence"
                     % insn.id)
 
-        if (iname_deps_satisfied
-                and set(insn.insn_deps) <= scheduled_insn_ids):
+        if schedule_now:
             scheduled_insn_ids.add(insn.id)
             schedule = schedule + [RunInstruction(insn_id=insn.id)]
             made_progress = True
@@ -808,7 +821,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
 
             useful = False
 
-            hypothetical_active_loops = active_inames | set([iname])
+            hypothetical_active_loops = active_inames_set | set([iname])
             for insn_id in unscheduled_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
                 if hypothetical_active_loops <= insn.all_inames():
