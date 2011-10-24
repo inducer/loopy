@@ -12,7 +12,7 @@ def get_admissible_conditional_inames_for(kernel, sched_index):
     inames if there is a barrier nested somewhere within.
     """
 
-    from loopy.kernel import LocalIndexTag, ParallelTag
+    from loopy.kernel import LocalIndexTag, HardwareParallelTag
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
     result = find_active_inames_at(kernel, sched_index)
@@ -20,7 +20,7 @@ def get_admissible_conditional_inames_for(kernel, sched_index):
     has_barrier = has_barrier_within(kernel, sched_index)
 
     for iname, tag in kernel.iname_to_tag.iteritems():
-        if isinstance(tag, ParallelTag):
+        if isinstance(tag, HardwareParallelTag):
             if not has_barrier or not isinstance(tag, LocalIndexTag):
                 result.add(iname)
 
