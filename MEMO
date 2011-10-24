@@ -68,13 +68,11 @@ TODO
 
 - user interface for dim length prescription
 
-- How to determine which variables need to be duplicated for ILP?
-  -> Reduction
-  -> CSEs?
 
 - Sharing of checks across ILP instances
 
 - Slab decomposition for ILP
+  -> I don't think that's possible.
 
 - Better for loop bound generation
   -> Try a triangular loop
@@ -84,6 +82,9 @@ TODO
 
 Dealt with
 ^^^^^^^^^^
+
+- Which variables need to be duplicated for ILP?
+  -> Only reduction
 
 - implemented_domain may end up being smaller than requested in cse
   evaluations--check that!
