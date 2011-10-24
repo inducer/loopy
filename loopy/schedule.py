@@ -25,18 +25,31 @@ class Barrier(Record):
 
 # {{{ rewrite reduction to imperative form
 
-def realize_reduction(kernel, inames=None, reduction_tag=None):
+def realize_reduction(kernel):
     new_insns = []
     new_temporary_variables = kernel.temporary_variables.copy()
+
+    from loopy.kernel import IlpTag
 
     def map_reduction(expr, rec):
         sub_expr = rec(expr.expr)
 
-        if reduction_tag is not None and expr.tag != reduction_tag:
-            return
+        # {{{ see if this reduction is nested inside some ILP loops
 
-        if inames is not None and set(inames) != set(expr.inames):
-            return
+        ilp_inames = [iname
+                for iname in insn.all_inames()
+                if isinstance(kernel.iname_to_tag[iname], IlpTag)]
+
+        from loopy.isl_helpers import static_max_of_pw_aff
+
+        ilp_iname_lengths = []
+        for iname in ilp_inames:
+            bounds = kernel.get_iname_bounds(iname)
+
+            ilp_iname_lengths.append(
+                static_max_of_pw_aff(bounds.size, constants_only=True))
+
+        # }}}
 
         from pymbolic import var
 
@@ -44,13 +57,17 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
                 extra_used_vars=set(tv for tv in new_temporary_variables))
         target_var = var(target_var_name)
 
+        if ilp_inames:
+            target_var = target_var[
+                    tuple(var(ilp_iname) for ilp_iname in ilp_inames)]
+
         from loopy.kernel import Instruction
 
         from loopy.kernel import TemporaryVariable
         new_temporary_variables[target_var_name] = TemporaryVariable(
                 name=target_var_name,
                 dtype=expr.operation.dtype,
-                shape=(),
+                shape=tuple(ilp_iname_lengths),
                 is_local=False)
 
         init_insn = Instruction(
@@ -73,7 +90,6 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
         new_insns.append(reduction_insn)
 
         new_insn_insn_deps.append(reduction_insn.id)
-        new_insn_removed_inames.extend(expr.inames)
 
         return target_var
 
@@ -82,15 +98,15 @@ def realize_reduction(kernel, inames=None, reduction_tag=None):
 
     for insn in kernel.instructions:
         new_insn_insn_deps = []
-        new_insn_removed_inames = []
 
         new_expression = cb_mapper(insn.expression)
 
-        new_insns.append(
-                insn.copy(
+        new_insn = insn.copy(
                     expression=new_expression,
                     insn_deps=insn.insn_deps
-                        + new_insn_insn_deps))
+                        + new_insn_insn_deps)
+
+        new_insns.append(new_insn)
 
     return kernel.copy(
             instructions=new_insns,
