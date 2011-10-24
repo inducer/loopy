@@ -271,7 +271,7 @@ def generate_code(kernel):
         """),
         Line()])
 
-    # {{{ build lmem array declarators for prefetches
+    # {{{ build lmem array declarators for temporary variables
 
     for tv in kernel.temporary_variables.itervalues():
         temp_var_decl = POD(tv.dtype, tv.name)

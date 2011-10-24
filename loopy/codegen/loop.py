@@ -1,11 +1,8 @@
 from __future__ import division
 
-import numpy as np
-from loopy.codegen import CodeGenerationState, gen_code_block
-from pytools import Record
+from loopy.codegen import gen_code_block
 import islpy as isl
-from islpy import dim_type
-from loopy.codegen.dispatch import build_loop_nest
+from loopy.codegen.control import build_loop_nest
 
 
 
@@ -39,8 +36,6 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
             codegen_state.implemented_domain)
 
     lower_incr, upper_incr = kernel.iname_slab_increments.get(iname, (0, 0))
-
-    # {{{ build slabs
 
     iname_tp, iname_idx = kernel.iname_to_dim[iname]
 
@@ -167,7 +162,6 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
                 for iname in kernel.all_inames()
                 if isinstance(kernel.iname_to_tag.get(iname), HardwareParallelTag)]
 
-    from loopy.codegen.dispatch import build_loop_nest
     if not hw_inames_left:
         return build_loop_nest(kernel, sched_index, codegen_state)
 
