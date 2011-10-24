@@ -109,8 +109,11 @@ class FunctionToPrimitiveMapper(IdentityMapper):
                     raise TypeError("invalid 'reduce' calling sequence")
             else:
                 from loopy.kernel import parse_reduction_op
-                if (parse_reduction_op(expr.function.name) 
-                        and len(expr.parameters) == 2):
+                if parse_reduction_op(expr.function.name):
+                    if len(expr.parameters) != 2:
+                        raise RuntimeError("invalid invocation of "
+                                "reduction operation '%s'" % expr.function.name)
+
                     operation = expr.function
                     inames, red_expr = expr.parameters
                 else:
