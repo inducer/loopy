@@ -6,10 +6,7 @@ For writeup:
 TODO: Reimplement forced lengths
 TODO: Try, fix reg. prefetch (DG example) / CSEs
   ILP and reg. prefetch interact!
-TODO: Functions
-TODO: ILP arrays
 FIXME: support non-reductive dimensions (what did I mean here?)
-FIXME: write names should be assigned during scheduling
 FIXME: screwy lower bounds in ILP
 FIXME: Leading syncthreads elimination
 

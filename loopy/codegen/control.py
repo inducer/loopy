@@ -80,7 +80,7 @@ def remove_inames_for_shared_hw_axes(kernel, cond_inames):
     the other inames as well.)
     """
 
-    tag_key_use_count = {}
+    tag_key_uses = {}
 
     from loopy.kernel import HardwareParallelTag
 
@@ -88,11 +88,11 @@ def remove_inames_for_shared_hw_axes(kernel, cond_inames):
         tag = kernel.iname_to_tag.get(iname)
 
         if isinstance(tag, HardwareParallelTag):
-            tag_key_use_count[tag.key] = tag_key_use_count.get(tag.key, 0) + 1
+            tag_key_uses.setdefault(tag.key, []).append(iname)
 
     multi_use_keys = set(
-            key for key, count in tag_key_use_count.iteritems()
-            if count > 1)
+            key for key, user_inames in tag_key_uses.iteritems()
+            if len(user_inames) > 1)
 
     multi_use_inames = set()
     for iname in cond_inames:
@@ -150,8 +150,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     # {{{ pass 3: greedily group schedule items that share admissible inames
 
-    def build_insn_group(sched_indices_and_cond_inames, codegen_state,
-            min_iname_count=1):
+    def build_insn_group(sched_indices_and_cond_inames, codegen_state, done_group_lengths=set()):
         # min_iname_count serves to prevent infinite recursion by imposing a
         # bigger and bigger minimum size on the group of shared inames found.
 
@@ -167,41 +166,46 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
         current_iname_set = cond_inames
 
-        idx = 1
-        while (len(current_iname_set) >= min_iname_count
-                and idx < len(sched_indices_and_cond_inames)):
-            other_sched_index, other_cond_inames = sched_indices_and_cond_inames[idx]
-            new_iname_set = current_iname_set & other_cond_inames
+        found_hoists = []
 
-            if len(new_iname_set) >= min_iname_count:
-                idx += 1
-                current_iname_set = new_iname_set
-            else:
-                break
+        candidate_group_length = 1
+        while candidate_group_length <= len(sched_indices_and_cond_inames):
+            if candidate_group_length in done_group_lengths:
+                candidate_group_length += 1
+                continue
 
-        # }}}
+            other_sched_index, other_cond_inames = sched_indices_and_cond_inames[candidate_group_length-1]
+            current_iname_set = current_iname_set & other_cond_inames
 
-        if len(current_iname_set) >= min_iname_count:
-            # Success: found a big enough group of inames for a conditional.
-            # See if there are bounds checks available for that set.
-
-            # {{{ see which inames were actually used in group
+            # {{{ see which inames are actually used in group
 
             # And only generate conditionals for those.
             from loopy.schedule import find_used_inames_within
             used_inames = set()
-            for subsched_index, _ in sched_indices_and_cond_inames[0:idx]:
+            for subsched_index, _ in sched_indices_and_cond_inames[0:candidate_group_length]:
                 used_inames |= find_used_inames_within(kernel, subsched_index)
 
             # }}}
 
             from loopy.codegen.bounds import generate_bounds_checks
+            only_unshared_inames = remove_inames_for_shared_hw_axes(kernel,
+                    current_iname_set & used_inames)
+
             bounds_checks = generate_bounds_checks(kernel.domain,
                     remove_inames_for_shared_hw_axes(kernel,
-                        current_iname_set & used_inames),
+                        only_unshared_inames),
                     codegen_state.implemented_domain)
-        else:
-            bounds_checks = []
+
+            if bounds_checks or candidate_group_length == 1:
+                # length-1 must always be an option to reach the recursion base case below
+                found_hoists.append((candidate_group_length, bounds_checks))
+
+            candidate_group_length += 1
+
+        # }}}
+
+        # pick largest such group
+        group_length, bounds_checks = max(found_hoists)
 
         if bounds_checks:
             check_set = isl.BasicSet.universe(kernel.space)
@@ -212,13 +216,15 @@ def build_loop_nest(kernel, sched_index, codegen_state):
         else:
             new_codegen_state = codegen_state
 
-        if idx == 1:
+        if group_length == 1:
             # group only contains starting schedule item
             result = [generate_code_for_sched_index(kernel, sched_index, new_codegen_state)]
         else:
             # recurse with a bigger minimum iname count
-            result = build_insn_group(sched_indices_and_cond_inames[0:idx],
-                    new_codegen_state, len(current_iname_set)+1)
+            result = build_insn_group(
+                    sched_indices_and_cond_inames[0:group_length],
+                    new_codegen_state,
+                    done_group_lengths=done_group_lengths | set([group_length]))
 
         if bounds_checks:
             from loopy.codegen import wrap_in_if
@@ -228,7 +234,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
                     gen_code_block(result))]
 
         return result + build_insn_group(
-                sched_indices_and_cond_inames[idx:], codegen_state)
+                sched_indices_and_cond_inames[group_length:], codegen_state)
 
     # }}}
 
