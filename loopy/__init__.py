@@ -15,11 +15,6 @@ import numpy as np
 
 
 
-# TODO list moved to MEMO in root
-
-
-
-
 class LoopyAdvisory(UserWarning):
     pass
 
@@ -284,7 +279,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
             # the iname is *not* a dependency of the fetch expression
             if iname in duplicate_inames:
-                raise RuntimeError("duplicating an iname ('%s')"
+                raise RuntimeError("duplicating an iname ('%s') "
                         "that the CSE ('%s') does not depend on "
                         "does not make sense" % (iname, expr.child))
 

@@ -625,8 +625,9 @@ class LoopKernel(Record):
             all_inames_by_insns |= insn.all_inames()
 
         if all_inames_by_insns != self.all_inames():
-            raise RuntimeError("inames collected from instructions "
-                    "do not match domain inames")
+            raise RuntimeError("inames collected from instructions (%s) "
+                    "do not match domain inames (%s)"
+                    % (", ".join(all_inames_by_insns), ", ".join(self.all_inames())))
 
         global_sizes = {}
         local_sizes = {}
@@ -676,8 +677,8 @@ class LoopKernel(Record):
                 while cur_axis > len(size_list):
                     from loopy import LoopyAdvisory
                     from warnings import warn
-                    warn("%s axis %d unassigned--assuming length 1" % len(size_list),
-                            LoopyAdvisory)
+                    warn("%s axis %d unassigned--assuming length 1" % (
+                        which, len(size_list)), LoopyAdvisory)
                     size_list.append(1)
 
                 size_list.append(size_dict[cur_axis])

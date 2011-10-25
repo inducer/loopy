@@ -336,11 +336,14 @@ class LoopyCCodeMapper(CCodeMapper):
                                 ary_strides, index_expr))), enclosing_prec)
 
 
-        if expr.aggregate.name in self.kernel.temporary_variables:
+        elif expr.aggregate.name in self.kernel.temporary_variables:
             temp_var = self.kernel.temporary_variables[expr.aggregate.name]
 
             return (temp_var.name + "".join("[%s]" % self.rec(idx, PREC_NONE)
                 for idx in expr.index))
+
+        else:
+            raise RuntimeError("nothing known about variable '%s'" % expr.aggregate.name)
 
     def map_floor_div(self, expr, prec):
         if isinstance(expr.denominator, int) and expr.denominator > 0:

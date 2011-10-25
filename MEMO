@@ -58,6 +58,8 @@ Things to consider
 
 TODO
 ^^^^
+- assert dependencies <= parent_inames in loopy/__init__.py
+  ???
 
 - FIXME: Deal with insns losing a seq iname dep in a CSE realization
 
