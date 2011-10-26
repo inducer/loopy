@@ -22,7 +22,8 @@ class LoopyAdvisory(UserWarning):
 
 from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
-from loopy.kernel import LoopKernel, AutoFitLocalIndexTag
+from loopy.kernel import make_kernel, AutoFitLocalIndexTag
+from loopy.preprocess import preprocess_kernel
 from loopy.schedule import generate_loop_schedules
 from loopy.compiled import CompiledKernel, drive_timing_run
 
@@ -233,7 +234,8 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         dependencies = IndexVariableFinder(
                 include_reduction_inames=False)(expr.child)
 
-        assert dependencies <= parent_inames
+        # FIXME: can happen with
+        # assert dependencies <= parent_inames
 
         for iname in parent_inames:
             if iname in duplicate_inames:

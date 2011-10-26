@@ -96,7 +96,7 @@ def test_axpy(ctx_factory):
 
     n = 20*1024**2
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i]: 0<=i<n}",
             [
                 "z[i] = a*x[i]+b*y[i]"
@@ -159,7 +159,7 @@ def test_plain_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
@@ -211,7 +211,7 @@ def test_variable_size_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j,k]: 0<=i,j,k<n}",
             [
                 "label: c[i, j] = sum_float32(k, cse(a[i, k], lhsmat)*cse(b[k, j], rhsmat))"
@@ -264,7 +264,7 @@ def test_rank_one(ctx_factory):
 
     n = int(get_suitable_size(ctx)**(2.7/2))
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j]: 0<=i,j<n}",
             [
                 "label: c[i, j] = a[i]*b[j]"
@@ -358,7 +358,7 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
 
     n = 6*16*2
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
@@ -412,7 +412,7 @@ def test_intel_matrix_mul(ctx_factory):
 
     n = 6*16
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
@@ -475,7 +475,7 @@ def test_magma_fermi_matrix_mul(ctx_factory):
 
     n = 6*16*16
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = a[i, k]*b[k, j]"
@@ -537,7 +537,7 @@ def test_image_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = a[i, k]*b[k, j]"
@@ -590,7 +590,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = a[i, k]*b[k, j]"
@@ -649,7 +649,7 @@ def test_fancy_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j,k]: 0<=i,j,k<n }",
             [
                 "c[i, j] = a[i, k]*b[k, j]"
@@ -713,7 +713,7 @@ def test_dg_matrix_mul(ctx_factory):
 
     fld_strides = (1, Np_padded)
 
-    knl = lp.LoopKernel(ctx.devices[0],
+    knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j< %d and 0<=k<%d}" % (Np, K),
             [
                 (var(mn+"fld%d" % ifld)[i, k], 

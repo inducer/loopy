@@ -225,15 +225,25 @@ class Instruction(Record):
         by adding dependencies on any writes to temporaries read by this instruction.
     :ivar idempotent: Whether the instruction may be executed repeatedly (while obeying
         dependencies) without changing the meaning of the program.
+
+    The following two instance variables are only used until :func:`loopy.kernel.make_kernel` is
+    finished:
+
+    :ivar temp_var_type: if not None, a type that will be assigned to the new temporary variable
+        created from the assignee
+    :ivar duplicate_inames_and_tags: a list of inames used in the instruction that will be duplicated onto
+        different inames.
     """
     def __init__(self,
             id, assignee, expression,
-            forced_iname_deps=[], insn_deps=[], idempotent=None):
+            forced_iname_deps=[], insn_deps=[], idempotent=None,
+            temp_var_type=None, duplicate_inames_and_tags=[]):
 
         Record.__init__(self,
                 id=id, assignee=assignee, expression=expression,
                 forced_iname_deps=forced_iname_deps,
-                insn_deps=insn_deps, idempotent=idempotent)
+                insn_deps=insn_deps, idempotent=idempotent,
+                temp_var_type=temp_var_type, duplicate_inames_and_tags=duplicate_inames_and_tags)
 
     @memoize_method
     def all_inames(self):
@@ -422,19 +432,27 @@ class LoopKernel(Record):
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
         """
         import re
+
+        if isinstance(domain, str):
+            ctx = isl.Context()
+            domain = isl.Set.read_from_str(ctx, domain)
+
+        DUP_ENTRY_RE = re.compile(
+                r"^\s*(?P<iname>\w+)\s*(?:\:\s*(?P<tag>[\w.]+))?\s*$")
         LABEL_DEP_RE = re.compile(
                 r"^\s*(?:(?P<label>\w+):)?"
-                "\s*(?:\[(?P<iname_deps>[\s\w,]+)\])?"
-                "\s*(?P<lhs>.+)\s*=\s*(?P<rhs>.+?)\s*?"
-                "(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
+                "\s*(?:\["
+                    "(?P<iname_deps>[\s\w,]*)"
+                    "(?:\|(?P<duplicate_inames_and_tags>[\s\w,:.]*))?"
+                "\])?"
+                "\s*(?:\<(?P<temp_var_type>.+)\>)?"
+                "\s*(?P<lhs>.+)\s*=\s*(?P<rhs>.+?)"
+                "\s*?(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
                 )
 
         def parse_if_necessary(insn):
             from pymbolic import parse
 
-            insn_deps = []
-            forced_iname_deps = []
-            label = "insn"
 
             if isinstance(insn, Instruction):
                 return insn
@@ -446,10 +464,44 @@ class LoopKernel(Record):
                 groups = label_dep_match.groupdict()
                 if groups["label"] is not None:
                     label = groups["label"]
+                else:
+                    label = "insn"
                 if groups["insn_deps"] is not None:
                     insn_deps = [dep.strip() for dep in groups["insn_deps"].split(",")]
+                else:
+                    insn_deps = []
+
                 if groups["iname_deps"] is not None:
                     forced_iname_deps = [dep.strip() for dep in groups["iname_deps"].split(",")]
+                else:
+                    forced_iname_deps = []
+
+                if groups["duplicate_inames_and_tags"] is not None:
+                    dup_entries = [
+                            dep.strip() for dep in groups["duplicate_inames_and_tags"].split(",")]
+                    duplicate_inames_and_tags = []
+                    for dup_entry in dup_entries:
+                        dup_entry_match = DUP_ENTRY_RE.match(dup_entry)
+                        if dup_entry_match is None:
+                            raise RuntimeError(
+                                    "could not parse iname duplication entry '%s'"
+                                    % dup_entry)
+
+                        dup_groups = dup_entry_match.groupdict()
+                        dup_iname = dup_groups["iname"]
+                        assert dup_iname
+                        dup_tag = AutoFitLocalIndexTag()
+                        if dup_groups["tag"] is not None:
+                            dup_tag = parse_tag(dup_groups["tag"])
+
+                        duplicate_inames_and_tags.append((dup_iname, dup_tag))
+                else:
+                    duplicate_inames_and_tags = []
+
+                if groups["temp_var_type"] is not None:
+                    temp_var_type = groups["temp_var_type"]
+                else:
+                    temp_var_type = None
 
                 lhs = parse(groups["lhs"])
                 from loopy.symbolic import FunctionToPrimitiveMapper
@@ -459,14 +511,9 @@ class LoopKernel(Record):
                     id=self.make_unique_instruction_id(insns, based_on=label),
                     insn_deps=insn_deps,
                     forced_iname_deps=forced_iname_deps,
-                    assignee=lhs, expression=rhs)
-
-        if isinstance(domain, str):
-            ctx = isl.Context()
-            domain = isl.Set.read_from_str(ctx, domain)
-
-        if iname_to_dim is None:
-            iname_to_dim = domain.get_space().get_var_dict()
+                    assignee=lhs, expression=rhs,
+                    temp_var_type=temp_var_type,
+                    duplicate_inames_and_tags=duplicate_inames_and_tags)
 
         insns = []
         for insn in instructions:
@@ -514,6 +561,9 @@ class LoopKernel(Record):
                     % (",".join(s.get_dim_name(dim_type.param, i)
                         for i in range(s.dim(dim_type.param))),
                         assumptions))
+
+        if iname_to_dim is None:
+            iname_to_dim = domain.get_space().get_var_dict()
 
         Record.__init__(self,
                 device=device,  domain=domain, instructions=insns,
@@ -720,6 +770,73 @@ class LoopKernel(Record):
         return "\n".join(lines)
 
 # }}}
+
+
+
+
+def make_kernel(*args, **kwargs):
+    """Second pass of kernel creation. Think about requests for iname duplication
+    and temporary variable declaration received as part of string instructions.
+    """
+
+    knl = LoopKernel(*args, **kwargs)
+
+    new_insns = []
+    new_domain = knl.domain
+    new_temp_vars = knl.temporary_variables.copy()
+    new_tags = {}
+
+    newly_created_vars = set()
+
+    for insn in knl.instructions:
+        # {{{ iname duplication
+
+        if insn.duplicate_inames_and_tags:
+            duplicate_inames = [iname
+                    for iname, tag in insn.duplicate_inames_and_tags]
+            new_iname_tags = [tag for iname, tag in insn.duplicate_inames_and_tags]
+
+            new_inames = [
+                    knl.make_unique_var_name(
+                        iname, extra_used_vars=newly_created_vars)
+                    for iname in duplicate_inames]
+
+            for iname, tag in zip(new_inames, new_iname_tags):
+                new_tags[iname] = tag
+
+            newly_created_vars.update(new_inames)
+
+            from loopy.isl_helpers import duplicate_axes
+            new_domain = duplicate_axes(new_domain, duplicate_inames, new_inames)
+
+            from loopy.symbolic import SubstitutionMapper
+            from pymbolic.mapper.substitutor import make_subst_func
+            old_to_new = dict(
+                    (old_iname, var(new_iname))
+                    for old_iname, new_iname in zip(duplicate_inames, new_inames))
+            subst_map = SubstitutionMapper(make_subst_func(old_to_new))
+
+            insn = insn.copy(
+                    assignee=subst_map(insn.assignee),
+                    expression=subst_map(insn.expression),
+                    forced_iname_deps=[
+                        old_to_new.get(iname, iname) for iname in insn.forced_iname_deps],
+                    )
+
+        # }}}
+
+        new_insns.append(insn)
+
+    new_iname_to_tag = knl.iname_to_tag.copy()
+    new_iname_to_tag.update(new_tags)
+
+    return knl.copy(
+            instructions=new_insns,
+            domain=new_domain,
+            temporary_variables=new_temp_vars,
+            iname_to_tag=new_iname_to_tag)
+
+
 
 
 # vim: foldmethod=marker
