@@ -46,25 +46,19 @@ To-do
 
 - user interface for dim length prescription
 
-- Sharing of checks across ILP instances
-
 - Give a good error message if a parameter assignment in get_problems()
   is missing.
 
 - Deal with equality constraints.
   (These arise, e.g., when partitioning a loop of length 16 into 16s.)
 
-- Slab decomposition for ILP
-  -> I don't think that's possible.
+Future ideas
+^^^^^^^^^^^^
 
 - Better for loop bound generation
   -> Try a triangular loop
 
-- Nested slab decomposition (in conjunction with conditional hoisting) could
-  generate nested conditional code.
-
-Future ideas
-^^^^^^^^^^^^
+- Sharing of checks across ILP instances
 
 - Eliminate the first (pre-)barrier in a loop.
 
@@ -87,12 +81,20 @@ Future ideas
 
 - Use gists (why do disjoint sets arise?)
 
+- Nested slab decomposition (in conjunction with conditional hoisting) could
+  generate nested conditional code.
+
 Dealt with
 ^^^^^^^^^^
 
+- Slab decomposition for ILP
+  -> I don't think that's possible.
+
 - It is hard to understand error messages that referred to instructions that
   are generated during preprocessing.
-  -> Expose preprocessing to the user so she can introspect.
+
+  -> Expose preprocessing to the user so she can inspect the preprocessed
+     kernel.
 
 - Which variables need to be duplicated for ILP?
   -> Only reduction
