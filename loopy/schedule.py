@@ -553,7 +553,7 @@ def assign_automatic_axes(kernel, only_axis_0=True):
     # of a new axis assignment.
 
     if only_axis_0:
-        # If we were only assigining axis 0, then assign all the remaining 
+        # If we were only assigining axis 0, then assign all the remaining
         # axes next.
         return assign_automatic_axes(kernel, only_axis_0=False)
     else:

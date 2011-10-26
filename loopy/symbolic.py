@@ -85,7 +85,7 @@ class DependencyMapper(DependencyMapperBase):
 # {{{ functions to primitives
 
 class FunctionToPrimitiveMapper(IdentityMapper):
-    """Looks for invocations of a function called 'cse' or 'reduce' and 
+    """Looks for invocations of a function called 'cse' or 'reduce' and
     turns those into the actual pymbolic primitives used for that.
     """
 

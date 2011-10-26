@@ -93,7 +93,7 @@ def pw_aff_to_aff(pw_aff):
 
 
 def dump_space(ls):
-    return " ".join("%s: %d" % (dt, ls.dim(getattr(dim_type, dt))) 
+    return " ".join("%s: %d" % (dt, ls.dim(getattr(dim_type, dt)))
             for dt in dim_type.names)
 
 

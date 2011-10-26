@@ -212,7 +212,7 @@ class TemporaryVariable(Record):
 
 class Instruction(Record):
     """
-    :ivar id: An (otherwise meaningless) identifier that is unique within 
+    :ivar id: An (otherwise meaningless) identifier that is unique within
         a :class:`LoopKernel`.
     :ivar assignee:
     :ivar expression:
@@ -661,7 +661,7 @@ class LoopKernel(Record):
             from loopy.isl_helpers import static_max_of_pw_aff
             try:
                 # insist block size is constant
-                size = static_max_of_pw_aff(size, 
+                size = static_max_of_pw_aff(size,
                         constants_only=isinstance(tag, LocalIndexTag))
             except ValueError:
                 pass
