@@ -37,13 +37,13 @@ Things to consider
 To-do
 ^^^^^
 
+- Just touching a variable written to by a non-idempotent
+  instruction makes that instruction also not idempotent
+
 - assert dependencies <= parent_inames in loopy/__init__.py
   ???
 
 - user interface for dim length prescription
-
-- Give a good error message if a parameter assignment in get_problems()
-  is missing.
 
 - Deal with equality constraints.
   (These arise, e.g., when partitioning a loop of length 16 into 16s.)
@@ -82,6 +82,9 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Give a good error message if a parameter assignment in get_problems()
+  is missing.
 
 - Slab decomposition for ILP
   -> I don't think that's possible.

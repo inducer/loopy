@@ -411,8 +411,15 @@ def get_problems(kernel, parameters):
     glens, llens = kernel.get_grid_sizes_as_exprs()
 
     from pymbolic import evaluate
-    glens = evaluate(glens, parameters)
-    llens = evaluate(llens, parameters)
+    from pymbolic.mapper.evaluator import UnknownVariableError
+    try:
+        glens = evaluate(glens, parameters)
+        llens = evaluate(llens, parameters)
+    except UnknownVariableError, name:
+        raise RuntimeError("When checking your kernel for problems, "
+                "a value for parameter '%s' was not available. Pass "
+                "it in the 'parameters' kwarg to check_kernels()."
+                % name)
 
     if (max(len(glens), len(llens))
             > kernel.device.max_work_item_dimensions):
