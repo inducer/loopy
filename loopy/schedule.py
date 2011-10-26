@@ -38,7 +38,7 @@ def realize_reduction(kernel):
 
         ilp_inames = [iname
                 for iname in insn.all_inames()
-                if isinstance(kernel.iname_to_tag[iname], IlpTag)]
+                if isinstance(kernel.iname_to_tag.get(iname), IlpTag)]
 
         from loopy.isl_helpers import static_max_of_pw_aff
 
