@@ -87,7 +87,9 @@ def parse_tag(tag):
     if not isinstance(tag, str):
         raise ValueError("cannot parse tag: %s" % tag)
 
-    if tag in ["unr"]:
+    if tag == "for":
+        return None
+    elif tag in ["unr"]:
         return UnrollTag()
     elif tag == "ilp":
         return IlpTag()
