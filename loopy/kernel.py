@@ -590,12 +590,15 @@ class LoopKernel(Record):
 
     @memoize_method
     def get_iname_bounds(self, iname):
+        dom_intersect_assumptions = (
+                isl.align_spaces(self.assumptions, self.domain)
+                & self.domain)
         lower_bound_pw_aff = (
-                (self.domain & self.assumptions)
+                dom_intersect_assumptions
                 .dim_min(self.iname_to_dim[iname][1])
                 .coalesce())
         upper_bound_pw_aff = (
-                (self.domain & self.assumptions)
+                dom_intersect_assumptions
                 .dim_max(self.iname_to_dim[iname][1])
                 .coalesce())
 
