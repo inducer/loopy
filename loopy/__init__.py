@@ -362,27 +362,19 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
     from loopy.isl_helpers import duplicate_axes
     new_domain = duplicate_axes(kernel.domain, duplicate_inames, new_inames)
-    new_iname_to_dim = new_domain.get_space().get_var_dict()
 
     # }}}
 
     # {{{ set up data for temp variable
 
-    target_var_base_indices = []
-    target_var_shape = []
 
-    for iname in new_inames:
-        lower_bound_pw_aff = new_domain.dim_min(new_iname_to_dim[iname][1])
-        upper_bound_pw_aff = new_domain.dim_max(new_iname_to_dim[iname][1])
+    from loopy.kernel import (TemporaryVariable,
+            find_var_base_indices_and_shape_from_inames)
 
-        from loopy.isl_helpers import static_max_of_pw_aff
-        from loopy.symbolic import pw_aff_to_expr
+    target_var_base_indices, target_var_shape = \
+            find_var_base_indices_and_shape_from_inames(
+                    new_domain, new_inames)
 
-        target_var_shape.append(static_max_of_pw_aff(
-                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True))
-        target_var_base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
-
-    from loopy.kernel import TemporaryVariable
     new_temporary_variables = kernel.temporary_variables.copy()
     new_temporary_variables[target_var_name] = TemporaryVariable(
             name=target_var_name,
@@ -401,7 +393,6 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
             domain=new_domain,
             instructions=new_insns,
             temporary_variables=new_temporary_variables,
-            iname_to_dim=new_iname_to_dim,
             iname_to_tag=new_iname_to_tag)
 
 

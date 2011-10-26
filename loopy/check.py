@@ -73,27 +73,16 @@ def check_for_inactive_iname_access(kernel):
 
 
 def check_for_write_races(kernel):
-    from pymbolic.primitives import Subscript, Variable
     from loopy.symbolic import DependencyMapper
     from loopy.kernel import ParallelTag, GroupIndexTag, IlpTag
     depmap = DependencyMapper()
 
     for insn in kernel.instructions:
-        if isinstance(insn.assignee, Subscript):
-            assert isinstance(insn.assignee, Subscript)
-
-            var = insn.assignee.aggregate
-            assert isinstance(var, Variable)
-            assignee_name = var.name
-            assignee_indices = depmap(insn.assignee.index)
-        elif isinstance(insn.assignee, Variable):
-            assignee_name = insn.assignee.name
-            assignee_indices = set()
-        else:
-            raise RuntimeError("assignee for instruction '%s' not understood"
-                    % insn.id)
+        assignee_name = insn.get_assignee_var_name()
+        assignee_indices = depmap(insn.get_assignee_indices())
 
         def strip_var(expr):
+            from pymbolic.primitives import Variable
             assert isinstance(expr, Variable)
             return expr.name
 

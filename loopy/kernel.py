@@ -282,6 +282,7 @@ class Instruction(Record):
 
         return result
 
+    @memoize_method
     def get_assignee_var_name(self):
         from pymbolic.primitives import Variable, Subscript
 
@@ -296,6 +297,18 @@ class Instruction(Record):
 
         return var_name
 
+    @memoize_method
+    def get_assignee_indices(self):
+        from pymbolic.primitives import Variable, Subscript
+
+        if isinstance(self.assignee, Variable):
+            result = ()
+        elif isinstance(self.assignee, Subscript):
+            result = self.assignee.index
+        else:
+            raise RuntimeError("invalid lvalue '%s'" % self.assignee)
+
+        return result
 
 # }}}
 
@@ -414,8 +427,6 @@ class LoopKernel(Record):
         upper_incr) tuples that will be separated out in the execution to generate
         'bulk' slabs with fewer conditionals.
     :ivar temporary_variables:
-    :ivar iname_to_dim: A lookup table from inames to ISL-style
-        (dim_type, index) tuples
     :ivar iname_to_tag:
     """
 
@@ -431,6 +442,8 @@ class LoopKernel(Record):
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
         """
+        assert iname_to_dim is None
+
         import re
 
         if isinstance(domain, str):
@@ -472,7 +485,9 @@ class LoopKernel(Record):
                     insn_deps = []
 
                 if groups["iname_deps"] is not None:
-                    forced_iname_deps = [dep.strip() for dep in groups["iname_deps"].split(",")]
+                    forced_iname_deps = [dep.strip()
+                            for dep in groups["iname_deps"].split(",")
+                            if dep.strip()]
                 else:
                     forced_iname_deps = []
 
@@ -481,6 +496,9 @@ class LoopKernel(Record):
                             dep.strip() for dep in groups["duplicate_inames_and_tags"].split(",")]
                     duplicate_inames_and_tags = []
                     for dup_entry in dup_entries:
+                        if not dup_entry:
+                            continue
+
                         dup_entry_match = DUP_ENTRY_RE.match(dup_entry)
                         if dup_entry_match is None:
                             raise RuntimeError(
@@ -562,9 +580,6 @@ class LoopKernel(Record):
                         for i in range(s.dim(dim_type.param))),
                         assumptions))
 
-        if iname_to_dim is None:
-            iname_to_dim = domain.get_space().get_var_dict()
-
         Record.__init__(self,
                 device=device,  domain=domain, instructions=insns,
                 args=args,
@@ -575,7 +590,6 @@ class LoopKernel(Record):
                 iname_slab_increments=iname_slab_increments,
                 temporary_variables=temporary_variables,
                 workgroup_size=workgroup_size,
-                iname_to_dim=iname_to_dim,
                 iname_to_tag=iname_to_tag)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
@@ -588,6 +602,11 @@ class LoopKernel(Record):
         for id_str in generate_unique_possibilities(based_on):
             if id_str not in used_ids:
                 return id_str
+
+    @property
+    @memoize_method
+    def iname_to_dim(self):
+        return self.domain.get_space().get_var_dict()
 
     @memoize_method
     def get_written_variables(self):
@@ -774,6 +793,27 @@ class LoopKernel(Record):
 
 
 
+def find_var_base_indices_and_shape_from_inames(domain, inames):
+    base_indices = []
+    shape = []
+
+    iname_to_dim = domain.get_space().get_var_dict()
+    for iname in inames:
+        lower_bound_pw_aff = domain.dim_min(iname_to_dim[iname][1])
+        upper_bound_pw_aff = domain.dim_max(iname_to_dim[iname][1])
+
+        from loopy.isl_helpers import static_max_of_pw_aff
+        from loopy.symbolic import pw_aff_to_expr
+
+        shape.append(static_max_of_pw_aff(
+                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True))
+        base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
+
+    return base_indices, shape
+
+
+
+
 def make_kernel(*args, **kwargs):
     """Second pass of kernel creation. Think about requests for iname duplication
     and temporary variable declaration received as part of string instructions.
@@ -784,11 +824,12 @@ def make_kernel(*args, **kwargs):
     new_insns = []
     new_domain = knl.domain
     new_temp_vars = knl.temporary_variables.copy()
-    new_tags = {}
+    new_iname_to_tag = knl.iname_to_tag.copy()
 
     newly_created_vars = set()
 
     for insn in knl.instructions:
+
         # {{{ iname duplication
 
         if insn.duplicate_inames_and_tags:
@@ -798,11 +839,13 @@ def make_kernel(*args, **kwargs):
 
             new_inames = [
                     knl.make_unique_var_name(
-                        iname, extra_used_vars=newly_created_vars)
+                        iname,
+                        extra_used_vars=
+                        newly_created_vars | set(new_temp_vars.iterkeys()))
                     for iname in duplicate_inames]
 
             for iname, tag in zip(new_inames, new_iname_tags):
-                new_tags[iname] = tag
+                new_iname_to_tag[iname] = tag
 
             newly_created_vars.update(new_inames)
 
@@ -825,10 +868,46 @@ def make_kernel(*args, **kwargs):
 
         # }}}
 
-        new_insns.append(insn)
+        # {{{ temporary variable creation
 
-    new_iname_to_tag = knl.iname_to_tag.copy()
-    new_iname_to_tag.update(new_tags)
+        if insn.temp_var_type is not None:
+            assignee_name = insn.get_assignee_var_name()
+
+            assignee_indices = []
+            from pymbolic.primitives import Variable
+            for index_expr in insn.get_assignee_indices():
+                if (not isinstance(index_expr, Variable)
+                        or not index_expr.name in insn.all_inames()):
+                    raise RuntimeError(
+                            "only plain inames are allowed in "
+                            "the lvalue index when declaring the "
+                            "variable '%s' in an instruction"
+                            % assignee_name)
+
+                assignee_indices.append(index_expr.name)
+
+            from loopy.kernel import LocalIndexTagBase
+            from pytools import any
+            is_local = any(
+                    isinstance(new_iname_to_tag.get(iname), LocalIndexTagBase)
+                    for iname in assignee_indices)
+
+            base_indices, shape = \
+                    find_var_base_indices_and_shape_from_inames(
+                            new_domain, assignee_indices)
+
+            new_temp_vars[assignee_name] = TemporaryVariable(
+                    name=assignee_name,
+                    dtype=np.dtype(insn.temp_var_type),
+                    is_local=is_local,
+                    base_indices=base_indices,
+                    shape=shape)
+
+            insn = insn.copy(temp_var_type=None)
+
+        # }}}
+
+        new_insns.append(insn)
 
     return knl.copy(
             instructions=new_insns,

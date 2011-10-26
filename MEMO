@@ -40,10 +40,6 @@ To-do
 - assert dependencies <= parent_inames in loopy/__init__.py
   ???
 
-- FIXME: Deal with insns losing a seq iname dep in a CSE realization
-
-  a <- cse(reduce(stuff))
-
 - user interface for dim length prescription
 
 - Give a good error message if a parameter assignment in get_problems()

@@ -287,11 +287,11 @@ def test_sem_3d(ctx_factory):
     # K - run-time symbolic
     n = 8
     knl = lp.make_kernel(ctx.devices[0],
-            "[K] -> {[i,j,k,e,m,mp]: 0<=i,j,k,m<%d AND 0<=e<K}" % n,
+            "[K] -> {[i,j,k,e,m,mp]: 0<=i,j,k,m<%d and 0<=e<K}" % n,
             [
-                "[|i,j,k] <float32> ur[i,j,k,e] = sum_float32(m, D[i,m]*u[m,j,k,e])",
-                "[|i,j,k] <float32> us[i,j,k,e] = sum_float32(m, D[j,m]*u[i,m,k,e])",
-                "[|i,j,k] <float32> ut[i,j,k,e] = sum_float32(m, D[k,m]*u[i,j,m,e])",
+                "[|i,j,k] <float32> ur[i,j,k] = sum_float32(m, D[i,m]*u[m,j,k,e])",
+                "[|i,j,k] <float32> us[i,j,k] = sum_float32(m, D[j,m]*u[i,m,k,e])",
+                "[|i,j,k] <float32> ut[i,j,k] = sum_float32(m, D[k,m]*u[i,j,m,e])",
 
                 "lap[i,j,k,e]  = "
                 "  sum_float32(m, D[m,i]*(G[0,m,j,k,e]*ur[m,j,k,e] + G[1,m,j,k,e]*us[m,j,k,e] + G[2,m,j,k,e]*ut[m,j,k,e]))"
@@ -308,6 +308,8 @@ def test_sem_3d(ctx_factory):
             name="semlap", assumptions="K>=1")
 
     print knl
+    #for tv in knl.temporary_variables.iteritems():
+        #print tv
     1/0
 
     knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
