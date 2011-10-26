@@ -230,7 +230,8 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         forced_iname_deps = []
 
         from loopy.symbolic import IndexVariableFinder
-        dependencies = IndexVariableFinder()(expr.child)
+        dependencies = IndexVariableFinder(
+                include_reduction_inames=False)(expr.child)
 
         assert dependencies <= parent_inames
 

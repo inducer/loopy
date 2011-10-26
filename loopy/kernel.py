@@ -236,9 +236,8 @@ class Instruction(Record):
     @memoize_method
     def all_inames(self):
         from loopy.symbolic import IndexVariableFinder
-        index_vars = (
-                IndexVariableFinder()(self.expression)
-                | IndexVariableFinder()(self.assignee))
+        ivarf = IndexVariableFinder(include_reduction_inames=False)
+        index_vars = (ivarf(self.expression) | ivarf(self.assignee))
 
         return index_vars | set(self.forced_iname_deps)
 

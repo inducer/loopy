@@ -485,6 +485,9 @@ class ReductionCallbackMapper(IdentityMapper):
 # {{{ index dependency finding
 
 class IndexVariableFinder(CombineMapper):
+    def __init__(self, include_reduction_inames):
+        self.include_reduction_inames = include_reduction_inames
+
     def combine(self, values):
         import operator
         return reduce(operator.or_, values, set())
@@ -508,7 +511,14 @@ class IndexVariableFinder(CombineMapper):
         return result
 
     def map_reduction(self, expr):
-        return set(expr.inames) | self.rec(expr.expr)
+        result = self.rec(expr.expr)
+        if not set(expr.inames) <= result:
+            raise RuntimeError("reduction '%s' does not depend on "
+                    "reduction inames" % expr)
+        if self.include_reduction_inames:
+            return result
+        else:
+            return result - set(expr.inames)
 
 # }}}
 
