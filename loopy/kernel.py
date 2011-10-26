@@ -203,7 +203,8 @@ class TemporaryVariable(Record):
     @property
     def nbytes(self):
         from pytools import product
-        return product(self.shape)*self.dtype.itemsize
+        from loopy.symbolic import pw_aff_to_expr
+        return product(pw_aff_to_expr(si) for si in self.shape)*self.dtype.itemsize
 
 # }}}
 
