@@ -512,7 +512,7 @@ class IndexVariableFinder(CombineMapper):
 
     def map_reduction(self, expr):
         result = self.rec(expr.expr)
-        if not set(expr.inames) <= result:
+        if not (set(expr.inames) & result):
             raise RuntimeError("reduction '%s' does not depend on "
                     "reduction inames" % expr)
         if self.include_reduction_inames:
