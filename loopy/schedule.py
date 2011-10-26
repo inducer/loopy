@@ -833,7 +833,7 @@ def insert_barriers(kernel, schedule, level=0):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel, loop_priority=[]):
+def preprocess_kernel(kernel):
     kernel = realize_reduction(kernel)
 
     # {{{ check that all CSEs have been realized
@@ -858,6 +858,11 @@ def generate_loop_schedules(kernel, loop_priority=[]):
     chk.check_for_unused_hw_axes(kernel)
     chk.check_for_inactive_iname_access(kernel)
     chk.check_for_write_races(kernel)
+
+    return kernel
+
+def generate_loop_schedules(kernel, loop_priority=[]):
+    kernel = preprocess_kernel(kernel)
 
     schedule_count = 0
 
