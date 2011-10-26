@@ -320,10 +320,13 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
                 var(iname) for iname in duplicate_inames
                 )]
 
-        from pymbolic import substitute
-        new_inner_expr = substitute(rec(expr.child), dict(
-            (old_iname, var(new_iname))
-            for old_iname, new_iname in zip(duplicate_inames, new_inames)))
+        from loopy.symbolic import SubstitutionMapper
+        from pymbolic.mapper.substitutor import make_subst_func
+        subst_map = SubstitutionMapper(make_subst_func(
+            dict(
+                (old_iname, var(new_iname))
+                for old_iname, new_iname in zip(duplicate_inames, new_inames))))
+        new_inner_expr = subst_map(rec(expr.child))
 
         # }}}
 
