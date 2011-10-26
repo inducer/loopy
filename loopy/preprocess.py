@@ -68,7 +68,7 @@ def realize_reduction(kernel):
                 assignee=target_var,
                 expression=expr.operation(target_var, sub_expr),
                 insn_deps=[init_insn.id],
-                forced_iname_deps=list(insn.all_inames()))
+                forced_iname_deps=list(insn.all_inames() | set(expr.inames)))
 
         new_insns.append(reduction_insn)
 
