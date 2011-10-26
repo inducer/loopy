@@ -1,32 +1,8 @@
-TODO list
-^^^^^^^^^
+Documentation Notes
+^^^^^^^^^^^^^^^^^^^
 
-For writeup:
-------------
-TODO: Reimplement forced lengths
-TODO: Try, fix reg. prefetch (DG example) / CSEs
-  ILP and reg. prefetch interact!
-FIXME: support non-reductive dimensions (what did I mean here?)
-FIXME: screwy lower bounds in ILP
-FIXME: Leading syncthreads elimination
-
-TODO: Divisibility
-TODO: Try, fix indirect addressing
-
-TODO: Implement GT200 matmul, Fermi matmul, DG
-TODO: DMA engine threads?
-TODO: Deal with equalities that crop up.
-TODO: Better user feedback.
-
-Later:
-------
-TODO: Try different kernels
-TODO:   - Tricky: Convolution, Stencil
-TODO: Separate all-bulk from non-bulk kernels. (maybe?) (#ifdef?)
-TODO: implement efficient ceil_div? (as opposed to floor_div)
-TODO: why are corner cases inefficient?
-TODO: Use gists (why do disjoint sets arise?)
-TODO: variable shuffle detection
+- Need to clarify fundamental difference between constants baked into code
+  and things that remain variable. (ISL parameters, symbolic shapes)
 
 Things to consider
 ^^^^^^^^^^^^^^^^^^
@@ -56,8 +32,11 @@ Things to consider
 - Not using all hw loop dimensions causes an error, as
   is the case for variant 3 in the rank_one test.
 
-TODO
-^^^^
+- Measure efficiency of corner cases
+
+To-do
+^^^^^
+
 - assert dependencies <= parent_inames in loopy/__init__.py
   ???
 
@@ -67,8 +46,13 @@ TODO
 
 - user interface for dim length prescription
 
-
 - Sharing of checks across ILP instances
+
+- Give a good error message if a parameter assignment in get_problems()
+  is missing.
+
+- Deal with equality constraints.
+  (These arise, e.g., when partitioning a loop of length 16 into 16s.)
 
 - Slab decomposition for ILP
   -> I don't think that's possible.
@@ -79,8 +63,36 @@ TODO
 - Nested slab decomposition (in conjunction with conditional hoisting) could
   generate nested conditional code.
 
+Future ideas
+^^^^^^^^^^^^
+
+- Eliminate the first (pre-)barrier in a loop.
+
+- Generate automatic test against sequential code.
+
+- Automatically verify that all array access is within bounds.
+
+- Reason about generated code, give user feedback on potential
+  improvements.
+
+- Convolutions, Stencils
+
+- DMA engine threads?
+
+- Divisibility, modulo, strides?
+
+- Try, fix indirect addressing
+
+- variable shuffle detection
+
+- Use gists (why do disjoint sets arise?)
+
 Dealt with
 ^^^^^^^^^^
+
+- It is hard to understand error messages that referred to instructions that
+  are generated during preprocessing.
+  -> Expose preprocessing to the user so she can introspect.
 
 - Which variables need to be duplicated for ILP?
   -> Only reduction
@@ -130,6 +142,7 @@ Dealt with
 
 - Generalize reduction to be over multiple variables
 
+
 Should a dependency on an iname be forced in a CSE?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -156,19 +169,3 @@ g: is tagged as group idx
 Raise error if dl is targeting a private variable, regardless of whether it's
 a dependency or not.
 
-How to represent the schedule
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-- Focus everything on instructions
-  - Each instruction can have its own interpretation of global/local ids.
-- Loop variables/splits and such are and remain global
-- What about grouped dimensions?
-- UniqueTag is the wrong idea! (not really--it's ok per-insn)
-
-Scheduling:
-- Find insns whose dependencies are satisfied
-- Find maximally shareable loop
-- Open that one
-- For that opened loop, check if an available insn can run
-  - If not, open another loop
-  - Else, schedule that instruction
