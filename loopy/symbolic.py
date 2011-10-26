@@ -97,7 +97,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
                 if not isinstance(expr.parameters[1], Variable):
                     raise TypeError("second argument to cse() must be a symbol")
                 return CommonSubexpression(
-                        expr.parameters[0], expr.parameters[1].name)
+                        self.rec(expr.parameters[0]), expr.parameters[1].name)
             else:
                 raise TypeError("cse takes two arguments")
 
