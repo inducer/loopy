@@ -34,6 +34,8 @@ Things to consider
 
 - Measure efficiency of corner cases
 
+- Loopy as a data model for implementing custom rewritings
+
 To-do
 ^^^^^
 
@@ -45,11 +47,17 @@ To-do
 
 - user interface for dim length prescription
 
+- Way too many barriers in SEM test.
+
 - Deal with equality constraints.
   (These arise, e.g., when partitioning a loop of length 16 into 16s.)
 
 Future ideas
 ^^^^^^^^^^^^
+
+- Float4 joining on fetch/store?
+
+- How can one automatically generate something like microblocks?
 
 - Better for loop bound generation
   -> Try a triangular loop

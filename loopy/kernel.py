@@ -699,7 +699,8 @@ class LoopKernel(Record):
         if all_inames_by_insns != self.all_inames():
             raise RuntimeError("inames collected from instructions (%s) "
                     "do not match domain inames (%s)"
-                    % (", ".join(all_inames_by_insns), ", ".join(self.all_inames())))
+                    % (", ".join(sorted(all_inames_by_insns)), 
+                        ", ".join(sorted(self.all_inames()))))
 
         global_sizes = {}
         local_sizes = {}
@@ -780,11 +781,13 @@ class LoopKernel(Record):
     def __str__(self):
         lines = []
 
-        for insn in self.instructions:
-            lines.append(str(insn))
-        lines.append("")
         for iname in sorted(self.all_inames()):
             lines.append("%s: %s" % (iname, self.iname_to_tag.get(iname)))
+        lines.append("")
+        lines.append(str(self.domain))
+        lines.append("")
+        for insn in self.instructions:
+            lines.append(str(insn))
 
         return "\n".join(lines)
 

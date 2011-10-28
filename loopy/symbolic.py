@@ -514,7 +514,7 @@ class IndexVariableFinder(CombineMapper):
         result = self.rec(expr.expr)
         if not (set(expr.inames) & result):
             raise RuntimeError("reduction '%s' does not depend on "
-                    "reduction inames" % expr)
+                    "reduction inames (%s)" % (expr, ",".join(expr.inames)))
         if self.include_reduction_inames:
             return result
         else:
