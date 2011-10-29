@@ -193,9 +193,10 @@ def check_implemented_domains(kernel, implemented_domains):
                 #lines.append("point implemented: %s" % (pt_set <= insn_impl_domain))
                 #lines.append("point desired: %s" % (pt_set <= desired_domain))
 
+                iname_to_dim = pt.get_space().get_var_dict()
                 point_axes = []
                 for iname in insn.all_inames() | parameter_inames:
-                    tp, dim = kernel.iname_to_dim[iname]
+                    tp, dim = iname_to_dim[iname]
                     point_axes.append("%s=%d" % (iname, pt.get_coordinate(tp, dim)))
 
                 lines.append(

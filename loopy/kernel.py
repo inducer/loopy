@@ -243,7 +243,24 @@ class Instruction(Record):
                 temp_var_type=temp_var_type, duplicate_inames_and_tags=duplicate_inames_and_tags)
 
     @memoize_method
+    def reduction_inames(self):
+        def map_reduction(expr, rec):
+            rec(expr.expr)
+            for iname in expr.inames:
+                result.add(iname)
+
+        from loopy.symbolic import ReductionCallbackMapper
+        cb_mapper = ReductionCallbackMapper(map_reduction)
+
+        result = set()
+        cb_mapper(self.expression)
+
+        return result
+
+    @memoize_method
     def all_inames(self):
+        """Does not (!) include reduction inames."""
+
         from loopy.symbolic import IndexVariableFinder
         ivarf = IndexVariableFinder(include_reduction_inames=False)
         index_vars = (ivarf(self.expression) | ivarf(self.assignee))
@@ -815,23 +832,6 @@ def find_var_base_indices_and_shape_from_inames(domain, inames):
 
 # {{{ count number of uses of each reduction iname
 
-def count_reduction_iname_uses(insn):
-
-    def count_reduction_iname_uses(expr, rec):
-        rec(expr.expr)
-        for iname in expr.inames:
-            reduction_iname_uses[iname] = (
-                    reduction_iname_uses.get(iname, 0)
-                    + 1)
-
-    from loopy.symbolic import ReductionCallbackMapper
-    cb_mapper = ReductionCallbackMapper(count_reduction_iname_uses)
-
-    reduction_iname_uses = {}
-    cb_mapper(insn.expression)
-
-    return reduction_iname_uses
-
 # }}}
 
 
@@ -907,11 +907,11 @@ def make_kernel(*args, **kwargs):
 
             # {{{ duplicate non-reduction inames
 
-            reduction_iname_uses = count_reduction_iname_uses(insn)
+            reduction_inames = insn.reduction_inames()
 
             duplicate_inames = [iname
                     for iname, tag in insn.duplicate_inames_and_tags
-                    if iname not in reduction_iname_uses]
+                    if iname not in reduction_inames]
 
             new_inames = [
                     knl.make_unique_var_name(

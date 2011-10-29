@@ -237,13 +237,13 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
         # {{{ decide what to do with each iname
 
-        parent_inames = insn.all_inames()
         forced_iname_deps = []
 
         from loopy.symbolic import IndexVariableFinder
         dependencies = IndexVariableFinder(
                 include_reduction_inames=False)(expr.child)
 
+        parent_inames = insn.all_inames() | insn.reduction_inames()
         assert dependencies <= parent_inames
 
         for iname in parent_inames:
