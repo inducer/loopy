@@ -234,8 +234,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
         dependencies = IndexVariableFinder(
                 include_reduction_inames=False)(expr.child)
 
-        # FIXME: can happen with
-        # assert dependencies <= parent_inames
+        assert dependencies <= parent_inames
 
         for iname in parent_inames:
             if iname in duplicate_inames:

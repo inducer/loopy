@@ -55,8 +55,14 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
     elif isinstance(sched_item, Barrier):
         from loopy.codegen import GeneratedInstruction
         from cgen import Statement as S
+
+        if sched_item.comment:
+            comment = " /* %s */" % sched_item.comment
+        else:
+            comment = ""
+
         return GeneratedInstruction(
-                ast=S("barrier(CLK_LOCAL_MEM_FENCE)"),
+                ast=S("barrier(CLK_LOCAL_MEM_FENCE)%s" % comment),
                 implemented_domain=None)
 
     elif isinstance(sched_item, RunInstruction):

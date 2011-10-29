@@ -17,7 +17,7 @@ class RunInstruction(Record):
     __slots__ = ["insn_id"]
 
 class Barrier(Record):
-    __slots__ = []
+    __slots__ = ["comment"]
 
 # }}}
 
@@ -43,12 +43,52 @@ def gather_schedule_subloop(schedule, start_idx):
 
 
 
-def has_dependent_in_schedule(kernel, insn_id, schedule):
-    from pytools import any
-    return any(sched_item
-            for sched_item in schedule
-            if isinstance(sched_item, RunInstruction)
-            and kernel.id_to_insn[sched_item.insn_id].insn_deps)
+
+def get_barrier_needing_dependency(kernel, target, source):
+    from loopy.kernel import Instruction
+    if not isinstance(source, Instruction):
+        source = kernel.id_to_insn[source]
+    if not isinstance(target, Instruction):
+        target = kernel.id_to_insn[target]
+
+    local_vars = kernel.local_var_names()
+
+    tgt_write = set([target.get_assignee_var_name()]) & local_vars
+    tgt_read = target.get_read_var_names() & local_vars
+
+    src_write = set([source.get_assignee_var_name()]) & local_vars
+    src_read = source.get_read_var_names() & local_vars
+
+    waw = tgt_write & src_write
+    raw = tgt_read & src_write
+    war = tgt_write & src_read
+
+    for var_name in raw | war:
+        assert source.id in target.insn_deps
+        return (target, source, var_name)
+
+    if source is target:
+        return None
+
+    for var_name in waw:
+        assert (source.id in target.insn_deps
+                or source is target)
+        return (target, source, var_name)
+
+    return None
+
+
+
+
+
+
+def get_barrier_dependent_in_schedule(kernel, source, schedule):
+    for sched_item in schedule:
+        if isinstance(sched_item, RunInstruction):
+            temp_res = get_barrier_needing_dependency(
+                    kernel, sched_item.insn_id, source)
+            if temp_res:
+                return temp_res
 
 
 
@@ -289,8 +329,7 @@ def insert_barriers(kernel, schedule, level=0):
     # dependencies for which the 'normal' mechanism below will generate
     # barriers.
 
-    def issue_barrier(is_pre_barrier):
-        owed_barriers.clear()
+    def issue_barrier(is_pre_barrier, dep):
         if result and isinstance(result[-1], Barrier):
             return
 
@@ -298,8 +337,18 @@ def insert_barriers(kernel, schedule, level=0):
             if loop_had_barrier[0] or level == 0:
                 return
 
+        owed_barriers.clear()
+
+        cmt = None
+        if dep is not None:
+            target, source, var = dep
+            if is_pre_barrier:
+                cmt = "pre-barrier: %s" % var
+            else:
+                cmt = "dependency: %s" % var
+
         loop_had_barrier[0] = True
-        result.append(Barrier())
+        result.append(Barrier(comment=cmt))
 
     i = 0
     while i < len(schedule):
@@ -313,8 +362,9 @@ def insert_barriers(kernel, schedule, level=0):
             # (i.e. if anything *in* the loop depends on something beforehand)
 
             for insn_id in owed_barriers:
-                if has_dependent_in_schedule(kernel, insn_id, subloop):
-                    issue_barrier(is_pre_barrier=False)
+                dep = get_barrier_dependent_in_schedule(kernel, insn_id, subloop)
+                if dep:
+                    issue_barrier(is_pre_barrier=False, dep=dep)
                     break
 
             # }}}
@@ -326,9 +376,10 @@ def insert_barriers(kernel, schedule, level=0):
 
             if not loop_had_barrier[0]:
                 for insn_id in sub_owed_barriers:
-                    if has_dependent_in_schedule(
-                            kernel, insn_id, schedule):
-                        issue_barrier(is_pre_barrier=True)
+                    dep = get_barrier_dependent_in_schedule(
+                            kernel, insn_id, schedule)
+                    if dep:
+                        issue_barrier(is_pre_barrier=True, dep=dep)
 
             # }}}
 
@@ -347,20 +398,23 @@ def insert_barriers(kernel, schedule, level=0):
 
             # {{{ issue dependency-based barriers for this instruction
 
-            if set(insn.insn_deps) & owed_barriers:
-                issue_barrier(is_pre_barrier=False)
+            for dep_src_insn_id in set(insn.insn_deps) & owed_barriers:
+                dep = get_barrier_needing_dependency(kernel, insn, dep_src_insn_id)
+                if dep:
+                    issue_barrier(is_pre_barrier=False, dep=dep)
 
             # }}}
 
             assignee_temp_var = kernel.temporary_variables.get(
                     insn.get_assignee_var_name())
             if assignee_temp_var is not None and assignee_temp_var.is_local:
-                if level == 0:
-                    assert has_dependent_in_schedule(
-                            kernel, insn.id, schedule)
+                dep = get_barrier_dependent_in_schedule(kernel, insn.id, schedule)
 
-                if has_dependent_in_schedule(kernel, insn.id, schedule):
-                    issue_barrier(is_pre_barrier=True)
+                if level == 0:
+                    assert dep
+
+                if dep:
+                    issue_barrier(is_pre_barrier=True, dep=dep)
 
                 result.append(sched_item)
                 owed_barriers.add(insn.id)

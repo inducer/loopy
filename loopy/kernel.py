@@ -310,6 +310,12 @@ class Instruction(Record):
 
         return result
 
+    @memoize_method
+    def get_read_var_names(self):
+        from loopy.symbolic import DependencyMapper
+        return set(var.name for var in
+                DependencyMapper(composite_leaves=False)(self.expression))
+
 # }}}
 
 # {{{ reduction operations
@@ -773,6 +779,13 @@ class LoopKernel(Record):
             return tuple(pw_aff_to_expr(i) for i in tup)
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
+
+    @memoize_method
+    def local_var_names(self):
+        return set(
+                tv.name
+            for tv in self.temporary_variables.itervalues()
+            if tv.is_local)
 
     def local_mem_use(self):
         return sum(lv.nbytes for lv in self.temporary_variables.itervalues()

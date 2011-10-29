@@ -193,8 +193,7 @@ def find_accessors(kernel, readers):
 
     for insn in kernel.instructions:
         if readers:
-            from loopy.symbolic import DependencyMapper
-            var_names = DependencyMapper()(insn.expression) & admissible_vars
+            var_names = insn.get_read_var_names() & admissible_vars
         else:
             var_name = insn.get_assignee_var_name()
 
