@@ -42,9 +42,6 @@ Things to consider
 To-do
 ^^^^^
 
-- Just touching a variable written to by a non-idempotent
-  instruction makes that instruction also not idempotent
-
 - user interface for dim length prescription
 
 - Deal with equality constraints.
@@ -88,6 +85,11 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Just touching a variable written to by a non-idempotent
+  instruction makes that instruction also not idempotent
+  -> Idempotent renamed to boostable.
+  -> Done.
 
 - Give the user control over which reduction inames are
   duplicated.

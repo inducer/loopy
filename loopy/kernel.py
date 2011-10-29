@@ -223,8 +223,9 @@ class Instruction(Record):
     :ivar insn_deps: a list of ids of :class:`Instruction` instances that
         *must* be executed before this one. Note that loop scheduling augments this
         by adding dependencies on any writes to temporaries read by this instruction.
-    :ivar idempotent: Whether the instruction may be executed repeatedly (while obeying
-        dependencies) without changing the meaning of the program.
+    :ivar boostable: Whether the instruction may safely be executed
+        inside more loops than advertised without changing the meaning
+        of the program. Allowed values are *None* (for unknwon), *True*, and *False*.
 
     The following two instance variables are only used until :func:`loopy.kernel.make_kernel` is
     finished:
@@ -236,13 +237,13 @@ class Instruction(Record):
     """
     def __init__(self,
             id, assignee, expression,
-            forced_iname_deps=[], insn_deps=[], idempotent=None,
+            forced_iname_deps=[], insn_deps=[], boostable=None,
             temp_var_type=None, duplicate_inames_and_tags=[]):
 
         Record.__init__(self,
                 id=id, assignee=assignee, expression=expression,
                 forced_iname_deps=forced_iname_deps,
-                insn_deps=insn_deps, idempotent=idempotent,
+                insn_deps=insn_deps, boostable=boostable,
                 temp_var_type=temp_var_type, duplicate_inames_and_tags=duplicate_inames_and_tags)
 
     @memoize_method
@@ -268,14 +269,14 @@ class Instruction(Record):
         result = "%s: %s <- %s\n    [%s]" % (self.id,
                 self.assignee, self.expression, ", ".join(sorted(self.all_inames())))
 
-        if self.idempotent == True:
-            result += " (idempotent)"
-        elif self.idempotent == False:
-            result += " (not idempotent)"
-        elif self.idempotent is None:
-            result += " (idempotence unknown)"
+        if self.boostable == True:
+            result += " (boostable)"
+        elif self.boostable == False:
+            result += " (not boostable)"
+        elif self.boostable is None:
+            result += " (boostability unknown)"
         else:
-            raise RuntimeError("unexpected value for Instruction.idempotent")
+            raise RuntimeError("unexpected value for Instruction.boostable")
 
         if self.insn_deps:
             result += "\n    : " + ", ".join(self.insn_deps)

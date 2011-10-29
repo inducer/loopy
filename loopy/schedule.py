@@ -191,8 +191,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
 
         schedule_now = set(insn.insn_deps) <= scheduled_insn_ids
 
-        if insn.idempotent == True:
-            # If insn is idempotent, it may be placed inside a more deeply
+        if insn.boostable == True:
+            # If insn is boostable, it may be placed inside a more deeply
             # nested loop without harm.
 
             # But if it can be scheduled on the way *out* of the currently
@@ -212,8 +212,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
             if schedulable_at_loop_levels != [len(active_inames)]:
                 schedule_now = False
 
-        elif insn.idempotent == False:
-            # If insn is not idempotent, we must insist that it is placed inside
+        elif insn.boostable == False:
+            # If insn is not boostable, we must insist that it is placed inside
             # the exactly correct set of loops.
 
             schedule_now = schedule_now and (
@@ -222,7 +222,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
                     active_inames_set - parallel_inames)
 
         else:
-            raise RuntimeError("instruction '%s' has undetermined idempotence"
+            raise RuntimeError("instruction '%s' has undetermined boostability"
                     % insn.id)
 
         if schedule_now:

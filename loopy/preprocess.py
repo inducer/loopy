@@ -98,7 +98,7 @@ def realize_reduction(kernel):
 
 # }}}
 
-# {{{ automatic dependencies, find idempotent instructions
+# {{{ automatic dependencies, find boostability of instructions
 
 def find_accessors(kernel, readers):
     """
@@ -129,7 +129,7 @@ def find_accessors(kernel, readers):
 
 
 
-def add_idempotence_and_automatic_dependencies(kernel):
+def add_boostability_and_automatic_dependencies(kernel):
     writer_map = find_accessors(kernel, readers=False)
 
     arg_names = set(arg.name for arg in kernel.args)
@@ -145,11 +145,14 @@ def add_idempotence_and_automatic_dependencies(kernel):
                 set(var.name for var in dm(insn.expression))
                 & var_names)
 
+    non_boostable_vars = set()
+
     new_insns = []
     for insn in kernel.instructions:
         auto_deps = []
 
         # {{{ add automatic dependencies
+
         all_my_var_writers = set()
         for var in dep_map[insn.id]:
             var_writers = writer_map.get(var, set())
@@ -171,7 +174,7 @@ def add_idempotence_and_automatic_dependencies(kernel):
 
         # }}}
 
-        # {{{ find dependency loops, flag idempotence
+        # {{{ find dependency loops, flag boostability
 
         while True:
             last_all_my_var_writers = all_my_var_writers
@@ -185,12 +188,30 @@ def add_idempotence_and_automatic_dependencies(kernel):
 
         # }}}
 
+        boostable = insn.id not in all_my_var_writers
+
+        if not boostable:
+            non_boostable_vars.add(insn.get_assignee_var_name())
+
         new_insns.append(
                 insn.copy(
                     insn_deps=insn.insn_deps + auto_deps,
-                    idempotent=insn.id not in all_my_var_writers))
+                    boostable=boostable))
 
-    return kernel.copy(instructions=new_insns)
+    # {{{ remove boostability from isns that access non-boostable vars
+
+    new2_insns = []
+    for insn in new_insns:
+        accessed_vars = (
+                set([insn.get_assignee_var_name()])
+                | insn.get_read_var_names())
+
+        boostable = insn.boostable and not bool(non_boostable_vars & accessed_vars)
+        new2_insns.append(insn.copy(boostable=boostable))
+
+    # }}}
+
+    return kernel.copy(instructions=new2_insns)
 
 # }}}
 
@@ -480,7 +501,7 @@ def preprocess_kernel(kernel):
     # }}}
 
     kernel = assign_automatic_axes(kernel)
-    kernel = add_idempotence_and_automatic_dependencies(kernel)
+    kernel = add_boostability_and_automatic_dependencies(kernel)
     kernel = adjust_local_temp_var_storage(kernel)
 
     import loopy.check as chk
