@@ -221,10 +221,10 @@ def generate_code(kernel):
                     arg_decl = Const(arg_decl)
             arg_decl = CLGlobal(arg_decl)
         elif isinstance(arg, ImageArg):
-            if arg.name in kernel.input_vectors():
-                mode = "r"
-            else:
+            if arg.name in kernel.get_written_variables():
                 mode = "w"
+            else:
+                mode = "r"
 
             arg_decl = CLImage(arg.dimensions, mode, arg.name)
 
