@@ -86,6 +86,10 @@ Future ideas
 Dealt with
 ^^^^^^^^^^
 
+- Restrict-to-sequential and tagging have nothing to do with each other.
+  -> Removed SequentialTag and turned it into a separate computed kernel
+  property.
+
 - Just touching a variable written to by a non-idempotent
   instruction makes that instruction also not idempotent
   -> Idempotent renamed to boostable.

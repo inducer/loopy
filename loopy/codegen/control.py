@@ -41,10 +41,10 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
                 generate_unroll_loop,
                 generate_sequential_loop_dim_code)
 
-        from loopy.kernel import UnrollTag, SequentialTag
+        from loopy.kernel import UnrollTag
         if isinstance(tag, UnrollTag):
             func = generate_unroll_loop
-        elif tag is None or isinstance(tag, SequentialTag):
+        elif tag is None:
             func = generate_sequential_loop_dim_code
         else:
             raise RuntimeError("encountered (invalid) EnterLoop for '%s', tagged '%s'"

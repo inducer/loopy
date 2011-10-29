@@ -127,15 +127,25 @@ def tag_dimensions(kernel, iname_to_tag):
     iname_to_tag = dict((iname, parse_tag(tag))
             for iname, tag in iname_to_tag.iteritems())
 
+    from loopy.kernel import ParallelTag
+
     new_iname_to_tag = kernel.iname_to_tag.copy()
     for iname, new_tag in iname_to_tag.iteritems():
+        old_tag = kernel.iname_to_tag.get(iname)
+
+        if old_tag is not None and new_tag is None:
+            raise ValueError("cannot untag iname '%s'" % iname)
+
         if new_tag is None:
             continue
 
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
 
-        old_tag = kernel.iname_to_tag.get(iname)
+        if isinstance(new_tag, ParallelTag) and iname in kernel.sequential_inames:
+            raise ValueError("cannot tag '%s' as parallel--"
+                    "iname requires sequential execution" % iname)
+
         if old_tag is not None and (old_tag != new_tag):
             raise RuntimeError("'%s' is already tagged '%s'--cannot retag"
                     % (iname, old_tag))

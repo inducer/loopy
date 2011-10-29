@@ -23,10 +23,6 @@ class IndexTag(Record):
 
 
 
-class SequentialTag(IndexTag):
-    def __str__(self):
-        return "seq"
-
 class ParallelTag(IndexTag):
     pass
 
@@ -254,17 +250,6 @@ class Instruction(Record):
 
         return index_vars | set(self.forced_iname_deps)
 
-    @memoize_method
-    def sequential_inames(self, iname_to_tag):
-        result = set()
-
-        for iname in self.all_inames():
-            tag = iname_to_tag.get(iname)
-            if isinstance(tag, SequentialTag):
-                result.add(iname)
-
-        return result
-
     def __str__(self):
         result = "%s: %s <- %s\n    [%s]" % (self.id,
                 self.assignee, self.expression, ", ".join(sorted(self.all_inames())))
@@ -444,7 +429,8 @@ class LoopKernel(Record):
             temporary_variables={},
             workgroup_size=None,
             iname_to_dim=None,
-            iname_to_tag={}):
+            iname_to_tag={},
+            ):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -515,7 +501,7 @@ class LoopKernel(Record):
                         dup_groups = dup_entry_match.groupdict()
                         dup_iname = dup_groups["iname"]
                         assert dup_iname
-                        dup_tag = AutoFitLocalIndexTag()
+                        dup_tag = None
                         if dup_groups["tag"] is not None:
                             dup_tag = parse_tag(dup_groups["tag"])
 
@@ -548,32 +534,6 @@ class LoopKernel(Record):
         if len(set(insn.id for insn in insns)) != len(insns):
             raise RuntimeError("instruction ids do not appear to be unique")
 
-        # {{{ find and properly tag reduction inames
-
-        reduction_inames = set()
-
-        from loopy.symbolic import ReductionCallbackMapper
-
-        def map_reduction(expr, rec):
-            rec(expr.expr)
-            reduction_inames.update(expr.inames)
-
-        for insn in insns:
-            ReductionCallbackMapper(map_reduction)(insn.expression)
-
-        iname_to_tag = iname_to_tag.copy()
-
-        if reduction_inames:
-            for iname in reduction_inames:
-                tag = iname_to_tag.get(iname)
-                if not (tag is None or isinstance(tag, SequentialTag)):
-                    raise RuntimeError("inconsistency detected: "
-                            "sequential/reduction iname '%s' was "
-                            "tagged otherwise" % iname)
-
-                iname_to_tag[iname] = SequentialTag()
-
-        # }}}
 
         if assumptions is None:
             assumptions_space = domain.get_space().params()
@@ -609,6 +569,28 @@ class LoopKernel(Record):
         for id_str in generate_unique_possibilities(based_on):
             if id_str not in used_ids:
                 return id_str
+
+    @property
+    @memoize_method
+    def sequential_inames(self):
+        result = set()
+
+        def map_reduction(red_expr, rec):
+            rec(red_expr.expr)
+            result.update(red_expr.inames)
+
+        from loopy.symbolic import ReductionCallbackMapper
+        for insn in self.instructions:
+            ReductionCallbackMapper(map_reduction)(insn.expression)
+
+        for iname in result:
+            tag = self.iname_to_tag.get(iname)
+            if tag is not None and isinstance(tag, ParallelTag):
+                raise RuntimeError("inconsistency detected: "
+                        "sequential/reduction iname '%s' has "
+                        "a parallel tag" % iname)
+
+        return result
 
     @property
     @memoize_method
@@ -850,8 +832,11 @@ def count_reduction_iname_uses(insn):
 
     return reduction_iname_uses
 
+# }}}
 
 
+
+# {{{ pass 2 of kernel creation
 
 def make_kernel(*args, **kwargs):
     """Second pass of kernel creation. Think about requests for iname duplication
@@ -902,6 +887,9 @@ def make_kernel(*args, **kwargs):
 
             child = subst_map(child)
 
+            for old_iname, new_iname in zip(reduction_expr.inames, new_red_inames):
+                new_iname_to_tag[new_iname] = insn_dup_iname_to_tag[old_iname]
+
         from loopy.symbolic import Reduction
         return Reduction(
                 operation=reduction_expr.operation,
@@ -914,14 +902,15 @@ def make_kernel(*args, **kwargs):
         # {{{ iname duplication
 
         if insn.duplicate_inames_and_tags:
+
+            insn_dup_iname_to_tag = dict(insn.duplicate_inames_and_tags)
+
             # {{{ duplicate non-reduction inames
 
             reduction_iname_uses = count_reduction_iname_uses(insn)
 
             duplicate_inames = [iname
                     for iname, tag in insn.duplicate_inames_and_tags
-                    if iname not in reduction_iname_uses]
-            new_iname_tags = [tag for iname, tag in insn.duplicate_inames_and_tags
                     if iname not in reduction_iname_uses]
 
             new_inames = [
@@ -931,8 +920,11 @@ def make_kernel(*args, **kwargs):
                         newly_created_vars)
                     for iname in duplicate_inames]
 
-            for iname, tag in zip(new_inames, new_iname_tags):
-                new_iname_to_tag[iname] = tag
+            for old_iname, new_iname in zip(duplicate_inames, new_inames):
+                new_tag = insn_dup_iname_to_tag[old_iname]
+                if new_tag is None:
+                    new_tag = AutoFitLocalIndexTag()
+                new_iname_to_tag[new_iname] = new_tag
 
             newly_created_vars.update(new_inames)
 
@@ -1024,6 +1016,8 @@ def make_kernel(*args, **kwargs):
             domain=new_domain,
             temporary_variables=new_temp_vars,
             iname_to_tag=new_iname_to_tag)
+
+# }}}
 
 
 
