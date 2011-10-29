@@ -89,6 +89,9 @@ Future ideas
 Dealt with
 ^^^^^^^^^^
 
+- Give the user control over which reduction inames are
+  duplicated.
+
 - assert dependencies <= parent_inames in loopy/__init__.py
   -> Yes, this must be the case.
 

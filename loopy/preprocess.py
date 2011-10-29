@@ -6,86 +6,6 @@ import pyopencl.characterize as cl_char
 
 
 
-# {{{ make reduction variables unique
-
-def make_reduction_variables_unique(kernel):
-    # {{{ count number of uses of each reduction iname
-
-    def count_reduction_iname_uses(expr, rec):
-        rec(expr.expr)
-        for iname in expr.inames:
-            reduction_iname_uses[iname] = (
-                    reduction_iname_uses.get(iname, 0)
-                    + 1)
-
-    from loopy.symbolic import ReductionCallbackMapper
-    cb_mapper = ReductionCallbackMapper(count_reduction_iname_uses)
-
-    reduction_iname_uses = {}
-
-    for insn in kernel.instructions:
-        cb_mapper(insn.expression)
-
-    # }}}
-
-    # {{{ make iname uses in reduction unique
-
-    def ensure_reduction_iname_uniqueness(expr, rec):
-        child = rec(expr.expr)
-        my_created_inames = []
-        new_red_inames = []
-
-        for iname in expr.inames:
-            if reduction_iname_uses[iname] > 1:
-                new_iname = kernel.make_unique_var_name(iname, set(new_inames))
-
-                old_inames.append(iname)
-                new_inames.append(new_iname)
-                my_created_inames.append(new_iname)
-                new_red_inames.append(new_iname)
-                reduction_iname_uses[iname] -= 1
-            else:
-                new_red_inames.append(iname)
-
-        if my_created_inames:
-            from loopy.symbolic import SubstitutionMapper
-            from pymbolic.mapper.substitutor import make_subst_func
-            from pymbolic import var
-            subst_dict = dict(
-                    (old_iname, var(new_iname))
-                    for old_iname, new_iname in zip(expr.inames, my_created_inames))
-            subst_map = SubstitutionMapper(make_subst_func(subst_dict))
-
-            child = subst_map(child)
-
-        from loopy.symbolic import Reduction
-        return Reduction(
-                operation=expr.operation,
-                inames=tuple(new_red_inames),
-                expr=child)
-
-    new_insns = []
-    old_inames = []
-    new_inames = []
-
-    from loopy.symbolic import ReductionCallbackMapper
-    cb_mapper = ReductionCallbackMapper(ensure_reduction_iname_uniqueness)
-
-    new_insns = [
-        insn.copy(expression=cb_mapper(insn.expression))
-        for insn in kernel.instructions]
-
-    domain = kernel.domain
-    from loopy.isl_helpers import duplicate_axes
-    for old, new in zip(old_inames, new_inames):
-        domain = duplicate_axes(domain, [old], [new])
-
-    return kernel.copy(instructions=new_insns, domain=domain)
-
-    # }}}
-
-# }}}
-
 # {{{ rewrite reduction to imperative form
 
 def realize_reduction(kernel):
@@ -545,7 +465,6 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
-    kernel = make_reduction_variables_unique(kernel)
     kernel = realize_reduction(kernel)
 
     # {{{ check that all CSEs have been realized
