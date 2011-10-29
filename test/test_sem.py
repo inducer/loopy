@@ -281,21 +281,21 @@ def test_sem_3d(ctx_factory):
     from pymbolic import var
     K_sym = var("K")
 
-    field_shape = (n, n, n, K_sym)
+    field_shape = (K_sym, n, n, n)
 
     # K - run-time symbolic
     n = 8
     knl = lp.make_kernel(ctx.devices[0],
             "[K] -> {[i,j,k,e,m]: 0<=i,j,k,m<%d and 0<=e<K}" % n,
             [
-                "[|i,j,k] <float32> ur[i,j,k] = sum_float32(m, D[i,m]*u[m,j,k,e])",
-                "[|i,j,k] <float32> us[i,j,k] = sum_float32(m, D[j,m]*u[i,m,k,e])",
-                "[|i,j,k] <float32> ut[i,j,k] = sum_float32(m, D[k,m]*u[i,j,m,e])",
+                "[|i,j,k] <float32> ur[i,j,k] = sum_float32(m, D[i,m]*u[e,m,j,k])",
+                "[|i,j,k] <float32> us[i,j,k] = sum_float32(m, D[j,m]*u[e,i,m,k])",
+                "[|i,j,k] <float32> ut[i,j,k] = sum_float32(m, D[k,m]*u[e,i,j,m])",
 
                 "lap[i,j,k,e]  = "
-                "  sum_float32(m, D[m,i]*(G[0,m,j,k,e]*ur[m,j,k] + G[1,m,j,k,e]*us[m,j,k] + G[2,m,j,k,e]*ut[m,j,k]))"
-                "+ sum_float32(m, D[m,j]*(G[1,i,m,k,e]*ur[i,m,k] + G[3,i,m,k,e]*us[i,m,k] + G[4,i,m,k,e]*ut[i,m,k]))"
-                "+ sum_float32(m, D[m,k]*(G[2,i,j,m,e]*ur[i,j,m] + G[4,i,j,m,e]*us[i,j,m] + G[5,i,j,m,e]*ut[i,j,m]))"
+                "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur[m,j,k] + G[1,e,m,j,k]*us[m,j,k] + G[2,e,m,j,k]*ut[m,j,k]))"
+                "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur[i,m,k] + G[3,e,i,m,k]*us[i,m,k] + G[4,e,i,m,k]*ut[i,m,k]))"
+                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur[i,j,m] + G[4,e,i,j,m]*us[i,j,m] + G[5,e,i,j,m]*ut[i,j,m]))"
                 ],
             [
             lp.ArrayArg("u",   dtype, shape=field_shape, order=order),
