@@ -214,7 +214,7 @@ class Instruction(Record):
         a :class:`LoopKernel`.
     :ivar assignee:
     :ivar expression:
-    :ivar forced_iname_deps: a list of inames that are added to the list of iname
+    :ivar forced_iname_deps: a set of inames that are added to the list of iname
         dependencies
     :ivar insn_deps: a list of ids of :class:`Instruction` instances that
         *must* be executed before this one. Note that loop scheduling augments this
@@ -233,8 +233,11 @@ class Instruction(Record):
     """
     def __init__(self,
             id, assignee, expression,
-            forced_iname_deps=[], insn_deps=[], boostable=None,
+            forced_iname_deps=set(), insn_deps=set(), boostable=None,
             temp_var_type=None, duplicate_inames_and_tags=[]):
+
+        assert isinstance(forced_iname_deps, set)
+        assert isinstance(insn_deps, set)
 
         Record.__init__(self,
                 id=id, assignee=assignee, expression=expression,
@@ -452,7 +455,7 @@ class LoopKernel(Record):
             preamble=None, assumptions=None,
             iname_slab_increments={},
             temporary_variables={},
-            local_sizes=None,
+            local_sizes={},
             iname_to_tag={}, iname_to_tag_requests=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
@@ -523,17 +526,17 @@ class LoopKernel(Record):
                 else:
                     label = "insn"
                 if groups["insn_deps"] is not None:
-                    insn_deps = [dep.strip() for dep in groups["insn_deps"].split(",")]
+                    insn_deps = set(dep.strip() for dep in groups["insn_deps"].split(","))
                 else:
-                    insn_deps = []
+                    insn_deps = set()
 
                 if groups["iname_deps_and_tags"] is not None:
                     inames_and_tags = parse_iname_and_tag_list(
                             groups["iname_deps_and_tags"])
-                    forced_iname_deps = [iname for iname, tag in inames_and_tags]
+                    forced_iname_deps = set(iname for iname, tag in inames_and_tags)
                     iname_to_tag_requests.update(dict(inames_and_tags))
                 else:
-                    forced_iname_deps = []
+                    forced_iname_deps = set()
 
                 if groups["duplicate_inames_and_tags"] is not None:
                     duplicate_inames_and_tags = parse_iname_and_tag_list(
@@ -565,7 +568,6 @@ class LoopKernel(Record):
 
         if len(set(insn.id for insn in insns)) != len(insns):
             raise RuntimeError("instruction ids do not appear to be unique")
-
 
         if assumptions is None:
             assumptions_space = domain.get_space().params()

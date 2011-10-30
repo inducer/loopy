@@ -210,6 +210,15 @@ def check_implemented_domains(kernel, implemented_domains):
 
 # }}}
 
+def run_automatic_checks(kernel):
+    import loopy.check as chk
+
+    chk.check_for_double_use_of_hw_axes(kernel)
+    chk.check_for_unused_hw_axes(kernel)
+    chk.check_for_inactive_iname_access(kernel)
+    chk.check_for_write_races(kernel)
+
+
 # {{{ user-invoked checks
 
 def get_problems(kernel, parameters):

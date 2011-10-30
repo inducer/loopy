@@ -586,7 +586,7 @@ def test_image_matrix_mul(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = a[i, k]*b[k, j]"
+                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.ImageArg("a", dtype, 2),
@@ -633,12 +633,12 @@ def test_image_matrix_mul_ilp(ctx_factory):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = get_suitable_size(ctx)
+    n = 2*get_suitable_size(ctx)
 
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = a[i, k]*b[k, j]"
+                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.ImageArg("a", dtype, 2),
@@ -655,8 +655,12 @@ def test_image_matrix_mul_ilp(ctx_factory):
     knl = lp.split_dimension(knl, "k", 2)
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
-    #knl = lp.add_prefetch(knl, 'b', [("j_inner_outer", "j_inner_inner"), "k_inner"])
+    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"],
+            ["b_j_io", "b_j_ii", "b_k_i"])
+    knl = lp.join_dimensions(knl, ["b_j_io", "b_j_ii"])
+
+    #print lp.preprocess_kernel(knl)
+    #1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))

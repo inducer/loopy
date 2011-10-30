@@ -43,9 +43,20 @@ To-do
 ^^^^^
 
 - variable shuffle detection
+  -> will need unification
+
+- Fix all tests
+
+- Automatically generate testing code vs. sequential.
 
 - Deal with equality constraints.
   (These arise, e.g., when partitioning a loop of length 16 into 16s.)
+
+- duplicate_dimensions can be implemented without having to muck around 
+  with individual constraints:
+  - add_dims
+  - move_dims
+  - intersect
 
 Future ideas
 ^^^^^^^^^^^^
@@ -83,6 +94,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Dimension joining
 
 - user interface for dim length prescription
 

@@ -161,8 +161,8 @@ def make_kernel(*args, **kwargs):
             insn = insn.copy(
                     assignee=subst_map(insn.assignee),
                     expression=new_expression,
-                    forced_iname_deps=[
-                        old_to_new.get(iname, iname) for iname in insn.forced_iname_deps],
+                    forced_iname_deps=set(
+                        old_to_new.get(iname, iname) for iname in insn.forced_iname_deps),
                     )
 
         # }}}
@@ -224,17 +224,13 @@ def make_kernel(*args, **kwargs):
 
 # {{{ user-facing kernel manipulation functionality
 
-
-def split_dimension(kernel, iname, inner_length, padded_length=None,
+def split_dimension(kernel, iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0)):
 
     if iname not in kernel.all_inames():
         raise ValueError("cannot split loop for unknown variable '%s'" % iname)
-
-    if padded_length is not None:
-        inner_tag = inner_tag.copy(forced_length=padded_length)
 
     if outer_iname is None:
         outer_iname = iname+"_outer"
@@ -286,9 +282,9 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
         new_expr = subst_mapper(rls(insn.expression))
 
         if iname in insn.forced_iname_deps:
-            new_forced_iname_deps = insn.forced_iname_deps[:]
+            new_forced_iname_deps = insn.forced_iname_deps.copy()
             new_forced_iname_deps.remove(iname)
-            new_forced_iname_deps.extend([outer_iname, inner_iname])
+            new_forced_iname_deps.update([outer_iname, inner_iname])
         else:
             new_forced_iname_deps = insn.forced_iname_deps
 
@@ -307,7 +303,6 @@ def split_dimension(kernel, iname, inner_length, padded_length=None,
     result = (kernel
             .copy(domain=new_domain,
                 iname_slab_increments=iname_slab_increments,
-                iname_to_dim=None,
                 instructions=new_insns))
 
     return tag_dimensions(result, {outer_iname: outer_tag, inner_iname: inner_tag})
@@ -390,6 +385,10 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
     if new_inames is None:
         new_inames = [None] * len(duplicate_inames)
 
+    if len(new_inames) != len(duplicate_inames):
+        raise ValueError("If given, the new_inames argument must have the "
+                "same length as duplicate_inames")
+
     temp_new_inames = []
     for old_iname, new_iname in zip(duplicate_inames, new_inames):
         if new_iname is None:
@@ -431,7 +430,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
         # {{{ decide what to do with each iname
 
-        forced_iname_deps = []
+        forced_iname_deps = set()
 
         from loopy.symbolic import IndexVariableFinder
         dependencies = IndexVariableFinder(
@@ -507,7 +506,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
                 force_dependency = kind == "g"
 
             if force_dependency:
-                forced_iname_deps.append(iname)
+                forced_iname_deps.add(iname)
 
         # }}}
 
@@ -604,7 +603,7 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
 # {{{ convenience
 
-def add_prefetch(kernel, var_name, fetch_dims=[]):
+def add_prefetch(kernel, var_name, fetch_dims=[], new_inames=None):
     used_cse_tags = set()
     def map_cse(expr, rec):
         used_cse_tags.add(expr.tag)
@@ -632,7 +631,8 @@ def add_prefetch(kernel, var_name, fetch_dims=[]):
         dtype = kernel.temporary_variables[var_name].dtype
 
     for cse_tag in new_cse_tags:
-        kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims)
+        kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims,
+                new_inames=new_inames)
 
     return kernel
 

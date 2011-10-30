@@ -57,7 +57,7 @@ def realize_reduction(kernel):
                 id=kernel.make_unique_instruction_id(
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
-                forced_iname_deps=list(insn.all_inames() - set(expr.inames)),
+                forced_iname_deps=insn.all_inames() - set(expr.inames),
                 expression=expr.operation.neutral_element)
 
         new_insns.append(init_insn)
@@ -67,12 +67,12 @@ def realize_reduction(kernel):
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
                 expression=expr.operation(target_var, sub_expr),
-                insn_deps=[init_insn.id],
-                forced_iname_deps=list(insn.all_inames() | set(expr.inames)))
+                insn_deps=set([init_insn.id]) | insn.insn_deps,
+                forced_iname_deps=insn.all_inames() | set(expr.inames))
 
         new_insns.append(reduction_insn)
 
-        new_insn_insn_deps.append(reduction_insn.id)
+        new_insn_insn_deps.add(reduction_insn.id)
 
         return target_var
 
@@ -80,15 +80,15 @@ def realize_reduction(kernel):
     cb_mapper = ReductionCallbackMapper(map_reduction)
 
     for insn in kernel.instructions:
-        new_insn_insn_deps = []
+        new_insn_insn_deps = set()
 
         new_expression = cb_mapper(insn.expression)
 
         new_insn = insn.copy(
                     expression=new_expression,
                     insn_deps=insn.insn_deps
-                        + new_insn_insn_deps,
-                    forced_iname_deps=list(insn.all_inames()))
+                        | new_insn_insn_deps,
+                    forced_iname_deps=insn.all_inames())
 
         new_insns.append(new_insn)
 
@@ -149,7 +149,7 @@ def add_boostability_and_automatic_dependencies(kernel):
 
     new_insns = []
     for insn in kernel.instructions:
-        auto_deps = []
+        auto_deps = set()
 
         # {{{ add automatic dependencies
 
@@ -170,7 +170,7 @@ def add_boostability_and_automatic_dependencies(kernel):
                         % (var, insn.id))
 
             if len(var_writers) == 1:
-                auto_deps.extend(var_writers)
+                auto_deps.update(var_writers)
 
         # }}}
 
@@ -195,7 +195,7 @@ def add_boostability_and_automatic_dependencies(kernel):
 
         new_insns.append(
                 insn.copy(
-                    insn_deps=insn.insn_deps + auto_deps,
+                    insn_deps=insn.insn_deps | auto_deps,
                     boostable=boostable))
 
     # {{{ remove boostability from isns that access non-boostable vars
@@ -503,13 +503,6 @@ def preprocess_kernel(kernel):
     kernel = assign_automatic_axes(kernel)
     kernel = add_boostability_and_automatic_dependencies(kernel)
     kernel = adjust_local_temp_var_storage(kernel)
-
-    import loopy.check as chk
-
-    chk.check_for_double_use_of_hw_axes(kernel)
-    chk.check_for_unused_hw_axes(kernel)
-    chk.check_for_inactive_iname_access(kernel)
-    chk.check_for_write_races(kernel)
 
     return kernel
 

@@ -431,6 +431,9 @@ def generate_loop_schedules(kernel, loop_priority=[]):
     from loopy.preprocess import preprocess_kernel
     kernel = preprocess_kernel(kernel)
 
+    from loopy.check import run_automatic_checks
+    run_automatic_checks(kernel)
+
     schedule_count = 0
 
     for gen_sched in generate_loop_schedules_internal(kernel, loop_priority):
