@@ -310,6 +310,95 @@ def split_dimension(kernel, iname, inner_length,
 
 
 
+def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
+    """
+    :arg inames: fastest varying last
+    """
+
+    # now fastest varying first
+    inames = inames[::-1]
+
+    if new_iname is None:
+        new_iname = kernel.make_unique_var_name("_and_".join(inames))
+
+    new_domain = kernel.domain
+    new_dim_idx = new_domain.dim(dim_type.set)
+    new_domain = new_domain.add_dims(dim_type.set, 1)
+    new_domain = new_domain.set_dim_name(dim_type.set, new_dim_idx, new_iname)
+
+    joint_aff = zero = isl.Aff.zero_on_domain(kernel.space)
+    subst_dict = {}
+    base_divisor = 1
+
+    from pymbolic import var
+
+    for i, iname in enumerate(inames):
+        iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
+        iname_aff = zero.add_coefficient(iname_dt, iname_idx, 1)
+
+        joint_aff = joint_aff + base_divisor*iname_aff
+
+        bounds = kernel.get_iname_bounds(iname)
+
+        from loopy.isl_helpers import (
+                static_max_of_pw_aff, static_value_of_pw_aff)
+        from loopy.symbolic import pw_aff_to_expr
+
+        length = int(pw_aff_to_expr(
+            static_max_of_pw_aff(bounds.size, constants_only=True)))
+        lower_bound_aff = static_value_of_pw_aff(
+                bounds.lower_bound_pw_aff.coalesce(),
+                constants_only=False)
+
+        my_val = var(new_iname) // base_divisor
+        if i+1 < len(inames):
+            my_val %= length
+        my_val += pw_aff_to_expr(lower_bound_aff)
+        subst_dict[iname] = my_val
+
+        base_divisor *= length
+
+    from loopy.isl_helpers import iname_rel_aff
+    new_domain = new_domain.add_constraint(
+            isl.Constraint.equality_from_aff(
+                iname_rel_aff(new_domain.get_space(), new_iname, "==", joint_aff)))
+
+    for i, iname in enumerate(inames):
+        iname_to_dim = new_domain.get_space().get_var_dict()
+        iname_dt, iname_idx = iname_to_dim[iname]
+        new_domain = new_domain.eliminate(iname_dt, iname_idx, 1)
+        new_domain = new_domain.remove_dims(iname_dt, iname_idx, 1)
+
+    from loopy.symbolic import SubstitutionMapper
+    from pymbolic.mapper.substitutor import make_subst_func
+    subst_map = SubstitutionMapper(make_subst_func(subst_dict))
+
+    def subst_forced_iname_deps(fid):
+        result = set()
+        for iname in fid:
+            if iname in inames:
+                result.add(new_iname)
+            else:
+                result.add(iname)
+
+        return result
+
+    new_insns = [
+            insn.copy(
+                assignee=subst_map(insn.assignee),
+                expression=subst_map(insn.expression),
+                forced_iname_deps=subst_forced_iname_deps(insn.forced_iname_deps))
+            for insn in kernel.instructions]
+
+    result = kernel.copy(
+            instructions=new_insns,
+            domain=new_domain)
+
+    return tag_dimensions(result, {new_iname: tag})
+
+
+
+
 def tag_dimensions(kernel, iname_to_tag):
     from loopy.kernel import parse_tag
 
