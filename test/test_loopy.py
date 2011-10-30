@@ -38,6 +38,38 @@ def test_owed_barriers(ctx_factory):
 
 
 
+def test_wg_too_small(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+    order = "C"
+    queue = cl.CommandQueue(ctx,
+            properties=cl.command_queue_properties.PROFILING_ENABLE)
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i]: 0<=i<100}",
+            [
+                "[i:l.0] <float32> z[i] = a[i]"
+                ],
+            [
+                lp.ArrayArg("a", dtype, shape=(100,)),
+                ],
+            local_sizes={0: 16})
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen)
+
+    for gen_knl in kernel_gen:
+        try:
+            compiled = lp.CompiledKernel(ctx, gen_knl)
+        except RuntimeError, e:
+            assert "implemented and desired" in str(e)
+            pass # expected!
+        else:
+            assert False # expecting an error
+
+
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:

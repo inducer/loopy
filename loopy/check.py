@@ -146,9 +146,6 @@ def check_for_write_races(kernel):
 
 # }}}
 
-
-
-
 # {{{ sanity-check for implemented domains of each instruction
 
 def check_implemented_domains(kernel, implemented_domains):

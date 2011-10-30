@@ -438,6 +438,9 @@ class LoopKernel(Record):
         'bulk' slabs with fewer conditionals.
     :ivar temporary_variables:
     :ivar iname_to_tag:
+    :ivar local_sizes: A dictionary from integers to integers, mapping
+        workgroup axes to ther sizes, e.g. *{0: 16}* forces axis 0 to be
+        length 16.
 
     The following two instance variables are only used until :func:`loopy.kernel.make_kernel` is
     finished:
@@ -449,7 +452,7 @@ class LoopKernel(Record):
             preamble=None, assumptions=None,
             iname_slab_increments={},
             temporary_variables={},
-            workgroup_size=None,
+            local_sizes=None,
             iname_to_tag={}, iname_to_tag_requests=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
@@ -585,7 +588,7 @@ class LoopKernel(Record):
                 assumptions=assumptions,
                 iname_slab_increments=iname_slab_increments,
                 temporary_variables=temporary_variables,
-                workgroup_size=workgroup_size,
+                local_sizes=local_sizes,
                 iname_to_tag=iname_to_tag,
                 iname_to_tag_requests=iname_to_tag_requests)
 
@@ -761,11 +764,22 @@ class LoopKernel(Record):
 
         max_dims = self.device.max_work_item_dimensions
 
-        def to_dim_tuple(size_dict, which):
+        def to_dim_tuple(size_dict, which, forced_sizes={}):
+            forced_sizes = forced_sizes.copy()
+
             size_list = []
             sorted_axes = sorted(size_dict.iterkeys())
-            while sorted_axes:
+
+            while sorted_axes or forced_sizes:
                 cur_axis = sorted_axes.pop(0)
+
+                if len(size_list) in forced_sizes:
+                    size_list.append(
+                            isl.PwAff.from_aff(
+                                isl.Aff.zero_on_domain(self.space.params())
+                                + forced_sizes.pop(len(size_list))))
+                    continue
+
                 while cur_axis > len(size_list):
                     from loopy import LoopyAdvisory
                     from warnings import warn
@@ -782,7 +796,7 @@ class LoopKernel(Record):
             return tuple(size_list)
 
         return (to_dim_tuple(global_sizes, "global"),
-                to_dim_tuple(local_sizes, "local"))
+                to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
     def get_grid_sizes_as_exprs(self, ignore_auto=False):
         grid_size, group_size = self.get_grid_sizes(ignore_auto=ignore_auto)

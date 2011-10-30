@@ -318,7 +318,7 @@ def generate_code(kernel):
     # }}}
 
     from loopy.check import check_implemented_domains
-    #assert check_implemented_domains(kernel, gen_code.implemented_domains)
+    assert check_implemented_domains(kernel, gen_code.implemented_domains)
 
     return str(mod)
 

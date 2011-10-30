@@ -42,8 +42,6 @@ Things to consider
 To-do
 ^^^^^
 
-- user interface for dim length prescription
-
 - Deal with equality constraints.
   (These arise, e.g., when partitioning a loop of length 16 into 16s.)
 
@@ -85,6 +83,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- user interface for dim length prescription
 
 - Restrict-to-sequential and tagging have nothing to do with each other.
   -> Removed SequentialTag and turned it into a separate computed kernel
