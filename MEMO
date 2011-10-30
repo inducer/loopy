@@ -52,12 +52,6 @@ To-do
 - Deal with equality constraints.
   (These arise, e.g., when partitioning a loop of length 16 into 16s.)
 
-- duplicate_dimensions can be implemented without having to muck around 
-  with individual constraints:
-  - add_dims
-  - move_dims
-  - intersect
-
 Future ideas
 ^^^^^^^^^^^^
 
@@ -175,6 +169,11 @@ Dealt with
 
 - Generalize reduction to be over multiple variables
 
+- duplicate_dimensions can be implemented without having to muck around 
+  with individual constraints:
+  - add_dims
+  - move_dims
+  - intersect
 
 Should a dependency on an iname be forced in a CSE?
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
