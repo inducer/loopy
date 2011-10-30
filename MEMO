@@ -42,6 +42,8 @@ Things to consider
 To-do
 ^^^^^
 
+- variable shuffle detection
+
 - Deal with equality constraints.
   (These arise, e.g., when partitioning a loop of length 16 into 16s.)
 
@@ -73,8 +75,6 @@ Future ideas
 - Divisibility, modulo, strides?
 
 - Try, fix indirect addressing
-
-- variable shuffle detection
 
 - Use gists (why do disjoint sets arise?)
 
