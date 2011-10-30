@@ -133,7 +133,7 @@ def test_axpy(ctx_factory):
     for variant in [variant_cpu, variant_gpu]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["i_inner_outer"])
-        kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
+        kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
         def launcher(kernel, gsize, lsize, check):
             evt = kernel(queue, gsize(n), lsize(n), 2, a.data, 3, b.data, c.data, n,
@@ -178,7 +178,7 @@ def test_transpose(ctx_factory):
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, {}, kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, {})
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = cl_array.empty_like(a)
@@ -228,7 +228,7 @@ def test_plain_matrix_mul(ctx_factory):
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, {}, kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, {})
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -282,7 +282,7 @@ def test_variable_size_matrix_mul(ctx_factory):
     knl = lp.realize_cse(knl, "rhsmat", dtype, ["j_inner", "k_inner"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -376,7 +376,7 @@ def test_rank_one(ctx_factory):
     for variant in [variant_1, variant_2, variant_4]:
 
         kernel_gen = lp.generate_loop_schedules(variant(knl))
-        kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
+        kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
         a = cl_random.rand(queue, n, dtype=dtype)
         b = cl_random.rand(queue, n, dtype=dtype)
@@ -430,7 +430,7 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -492,7 +492,7 @@ def test_intel_matrix_mul(ctx_factory):
 
     kernel_gen = lp.generate_loop_schedules(knl)
     #hints=["k_outer", "k_inner_outer", "k_inner_inner"]
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -526,7 +526,7 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = a[i, k]*b[k, j]"
+                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.ImageArg("a", dtype, 2),
@@ -539,20 +539,18 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     j_reg = 4
     i_chunks = 16
     j_chunks = 16
-    knl = lp.split_dimension(knl, "i", i_reg*i_chunks, outer_tag="g.0", no_slabs=True)
-    knl = lp.split_dimension(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp", no_slabs=True)
-    knl = lp.split_dimension(knl, "j", j_reg*j_chunks, outer_tag="g.1", no_slabs=True)
-    knl = lp.split_dimension(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp", no_slabs=True)
-    knl = lp.split_dimension(knl, "k", 16, no_slabs=True)
+    knl = lp.split_dimension(knl, "i", i_reg*i_chunks, outer_tag="g.0")
+    knl = lp.split_dimension(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
+    knl = lp.split_dimension(knl, "j", j_reg*j_chunks, outer_tag="g.1")
+    knl = lp.split_dimension(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
+    knl = lp.split_dimension(knl, "k", 16)
     #knl = lp.split_dimension(knl, "k_inner", 8, outer_tag="unr")
     knl = lp.add_prefetch(knl, 'a', ["k_inner", ("i_inner_inner", "i_inner_outer")])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", ("j_inner_inner", "j_inner_outer"),])
-    assert knl.get_problems({})[0] <= 2
 
-    kernel_gen = (lp.insert_register_prefetches(knl)
-            for knl in lp.generate_loop_schedules(knl,
-                hints=["k_outer", "k_inner_outer", "k_inner_inner"]
-                ))
+    kernel_gen = lp.generate_loop_schedules(knl)
+    #hints=["k_outer", "k_inner_outer", "k_inner_inner"]
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -603,10 +601,9 @@ def test_image_matrix_mul(ctx_factory):
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
-    assert knl.get_problems({})[0] <= 2
 
-    kernel_gen = (lp.insert_register_prefetches(knl)
-            for knl in lp.generate_loop_schedules(knl))
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -662,7 +659,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
     #knl = lp.add_prefetch(knl, 'b', [("j_inner_outer", "j_inner_inner"), "k_inner"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -716,7 +713,7 @@ def test_fancy_matrix_mul(ctx_factory):
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order, 
             ran_factor=0)

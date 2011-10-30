@@ -22,14 +22,208 @@ class LoopyAdvisory(UserWarning):
 
 from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
-from loopy.kernel import make_kernel, AutoFitLocalIndexTag
+from loopy.kernel import AutoFitLocalIndexTag
 from loopy.preprocess import preprocess_kernel
 from loopy.schedule import generate_loop_schedules
 from loopy.compiled import CompiledKernel, drive_timing_run
+from loopy.check import check_kernels
+
+# }}}
+
+# {{{ kernel creation
+
+def make_kernel(*args, **kwargs):
+    """Second pass of kernel creation. Think about requests for iname duplication
+    and temporary variable declaration received as part of string instructions.
+    """
+
+    from loopy.kernel import LoopKernel
+    knl = LoopKernel(*args, **kwargs)
+
+    knl = tag_dimensions(
+            knl.copy(iname_to_tag_requests=None),
+            knl.iname_to_tag_requests)
+
+    new_insns = []
+    new_domain = knl.domain
+    new_temp_vars = knl.temporary_variables.copy()
+    new_iname_to_tag = knl.iname_to_tag.copy()
+
+    newly_created_vars = set()
+
+    # {{{ reduction iname duplication helper function
+
+    def duplicate_reduction_inames(reduction_expr, rec):
+        duplicate_inames = [iname
+                for iname, tag in insn.duplicate_inames_and_tags]
+
+        child = rec(reduction_expr.expr)
+        new_red_inames = []
+        did_something = False
+
+        for iname in reduction_expr.inames:
+            if iname in duplicate_inames:
+                new_iname = knl.make_unique_var_name(iname, newly_created_vars)
+
+                old_insn_inames.append(iname)
+                new_insn_inames.append(new_iname)
+                newly_created_vars.add(new_iname)
+                new_red_inames.append(new_iname)
+                did_something = True
+            else:
+                new_red_inames.append(iname)
+
+        if did_something:
+            from loopy.symbolic import SubstitutionMapper
+            from pymbolic.mapper.substitutor import make_subst_func
+            from pymbolic import var
+            subst_dict = dict(
+                    (old_iname, var(new_iname))
+                    for old_iname, new_iname in zip(
+                        reduction_expr.inames, new_red_inames))
+            subst_map = SubstitutionMapper(make_subst_func(subst_dict))
+
+            child = subst_map(child)
+
+            for old_iname, new_iname in zip(reduction_expr.inames, new_red_inames):
+                new_iname_to_tag[new_iname] = insn_dup_iname_to_tag[old_iname]
+
+        from loopy.symbolic import Reduction
+        return Reduction(
+                operation=reduction_expr.operation,
+                inames=tuple(new_red_inames),
+                expr=child)
+
+    # }}}
+
+    for insn in knl.instructions:
+        # {{{ iname duplication
+
+        if insn.duplicate_inames_and_tags:
+
+            insn_dup_iname_to_tag = dict(insn.duplicate_inames_and_tags)
+
+            # {{{ duplicate non-reduction inames
+
+            reduction_inames = insn.reduction_inames()
+
+            duplicate_inames = [iname
+                    for iname, tag in insn.duplicate_inames_and_tags
+                    if iname not in reduction_inames]
+
+            new_inames = [
+                    knl.make_unique_var_name(
+                        iname,
+                        extra_used_vars=
+                        newly_created_vars)
+                    for iname in duplicate_inames]
+
+            for old_iname, new_iname in zip(duplicate_inames, new_inames):
+                new_tag = insn_dup_iname_to_tag[old_iname]
+                if new_tag is None:
+                    new_tag = AutoFitLocalIndexTag()
+                new_iname_to_tag[new_iname] = new_tag
+
+            newly_created_vars.update(new_inames)
+
+            from loopy.isl_helpers import duplicate_axes
+            new_domain = duplicate_axes(new_domain, duplicate_inames, new_inames)
+
+            from loopy.symbolic import SubstitutionMapper
+            from pymbolic.mapper.substitutor import make_subst_func
+            from pymbolic import var
+            old_to_new = dict(
+                    (old_iname, var(new_iname))
+                    for old_iname, new_iname in zip(duplicate_inames, new_inames))
+            subst_map = SubstitutionMapper(make_subst_func(old_to_new))
+            new_expression = subst_map(insn.expression)
+
+            # }}}
+
+            # {{{ duplicate reduction inames
+
+            if len(duplicate_inames) < len(insn.duplicate_inames_and_tags):
+                # there must've been requests to duplicate reduction inames
+                old_insn_inames = []
+                new_insn_inames = []
+
+                from loopy.symbolic import ReductionCallbackMapper
+                new_expression = (
+                        ReductionCallbackMapper(duplicate_reduction_inames)
+                        (new_expression))
+
+                from loopy.isl_helpers import duplicate_axes
+                for old, new in zip(old_insn_inames, new_insn_inames):
+                    new_domain = duplicate_axes(new_domain, [old], [new])
+
+            # }}}
+
+            insn = insn.copy(
+                    assignee=subst_map(insn.assignee),
+                    expression=new_expression,
+                    forced_iname_deps=[
+                        old_to_new.get(iname, iname) for iname in insn.forced_iname_deps],
+                    )
+
+        # }}}
+
+        # {{{ temporary variable creation
+
+        from loopy.kernel import (
+                find_var_base_indices_and_shape_from_inames,
+                TemporaryVariable)
+
+        if insn.temp_var_type is not None:
+            assignee_name = insn.get_assignee_var_name()
+
+            assignee_indices = []
+            from pymbolic.primitives import Variable
+            for index_expr in insn.get_assignee_indices():
+                if (not isinstance(index_expr, Variable)
+                        or not index_expr.name in insn.all_inames()):
+                    raise RuntimeError(
+                            "only plain inames are allowed in "
+                            "the lvalue index when declaring the "
+                            "variable '%s' in an instruction"
+                            % assignee_name)
+
+                assignee_indices.append(index_expr.name)
+
+            from loopy.kernel import LocalIndexTagBase
+            from pytools import any
+            is_local = any(
+                    isinstance(new_iname_to_tag.get(iname), LocalIndexTagBase)
+                    for iname in assignee_indices)
+
+            base_indices, shape = \
+                    find_var_base_indices_and_shape_from_inames(
+                            new_domain, assignee_indices)
+
+            new_temp_vars[assignee_name] = TemporaryVariable(
+                    name=assignee_name,
+                    dtype=np.dtype(insn.temp_var_type),
+                    is_local=is_local,
+                    base_indices=base_indices,
+                    shape=shape)
+
+            newly_created_vars.add(assignee_name)
+
+            insn = insn.copy(temp_var_type=None)
+
+        # }}}
+
+        new_insns.append(insn)
+
+    return knl.copy(
+            instructions=new_insns,
+            domain=new_domain,
+            temporary_variables=new_temp_vars,
+            iname_to_tag=new_iname_to_tag)
 
 # }}}
 
 # {{{ user-facing kernel manipulation functionality
+
 
 def split_dimension(kernel, iname, inner_length, padded_length=None,
         outer_iname=None, inner_iname=None,
@@ -407,80 +601,6 @@ def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=Non
 
 
 
-def get_problems(kernel, parameters):
-    """
-    :return: *(max_severity, list of (severity, msg))*, where *severity* ranges from 1-5.
-        '5' means 'will certainly not run'.
-    """
-    msgs = []
-
-    def msg(severity, s):
-        msgs.append((severity, s))
-
-    glens, llens = kernel.get_grid_sizes_as_exprs()
-
-    from pymbolic import evaluate
-    from pymbolic.mapper.evaluator import UnknownVariableError
-    try:
-        glens = evaluate(glens, parameters)
-        llens = evaluate(llens, parameters)
-    except UnknownVariableError, name:
-        raise RuntimeError("When checking your kernel for problems, "
-                "a value for parameter '%s' was not available. Pass "
-                "it in the 'parameters' kwarg to check_kernels()."
-                % name)
-
-    if (max(len(glens), len(llens))
-            > kernel.device.max_work_item_dimensions):
-        msg(5, "too many work item dimensions")
-
-    for i in range(len(llens)):
-        if llens[i] > kernel.device.max_work_item_sizes[i]:
-            msg(5, "group axis %d too big" % i)
-
-    from pytools import product
-    if product(llens) > kernel.device.max_work_group_size:
-        msg(5, "work group too big")
-
-    import pyopencl as cl
-    from pyopencl.characterize import usable_local_mem_size
-    if kernel.local_mem_use() > usable_local_mem_size(kernel.device):
-        if kernel.device.local_mem_type == cl.device_local_mem_type.LOCAL:
-            msg(5, "using too much local memory")
-        else:
-            msg(4, "using more local memory than available--"
-                    "possibly OK due to cache nature")
-
-    const_arg_count = sum(
-            1 for arg in kernel.args
-            if isinstance(arg, ArrayArg) and arg.constant_mem)
-
-    if const_arg_count > kernel.device.max_constant_args:
-        msg(5, "too many constant arguments")
-
-    max_severity = 0
-    for sev, msg in msgs:
-        max_severity = max(sev, max_severity)
-    return max_severity, msgs
-
-
-
-
-def check_kernels(kernel_gen, parameters, kill_level_min=3,
-        warn_level_min=1):
-    for kernel in kernel_gen:
-        max_severity, msgs = get_problems(kernel, parameters)
-
-        for severity, msg in msgs:
-            if severity >= warn_level_min:
-                from warnings import warn
-                from loopy import LoopyAdvisory
-                warn(msg, LoopyAdvisory)
-
-        if max_severity < kill_level_min:
-            yield kernel
-
-# }}}
 
 # {{{ convenience
 

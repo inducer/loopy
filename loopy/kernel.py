@@ -305,13 +305,14 @@ class Instruction(Record):
         from pymbolic.primitives import Variable, Subscript
 
         if isinstance(self.assignee, Variable):
-            result = ()
+            return ()
         elif isinstance(self.assignee, Subscript):
             result = self.assignee.index
+            if not isinstance(result, tuple):
+                result = (result,)
+            return result
         else:
             raise RuntimeError("invalid lvalue '%s'" % self.assignee)
-
-        return result
 
     @memoize_method
     def get_read_var_names(self):
@@ -437,6 +438,10 @@ class LoopKernel(Record):
         'bulk' slabs with fewer conditionals.
     :ivar temporary_variables:
     :ivar iname_to_tag:
+
+    The following two instance variables are only used until :func:`loopy.kernel.make_kernel` is
+    finished:
+    :ivar iname_to_tag_requests:
     """
 
     def __init__(self, device, domain, instructions, args=None, schedule=None,
@@ -445,14 +450,12 @@ class LoopKernel(Record):
             iname_slab_increments={},
             temporary_variables={},
             workgroup_size=None,
-            iname_to_dim=None,
-            iname_to_tag={},
-            ):
+            iname_to_tag={}, iname_to_tag_requests=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
         """
-        assert iname_to_dim is None
+        assert not iname_to_tag_requests
 
         import re
 
@@ -460,12 +463,14 @@ class LoopKernel(Record):
             ctx = isl.Context()
             domain = isl.Set.read_from_str(ctx, domain)
 
-        DUP_ENTRY_RE = re.compile(
+        iname_to_tag_requests = {}
+
+        INAME_ENTRY_RE = re.compile(
                 r"^\s*(?P<iname>\w+)\s*(?:\:\s*(?P<tag>[\w.]+))?\s*$")
         LABEL_DEP_RE = re.compile(
                 r"^\s*(?:(?P<label>\w+):)?"
                 "\s*(?:\["
-                    "(?P<iname_deps>[\s\w,]*)"
+                    "(?P<iname_deps_and_tags>[\s\w,:.]*)"
                     "(?:\|(?P<duplicate_inames_and_tags>[\s\w,:.]*))?"
                 "\])?"
                 "\s*(?:\<(?P<temp_var_type>.+)\>)?"
@@ -473,9 +478,34 @@ class LoopKernel(Record):
                 "\s*?(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
                 )
 
+        def parse_iname_and_tag_list(s):
+            dup_entries = [
+                    dep.strip() for dep in s.split(",")]
+            result = []
+            for entry in dup_entries:
+                if not entry:
+                    continue
+
+                entry_match = INAME_ENTRY_RE.match(entry)
+                if entry_match is None:
+                    raise RuntimeError(
+                            "could not parse iname:tag entry '%s'"
+                            % entry)
+
+                groups = entry_match.groupdict()
+                iname = groups["iname"]
+                assert iname
+
+                tag = None
+                if groups["tag"] is not None:
+                    tag = parse_tag(groups["tag"])
+
+                result.append((iname, tag))
+
+            return result
+
         def parse_if_necessary(insn):
             from pymbolic import parse
-
 
             if isinstance(insn, Instruction):
                 return insn
@@ -494,35 +524,17 @@ class LoopKernel(Record):
                 else:
                     insn_deps = []
 
-                if groups["iname_deps"] is not None:
-                    forced_iname_deps = [dep.strip()
-                            for dep in groups["iname_deps"].split(",")
-                            if dep.strip()]
+                if groups["iname_deps_and_tags"] is not None:
+                    inames_and_tags = parse_iname_and_tag_list(
+                            groups["iname_deps_and_tags"])
+                    forced_iname_deps = [iname for iname, tag in inames_and_tags]
+                    iname_to_tag_requests.update(dict(inames_and_tags))
                 else:
                     forced_iname_deps = []
 
                 if groups["duplicate_inames_and_tags"] is not None:
-                    dup_entries = [
-                            dep.strip() for dep in groups["duplicate_inames_and_tags"].split(",")]
-                    duplicate_inames_and_tags = []
-                    for dup_entry in dup_entries:
-                        if not dup_entry:
-                            continue
-
-                        dup_entry_match = DUP_ENTRY_RE.match(dup_entry)
-                        if dup_entry_match is None:
-                            raise RuntimeError(
-                                    "could not parse iname duplication entry '%s'"
-                                    % dup_entry)
-
-                        dup_groups = dup_entry_match.groupdict()
-                        dup_iname = dup_groups["iname"]
-                        assert dup_iname
-                        dup_tag = None
-                        if dup_groups["tag"] is not None:
-                            dup_tag = parse_tag(dup_groups["tag"])
-
-                        duplicate_inames_and_tags.append((dup_iname, dup_tag))
+                    duplicate_inames_and_tags = parse_iname_and_tag_list(
+                            groups["duplicate_inames_and_tags"])
                 else:
                     duplicate_inames_and_tags = []
 
@@ -574,7 +586,8 @@ class LoopKernel(Record):
                 iname_slab_increments=iname_slab_increments,
                 temporary_variables=temporary_variables,
                 workgroup_size=workgroup_size,
-                iname_to_tag=iname_to_tag)
+                iname_to_tag=iname_to_tag,
+                iname_to_tag_requests=iname_to_tag_requests)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:
@@ -826,198 +839,6 @@ def find_var_base_indices_and_shape_from_inames(domain, inames):
         base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
 
     return base_indices, shape
-
-
-
-
-# {{{ count number of uses of each reduction iname
-
-# }}}
-
-
-
-# {{{ pass 2 of kernel creation
-
-def make_kernel(*args, **kwargs):
-    """Second pass of kernel creation. Think about requests for iname duplication
-    and temporary variable declaration received as part of string instructions.
-    """
-
-    knl = LoopKernel(*args, **kwargs)
-
-    new_insns = []
-    new_domain = knl.domain
-    new_temp_vars = knl.temporary_variables.copy()
-    new_iname_to_tag = knl.iname_to_tag.copy()
-
-    newly_created_vars = set()
-
-    # {{{ reduction iname duplication helper function
-
-    def duplicate_reduction_inames(reduction_expr, rec):
-        duplicate_inames = [iname
-                for iname, tag in insn.duplicate_inames_and_tags]
-
-        child = rec(reduction_expr.expr)
-        new_red_inames = []
-        did_something = False
-
-        for iname in reduction_expr.inames:
-            if iname in duplicate_inames:
-                new_iname = knl.make_unique_var_name(iname, newly_created_vars)
-
-                old_insn_inames.append(iname)
-                new_insn_inames.append(new_iname)
-                newly_created_vars.add(new_iname)
-                new_red_inames.append(new_iname)
-                reduction_iname_uses[iname] -= 1
-                did_something = True
-            else:
-                new_red_inames.append(iname)
-
-        if did_something:
-            from loopy.symbolic import SubstitutionMapper
-            from pymbolic.mapper.substitutor import make_subst_func
-            from pymbolic import var
-            subst_dict = dict(
-                    (old_iname, var(new_iname))
-                    for old_iname, new_iname in zip(
-                        reduction_expr.inames, new_red_inames))
-            subst_map = SubstitutionMapper(make_subst_func(subst_dict))
-
-            child = subst_map(child)
-
-            for old_iname, new_iname in zip(reduction_expr.inames, new_red_inames):
-                new_iname_to_tag[new_iname] = insn_dup_iname_to_tag[old_iname]
-
-        from loopy.symbolic import Reduction
-        return Reduction(
-                operation=reduction_expr.operation,
-                inames=tuple(new_red_inames),
-                expr=child)
-
-    # }}}
-
-    for insn in knl.instructions:
-        # {{{ iname duplication
-
-        if insn.duplicate_inames_and_tags:
-
-            insn_dup_iname_to_tag = dict(insn.duplicate_inames_and_tags)
-
-            # {{{ duplicate non-reduction inames
-
-            reduction_inames = insn.reduction_inames()
-
-            duplicate_inames = [iname
-                    for iname, tag in insn.duplicate_inames_and_tags
-                    if iname not in reduction_inames]
-
-            new_inames = [
-                    knl.make_unique_var_name(
-                        iname,
-                        extra_used_vars=
-                        newly_created_vars)
-                    for iname in duplicate_inames]
-
-            for old_iname, new_iname in zip(duplicate_inames, new_inames):
-                new_tag = insn_dup_iname_to_tag[old_iname]
-                if new_tag is None:
-                    new_tag = AutoFitLocalIndexTag()
-                new_iname_to_tag[new_iname] = new_tag
-
-            newly_created_vars.update(new_inames)
-
-            from loopy.isl_helpers import duplicate_axes
-            new_domain = duplicate_axes(new_domain, duplicate_inames, new_inames)
-
-            from loopy.symbolic import SubstitutionMapper
-            from pymbolic.mapper.substitutor import make_subst_func
-            old_to_new = dict(
-                    (old_iname, var(new_iname))
-                    for old_iname, new_iname in zip(duplicate_inames, new_inames))
-            subst_map = SubstitutionMapper(make_subst_func(old_to_new))
-            new_expression = subst_map(insn.expression)
-
-            # }}}
-
-            # {{{ duplicate reduction inames
-
-            if len(duplicate_inames) < len(insn.duplicate_inames_and_tags):
-                # there must've been requests to duplicate reduction inames
-                old_insn_inames = []
-                new_insn_inames = []
-
-                from loopy.symbolic import ReductionCallbackMapper
-                new_expression = (
-                        ReductionCallbackMapper(duplicate_reduction_inames)
-                        (new_expression))
-
-                from loopy.isl_helpers import duplicate_axes
-                for old, new in zip(old_insn_inames, new_insn_inames):
-                    new_domain = duplicate_axes(new_domain, [old], [new])
-
-            # }}}
-
-            insn = insn.copy(
-                    assignee=subst_map(insn.assignee),
-                    expression=new_expression,
-                    forced_iname_deps=[
-                        old_to_new.get(iname, iname) for iname in insn.forced_iname_deps],
-                    )
-
-        # }}}
-
-        # {{{ temporary variable creation
-
-        if insn.temp_var_type is not None:
-            assignee_name = insn.get_assignee_var_name()
-
-            assignee_indices = []
-            from pymbolic.primitives import Variable
-            for index_expr in insn.get_assignee_indices():
-                if (not isinstance(index_expr, Variable)
-                        or not index_expr.name in insn.all_inames()):
-                    raise RuntimeError(
-                            "only plain inames are allowed in "
-                            "the lvalue index when declaring the "
-                            "variable '%s' in an instruction"
-                            % assignee_name)
-
-                assignee_indices.append(index_expr.name)
-
-            from loopy.kernel import LocalIndexTagBase
-            from pytools import any
-            is_local = any(
-                    isinstance(new_iname_to_tag.get(iname), LocalIndexTagBase)
-                    for iname in assignee_indices)
-
-            base_indices, shape = \
-                    find_var_base_indices_and_shape_from_inames(
-                            new_domain, assignee_indices)
-
-            new_temp_vars[assignee_name] = TemporaryVariable(
-                    name=assignee_name,
-                    dtype=np.dtype(insn.temp_var_type),
-                    is_local=is_local,
-                    base_indices=base_indices,
-                    shape=shape)
-
-            newly_created_vars.add(assignee_name)
-
-            insn = insn.copy(temp_var_type=None)
-
-        # }}}
-
-        new_insns.append(insn)
-
-    return knl.copy(
-            instructions=new_insns,
-            domain=new_domain,
-            temporary_variables=new_temp_vars,
-            iname_to_tag=new_iname_to_tag)
-
-# }}}
 
 
 

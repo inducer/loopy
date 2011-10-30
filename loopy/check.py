@@ -212,3 +212,83 @@ def check_implemented_domains(kernel, implemented_domains):
     return True
 
 # }}}
+
+# {{{ user-invoked checks
+
+def get_problems(kernel, parameters):
+    """
+    :return: *(max_severity, list of (severity, msg))*, where *severity* ranges from 1-5.
+        '5' means 'will certainly not run'.
+    """
+    msgs = []
+
+    def msg(severity, s):
+        msgs.append((severity, s))
+
+    glens, llens = kernel.get_grid_sizes_as_exprs()
+
+    from pymbolic import evaluate
+    from pymbolic.mapper.evaluator import UnknownVariableError
+    try:
+        glens = evaluate(glens, parameters)
+        llens = evaluate(llens, parameters)
+    except UnknownVariableError, name:
+        raise RuntimeError("When checking your kernel for problems, "
+                "a value for parameter '%s' was not available. Pass "
+                "it in the 'parameters' kwarg to check_kernels()."
+                % name)
+
+    if (max(len(glens), len(llens))
+            > kernel.device.max_work_item_dimensions):
+        msg(5, "too many work item dimensions")
+
+    for i in range(len(llens)):
+        if llens[i] > kernel.device.max_work_item_sizes[i]:
+            msg(5, "group axis %d too big" % i)
+
+    from pytools import product
+    if product(llens) > kernel.device.max_work_group_size:
+        msg(5, "work group too big")
+
+    import pyopencl as cl
+    from pyopencl.characterize import usable_local_mem_size
+    if kernel.local_mem_use() > usable_local_mem_size(kernel.device):
+        if kernel.device.local_mem_type == cl.device_local_mem_type.LOCAL:
+            msg(5, "using too much local memory")
+        else:
+            msg(4, "using more local memory than available--"
+                    "possibly OK due to cache nature")
+
+    from loopy.kernel import ArrayArg
+    const_arg_count = sum(
+            1 for arg in kernel.args
+            if isinstance(arg, ArrayArg) and arg.constant_mem)
+
+    if const_arg_count > kernel.device.max_constant_args:
+        msg(5, "too many constant arguments")
+
+    max_severity = 0
+    for sev, msg in msgs:
+        max_severity = max(sev, max_severity)
+    return max_severity, msgs
+
+
+
+
+def check_kernels(kernel_gen, parameters={}, kill_level_min=5,
+        warn_level_min=1):
+    for kernel in kernel_gen:
+        max_severity, msgs = get_problems(kernel, parameters)
+
+        for severity, msg in msgs:
+            if severity >= warn_level_min:
+                from warnings import warn
+                from loopy import LoopyAdvisory
+                warn(msg, LoopyAdvisory)
+
+        if max_severity < kill_level_min:
+            yield kernel
+
+# }}}
+
+# vim: foldmethod=marker

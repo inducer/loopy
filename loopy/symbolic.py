@@ -338,9 +338,13 @@ class LoopyCCodeMapper(CCodeMapper):
 
         elif expr.aggregate.name in self.kernel.temporary_variables:
             temp_var = self.kernel.temporary_variables[expr.aggregate.name]
+            if isinstance(expr.index, tuple):
+                index = expr.index
+            else:
+                index = (expr.index,)
 
             return (temp_var.name + "".join("[%s]" % self.rec(idx, PREC_NONE)
-                for idx in expr.index))
+                for idx in index))
 
         else:
             raise RuntimeError("nothing known about variable '%s'" % expr.aggregate.name)

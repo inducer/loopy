@@ -410,9 +410,6 @@ def insert_barriers(kernel, schedule, level=0):
             if assignee_temp_var is not None and assignee_temp_var.is_local:
                 dep = get_barrier_dependent_in_schedule(kernel, insn.id, schedule)
 
-                if level == 0:
-                    assert dep
-
                 if dep:
                     issue_barrier(is_pre_barrier=True, dep=dep)
 
@@ -438,7 +435,13 @@ def generate_loop_schedules(kernel, loop_priority=[]):
 
     for gen_sched in generate_loop_schedules_internal(kernel, loop_priority):
         gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
-        assert not owed_barriers
+        if owed_barriers:
+            from warnings import warn
+            from loopy import LoopyAdvisory
+            warn("Barrier insertion finished without inserting barriers for "
+                    "local memory writes in these instructions: '%s'. "
+                    "This often means that local memory was "
+                    "written, but never read." % ",".join(owed_barriers), LoopyAdvisory)
 
         yield kernel.copy(schedule=gen_sched)
 

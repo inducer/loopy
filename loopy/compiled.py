@@ -48,7 +48,6 @@ class CompiledKernel:
         else:
             self.size_args = size_args
 
-        from loopy.kernel import GroupIndexTag, LocalIndexTag
         gsize_expr, lsize_expr = kernel.get_grid_sizes_as_exprs()
 
         if not gsize_expr: gsize_expr = (1,)
