@@ -93,11 +93,16 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         from pymbolic.primitives import Variable
         if isinstance(expr.function, Variable) and expr.function.name == "cse":
             from pymbolic.primitives import CommonSubexpression
-            if len(expr.parameters) == 2:
-                if not isinstance(expr.parameters[1], Variable):
-                    raise TypeError("second argument to cse() must be a symbol")
+            if len(expr.parameters) in [1, 2]:
+                if len(expr.parameters) == 2:
+                    if not isinstance(expr.parameters[1], Variable):
+                        raise TypeError("second argument to cse() must be a symbol")
+                    tag = expr.parameters[1].name
+                else:
+                    tag = None
+
                 return CommonSubexpression(
-                        self.rec(expr.parameters[0]), expr.parameters[1].name)
+                        self.rec(expr.parameters[0]), tag)
             else:
                 raise TypeError("cse takes two arguments")
 
@@ -376,7 +381,7 @@ class LoopyCCodeMapper(CCodeMapper):
 
 # }}}
 
-# {{{ aff -> expr conversion
+# {{{ aff <-> expr conversion
 
 def aff_to_expr(aff, except_name=None, error_on_name=None):
     if except_name is not None and error_on_name is not None:
@@ -551,6 +556,20 @@ class VariableFetchCSEMapper(IdentityMapper):
 
 # }}}
 
+# {{{ prime-adder
+
+class PrimeAdder(IdentityMapper):
+    def __init__(self, which_vars):
+        self.which_vars = which_vars
+
+    def map_variable(self, expr):
+        from pymbolic import var
+        if expr.name in self.which_vars:
+            return var(expr.name+"'")
+        else:
+            return expr
+
+# }}}
 
 
 

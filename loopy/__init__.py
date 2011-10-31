@@ -23,10 +23,18 @@ class LoopyAdvisory(UserWarning):
 from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
 from loopy.kernel import AutoFitLocalIndexTag
+from loopy.cse import realize_cse
 from loopy.preprocess import preprocess_kernel
 from loopy.schedule import generate_loop_schedules
 from loopy.compiled import CompiledKernel, drive_timing_run
 from loopy.check import check_kernels
+
+__all__ = ["ScalarArg", "ArrayArg", "ImageArg",
+        "preprocess_kernel", "generate_loop_schedules",
+        "CompiledKernel", "drive_timing_run", "check_kernels",
+        "make_kernel", "split_dimension", "join_dimensions",
+        "tag_dimensions", "realize_cse", "add_prefetch"
+        ]
 
 # }}}
 
@@ -222,12 +230,15 @@ def make_kernel(*args, **kwargs):
 
 # }}}
 
-# {{{ user-facing kernel manipulation functionality
+# {{{ dimension split
 
 def split_dimension(kernel, iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0)):
+
+    if kernel.iname_to_tag.get(iname) is not None:
+        raise RuntimeError("cannot split already tagged iname '%s'" % iname)
 
     if iname not in kernel.all_inames():
         raise ValueError("cannot split loop for unknown variable '%s'" % iname)
@@ -242,8 +253,8 @@ def split_dimension(kernel, iname, inner_length,
 
     def process_set(s):
         s = s.add_dims(dim_type.set, 2)
-        s.set_dim_name(dim_type.set, outer_var_nr, outer_iname)
-        s.set_dim_name(dim_type.set, inner_var_nr, inner_iname)
+        s = s.set_dim_name(dim_type.set, outer_var_nr, outer_iname)
+        s = s.set_dim_name(dim_type.set, inner_var_nr, inner_iname)
 
         from loopy.isl_helpers import make_slab
 
@@ -307,8 +318,9 @@ def split_dimension(kernel, iname, inner_length,
 
     return tag_dimensions(result, {outer_iname: outer_tag, inner_iname: inner_tag})
 
+# }}}
 
-
+# {{{ dimension join
 
 def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
     """
@@ -396,8 +408,9 @@ def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
 
     return tag_dimensions(result, {new_iname: tag})
 
+# }}}
 
-
+# {{{ dimension tag
 
 def tag_dimensions(kernel, iname_to_tag):
     from loopy.kernel import parse_tag
@@ -432,265 +445,9 @@ def tag_dimensions(kernel, iname_to_tag):
 
     return kernel.copy(iname_to_tag=new_iname_to_tag)
 
+# }}}
 
-
-
-
-def realize_cse(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=None,
-        dup_iname_to_tag={}, new_inames=None, default_tag_class=AutoFitLocalIndexTag):
-    """
-    :arg duplicate_inames: which inames are supposed to be separate loops
-        in the CSE. Also determines index order of temporary array.
-    :arg parallel_inames: only a convenient interface for dup_iname_to_tag
-    """
-
-    dtype = np.dtype(dtype)
-
-    from pytools import any
-
-    # {{{ process parallel_inames and dup_iname_to_tag arguments
-
-    if parallel_inames is None:
-        # default to all-parallel
-        parallel_inames = duplicate_inames
-
-    dup_iname_to_tag = dup_iname_to_tag.copy()
-    for piname in parallel_inames:
-        dup_iname_to_tag[piname] = default_tag_class()
-
-    for diname in duplicate_inames:
-        dup_iname_to_tag.setdefault(diname, None)
-
-    if not set(dup_iname_to_tag.iterkeys()) <= set(duplicate_inames):
-        raise RuntimeError("paralleization/tag info for non-duplicated inames "
-                "may not be passed")
-
-    # here, all information is consolidated into dup_iname_to_tag
-
-    # }}}
-
-    # {{{ process new_inames argument, think of new inames for inames to be duplicated
-
-    if new_inames is None:
-        new_inames = [None] * len(duplicate_inames)
-
-    if len(new_inames) != len(duplicate_inames):
-        raise ValueError("If given, the new_inames argument must have the "
-                "same length as duplicate_inames")
-
-    temp_new_inames = []
-    for old_iname, new_iname in zip(duplicate_inames, new_inames):
-        if new_iname is None:
-            new_iname = kernel.make_unique_var_name(old_iname)
-        temp_new_inames.append(new_iname)
-
-    new_inames = temp_new_inames
-
-    old_to_new_iname = dict(zip(duplicate_inames, new_inames))
-
-    # }}}
-
-    target_var_name = kernel.make_unique_var_name(cse_tag)
-
-    from loopy.kernel import (LocalIndexTagBase, GroupIndexTag, IlpTag)
-    target_var_is_local = any(
-            isinstance(tag, LocalIndexTagBase)
-            for tag in dup_iname_to_tag.itervalues())
-
-    cse_lookup_table = {}
-
-    cse_result_insns = []
-
-    def map_cse(expr, rec):
-        if expr.prefix != cse_tag:
-            return
-
-        # FIXME stencils and variable shuffle detection would happen here
-
-        try:
-            cse_replacement, dep_id = cse_lookup_table[expr]
-        except KeyError:
-            pass
-        else:
-            return cse_replacement
-
-        if cse_result_insns:
-            raise RuntimeError("CSE tag '%s' is not unique" % cse_tag)
-
-        # {{{ decide what to do with each iname
-
-        forced_iname_deps = set()
-
-        from loopy.symbolic import IndexVariableFinder
-        dependencies = IndexVariableFinder(
-                include_reduction_inames=False)(expr.child)
-
-        parent_inames = insn.all_inames() | insn.reduction_inames()
-        assert dependencies <= parent_inames
-
-        for iname in parent_inames:
-            if iname in duplicate_inames:
-                tag = dup_iname_to_tag[iname]
-            else:
-                tag = kernel.iname_to_tag.get(iname)
-
-            if isinstance(tag, LocalIndexTagBase):
-                kind = "l"
-            elif isinstance(tag, GroupIndexTag):
-                kind = "g"
-            elif isinstance(tag, IlpTag):
-                kind = "i"
-            else:
-                kind = "o"
-
-            if iname not in duplicate_inames and iname in dependencies:
-                if (
-                        (target_var_is_local and kind in "li")
-                        or
-                        (not target_var_is_local and kind in "i")):
-                    raise RuntimeError(
-                            "When realizing CSE with tag '%s', encountered iname "
-                            "'%s' which is depended upon by the CSE and tagged "
-                            "'%s', but not duplicated. The CSE would "
-                            "inherit this iname, which would lead to a write race. "
-                            "A likely solution of this problem is to also duplicate this "
-                            "iname."
-                            % (expr.prefix, iname, tag))
-
-            if iname in duplicate_inames and kind == "g":
-                raise RuntimeError("duplicating the iname '%s' into "
-                        "group index axes is not helpful, as they cannot "
-                        "collaborate in computing a local variable"
-                        %iname)
-
-            if iname in dependencies:
-                if not target_var_is_local and iname in duplicate_inames and kind == "l":
-                    raise RuntimeError("invalid: hardware-parallelized "
-                            "fetch into private variable")
-
-                # otherwise: all happy
-                continue
-
-            # the iname is *not* a dependency of the fetch expression
-            if iname in duplicate_inames:
-                raise RuntimeError("duplicating an iname ('%s') "
-                        "that the CSE ('%s') does not depend on "
-                        "does not make sense" % (iname, expr.child))
-
-            # Which iname dependencies are carried over from CSE host
-            # to the CSE compute instruction?
-
-            if not target_var_is_local:
-                # If we're writing to a private variable, then each
-                # hardware-parallel iname must execute its own copy of
-                # the CSE compute instruction. After all, each work item
-                # has its own set of private variables.
-
-                force_dependency = kind in "gl"
-            else:
-                # If we're writing to a local variable, then all other local
-                # dimensions see our updates, and thus they do *not* need to
-                # execute their own copy of this instruction.
-
-                force_dependency = kind == "g"
-
-            if force_dependency:
-                forced_iname_deps.add(iname)
-
-        # }}}
-
-        # {{{ concoct new inner and outer expressions
-
-        from pymbolic import var
-        assignee = var(target_var_name)
-        new_outer_expr = assignee
-
-        if duplicate_inames:
-            assignee = assignee[tuple(
-                var(iname) for iname in new_inames
-                )]
-            new_outer_expr = new_outer_expr[tuple(
-                var(iname) for iname in duplicate_inames
-                )]
-
-        from loopy.symbolic import SubstitutionMapper
-        from pymbolic.mapper.substitutor import make_subst_func
-        subst_map = SubstitutionMapper(make_subst_func(
-            dict(
-                (old_iname, var(new_iname))
-                for old_iname, new_iname in zip(duplicate_inames, new_inames))))
-        new_inner_expr = subst_map(rec(expr.child))
-
-        # }}}
-
-        from loopy.kernel import Instruction
-        new_insn = Instruction(
-                id=kernel.make_unique_instruction_id(based_on=cse_tag),
-                assignee=assignee,
-                expression=new_inner_expr,
-                forced_iname_deps=forced_iname_deps)
-
-        cse_result_insns.append(new_insn)
-
-        return new_outer_expr
-
-    from loopy.symbolic import CSECallbackMapper
-    cse_cb_mapper = CSECallbackMapper(map_cse)
-
-    new_insns = []
-    for insn in kernel.instructions:
-        was_empty = not bool(cse_result_insns)
-        new_expr = cse_cb_mapper(insn.expression)
-
-        if was_empty and cse_result_insns:
-            new_insns.append(insn.copy(expression=new_expr))
-        else:
-            new_insns.append(insn)
-
-    new_insns.extend(cse_result_insns)
-
-    # {{{ build new domain, duplicating each constraint on duplicated inames
-
-    from loopy.isl_helpers import duplicate_axes
-    new_domain = duplicate_axes(kernel.domain, duplicate_inames, new_inames)
-
-    # }}}
-
-    # {{{ set up data for temp variable
-
-
-    from loopy.kernel import (TemporaryVariable,
-            find_var_base_indices_and_shape_from_inames)
-
-    target_var_base_indices, target_var_shape = \
-            find_var_base_indices_and_shape_from_inames(
-                    new_domain, new_inames)
-
-    new_temporary_variables = kernel.temporary_variables.copy()
-    new_temporary_variables[target_var_name] = TemporaryVariable(
-            name=target_var_name,
-            dtype=dtype,
-            base_indices=target_var_base_indices,
-            shape=target_var_shape,
-            is_local=target_var_is_local)
-
-    # }}}
-
-    new_iname_to_tag = kernel.iname_to_tag.copy()
-    for old_iname, new_iname in zip(duplicate_inames, new_inames):
-        new_iname_to_tag[new_iname] = dup_iname_to_tag[old_iname]
-
-    return kernel.copy(
-            domain=new_domain,
-            instructions=new_insns,
-            temporary_variables=new_temporary_variables,
-            iname_to_tag=new_iname_to_tag)
-
-
-
-
-
-# {{{ convenience
+# {{{ convenience: add_prefetch
 
 def add_prefetch(kernel, var_name, fetch_dims=[], new_inames=None):
     used_cse_tags = set()

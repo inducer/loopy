@@ -773,7 +773,10 @@ class LoopKernel(Record):
             sorted_axes = sorted(size_dict.iterkeys())
 
             while sorted_axes or forced_sizes:
-                cur_axis = sorted_axes.pop(0)
+                if sorted_axes:
+                    cur_axis = sorted_axes.pop(0)
+                else:
+                    cur_axis = None
 
                 if len(size_list) in forced_sizes:
                     size_list.append(
@@ -781,6 +784,8 @@ class LoopKernel(Record):
                                 isl.Aff.zero_on_domain(self.space.params())
                                 + forced_sizes.pop(len(size_list))))
                     continue
+
+                assert cur_axis is not None
 
                 while cur_axis > len(size_list):
                     from loopy import LoopyAdvisory

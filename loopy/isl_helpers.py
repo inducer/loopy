@@ -202,7 +202,7 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
 
     iname_to_dim = more_dims.get_space().get_var_dict()
 
-    moved_dims = isl_obj
+    moved_dims = isl_obj.copy()
 
     for old_iname, new_iname in zip(duplicate_inames, new_inames):
         old_dt, old_idx = iname_to_dim[old_iname]
