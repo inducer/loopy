@@ -26,9 +26,6 @@ Things to consider
   other inames
   -> Is that reasonable?
 
-- Parallel dimension splitting/merging via tags
-  -> unnecessary?
-
 - Not using all hw loop dimensions causes an error, as
   is the case for variant 3 in the rank_one test.
 
@@ -36,16 +33,13 @@ Things to consider
 
 - Loopy as a data model for implementing custom rewritings
 
-- We won't generate WAWs barrier-needing dependencies
+- We won't generate WAW barrier-needing dependencies
   from one instruction to itself.
 
 To-do
 ^^^^^
 
 - Automatically generate testing code vs. sequential.
-
-- For forced workgroup sizes: check that at least one iname
-  maps to them.
 
 - If isl can prove that all operands are positive, may use '/' instead of
   'floor_div'.
@@ -91,6 +85,9 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- For forced workgroup sizes: check that at least one iname
+  maps to them.
 
 - variable shuffle detection
   -> will need unification

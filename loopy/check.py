@@ -5,7 +5,7 @@ from __future__ import division
 
 # {{{ sanity checks run during scheduling
 
-def check_for_unused_hw_axes(kernel):
+def check_for_unused_hw_axes_in_insns(kernel):
     group_size, local_size = kernel.get_grid_sizes_as_exprs()
 
     group_axes = set(range(len(group_size)))
@@ -144,7 +144,28 @@ def check_for_write_races(kernel):
                     "is/are not referenced in the assignee index"
                     % (insn.id, ",".join(inames_without_write_dep)))
 
+def check_for_orphaned_user_hardware_axes(kernel):
+    from loopy.kernel import LocalIndexTag
+    for axis in kernel.local_sizes:
+        found = False
+        for tag in kernel.iname_to_tag.itervalues():
+            if isinstance(tag, LocalIndexTag) and tag.axis == axis:
+                found = True
+                break
+
+        if not found:
+            raise RuntimeError("user-requested local hardware axis %d "
+                    "has no iname mapped to it" % axis)
+
 # }}}
+
+def run_automatic_checks(kernel):
+    check_for_orphaned_user_hardware_axes(kernel)
+    check_for_double_use_of_hw_axes(kernel)
+    check_for_unused_hw_axes_in_insns(kernel)
+    check_for_inactive_iname_access(kernel)
+    check_for_write_races(kernel)
+
 
 # {{{ sanity-check for implemented domains of each instruction
 
@@ -209,15 +230,6 @@ def check_implemented_domains(kernel, implemented_domains):
     return True
 
 # }}}
-
-def run_automatic_checks(kernel):
-    import loopy.check as chk
-
-    chk.check_for_double_use_of_hw_axes(kernel)
-    chk.check_for_unused_hw_axes(kernel)
-    chk.check_for_inactive_iname_access(kernel)
-    chk.check_for_write_races(kernel)
-
 
 # {{{ user-invoked checks
 
