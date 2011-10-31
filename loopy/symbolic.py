@@ -355,10 +355,16 @@ class LoopyCCodeMapper(CCodeMapper):
             raise RuntimeError("nothing known about variable '%s'" % expr.aggregate.name)
 
     def map_floor_div(self, expr, prec):
-        if isinstance(expr.denominator, int) and expr.denominator > 0:
-            return ("int_floor_div_pos_b(%s, %s)"
-                    % (self.rec(expr.numerator, PREC_NONE),
-                        expr.denominator))
+        from loopy.isl_helpers import is_nonnegative
+        num_nonneg = is_nonnegative(expr.numerator, self.kernel.domain)
+        den_nonneg = is_nonnegative(expr.denominator, self.kernel.domain)
+        if den_nonneg:
+            if num_nonneg:
+                return CCodeMapper.map_quotient(self, expr, prec)
+            else:
+                return ("int_floor_div_pos_b(%s, %s)"
+                        % (self.rec(expr.numerator, PREC_NONE),
+                            expr.denominator))
         else:
             return ("int_floor_div(%s, %s)"
                     % (self.rec(expr.numerator, PREC_NONE),

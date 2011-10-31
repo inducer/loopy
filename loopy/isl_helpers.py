@@ -227,4 +227,21 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
 
 
 
+def is_nonnegative(expr, over_set):
+    space = over_set.get_space()
+    from loopy.symbolic import aff_from_expr
+    try:
+        aff = aff_from_expr(space, -expr-1)
+    except:
+        return None
+    expr_neg_set = isl.BasicSet.universe(space).add_constraint(
+            isl.Constraint.inequality_from_aff(aff))
+
+    return over_set.intersect(expr_neg_set).is_empty()
+
+
+
+
+
+
 # vim: foldmethod=marker
