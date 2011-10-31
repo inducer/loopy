@@ -441,8 +441,6 @@ def pw_aff_to_expr(pw_aff):
     return aff_to_expr(aff)
 
 def aff_from_expr(space, expr):
-    n = space.dim(dim_type.set)
-
     zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
     context = {}
     for name, (dt, pos) in space.get_var_dict().iteritems():
@@ -452,7 +450,7 @@ def aff_from_expr(space, expr):
         context[name] = zero.set_coefficient(dt, pos, 1)
 
     from pymbolic import evaluate
-    return evaluate(expr, context)
+    return zero + evaluate(expr, context)
 
 # }}}
 

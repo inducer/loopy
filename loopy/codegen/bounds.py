@@ -149,7 +149,6 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
 
     constraints = constraint_bset.get_constraints()
 
-    from pymbolic import expand
     from pymbolic.mapper.constant_folder import CommutativeConstantFoldingMapper
 
     cfm = CommutativeConstantFoldingMapper()
@@ -174,7 +173,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
             from pymbolic import var
             rhs += iname_coeff*var(iname)
             end_conds.append("%s >= 0" %
-                    ccm(cfm(expand(rhs))))
+                    ccm(cfm(rhs)))
         else: #  iname_coeff > 0
             kind, bound = solve_constraint_for_bound(cns, iname)
             assert kind == ">="

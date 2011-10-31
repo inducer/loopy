@@ -772,6 +772,8 @@ class LoopKernel(Record):
             size_list = []
             sorted_axes = sorted(size_dict.iterkeys())
 
+            zero_aff = isl.Aff.zero_on_domain(self.space.params())
+
             while sorted_axes or forced_sizes:
                 if sorted_axes:
                     cur_axis = sorted_axes.pop(0)
@@ -781,8 +783,7 @@ class LoopKernel(Record):
                 if len(size_list) in forced_sizes:
                     size_list.append(
                             isl.PwAff.from_aff(
-                                isl.Aff.zero_on_domain(self.space.params())
-                                + forced_sizes.pop(len(size_list))))
+                                zero_aff + forced_sizes.pop(len(size_list))))
                     continue
 
                 assert cur_axis is not None
@@ -792,7 +793,7 @@ class LoopKernel(Record):
                     from warnings import warn
                     warn("%s axis %d unassigned--assuming length 1" % (
                         which, len(size_list)), LoopyAdvisory)
-                    size_list.append(1)
+                    size_list.append(zero_aff + 1)
 
                 size_list.append(size_dict[cur_axis])
 

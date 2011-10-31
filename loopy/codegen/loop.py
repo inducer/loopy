@@ -29,9 +29,6 @@ def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
 # {{{ conditional-minimizing slab decomposition
 
 def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
-    space = kernel.space
-    tag = kernel.iname_to_tag.get(iname)
-
     lb_cns_orig, ub_cns_orig = get_simple_loop_bounds(kernel, sched_index, iname,
             codegen_state.implemented_domain)
 
@@ -39,7 +36,6 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
     iname_tp, iname_idx = kernel.iname_to_dim[iname]
 
-    constraints = [lb_cns_orig]
     if lower_incr or upper_incr:
         bounds = kernel.get_iname_bounds(iname)
 
@@ -118,8 +114,6 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 # {{{ unrolled loops
 
 def generate_unroll_loop(kernel, sched_index, codegen_state):
-    ccm = codegen_state.c_code_mapper
-    space = kernel.space
     iname = kernel.schedule[sched_index].iname
     tag = kernel.iname_to_tag.get(iname)
 
@@ -167,7 +161,9 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
 
     global_size, local_size = kernel.get_grid_sizes()
 
+    hw_inames_left = hw_inames_left[:]
     iname = hw_inames_left.pop()
+
     tag = kernel.iname_to_tag.get(iname)
 
     assert isinstance(tag, UniqueTag)
@@ -205,8 +201,6 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
         raise RuntimeError("cannot do slab decomposition on inames that share "
                 "a tag with other inames")
 
-    ccm = codegen_state.c_code_mapper
-
     result = []
 
     from loopy.codegen import add_comment
@@ -230,9 +224,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
 
 def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
     ccm = codegen_state.c_code_mapper
-    space = kernel.space
     iname = kernel.schedule[sched_index].iname
-    tag = kernel.iname_to_tag.get(iname)
 
     slabs = get_slab_decomposition(
             kernel, iname, sched_index, codegen_state)
