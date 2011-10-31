@@ -175,7 +175,6 @@ def test_transpose(ctx_factory):
     knl = lp.split_dimension(knl, "j", 16,
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "j_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {})

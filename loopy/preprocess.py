@@ -359,7 +359,8 @@ def assign_automatic_axes(kernel, only_axis_0=True):
                 from loopy import split_dimension
                 return assign_automatic_axes(
                         split_dimension(kernel, iname, inner_length=local_size[axis],
-                            outer_tag=UnrollTag(), inner_tag=new_tag),
+                            outer_tag=UnrollTag(), inner_tag=new_tag,
+                            do_tagged_check=False),
                         only_axis_0=only_axis_0)
 
         new_iname_to_tag = kernel.iname_to_tag.copy()

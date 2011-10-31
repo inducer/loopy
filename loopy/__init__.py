@@ -235,9 +235,9 @@ def make_kernel(*args, **kwargs):
 def split_dimension(kernel, iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
-        slabs=(0, 0)):
+        slabs=(0, 0), do_tagged_check=True):
 
-    if kernel.iname_to_tag.get(iname) is not None:
+    if do_tagged_check and kernel.iname_to_tag.get(iname) is not None:
         raise RuntimeError("cannot split already tagged iname '%s'" % iname)
 
     if iname not in kernel.all_inames():

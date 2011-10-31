@@ -295,7 +295,7 @@ def process_cses(kernel, lead_csed, cse_descriptors):
 
 
 def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
-        new_inames, ind_iname_to_tag):
+        independent_inames, new_inames, ind_iname_to_tag):
     insn = lead_csed.insn
 
     # {{{ decide whether to force a dep
@@ -310,13 +310,13 @@ def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
     assert dependencies <= parent_inames
 
     for iname in parent_inames:
-        if iname in lead_csed.independent_inames:
+        if iname in independent_inames:
             tag = ind_iname_to_tag[iname]
         else:
             tag = kernel.iname_to_tag.get(iname)
 
         if should_cse_force_iname_dep(
-                iname, lead_csed.independent_inames, tag, dependencies,
+                iname, independent_inames, tag, dependencies,
                 target_var_is_local, lead_csed.cse):
             forced_iname_deps.add(iname)
 
@@ -324,7 +324,7 @@ def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
 
     assignee = var(target_var_name)
 
-    if lead_csed.independent_inames:
+    if new_inames:
         assignee = assignee[tuple(
             var(iname) for iname in new_inames
             )]
@@ -334,8 +334,7 @@ def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
     subst_map = SubstitutionMapper(make_subst_func(
         dict(
             (old_iname, var(new_iname))
-            for old_iname, new_iname in zip(lead_csed.independent_inames,
-                new_inames))))
+            for old_iname, new_iname in zip(independent_inames, new_inames))))
     new_inner_expr = subst_map(lead_csed.cse.child)
 
     insn_prefix = lead_csed.cse.prefix
@@ -483,7 +482,7 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
     compute_insn = make_compute_insn(
             kernel, lead_csed, target_var_name, target_var_is_local,
-            new_inames, ind_iname_to_tag)
+            independent_inames, new_inames, ind_iname_to_tag)
 
     # {{{ substitute variable references into instructions
 
@@ -493,12 +492,16 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
             lead_indices = [var(iname) for iname in independent_inames]
         else:
+            found = False
             for csed in cse_descriptors:
                 if cse is csed.cse:
+                    found = True
                     break
 
-            if cse is not csed.cse:
-                return rec(cse.child)
+            if not found:
+                from pymbolic.primitives import CommonSubexpression
+                return CommonSubexpression(
+                        rec(cse.child), cse.prefix)
 
             lead_indices = csed.lead_index_exprs
 
