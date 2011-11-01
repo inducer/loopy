@@ -26,7 +26,7 @@ from loopy.kernel import AutoFitLocalIndexTag
 from loopy.cse import realize_cse
 from loopy.preprocess import preprocess_kernel
 from loopy.schedule import generate_loop_schedules
-from loopy.compiled import CompiledKernel, drive_timing_run
+from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_seq
 from loopy.check import check_kernels
 
 __all__ = ["ScalarArg", "ArrayArg", "ImageArg",

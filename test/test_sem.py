@@ -288,9 +288,9 @@ def test_sem_3d(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "[K] -> {[i,j,k,e,m]: 0<=i,j,k,m<%d and 0<=e<K}" % n,
             [
-                "[|i,j,k] <float32> ur[i,j,k] = sum_float32(m, D[i,m]*u[e,m,j,k])",
-                "[|i,j,k] <float32> us[i,j,k] = sum_float32(m, D[j,m]*u[e,i,m,k])",
-                "[|i,j,k] <float32> ut[i,j,k] = sum_float32(m, D[k,m]*u[e,i,j,m])",
+                "[|i,j,k,m] <float32> ur[i,j,k] = sum_float32(m, D[i,m]*u[e,m,j,k])",
+                "[|i,j,k,m] <float32> us[i,j,k] = sum_float32(m, D[j,m]*u[e,i,m,k])",
+                "[|i,j,k:ilp,m] <float32> ut[i,j,k] = sum_float32(m, D[k,m]*u[e,i,j,m])",
 
                 "lap[i,j,k,e]  = "
                 "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur[m,j,k] + G[1,e,m,j,k]*us[m,j,k] + G[2,e,m,j,k]*ut[m,j,k]))"
@@ -317,7 +317,7 @@ def test_sem_3d(ctx_factory):
     #knl = lp.realize_cse(knl, "build_ur", np.float32, ["j", "k"])
     #knl = lp.realize_cse(knl, "build_ur", np.float32, ["j", "k", "mp"])
     knl = lp.preprocess_kernel(knl)
-    #print knl
+    print knl
     #1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)

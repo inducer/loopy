@@ -151,7 +151,7 @@ def test_axpy(ctx_factory):
 
 
 def test_transpose(ctx_factory):
-    dtype = np.float32
+    dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     order = "C"
     queue = cl.CommandQueue(ctx,
@@ -169,6 +169,8 @@ def test_transpose(ctx_factory):
                 lp.ArrayArg("b", dtype, shape=(n, n), order=order),
                 ],
             name="transpose")
+
+    seq_knl = knl
 
     knl = lp.split_dimension(knl, "i", 16,
             outer_tag="g.0", inner_tag="l.1")
@@ -192,7 +194,10 @@ def test_transpose(ctx_factory):
 
         return evt
 
-    lp.drive_timing_run(kernel_gen, queue, launcher, 0)
+    #lp.drive_timing_run(kernel_gen, queue, launcher, 0)
+    lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
+            op_count=dtype.itemsize*n**2*2/1e9, op_label="GByte",
+            parameters={}, print_seq_code=True)
 
 
 
@@ -707,11 +712,11 @@ def test_fancy_matrix_mul(ctx_factory):
                 lp.ArrayArg("b", dtype, shape="(n, n)", order=order),
                 lp.ArrayArg("c", dtype, shape="(n, n)", order=order),
                 lp.ScalarArg("n", np.int32, approximately=1000),
-                ], name="fancy_matmul")
+                ], name="fancy_matmul", assumptions="n>=1")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.split_dimension(knl, "k", 16, slabs=(0,1))
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
 

@@ -148,6 +148,8 @@ class ArrayArg:
 
         self.strides = strides
         self.offset = offset
+        self.shape = shape
+        self.order = order
 
         self.constant_mem = constant_mem
 
