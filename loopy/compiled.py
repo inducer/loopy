@@ -70,7 +70,7 @@ def print_highlighted_code(text):
     try:
         from pygments import highlight
     except ImportError:
-        print compiled.code
+        print text
     else:
         from pygments.lexers import CLexer
         from pygments.formatters import TerminalFormatter
