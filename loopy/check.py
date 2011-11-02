@@ -13,6 +13,9 @@ def check_for_unused_hw_axes_in_insns(kernel):
 
     from loopy.kernel import LocalIndexTag, AutoLocalIndexTagBase, GroupIndexTag
     for insn in kernel.instructions:
+        if insn.boostable:
+            continue
+
         group_axes_used = set()
         local_axes_used = set()
 
@@ -27,11 +30,17 @@ def check_for_unused_hw_axes_in_insns(kernel):
                 raise RuntimeError("auto local tag encountered")
 
         if group_axes != group_axes_used:
-            raise RuntimeError("instruction '%s' does not use all group hw axes"
-                    % insn.id)
+            raise RuntimeError("instruction '%s' does not use all group hw axes "
+                    "(available: %s used:%s)"
+                    % (insn.id,
+                        ",".join(str(i) for i in group_axes),
+                        ",".join(str(i) for i in group_axes_used)))
         if local_axes != local_axes_used:
             raise RuntimeError("instruction '%s' does not use all local hw axes"
-                    % insn.id)
+                    "(available: %s used:%s)"
+                    % (insn.id,
+                        ",".join(str(i) for i in local_axes),
+                        ",".join(str(i) for i in local_axes_used)))
 
 
 

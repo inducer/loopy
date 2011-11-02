@@ -11,7 +11,7 @@ from pymbolic import var
 
 
 
-def should_cse_force_iname_dep(iname, duplicate_inames, tag, dependencies,
+def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies,
         target_var_is_local, cse):
     from loopy.kernel import (LocalIndexTagBase, GroupIndexTag, IlpTag)
 
@@ -49,30 +49,13 @@ def should_cse_force_iname_dep(iname, duplicate_inames, tag, dependencies,
             raise RuntimeError("invalid: hardware-parallelized "
                     "fetch into private variable")
 
-        return False
+        return
 
     # the iname is *not* a dependency of the fetch expression
     if iname in duplicate_inames:
         raise RuntimeError("duplicating an iname ('%s') "
                 "that the CSE ('%s') does not depend on "
                 "does not make sense" % (iname, cse.child))
-
-    # Which iname dependencies are carried over from CSE host
-    # to the CSE compute instruction?
-
-    if not target_var_is_local:
-        # If we're writing to a private variable, then each
-        # hardware-parallel iname must execute its own copy of
-        # the CSE compute instruction. After all, each work item
-        # has its own set of private variables.
-
-        return kind in "gl"
-    else:
-        # If we're writing to a local variable, then all other local
-        # dimensions see our updates, and thus they do *not* need to
-        # execute their own copy of this instruction.
-
-        return kind == "g"
 
 
 
@@ -315,10 +298,9 @@ def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
         else:
             tag = kernel.iname_to_tag.get(iname)
 
-        if should_cse_force_iname_dep(
+        check_cse_iname_deps(
                 iname, independent_inames, tag, dependencies,
-                target_var_is_local, lead_csed.cse):
-            forced_iname_deps.add(iname)
+                target_var_is_local, lead_csed.cse)
 
     # }}}
 
