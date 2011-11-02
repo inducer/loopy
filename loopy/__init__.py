@@ -26,11 +26,13 @@ from loopy.kernel import AutoFitLocalIndexTag
 from loopy.cse import realize_cse
 from loopy.preprocess import preprocess_kernel
 from loopy.schedule import generate_loop_schedules
+from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_seq
 from loopy.check import check_kernels
 
 __all__ = ["ScalarArg", "ArrayArg", "ImageArg",
         "preprocess_kernel", "generate_loop_schedules",
+        "generate_code",
         "CompiledKernel", "drive_timing_run", "check_kernels",
         "make_kernel", "split_dimension", "join_dimensions",
         "tag_dimensions", "realize_cse", "add_prefetch"
