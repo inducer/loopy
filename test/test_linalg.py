@@ -197,7 +197,7 @@ def test_transpose(ctx_factory):
     #lp.drive_timing_run(kernel_gen, queue, launcher, 0)
     lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
             op_count=dtype.itemsize*n**2*2/1e9, op_label="GByte",
-            parameters={}, print_seq_code=True)
+            parameters={})
 
 
 
@@ -311,8 +311,6 @@ def test_rank_one(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = int(get_suitable_size(ctx)**(2.7/2))
 
@@ -345,7 +343,7 @@ def test_rank_one(ctx_factory):
         return knl
 
     def variant_3(knl):
-        # Throws an error--doesn't use all hardware axis.
+        # Throws an error--doesn't use all hardware axes.
         # Probably the right thing to do.
 
         knl = lp.split_dimension(knl, "i", 16,
@@ -359,44 +357,33 @@ def test_rank_one(ctx_factory):
 
     def variant_4(knl):
         knl = lp.split_dimension(knl, "i", 256,
-                outer_tag="g.0", slabs=(0, 1))
+                outer_tag="g.0")#, slabs=(0, 1))
         knl = lp.split_dimension(knl, "j", 256,
-                outer_tag="g.1", slabs=(0, 1))
+                outer_tag="g.1")#, slabs=(0, 1))
 
-        knl = lp.add_prefetch(knl, "a", ["i_inner"])
-        knl = lp.add_prefetch(knl, "b", ["j_inner"])
+        knl = lp.add_prefetch(knl, "a", ["i_inner"], default_tag=None)
+        knl = lp.add_prefetch(knl, "b", ["j_inner"], default_tag=None)
 
         knl = lp.split_dimension(knl, "i_inner", 16,
                 inner_tag="l.0")
         knl = lp.split_dimension(knl, "j_inner", 16,
                 inner_tag="l.1")
 
-        knl = lp.split_dimension(knl, "j_inner_0", 16,
+        knl = lp.split_dimension(knl, "j_inner_fetch_b", 16,
                 outer_tag="l.1", inner_tag="l.0")
-        knl = lp.split_dimension(knl, "i_inner_0", 16,
+        knl = lp.split_dimension(knl, "i_inner_fetch_a", 16,
                 outer_tag="l.1", inner_tag="l.0")
         return knl
 
-    for variant in [variant_1, variant_2, variant_4]:
+    seq_knl = knl
 
+    for variant in [variant_1, variant_2, variant_4]:
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-        a = cl_random.rand(queue, n, dtype=dtype)
-        b = cl_random.rand(queue, n, dtype=dtype)
-        refsol = a.get()[:, np.newaxis] * b.get()
-        c = cl_array.empty(queue, refsol.shape, refsol.dtype)
-
-        def launcher(kernel, gsize, lsize, check):
-            evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
-                    g_times_l=True)
-
-            if check:
-                check_error(refsol, c.get())
-
-            return evt
-
-        lp.drive_timing_run(kernel_gen, queue, launcher, n**2)
+        lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
+                op_count=np.dtype(dtype).itemsize*n**2/1e9, op_label="GBytes",
+                parameters={"n": n})
 
 
 
@@ -519,6 +506,8 @@ def test_intel_matrix_mul(ctx_factory):
 
 
 def test_magma_fermi_matrix_mul(ctx_factory):
+    1/0 # not updated to new conventions
+
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
@@ -634,10 +623,8 @@ def test_image_matrix_mul_ilp(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 32
+    n = get_suitable_size(ctx)
 
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
@@ -645,51 +632,32 @@ def test_image_matrix_mul_ilp(ctx_factory):
                 "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
-                lp.ImageArg("a", dtype, 2),
-                lp.ImageArg("b", dtype, 2),
+                lp.ImageArg("a", dtype, shape=(n, n)),
+                lp.ImageArg("b", dtype, shape=(n, n)),
                 lp.ArrayArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
+    seq_knl = knl
+
     ilp = 4
     knl = lp.split_dimension(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
-    j_inner_split = 2
+    j_inner_split = 4
     knl = lp.split_dimension(knl, "j", ilp*j_inner_split, outer_tag="g.1")
     knl = lp.split_dimension(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 2)
     # conflict-free
-    #knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"],
             ["b_j_io", "b_j_ii", "b_k_i"])
-    if 1:
-        knl = lp.join_dimensions(knl, ["b_j_io", "b_j_ii"])
-    else:
-        knl = lp.tag_dimensions(knl, {"b_j_io": "unr"}, force=True)
-
-    #print lp.preprocess_kernel(knl)
-    #1/0
+    knl = lp.join_dimensions(knl, ["b_j_io", "b_j_ii"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-
-    refsol = np.dot(a.get(), b.get())
-    a_img = cl.image_from_array(ctx, a.get(), 1)
-    b_img = cl.image_from_array(ctx, b.get(), 1)
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a_img, b_img, c.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+    lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
+            op_count=2*n**3/1e9, op_label="GFlops",
+            parameters={})
 
 
 
