@@ -181,20 +181,6 @@ def test_transpose(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {})
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = cl_array.empty_like(a)
-    refsol = a.get().T.copy()
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a.data, b.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, b.get())
-
-        return evt
-
-    #lp.drive_timing_run(kernel_gen, queue, launcher, 0)
     lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
             op_count=dtype.itemsize*n**2*2/1e9, op_label="GByte",
             parameters={}, print_seq_code=True)
