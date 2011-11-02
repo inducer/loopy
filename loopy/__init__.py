@@ -164,12 +164,6 @@ def make_kernel(*args, **kwargs):
 
                 assignee_indices.append(index_expr.name)
 
-            from loopy.kernel import LocalIndexTagBase
-            from pytools import any
-            is_local = any(
-                    isinstance(new_iname_to_tag.get(iname), LocalIndexTagBase)
-                    for iname in assignee_indices)
-
             base_indices, shape = \
                     find_var_base_indices_and_shape_from_inames(
                             new_domain, assignee_indices)
@@ -177,7 +171,7 @@ def make_kernel(*args, **kwargs):
             new_temp_vars[assignee_name] = TemporaryVariable(
                     name=assignee_name,
                     dtype=np.dtype(insn.temp_var_type),
-                    is_local=is_local,
+                    is_local=None,
                     base_indices=base_indices,
                     shape=shape)
 

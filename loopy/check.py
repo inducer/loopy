@@ -120,7 +120,7 @@ def check_for_write_races(kernel):
 
         elif assignee_name in kernel.temporary_variables:
             temp_var = kernel.temporary_variables[assignee_name]
-            if temp_var.is_local:
+            if temp_var.is_local == True:
                 local_parallel_insn_inames = set(
                         iname
                         for iname in insn.all_inames()
@@ -130,7 +130,7 @@ def check_for_write_races(kernel):
                 inames_without_write_dep = local_parallel_insn_inames - (
                         assignee_inames & local_parallel_insn_inames)
 
-            else:
+            elif temp_var.is_local == False:
                 ilp_inames = set(
                         iname
                         for iname in insn.all_inames()
@@ -138,6 +138,10 @@ def check_for_write_races(kernel):
 
                 inames_without_write_dep = ilp_inames - (
                         assignee_inames & ilp_inames)
+
+            else:
+                raise RuntimeError("temp var '%s' hasn't decided on "
+                        "whether it is local" % temp_var.name)
 
 
         else:

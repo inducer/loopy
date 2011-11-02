@@ -11,8 +11,7 @@ from pymbolic import var
 
 
 
-def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies,
-        target_var_is_local, cse):
+def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies, cse):
     from loopy.kernel import (LocalIndexTagBase, GroupIndexTag, IlpTag)
 
     if isinstance(tag, LocalIndexTagBase):
@@ -25,10 +24,7 @@ def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies,
         kind = "o"
 
     if iname not in duplicate_inames and iname in dependencies:
-        if (
-                (target_var_is_local and kind in "li")
-                or
-                (not target_var_is_local and kind in "i")):
+        if kind == "i":
             raise RuntimeError(
                     "When realizing CSE with tag '%s', encountered iname "
                     "'%s' which is depended upon by the CSE and tagged "
@@ -41,14 +37,10 @@ def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies,
     if iname in duplicate_inames and kind == "g":
         raise RuntimeError("duplicating the iname '%s' into "
                 "group index axes is not helpful, as they cannot "
-                "collaborate in computing a local variable"
+                "collaborate in computing a local/private variable"
                 %iname)
 
     if iname in dependencies:
-        if not target_var_is_local and iname in duplicate_inames and kind == "l":
-            raise RuntimeError("invalid: hardware-parallelized "
-                    "fetch into private variable")
-
         return
 
     # the iname is *not* a dependency of the fetch expression
@@ -277,7 +269,7 @@ def process_cses(kernel, lead_csed, cse_descriptors):
 
 
 
-def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
+def make_compute_insn(kernel, lead_csed, target_var_name,
         independent_inames, new_inames, ind_iname_to_tag):
     insn = lead_csed.insn
 
@@ -299,8 +291,7 @@ def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
             tag = kernel.iname_to_tag.get(iname)
 
         check_cse_iname_deps(
-                iname, independent_inames, tag, dependencies,
-                target_var_is_local, lead_csed.cse)
+                iname, independent_inames, tag, dependencies, lead_csed.cse)
 
     # }}}
 
@@ -450,11 +441,6 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
         var_base = "cse"
     target_var_name = kernel.make_unique_var_name(var_base)
 
-    from loopy.kernel import LocalIndexTagBase
-    target_var_is_local = any(
-            isinstance(tag, LocalIndexTagBase)
-            for tag in ind_iname_to_tag.itervalues())
-
     from loopy.kernel import (TemporaryVariable,
             find_var_base_indices_and_shape_from_inames)
 
@@ -468,12 +454,12 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
             dtype=np.dtype(dtype),
             base_indices=target_var_base_indices,
             shape=target_var_shape,
-            is_local=target_var_is_local)
+            is_local=None)
 
     # }}}
 
     compute_insn = make_compute_insn(
-            kernel, lead_csed, target_var_name, target_var_is_local,
+            kernel, lead_csed, target_var_name,
             independent_inames, new_inames, ind_iname_to_tag)
 
     # {{{ substitute variable references into instructions

@@ -6,6 +6,37 @@ import pyopencl.characterize as cl_char
 
 
 
+# {{{ local temporary finding
+
+def mark_local_temporaries(kernel):
+    new_temp_vars = {}
+    from loopy.kernel import LocalIndexTagBase
+
+    writers = find_accessors(kernel, readers=False)
+
+    from loopy.symbolic import DependencyMapper
+    dm = DependencyMapper(composite_leaves=False)
+    def get_deps(expr):
+        return set(var.name for var in dm(expr))
+
+    for temp_var in kernel.temporary_variables.itervalues():
+        my_writers = writers[temp_var.name]
+
+        has_local_parallel_write = False
+        for insn_id in my_writers:
+            insn = kernel.id_to_insn[insn_id]
+            has_local_parallel_write = has_local_parallel_write or any(
+                    isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase)
+                    for iname in get_deps(insn.get_assignee_indices())
+                    & kernel.all_inames())
+
+        new_temp_vars[temp_var.name] = temp_var.copy(
+                is_local=has_local_parallel_write)
+
+    return kernel.copy(temporary_variables=new_temp_vars)
+
+# }}}
+
 # {{{ reduction iname duplication
 
 def duplicate_reduction_inames(kernel):
@@ -176,6 +207,8 @@ def realize_reduction(kernel):
 
 def find_accessors(kernel, readers):
     """
+    :arg readers: whether to find insns that read or that write
+        the variables in question.
     :return: a dict that maps variable names to ids of insns that
         write to that variable.
     """
@@ -619,6 +652,7 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
+    kernel = mark_local_temporaries(kernel)
     kernel = duplicate_reduction_inames(kernel)
     kernel = realize_reduction(kernel)
 
