@@ -254,21 +254,21 @@ def make_kernel(*args, **kwargs):
 
 # {{{ dimension split
 
-def split_dimension(kernel, iname, inner_length,
+def split_dimension(kernel, split_iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True):
 
-    if do_tagged_check and kernel.iname_to_tag.get(iname) is not None:
-        raise RuntimeError("cannot split already tagged iname '%s'" % iname)
+    if do_tagged_check and kernel.iname_to_tag.get(split_iname) is not None:
+        raise RuntimeError("cannot split already tagged iname '%s'" % split_iname)
 
-    if iname not in kernel.all_inames():
-        raise ValueError("cannot split loop for unknown variable '%s'" % iname)
+    if split_iname not in kernel.all_inames():
+        raise ValueError("cannot split loop for unknown variable '%s'" % split_iname)
 
     if outer_iname is None:
-        outer_iname = iname+"_outer"
+        outer_iname = split_iname+"_outer"
     if inner_iname is None:
-        inner_iname = iname+"_inner"
+        inner_iname = split_iname+"_inner"
 
     outer_var_nr = kernel.space.dim(dim_type.set)
     inner_var_nr = kernel.space.dim(dim_type.set)+1
@@ -285,9 +285,9 @@ def split_dimension(kernel, iname, inner_length,
                 make_slab(space, inner_iname, 0, inner_length)
                 # name = inner + length*outer
                 .add_constraint(isl.Constraint.eq_from_names(
-                    space, {iname:1, inner_iname: -1, outer_iname:-inner_length})))
+                    space, {split_iname:1, inner_iname: -1, outer_iname:-inner_length})))
 
-        name_dim_type, name_idx = space.get_var_dict()[iname]
+        name_dim_type, name_idx = space.get_var_dict()[split_iname]
         return (s
                 .intersect(inner_constraint_set)
                 .eliminate(name_dim_type, name_idx, 1)
@@ -304,19 +304,19 @@ def split_dimension(kernel, iname, inner_length,
 
     from loopy.symbolic import ReductionLoopSplitter
 
-    rls = ReductionLoopSplitter(iname, outer_iname, inner_iname)
+    rls = ReductionLoopSplitter(split_iname, outer_iname, inner_iname)
     new_insns = []
     for insn in kernel.instructions:
-        subst_map = {var(iname): new_loop_index}
+        subst_map = {var(split_iname): new_loop_index}
 
         from loopy.symbolic import SubstitutionMapper
         subst_mapper = SubstitutionMapper(subst_map.get)
 
         new_expr = subst_mapper(rls(insn.expression))
 
-        if iname in insn.forced_iname_deps:
+        if split_iname in insn.forced_iname_deps:
             new_forced_iname_deps = insn.forced_iname_deps.copy()
-            new_forced_iname_deps.remove(iname)
+            new_forced_iname_deps.remove(split_iname)
             new_forced_iname_deps.update([outer_iname, inner_iname])
         else:
             new_forced_iname_deps = insn.forced_iname_deps
@@ -324,8 +324,7 @@ def split_dimension(kernel, iname, inner_length,
         insn = insn.copy(
                 assignee=subst_mapper(insn.assignee),
                 expression=new_expr,
-                forced_iname_deps=new_forced_iname_deps
-                )
+                forced_iname_deps=new_forced_iname_deps)
 
         new_insns.append(insn)
 
@@ -336,7 +335,8 @@ def split_dimension(kernel, iname, inner_length,
     result = (kernel
             .copy(domain=new_domain,
                 iname_slab_increments=iname_slab_increments,
-                instructions=new_insns))
+                instructions=new_insns,
+                ))
 
     return tag_dimensions(result, {outer_iname: outer_tag, inner_iname: inner_tag})
 
