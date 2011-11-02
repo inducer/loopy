@@ -381,7 +381,7 @@ def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
 
 # {{{ dimension tag
 
-def tag_dimensions(kernel, iname_to_tag):
+def tag_dimensions(kernel, iname_to_tag, force=False):
     from loopy.kernel import parse_tag
 
     iname_to_tag = dict((iname, parse_tag(tag))
@@ -406,7 +406,7 @@ def tag_dimensions(kernel, iname_to_tag):
             raise ValueError("cannot tag '%s' as parallel--"
                     "iname requires sequential execution" % iname)
 
-        if old_tag is not None and (old_tag != new_tag):
+        if (not force) and old_tag is not None and (old_tag != new_tag):
             raise RuntimeError("'%s' is already tagged '%s'--cannot retag"
                     % (iname, old_tag))
 
