@@ -8,8 +8,10 @@ from __future__ import division
 def check_for_unused_hw_axes_in_insns(kernel):
     group_size, local_size = kernel.get_grid_sizes_as_exprs()
 
-    group_axes = set(ax for ax, length in enumerate(group_size) if length != 1)
-    local_axes = set(ax for ax, length in enumerate(local_size) if length != 1)
+    group_axes = set(ax for ax, length in enumerate(group_size))
+    local_axes = set(ax for ax, length in enumerate(local_size))
+
+    # alternative: just disregard length-1 dimensions?
 
     from loopy.kernel import LocalIndexTag, AutoLocalIndexTagBase, GroupIndexTag
     for insn in kernel.instructions:

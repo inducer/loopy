@@ -844,8 +844,7 @@ class LoopKernel(Record):
 
                 while cur_axis > len(size_list):
                     from loopy import LoopyAdvisory
-                    from warnings import warn
-                    warn("%s axis %d unassigned--assuming length 1" % (
+                    raise RuntimeError("%s axis %d unused" % (
                         which, len(size_list)), LoopyAdvisory)
                     size_list.append(zero_aff + 1)
 
