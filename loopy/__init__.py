@@ -73,7 +73,8 @@ def make_kernel(*args, **kwargs):
 
         for iname in reduction_expr.inames:
             if iname in duplicate_inames:
-                new_iname = knl.make_unique_var_name(iname, newly_created_vars)
+                new_iname = knl.make_unique_var_name(iname+"_"+insn.id,
+                        newly_created_vars)
 
                 old_insn_inames.append(iname)
                 new_insn_inames.append(new_iname)
@@ -123,7 +124,7 @@ def make_kernel(*args, **kwargs):
 
             new_inames = [
                     knl.make_unique_var_name(
-                        iname,
+                        based_on=iname+"_"+insn.id,
                         extra_used_vars=
                         newly_created_vars)
                     for iname in duplicate_inames]

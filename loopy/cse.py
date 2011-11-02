@@ -371,7 +371,12 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
     temp_new_inames = []
     for old_iname, new_iname in zip(independent_inames, new_inames):
         if new_iname is None:
-            new_iname = kernel.make_unique_var_name(old_iname, set(temp_new_inames))
+            if cse_tag is not None:
+                based_on = old_iname+"_"+cse_tag
+            else:
+                based_on = old_iname
+
+            new_iname = kernel.make_unique_var_name(based_on, set(temp_new_inames))
             assert new_iname != old_iname
 
         temp_new_inames.append(new_iname)
