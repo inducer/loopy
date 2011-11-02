@@ -504,9 +504,13 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
     cse_cb_mapper = CSECallbackMapper(subst_cses)
 
-    new_insns = [compute_insn] + [
-            insn.copy(expression=cse_cb_mapper(insn.expression))
-            for insn in kernel.instructions]
+    new_insns = [compute_insn]
+
+    for insn in kernel.instructions:
+        new_expr = cse_cb_mapper(insn.expression)
+        new_insns.append(insn.copy(
+            expression=new_expr,
+            forced_iname_deps=insn.all_inames()))
 
     # }}}
 
