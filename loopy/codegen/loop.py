@@ -188,8 +188,11 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
     bounds = kernel.get_iname_bounds(iname)
 
     from loopy.isl_helpers import make_slab
+    from loopy.isl_helpers import static_value_of_pw_aff
+    lower_bound = static_value_of_pw_aff(bounds.lower_bound_pw_aff,
+            constants_only=False)
     slab = make_slab(kernel.space, iname,
-            bounds.lower_bound_pw_aff, bounds.lower_bound_pw_aff+hw_axis_size)
+            lower_bound, lower_bound+hw_axis_size)
     codegen_state = codegen_state.intersect(slab)
 
     # }}}
