@@ -131,7 +131,7 @@ def test_sem(ctx_factory):
     #1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -248,7 +248,7 @@ def test_sem_nd(ctx_factory):
     #1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
 
     a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
     b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
@@ -284,61 +284,48 @@ def test_sem_3d(ctx_factory):
     field_shape = (K_sym, n, n, n)
 
     # K - run-time symbolic
-    n = 8
     knl = lp.make_kernel(ctx.devices[0],
             "[K] -> {[i,j,k,e,m]: 0<=i,j,k,m<%d and 0<=e<K}" % n,
             [
-                "[|i,j,k,m] <float32> ur[i,j,k] = sum_float32(m, D[i,m]*u[e,m,j,k])",
-                "[|i,j,k,m] <float32> us[i,j,k] = sum_float32(m, D[j,m]*u[e,i,m,k])",
-                "[|i,j,k:ilp,m] <float32> ut[i,j,k] = sum_float32(m, D[k,m]*u[e,i,j,m])",
+                "CSE: ur(i,j,k) = sum_float32(@m, D[i,m]*u[e,m,j,k])",
+                "CSE: us(i,j,k) = sum_float32(@m, D[j,m]*u[e,i,m,k])",
+                "CSE: ut(i,j,k) = sum_float32(@m, D[k,m]*u[e,i,j,m])",
 
-                "lap[i,j,k,e]  = "
-                "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur[m,j,k] + G[1,e,m,j,k]*us[m,j,k] + G[2,e,m,j,k]*ut[m,j,k]))"
-                "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur[i,m,k] + G[3,e,i,m,k]*us[i,m,k] + G[4,e,i,m,k]*ut[i,m,k]))"
-                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur[i,j,m] + G[4,e,i,j,m]*us[i,j,m] + G[5,e,i,j,m]*ut[i,j,m]))"
+                "lap[e,i,j,k]  = "
+                "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"
+                "+ sum_float32(m, D[m,j]*(G[1,e,i,m,k]*ur(i,m,k) + G[3,e,i,m,k]*us(i,m,k) + G[4,e,i,m,k]*ut(i,m,k)))"
+                "+ sum_float32(m, D[m,k]*(G[2,e,i,j,m]*ur(i,j,m) + G[4,e,i,j,m]*us(i,j,m) + G[5,e,i,j,m]*ut(i,j,m)))"
                 ],
             [
-            lp.ArrayArg("u",   dtype, shape=field_shape, order=order),
+            lp.ArrayArg("u", dtype, shape=field_shape, order=order),
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
-            lp.ArrayArg("G",   dtype, shape=(6,) + field_shape, order=order),
-            lp.ArrayArg("D",   dtype, shape=(n, n), order=order),
-            lp.ScalarArg("K",  np.int32, approximately=1000),
+            lp.ArrayArg("G", dtype, shape=(6,)+field_shape, order=order),
+            lp.ArrayArg("D", dtype, shape=(n, n), order=order),
+            lp.ScalarArg("K", np.int32, approximately=1000),
             ],
             name="semlap", assumptions="K>=1")
 
-    #print knl
-    #for tv in knl.temporary_variables.iteritems():
-        #print tv
-    #1/0
+    #knl = lp.realize_cse(knl, "D", np.float32, ["i_dr", "m_dr"])
+    #knl = lp.realize_cse(knl, "D", np.float32, ["i_dr", "m_dr"])
+    #knl = lp.realize_cse(knl, "u", np.float32, ["m_dr", "j_dr", "k_dr"])
+    #knl = lp.add_prefetch(knl, "G", ["m", "j", "k"])
+
+    seq_knl = knl
 
     knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
     #knl = lp.split_dimension(knl, "e_inner", 4, inner_tag="ilp")
-    knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
-    #knl = lp.realize_cse(knl, "build_ur", np.float32, ["j", "k"])
-    #knl = lp.realize_cse(knl, "build_ur", np.float32, ["j", "k", "mp"])
-    knl = lp.preprocess_kernel(knl)
     print knl
-    #1/0
+    knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000), kill_level_min=5)
+    kernel_gen = lp.generate_loop_schedules(knl,
+            loop_priority=["j_dr", "j_ds",  "i_dt"])
+    kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
-
+    K = 1000
+    lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
+            op_count=K*(n*n*n*n*2*3 + n*n*n*5*3 + n**4 * 2*3)/1e9,
+            op_label="GFlops",
+            parameters={"K": K}, print_seq_code=True)
 
 
 
