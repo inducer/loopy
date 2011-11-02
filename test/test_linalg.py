@@ -59,7 +59,7 @@ def check_error(refsol, sol):
     if rel_err > 1e-5 or np.isinf(rel_err) or np.isnan(rel_err):
         if 1:
             import matplotlib.pyplot as pt
-            pt.imshow(refsol-sol)
+            pt.imshow(refsol-sol, interpolation="nearest")
             pt.colorbar()
             pt.show()
         elif 0:
@@ -637,7 +637,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 2*get_suitable_size(ctx)
+    n = 32
 
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
@@ -653,15 +653,18 @@ def test_image_matrix_mul_ilp(ctx_factory):
 
     ilp = 4
     knl = lp.split_dimension(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
-    j_inner_split = 16
+    j_inner_split = 2
     knl = lp.split_dimension(knl, "j", ilp*j_inner_split, outer_tag="g.1")
     knl = lp.split_dimension(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 2)
     # conflict-free
-    knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
+    #knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"],
             ["b_j_io", "b_j_ii", "b_k_i"])
-    knl = lp.join_dimensions(knl, ["b_j_io", "b_j_ii"])
+    if 1:
+        knl = lp.join_dimensions(knl, ["b_j_io", "b_j_ii"])
+    else:
+        knl = lp.tag_dimensions(knl, {"b_j_io": "unr"}, force=True)
 
     #print lp.preprocess_kernel(knl)
     #1/0
