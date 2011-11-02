@@ -520,55 +520,5 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
 
 
-def realize_cse_old(kernel, cse_tag, dtype, duplicate_inames=[], parallel_inames=None,
-        dup_iname_to_tag={}, new_inames=None, default_tag_class=AutoFitLocalIndexTag):
-    """
-    :arg duplicate_inames: which inames are supposed to be separate loops
-        in the CSE. Also determines index order of temporary array.
-    :arg parallel_inames: only a convenient interface for dup_iname_to_tag
-    """
-
-    dtype = np.dtype(dtype)
-
-
-    cse_lookup_table = []
-    cse_result_insns = []
-
-    def map_cse(cse, rec):
-
-        # {{{ concoct new inner and outer expressions
-
-        # }}}
-
-        cse_result_insns.append(new_insn)
-        cse_lookup_table.append((cse.child, new_outer_expr))
-
-        return new_outer_expr
-
-    from loopy.symbolic import CSECallbackMapper
-    cse_cb_mapper = CSECallbackMapper(map_cse)
-
-    new_insns = []
-    for insn in kernel.instructions:
-        was_empty = not bool(cse_result_insns)
-        new_expr = cse_cb_mapper(insn.expression)
-
-        if was_empty and cse_result_insns:
-            new_insns.append(insn.copy(expression=new_expr))
-        else:
-            new_insns.append(insn)
-
-    new_insns.extend(cse_result_insns)
-
-    # build new domain, duplicating each constraint on duplicated inames
-
-
-    new_iname_to_tag = kernel.iname_to_tag.copy()
-    for old_iname, new_iname in zip(duplicate_inames, new_inames):
-        new_iname_to_tag[new_iname] = dup_iname_to_tag[old_iname]
-
-
-
-
 
 # vim: foldmethod=marker
