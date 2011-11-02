@@ -418,7 +418,7 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
 # {{{ convenience: add_prefetch
 
-def add_prefetch(kernel, var_name, fetch_dims=[], new_inames=None):
+def add_prefetch(kernel, var_name, fetch_dims=[], new_inames=None, default_tag="l.auto"):
     used_cse_tags = set()
     def map_cse(expr, rec):
         used_cse_tags.add(expr.tag)
@@ -447,7 +447,7 @@ def add_prefetch(kernel, var_name, fetch_dims=[], new_inames=None):
 
     for cse_tag in new_cse_tags:
         kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims,
-                new_inames=new_inames)
+                new_inames=new_inames, default_tag=default_tag)
 
     return kernel
 

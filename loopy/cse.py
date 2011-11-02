@@ -333,7 +333,7 @@ def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
 
 
 def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
-        ind_iname_to_tag={}, new_inames=None, default_tag_class=AutoFitLocalIndexTag,
+        ind_iname_to_tag={}, new_inames=None, default_tag="l.auto",
         follow_tag=None):
     """
     :arg independent_inames: which inames are supposed to be separate loops
@@ -352,8 +352,10 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
     ind_iname_to_tag = ind_iname_to_tag.copy()
 
+    from loopy.kernel import parse_tag
+    default_tag = parse_tag(default_tag)
     for iname in independent_inames:
-        ind_iname_to_tag.setdefault(iname, default_tag_class())
+        ind_iname_to_tag.setdefault(iname, default_tag)
 
     if not set(ind_iname_to_tag.iterkeys()) <= set(independent_inames):
         raise RuntimeError("tags for non-new inames may not be passed")
