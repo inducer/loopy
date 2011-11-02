@@ -258,7 +258,7 @@ class ArrayAccessFinder(CombineMapper):
 # {{{ C code mapper
 
 class LoopyCCodeMapper(CCodeMapper):
-    def __init__(self, kernel, cse_name_list=[], var_subst_map={}):
+    def __init__(self, kernel, cse_name_list=[], var_subst_map={}, with_annotation=True):
         def constant_mapper(c):
             if isinstance(c, float):
                 # FIXME: type-variable
@@ -270,6 +270,7 @@ class LoopyCCodeMapper(CCodeMapper):
                 cse_name_list=cse_name_list)
         self.kernel = kernel
 
+        self.with_annotation = with_annotation
         self.var_subst_map = var_subst_map.copy()
 
     def copy(self, var_subst_map=None, cse_name_list=None):
@@ -292,8 +293,12 @@ class LoopyCCodeMapper(CCodeMapper):
 
     def map_variable(self, expr, prec):
         if expr.name in self.var_subst_map:
-            return " /* %s */ %s" % (
-                    expr.name, self.rec(self.var_subst_map[expr.name], prec))
+            if self.with_annotation:
+                return " /* %s */ %s" % (
+                        expr.name,
+                        self.rec(self.var_subst_map[expr.name], prec))
+            else:
+                return str(self.rec(self.var_subst_map[expr.name], prec))
         else:
             return CCodeMapper.map_variable(self, expr, prec)
 

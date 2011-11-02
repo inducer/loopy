@@ -39,8 +39,6 @@ Things to consider
 To-do
 ^^^^^
 
-- Automatically generate testing code vs. sequential.
-
 - Fix all tests
 
 - Deal with equality constraints.
@@ -82,6 +80,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Automatically generate testing code vs. sequential.
 
 - If isl can prove that all operands are positive, may use '/' instead of
   'floor_div'.

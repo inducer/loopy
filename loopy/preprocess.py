@@ -99,8 +99,10 @@ def realize_reduction(kernel):
         for iname in ilp_inames:
             bounds = kernel.get_iname_bounds(iname)
 
+            from loopy.symbolic import pw_aff_to_expr
             ilp_iname_lengths.append(
-                static_max_of_pw_aff(bounds.size, constants_only=True))
+                    int(pw_aff_to_expr(
+                        static_max_of_pw_aff(bounds.size, constants_only=True))))
 
         # }}}
 
