@@ -312,29 +312,50 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
                     break
 
             if not useful:
+                if debug_mode:
+                    print "iname '%s' deemed not useful" % iname
                 continue
 
             useful_loops.append(iname)
 
             # }}}
 
-        useful_and_desired = set(useful_loops) & set(loop_priority)
+        # {{{ tier building
+
+        # Build priority tiers. If a schedule is found in the first tier, then
+        # loops in the second are not even tried.
+
+        loop_priority_set = set(loop_priority)
+        useful_and_desired = set(useful_loops) & loop_priority_set
+
         if useful_and_desired:
-            # restrict to the first ('highest-priority') loop that's useful
+            priority_tiers = [[iname]
+                    for iname in loop_priority
+                    if iname in useful_and_desired]
 
-            for iname in loop_priority:
-                if iname in useful_and_desired:
-                    useful_loops = [iname]
-                    break
+            priority_tiers.append(
+                    set(useful_loops) - loop_priority_set)
+        else:
+            priority_tiers = [useful_loops]
 
-        for iname in useful_loops:
-            new_schedule = schedule + [EnterLoop(iname=iname)]
-            for sub_sched in generate_loop_schedules_internal(
-                    kernel, loop_priority, new_schedule):
-                yield sub_sched
+        # }}}
 
-        if useful_loops:
-            return
+        if debug_mode:
+            print "useful inames: %s" % ",".join(useful_loops)
+            raw_input("Enter:")
+
+        for tier in priority_tiers:
+            found_viable_schedule = False
+
+            for iname in tier:
+                new_schedule = schedule + [EnterLoop(iname=iname)]
+                for sub_sched in generate_loop_schedules_internal(
+                        kernel, loop_priority, new_schedule):
+                    found_viable_schedule = True
+                    yield sub_sched
+
+            if found_viable_schedule:
+                return
 
     # }}}
 
