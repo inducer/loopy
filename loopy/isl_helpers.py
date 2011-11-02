@@ -72,6 +72,9 @@ def make_index_map(set, index_expr):
 
 
 def pw_aff_to_aff(pw_aff):
+    if isinstance(pw_aff, isl.Aff):
+        return pw_aff
+
     assert isinstance(pw_aff, isl.PwAff)
     pieces = pw_aff.get_pieces()
 
@@ -103,9 +106,9 @@ def make_slab(space, iname, start, stop):
     zero = isl.Aff.zero_on_domain(space)
 
     from islpy import align_spaces
-    if isinstance(start, isl.PwAff):
+    if isinstance(start, (isl.Aff, isl.PwAff)):
         start = align_spaces(pw_aff_to_aff(start), zero)
-    if isinstance(stop, isl.PwAff):
+    if isinstance(stop, (isl.Aff, isl.PwAff)):
         stop = align_spaces(pw_aff_to_aff(stop), zero)
 
     if isinstance(start, int): start = zero + start
