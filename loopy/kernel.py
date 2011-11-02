@@ -446,9 +446,11 @@ class LoopKernel(Record):
         workgroup axes to ther sizes, e.g. *{0: 16}* forces axis 0 to be
         length 16.
 
-    The following two instance variables are only used until :func:`loopy.kernel.make_kernel` is
+    The following instance variables are only used until :func:`loopy.kernel.make_kernel` is
     finished:
+
     :ivar iname_to_tag_requests:
+    :ivar cses: a mapping from CSE names to tuples (arg_names, expr).
     """
 
     def __init__(self, device, domain, instructions, args=None, schedule=None,
@@ -457,7 +459,7 @@ class LoopKernel(Record):
             iname_slab_increments={},
             temporary_variables={},
             local_sizes={},
-            iname_to_tag={}, iname_to_tag_requests=None):
+            iname_to_tag={}, iname_to_tag_requests=None, cses={}):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -511,21 +513,35 @@ class LoopKernel(Record):
 
             return result
 
+        # {{{ instruction parser
+
         def parse_if_necessary(insn):
             from pymbolic import parse
 
             if isinstance(insn, Instruction):
-                return insn
-            if isinstance(insn, str):
-                label_dep_match = LABEL_DEP_RE.match(insn)
-                if label_dep_match is None:
-                    raise RuntimeError("insn parse error")
+                insns.append(insn)
+                return
 
-                groups = label_dep_match.groupdict()
-                if groups["label"] is not None:
-                    label = groups["label"]
-                else:
-                    label = "insn"
+            if not isinstance(insn, str):
+                raise TypeError("Instructions must be either an Instruction "
+                        "instance or a parseable string. got '%s' instead."
+                        % type(insn))
+
+            label_dep_match = LABEL_DEP_RE.match(insn)
+            if label_dep_match is None:
+                raise RuntimeError("insn parse error")
+
+            groups = label_dep_match.groupdict()
+            if groups["label"] is not None:
+                label = groups["label"]
+            else:
+                label = "insn"
+
+            lhs = parse(groups["lhs"])
+            from loopy.symbolic import FunctionToPrimitiveMapper
+            rhs = FunctionToPrimitiveMapper()(parse(groups["rhs"]))
+
+            if label.lower() != "cse":
                 if groups["insn_deps"] is not None:
                     insn_deps = set(dep.strip() for dep in groups["insn_deps"].split(","))
                 else:
@@ -550,22 +566,49 @@ class LoopKernel(Record):
                 else:
                     temp_var_type = None
 
-                lhs = parse(groups["lhs"])
-                from loopy.symbolic import FunctionToPrimitiveMapper
-                rhs = FunctionToPrimitiveMapper()(parse(groups["rhs"]))
+                insns.append(
+                        Instruction(
+                            id=self.make_unique_instruction_id(insns, based_on=label),
+                            insn_deps=insn_deps,
+                            forced_iname_deps=forced_iname_deps,
+                            assignee=lhs, expression=rhs,
+                            temp_var_type=temp_var_type,
+                            duplicate_inames_and_tags=duplicate_inames_and_tags))
+            else:
+                if groups["iname_deps_and_tags"] is not None:
+                    raise RuntimeError("CSEs cannot declare iname dependencies")
+                if groups["insn_deps"] is not None:
+                    raise RuntimeError("CSEs cannot declare instruction dependencies")
+                if groups["temp_var_type"] is not None:
+                    raise RuntimeError("CSEs cannot declare temporary storage")
 
-            return Instruction(
-                    id=self.make_unique_instruction_id(insns, based_on=label),
-                    insn_deps=insn_deps,
-                    forced_iname_deps=forced_iname_deps,
-                    assignee=lhs, expression=rhs,
-                    temp_var_type=temp_var_type,
-                    duplicate_inames_and_tags=duplicate_inames_and_tags)
+                from pymbolic.primitives import Variable, Call
+
+                if isinstance(lhs, Variable):
+                    cse_name = lhs.name
+                    arg_names = []
+                elif isinstance(lhs, Call):
+                    if not isinstance(lhs.function, Variable):
+                        raise RuntimeError("Invalid CSE left-hand side")
+                    cse_name = lhs.function.name
+                    arg_names = []
+
+                    for arg in lhs.parameters:
+                        if not isinstance(arg, Variable):
+                            raise RuntimeError("Invalid CSE left-hand side")
+                        arg_names.append(arg.name)
+                else:
+                    raise RuntimeError("CSEs cannot declare temporary storage")
+
+                cses[cse_name] = (arg_names, rhs)
+
+        # }}}
 
         insns = []
+        cses = cses.copy()
         for insn in instructions:
             # must construct list one-by-one to facilitate unique id generation
-            insns.append(parse_if_necessary(insn))
+            parse_if_necessary(insn)
 
         if len(set(insn.id for insn in insns)) != len(insns):
             raise RuntimeError("instruction ids do not appear to be unique")
@@ -593,7 +636,8 @@ class LoopKernel(Record):
                 temporary_variables=temporary_variables,
                 local_sizes=local_sizes,
                 iname_to_tag=iname_to_tag,
-                iname_to_tag_requests=iname_to_tag_requests)
+                iname_to_tag_requests=iname_to_tag_requests,
+                cses=cses)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:

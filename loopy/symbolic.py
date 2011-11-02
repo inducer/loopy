@@ -530,7 +530,9 @@ class IndexVariableFinder(CombineMapper):
 
     def map_reduction(self, expr):
         result = self.rec(expr.expr)
-        if not (set(expr.inames) & result):
+
+        real_inames = set(iname.lstrip("@") for iname in expr.inames)
+        if not (real_inames & result):
             raise RuntimeError("reduction '%s' does not depend on "
                     "reduction inames (%s)" % (expr, ",".join(expr.inames)))
         if self.include_reduction_inames:
@@ -543,6 +545,7 @@ class IndexVariableFinder(CombineMapper):
 # {{{ variable-fetch CSE mapper
 
 class VariableFetchCSEMapper(IdentityMapper):
+    """Turns fetches of a given variable names into CSEs."""
     def __init__(self, var_name, cse_tag_getter):
         self.var_name = var_name
         self.cse_tag_getter = cse_tag_getter
@@ -562,6 +565,47 @@ class VariableFetchCSEMapper(IdentityMapper):
                     Subscript(expr.aggregate, self.rec(expr.index)), self.cse_tag_getter())
         else:
             return IdentityMapper.map_subscript(self, expr)
+
+# }}}
+
+# {{{ CSE substitutor
+
+class CSESubstitutor(IdentityMapper):
+    def __init__(self, cses):
+        """
+        :arg cses: a mapping from CSE names to tuples (arg_names, expr).
+        """
+        self.cses = cses
+
+    def map_variable(self, expr):
+        if expr.name not in self.cses:
+            return IdentityMapper.map_variable(self, expr)
+
+        arg_names, cse_expr = self.cse[expr.name]
+        if len(arg_names) != 0:
+            raise RuntimeError("CSE '%s' must be invoked with %d arguments"
+                    % (expr.name, len(arg_names)))
+
+        from pymbolic.primitives import CommonSubexpression
+        return CommonSubexpression(cse_expr, expr.name)
+
+    def map_call(self, expr):
+        from pymbolic.primitives import Variable, CommonSubexpression
+        if (not isinstance(expr.function, Variable)
+                or expr.function.name not in self.cses):
+            return IdentityMapper.map_variable(self, expr)
+
+        cse_name = expr.function.name
+        arg_names, cse_expr = self.cses[cse_name]
+        if len(arg_names) != len(expr.parameters):
+            raise RuntimeError("CSE '%s' invoked with %d arguments (needs %d)"
+                    % (cse_name, len(arg_names), len(expr.parameters)))
+
+        from pymbolic.mapper.substitutor import make_subst_func
+        subst_map = SubstitutionMapper(make_subst_func(
+            dict(zip(arg_names, expr.parameters))))
+
+        return CommonSubexpression(subst_map(cse_expr), cse_name)
 
 # }}}
 

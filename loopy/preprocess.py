@@ -6,6 +6,76 @@ import pyopencl.characterize as cl_char
 
 
 
+# {{{ reduction iname duplication
+
+def duplicate_reduction_inames(kernel):
+
+    # {{{ helper function
+
+    newly_created_vars = set()
+
+    def duplicate_reduction_inames(reduction_expr, rec):
+        child = rec(reduction_expr.expr)
+        new_red_inames = []
+        did_something = False
+
+        for iname in reduction_expr.inames:
+            if iname.startswith("@"):
+                new_iname = kernel.make_unique_var_name(iname[1:]+"_"+insn.id,
+                        newly_created_vars)
+
+                old_insn_inames.append(iname.lstrip("@"))
+                new_insn_inames.append(new_iname)
+                newly_created_vars.add(new_iname)
+                new_red_inames.append(new_iname)
+                did_something = True
+            else:
+                new_red_inames.append(iname)
+
+        if did_something:
+            from loopy.symbolic import SubstitutionMapper
+            from pymbolic.mapper.substitutor import make_subst_func
+            from pymbolic import var
+
+            old_inames = [iname.lstrip("@") for iname in reduction_expr.inames]
+            subst_dict = dict(
+                    (old_iname, var(new_iname))
+                    for old_iname, new_iname in zip(
+                        old_inames, new_red_inames))
+            subst_map = SubstitutionMapper(make_subst_func(subst_dict))
+
+            child = subst_map(child)
+
+        from loopy.symbolic import Reduction
+        return Reduction(
+                operation=reduction_expr.operation,
+                inames=tuple(new_red_inames),
+                expr=child)
+
+    # }}}
+
+    new_domain = kernel.domain
+    new_insns = []
+
+    for insn in kernel.instructions:
+        old_insn_inames = []
+        new_insn_inames = []
+
+        from loopy.symbolic import ReductionCallbackMapper
+        new_insns.append(insn.copy(
+            expression=ReductionCallbackMapper(duplicate_reduction_inames)
+            (insn.expression)))
+
+        from loopy.isl_helpers import duplicate_axes
+        for old, new in zip(old_insn_inames, new_insn_inames):
+            new_domain = duplicate_axes(new_domain, [old], [new])
+
+    return kernel.copy(
+            instructions=new_insns,
+            domain=new_domain)
+
+# }}}
+
 # {{{ rewrite reduction to imperative form
 
 def realize_reduction(kernel):
@@ -547,6 +617,7 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
+    kernel = duplicate_reduction_inames(kernel)
     kernel = realize_reduction(kernel)
 
     # {{{ check that all CSEs have been realized

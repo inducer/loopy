@@ -61,53 +61,12 @@ def make_kernel(*args, **kwargs):
 
     newly_created_vars = set()
 
-    # {{{ reduction iname duplication helper function
-
-    def duplicate_reduction_inames(reduction_expr, rec):
-        duplicate_inames = [iname
-                for iname, tag in insn.duplicate_inames_and_tags]
-
-        child = rec(reduction_expr.expr)
-        new_red_inames = []
-        did_something = False
-
-        for iname in reduction_expr.inames:
-            if iname in duplicate_inames:
-                new_iname = knl.make_unique_var_name(iname+"_"+insn.id,
-                        newly_created_vars)
-
-                old_insn_inames.append(iname)
-                new_insn_inames.append(new_iname)
-                newly_created_vars.add(new_iname)
-                new_red_inames.append(new_iname)
-                did_something = True
-            else:
-                new_red_inames.append(iname)
-
-        if did_something:
-            from loopy.symbolic import SubstitutionMapper
-            from pymbolic.mapper.substitutor import make_subst_func
-            from pymbolic import var
-            subst_dict = dict(
-                    (old_iname, var(new_iname))
-                    for old_iname, new_iname in zip(
-                        reduction_expr.inames, new_red_inames))
-            subst_map = SubstitutionMapper(make_subst_func(subst_dict))
-
-            child = subst_map(child)
-
-            for old_iname, new_iname in zip(reduction_expr.inames, new_red_inames):
-                new_iname_to_tag[new_iname] = insn_dup_iname_to_tag[old_iname]
-
-        from loopy.symbolic import Reduction
-        return Reduction(
-                operation=reduction_expr.operation,
-                inames=tuple(new_red_inames),
-                expr=child)
-
-    # }}}
+    from loopy.symbolic import CSESubstitutor
+    cse_sub = CSESubstitutor(knl.cses)
 
     for insn in knl.instructions:
+        insn = insn.copy(expression=cse_sub(insn.expression))
+
         # {{{ sanity checking
 
         if not set(insn.forced_iname_deps) <= knl.all_inames():
@@ -137,7 +96,7 @@ def make_kernel(*args, **kwargs):
 
             reduction_inames = insn.reduction_inames()
 
-            duplicate_inames = [iname
+            inames_to_duplicate = [iname
                     for iname, tag in insn.duplicate_inames_and_tags
                     if iname not in reduction_inames]
 
@@ -146,9 +105,9 @@ def make_kernel(*args, **kwargs):
                         based_on=iname+"_"+insn.id,
                         extra_used_vars=
                         newly_created_vars)
-                    for iname in duplicate_inames]
+                    for iname in inames_to_duplicate]
 
-            for old_iname, new_iname in zip(duplicate_inames, new_inames):
+            for old_iname, new_iname in zip(inames_to_duplicate, new_inames):
                 new_tag = insn_dup_iname_to_tag[old_iname]
                 if new_tag is None:
                     new_tag = AutoFitLocalIndexTag()
@@ -157,43 +116,29 @@ def make_kernel(*args, **kwargs):
             newly_created_vars.update(new_inames)
 
             from loopy.isl_helpers import duplicate_axes
-            new_domain = duplicate_axes(new_domain, duplicate_inames, new_inames)
+            new_domain = duplicate_axes(new_domain, inames_to_duplicate, new_inames)
 
             from loopy.symbolic import SubstitutionMapper
             from pymbolic.mapper.substitutor import make_subst_func
             from pymbolic import var
             old_to_new = dict(
                     (old_iname, var(new_iname))
-                    for old_iname, new_iname in zip(duplicate_inames, new_inames))
+                    for old_iname, new_iname in zip(inames_to_duplicate, new_inames))
             subst_map = SubstitutionMapper(make_subst_func(old_to_new))
             new_expression = subst_map(insn.expression)
 
             # }}}
 
-            # {{{ duplicate reduction inames
-
-            if len(duplicate_inames) < len(insn.duplicate_inames_and_tags):
-                # there must've been requests to duplicate reduction inames
-                old_insn_inames = []
-                new_insn_inames = []
-
-                from loopy.symbolic import ReductionCallbackMapper
-                new_expression = (
-                        ReductionCallbackMapper(duplicate_reduction_inames)
-                        (new_expression))
-
-                from loopy.isl_helpers import duplicate_axes
-                for old, new in zip(old_insn_inames, new_insn_inames):
-                    new_domain = duplicate_axes(new_domain, [old], [new])
-
-            # }}}
+            if len(inames_to_duplicate) < len(insn.duplicate_inames_and_tags):
+                raise RuntimeError("cannot use [|...] syntax to rename reduction "
+                        "inames")
 
             insn = insn.copy(
                     assignee=subst_map(insn.assignee),
                     expression=new_expression,
                     forced_iname_deps=set(
                         old_to_new.get(iname, iname) for iname in insn.forced_iname_deps),
-                    )
+                    duplicate_inames_and_tags=[])
 
         # }}}
 
@@ -248,7 +193,9 @@ def make_kernel(*args, **kwargs):
             instructions=new_insns,
             domain=new_domain,
             temporary_variables=new_temp_vars,
-            iname_to_tag=new_iname_to_tag)
+            iname_to_tag=new_iname_to_tag,
+            iname_to_tag_requests=[],
+            cses={})
 
 # }}}
 
