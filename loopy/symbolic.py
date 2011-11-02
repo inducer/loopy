@@ -21,6 +21,7 @@ from islpy import dim_type
 
 
 
+
 # {{{ loopy-specific primitives
 
 class Reduction(AlgebraicLeaf):
@@ -258,7 +259,8 @@ class ArrayAccessFinder(CombineMapper):
 # {{{ C code mapper
 
 class LoopyCCodeMapper(CCodeMapper):
-    def __init__(self, kernel, cse_name_list=[], var_subst_map={}, with_annotation=True):
+    def __init__(self, kernel, cse_name_list=[], var_subst_map={},
+            with_annotation=False):
         def constant_mapper(c):
             if isinstance(c, float):
                 # FIXME: type-variable
@@ -363,9 +365,10 @@ class LoopyCCodeMapper(CCodeMapper):
         from loopy.isl_helpers import is_nonnegative
         num_nonneg = is_nonnegative(expr.numerator, self.kernel.domain)
         den_nonneg = is_nonnegative(expr.denominator, self.kernel.domain)
+
         if den_nonneg:
             if num_nonneg:
-                return CCodeMapper.map_quotient(self, expr, prec)
+                return CCodeMapper.map_floor_div(self, expr, prec)
             else:
                 return ("int_floor_div_pos_b(%s, %s)"
                         % (self.rec(expr.numerator, PREC_NONE),
