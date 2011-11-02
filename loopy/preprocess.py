@@ -55,6 +55,7 @@ def realize_reduction(kernel):
 
         init_insn = Instruction(
                 id=kernel.make_unique_instruction_id(
+                    based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
                 forced_iname_deps=insn.all_inames() - set(expr.inames),
@@ -64,6 +65,7 @@ def realize_reduction(kernel):
 
         reduction_insn = Instruction(
                 id=kernel.make_unique_instruction_id(
+                    based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)),
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
                 expression=expr.operation(target_var, sub_expr),

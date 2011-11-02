@@ -324,7 +324,7 @@ def make_compute_insn(kernel, lead_csed, target_var_name, target_var_is_local,
         insn_prefix = "cse"
     from loopy.kernel import Instruction
     return Instruction(
-            id=kernel.make_unique_instruction_id(based_on=insn_prefix),
+            id=kernel.make_unique_instruction_id(based_on=insn_prefix+"_compute"),
             assignee=assignee,
             expression=new_inner_expr,
             forced_iname_deps=forced_iname_deps)
