@@ -422,10 +422,15 @@ def adjust_local_temp_var_storage(kernel):
 
     lmem_size = cl_char.usable_local_mem_size(kernel.device)
     for temp_var in kernel.temporary_variables.itervalues():
+        if not temp_var.is_local:
+            new_temp_vars[temp_var.name] = temp_var.copy(storage_shape=temp_var.shape)
+            continue
+
         other_loctemp_nbytes = [tv.nbytes for tv in kernel.temporary_variables.itervalues()
                 if tv.is_local and tv.name != temp_var.name]
 
         storage_shape = temp_var.storage_shape
+
         if storage_shape is None:
             storage_shape = temp_var.shape
 
