@@ -134,7 +134,7 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
 # {{{ automatic testing
 
 def make_seq_args(kernel, queue, parameters):
-    from loopy.kernel import ScalarArg, ArrayArg
+    from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
     from pymbolic import evaluate
 
@@ -146,22 +146,35 @@ def make_seq_args(kernel, queue, parameters):
         if isinstance(arg, ScalarArg):
             result.append(arg.dtype.type(parameters[arg.name]))
 
-        elif isinstance(arg, ArrayArg):
+        elif isinstance(arg, (ArrayArg, ImageArg)):
             if arg.shape is None:
                 raise ValueError("arrays need known shape to use automatic "
                         "testing")
 
             shape = evaluate(arg.shape, parameters)
-            ary = cl_array.empty(queue, shape, arg.dtype, order=arg.order)
-            assert arg.offset == 0
+            if isinstance(arg, ImageArg):
+                order = "C"
+            else:
+                order = arg.order
+                assert arg.offset == 0
+
+            ary = cl_array.empty(queue, shape, arg.dtype, order=order)
             if arg.name in kernel.get_written_variables():
+                if isinstance(arg, ImageArg):
+                    raise RuntimeError("write-mode images not supported in "
+                            "automatic testing")
+
                 ary.fill(-17)
                 output_arrays.append(ary)
+                result.append(ary.data)
             else:
                 from pyopencl.clrandom import fill_rand
                 fill_rand(ary, luxury=2)
                 input_arrays.append(ary)
-            result.append(ary.data)
+                if isinstance(arg, ImageArg):
+                    result.append(cl.image_from_array(queue.context, ary.get(), 1))
+                else:
+                    result.append(ary.data)
 
         else:
             raise RuntimeError("arg type not understood")
@@ -172,7 +185,7 @@ def make_seq_args(kernel, queue, parameters):
 
 
 def make_args(queue, kernel, seq_input_arrays, parameters):
-    from loopy.kernel import ScalarArg, ArrayArg
+    from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
     from pymbolic import evaluate
 
@@ -182,18 +195,29 @@ def make_args(queue, kernel, seq_input_arrays, parameters):
         if isinstance(arg, ScalarArg):
             result.append(arg.dtype.type(parameters[arg.name]))
 
-        if isinstance(arg, ArrayArg):
+        elif isinstance(arg, (ArrayArg, ImageArg)):
             if arg.name in kernel.get_written_variables():
+                if isinstance(arg, ImageArg):
+                    raise RuntimeError("write-mode images not supported in "
+                            "automatic testing")
+
                 shape = evaluate(arg.shape, parameters)
                 ary = cl_array.empty(queue, shape, arg.dtype, order=arg.order)
                 ary.fill(-18)
                 assert arg.offset == 0
                 output_arrays.append(ary)
+                result.append(ary.data)
             else:
                 seq_arg = seq_input_arrays.pop(0)
-                ary = cl_array.to_device(queue, seq_arg.get())
 
-            result.append(ary.data)
+                if isinstance(arg, ImageArg):
+                    result.append(cl.image_from_array(queue.context, seq_arg.get(), 1))
+                else:
+                    ary = cl_array.to_device(queue, seq_arg.get())
+                    result.append(ary.data)
+
+        else:
+            raise RuntimeError("arg type not understood")
 
     return result, output_arrays
 
@@ -316,14 +340,21 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
 
         for evt in events:
             evt.wait()
+        evt_start.wait()
+        evt_end.wait()
 
         elapsed = (1e-9*events[-1].profile.END-1e-9*events[0].profile.SUBMIT) \
                 / timing_rounds
-        elapsed_evt_2 = (1e-9*evt_end.profile.START-1e-9*evt_start.profile.START) \
-                / timing_rounds
+        try:
+            elapsed_evt_2 = "%g" % \
+                    ((1e-9*evt_end.profile.START-1e-9*evt_start.profile.START) \
+                    / timing_rounds)
+        except cl.RuntimeError:
+            elapsed_evt_2 = "<unavailable>"
+
         elapsed_wall = (stop_time-start_time)/timing_rounds
 
-        print "elapsed: %g s event, %g s other-event %g s wall, rate: %g %s/s" % (
+        print "elapsed: %g s event, %s s other-event %g s wall, rate: %g %s/s" % (
                 elapsed, elapsed_evt_2, elapsed_wall, op_count/elapsed, op_label)
         print "seq: elapsed: %g s event, %g s wall, rate: %g %s/s" % (
                 seq_elapsed, seq_elapsed_wall, op_count/seq_elapsed, op_label)

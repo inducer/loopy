@@ -159,10 +159,19 @@ class ArrayArg:
 
 
 class ImageArg:
-    def __init__(self, name, dtype, dimensions):
+    def __init__(self, name, dtype, dimensions=None, shape=None):
         self.name = name
         self.dtype = np.dtype(dtype)
-        self.dimensions = dimensions
+        if shape is not None:
+            if dimensions is not None:
+                raise RuntimeError("cannot specify both shape and dimensions "
+                        "in ImageArg")
+            self.dimensions = len(shape)
+            self.shape = shape
+        else:
+            if not isinstance(dimensions, int):
+                raise RuntimeError("ImageArg: dimensions must be an integer")
+            self.dimensions = dimensions
 
     def __repr__(self):
         return "<ImageArg '%s' of type %s>" % (self.name, self.dtype)
