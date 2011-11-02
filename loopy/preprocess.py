@@ -460,7 +460,7 @@ def adjust_local_temp_var_storage(kernel):
 
                 # will choose smallest increment 'automatically'
                 if new_mult < min_mult:
-                    new_lmem_use = (other_loctemp_nbytes
+                    new_lmem_use = (sum(other_loctemp_nbytes)
                             + temp_var.dtype.itemsize*product(test_storage_shape))
                     if new_lmem_use < lmem_size:
                         new_storage_shape = test_storage_shape
