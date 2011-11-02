@@ -283,7 +283,7 @@ def generate_code(kernel):
 
         from loopy.symbolic import pw_aff_to_expr
         for l in storage_shape:
-            temp_var_decl = ArrayOf(temp_var_decl, int(pw_aff_to_expr(l)))
+            temp_var_decl = ArrayOf(temp_var_decl, l)
 
         if tv.is_local:
             temp_var_decl = CLLocal(temp_var_decl)

@@ -432,6 +432,11 @@ def aff_to_expr(aff, except_name=None, error_on_name=None):
 
 
 def pw_aff_to_expr(pw_aff):
+    if isinstance(pw_aff, int):
+        from warnings import warn
+        warn("expected PwAff, got int", stacklevel=2)
+        return pw_aff
+
     pieces = pw_aff.get_pieces()
 
     if len(pieces) != 1:

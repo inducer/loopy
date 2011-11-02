@@ -203,8 +203,7 @@ class TemporaryVariable(Record):
     @property
     def nbytes(self):
         from pytools import product
-        from loopy.symbolic import pw_aff_to_expr
-        return product(pw_aff_to_expr(si) for si in self.shape)*self.dtype.itemsize
+        return product(si for si in self.shape)*self.dtype.itemsize
 
 # }}}
 
@@ -858,8 +857,8 @@ def find_var_base_indices_and_shape_from_inames(domain, inames):
         from loopy.isl_helpers import static_max_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
 
-        shape.append(static_max_of_pw_aff(
-                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True))
+        shape.append(pw_aff_to_expr(static_max_of_pw_aff(
+                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True)))
         base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
 
     return base_indices, shape
