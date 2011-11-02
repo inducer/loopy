@@ -147,6 +147,20 @@ def find_used_inames_within(kernel, sched_index):
 
 # }}}
 
+def dump_schedule(schedule):
+    entries = []
+    for sched_item in schedule:
+        if isinstance(sched_item, EnterLoop):
+            entries.append("<%s>" % sched_item.iname)
+        elif isinstance(sched_item, LeaveLoop):
+            entries.append("</%s>" % sched_item.iname)
+        elif isinstance(sched_item, RunInstruction):
+            entries.append(sched_item.insn_id)
+        else:
+            assert False
+
+    print " ".join(entries), len(entries)
+
 # {{{ scheduling algorithm
 
 def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
@@ -180,6 +194,25 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
 
     # }}}
 
+    # {{{ decide about debug mode
+
+    debug_mode = False
+    #if (set(["D", "u"]) <= scheduled_insn_ids and active_inames_set == set(["e"])):
+    if False:
+        debug_mode = True
+
+    if debug_mode:
+        print kernel
+        print "--------------------------------------------"
+        dump_schedule(schedule)
+
+
+    if debug_mode:
+        print "active:", ",".join(active_inames)
+        print "entered:", ",".join(entered_inames)
+
+    # }}}
+
     made_progress = False
 
     # {{{ see if any insn can be scheduled now
@@ -190,6 +223,12 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
         insn = kernel.id_to_insn[insn_id]
 
         schedule_now = set(insn.insn_deps) <= scheduled_insn_ids
+
+        if not schedule_now:
+            if debug_mode:
+                print "instruction '%s' is missing insn depedencies '%s'" % (
+                        insn.id, ",".join(set(insn.insn_deps) - scheduled_insn_ids))
+            continue
 
         if insn.boostable == True:
             # If insn is boostable, it may be placed inside a more deeply
@@ -211,6 +250,16 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
 
             if schedulable_at_loop_levels != [len(active_inames)]:
                 schedule_now = False
+                if debug_mode:
+                    if schedulable_at_loop_levels:
+                        print ("instruction '%s' will be scheduled when more "
+                                "loops have been exited" % insn.id)
+                    else:
+                        print ("instruction '%s' is missing inames '%s'"
+                                % (insn.id, ",".join(
+                                    (insn.all_inames() - parallel_inames)
+                                    -
+                                    (outer_active_inames - parallel_inames))))
 
         elif insn.boostable == False:
             # If insn is not boostable, we must insist that it is placed inside
@@ -220,6 +269,10 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
                     insn.all_inames() - parallel_inames
                     ==
                     active_inames_set - parallel_inames)
+
+            if debug_mode:
+                print ("instruction '%s' is not boostable and doesn't "
+                        "match the active inames" % insn.id)
 
         else:
             raise RuntimeError("instruction '%s' has undetermined boostability"
@@ -300,6 +353,9 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
             made_progress = True
 
     # }}}
+
+    if debug_mode:
+        raw_input("Enter:")
 
     if not active_inames and not available_loops and not unscheduled_insn_ids:
         # if done, yield result
