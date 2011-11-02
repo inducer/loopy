@@ -385,7 +385,7 @@ def assign_automatic_axes(kernel, only_axis_0=True):
             if isinstance(tag, LocalIndexTag):
                 assigned_local_axes.add(tag.axis)
 
-        if 0 not in assigned_local_axes:
+        if 0 < len(local_size) and 0 not in assigned_local_axes:
             for axis0_iname in get_axis_0_ranking(kernel, insn):
                 axis0_iname_tag = kernel.iname_to_tag.get(axis0_iname)
                 if isinstance(axis0_iname_tag, AutoLocalIndexTagBase):
