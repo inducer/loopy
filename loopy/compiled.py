@@ -144,7 +144,7 @@ def make_seq_args(kernel, queue, parameters):
 
     for arg in kernel.args:
         if isinstance(arg, ScalarArg):
-            result.append(arg.dtype(parameters[arg.name]))
+            result.append(arg.dtype.type(parameters[arg.name]))
 
         elif isinstance(arg, ArrayArg):
             if arg.shape is None:
@@ -180,12 +180,13 @@ def make_args(queue, kernel, seq_input_arrays, parameters):
     output_arrays = []
     for arg in kernel.args:
         if isinstance(arg, ScalarArg):
-            result.append(arg.dtype(parameters[arg.name]))
+            result.append(arg.dtype.type(parameters[arg.name]))
 
         if isinstance(arg, ArrayArg):
             if arg.name in kernel.get_written_variables():
                 shape = evaluate(arg.shape, parameters)
                 ary = cl_array.empty(queue, shape, arg.dtype, order=arg.order)
+                ary.fill(-18)
                 assert arg.offset == 0
                 output_arrays.append(ary)
             else:
@@ -200,7 +201,9 @@ def make_args(queue, kernel, seq_input_arrays, parameters):
 
 
 def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
-        print_seq_code=False, print_code=True):
+        print_seq_code=False, print_code=True, warmup_rounds=2, timing_rounds=100):
+    from time import time
+
     # {{{ set up CL context for sequential run
     last_dev = None
     last_cpu_dev = None
@@ -245,11 +248,21 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
     seq_args, seq_input_arrays, seq_output_arrays = \
             make_seq_args(seq_sched_kernel, seq_queue, parameters)
 
+    seq_queue.finish()
+    seq_start = time()
+
     seq_evt = seq_compiled.cl_kernel(seq_queue,
             seq_compiled.global_size_func(**parameters),
             seq_compiled.local_size_func(**parameters),
             *seq_args,
             g_times_l=True)
+
+    seq_queue.finish()
+    seq_stop = time()
+    seq_elapsed_wall = seq_stop-seq_start
+
+    seq_evt.wait()
+    seq_elapsed = 1e-9*(seq_evt.profile.END-seq_evt.profile.SUBMIT)
 
     # }}}
 
@@ -264,25 +277,60 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
             args, output_arrays = make_args(queue, kernel, seq_input_arrays, parameters)
 
         compiled = CompiledKernel(ctx, kernel)
+        print "----------------------------------------------------------"
+        print "Kernel #%d:" % i
+        print "----------------------------------------------------------"
         if print_code:
-            print "----------------------------------------------------------"
-            print "Kernel #%d:" % i
-            print "----------------------------------------------------------"
             print_highlighted_code(compiled.code)
             print "----------------------------------------------------------"
 
-        evt = compiled.cl_kernel(queue,
-                compiled.global_size_func(**parameters),
-                compiled.local_size_func(**parameters),
-                *args,
-                g_times_l=True)
+        do_check = True
 
-        for seq_out_ary, out_ary in zip(seq_output_arrays, output_arrays):
-            assert np.allclose(seq_out_ary.get(), out_ary.get())
+        gsize = compiled.global_size_func(**parameters)
+        lsize = compiled.local_size_func(**parameters)
+        for i in range(warmup_rounds):
+            evt = compiled.cl_kernel(queue, gsize, lsize, *args, g_times_l=True)
+
+            if do_check:
+                for seq_out_ary, out_ary in zip(seq_output_arrays, output_arrays):
+                    assert np.allclose(seq_out_ary.get(), out_ary.get(),
+                            rtol=1e-3, atol=1e-3)
+                    do_check = False
+
+        events = []
+        queue.finish()
+
+        from time import time
+        start_time = time()
+
+        evt_start = cl.enqueue_marker(queue)
+
+        for i in range(timing_rounds):
+            events.append(
+                    compiled.cl_kernel(queue, gsize, lsize, *args, g_times_l=True))
+
+        evt_end = cl.enqueue_marker(queue)
+
+        queue.finish()
+        stop_time = time()
+
+        for evt in events:
+            evt.wait()
+
+        elapsed = (1e-9*events[-1].profile.END-1e-9*events[0].profile.SUBMIT) \
+                / timing_rounds
+        elapsed_evt_2 = (1e-9*evt_end.profile.START-1e-9*evt_start.profile.START) \
+                / timing_rounds
+        elapsed_wall = (stop_time-start_time)/timing_rounds
+
+        print "elapsed: %g s event, %g s other-event %g s wall, rate: %g %s/s" % (
+                elapsed, elapsed_evt_2, elapsed_wall, op_count/elapsed, op_label)
+        print "seq: elapsed: %g s event, %g s wall, rate: %g %s/s" % (
+                seq_elapsed, seq_elapsed_wall, op_count/seq_elapsed, op_label)
 
     # }}}
 
 
 # }}}
 
-# vim foldmethod=marker
+# vim: foldmethod=marker
