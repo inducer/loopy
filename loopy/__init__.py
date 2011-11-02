@@ -108,11 +108,30 @@ def make_kernel(*args, **kwargs):
     # }}}
 
     for insn in knl.instructions:
+        # {{{ sanity checking
+
+        if not set(insn.forced_iname_deps) <= knl.all_inames():
+            raise ValueError("In instruction '%s': "
+                    "cannot force dependency on inames '%s'--"
+                    "they don't exist" % (
+                        insn.id,
+                        ",".join(
+                            set(insn.forced_iname_deps)-knl.all_inames())))
+
+        # }}}
+
         # {{{ iname duplication
 
         if insn.duplicate_inames_and_tags:
-
             insn_dup_iname_to_tag = dict(insn.duplicate_inames_and_tags)
+
+            if not set(insn_dup_iname_to_tag.keys()) <= knl.all_inames():
+                raise ValueError("In instruction '%s': "
+                        "cannot duplicate inames '%s'--"
+                        "they don't exist" % (
+                            insn.id,
+                            ",".join(
+                                set(insn_dup_iname_to_tag.keys())-knl.all_inames())))
 
             # {{{ duplicate non-reduction inames
 
