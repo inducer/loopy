@@ -11,7 +11,7 @@ from pymbolic import var
 
 
 
-def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies, cse):
+def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies, cse_tag, lead_expr):
     from loopy.kernel import (LocalIndexTagBase, GroupIndexTag, IlpTag)
 
     if isinstance(tag, LocalIndexTagBase):
@@ -32,7 +32,7 @@ def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies, cse):
                     "inherit this iname, which would lead to a write race. "
                     "A likely solution of this problem is to also duplicate this "
                     "iname."
-                    % (cse.prefix, iname, tag))
+                    % (cse_tag, iname, tag))
 
     if iname in duplicate_inames and kind == "g":
         raise RuntimeError("duplicating the iname '%s' into "
@@ -47,7 +47,7 @@ def check_cse_iname_deps(iname, duplicate_inames, tag, dependencies, cse):
     if iname in duplicate_inames:
         raise RuntimeError("duplicating an iname ('%s') "
                 "that the CSE ('%s') does not depend on "
-                "does not make sense" % (iname, cse.child))
+                "does not make sense" % (iname, lead_expr))
 
 
 
@@ -81,6 +81,8 @@ def solve_affine_equations_for_lhs(targets, equations, parameters):
     # Not a very good solver: The desired variable must already
     # occur with a coefficient of 1 on the lhs, and with no other
     # targets on that lhs.
+
+    assert isinstance(targets, (list, tuple)) # had better be ordered
 
     from loopy.symbolic import CoefficientCollector
     coeff_coll = CoefficientCollector()
@@ -129,28 +131,30 @@ def solve_affine_equations_for_lhs(targets, equations, parameters):
 
 
 
-def process_cses(kernel, lead_csed, cse_descriptors):
-    from pymbolic.mapper.unifier import BidirectionalUnifier
+def process_cses(kernel, lead_expr, independent_inames, cse_descriptors):
+    if not independent_inames:
+        for csed in cse_descriptors:
+            csed.lead_index_exprs = []
+        return None
+
+    from loopy.symbolic import BidirectionalUnifier
+
+    ind_inames_set = set(independent_inames)
 
     # {{{ parameter set/dependency finding
-
-    from loopy.symbolic import DependencyMapper
-    internal_dep_mapper = DependencyMapper(composite_leaves=False)
-
-    def get_deps(expr):
-        return set(dep.name for dep in internal_dep_mapper(expr))
 
     # Everything that is not one of the duplicate/independent inames
     # is turned into a parameter.
 
-    lead_csed.independent_inames = set(lead_csed.independent_inames)
-    lead_deps = get_deps(lead_csed.cse.child) & kernel.all_inames()
-    params = lead_deps - set(lead_csed.independent_inames)
+    from loopy.symbolic import get_dependencies
+
+    lead_deps = get_dependencies(lead_expr) & kernel.all_inames()
+    params = lead_deps - ind_inames_set
 
     # }}}
 
     lead_domain = to_parameters_or_project_out(params,
-            lead_csed.independent_inames, kernel.domain)
+            ind_inames_set, kernel.domain)
     lead_space = lead_domain.get_space()
 
     footprint = lead_domain
@@ -159,7 +163,7 @@ def process_cses(kernel, lead_csed, cse_descriptors):
     for csed in cse_descriptors:
         # {{{ find dependencies
 
-        cse_deps = get_deps(csed.cse.child) & kernel.all_inames()
+        cse_deps = get_dependencies(csed.cse.child) & kernel.all_inames()
         csed.independent_inames = cse_deps - params
 
         # }}}
@@ -167,12 +171,16 @@ def process_cses(kernel, lead_csed, cse_descriptors):
         # {{{ find unifier
 
         unif = BidirectionalUnifier(
-                lhs_mapping_candidates=lead_csed.independent_inames,
+                lhs_mapping_candidates=ind_inames_set,
                 rhs_mapping_candidates=csed.independent_inames)
-        unifiers = unif(lead_csed.cse.child, csed.cse.child)
+        unifiers = unif(lead_expr, csed.cse.child)
         if not unifiers:
             raise RuntimeError("Unable to unify  "
-            "CSEs '%s' and '%s'" % (lead_csed.cse.child, csed.cse.child))
+            "CSEs '%s' and '%s' (with lhs candidates '%s' and rhs candidates '%s')" % (
+                lead_expr, csed.cse.child,
+                ",".join(unif.lhs_mapping_candidates),
+                ",".join(unif.rhs_mapping_candidates)
+                ))
 
         # }}}
 
@@ -232,7 +240,7 @@ def process_cses(kernel, lead_csed, cse_descriptors):
             if not var_map.is_injective():
                 raise RuntimeError("In CSEs '%s' and '%s': "
                         "cannot find lead indices uniquely"
-                        % (lead_csed.cse.child, csed.cse.child))
+                        % (lead_expr, csed.cse.child))
 
             lead_index_set = restr_rhs_map.domain()
 
@@ -244,7 +252,7 @@ def process_cses(kernel, lead_csed, cse_descriptors):
             if not lead_index_set.is_subset(lead_domain):
                 raise RuntimeError("Index range of CSE '%s' does not cover a "
                         "subset of lead CSE '%s'"
-                        % (csed.cse.child, lead_csed.cse.child))
+                        % (csed.cse.child, lead_expr))
 
             found_good_unifier = True
 
@@ -252,14 +260,14 @@ def process_cses(kernel, lead_csed, cse_descriptors):
 
         if not found_good_unifier:
             raise RuntimeError("No valid unifier for '%s' and '%s'"
-                    % (csed.cse.child, lead_csed.cse.child))
+                    % (csed.cse.child, lead_expr))
 
         uni_recs.append(unifier)
 
         # {{{ solve for lead indices
 
         csed.lead_index_exprs = solve_affine_equations_for_lhs(
-                lead_csed.independent_inames,
+                independent_inames,
                 unifier.equations, params)
 
         # }}}
@@ -270,9 +278,8 @@ def process_cses(kernel, lead_csed, cse_descriptors):
 
 
 
-def make_compute_insn(kernel, lead_csed, target_var_name,
-        independent_inames, new_inames, ind_iname_to_tag):
-    insn = lead_csed.insn
+def make_compute_insn(kernel, cse_tag, lead_expr, target_var_name,
+        independent_inames, new_inames, ind_iname_to_tag, insn):
 
     # {{{ decide whether to force a dep
 
@@ -280,10 +287,11 @@ def make_compute_insn(kernel, lead_csed, target_var_name,
 
     from loopy.symbolic import IndexVariableFinder
     dependencies = IndexVariableFinder(
-            include_reduction_inames=False)(lead_csed.cse.child)
+            include_reduction_inames=False)(lead_expr)
 
     parent_inames = insn.all_inames() | insn.reduction_inames()
-    assert dependencies <= parent_inames
+    #print dependencies, parent_inames
+    #assert dependencies <= parent_inames
 
     for iname in parent_inames:
         if iname in independent_inames:
@@ -292,7 +300,7 @@ def make_compute_insn(kernel, lead_csed, target_var_name,
             tag = kernel.iname_to_tag.get(iname)
 
         check_cse_iname_deps(
-                iname, independent_inames, tag, dependencies, lead_csed.cse)
+                iname, independent_inames, tag, dependencies, cse_tag, lead_expr)
 
     # }}}
 
@@ -309,9 +317,9 @@ def make_compute_insn(kernel, lead_csed, target_var_name,
         dict(
             (old_iname, var(new_iname))
             for old_iname, new_iname in zip(independent_inames, new_inames))))
-    new_inner_expr = subst_map(lead_csed.cse.child)
+    new_inner_expr = subst_map(lead_expr)
 
-    insn_prefix = lead_csed.cse.prefix
+    insn_prefix = cse_tag
     if insn_prefix is None:
         insn_prefix = "cse"
     from loopy.kernel import Instruction
@@ -325,12 +333,15 @@ def make_compute_insn(kernel, lead_csed, target_var_name,
 
 
 def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
-        ind_iname_to_tag={}, new_inames=None, default_tag="l.auto",
-        follow_tag=None):
+        lead_expr=None, ind_iname_to_tag={}, new_inames=None, default_tag="l.auto"):
     """
     :arg independent_inames: which inames are supposed to be separate loops
         in the CSE. Also determines index order of temporary array.
     """
+
+    if isinstance(lead_expr, str):
+        from pymbolic import parse
+        lead_expr = parse(lead_expr)
 
     if not set(independent_inames) <= kernel.all_inames():
         raise ValueError("In CSE realization for '%s': "
@@ -387,14 +398,10 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
     # {{{ gather cse descriptors
 
-    eligible_tags = [cse_tag]
-    if follow_tag is not None:
-        eligible_tags.append(follow_tag)
-
     cse_descriptors = []
 
     def gather_cses(cse, rec):
-        if cse.prefix not in eligible_tags:
+        if cse.prefix != cse_tag:
             rec(cse.child)
             return
 
@@ -415,25 +422,23 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
     if not cse_descriptors:
         raise RuntimeError("no CSEs tagged '%s' found" % cse_tag)
 
-    lead_cse_indices = [i for i, csed in enumerate(cse_descriptors) 
-            if csed.cse.prefix == cse_tag]
-    if follow_tag is not None:
-        if len(lead_cse_indices) != 1:
-            raise RuntimeError("%d lead CSEs (should be exactly 1) found for tag '%s'"
-                    % (len(lead_cse_indices), cse_tag))
+    if lead_expr is None:
+        from loopy.symbolic import get_dependencies
+        for csed in cse_descriptors:
+            if set(independent_inames) <= get_dependencies(csed.cse.child):
+                # pick the first cse that has the required inames as the lead expression
+                lead_expr = csed.cse.child
+                break
 
-        lead_idx, = lead_cse_indices
-    else:
-        # pick a lead CSE at random
-        lead_idx = 0
-
-    lead_csed = cse_descriptors.pop(lead_idx)
-    lead_csed.independent_inames = independent_inames
+        if lead_expr is None:
+            raise RuntimeError("could not find a suitable 'lead' CSE that depends on "
+                    "inames '%s'" % ",".join(independent_inames))
 
     # }}}
 
     # FIXME: Do something with the footprint
-    footprint = process_cses(kernel, lead_csed, cse_descriptors)
+    # (CAUTION: Can be None if no independent_inames)
+    footprint = process_cses(kernel, lead_expr, independent_inames, cse_descriptors)
 
     # {{{ set up temp variable
 
@@ -460,29 +465,26 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
     # }}}
 
     compute_insn = make_compute_insn(
-            kernel, lead_csed, target_var_name,
-            independent_inames, new_inames, ind_iname_to_tag)
+            kernel, cse_tag, lead_expr, target_var_name,
+            independent_inames, new_inames, ind_iname_to_tag,
+            # pick one insn at random for dep check
+            cse_descriptors[0].insn)
 
     # {{{ substitute variable references into instructions
 
     def subst_cses(cse, rec):
-        if cse is lead_csed.cse:
-            csed = lead_csed
+        found = False
+        for csed in cse_descriptors:
+            if cse is csed.cse:
+                found = True
+                break
 
-            lead_indices = [var(iname) for iname in independent_inames]
-        else:
-            found = False
-            for csed in cse_descriptors:
-                if cse is csed.cse:
-                    found = True
-                    break
+        if not found:
+            from pymbolic.primitives import CommonSubexpression
+            return CommonSubexpression(
+                    rec(cse.child), cse.prefix)
 
-            if not found:
-                from pymbolic.primitives import CommonSubexpression
-                return CommonSubexpression(
-                        rec(cse.child), cse.prefix)
-
-            lead_indices = csed.lead_index_exprs
+        lead_indices = csed.lead_index_exprs
 
         new_outer_expr = var(target_var_name)
         if lead_indices:

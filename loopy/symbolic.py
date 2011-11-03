@@ -15,6 +15,9 @@ from pymbolic.mapper.stringifier import \
         StringifyMapper as StringifyMapperBase
 from pymbolic.mapper.dependency import \
         DependencyMapper as DependencyMapperBase
+from pymbolic.mapper.unifier import BidirectionalUnifier \
+        as BidirectionalUnifierBase
+
 import numpy as np
 import islpy as isl
 from islpy import dim_type
@@ -79,7 +82,17 @@ class StringifyMapper(StringifyMapperBase):
 
 class DependencyMapper(DependencyMapperBase):
     def map_reduction(self, expr):
-        return set(expr.inames) | self.rec(expr.expr)
+        return self.rec(expr.expr)
+
+class BidirectionalUnifier(BidirectionalUnifierBase):
+    def map_reduction(self, expr, other, unis):
+        if not isinstance(other, type(expr)):
+            return self.treat_mismatch(expr, other, unis)
+        if (expr.inames != other.inames
+                or type(expr.operation) != type(other.operation)):
+            return []
+
+        return self.rec(expr.expr, other.expr, unis)
 
 # }}}
 
@@ -631,6 +644,12 @@ class PrimeAdder(IdentityMapper):
             return expr
 
 # }}}
+
+def get_dependencies(expr):
+    from loopy.symbolic import DependencyMapper
+    dep_mapper = DependencyMapper(composite_leaves=False)
+
+    return set(dep.name for dep in dep_mapper(expr))
 
 
 

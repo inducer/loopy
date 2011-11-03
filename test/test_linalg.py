@@ -635,7 +635,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"],
-            ["b_j_io", "b_j_ii", "b_k_i"])
+            new_inames=["b_j_io", "b_j_ii", "b_k_i"])
     knl = lp.join_dimensions(knl, ["b_j_io", "b_j_ii"])
 
     kernel_gen = lp.generate_loop_schedules(knl)

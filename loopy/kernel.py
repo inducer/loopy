@@ -289,7 +289,7 @@ class Instruction(Record):
         elif self.boostable == False:
             result += " (not boostable)"
         elif self.boostable is None:
-            result += " (boostability unknown)"
+            pass
         else:
             raise RuntimeError("unexpected value for Instruction.boostable")
 
@@ -329,9 +329,8 @@ class Instruction(Record):
 
     @memoize_method
     def get_read_var_names(self):
-        from loopy.symbolic import DependencyMapper
-        return set(var.name for var in
-                DependencyMapper(composite_leaves=False)(self.expression))
+        from loopy.symbolic import get_dependencies
+        return get_dependencies(self.expression)
 
 # }}}
 
@@ -774,9 +773,9 @@ class LoopKernel(Record):
         for insn in self.instructions:
             all_inames_by_insns |= insn.all_inames()
 
-        if all_inames_by_insns != self.all_inames():
+        if not all_inames_by_insns <= self.all_inames():
             raise RuntimeError("inames collected from instructions (%s) "
-                    "do not match domain inames (%s)"
+                    "that are not present in domain (%s)"
                     % (", ".join(sorted(all_inames_by_insns)), 
                         ", ".join(sorted(self.all_inames()))))
 

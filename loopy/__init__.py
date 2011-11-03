@@ -412,24 +412,24 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
 # {{{ convenience: add_prefetch
 
-def add_prefetch(kernel, var_name, fetch_dims=[], new_inames=None, default_tag="l.auto"):
+def add_prefetch(kernel, var_name, fetch_dims=[], lead_expr=None,
+        new_inames=None, default_tag="l.auto"):
     used_cse_tags = set()
     def map_cse(expr, rec):
         used_cse_tags.add(expr.tag)
         rec(expr.child)
-
-    new_cse_tags = set()
 
     def get_unique_cse_tag():
         from loopy.tools import generate_unique_possibilities
         for cse_tag in generate_unique_possibilities(prefix="fetch_"+var_name):
             if cse_tag not in used_cse_tags:
                 used_cse_tags.add(cse_tag)
-                new_cse_tags.add(cse_tag)
                 return cse_tag
 
+    cse_tag = get_unique_cse_tag()
+
     from loopy.symbolic import VariableFetchCSEMapper
-    vf_cse_mapper = VariableFetchCSEMapper(var_name, get_unique_cse_tag)
+    vf_cse_mapper = VariableFetchCSEMapper(var_name, lambda: cse_tag)
     kernel = kernel.copy(instructions=[
             insn.copy(expression=vf_cse_mapper(insn.expression))
             for insn in kernel.instructions])
@@ -439,9 +439,8 @@ def add_prefetch(kernel, var_name, fetch_dims=[], new_inames=None, default_tag="
     else:
         dtype = kernel.temporary_variables[var_name].dtype
 
-    for cse_tag in new_cse_tags:
-        kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims,
-                new_inames=new_inames, default_tag=default_tag)
+    kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims, lead_expr=lead_expr,
+            new_inames=new_inames, default_tag=default_tag)
 
     return kernel
 

@@ -273,8 +273,6 @@ def test_sem_3d(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = 8
 
@@ -285,11 +283,11 @@ def test_sem_3d(ctx_factory):
 
     # K - run-time symbolic
     knl = lp.make_kernel(ctx.devices[0],
-            "[K] -> {[i,j,k,e,m]: 0<=i,j,k,m<%d and 0<=e<K}" % n,
+            "[K] -> {[i,j,k,e,m,o,gi]: 0<=i,j,k,m,o<%d and 0<=e<K and 0<=gi<6}" % n,
             [
-                "CSE: ur(i,j,k) = sum_float32(@m, D[i,m]*u[e,m,j,k])",
-                "CSE: us(i,j,k) = sum_float32(@m, D[j,m]*u[e,i,m,k])",
-                "CSE: ut(i,j,k) = sum_float32(@m, D[k,m]*u[e,i,j,m])",
+                "CSE: ur(i,j,k) = sum_float32(@o, D[i,o]*u[e,o,j,k])",
+                "CSE: us(i,j,k) = sum_float32(@o, D[j,o]*u[e,i,o,k])",
+                "CSE: ut(i,j,k) = sum_float32(@o, D[k,o]*u[e,i,j,o])",
 
                 "lap[e,i,j,k]  = "
                 "  sum_float32(m, D[m,i]*(G[0,e,m,j,k]*ur(m,j,k) + G[1,e,m,j,k]*us(m,j,k) + G[2,e,m,j,k]*ut(m,j,k)))"
@@ -305,16 +303,22 @@ def test_sem_3d(ctx_factory):
             ],
             name="semlap", assumptions="K>=1")
 
-    #knl = lp.realize_cse(knl, "D", np.float32, ["i_dr", "m_dr"])
-    #knl = lp.realize_cse(knl, "D", np.float32, ["i_dr", "m_dr"])
-    #knl = lp.realize_cse(knl, "u", np.float32, ["m_dr", "j_dr", "k_dr"])
-    #knl = lp.add_prefetch(knl, "G", ["m", "j", "k"])
+
+    knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
+    knl = lp.add_prefetch(knl, "D", ["m", "j"])
+    knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[e,i,j,k]")
+    knl = lp.realize_cse(knl, "ur", np.float32, ["k", "j", "m"])
+    knl = lp.realize_cse(knl, "us", np.float32, ["i", "m", "k"])
+    knl = lp.realize_cse(knl, "ut", np.float32, ["i", "j", "m"])
 
     seq_knl = knl
+    print seq_knl
+    #print lp.preprocess_kernel(seq_knl)
+    1/0
 
     knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
     #knl = lp.split_dimension(knl, "e_inner", 4, inner_tag="ilp")
-    print knl
+
     knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
 
     kernel_gen = lp.generate_loop_schedules(knl,

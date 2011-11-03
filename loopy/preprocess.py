@@ -14,10 +14,7 @@ def mark_local_temporaries(kernel):
 
     writers = find_accessors(kernel, readers=False)
 
-    from loopy.symbolic import DependencyMapper
-    dm = DependencyMapper(composite_leaves=False)
-    def get_deps(expr):
-        return set(var.name for var in dm(expr))
+    from loopy.symbolic import get_dependencies
 
     for temp_var in kernel.temporary_variables.itervalues():
         my_writers = writers[temp_var.name]
@@ -27,7 +24,7 @@ def mark_local_temporaries(kernel):
             insn = kernel.id_to_insn[insn_id]
             has_local_parallel_write = has_local_parallel_write or any(
                     isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase)
-                    for iname in get_deps(insn.get_assignee_indices())
+                    for iname in get_dependencies(insn.get_assignee_indices())
                     & kernel.all_inames())
 
         new_temp_vars[temp_var.name] = temp_var.copy(
