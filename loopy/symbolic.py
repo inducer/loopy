@@ -546,7 +546,7 @@ class IndexVariableFinder(CombineMapper):
         if self.include_reduction_inames:
             return result
         else:
-            return result - set(expr.inames)
+            return result - real_inames
 
 # }}}
 

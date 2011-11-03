@@ -260,7 +260,7 @@ class Instruction(Record):
         def map_reduction(expr, rec):
             rec(expr.expr)
             for iname in expr.inames:
-                result.add(iname)
+                result.add(iname.lstrip("@"))
 
         from loopy.symbolic import ReductionCallbackMapper
         cb_mapper = ReductionCallbackMapper(map_reduction)
