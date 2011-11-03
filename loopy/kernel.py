@@ -259,8 +259,8 @@ class Instruction(Record):
     def reduction_inames(self):
         def map_reduction(expr, rec):
             rec(expr.expr)
-            for iname in expr.inames:
-                result.add(iname.lstrip("@"))
+            for iname in expr.untagged_inames:
+                result.add(iname)
 
         from loopy.symbolic import ReductionCallbackMapper
         cb_mapper = ReductionCallbackMapper(map_reduction)
@@ -270,19 +270,9 @@ class Instruction(Record):
 
         return result
 
-    @memoize_method
-    def all_inames(self):
-        """Does not (!) include reduction inames."""
-
-        from loopy.symbolic import IndexVariableFinder
-        ivarf = IndexVariableFinder(include_reduction_inames=False)
-        index_vars = (ivarf(self.expression) | ivarf(self.assignee))
-
-        return index_vars | set(self.forced_iname_deps)
-
     def __str__(self):
-        result = "%s: %s <- %s\n    [%s]" % (self.id,
-                self.assignee, self.expression, ", ".join(sorted(self.all_inames())))
+        result = "%s: %s <- %s" % (self.id,
+                self.assignee, self.expression)
 
         if self.boostable == True:
             result += " (boostable)"
@@ -658,6 +648,76 @@ class LoopKernel(Record):
             if id_str not in used_ids:
                 return id_str
 
+    @memoize_method
+    def all_inames(self):
+        from islpy import dim_type
+        return set(self.space.get_var_dict(dim_type.set).iterkeys())
+
+    @memoize_method
+    def all_insn_inames(self):
+        from loopy.symbolic import get_dependencies
+
+        insn_id_to_inames = {}
+        insn_assignee_inames = {}
+
+        for insn in self.instructions:
+            read_deps = get_dependencies(insn.expression)
+            write_deps = get_dependencies(insn.assignee)
+            deps = read_deps | write_deps
+
+            iname_deps = (
+                    deps & self.all_inames()
+                    | insn.forced_iname_deps)
+
+            insn_id_to_inames[insn.id] = iname_deps
+            insn_assignee_inames[insn.id] = write_deps & self.all_inames()
+
+        writers = self.find_writers()
+        temp_var_names = set(self.temporary_variables.iterkeys())
+
+        # fixed point iteration until all iname dep sets have converged
+        while True:
+            did_something = False
+            for insn in self.instructions:
+                for tv_name in (get_dependencies(insn.expression)
+                        & temp_var_names):
+                    implicit_inames = None
+
+                    for writer_id in writers[tv_name]:
+                        writer_implicit_inames = (
+                                insn_id_to_inames[writer_id]
+                                - insn_assignee_inames[writer_id])
+                        if implicit_inames is None:
+                            implicit_inames = writer_implicit_inames
+                        else:
+                            implicit_inames = (implicit_inames
+                                    & writer_implicit_inames)
+
+                    inames_old = insn_id_to_inames[insn.id]
+                    inames_new = inames_old | implicit_inames
+                    insn_id_to_inames[insn.id] = inames_new
+
+                    if inames_new != inames_old:
+                        did_something = True
+
+            if not did_something:
+                break
+
+        return insn_id_to_inames
+
+    @memoize_method
+    def all_referenced_inames(self):
+        result = set()
+        for inames in self.all_insn_inames().itervalues():
+            result.update(inames)
+        return result
+
+    def insn_inames(self, insn):
+        if isinstance(insn, str):
+            return self.all_insn_inames()[insn]
+        else:
+            return self.all_insn_inames()[insn.id]
+
     @property
     @memoize_method
     def sequential_inames(self):
@@ -677,6 +737,44 @@ class LoopKernel(Record):
                 raise RuntimeError("inconsistency detected: "
                         "sequential/reduction iname '%s' has "
                         "a parallel tag" % iname)
+
+        return result
+
+    def find_readers(self):
+        """
+        :return: a dict that maps variable names to ids of insns that
+            read that variable.
+        """
+        result = {}
+
+        admissible_vars = (
+                set(arg.name for arg in self.args)
+                | set(self.temporary_variables.iterkeys()))
+
+        for insn in self.instructions:
+            for var_name in insn.get_read_var_names() & admissible_vars:
+                result.setdefault(var_name, set()).add(insn.id)
+
+    def find_writers(self):
+        """
+        :return: a dict that maps variable names to ids of insns that
+            write to that variable.
+        """
+        result = {}
+
+        admissible_vars = (
+                set(arg.name for arg in self.args)
+                | set(self.temporary_variables.iterkeys()))
+
+        for insn in self.instructions:
+            var_name = insn.get_assignee_var_name()
+
+            if var_name not in admissible_vars:
+                raise RuntimeError("writing to '%s' is not allowed" % var_name)
+            var_names = [var_name]
+
+            for var_name in var_names:
+                result.setdefault(var_name, set()).add(insn.id)
 
         return result
 
@@ -730,11 +828,6 @@ class LoopKernel(Record):
                     if arg.name in loop_arg_names]
 
     @memoize_method
-    def all_inames(self):
-        from islpy import dim_type
-        return set(self.space.get_var_dict(dim_type.set).iterkeys())
-
-    @memoize_method
     def get_iname_bounds(self, iname):
         dom_intersect_assumptions = (
                 isl.align_spaces(self.assumptions, self.domain)
@@ -771,7 +864,7 @@ class LoopKernel(Record):
     def get_grid_sizes(self, ignore_auto=False):
         all_inames_by_insns = set()
         for insn in self.instructions:
-            all_inames_by_insns |= insn.all_inames()
+            all_inames_by_insns |= self.insn_inames(insn)
 
         if not all_inames_by_insns <= self.all_inames():
             raise RuntimeError("inames collected from instructions (%s) "
@@ -888,6 +981,7 @@ class LoopKernel(Record):
         lines.append("")
         for insn in self.instructions:
             lines.append(str(insn))
+            lines.append("    [%s]" % ",".join(sorted(self.insn_inames(insn))))
 
         return "\n".join(lines)
 
@@ -913,6 +1007,28 @@ def find_var_base_indices_and_shape_from_inames(domain, inames):
         base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
 
     return base_indices, shape
+
+
+
+
+def get_dot_dependency_graph(kernel, iname_cluster=False, iname_edge=True):
+    lines = []
+    for insn in kernel.instructions:
+        lines.append("%s [shape=\"box\"];" % insn.id)
+        for dep in insn.insn_deps:
+            lines.append("%s -> %s;" % (dep, insn.id))
+
+        if iname_edge:
+            for iname in kernel.insn_inames(insn):
+                lines.append("%s -> %s [style=\"dotted\"];" % (iname, insn.id))
+
+    if iname_cluster:
+        for iname in kernel.all_inames():
+            lines.append("subgraph cluster_%s { label=\"%s\" %s }" % (iname, iname,
+                " ".join(insn.id for insn in kernel.instructions
+                    if iname in kernel.insn_inames(insn))))
+
+    return "digraph loopy_deps {\n%s\n}" % "\n".join(lines)
 
 
 

@@ -22,7 +22,7 @@ class LoopyAdvisory(UserWarning):
 
 from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
-from loopy.kernel import AutoFitLocalIndexTag
+from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph
 from loopy.cse import realize_cse
 from loopy.preprocess import preprocess_kernel
 from loopy.schedule import generate_loop_schedules
@@ -31,6 +31,7 @@ from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_seq
 from loopy.check import check_kernels
 
 __all__ = ["ScalarArg", "ArrayArg", "ImageArg",
+        "get_dot_dependency_graph",
         "preprocess_kernel", "generate_loop_schedules",
         "generate_code",
         "CompiledKernel", "drive_timing_run", "check_kernels",
@@ -155,7 +156,7 @@ def make_kernel(*args, **kwargs):
             from pymbolic.primitives import Variable
             for index_expr in insn.get_assignee_indices():
                 if (not isinstance(index_expr, Variable)
-                        or not index_expr.name in insn.all_inames()):
+                        or not index_expr.name in knl.insn_inames(insn)):
                     raise RuntimeError(
                             "only plain inames are allowed in "
                             "the lvalue index when declaring the "

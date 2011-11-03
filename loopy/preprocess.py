@@ -12,7 +12,7 @@ def mark_local_temporaries(kernel):
     new_temp_vars = {}
     from loopy.kernel import LocalIndexTagBase
 
-    writers = find_accessors(kernel, readers=False)
+    writers = kernel.find_writers()
 
     from loopy.symbolic import get_dependencies
 
@@ -65,11 +65,10 @@ def duplicate_reduction_inames(kernel):
             from pymbolic.mapper.substitutor import make_subst_func
             from pymbolic import var
 
-            old_inames = [iname.lstrip("@") for iname in reduction_expr.inames]
             subst_dict = dict(
                     (old_iname, var(new_iname))
                     for old_iname, new_iname in zip(
-                        old_inames, new_red_inames))
+                        reduction_expr.untagged_inames, new_red_inames))
             subst_map = SubstitutionMapper(make_subst_func(subst_dict))
 
             child = subst_map(child)
@@ -118,7 +117,7 @@ def realize_reduction(kernel):
         # {{{ see if this reduction is nested inside some ILP loops
 
         ilp_inames = [iname
-                for iname in insn.all_inames()
+                for iname in kernel.insn_inames(insn)
                 if isinstance(kernel.iname_to_tag.get(iname), IlpTag)]
 
         from loopy.isl_helpers import static_max_of_pw_aff
@@ -158,7 +157,7 @@ def realize_reduction(kernel):
                     based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
                     extra_used_ids=set(ni.id for ni in new_insns)),
                 assignee=target_var,
-                forced_iname_deps=insn.all_inames() - set(expr.inames),
+                forced_iname_deps=kernel.insn_inames(insn) - set(expr.inames),
                 expression=expr.operation.neutral_element)
 
         new_insns.append(init_insn)
@@ -170,7 +169,7 @@ def realize_reduction(kernel):
                 assignee=target_var,
                 expression=expr.operation(target_var, sub_expr),
                 insn_deps=set([init_insn.id]) | insn.insn_deps,
-                forced_iname_deps=insn.all_inames() | set(expr.inames))
+                forced_iname_deps=kernel.insn_inames(insn) | set(expr.inames))
 
         new_insns.append(reduction_insn)
 
@@ -190,7 +189,7 @@ def realize_reduction(kernel):
                     expression=new_expression,
                     insn_deps=insn.insn_deps
                         | new_insn_insn_deps,
-                    forced_iname_deps=insn.all_inames())
+                    forced_iname_deps=kernel.insn_inames(insn))
 
         new_insns.append(new_insn)
 
@@ -202,39 +201,8 @@ def realize_reduction(kernel):
 
 # {{{ automatic dependencies, find boostability of instructions
 
-def find_accessors(kernel, readers):
-    """
-    :arg readers: whether to find insns that read or that write
-        the variables in question.
-    :return: a dict that maps variable names to ids of insns that
-        write to that variable.
-    """
-    result = {}
-
-    admissible_vars = (
-            set(arg.name for arg in kernel.args)
-            | set(kernel.temporary_variables.iterkeys()))
-
-    for insn in kernel.instructions:
-        if readers:
-            var_names = insn.get_read_var_names() & admissible_vars
-        else:
-            var_name = insn.get_assignee_var_name()
-
-            if var_name not in admissible_vars:
-                raise RuntimeError("writing to '%s' is not allowed" % var_name)
-            var_names = [var_name]
-
-        for var_name in var_names:
-            result.setdefault(var_name, set()).add(insn.id)
-
-    return result
-
-
-
-
 def add_boostability_and_automatic_dependencies(kernel):
-    writer_map = find_accessors(kernel, readers=False)
+    writer_map = kernel.find_writers()
 
     arg_names = set(arg.name for arg in kernel.args)
 
@@ -363,7 +331,7 @@ def get_axis_0_ranking(kernel, insn):
     from loopy.kernel import AutoLocalIndexTagBase
     axis0_candidates = set(
             iname
-            for iname in insn.all_inames()
+            for iname in kernel.insn_inames(insn)
             if isinstance(kernel.iname_to_tag.get(iname),
                 AutoLocalIndexTagBase))
 
@@ -427,7 +395,7 @@ def get_axis_0_ranking(kernel, insn):
                     + vote_strength)
 
     if saw_relevant_access:
-        return sorted((iname for iname in insn.all_inames()),
+        return sorted((iname for iname in kernel.insn_inames(insn)),
                 key=lambda iname: vote_count_for_l0.get(iname, 0),
                 reverse=True)
     else:
@@ -524,7 +492,7 @@ def assign_automatic_axes(kernel, phase="axis0", local_size=None):
     for insn in kernel.instructions:
         auto_axis_inames = [
                 iname
-                for iname in insn.all_inames()
+                for iname in kernel.insn_inames(insn)
                 if isinstance(kernel.iname_to_tag.get(iname),
                     AutoLocalIndexTagBase)]
 
@@ -533,7 +501,7 @@ def assign_automatic_axes(kernel, phase="axis0", local_size=None):
 
         assigned_local_axes = set()
 
-        for iname in insn.all_inames():
+        for iname in kernel.insn_inames(insn):
             tag = kernel.iname_to_tag.get(iname)
             if isinstance(tag, LocalIndexTag):
                 assigned_local_axes.add(tag.axis)

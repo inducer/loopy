@@ -21,7 +21,7 @@ def check_for_unused_hw_axes_in_insns(kernel):
         group_axes_used = set()
         local_axes_used = set()
 
-        for iname in insn.all_inames():
+        for iname in kernel.insn_inames(insn):
             tag = kernel.iname_to_tag.get(iname)
 
             if isinstance(tag, LocalIndexTag):
@@ -53,7 +53,7 @@ def check_for_double_use_of_hw_axes(kernel):
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
-        for iname in insn.all_inames():
+        for iname in kernel.insn_inames(insn):
             tag = kernel.iname_to_tag.get(iname)
             if isinstance(tag, UniqueTag):
                 key = tag.key
@@ -74,7 +74,7 @@ def check_for_inactive_iname_access(kernel):
         expression_indices = depmap(insn.expression)
         expression_inames = expression_indices & kernel.all_inames()
 
-        if not expression_inames <= insn.all_inames():
+        if not expression_inames <= kernel.insn_inames(insn):
             raise RuntimeError(
                     "instructiosn '%s' references "
                     "inames that the instruction does not depend on"
@@ -100,7 +100,7 @@ def check_for_write_races(kernel):
         assignee_indices = set(strip_var(index) for index in assignee_indices)
 
         assignee_inames = assignee_indices & kernel.all_inames()
-        if not assignee_inames <= insn.all_inames():
+        if not assignee_inames <= kernel.insn_inames(insn):
             raise RuntimeError(
                     "assignee of instructiosn '%s' references "
                     "iname that the instruction does not depend on"
@@ -114,7 +114,7 @@ def check_for_write_races(kernel):
 
             parallel_insn_inames = set(
                     iname
-                    for iname in insn.all_inames()
+                    for iname in kernel.insn_inames(insn)
                     if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
 
             inames_without_write_dep = parallel_insn_inames - (
@@ -125,7 +125,7 @@ def check_for_write_races(kernel):
             if temp_var.is_local == True:
                 local_parallel_insn_inames = set(
                         iname
-                        for iname in insn.all_inames()
+                        for iname in kernel.insn_inames(insn)
                         if isinstance(kernel.iname_to_tag.get(iname), ParallelTag)
                         and not isinstance(kernel.iname_to_tag.get(iname), GroupIndexTag))
 
@@ -135,7 +135,7 @@ def check_for_write_races(kernel):
             elif temp_var.is_local == False:
                 ilp_inames = set(
                         iname
-                        for iname in insn.all_inames()
+                        for iname in kernel.insn_inames(insn)
                         if isinstance(kernel.iname_to_tag.get(iname), IlpTag))
 
                 inames_without_write_dep = ilp_inames - (
@@ -204,10 +204,10 @@ def check_implemented_domains(kernel, implemented_domains):
             insn_impl_domain = insn_impl_domain | idomain
         insn_impl_domain = (
                 (insn_impl_domain & assumptions)
-                .project_out_except(insn.all_inames(), [dim_type.set]))
+                .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
 
         desired_domain = ((kernel.domain & assumptions)
-            .project_out_except(insn.all_inames(), [dim_type.set]))
+            .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
 
         if insn_impl_domain != desired_domain:
             i_minus_d = insn_impl_domain - desired_domain
@@ -228,7 +228,7 @@ def check_implemented_domains(kernel, implemented_domains):
 
                 iname_to_dim = pt.get_space().get_var_dict()
                 point_axes = []
-                for iname in insn.all_inames() | parameter_inames:
+                for iname in kernel.insn_inames(insn) | parameter_inames:
                     tp, dim = iname_to_dim[iname]
                     point_axes.append("%s=%d" % (iname, pt.get_coordinate(tp, dim)))
 

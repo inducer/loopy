@@ -2,6 +2,8 @@
 
 from __future__ import division
 
+from pytools import memoize, memoize_method
+
 from pymbolic.primitives import AlgebraicLeaf
 from pymbolic.mapper import (
         CombineMapper as CombineMapperBase,
@@ -55,6 +57,16 @@ class Reduction(AlgebraicLeaf):
     def stringifier(self):
         return StringifyMapper
 
+    @property
+    @memoize_method
+    def untagged_inames(self):
+        return tuple(iname.lstrip("@") for iname in self.inames)
+
+    @property
+    @memoize_method
+    def untagged_inames_set(self):
+        return set(self.untagged_inames)
+
     mapper_method = intern("map_reduction")
 
 # }}}
@@ -82,7 +94,9 @@ class StringifyMapper(StringifyMapperBase):
 
 class DependencyMapper(DependencyMapperBase):
     def map_reduction(self, expr):
-        return self.rec(expr.expr)
+        from pymbolic.primitives import Variable
+        return (self.rec(expr.expr)
+                - set(Variable(iname) for iname in expr.untagged_inames))
 
 class BidirectionalUnifier(BidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
@@ -552,14 +566,13 @@ class IndexVariableFinder(CombineMapper):
     def map_reduction(self, expr):
         result = self.rec(expr.expr)
 
-        real_inames = set(iname.lstrip("@") for iname in expr.inames)
-        if not (real_inames & result):
+        if not (expr.untagged_inames_set & result):
             raise RuntimeError("reduction '%s' does not depend on "
                     "reduction inames (%s)" % (expr, ",".join(expr.inames)))
         if self.include_reduction_inames:
             return result
         else:
-            return result - real_inames
+            return result - expr.untagged_inames_set
 
 # }}}
 
@@ -645,6 +658,7 @@ class PrimeAdder(IdentityMapper):
 
 # }}}
 
+@memoize
 def get_dependencies(expr):
     from loopy.symbolic import DependencyMapper
     dep_mapper = DependencyMapper(composite_leaves=False)

@@ -141,7 +141,7 @@ def find_used_inames_within(kernel, sched_index):
 
     result = set()
     for sched_item in run_insns:
-        result.update(kernel.id_to_insn[sched_item.insn_id].all_inames())
+        result.update(kernel.insn_inames(sched_item.insn_id))
 
     return result
 
@@ -218,11 +218,14 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
     # {{{ see if any insn can be scheduled now
 
     unscheduled_insn_ids = list(all_insn_ids - scheduled_insn_ids)
+    insns_with_satisfied_deps = set()
 
     for insn_id in unscheduled_insn_ids:
         insn = kernel.id_to_insn[insn_id]
 
         schedule_now = set(insn.insn_deps) <= scheduled_insn_ids
+        if schedule_now:
+            insns_with_satisfied_deps.add(insn_id)
 
         if not schedule_now:
             if debug_mode:
@@ -242,7 +245,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
             for active_loop_count in xrange(len(active_inames), -1, -1):
                 outer_active_inames = set(active_inames[:active_loop_count])
                 if (
-                        insn.all_inames() - parallel_inames
+                        kernel.insn_inames(insn) - parallel_inames
                         <=
                         outer_active_inames - parallel_inames):
 
@@ -257,7 +260,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
                     else:
                         print ("instruction '%s' is missing inames '%s'"
                                 % (insn.id, ",".join(
-                                    (insn.all_inames() - parallel_inames)
+                                    (kernel.insn_inames(insn) - parallel_inames)
                                     -
                                     (outer_active_inames - parallel_inames))))
 
@@ -266,7 +269,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
             # the exactly correct set of loops.
 
             schedule_now = schedule_now and (
-                    insn.all_inames() - parallel_inames
+                    kernel.insn_inames(insn) - parallel_inames
                     ==
                     active_inames_set - parallel_inames)
 
@@ -289,7 +292,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
 
     # {{{ see if any loop can be entered now
 
-    available_loops = (kernel.all_inames()
+    available_loops = (kernel.all_referenced_inames()
             # loops can only be entered once
             - entered_inames
             # there's no notion of 'entering' a parallel loop
@@ -306,8 +309,11 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
 
             hypothetical_active_loops = active_inames_set | set([iname])
             for insn_id in unscheduled_insn_ids:
+                if insn_id not in insns_with_satisfied_deps:
+                    continue
+
                 insn = kernel.id_to_insn[insn_id]
-                if hypothetical_active_loops <= insn.all_inames():
+                if hypothetical_active_loops <= kernel.insn_inames(insn):
                     useful = True
                     break
 
@@ -365,7 +371,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
         can_leave = True
         for insn_id in unscheduled_insn_ids:
             insn = kernel.id_to_insn[insn_id]
-            if last_entered_loop in insn.all_inames():
+            if last_entered_loop in kernel.insn_inames(insn):
                 can_leave = False
                 break
 

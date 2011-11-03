@@ -283,13 +283,11 @@ def make_compute_insn(kernel, cse_tag, lead_expr, target_var_name,
 
     # {{{ decide whether to force a dep
 
-    forced_iname_deps = set()
-
     from loopy.symbolic import IndexVariableFinder
     dependencies = IndexVariableFinder(
             include_reduction_inames=False)(lead_expr)
 
-    parent_inames = insn.all_inames() | insn.reduction_inames()
+    parent_inames = kernel.insn_inames(insn) | insn.reduction_inames()
     #print dependencies, parent_inames
     #assert dependencies <= parent_inames
 
@@ -326,8 +324,7 @@ def make_compute_insn(kernel, cse_tag, lead_expr, target_var_name,
     return Instruction(
             id=kernel.make_unique_instruction_id(based_on=insn_prefix+"_compute"),
             assignee=assignee,
-            expression=new_inner_expr,
-            forced_iname_deps=forced_iname_deps)
+            expression=new_inner_expr)
 
 
 
@@ -499,9 +496,7 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
     for insn in kernel.instructions:
         new_expr = cse_cb_mapper(insn.expression)
-        new_insns.append(insn.copy(
-            expression=new_expr,
-            forced_iname_deps=insn.all_inames()))
+        new_insns.append(insn.copy(expression=new_expr))
 
     # }}}
 

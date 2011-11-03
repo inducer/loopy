@@ -52,7 +52,7 @@ def generate_ilp_instances(kernel, insn, codegen_state):
 
     # {{{ pass 2: treat all ILP dimensions
 
-    for iname in insn.all_inames():
+    for iname in kernel.insn_inames(insn):
         tag = kernel.iname_to_tag.get(iname)
 
         if not isinstance(tag, IlpTag):
@@ -99,7 +99,7 @@ def generate_instruction_code(kernel, insn, codegen_state):
         insn_code = Assign(ccm(insn.assignee), ccm(insn.expression))
         from loopy.codegen.bounds import wrap_in_bounds_checks
         insn_code, impl_domain = wrap_in_bounds_checks(
-                ccm, kernel.domain, insn.all_inames(), ilpi.implemented_domain,
+                ccm, kernel.domain, kernel.insn_inames(insn), ilpi.implemented_domain,
                 insn_code)
 
         result.append(GeneratedInstruction(
