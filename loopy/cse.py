@@ -190,8 +190,9 @@ def process_cses(kernel, lead_csed, cse_descriptors):
             map_space = map_space.move_dims(dim_type.in_, 0, dim_type.set, 0, ln)
             rn = rhs_space.dim(dim_type.set)
             map_space = map_space.add_dims(dim_type.out, rn)
-            for i, iname in enumerate(csed.independent_inames):
-                map_space = map_space.set_dim_name(dim_type.out, i, iname+"'")
+            for i in range(rhs_domain.dim(dim_type.set)):
+                map_space = map_space.set_dim_name(dim_type.out, i,
+                        rhs_domain.get_dim_name(dim_type.set, i)+"'")
 
             set_space = map_space.move_dims(
                     dim_type.out, rn,
