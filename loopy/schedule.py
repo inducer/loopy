@@ -206,7 +206,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
         print "--------------------------------------------"
         dump_schedule(schedule)
 
-
     if debug_mode:
         print "active:", ",".join(active_inames)
         print "entered:", ",".join(entered_inames)
@@ -313,9 +312,17 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
                     continue
 
                 insn = kernel.id_to_insn[insn_id]
-                if hypothetical_active_loops <= kernel.insn_inames(insn):
-                    useful = True
-                    break
+                if insn.boostable:
+                    # if insn is boostable, just increasing the number of used
+                    # inames is enough--not necessarily all must be truly 'useful'.
+
+                    if iname in kernel.insn_inames(insn):
+                        useful = True
+                        break
+                else:
+                    if hypothetical_active_loops <= kernel.insn_inames(insn):
+                        useful = True
+                        break
 
             if not useful:
                 if debug_mode:
