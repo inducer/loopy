@@ -39,6 +39,16 @@ Things to consider
 To-do
 ^^^^^
 
+- dim_max caching
+
+- Pick not just axis 0, but all axes by lowest available stride
+
+- Unidirectional unification
+
+- Unification Wildcards
+
+- No looking at the lead domain?
+
 - Fix all tests
 
 - Deal with equality constraints.
