@@ -183,7 +183,7 @@ def generate_code(kernel):
             POD, Value, ArrayOf, Module, Block,
             Line, Const, LiteralLines, Initializer)
 
-    from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
+    from cgen.opencl import (CLKernel, CLGlobal, CLConstant, CLRequiredWorkGroupSize,
             CLLocal, CLImage, CLConstant)
 
     from loopy.symbolic import LoopyCCodeMapper
@@ -207,11 +207,11 @@ def generate_code(kernel):
     has_double = False
     has_image = False
 
-    from loopy.kernel import ArrayArg, ImageArg
+    from loopy.kernel import ArrayArg, ConstantArrayArg, ImageArg, ScalarArg
 
     args = []
     for arg in kernel.args:
-        if isinstance(arg, ArrayArg):
+        if isinstance(arg, (ConstantArrayArg, ArrayArg)):
             arg_decl = restrict_ptr_if_not_nvidia(
                     POD(arg.dtype, arg.name))
             if arg_decl.name not in kernel.get_written_variables():
@@ -219,7 +219,10 @@ def generate_code(kernel):
                     arg_decl = CLConstant(Const(arg_decl))
                 else:
                     arg_decl = Const(arg_decl)
-            arg_decl = CLGlobal(arg_decl)
+            if isinstance(arg, ConstantArrayArg):
+                arg_decl = CLConstant(arg_decl)
+            else:
+                arg_decl = CLGlobal(arg_decl)
         elif isinstance(arg, ImageArg):
             if arg.name in kernel.get_written_variables():
                 mode = "w"
@@ -229,8 +232,10 @@ def generate_code(kernel):
             arg_decl = CLImage(arg.dimensions, mode, arg.name)
 
             has_image = True
-        else:
+        elif isinstance(arg, ScalarArg):
             arg_decl = Const(POD(arg.dtype, arg.name))
+        else:
+            raise ValueError("argument type not understood: '%s'" % type(arg))
 
         if arg.dtype in [np.float64, np.complex128]:
             has_double = True

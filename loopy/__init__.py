@@ -20,7 +20,7 @@ class LoopyAdvisory(UserWarning):
 
 # {{{ imported user interface
 
-from loopy.kernel import ScalarArg, ArrayArg, ImageArg
+from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
 
 from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph
 from loopy.cse import realize_cse

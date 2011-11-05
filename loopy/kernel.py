@@ -156,7 +156,8 @@ class ArrayArg:
     def __repr__(self):
         return "<ArrayArg '%s' of type %s>" % (self.name, self.dtype)
 
-
+class ConstantArrayArg(ArrayArg):
+    pass
 
 class ImageArg:
     def __init__(self, name, dtype, dimensions=None, shape=None):

@@ -342,8 +342,8 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
     if not set(independent_inames) <= kernel.all_inames():
         raise ValueError("In CSE realization for '%s': "
-                "cannot make inames '%s' independent--"
-                "they don't already exist" % (
+                "cannot make iname(s) '%s' independent--"
+                "it/they don't already exist" % (
                     cse_tag,
                     ",".join(
                         set(independent_inames)-kernel.all_inames())))
