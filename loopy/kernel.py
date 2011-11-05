@@ -449,6 +449,7 @@ class LoopKernel(Record):
 
     :ivar iname_to_tag_requests:
     :ivar cses: a mapping from CSE names to tuples (arg_names, expr).
+    :ivar substitutions: a mapping from CSE names to tuples (arg_names, expr).
     """
 
     def __init__(self, device, domain, instructions, args=None, schedule=None,
@@ -457,7 +458,7 @@ class LoopKernel(Record):
             iname_slab_increments={},
             temporary_variables={},
             local_sizes={},
-            iname_to_tag={}, iname_to_tag_requests=None, cses={}):
+            iname_to_tag={}, iname_to_tag_requests=None, cses={}, substitutions={}):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -539,7 +540,7 @@ class LoopKernel(Record):
             from loopy.symbolic import FunctionToPrimitiveMapper
             rhs = FunctionToPrimitiveMapper()(parse(groups["rhs"]))
 
-            if label.lower() != "cse":
+            if label.lower() not in ["cse", "subst"]:
                 if groups["insn_deps"] is not None:
                     insn_deps = set(dep.strip() for dep in groups["insn_deps"].split(","))
                 else:
@@ -574,11 +575,11 @@ class LoopKernel(Record):
                             duplicate_inames_and_tags=duplicate_inames_and_tags))
             else:
                 if groups["iname_deps_and_tags"] is not None:
-                    raise RuntimeError("CSEs cannot declare iname dependencies")
+                    raise RuntimeError("CSEs/substitutions cannot declare iname dependencies")
                 if groups["insn_deps"] is not None:
-                    raise RuntimeError("CSEs cannot declare instruction dependencies")
+                    raise RuntimeError("CSEs/substitutions cannot declare instruction dependencies")
                 if groups["temp_var_type"] is not None:
-                    raise RuntimeError("CSEs cannot declare temporary storage")
+                    raise RuntimeError("CSEs/substitutions cannot declare temporary storage")
 
                 from pymbolic.primitives import Variable, Call
 
@@ -598,12 +599,18 @@ class LoopKernel(Record):
                 else:
                     raise RuntimeError("CSEs cannot declare temporary storage")
 
-                cses[cse_name] = (arg_names, rhs)
+                if label.lower() == "cse":
+                    cses[cse_name] = (arg_names, rhs)
+                else:
+                    substitutions[cse_name] = (arg_names, rhs)
 
         # }}}
 
         insns = []
+
         cses = cses.copy()
+        substituions = substitutions.copy()
+
         for insn in instructions:
             # must construct list one-by-one to facilitate unique id generation
             parse_if_necessary(insn)
@@ -635,7 +642,7 @@ class LoopKernel(Record):
                 local_sizes=local_sizes,
                 iname_to_tag=iname_to_tag,
                 iname_to_tag_requests=iname_to_tag_requests,
-                cses=cses)
+                cses=cses, substitutions=substitutions)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:

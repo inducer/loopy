@@ -602,14 +602,16 @@ class VariableFetchCSEMapper(IdentityMapper):
 
 # }}}
 
-# {{{ CSE substitutor
+# {{{ parametrized substitutor
 
-class CSESubstitutor(IdentityMapper):
-    def __init__(self, cses):
+class ParametrizedSubstitutor(IdentityMapper):
+    def __init__(self, cses, wrap_cse):
         """
         :arg cses: a mapping from CSE names to tuples (arg_names, expr).
+        :arg wrap_cse: flag: wrap substituted expressions in CSEs
         """
         self.cses = cses
+        self.wrap_cse = wrap_cse
 
     def map_variable(self, expr):
         if expr.name not in self.cses:
@@ -620,8 +622,11 @@ class CSESubstitutor(IdentityMapper):
             raise RuntimeError("CSE '%s' must be invoked with %d arguments"
                     % (expr.name, len(arg_names)))
 
-        from pymbolic.primitives import CommonSubexpression
-        return CommonSubexpression(cse_expr, expr.name)
+        if self.wrap_cse:
+            from pymbolic.primitives import CommonSubexpression
+            return CommonSubexpression(cse_expr, expr.name)
+        else:
+            return cse_expr
 
     def map_call(self, expr):
         from pymbolic.primitives import Variable, CommonSubexpression
@@ -639,7 +644,12 @@ class CSESubstitutor(IdentityMapper):
         subst_map = SubstitutionMapper(make_subst_func(
             dict(zip(arg_names, expr.parameters))))
 
-        return CommonSubexpression(subst_map(cse_expr), cse_name)
+        cse_expr = subst_map(cse_expr)
+
+        if self.wrap_cse:
+            return CommonSubexpression(cse_expr, cse_name)
+        else:
+            return cse_expr
 
 # }}}
 

@@ -62,11 +62,12 @@ def make_kernel(*args, **kwargs):
 
     newly_created_vars = set()
 
-    from loopy.symbolic import CSESubstitutor
-    cse_sub = CSESubstitutor(knl.cses)
+    from loopy.symbolic import ParametrizedSubstitutor
+    cse_sub = ParametrizedSubstitutor(knl.cses, wrap_cse=True)
+    subst_sub = ParametrizedSubstitutor(knl.substitutions, wrap_cse=False)
 
     for insn in knl.instructions:
-        insn = insn.copy(expression=cse_sub(insn.expression))
+        insn = insn.copy(expression=subst_sub(cse_sub(insn.expression)))
 
         # {{{ sanity checking
 
