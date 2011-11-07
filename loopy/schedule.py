@@ -197,7 +197,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
     # {{{ decide about debug mode
 
     debug_mode = False
-    #if (set(["D", "u"]) <= scheduled_insn_ids and active_inames_set == set(["e"])):
     if False:
         debug_mode = True
 
@@ -205,6 +204,9 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
         print kernel
         print "--------------------------------------------"
         dump_schedule(schedule)
+
+    #if len(schedule) == 3:
+        #from pudb import set_trace; set_trace()
 
     if debug_mode:
         print "active:", ",".join(active_inames)
@@ -289,6 +291,22 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
 
     # }}}
 
+    # {{{ see if we're ready to leave a loop
+
+    if  last_entered_loop is not None:
+        can_leave = True
+        for insn_id in unscheduled_insn_ids:
+            insn = kernel.id_to_insn[insn_id]
+            if last_entered_loop in kernel.insn_inames(insn):
+                can_leave = False
+                break
+
+        if can_leave:
+            schedule = schedule + [LeaveLoop(iname=last_entered_loop)]
+            made_progress = True
+
+    # }}}
+
     # {{{ see if any loop can be entered now
 
     available_loops = (kernel.all_referenced_inames()
@@ -298,7 +316,11 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
             - parallel_inames
             )
 
-    if available_loops:
+    # Don't be eager about scheduling new loops--if progress has been made,
+    # revert to top of scheduler and see if more progress can be made another
+    # way. (hence 'and not made_progress')
+
+    if available_loops and not made_progress:
         useful_loops = []
 
         for iname in available_loops:
@@ -336,7 +358,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
         # {{{ tier building
 
         # Build priority tiers. If a schedule is found in the first tier, then
-        # loops in the second are not even tried.
+        # loops in the second are not even tried (and so on).
 
         loop_priority_set = set(loop_priority)
         useful_and_desired = set(useful_loops) & loop_priority_set
@@ -372,21 +394,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
 
     # }}}
 
-    # {{{ see if we're ready to leave a loop
-
-    if  last_entered_loop is not None:
-        can_leave = True
-        for insn_id in unscheduled_insn_ids:
-            insn = kernel.id_to_insn[insn_id]
-            if last_entered_loop in kernel.insn_inames(insn):
-                can_leave = False
-                break
-
-        if can_leave:
-            schedule = schedule + [LeaveLoop(iname=last_entered_loop)]
-            made_progress = True
-
-    # }}}
 
     if debug_mode:
         raw_input("Enter:")
