@@ -109,7 +109,10 @@ def test_axpy(ctx_factory):
                 lp.ArrayArg("z", dtype, shape="n,"),
                 lp.ScalarArg("n", np.int32, approximately=n),
                 ],
-            name="matmul")
+            name="axpy", assumptions="n>=1")
+
+    def variant_seq(knl):
+        return knl
 
     def variant_cpu(knl):
         unroll = 16
@@ -125,22 +128,26 @@ def test_axpy(ctx_factory):
         knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
         return knl
 
-    a = cl_random.rand(queue, n, dtype=dtype, luxury=2)
-    b = cl_random.rand(queue, n, dtype=dtype, luxury=2)
-    c = cl_array.zeros_like(a)
-    refsol = (2*a+3*b).get()
+    #x = cl_array.to_device(queue, np.random.rand(n).astype(dtype))
+    #y = cl_array.to_device(queue, np.random.rand(n).astype(dtype))
+    x = cl_random.rand(queue, n, dtype=dtype, luxury=2)
+    y = cl_random.rand(queue, n, dtype=dtype, luxury=2)
+    print np.isnan(x.get()).any()
+    1/0
+    z = cl_array.zeros_like(x)
+    refsol = (2*x+3*y).get()
 
-    for variant in [variant_cpu, variant_gpu]:
+    for variant in [variant_seq, variant_cpu, variant_gpu]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["i_inner_outer"])
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
         def launcher(kernel, gsize, lsize, check):
-            evt = kernel(queue, gsize(n), lsize(n), 2, a.data, 3, b.data, c.data, n,
+            evt = kernel(queue, gsize(n), lsize(n), 2, x.data, 3, y.data, z.data, n,
                     g_times_l=True)
 
             if check:
-                check_error(refsol, c.get())
+                check_error(refsol, z.get())
 
             return evt
 

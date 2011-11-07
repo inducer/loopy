@@ -17,8 +17,8 @@ from pymbolic.mapper.stringifier import \
         StringifyMapper as StringifyMapperBase
 from pymbolic.mapper.dependency import \
         DependencyMapper as DependencyMapperBase
-from pymbolic.mapper.unifier import BidirectionalUnifier \
-        as BidirectionalUnifierBase
+from pymbolic.mapper.unifier import UnidirectionalUnifier \
+        as UnidirectionalUnifierBase
 
 import numpy as np
 import islpy as isl
@@ -98,7 +98,7 @@ class DependencyMapper(DependencyMapperBase):
         return (self.rec(expr.expr)
                 - set(Variable(iname) for iname in expr.untagged_inames))
 
-class BidirectionalUnifier(BidirectionalUnifierBase):
+class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
         if not isinstance(other, type(expr)):
             return self.treat_mismatch(expr, other, unis)
@@ -480,7 +480,7 @@ def pw_aff_to_expr(pw_aff):
     (set, aff), = pieces
     return aff_to_expr(aff)
 
-def aff_from_expr(space, expr):
+def aff_from_expr(space, expr, vars_to_zero=set()):
     zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
     context = {}
     for name, (dt, pos) in space.get_var_dict().iteritems():
@@ -488,6 +488,9 @@ def aff_from_expr(space, expr):
             dt = dim_type.in_
 
         context[name] = zero.set_coefficient(dt, pos, 1)
+
+    for name in vars_to_zero:
+        context[name] = zero
 
     from pymbolic import evaluate
     return zero + evaluate(expr, context)
@@ -650,6 +653,18 @@ class ParametrizedSubstitutor(IdentityMapper):
             return CommonSubexpression(cse_expr, cse_name)
         else:
             return cse_expr
+
+# }}}
+
+# {{{ wildcard -> unique variable mapper
+
+class WildcardToUniqueVariableMapper(IdentityMapper):
+    def __init__(self, unique_var_name_factory):
+        self.unique_var_name_factory = unique_var_name_factory
+
+    def map_wildcard(self, expr):
+        from pymbolic import var
+        return var(self.unique_var_name_factory())
 
 # }}}
 

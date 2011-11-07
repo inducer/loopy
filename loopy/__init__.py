@@ -157,7 +157,7 @@ def make_kernel(*args, **kwargs):
             from pymbolic.primitives import Variable
             for index_expr in insn.get_assignee_indices():
                 if (not isinstance(index_expr, Variable)
-                        or not index_expr.name in knl.insn_inames(insn)):
+                        or not index_expr.name in knl.all_inames()):
                     raise RuntimeError(
                             "only plain inames are allowed in "
                             "the lvalue index when declaring the "
@@ -419,7 +419,7 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
 # {{{ convenience: add_prefetch
 
-def add_prefetch(kernel, var_name, fetch_dims=[], lead_expr=None,
+def add_prefetch(kernel, var_name, fetch_dims=[], uni_template=None,
         new_inames=None, default_tag="l.auto"):
     used_cse_tags = set()
     def map_cse(expr, rec):
@@ -446,7 +446,7 @@ def add_prefetch(kernel, var_name, fetch_dims=[], lead_expr=None,
     else:
         dtype = kernel.temporary_variables[var_name].dtype
 
-    kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims, lead_expr=lead_expr,
+    kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims, uni_template=uni_template,
             new_inames=new_inames, default_tag=default_tag)
 
     return kernel

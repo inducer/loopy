@@ -662,6 +662,11 @@ class LoopKernel(Record):
         return set(self.space.get_var_dict(dim_type.set).iterkeys())
 
     @memoize_method
+    def non_iname_variable_names(self):
+        return (set(self.arg_dict.iterkeys())
+                | set(self.temporary_variables.iterkeys()))
+
+    @memoize_method
     def all_insn_inames(self):
         from loopy.symbolic import get_dependencies
 
@@ -778,7 +783,7 @@ class LoopKernel(Record):
             var_name = insn.get_assignee_var_name()
 
             if var_name not in admissible_vars:
-                raise RuntimeError("writing to '%s' is not allowed" % var_name)
+                raise RuntimeError("variable '%s' not declared or not allowed for writing" % var_name)
             var_names = [var_name]
 
             for var_name in var_names:

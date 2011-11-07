@@ -85,11 +85,11 @@ def test_multi_cse(ctx_factory):
 
 
 
-def test_stencil(ctx_factory):
+def test_bad_stencil(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(ctx.devices[0],
-            "{[i,j]: 0<= i,j <4}",
+            "{[i,j]: 0<= i,j < 32}",
             [
                 "[i] <float32> z[i,j] = -2*cse(a[i,j])"
                     " + cse(a[i,j-1])"
@@ -97,17 +97,59 @@ def test_stencil(ctx_factory):
                     " + cse(a[i-1,j])"
                     " + cse(a[i+1,i])" # watch out: i!
                 ],
-            [lp.ArrayArg("a", np.float32, shape=(4,4,))])
+            [
+                lp.ArrayArg("a", np.float32, shape=(32,32,))
+                ])
 
-    knl = lp.split_dimension(knl, "i", 16)
+    def variant_1(knl):
+        return knl
 
-    try:
-        lp.realize_cse(knl, None, np.float32, ["i_inner", "j"])
-    except RuntimeError, e:
-        assert "does not cover a subset" in str(e)
-        pass # expected!
-    else:
-        assert False # expecting an error
+    def variant_2(knl):
+        knl = lp.split_dimension(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
+        knl = lp.realize_cse(knl, None, np.float32, ["i_inner", "j"])
+        return knl
+
+    for variant in [variant_1, variant_2]:
+        kernel_gen = lp.generate_loop_schedules(variant(knl),
+                loop_priority=["i_outer", "i_inner_0", "j_0"])
+        kernel_gen = lp.check_kernels(kernel_gen)
+
+        for knl in kernel_gen:
+            print lp.generate_code(knl)
+
+
+
+
+
+def test_stencil(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i,j]: 0<= i,j < 32}",
+            [
+                "[i] <float32> z[i,j] = -2*cse(a[i,j])"
+                    " + cse(a[i,j-1])"
+                    " + cse(a[i,j+1])"
+                    " + cse(a[i-1,j])"
+                    " + cse(a[i+1,j])" # watch out: i!
+                ],
+            [
+                lp.ArrayArg("a", np.float32, shape=(32,32,))
+                ])
+
+    def variant_3(knl):
+        knl = lp.split_dimension(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
+        knl = lp.split_dimension(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
+        knl = lp.realize_cse(knl, None, np.float32, ["i_inner", "j_inner"])
+        return knl
+
+    for variant in [variant_3]:
+        kernel_gen = lp.generate_loop_schedules(variant(knl),
+                loop_priority=["i_outer", "i_inner_0", "j_0"])
+        kernel_gen = lp.check_kernels(kernel_gen)
+
+        for knl in kernel_gen:
+            print lp.generate_code(knl)
 
 
 

@@ -43,12 +43,6 @@ To-do
 
 - Pick not just axis 0, but all axes by lowest available stride
 
-- Unidirectional unification
-
-- Unification Wildcards
-
-- No looking at the lead domain?
-
 - Fix all tests
 
 - Deal with equality constraints.
@@ -56,6 +50,8 @@ To-do
 
 Future ideas
 ^^^^^^^^^^^^
+
+- Barriers for data exchanged via global vars?
 
 - Float4 joining on fetch/store?
 

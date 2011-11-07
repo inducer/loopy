@@ -307,7 +307,7 @@ def test_sem_3d(ctx_factory):
     def add_pf(knl):
         knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
         knl = lp.add_prefetch(knl, "D", ["m", "j"])
-        knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[e,i,j,k]")
+        knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
         knl = lp.realize_cse(knl, "ur", np.float32, ["k", "j", "m"])
         knl = lp.realize_cse(knl, "us", np.float32, ["i", "m", "k"])
         knl = lp.realize_cse(knl, "ut", np.float32, ["i", "j", "m"])

@@ -56,6 +56,8 @@ def test_laplacian_stiffness(ctx_factory):
     knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
     knl = lp.split_dimension(knl, "K_inner", 4, inner_tag="ilp")
     knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
+    knl = lp.add_prefetch(knl, 'jacInv', ["K_inner_outer", "K_inner_inner", "q"],
+            uni_template="jacInv[x,y,z,u]")
 
     kernel_gen = lp.generate_loop_schedules(knl,
             loop_priority=["K", "i", "j"])
