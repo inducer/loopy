@@ -44,7 +44,7 @@ def gather_schedule_subloop(schedule, start_idx):
 
 
 
-def get_barrier_needing_dependency(kernel, target, source):
+def get_barrier_needing_dependency(kernel, target, source, unordered=False):
     from loopy.kernel import Instruction
     if not isinstance(source, Instruction):
         source = kernel.id_to_insn[source]
@@ -64,7 +64,8 @@ def get_barrier_needing_dependency(kernel, target, source):
     war = tgt_write & src_read
 
     for var_name in raw | war:
-        assert source.id in target.insn_deps
+        if not unordered:
+            assert source.id in target.insn_deps
         return (target, source, var_name)
 
     if source is target:
@@ -83,10 +84,18 @@ def get_barrier_needing_dependency(kernel, target, source):
 
 
 def get_barrier_dependent_in_schedule(kernel, source, schedule):
+    """
+    :arg source: an instruction id for the source of the dependency
+    """
+    unordered = False
+    for sched_item in schedule:
+        if isinstance(sched_item, RunInstruction) and sched_item.insn_id == source:
+            unordered = True
+
     for sched_item in schedule:
         if isinstance(sched_item, RunInstruction):
             temp_res = get_barrier_needing_dependency(
-                    kernel, sched_item.insn_id, source)
+                    kernel, sched_item.insn_id, source, unordered=unordered)
             if temp_res:
                 return temp_res
 
