@@ -183,10 +183,11 @@ def generate_code(kernel):
             POD, Value, ArrayOf, Module, Block,
             Line, Const, LiteralLines, Initializer)
 
-    from cgen.opencl import (CLKernel, CLGlobal, CLConstant, CLRequiredWorkGroupSize,
+    from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
             CLLocal, CLImage, CLConstant)
 
-    from loopy.symbolic import LoopyCCodeMapper
+    from loopy.symbolic import LoopyCCodeMapper, pw_aff_to_expr
+
     ccm = LoopyCCodeMapper(kernel).copy_and_assign_many(
             make_initial_assignments(kernel))
 
@@ -286,7 +287,6 @@ def generate_code(kernel):
         except AttributeError:
             storage_shape = tv.shape
 
-        from loopy.symbolic import pw_aff_to_expr
         for l in storage_shape:
             temp_var_decl = ArrayOf(temp_var_decl, l)
 
@@ -311,7 +311,6 @@ def generate_code(kernel):
     else:
         body.append(gen_code.ast)
 
-    from loopy.symbolic import pw_aff_to_expr
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
