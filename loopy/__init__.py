@@ -453,6 +453,20 @@ def add_prefetch(kernel, var_name, fetch_dims=[], uni_template=None,
 
 # }}}
 
+def remove_cses(kernel):
+    from loopy.symbolic import CSECallbackMapper
+
+    def map_cse(expr, rec):
+        return expr.child
+
+    new_insns = []
+    for insn in kernel.instructions:
+        new_insns.append(
+                insn.copy(
+                    expression=CSECallbackMapper(map_cse)(insn.expression)))
+
+    return kernel.copy(instructions=new_insns)
+
 
 
 
