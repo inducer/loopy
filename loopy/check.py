@@ -145,7 +145,6 @@ def check_for_write_races(kernel):
                 raise RuntimeError("temp var '%s' hasn't decided on "
                         "whether it is local" % temp_var.name)
 
-
         else:
             raise RuntimeError("invalid assignee name in instruction '%s'"
                     % insn.id)

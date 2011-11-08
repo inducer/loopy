@@ -287,6 +287,51 @@ def add_boostability_and_automatic_dependencies(kernel):
 
 # }}}
 
+# {{{ limit boostability
+
+def limit_boostability(kernel):
+    """Finds out which other inames an instruction's inames occur with
+    and then limits boostability to just those inames.
+    """
+
+    iname_occurs_with = {}
+    for insn in kernel.instructions:
+        insn_inames = kernel.insn_inames(insn)
+        for iname in insn_inames:
+            iname_occurs_with.setdefault(iname, set()).update(insn_inames)
+
+    iname_use_counts = {}
+    for insn in kernel.instructions:
+        for iname in kernel.insn_inames(insn):
+            iname_use_counts[iname] = iname_use_counts.get(iname, 0) + 1
+
+    single_use_inames = set(iname for iname, uc in iname_use_counts.iteritems()
+            if uc == 1)
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if insn.boostable is None:
+            raise RuntimeError("insn '%s' has undetermined boostability" % insn.id)
+        elif insn.boostable:
+            boostable_into = set()
+            for iname in kernel.insn_inames(insn):
+                boostable_into.update(iname_occurs_with[iname])
+
+            boostable_into -= kernel.insn_inames(insn) | single_use_inames
+
+            # Even if boostable_into is empty, leave boostable flag on--it is used
+            # for boosting into unused hw axes.
+
+            insn = insn.copy(boostable_into=boostable_into)
+        else:
+            insn = insn.copy(boostable_into=set())
+
+        new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
+
+# }}}
+
 # {{{ guess good iname for local axis 0
 
 def get_axis_0_ranking(kernel, insn):
@@ -635,6 +680,7 @@ def preprocess_kernel(kernel):
 
     kernel = assign_automatic_axes(kernel)
     kernel = add_boostability_and_automatic_dependencies(kernel)
+    kernel = limit_boostability(kernel)
     kernel = adjust_local_temp_var_storage(kernel)
 
     return kernel

@@ -232,7 +232,9 @@ class Instruction(Record):
         by adding dependencies on any writes to temporaries read by this instruction.
     :ivar boostable: Whether the instruction may safely be executed
         inside more loops than advertised without changing the meaning
-        of the program. Allowed values are *None* (for unknwon), *True*, and *False*.
+        of the program. Allowed values are *None* (for unknown), *True*, and *False*.
+    :ivar boostable_into: a set of inames into which the instruction
+        may need to be boosted, as a heuristic help for the scheduler.
 
     The following two instance variables are only used until :func:`loopy.kernel.make_kernel` is
     finished:
@@ -245,6 +247,7 @@ class Instruction(Record):
     def __init__(self,
             id, assignee, expression,
             forced_iname_deps=set(), insn_deps=set(), boostable=None,
+            boostable_into=None,
             temp_var_type=None, duplicate_inames_and_tags=[]):
 
         assert isinstance(forced_iname_deps, set)
@@ -254,6 +257,7 @@ class Instruction(Record):
                 id=id, assignee=assignee, expression=expression,
                 forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps, boostable=boostable,
+                boostable_into=boostable_into,
                 temp_var_type=temp_var_type, duplicate_inames_and_tags=duplicate_inames_and_tags)
 
     @memoize_method
@@ -276,7 +280,10 @@ class Instruction(Record):
                 self.assignee, self.expression)
 
         if self.boostable == True:
-            result += " (boostable)"
+            if self.boostable_into:
+                result += " (boostable into '%s')" % ",".join(self.boostable_into)
+            else:
+                result += " (boostable)"
         elif self.boostable == False:
             result += " (not boostable)"
         elif self.boostable is None:
