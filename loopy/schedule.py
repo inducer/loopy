@@ -1,6 +1,7 @@
 from __future__ import division
 
 from pytools import Record
+import sys
 
 
 
@@ -156,6 +157,8 @@ def find_used_inames_within(kernel, sched_index):
 
 # }}}
 
+# {{{ debug help
+
 def dump_schedule(schedule):
     entries = []
     for sched_item in schedule:
@@ -168,11 +171,45 @@ def dump_schedule(schedule):
         else:
             assert False
 
-    print " ".join(entries), len(entries)
+    return " ".join(entries), len(entries)
+
+class SchedulerDebugger:
+    def __init__(self, debug_length):
+        self.longest_rejected_schedule = []
+        self.success_counter = 0
+        self.dead_end_counter = 0
+        self.debug_length = debug_length
+
+        self.update()
+
+    def update(self):
+        if (self.success_counter + self.dead_end_counter) % 50 == 0:
+            sys.stdout.write("\rscheduling... %d successes, "
+                    "%d dead ends (longest %d)" % (
+                        self.success_counter,
+                        self.dead_end_counter,
+                        len(self.longest_rejected_schedule)))
+            sys.stdout.flush()
+
+    def log_success(self, schedule):
+        self.success_counter += 1
+        self.update()
+
+    def log_dead_end(self, schedule):
+        if len(schedule) > len(self.longest_rejected_schedule):
+            self.longest_rejected_schedule = schedule
+        self.dead_end_counter += 1
+        self.update()
+
+    def done_scheduling(self):
+        sys.stdout.write("\rscheduler finished                                         \n")
+        sys.stdout.flush()
+
+# }}}
 
 # {{{ scheduling algorithm
 
-def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
+def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], debug=None):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
     scheduled_insn_ids = set(sched_item.insn_id for sched_item in schedule
@@ -206,13 +243,15 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
     # {{{ decide about debug mode
 
     debug_mode = False
-    if False:
-        debug_mode = True
+    if debug is not None:
+        if (debug.debug_length is not None
+                and len(schedule) >= debug.debug_length):
+            debug_mode = True
 
     if debug_mode:
         print kernel
         print "--------------------------------------------"
-        dump_schedule(schedule)
+        print dump_schedule(schedule)
 
     #if len(schedule) == 3:
         #from pudb import set_trace; set_trace()
@@ -394,7 +433,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
             for iname in tier:
                 new_schedule = schedule + [EnterLoop(iname=iname)]
                 for sub_sched in generate_loop_schedules_internal(
-                        kernel, loop_priority, new_schedule):
+                        kernel, loop_priority, new_schedule,
+                        debug=debug):
                     found_viable_schedule = True
                     yield sub_sched
 
@@ -410,12 +450,16 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[]):
     if not active_inames and not available_loops and not unscheduled_insn_ids:
         # if done, yield result
         yield schedule
-    else:
+    elif made_progress:
         # if not done, but made some progress--try from the top
-        if made_progress:
             for sub_sched in generate_loop_schedules_internal(
-                    kernel, loop_priority, schedule):
+                    kernel, loop_priority, schedule,
+                    debug=debug):
                 yield sub_sched
+    else:
+        # dead end
+        if debug is not None:
+            debug.log_dead_end(schedule)
 
 # }}}
 
@@ -533,7 +577,7 @@ def insert_barriers(kernel, schedule, level=0):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel, loop_priority=[]):
+def generate_loop_schedules(kernel, loop_priority=[], debug=False):
     from loopy.preprocess import preprocess_kernel
     kernel = preprocess_kernel(kernel)
 
@@ -542,7 +586,16 @@ def generate_loop_schedules(kernel, loop_priority=[]):
 
     schedule_count = 0
 
-    for gen_sched in generate_loop_schedules_internal(kernel, loop_priority):
+    if debug:
+        if debug == True:
+            debug = SchedulerDebugger(None)
+        else:
+            debug = SchedulerDebugger(debug)
+    else:
+        debug = None
+
+    for gen_sched in generate_loop_schedules_internal(kernel, loop_priority,
+            debug=debug):
         gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
         if owed_barriers:
             from warnings import warn
