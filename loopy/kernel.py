@@ -738,6 +738,16 @@ class LoopKernel(Record):
         else:
             return self.all_insn_inames()[insn.id]
 
+    @memoize_method
+    def iname_to_insns(self):
+        result = dict(
+                (iname, set()) for iname in self.all_inames())
+        for insn in self.instructions:
+            for iname in self.insn_inames(insn):
+                result[iname].add(insn.id)
+
+        return result
+
     @property
     @memoize_method
     def sequential_inames(self):
@@ -989,6 +999,22 @@ class LoopKernel(Record):
     def local_mem_use(self):
         return sum(lv.nbytes for lv in self.temporary_variables.itervalues()
                 if lv.is_local)
+
+    @memoize_method
+    def loop_nest_map(self):
+        """Returns a dictionary mapping inames to other inames that are
+        always nested around them.
+        """
+        result = {}
+        iname_to_insns = self.iname_to_insns()
+
+        for inner_iname in self.all_inames():
+            result[inner_iname] = set()
+            for outer_iname in self.all_inames():
+                if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
+                    result[inner_iname].add(outer_iname)
+
+        return result
 
     def __str__(self):
         lines = []

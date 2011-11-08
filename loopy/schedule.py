@@ -266,12 +266,12 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
                 and len(schedule) >= debug.debug_length):
             debug_mode = True
 
-    #print dump_schedule(schedule), len(schedule)
     if debug_mode:
         print kernel
         print "--------------------------------------------"
         print "CURRENT SCHEDULE:"
-        print dump_schedule(schedule)
+        print dump_schedule(schedule), len(schedule)
+        print "boost allowed:", allow_boost
         print "--------------------------------------------"
 
     #if len(schedule) == 2:
@@ -289,6 +289,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
     reachable_insn_ids = set()
 
     for insn_id in all_insn_ids - scheduled_insn_ids:
+        if debug_mode:
+            print insn_id
         insn = kernel.id_to_insn[insn_id]
 
         schedule_now = set(insn.insn_deps) <= scheduled_insn_ids
@@ -299,51 +301,27 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
                         insn.id, ",".join(set(insn.insn_deps) - scheduled_insn_ids))
             continue
 
+        want = kernel.insn_inames(insn) - parallel_inames
+        have = active_inames_set - parallel_inames
+
         # If insn is boostable, it may be placed inside a more deeply
         # nested loop without harm.
 
-        # But if it can be scheduled on the way *out* of the currently
-        # active loops, now is not the right moment.
-
-        schedulable_at_loop_levels = []
-
         if allow_boost:
-            try_loop_counts = xrange(len(active_inames), -1, -1)
-        else:
-            try_loop_counts = [len(active_inames)]
+            have = have - insn.boostable_into
 
-        for active_loop_count in try_loop_counts:
-            outer_active_inames = set(active_inames[:active_loop_count])
-
-            want = kernel.insn_inames(insn) - parallel_inames
-            have = outer_active_inames - parallel_inames - insn.boostable_into
-
-            if allow_boost:
-                have -= insn.boostable_into
-
-            if want == have:
-                schedulable_at_loop_levels.append(active_loop_count)
-
-        if schedulable_at_loop_levels != [len(active_inames)]:
+        if want != have:
             schedule_now = False
+
             if debug_mode:
-                if schedulable_at_loop_levels:
-                    print ("instruction '%s' will be scheduled when more "
-                            "loops have been exited" % insn.id)
-                else:
-                    want = (kernel.insn_inames(insn) - parallel_inames)
-                    have = (active_inames_set - parallel_inames)
-                    if want-have:
-                        print ("instruction '%s' is missing inames '%s'"
-                                % (insn.id, ",".join(want-have)))
-                    if have-want:
-                        print ("instruction '%s' won't work under inames '%s'"
-                                % (insn.id, ",".join(have-want)))
+                if want-have:
+                    print ("instruction '%s' is missing inames '%s'"
+                            % (insn.id, ",".join(want-have)))
+                if have-want:
+                    print ("instruction '%s' won't work under inames '%s'"
+                            % (insn.id, ",".join(have-want)))
 
         # {{{ determine reachability
-
-        want = kernel.insn_inames(insn) - parallel_inames
-        have = active_inames_set - parallel_inames
 
         if (not schedule_now and have <= want):
             reachable_insn_ids.add(insn_id)
@@ -355,6 +333,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         # }}}
 
         if schedule_now:
+            if debug_mode:
+                print "scheduling '%s'" % insn.id
             scheduled_insn_ids.add(insn.id)
             schedule = schedule + [RunInstruction(insn_id=insn.id)]
             made_progress = True
@@ -408,6 +388,9 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         useful_loops = []
 
         for iname in available_loops:
+            if not kernel.loop_nest_map()[iname] <= active_inames_set | parallel_inames:
+                continue
+
             # {{{ determine if that gets us closer to being able to schedule an insn
 
             useful = False
@@ -415,8 +398,10 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
             hypothetically_active_loops = active_inames_set | set([iname])
             for insn_id in reachable_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
-                if (hypothetically_active_loops 
-                        <= (kernel.insn_inames(insn) | insn.boostable_into)):
+
+                want = kernel.insn_inames(insn) | insn.boostable_into
+
+                if hypothetically_active_loops <= want:
                     useful = True
                     break
 

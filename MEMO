@@ -87,6 +87,8 @@ Future ideas
 Dealt with
 ^^^^^^^^^^
 
+- Scheduler tries too many boostability-related options
+
 - Automatically generate testing code vs. sequential.
 
 - If isl can prove that all operands are positive, may use '/' instead of
@@ -209,4 +211,3 @@ g: is tagged as group idx
 
 Raise error if dl is targeting a private variable, regardless of whether it's
 a dependency or not.
-
