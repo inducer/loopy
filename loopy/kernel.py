@@ -948,9 +948,8 @@ class LoopKernel(Record):
                 assert cur_axis is not None
 
                 while cur_axis > len(size_list):
-                    from loopy import LoopyAdvisory
                     raise RuntimeError("%s axis %d unused" % (
-                        which, len(size_list)), LoopyAdvisory)
+                        which, len(size_list)))
                     size_list.append(zero_aff + 1)
 
                 size_list.append(size_dict[cur_axis])

@@ -80,11 +80,6 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 
 def process_cses(kernel, uni_template,
         independent_inames, matching_vars, cse_descriptors):
-    if not independent_inames:
-        for csed in cse_descriptors:
-            csed.lead_index_exprs = []
-        return None
-
     from loopy.symbolic import UnidirectionalUnifier
 
     ind_inames_set = set(independent_inames)
@@ -129,10 +124,14 @@ def process_cses(kernel, uni_template,
 
             var_map = None
 
+            rhs_deps = set()
+
             from loopy.symbolic import aff_from_expr
             for lhs, rhs in unifier.equations:
                 cns = isl.Constraint.equality_from_aff(
                         aff_from_expr(set_space, lhs - rhs))
+
+                rhs_deps.update(get_dependencies(rhs))
 
                 cns_map = isl.BasicMap.from_constraint(cns)
                 if var_map is None:
@@ -154,10 +153,13 @@ def process_cses(kernel, uni_template,
             if restr_rhs_map.range() != kernel.domain:
                 continue
 
+            restr_rhs_map = restr_rhs_map.project_out_except(
+                    rhs_deps, [dim_type.out])
+
             # Sanity check: Injectivity here means that unique lead indices
             # can be found for each
 
-            if not var_map.is_injective():
+            if not restr_rhs_map.is_injective():
                 raise RuntimeError("In CSEs '%s' and '%s': "
                         "cannot find lead indices uniquely"
                         % (uni_template, csed.cse.child))
@@ -192,6 +194,10 @@ def process_cses(kernel, uni_template,
                 matching_var_values[mv_name] = csed.unif_var_dict[mv_name]
 
         # }}}
+
+    assert (footprint
+            .project_out_except(independent_inames, [dim_type.set])
+            .is_bounded())
 
     return footprint, matching_var_values,
 
@@ -378,9 +384,11 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
                 based_on = iname
                 if new_inames is not None and i < len(new_inames):
                     based_on = new_inames[i]
+                elif cse_tag is not None:
+                    based_on = "%s_%s" % (iname, cse_tag)
 
                 new_iname = kernel.make_unique_var_name(
-                        based_on=iname, extra_used_vars=newly_created_var_names)
+                        based_on=based_on, extra_used_vars=newly_created_var_names)
                 old_to_new[iname] = var(new_iname)
                 newly_created_var_names.add(new_iname)
                 new_independent_inames.append(new_iname)
@@ -396,6 +404,11 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
                 (uni_template))
 
     # }}}
+
+    if not set(independent_inames) <= get_dependencies(uni_template):
+        raise RuntimeError("independent iname(s) '%s' do not occur in unification "
+                "template" % (",".join(
+                    set(independent_inames)-get_dependencies(uni_template))))
 
     # {{{ deal with iname deps of uni_template that are not independent_inames
 
@@ -468,8 +481,6 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
             .remove_dims(dim_type.set,
                 new_domain.dim(dim_type.set)-len(matching_vars), len(matching_vars)))
     new_domain = new_domain.remove_redundancies()
-
-    # }}}
 
     # }}}
 
