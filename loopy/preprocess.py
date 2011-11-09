@@ -645,19 +645,6 @@ def preprocess_kernel(kernel):
     kernel = mark_local_temporaries(kernel)
     kernel = duplicate_reduction_inames(kernel)
     kernel = realize_reduction(kernel)
-
-    # {{{ check that all CSEs have been realized
-
-    from loopy.symbolic import CSECallbackMapper
-
-    def map_cse(expr, rec):
-        raise RuntimeError("all CSEs must be realized before scheduling")
-
-    for insn in kernel.instructions:
-        CSECallbackMapper(map_cse)(insn.expression)
-
-    # }}}
-
     kernel = assign_automatic_axes(kernel)
     kernel = add_boostability_and_automatic_dependencies(kernel)
     kernel = limit_boostability(kernel)

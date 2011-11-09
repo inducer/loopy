@@ -597,6 +597,18 @@ def insert_barriers(kernel, schedule, level=0):
 # {{{ main scheduling entrypoint
 
 def generate_loop_schedules(kernel, loop_priority=[], debug=None):
+    # {{{ check that all CSEs have been realized
+
+    from loopy.symbolic import CSECallbackMapper
+
+    def map_cse(expr, rec):
+        raise RuntimeError("all CSEs must be realized before scheduling")
+
+    for insn in kernel.instructions:
+        CSECallbackMapper(map_cse)(insn.expression)
+
+    # }}}
+
     from loopy.preprocess import preprocess_kernel
     kernel = preprocess_kernel(kernel)
 
