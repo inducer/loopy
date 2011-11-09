@@ -128,7 +128,7 @@ def test_stencil(ctx_factory):
                     " + cse(a[i,j-1])"
                     " + cse(a[i,j+1])"
                     " + cse(a[i-1,j])"
-                    " + cse(a[i+1,j])" # watch out: i!
+                    " + cse(a[i+1,j])"
                 ],
             [
                 lp.ArrayArg("a", np.float32, shape=(32,32,))
