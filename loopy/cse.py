@@ -188,7 +188,9 @@ def process_cses(kernel, uni_template,
             if mv_name in matching_var_values:
                 if matching_var_values[mv_name] != csed.unif_var_dict[mv_name]:
                     raise RuntimeError("two different expressions encountered "
-                            "for matching variable: '%s' and '%s'" % (
+                            "for matching variable '%s' in unification template '%s':"
+                            "'%s' and '%s'" % (
+                                mv_name, uni_template,
                                 matching_var_values[mv_name], csed.unif_var_dict[mv_name]))
             else:
                 matching_var_values[mv_name] = csed.unif_var_dict[mv_name]
