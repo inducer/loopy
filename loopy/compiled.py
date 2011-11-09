@@ -22,8 +22,9 @@ class CompiledKernel:
 
         import pyopencl as cl
         try:
+            self.cl_program = cl.Program(context, self.code)
             self.cl_kernel = getattr(
-                    cl.Program(context, self.code).build(options=options),
+                    self.cl_program.build(options=options),
                     kernel.name)
         except:
             print "[Loopy] ----------------------------------------------------"
@@ -225,7 +226,8 @@ def make_args(queue, kernel, seq_input_arrays, parameters):
 
 
 def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
-        print_seq_code=False, print_code=True, warmup_rounds=2, timing_rounds=100):
+        print_seq_code=False, print_code=True, warmup_rounds=2, timing_rounds=100,
+        edit_code=False, dump_binary=False):
     from time import time
 
     # {{{ set up CL context for sequential run
@@ -300,12 +302,16 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
         if args is None:
             args, output_arrays = make_args(queue, kernel, seq_input_arrays, parameters)
 
-        compiled = CompiledKernel(ctx, kernel)
+        compiled = CompiledKernel(ctx, kernel, edit_code=edit_code)
         print "----------------------------------------------------------"
         print "Kernel #%d:" % i
         print "----------------------------------------------------------"
         if print_code:
             print_highlighted_code(compiled.code)
+            print "----------------------------------------------------------"
+        if dump_binary:
+            print type(compiled.cl_program)
+            print compiled.cl_program.binaries[0]
             print "----------------------------------------------------------"
 
         do_check = True
