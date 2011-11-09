@@ -101,15 +101,12 @@ def test_bad_stencil(ctx_factory):
                 lp.ArrayArg("a", np.float32, shape=(32,32,))
                 ])
 
-    def variant_1(knl):
-        return knl
-
     def variant_2(knl):
-        knl = lp.split_dimension(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
+        knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.realize_cse(knl, None, np.float32, ["i_inner", "j"])
         return knl
 
-    for variant in [variant_1, variant_2]:
+    for variant in [variant_2]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["i_outer", "i_inner_0", "j_0"])
         kernel_gen = lp.check_kernels(kernel_gen)

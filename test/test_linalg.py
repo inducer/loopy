@@ -132,8 +132,8 @@ def test_axpy(ctx_factory):
     #y = cl_array.to_device(queue, np.random.rand(n).astype(dtype))
     x = cl_random.rand(queue, n, dtype=dtype, luxury=2)
     y = cl_random.rand(queue, n, dtype=dtype, luxury=2)
-    print np.isnan(x.get()).any()
-    1/0
+    #print np.isnan(x.get()).any()
+    #1/0
     z = cl_array.zeros_like(x)
     refsol = (2*x+3*y).get()
 
@@ -161,8 +161,6 @@ def test_transpose(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = get_suitable_size(ctx)
 
@@ -370,7 +368,8 @@ def test_rank_one(ctx_factory):
 
     seq_knl = knl
 
-    for variant in [variant_1, variant_2, variant_4]:
+    #for variant in [variant_1, variant_2, variant_4]:
+    for variant in [variant_4]:
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
