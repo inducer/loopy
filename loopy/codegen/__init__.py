@@ -30,12 +30,7 @@ class GeneratedCode(Record):
     __slots__ = ["ast", "implemented_domains"]
 
 def gen_code_block(elements):
-    """
-    :param is_alternatives: a :class:`bool` indicating that
-        only one of the *elements* will effectively be executed.
-    """
-
-    from cgen import Block, Comment, Line
+    from cgen import Block, Comment, Line, Initializer
 
     block_els = []
     implemented_domains = {}
@@ -49,6 +44,9 @@ def gen_code_block(elements):
                 block_els.extend(el.ast.contents)
             else:
                 block_els.append(el.ast)
+
+        elif isinstance(el, Initializer):
+            block_els.append(el)
 
         elif isinstance(el, Comment):
             block_els.append(el)

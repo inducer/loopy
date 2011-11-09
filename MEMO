@@ -43,9 +43,6 @@ To-do
 
 - Fix all tests
 
-- Deal with equality constraints.
-  (These arise, e.g., when partitioning a loop of length 16 into 16s.)
-
 Future ideas
 ^^^^^^^^^^^^
 
@@ -86,7 +83,10 @@ Future ideas
 Dealt with
 ^^^^^^^^^^
 
-- dim_max caching
+- Deal with equality constraints.
+  (These arise, e.g., when partitioning a loop of length 16 into 16s.)
+
+- dim_{min,max} caching
 
 - Exhaust the search for a no-boost solution first, before looking
   for a schedule with boosts.

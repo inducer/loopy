@@ -16,7 +16,10 @@ def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
                     | frozenset(get_defined_inames(kernel, sched_index+1)),
                     allow_parameters=True)
 
-    assert not equality_constraints_orig
+    lower_constraints_orig.extend(equality_constraints_orig)
+    upper_constraints_orig.extend(equality_constraints_orig)
+    #assert not equality_constraints_orig
+
     from loopy.codegen.bounds import pick_simple_constraint
     lb_cns_orig = pick_simple_constraint(lower_constraints_orig, iname)
     ub_cns_orig = pick_simple_constraint(upper_constraints_orig, iname)

@@ -151,6 +151,31 @@ def test_stencil(ctx_factory):
 
 
 
+def test_eq_constraint(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i,j]: 0<= i,j < 32}",
+            [
+                "a[i] = b[i]"
+                ],
+            [
+                lp.ArrayArg("a", np.float32, shape=(1000,)),
+                lp.ArrayArg("b", np.float32, shape=(1000,))
+                ])
+
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0")
+    knl = lp.split_dimension(knl, "i_inner", 16, outer_tag=None, inner_tag="l.0")
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen)
+
+    for knl in kernel_gen:
+        print lp.generate_code(knl)
+
+
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
