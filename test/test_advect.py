@@ -3,6 +3,7 @@ def test_advect(ctx_factory):
 
     dtype = np.float32
     ctx = ctx_factory()
+
     order = "C"
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
@@ -12,51 +13,59 @@ def test_advect(ctx_factory):
     from pymbolic import var
     K_sym = var("K")
 
-    field_shape = (N, N, N, K_sym)
+    field_shape = (K_sym, N, N, N)
 
     # 1. direction-by-direction similarity transform on u
     # 2. invert diagonal 
     # 3. transform back (direction-by-direction)
 
     # K - run-time symbolic
+
+    # A. updated for CSE: notation. 
+    # B. fixed temp indexing and C ordering
+    # load:     3+9 fields + 1/N D entry
+    # store:    3   fields
+    # perform:  N*2*6 + 3*5 + 3*5 flops
+    # ratio:   (12*N+30)/15  flops per 4 bytes on bus 
+    #          ~ 8.4 FLOPS per 4 bytes at N=8
+    #          ~ 300 GFLOPS max on a 150GB/s device at N=8 if done perfectly
     knl = lp.make_kernel(ctx.devices[0],
-            "[K] -> {[i,ip,j,jp,k,kp,m,e]: 0<=i,j,k,m<%d AND 0<=e<K}" %N
+            "[K] -> {[i,j,k,m,e]: 0<=i,j,k,m<%d AND 0<=e<K}" %N
             [
                 # differentiate u
-                "[|i,j,k] <float32>  ur[i,j,k,e] = sum_float32(m, D[i,m]*u[m,j,k,e])",
-                "[|i,j,k] <float32>  us[i,j,k,e] = sum_float32(m, D[j,m]*u[i,m,k,e])",
-                "[|i,j,k] <float32>  ut[i,j,k,e] = sum_float32(m, D[k,m]*u[i,j,m,e])",
+                "CSE:  ur[i,j,k] = sum_float32(@m, D[i,m]*u[e,m,j,k])",
+                "CSE:  us[i,j,k] = sum_float32(@m, D[j,m]*u[e,i,m,k])",
+                "CSE:  ut[i,j,k] = sum_float32(@m, D[k,m]*u[e,i,j,m])",
 
                 # differentiate v
-                "[|i,j,k] <float32>  vr[i,j,k,e] = sum_float32(m, D[i,m]*v[m,j,k,e])",
-                "[|i,j,k] <float32>  vs[i,j,k,e] = sum_float32(m, D[j,m]*v[i,m,k,e])",
-                "[|i,j,k] <float32>  vt[i,j,k,e] = sum_float32(m, D[k,m]*v[i,j,m,e])",
+                "CSE:  vr[i,j,k] = sum_float32(@m, D[i,m]*v[e,m,j,k])",
+                "CSE:  vs[i,j,k] = sum_float32(@m, D[j,m]*v[e,i,m,k])",
+                "CSE:  vt[i,j,k] = sum_float32(@m, D[k,m]*v[e,i,j,m])",
 
                 # differentiate w
-                "[|i,j,k] <float32>  wr[i,j,k,e] = sum_float32(m, D[i,m]*w[m,j,k,e])",
-                "[|i,j,k] <float32>  ws[i,j,k,e] = sum_float32(m, D[j,m]*w[i,m,k,e])",
-                "[|i,j,k] <float32>  wt[i,j,k,e] = sum_float32(m, D[k,m]*w[i,j,m,e])",
+                "CSE:  wr[i,j,k] = sum_float32(@m, D[i,m]*w[e,m,j,k])",
+                "CSE:  ws[i,j,k] = sum_float32(@m, D[j,m]*w[e,i,m,k])",
+                "CSE:  wt[i,j,k] = sum_float32(@m, D[k,m]*w[e,i,j,m])",
 
                 # find velocity in (r,s,t) coordinates
-                "<float32> Vr[i,j,k,e] = "
-                "G[i,j,k,0,e]*u[i,j,k,e] + G[i,j,k,1,e]*v[i,j,k,e] + G[i,j,k,2,e]*w[i,j,k,e]",
-                "<float32> Vs[i,j,k,e] = "
-                "G[i,j,k,3,e]*u[i,j,k,e] + G[i,j,k,4,e]*v[i,j,k,e] + G[i,j,k,5,e]*w[i,j,k,e]",
-                "<float32> Vt[i,j,k,e] = "
-                "G[i,j,k,6,e]*u[i,j,k,e] + G[i,j,k,7,e]*v[i,j,k,e] + G[i,j,k,8,e]*w[i,j,k,e]",
+                # CSE?
+                "Vr[i,j,k] = G[0,e,i,j,k]*u[e,i,j,k] + G[1,e,i,j,k]*v[e,i,j,k] + G[2,e,i,j,k]*w[e,i,j,k]",
+                "Vs[i,j,k] = G[3,e,i,j,k]*u[e,i,j,k] + G[4,e,i,j,k]*v[e,i,j,k] + G[5,e,i,j,k]*w[e,i,j,k]",
+                "Vt[i,j,k] = G[6,e,i,j,k]*u[e,i,j,k] + G[7,e,i,j,k]*v[e,i,j,k] + G[8,e,i,j,k]*w[e,i,j,k]",
 
                 # form nonlinear term on integration nodes
-                "Nu[i,j,k,e] = Vr[i,j,k,e]*ur[i,j,k,e]+Vs[i,j,k,e]*us[i,j,k,e]+Vt[i,j,k,e]*ut[i,j,k,e]",
-                "Nv[i,j,k,e] = Vr[i,j,k,e]*vr[i,j,k,e]+Vs[i,j,k,e]*vs[i,j,k,e]+Vt[i,j,k,e]*vt[i,j,k,e]",
-                "Nw[i,j,k,e] = Vr[i,j,k,e]*wr[i,j,k,e]+Vs[i,j,k,e]*ws[i,j,k,e]+Vt[i,j,k,e]*wt[i,j,k,e]",
+                "Nu[e,i,j,k] = Vr[i,j,k]*ur[i,j,k]+Vs[i,j,k]*us[i,j,k]+Vt[i,j,k]*ut[i,j,k]",
+                "Nv[e,i,j,k] = Vr[i,j,k]*vr[i,j,k]+Vs[i,j,k]*vs[i,j,k]+Vt[i,j,k]*vt[i,j,k]",
+                "Nw[e,i,j,k] = Vr[i,j,k]*wr[i,j,k]+Vs[i,j,k]*ws[i,j,k]+Vt[i,j,k]*wt[i,j,k]",
                 ],
             [
             lp.ArrayArg("u",   dtype, shape=field_shape, order=order),
             lp.ArrayArg("v",   dtype, shape=field_shape, order=order),
             lp.ArrayArg("w",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("Nu",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("Nv",   dtype, shape=field_shape, order=order),
-            lp.ArrayArg("Nw",   dtype, shape=field_shape, order=order),
+            lp.ArrayArg("Nu",  dtype, shape=field_shape, order=order),
+            lp.ArrayArg("Nv",  dtype, shape=field_shape, order=order),
+            lp.ArrayArg("Nw",  dtype, shape=field_shape, order=order),
+            lp.ArrayArg("G",   dtype, shape=(6,)+field_shape, order=order),
             lp.ArrayArg("D",   dtype, shape=(N, N),  order=order),
             lp.ScalarArg("K",  np.int32, approximately=1000),
             ],

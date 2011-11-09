@@ -22,66 +22,66 @@ def test_advect(ctx_factory):
 
     # K - run-time symbolic
     knl = lp.make_kernel(ctx.devices[0],
-            "[K] -> {[i,ip,j,jp,k,kp,m,e]: 0<=i,j,k,m<%d AND 0<=m,ip,jp,kp<%d 0<=e<K}" %M %N
+            "[K] -> {[i,ip,j,jp,k,kp,m,e]: 0<=i,j,k,m<%d AND 0<=o,ip,jp,kp<%d 0<=e<K}" %M %N
             [
 
                 # interpolate u to integration nodes
-                "[|i,jp,kp] <float32>  u0[i,jp,kp,e] = sum_float32(ip, I[i,ip]*u[ip,jp,kp,e])",
-                "[|i,j ,kp] <float32>  u1[i,j,kp,e]  = sum_float32(jp, I[j,jp]*u0[i,jp,kp,e])",
-                "[|i,j ,k ] <float32>  Iu[i,j,k,e]   = sum_float32(kp, I[k,kp]*u1[i,j,kp,e])",
+                "CSE:  u0[i,jp,kp,e] = sum_float32(@o, I[i,o]*u[o,jp,kp,e])",
+                "CSE:  u1[i,j,kp,e]  = sum_float32(@o, I[j,o]*u0[i,o,kp,e])",
+                "CSE:  Iu[i,j,k,e]   = sum_float32(@o, I[k,o]*u1[i,j,o,e])",
 
                 # differentiate u on integration nodes
-                "[|i,j ,k ] <float32>  Iur[i,j,k,e]  = sum_float32( m, D[i,m]*Iu[m,j,k,e])",
-                "[|i,j ,k ] <float32>  Ius[i,j,k,e]  = sum_float32( m, D[j,m]*Iu[i,m,k,e])",
-                "[|i,j ,k ] <float32>  Iut[i,j,k,e]  = sum_float32( m, D[k,m]*Iu[i,j,m,e])",
+                "CSE:  Iur[i,j,k,e]  = sum_float32(@m, D[i,m]*Iu[m,j,k,e])",
+                "CSE:  Ius[i,j,k,e]  = sum_float32(@m, D[j,m]*Iu[i,m,k,e])",
+                "CSE:  Iut[i,j,k,e]  = sum_float32(@m, D[k,m]*Iu[i,j,m,e])",
 
                 # interpolate v to integration nodes
-                "[|i,jp,kp] <float32>  v0[i,jp,kp,e] = sum_float32(ip, I[i,ip]*v[ip,jp,kp,e])",
-                "[|i,j ,kp] <float32>  v1[i,j,kp,e]  = sum_float32(jp, I[j,jp]*v0[i,jp,kp,e])",
-                "[|i,j ,k ] <float32>  Iv[i,j,k,e]   = sum_float32(kp, I[k,kp]*v1[i,j,kp,e])",
+                "CSE:  v0[i,jp,kp,e] = sum_float32(@o, I[i,o]*v[o,jp,kp,e])",
+                "CSE:  v1[i,j,kp,e]  = sum_float32(@o, I[j,o]*v0[i,o,kp,e])",
+                "CSE:  Iv[i,j,k,e]   = sum_float32(@o, I[k,o]*v1[i,j,o,e])",
 
                 # differentiate v on integration nodes
-                "[|i,j ,k ] <float32>  Ivr[i,j,k,e]  = sum_float32(ip, D[i,m]*Iv[m,j,k,e])",
-                "[|i,j ,k ] <float32>  Ivs[i,j,k,e]  = sum_float32(jp, D[j,m]*Iv[i,m,k,e])",
-                "[|i,j ,k ] <float32>  Ivt[i,j,k,e]  = sum_float32(kp, D[k,m]*Iv[i,j,m,e])",
+                "CSE:  Ivr[i,j,k,e]  = sum_float32(@m, D[i,m]*Iv[m,j,k,e])",
+                "CSE:  Ivs[i,j,k,e]  = sum_float32(@m, D[j,m]*Iv[i,m,k,e])",
+                "CSE:  Ivt[i,j,k,e]  = sum_float32(@m, D[k,m]*Iv[i,j,m,e])",
 
                 # interpolate w to integration nodes
-                "[|i,jp,kp] <float32>  w0[i,jp,kp,e] = sum_float32(ip, I[i,ip]*w[ip,jp,kp,e])",
-                "[|i,j ,kp] <float32>  w1[i,j,kp,e]  = sum_float32(jp, I[j,jp]*w0[i,jp,kp,e])",
-                "[|i,j ,k ] <float32>  Iw[i,j,k,e]   = sum_float32(kp, I[k,kp]*w1[i,j,kp,e])",
+                "CSE:  w0[i,jp,kp,e] = sum_float32(@o, I[i,o]*w[o,jp,kp,e])",
+                "CSE:  w1[i,j,kp,e]  = sum_float32(@o, I[j,o]*w0[i,o,kp,e])",
+                "CSE:  Iw[i,j,k,e]   = sum_float32(@o, I[k,o]*w1[i,j,o,e])",
 
-                # differentiate w on integration nodes
-                "[|i,j ,k ] <float32>  Iwr[i,j,k,e]  = sum_float32(ip, D[i,m]*Iw[m,j,k,e])",
-                "[|i,j ,k ] <float32>  Iws[i,j,k,e]  = sum_float32(jp, D[j,m]*Iw[i,m,k,e])",
-                "[|i,j ,k ] <float32>  Iwt[i,j,k,e]  = sum_float32(kp, D[k,m]*Iw[i,j,m,e])",
+                # differentiate v on integration nodes
+                "CSE:  Iwr[i,j,k,e]  = sum_float32(@m, D[i,m]*Iw[m,j,k,e])",
+                "CSE:  Iws[i,j,k,e]  = sum_float32(@m, D[j,m]*Iw[i,m,k,e])",
+                "CSE:  Iwt[i,j,k,e]  = sum_float32(@m, D[k,m]*Iw[i,j,m,e])",
 
                 # find velocity in (r,s,t) coordinates
-                "<float32> Vr[i,j,k,e] = "
-                "G[i,j,k,0,e]*Iu[i,j,k,e] + G[i,j,k,1,e]*Iv[i,j,k,e] + G[i,j,k,2,e]*Iw[i,j,k,e]",
-                "<float32> Vs[i,j,k,e] = "
-                "G[i,j,k,3,e]*Iu[i,j,k,e] + G[i,j,k,4,e]*Iv[i,j,k,e] + G[i,j,k,5,e]*Iw[i,j,k,e]",
-                "<float32> Vt[i,j,k,e] = "
-                "G[i,j,k,6,e]*Iu[i,j,k,e] + G[i,j,k,7,e]*Iv[i,j,k,e] + G[i,j,k,8,e]*Iw[i,j,k,e]",
+                # QUESTION: should I use CSE here ?
+                "CSE: Vr[i,j,k,e] = G[i,j,k,0,e]*Iu[i,j,k,e] + G[i,j,k,1,e]*Iv[i,j,k,e] + G[i,j,k,2,e]*Iw[i,j,k,e]",
+                "CSE: Vs[i,j,k,e] = G[i,j,k,3,e]*Iu[i,j,k,e] + G[i,j,k,4,e]*Iv[i,j,k,e] + G[i,j,k,5,e]*Iw[i,j,k,e]",
+                "CSE: Vt[i,j,k,e] = G[i,j,k,6,e]*Iu[i,j,k,e] + G[i,j,k,7,e]*Iv[i,j,k,e] + G[i,j,k,8,e]*Iw[i,j,k,e]",
 
                 # form nonlinear term on integration nodes
-                "<float32> Nu[i,j,k,e] = Vr[i,j,k,e]*Iur[i,j,k,e]+Vs[i,j,k,e]*Ius[i,j,k,e]+Vt[i,j,k,e]*Iut[i,j,k,e]",
-                "<float32> Nv[i,j,k,e] = Vr[i,j,k,e]*Ivr[i,j,k,e]+Vs[i,j,k,e]*Ivs[i,j,k,e]+Vt[i,j,k,e]*Ivt[i,j,k,e]",
-                "<float32> Nw[i,j,k,e] = Vr[i,j,k,e]*Iwr[i,j,k,e]+Vs[i,j,k,e]*Iws[i,j,k,e]+Vt[i,j,k,e]*Iwt[i,j,k,e]",
+                # QUESTION: should I use CSE here ?
+                "<SE: Nu[i,j,k,e] = Vr[i,j,k,e]*Iur[i,j,k,e]+Vs[i,j,k,e]*Ius[i,j,k,e]+Vt[i,j,k,e]*Iut[i,j,k,e]",
+                "<SE: Nv[i,j,k,e] = Vr[i,j,k,e]*Ivr[i,j,k,e]+Vs[i,j,k,e]*Ivs[i,j,k,e]+Vt[i,j,k,e]*Ivt[i,j,k,e]",
+                "<SE: Nw[i,j,k,e] = Vr[i,j,k,e]*Iwr[i,j,k,e]+Vs[i,j,k,e]*Iws[i,j,k,e]+Vt[i,j,k,e]*Iwt[i,j,k,e]",
 
                 # L2 project Nu back to Lagrange basis
-                "[|ip,j,k]  <float32> Nu2[ip,j,k,e]   = sum_float32(i, V[ip,i]*Nu[i,j,k,e])",
-                "[|ip,jp,k] <float32> Nu1[ip,jp,k,e]  = sum_float32(j, V[jp,j]*Nu2[ip,j,k,e])",
-                "INu[ip,jp,kp,e] = sum_float32(k, V[kp,k]*Nu1[ip,jp,k,e])",
+                "CSE: Nu2[ip,j,k,e]   = sum_float32(@m, V[ip,m]*Nu[m,j,k,e])",
+                "CSE: Nu1[ip,jp,k,e]  = sum_float32(@m, V[jp,m]*Nu2[ip,m,k,e])",
+                "INu[ip,jp,kp,e] = sum_float32(@m, V[kp,m]*Nu1[ip,jp,m,e])",
 
                 # L2 project Nv back to Lagrange basis
-                "[|ip,j,k]  <float32> Nv2[ip,j,k,e]   = sum_float32(i, V[ip,i]*Nv[i,j,k,e])",
-                "[|ip,jp,k] <float32> Nv1[ip,jp,k,e]  = sum_float32(j, V[jp,j]*Nv2[ip,j,k,e])",
-                "INv[ip,jp,kp,e] = sum_float32(k, V[kp,k]*Nv1[ip,jp,k,e])",
+                "CSE: Nv2[ip,j,k,e]   = sum_float32(@m, V[ip,m]*Nv[m,j,k,e])",
+                "CSE: Nv1[ip,jp,k,e]  = sum_float32(@m, V[jp,m]*Nv2[ip,m,k,e])",
+                "INv[ip,jp,kp,e] = sum_float32(@m, V[kp,m]*Nv1[ip,jp,m,e])",
 
                 # L2 project Nw back to Lagrange basis
-                "[|ip,j,k]  <float32> Nw2[ip,j,k,e]   = sum_float32(i, V[ip,i]*Nw[i,j,k,e])",
-                "[|ip,jp,k] <float32> Nw1[ip,jp,k,e]  = sum_float32(j, V[jp,j]*Nw2[ip,j,k,e])",
-                "INw[ip,jp,kp,e] = sum_float32(k, V[kp,k]*Nw1[ip,jp,k,e])",
+                "CSE: Nw2[ip,j,k,e]   = sum_float32(@m, V[ip,m]*Nw[m,j,k,e])",
+                "CSE: Nw1[ip,jp,k,e]  = sum_float32(@m, V[jp,m]*Nw2[ip,m,k,e])",
+                "INw[ip,jp,kp,e] = sum_float32(@m, V[kp,m]*Nw1[ip,jp,m,e])",
+
                 ],
             [
             lp.ArrayArg("u",   dtype, shape=field_shape, order=order),
