@@ -39,6 +39,8 @@ Things to consider
 To-do
 ^^^^^
 
+- CSE should be more like variable assignment
+
 - dim_max caching
 
 - Fix all tests
@@ -54,6 +56,7 @@ Future ideas
 - Float4 joining on fetch/store?
 
 - How can one automatically generate something like microblocks?
+  -> Some sort of axis-adding transform?
 
 - Better for loop bound generation
   -> Try a triangular loop
@@ -84,6 +87,9 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Exhaust the search for a no-boost solution first, before looking
+  for a schedule with boosts.
 
 - Pick not just axis 0, but all axes by lowest available stride
 

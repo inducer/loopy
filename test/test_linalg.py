@@ -368,8 +368,7 @@ def test_rank_one(ctx_factory):
 
     seq_knl = knl
 
-    #for variant in [variant_1, variant_2, variant_4]:
-    for variant in [variant_4]:
+    for variant in [variant_1, variant_2, variant_4]:
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 

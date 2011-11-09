@@ -232,6 +232,11 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
     scheduled_insn_ids = set(sched_item.insn_id for sched_item in schedule
             if isinstance(sched_item, RunInstruction))
 
+    if allow_boost is None:
+        rec_allow_boost = None
+    else:
+        rec_allow_boost = False
+
     # {{{ find active and entered loops
 
     active_inames = []
@@ -441,8 +446,10 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
             for iname in tier:
                 new_schedule = schedule + [EnterLoop(iname=iname)]
+
                 for sub_sched in generate_loop_schedules_internal(
                         kernel, loop_priority, new_schedule,
+                        allow_boost=rec_allow_boost,
                         debug=debug):
                     found_viable_schedule = True
                     yield sub_sched
@@ -465,10 +472,10 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         # if not done, but made some progress--try from the top
         for sub_sched in generate_loop_schedules_internal(
                 kernel, loop_priority, schedule,
-                debug=debug):
+                allow_boost=rec_allow_boost, debug=debug):
             yield sub_sched
     else:
-        if not allow_boost:
+        if not allow_boost and allow_boost is not None:
             # try again with boosting allowed
             for sub_sched in generate_loop_schedules_internal(
                     kernel, loop_priority, schedule=schedule,
@@ -619,22 +626,31 @@ def generate_loop_schedules(kernel, loop_priority=[], debug=None):
 
     debug = SchedulerDebugger(debug)
 
-    for gen_sched in generate_loop_schedules_internal(kernel, loop_priority,
-            debug=debug):
-        gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
-        if owed_barriers:
-            from warnings import warn
-            from loopy import LoopyAdvisory
-            warn("Barrier insertion finished without inserting barriers for "
-                    "local memory writes in these instructions: '%s'. "
-                    "This often means that local memory was "
-                    "written, but never read." % ",".join(owed_barriers), LoopyAdvisory)
+    generators = [
+            generate_loop_schedules_internal(kernel, loop_priority,
+                debug=debug, allow_boost=None),
+            generate_loop_schedules_internal(kernel, loop_priority,
+                debug=debug)]
+    for gen in generators:
+        for gen_sched in gen:
+            gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
+            if owed_barriers:
+                from warnings import warn
+                from loopy import LoopyAdvisory
+                warn("Barrier insertion finished without inserting barriers for "
+                        "local memory writes in these instructions: '%s'. "
+                        "This often means that local memory was "
+                        "written, but never read." % ",".join(owed_barriers), LoopyAdvisory)
 
-        debug.stop()
-        yield kernel.copy(schedule=gen_sched)
-        debug.start()
+            debug.stop()
+            yield kernel.copy(schedule=gen_sched)
+            debug.start()
 
-        schedule_count += 1
+            schedule_count += 1
+
+        # if no-boost mode yielded a viable schedule, stop now
+        if schedule_count:
+            break
 
     debug.done_scheduling()
 
