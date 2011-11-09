@@ -41,8 +41,6 @@ To-do
 
 - CSE should be more like variable assignment
 
-- dim_max caching
-
 - Fix all tests
 
 - Deal with equality constraints.
@@ -87,6 +85,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- dim_max caching
 
 - Exhaust the search for a no-boost solution first, before looking
   for a schedule with boosts.

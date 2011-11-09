@@ -498,7 +498,8 @@ def realize_cse(kernel, cse_tag, dtype, independent_inames=[],
 
     target_var_base_indices, target_var_shape = \
             find_var_base_indices_and_shape_from_inames(
-                    new_domain, independent_inames)
+                    new_domain, independent_inames,
+                    kernel.cache_manager)
 
     new_temporary_variables = kernel.temporary_variables.copy()
     new_temporary_variables[target_var_name] = TemporaryVariable(

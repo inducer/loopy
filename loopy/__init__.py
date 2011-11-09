@@ -168,7 +168,7 @@ def make_kernel(*args, **kwargs):
 
             base_indices, shape = \
                     find_var_base_indices_and_shape_from_inames(
-                            new_domain, assignee_indices)
+                            new_domain, assignee_indices, knl.cache_manager)
 
             new_temp_vars[assignee_name] = TemporaryVariable(
                     name=assignee_name,
