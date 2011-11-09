@@ -41,8 +41,6 @@ To-do
 
 - dim_max caching
 
-- Pick not just axis 0, but all axes by lowest available stride
-
 - Fix all tests
 
 - Deal with equality constraints.
@@ -86,6 +84,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Pick not just axis 0, but all axes by lowest available stride
 
 - Scheduler tries too many boostability-related options
 

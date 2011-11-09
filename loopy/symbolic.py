@@ -287,7 +287,7 @@ class ArrayAccessFinder(CombineMapper):
 
 class LoopyCCodeMapper(CCodeMapper):
     def __init__(self, kernel, cse_name_list=[], var_subst_map={},
-            with_annotation=False):
+            with_annotation=True):
         def constant_mapper(c):
             if isinstance(c, float):
                 # FIXME: type-variable
