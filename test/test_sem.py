@@ -54,29 +54,31 @@ def test_sem_3d(ctx_factory):
             name="semlap", assumptions="K>=1")
 
 
-    def add_pf(knl):
-        knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
-        knl = lp.add_prefetch(knl, "D", ["m", "j"])
-        knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
-        knl = lp.realize_cse(knl, "ur", np.float32, ["k", "j", "m"])
-        knl = lp.realize_cse(knl, "us", np.float32, ["i", "m", "k"])
-        knl = lp.realize_cse(knl, "ut", np.float32, ["i", "j", "m"])
+    knl = lp.realize_cse(knl, "ur", np.float32, ["k", "j", "m"])
+    knl = lp.realize_cse(knl, "us", np.float32, ["i", "m", "k"])
+    knl = lp.realize_cse(knl, "ut", np.float32, ["i", "j", "m"])
 
-    seq_knl = add_pf(knl)
+    if 0:
+        seq_knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
+        seq_knl = lp.add_prefetch(seq_knl, "D", ["m", "j"])
+        seq_knl = lp.add_prefetch(seq_knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
+    else:
+        seq_knl = knl
 
     knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
+
+    knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
+    knl = lp.add_prefetch(knl, "D", ["m", "j"])
+    knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
     #knl = lp.split_dimension(knl, "e_inner", 4, inner_tag="ilp")
 
-    knl = add_pf(knl)
     #print seq_knl
-    #print lp.preprocess_kernel(seq_knl)
+    #print lp.preprocess_kernel(knl)
     #1/0
-
 
     knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
 
-    kernel_gen = lp.generate_loop_schedules(knl,
-            loop_priority=["j_dr", "j_ds",  "i_dt"])
+    kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
 
     K = 1000

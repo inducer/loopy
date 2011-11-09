@@ -30,7 +30,6 @@ def test_laplacian_stiffness(ctx_factory):
     from pymbolic import var
     Nc_sym = var("Nc")
 
-    print "[Nc] -> {[K,i,j,q]: 0<=K<Nc and 0<=i,j<%(Nb)d and 0<=q<%(Nq)d}" % dict(Nb=Nb, Nq=Nq),
     knl = lp.make_kernel(ctx.devices[0],
             "[Nc] -> {[K,i,j,q]: 0<=K<Nc and 0<=i,j<%(Nb)d and 0<=q<%(Nq)d}" 
             % dict(Nb=Nb, Nq=Nq),
@@ -42,11 +41,11 @@ def test_laplacian_stiffness(ctx_factory):
 
                 ],
             [
-            lp.ArrayArg("jacInv", dtype, shape=(Nc, Nq, dim, dim), order=order),
+            lp.ArrayArg("jacInv", dtype, shape=(Nc_sym, Nq, dim, dim), order=order),
             lp.ConstantArrayArg("DPsi", dtype, shape=(Nb, Nq, dim), order=order),
-            lp.ArrayArg("jacDet", dtype, shape=(Nc, Nq), order=order),
+            lp.ArrayArg("jacDet", dtype, shape=(Nc_sym, Nq), order=order),
             lp.ConstantArrayArg("w", dtype, shape=(Nq, dim), order=order),
-            lp.ArrayArg("A", dtype, shape=(Nc, Nb, Nb), order=order),
+            lp.ArrayArg("A", dtype, shape=(Nc_sym, Nb, Nb), order=order),
             lp.ScalarArg("Nc",  np.int32, approximately=1000),
             ],
             name="semlap", assumptions="Nc>=1")
@@ -56,17 +55,16 @@ def test_laplacian_stiffness(ctx_factory):
     knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
     knl = lp.split_dimension(knl, "K_inner", 4, inner_tag="ilp")
     knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
-    knl = lp.add_prefetch(knl, 'jacInv', ["K_inner_outer", "K_inner_inner", "q"],
-            uni_template="jacInv[x,y,z,u]")
+    knl = lp.add_prefetch(knl, 'jacInv', ["Kii", "Kio", "q", "x", "y"],
+            uni_template="jacInv[Kii + 4*Kio +16*Ko,q,x,y]")
 
     kernel_gen = lp.generate_loop_schedules(knl,
             loop_priority=["K", "i", "j"])
-    kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=1000))
+    kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
 
-    Nc = 1000
     lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
             op_count=0, op_label="GFlops",
-            parameters={"Nc": 1000}, print_seq_code=True,
+            parameters={"Nc": Nc}, print_seq_code=True,
             timing_rounds=30)
 
 
