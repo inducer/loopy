@@ -8,7 +8,10 @@ from pymbolic.primitives import AlgebraicLeaf
 from pymbolic.mapper import (
         CombineMapper as CombineMapperBase,
         IdentityMapper as IdentityMapperBase,
-        RecursiveMapper)
+        RecursiveMapper,
+        WalkMapper as WalkMapperBase,
+        CallbackMapper as CallbackMapperBase,
+        )
 from pymbolic.mapper.c_code import CCodeMapper
 from pymbolic.mapper.stringifier import PREC_NONE
 from pymbolic.mapper.substitutor import \
@@ -79,6 +82,13 @@ class IdentityMapperMixin(object):
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
+
+class WalkMapper(WalkMapperBase):
+    def map_reduction(self, expr):
+        self.rec(expr.expression)
+
+class CallbackMapper(CallbackMapperBase, IdentityMapper):
+    map_reduction = CallbackMapperBase.map_constant
 
 class CombineMapper(CombineMapperBase):
     def map_reduction(self, expr):
@@ -510,20 +520,6 @@ def constraint_to_expr(cns, except_name=None):
 
 # }}}
 
-# {{{ CSE callback mapper
-
-class CSECallbackMapper(IdentityMapper):
-    def __init__(self, callback):
-        self.callback = callback
-
-    def map_common_subexpression(self, expr):
-        result = self.callback(expr, self.rec)
-        if result is None:
-            return IdentityMapper.map_common_subexpression(self, expr)
-        return result
-
-# }}}
-
 # {{{ Reduction callback mapper
 
 class ReductionCallbackMapper(IdentityMapper):
@@ -579,82 +575,71 @@ class IndexVariableFinder(CombineMapper):
 
 # }}}
 
-# {{{ variable-fetch CSE mapper
-
-class VariableFetchCSEMapper(IdentityMapper):
-    """Turns fetches of a given variable names into CSEs."""
-    def __init__(self, var_name, cse_tag_getter):
-        self.var_name = var_name
-        self.cse_tag_getter = cse_tag_getter
-
-    def map_variable(self, expr):
-        from pymbolic.primitives import CommonSubexpression
-        if expr.name == self.var_name:
-            return CommonSubexpression(expr, self.cse_tag_getter())
-        else:
-            return IdentityMapper.map_variable(self, expr)
-
-    def map_subscript(self, expr):
-        from pymbolic.primitives import CommonSubexpression, Variable, Subscript
-        if (isinstance(expr.aggregate, Variable)
-                and expr.aggregate.name == self.var_name):
-            return CommonSubexpression(
-                    Subscript(expr.aggregate, self.rec(expr.index)), self.cse_tag_getter())
-        else:
-            return IdentityMapper.map_subscript(self, expr)
-
-# }}}
-
 # {{{ parametrized substitutor
 
 class ParametrizedSubstitutor(IdentityMapper):
-    def __init__(self, cses, wrap_cse):
-        """
-        :arg cses: a mapping from CSE names to tuples (arg_names, expr).
-        :arg wrap_cse: flag: wrap substituted expressions in CSEs
-        """
-        self.cses = cses
-        self.wrap_cse = wrap_cse
+    def __init__(self, rules):
+        self.rules = rules
 
     def map_variable(self, expr):
-        if expr.name not in self.cses:
+        if expr.name not in self.rules:
             return IdentityMapper.map_variable(self, expr)
 
-        arg_names, cse_expr = self.cse[expr.name]
-        if len(arg_names) != 0:
+        rule = self.rules[expr.name]
+        if rule.arguments:
             raise RuntimeError("CSE '%s' must be invoked with %d arguments"
-                    % (expr.name, len(arg_names)))
+                    % (expr.name, len(rule.arguments)))
 
-        cse_expr = self.rec(cse_expr)
-
-        if self.wrap_cse:
-            from pymbolic.primitives import CommonSubexpression
-            return CommonSubexpression(cse_expr, expr.name)
-        else:
-            return cse_expr
+        return self.rec(rule.expression)
 
     def map_call(self, expr):
-        from pymbolic.primitives import Variable, CommonSubexpression
+        from pymbolic.primitives import Variable
         if (not isinstance(expr.function, Variable)
-                or expr.function.name not in self.cses):
+                or expr.function.name not in self.rules):
             return IdentityMapper.map_variable(self, expr)
 
         cse_name = expr.function.name
-        arg_names, cse_expr = self.cses[cse_name]
-        if len(arg_names) != len(expr.parameters):
-            raise RuntimeError("CSE '%s' invoked with %d arguments (needs %d)"
-                    % (cse_name, len(arg_names), len(expr.parameters)))
+        rule = self.rules[cse_name]
+        if len(rule.arguments) != len(expr.parameters):
+            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
+                    % (cse_name, len(expr.parameters), len(rule.arguments), ))
 
         from pymbolic.mapper.substitutor import make_subst_func
         subst_map = SubstitutionMapper(make_subst_func(
-            dict(zip(arg_names, expr.parameters))))
+            dict(zip(rule.arguments, expr.parameters))))
 
-        cse_expr = self.rec(subst_map(cse_expr))
+        return self.rec(subst_map(rule.expression))
 
-        if self.wrap_cse:
-            return CommonSubexpression(cse_expr, cse_name)
+# }}}
+
+# {{{ substitution callback mapper
+
+class SubstitutionCallbackMapper(IdentityMapper):
+    def __init__(self, names, func):
+        self.names = names
+        self.func = func
+
+    def map_variable(self, expr):
+        if expr.name not in self.names:
+            return IdentityMapper.map_variable(self, expr)
+
+        result = self.func(expr, expr.name, (), self.rec)
+        if result is None:
+            return IdentityMapper.map_variable(self, expr)
         else:
-            return cse_expr
+            return result
+
+    def map_call(self, expr):
+        from pymbolic.primitives import Variable
+        if (not isinstance(expr.function, Variable)
+                or expr.function.name not in self.names):
+            return IdentityMapper.map_variable(self, expr)
+
+        result = self.func(expr, expr.function.name, expr.parameters, self.rec)
+        if result is None:
+            return IdentityMapper.map_call(self, expr)
+        else:
+            return result
 
 # }}}
 

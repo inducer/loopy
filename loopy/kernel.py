@@ -217,6 +217,26 @@ class TemporaryVariable(Record):
 
 # }}}
 
+# {{{ subsitution rule
+
+class SubstitutionRule(Record):
+    """
+    :ivar name:
+    :ivar arguments:
+    :ivar expression:
+    """
+
+    def __init__(self, name, arguments, expression):
+        Record.__init__(self,
+                name=name, arguments=arguments, expression=expression)
+
+    def __str__(self):
+        return "%s(%s) := %s" % (
+                self.name, ", ".join(self.arguments), self.expression)
+
+
+# }}}
+
 # {{{ instruction
 
 class Instruction(Record):
@@ -451,6 +471,8 @@ class LoopKernel(Record):
     :ivar local_sizes: A dictionary from integers to integers, mapping
         workgroup axes to ther sizes, e.g. *{0: 16}* forces axis 0 to be
         length 16.
+    :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
+        objects
 
     :ivar cache_manager:
 
@@ -458,8 +480,6 @@ class LoopKernel(Record):
     finished:
 
     :ivar iname_to_tag_requests:
-    :ivar cses: a mapping from CSE names to tuples (arg_names, expr).
-    :ivar substitutions: a mapping from CSE names to tuples (arg_names, expr).
     """
 
     def __init__(self, device, domain, instructions, args=None, schedule=None,
@@ -468,7 +488,7 @@ class LoopKernel(Record):
             iname_slab_increments={},
             temporary_variables={},
             local_sizes={},
-            iname_to_tag={}, iname_to_tag_requests=None, cses={}, substitutions={},
+            iname_to_tag={}, iname_to_tag_requests=None, substitutions={},
             cache_manager=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
@@ -489,7 +509,7 @@ class LoopKernel(Record):
 
         INAME_ENTRY_RE = re.compile(
                 r"^\s*(?P<iname>\w+)\s*(?:\:\s*(?P<tag>[\w.]+))?\s*$")
-        LABEL_DEP_RE = re.compile(
+        INSN_RE = re.compile(
                 r"^\s*(?:(?P<label>\w+):)?"
                 "\s*(?:\["
                     "(?P<iname_deps_and_tags>[\s\w,:.]*)"
@@ -498,6 +518,9 @@ class LoopKernel(Record):
                 "\s*(?:\<(?P<temp_var_type>.+)\>)?"
                 "\s*(?P<lhs>.+)\s*=\s*(?P<rhs>.+?)"
                 "\s*?(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
+                )
+        SUBST_RE = re.compile(
+                r"^\s*(?P<lhs>.+)\s*:=\s*(?P<rhs>.+?)\s*$"
                 )
 
         def parse_iname_and_tag_list(s):
@@ -540,21 +563,28 @@ class LoopKernel(Record):
                         "instance or a parseable string. got '%s' instead."
                         % type(insn))
 
-            label_dep_match = LABEL_DEP_RE.match(insn)
-            if label_dep_match is None:
+            insn_match = INSN_RE.match(insn)
+            subst_match = SUBST_RE.match(insn)
+            if insn_match is not None and subst_match is not None:
                 raise RuntimeError("insn parse error")
 
-            groups = label_dep_match.groupdict()
-            if groups["label"] is not None:
-                label = groups["label"]
+            if insn_match is not None:
+                groups = insn_match.groupdict()
+            elif subst_match is not None:
+                groups = subst_match.groupdict()
             else:
-                label = "insn"
+                raise RuntimeError("insn parse error")
 
             lhs = parse(groups["lhs"])
             from loopy.symbolic import FunctionToPrimitiveMapper
             rhs = FunctionToPrimitiveMapper()(parse(groups["rhs"]))
 
-            if label.lower() not in ["cse", "subst"]:
+            if insn_match is not None:
+                if groups["label"] is not None:
+                    label = groups["label"]
+                else:
+                    label = "insn"
+
                 if groups["insn_deps"] is not None:
                     insn_deps = set(dep.strip() for dep in groups["insn_deps"].split(","))
                 else:
@@ -587,43 +617,35 @@ class LoopKernel(Record):
                             assignee=lhs, expression=rhs,
                             temp_var_type=temp_var_type,
                             duplicate_inames_and_tags=duplicate_inames_and_tags))
-            else:
-                if groups["iname_deps_and_tags"] is not None:
-                    raise RuntimeError("CSEs/substitutions cannot declare iname dependencies")
-                if groups["insn_deps"] is not None:
-                    raise RuntimeError("CSEs/substitutions cannot declare instruction dependencies")
-                if groups["temp_var_type"] is not None:
-                    raise RuntimeError("CSEs/substitutions cannot declare temporary storage")
-
+            elif subst_match is not None:
                 from pymbolic.primitives import Variable, Call
 
                 if isinstance(lhs, Variable):
-                    cse_name = lhs.name
+                    subst_name = lhs.name
                     arg_names = []
                 elif isinstance(lhs, Call):
                     if not isinstance(lhs.function, Variable):
-                        raise RuntimeError("Invalid CSE left-hand side")
-                    cse_name = lhs.function.name
+                        raise RuntimeError("Invalid substitution rule left-hand side")
+                    subst_name = lhs.function.name
                     arg_names = []
 
                     for arg in lhs.parameters:
                         if not isinstance(arg, Variable):
-                            raise RuntimeError("Invalid CSE left-hand side")
+                            raise RuntimeError("Invalid substitution rule left-hand side")
                         arg_names.append(arg.name)
                 else:
-                    raise RuntimeError("CSEs cannot declare temporary storage")
+                    raise RuntimeError("Invalid substitution rule left-hand side")
 
-                if label.lower() == "cse":
-                    cses[cse_name] = (arg_names, rhs)
-                else:
-                    substitutions[cse_name] = (arg_names, rhs)
+                substitutions[subst_name] = SubstitutionRule(
+                        name=subst_name,
+                        arguments=arg_names,
+                        expression=rhs)
 
         # }}}
 
         insns = []
 
-        cses = cses.copy()
-        substituions = substitutions.copy()
+        substitutions = substitutions.copy()
 
         for insn in instructions:
             # must construct list one-by-one to facilitate unique id generation
@@ -656,7 +678,7 @@ class LoopKernel(Record):
                 local_sizes=local_sizes,
                 iname_to_tag=iname_to_tag,
                 iname_to_tag_requests=iname_to_tag_requests,
-                cses=cses, substitutions=substitutions,
+                substitutions=substitutions,
                 cache_manager=cache_manager)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
@@ -668,6 +690,12 @@ class LoopKernel(Record):
         from loopy.tools import generate_unique_possibilities
         for id_str in generate_unique_possibilities(based_on):
             if id_str not in used_ids:
+                return id_str
+
+    def make_unique_subst_rule_name(self, based_on="subst"):
+        from loopy.tools import generate_unique_possibilities
+        for id_str in generate_unique_possibilities(based_on):
+            if id_str not in self.substitutions:
                 return id_str
 
     @memoize_method
@@ -826,12 +854,16 @@ class LoopKernel(Record):
             insn.get_assignee_var_name()
             for insn in self.instructions)
 
-    def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
-        used_vars = (
+    @memoize_method
+    def all_variable_names(self):
+        return (
                 set(self.temporary_variables.iterkeys())
+                | set(self.substitutions.iterkeys())
                 | set(arg.name for arg in self.args)
-                | set(self.iname_to_dim.keys())
-                | extra_used_vars)
+                | set(self.iname_to_dim.keys()))
+
+    def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
+        used_vars = self.all_variable_names() | extra_used_vars
 
         from loopy.tools import generate_unique_possibilities
         for var_name in generate_unique_possibilities(based_on):
@@ -1025,17 +1057,44 @@ class LoopKernel(Record):
 
         return result
 
+    def map_expressions(self, func, exclude_instructions=False):
+        if exclude_instructions:
+            new_insns = self.instructions
+        else:
+            new_insns = [insn.copy(expression=func(insn.expression))
+                    for insn in self.instructions]
+
+        return self.copy(
+                instructions=new_insns,
+                substitutions=dict(
+                    (subst.name, subst.copy(expression=func(subst.expression)))
+                    for subst in self.substitutions.itervalues()))
+
     def __str__(self):
         lines = []
 
+        sep = 75*"-"
+        lines.append(sep)
+        lines.append("INAME-TO-TAG MAP:")
         for iname in sorted(self.all_inames()):
             lines.append("%s: %s" % (iname, self.iname_to_tag.get(iname)))
-        lines.append("")
+
+        lines.append(sep)
+        lines.append("DOMAIN:")
         lines.append(str(self.domain))
-        lines.append("")
+
+        if self.substitutions:
+            lines.append(sep)
+            lines.append("SUBSTIUTION RULES:")
+            for rule in self.substitutions.itervalues():
+                lines.append(str(rule))
+
+        lines.append(sep)
+        lines.append("INSTRUCTIONS:")
         for insn in self.instructions:
             lines.append(str(insn))
             lines.append("    [%s]" % ",".join(sorted(self.insn_inames(insn))))
+        lines.append(sep)
 
         return "\n".join(lines)
 

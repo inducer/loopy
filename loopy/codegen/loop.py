@@ -62,7 +62,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
         if lower_incr:
             assert lower_incr > 0
-            lower_slab = ("initial", isl.Set.universe(kernel.space)
+            lower_slab = ("initial", isl.BasicSet.universe(kernel.space)
                     .add_constraint(lb_cns_orig)
                     .add_constraint(ub_cns_orig)
                     .add_constraint(
@@ -78,7 +78,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
         if upper_incr:
             assert upper_incr > 0
-            upper_slab = ("final", isl.Set.universe(kernel.space)
+            upper_slab = ("final", isl.BasicSet.universe(kernel.space)
                     .add_constraint(lb_cns_orig)
                     .add_constraint(ub_cns_orig)
                     .add_constraint(
@@ -98,7 +98,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
             slabs.append(lower_slab)
         slabs.append((
             ("bulk",
-                (isl.Set.universe(kernel.space)
+                (isl.BasicSet.universe(kernel.space)
                     .add_constraint(lower_bulk_bound)
                     .add_constraint(upper_bulk_bound)))))
         if upper_slab:
@@ -108,7 +108,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
     else:
         return [("bulk",
-            (isl.Set.universe(kernel.space)
+            (isl.BasicSet.universe(kernel.space)
             .add_constraint(lb_cns_orig)
             .add_constraint(ub_cns_orig)))]
 

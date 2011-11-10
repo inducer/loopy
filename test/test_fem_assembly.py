@@ -34,7 +34,7 @@ def test_laplacian_stiffness(ctx_factory):
             "[Nc] -> {[K,i,j,q]: 0<=K<Nc and 0<=i,j<%(Nb)d and 0<=q<%(Nq)d}" 
             % dict(Nb=Nb, Nq=Nq),
             [
-                "SUBST: dPsi(a,dxi) = jacInv[K,q,0,dxi] * DPsi[a,q,0] "
+                "CSE: dPsi(a,dxi) = jacInv[K,q,0,dxi] * DPsi[a,q,0] "
                     "+ jacInv[K,q,1,dxi] * DPsi[a,q,1]",
                 "A[K, i, j] = sum_float32(q, w[q] * jacDet[K,q] * ("
                     "dPsi(0,0)*dPsi(1,0) + dPsi(0,1)*dPsi(1,1)))"
@@ -52,20 +52,43 @@ def test_laplacian_stiffness(ctx_factory):
 
     seq_knl = knl
 
-    knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
-    knl = lp.split_dimension(knl, "K_inner", 4, inner_tag="ilp")
-    knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
-    knl = lp.add_prefetch(knl, 'jacInv', ["Kii", "Kio", "q", "x", "y"],
-            uni_template="jacInv[Kii + 4*Kio +16*Ko,q,x,y]")
+    def variant_1(knl):
+        # no ILP across elements
+        knl= lp.remove_cse_by_tag(knl, "dPsi")
+        knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
+        knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
+        knl = lp.add_prefetch(knl, 'jacInv', ["Kii", "Kio", "q", "x", "y"],
+                uni_template="jacInv[Kii +16*Ko,q,x,y]")
+        return knl
 
-    kernel_gen = lp.generate_loop_schedules(knl,
-            loop_priority=["K", "i", "j"])
-    kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
+    def variant_2(knl):
+        # with ILP across elements
+        knl= lp.remove_cse_by_tag(knl, "dPsi")
+        knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
+        knl = lp.split_dimension(knl, "K_inner", 4, inner_tag="ilp")
+        knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
+        knl = lp.add_prefetch(knl, 'jacInv', ["Kii", "Kio", "q", "x", "y"],
+                uni_template="jacInv[Kii + 4*Kio +16*Ko,q,x,y]")
+        return knl
 
-    lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
-            op_count=0, op_label="GFlops",
-            parameters={"Nc": Nc}, print_seq_code=True,
-            timing_rounds=30)
+    def variant_1(knl):
+        # no ILP across elements, precompute dPsiTransf
+        knl= lp.realize_cse(knl, "dPsi", ["a", "dxi", ""])
+        knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
+        knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
+        knl = lp.add_prefetch(knl, 'jacInv', ["Kii", "Kio", "q", "x", "y"],
+                uni_template="jacInv[Kii +16*Ko,q,x,y]")
+        return knl
+
+    for variant in [variant_1, variant_2]:
+        kernel_gen = lp.generate_loop_schedules(variant(knl),
+                loop_priority=["K", "i", "j"])
+        kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
+
+        lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
+                op_count=0, op_label="GFlops",
+                parameters={"Nc": Nc}, print_seq_code=True,
+                timing_rounds=30)
 
 
 

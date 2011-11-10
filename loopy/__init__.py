@@ -23,20 +23,23 @@ class LoopyAdvisory(UserWarning):
 from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
 
 from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph
-from loopy.cse import realize_cse
+from loopy.subst import extract_subst, apply_subst
+from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_seq
 from loopy.check import check_kernels
 
-__all__ = ["ScalarArg", "ArrayArg", "ImageArg",
+__all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg",
         "get_dot_dependency_graph",
         "preprocess_kernel", "generate_loop_schedules",
         "generate_code",
-        "CompiledKernel", "drive_timing_run", "check_kernels",
+        "CompiledKernel", "drive_timing_run", "auto_test_vs_seq", "check_kernels",
         "make_kernel", "split_dimension", "join_dimensions",
-        "tag_dimensions", "realize_cse", "add_prefetch"
+        "tag_dimensions",
+        "extract_subst", "apply_subst",
+        "precompute", "add_prefetch"
         ]
 
 # }}}
@@ -62,12 +65,7 @@ def make_kernel(*args, **kwargs):
 
     newly_created_vars = set()
 
-    from loopy.symbolic import ParametrizedSubstitutor
-    cse_sub = ParametrizedSubstitutor(knl.cses, wrap_cse=True)
-    subst_sub = ParametrizedSubstitutor(knl.substitutions, wrap_cse=False)
-
     for insn in knl.instructions:
-        insn = insn.copy(expression=subst_sub(cse_sub(insn.expression)))
 
         # {{{ sanity checking
 
@@ -190,8 +188,7 @@ def make_kernel(*args, **kwargs):
             domain=new_domain,
             temporary_variables=new_temp_vars,
             iname_to_tag=new_iname_to_tag,
-            iname_to_tag_requests=[],
-            cses={})
+            iname_to_tag_requests=[])
 
 # }}}
 
@@ -276,6 +273,7 @@ def split_dimension(kernel, split_iname, inner_length,
     iname_slab_increments = kernel.iname_slab_increments.copy()
     iname_slab_increments[outer_iname] = slabs
     result = (kernel
+            .map_expressions(subst_mapper, exclude_instructions=True)
             .copy(domain=new_domain,
                 iname_slab_increments=iname_slab_increments,
                 instructions=new_insns,
@@ -367,9 +365,9 @@ def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
                 forced_iname_deps=subst_forced_iname_deps(insn.forced_iname_deps))
             for insn in kernel.instructions]
 
-    result = kernel.copy(
-            instructions=new_insns,
-            domain=new_domain)
+    result = (kernel
+            .map_expressions(subst_map, exclude_instructions=True)
+            .copy(instructions=new_insns, domain=new_domain))
 
     return tag_dimensions(result, {new_iname: tag})
 
@@ -419,53 +417,47 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
 # {{{ convenience: add_prefetch
 
-def add_prefetch(kernel, var_name, fetch_dims=[], uni_template=None,
-        new_inames=None, default_tag="l.auto"):
-    used_cse_tags = set()
-    def map_cse(expr, rec):
-        used_cse_tags.add(expr.tag)
-        rec(expr.child)
+def add_prefetch(kernel, var_name, sweep_dims, dim_args=None,
+        new_inames=None, default_tag="l.auto", rule_name=None):
 
-    def get_unique_cse_tag():
-        from loopy.tools import generate_unique_possibilities
-        for cse_tag in generate_unique_possibilities(prefix="fetch_"+var_name):
-            if cse_tag not in used_cse_tags:
-                used_cse_tags.add(cse_tag)
-                return cse_tag
+    if rule_name is None:
+        rule_name = kernel.make_unique_subst_rule_name("%s_fetch" % var_name)
 
-    cse_tag = get_unique_cse_tag()
+    arg = kernel.arg_dict[var_name]
 
-    from loopy.symbolic import VariableFetchCSEMapper
-    vf_cse_mapper = VariableFetchCSEMapper(var_name, lambda: cse_tag)
-    kernel = kernel.copy(instructions=[
-            insn.copy(expression=vf_cse_mapper(insn.expression))
-            for insn in kernel.instructions])
+    newly_created_vars = set()
+    parameters = []
+    for i in range(len(arg.shape)):
+        based_on = "%s_i%d" % (var_name, i)
+        if dim_args is not None and i < len(dim_args):
+            based_on = dim_args[i]
 
-    if var_name in kernel.arg_dict:
-        dtype = kernel.arg_dict[var_name].dtype
-    else:
-        dtype = kernel.temporary_variables[var_name].dtype
+        par_name = kernel.make_unique_var_name(based_on=based_on,
+                extra_used_vars=newly_created_vars)
+        newly_created_vars.add(par_name)
+        parameters.append(par_name)
 
-    kernel = realize_cse(kernel, cse_tag, dtype, fetch_dims, uni_template=uni_template,
-            new_inames=new_inames, default_tag=default_tag)
+    from pymbolic import var
+    uni_template = var(var_name)
+    if len(parameters) > 1:
+        uni_template = uni_template[tuple(var(par_name) for par_name in parameters)]
+    elif len(parameters) == 1:
+        uni_template = uni_template[var(parameters[0])]
 
-    return kernel
+    kernel = extract_subst(kernel, rule_name, uni_template, parameters)
+
+    new_fetch_dims = []
+    for fd in sweep_dims:
+        if isinstance(fd, int):
+            new_fetch_dims.append(parameters[fd])
+        else:
+            new_fetch_dims.append(fd)
+
+    return precompute(kernel, rule_name, arg.dtype, sweep_dims, new_arg_names=dim_args,
+            default_tag=default_tag)
 
 # }}}
 
-def remove_cses(kernel):
-    from loopy.symbolic import CSECallbackMapper
-
-    def map_cse(expr, rec):
-        return expr.child
-
-    new_insns = []
-    for insn in kernel.instructions:
-        new_insns.append(
-                insn.copy(
-                    expression=CSECallbackMapper(map_cse)(insn.expression)))
-
-    return kernel.copy(instructions=new_insns)
 
 
 

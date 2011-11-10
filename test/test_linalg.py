@@ -348,9 +348,9 @@ def test_rank_one(ctx_factory):
 
     def variant_4(knl):
         knl = lp.split_dimension(knl, "i", 256,
-                outer_tag="g.0")#, slabs=(0, 1))
+                outer_tag="g.0", slabs=(0, 1))
         knl = lp.split_dimension(knl, "j", 256,
-                outer_tag="g.1")#, slabs=(0, 1))
+                outer_tag="g.1", slabs=(0, 1))
 
         knl = lp.add_prefetch(knl, "a", ["i_inner"], default_tag=None)
         knl = lp.add_prefetch(knl, "b", ["j_inner"], default_tag=None)

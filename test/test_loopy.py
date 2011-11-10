@@ -73,7 +73,8 @@ def test_multi_cse(ctx_factory):
             local_sizes={0: 16})
 
     knl = lp.split_dimension(knl, "i", 16, inner_tag="l.0")
-    knl = lp.realize_cse(knl, None, np.float32, ["i_inner"])
+    knl = lp.add_prefetch(knl, "a", [])
+    #knl = lp.realize_cse(knl, None, np.float32, ["i_inner"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen)
@@ -124,23 +125,29 @@ def test_stencil(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j]: 0<= i,j < 32}",
             [
-                "[i] <float32> z[i,j] = -2*cse(a[i,j])"
-                    " + cse(a[i,j-1])"
-                    " + cse(a[i,j+1])"
-                    " + cse(a[i-1,j])"
-                    " + cse(a[i+1,j])"
+                "[i] <float32> z[i,j] = -2*a[i,j]"
+                    " + a[i,j-1]"
+                    " + a[i,j+1]"
+                    " + a[i-1,j]"
+                    " + a[i+1,j]"
                 ],
             [
                 lp.ArrayArg("a", np.float32, shape=(32,32,))
                 ])
 
-    def variant_3(knl):
-        knl = lp.split_dimension(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
-        knl = lp.split_dimension(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
-        knl = lp.realize_cse(knl, None, np.float32, ["i_inner", "j_inner"])
+
+    def variant_1(knl):
+        knl = lp.add_prefetch(knl, "a", [0, 1])
         return knl
 
-    for variant in [variant_3]:
+    def variant_2(knl):
+        knl = lp.split_dimension(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
+        knl = lp.split_dimension(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
+        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
+        return knl
+
+    #for variant in [variant_1, variant_2]:
+    for variant in [variant_2]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["i_outer", "i_inner_0", "j_0"])
         kernel_gen = lp.check_kernels(kernel_gen)
