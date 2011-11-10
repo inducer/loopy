@@ -428,7 +428,7 @@ def add_prefetch(kernel, var_name, sweep_dims, dim_args=None,
     newly_created_vars = set()
     parameters = []
     for i in range(len(arg.shape)):
-        based_on = "%s_i%d" % (var_name, i)
+        based_on = "%s_fetch_%d" % (var_name, i)
         if dim_args is not None and i < len(dim_args):
             based_on = dim_args[i]
 

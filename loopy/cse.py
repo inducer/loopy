@@ -36,7 +36,7 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 
 
 
-def get_footprint(kernel, subst_name, arg_names, unique_new_arg_names,
+def get_footprint(kernel, subst_name, old_arg_names, arg_names,
         sweep_inames, invocation_descriptors):
     global_footprint_map = None
 
@@ -45,8 +45,8 @@ def get_footprint(kernel, subst_name, arg_names, unique_new_arg_names,
     for invdesc in invocation_descriptors:
 
         for iname in sweep_inames:
-            if iname in arg_names:
-                arg_idx = arg_names.index(iname)
+            if iname in old_arg_names:
+                arg_idx = old_arg_names.index(iname)
                 processed_sweep_inames.add(
                         get_dependencies(invdesc.args[arg_idx]))
             else:
@@ -55,11 +55,11 @@ def get_footprint(kernel, subst_name, arg_names, unique_new_arg_names,
         # {{{ construct, check mapping
 
         map_space = kernel.space
-        ln = len(unique_new_arg_names)
+        ln = len(arg_names)
         rn = kernel.space.dim(dim_type.out)
 
         map_space = map_space.add_dims(dim_type.in_, ln)
-        for i, iname in enumerate(unique_new_arg_names):
+        for i, iname in enumerate(arg_names):
             map_space = map_space.set_dim_name(dim_type.in_, i, iname+"'")
 
         set_space = map_space.move_dims(
@@ -69,7 +69,7 @@ def get_footprint(kernel, subst_name, arg_names, unique_new_arg_names,
         footprint_map = None
 
         from loopy.symbolic import aff_from_expr
-        for uarg_name, arg_val in zip(unique_new_arg_names, invdesc.args):
+        for uarg_name, arg_val in zip(arg_names, invdesc.args):
             cns = isl.Constraint.equality_from_aff(
                     aff_from_expr(set_space, var(uarg_name+"'") - arg_val))
 
@@ -92,7 +92,8 @@ def get_footprint(kernel, subst_name, arg_names, unique_new_arg_names,
 
     processed_sweep_inames = list(processed_sweep_inames)
 
-    global_footprint_map = global_footprint_map.intersect_range(kernel.domain)
+    global_footprint_map = (isl.Map.from_basic_map(global_footprint_map)
+            .intersect_range(kernel.domain))
 
     # move non-sweep-dimensions into parameter space
     sweep_footprint_map = global_footprint_map.coalesce()
@@ -114,11 +115,26 @@ def get_footprint(kernel, subst_name, arg_names, unique_new_arg_names,
                 % subst_name)
 
     from loopy.kernel import find_var_base_indices_and_shape_from_inames
-    base_indices, shape = find_var_base_indices_and_shape_from_inames(
-            sfm_dom, [uarg+"'" for uarg in unique_new_arg_names],
+    arg_base_indices, shape = find_var_base_indices_and_shape_from_inames(
+            sfm_dom, [uarg+"'" for uarg in arg_names],
             kernel.cache_manager)
+    print arg_names, shape
 
     # compute augmented domain
+
+    # {{{ filter out unit-length dimensions
+
+    non1_arg_names = []
+    non1_arg_base_indices = []
+    non1_shape = []
+
+    for arg_name, bi, l in zip(arg_names, arg_base_indices, shape):
+        if l > 1:
+            non1_arg_names.append(arg_name)
+            non1_arg_base_indices.append(bi)
+            non1_shape.append(l)
+
+    # }}}
 
     # {{{ subtract off the base indices
     # add the new, base-0 as new in dimensions
@@ -126,39 +142,45 @@ def get_footprint(kernel, subst_name, arg_names, unique_new_arg_names,
     sp = global_footprint_map.get_space()
     tgt_idx = sp.dim(dim_type.out)
 
-    n_args = len(unique_new_arg_names)
+    n_args = len(arg_names)
+    nn1_args = len(non1_arg_names)
 
     aug_domain = global_footprint_map.move_dims(
             dim_type.out, tgt_idx,
             dim_type.in_, 0,
             n_args).range().coalesce()
 
-    aug_domain = aug_domain.insert_dims(dim_type.set, tgt_idx, n_args)
-    for i, name in enumerate(unique_new_arg_names):
+    aug_domain = aug_domain.insert_dims(dim_type.set, tgt_idx, nn1_args)
+    for i, name in enumerate(non1_arg_names):
         aug_domain = aug_domain.set_dim_name(dim_type.set, tgt_idx+i, name)
 
     # index layout now:
-    # <....out.....> (tgt_idx) <base-0 args> <args>
+    # <....out.....> (tgt_idx) <base-0 non-1-length args> <args>
 
     from loopy.symbolic import aff_from_expr
-    for uarg_name, bi in zip(unique_new_arg_names, base_indices):
-        cns = isl.Constraint.equality_from_aff(
-                aff_from_expr(aug_domain.get_space(),
-                    var(uarg_name) - (var(uarg_name+"'") - bi)))
+    for arg_name, bi, s in zip(arg_names, arg_base_indices, shape):
+        if s > 1:
+            cns = isl.Constraint.equality_from_aff(
+                    aff_from_expr(aug_domain.get_space(),
+                        var(arg_name) - (var(arg_name+"'") - bi)))
 
-        aug_domain = aug_domain.add_constraint(cns)
+            aug_domain = aug_domain.add_constraint(cns)
 
-    aug_domain = aug_domain.eliminate(dim_type.set, tgt_idx+n_args, n_args)
-    aug_domain = aug_domain.remove_dims(dim_type.set, tgt_idx+n_args, n_args)
+    # }}}
+
+    # eliminate inames with non-zero base indices
+
+    aug_domain = aug_domain.eliminate(dim_type.set, tgt_idx+nn1_args, n_args)
+    aug_domain = aug_domain.remove_dims(dim_type.set, tgt_idx+nn1_args, n_args)
 
     base_indices_2, shape_2 = find_var_base_indices_and_shape_from_inames(
-            aug_domain, unique_new_arg_names,
-            kernel.cache_manager)
+            aug_domain, non1_arg_names, kernel.cache_manager)
 
-    assert base_indices_2 == [0] * n_args
-    assert shape_2 == shape
+    assert base_indices_2 == [0] * nn1_args
+    assert shape_2 == non1_shape
 
-    return aug_domain, base_indices, shape
+    return (non1_arg_names, aug_domain,
+            arg_base_indices, non1_arg_base_indices, non1_shape)
 
 
 
@@ -229,7 +251,7 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     newly_created_var_names = set()
 
-    # {{{ make sure that new
+    # {{{ make sure that new arg names are unique
 
     # (and substitute in subst_expressions if any variable name changes are necessary)
 
@@ -252,12 +274,16 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
         if new_name is not None:
             old_to_new[name] = var(new_name)
-            newly_created_var_names.add(new_name)
             unique_new_arg_names.append(new_name)
             new_arg_name_to_tag[new_name] = arg_name_to_tag[name]
+            newly_created_var_names.add(new_name)
         else:
             unique_new_arg_names.append(name)
             new_arg_name_to_tag[name] = arg_name_to_tag[name]
+            newly_created_var_names.add(name)
+
+    old_arg_names = arg_names
+    arg_names = unique_new_arg_names
 
     arg_name_to_tag = new_arg_name_to_tag
     subst_expr = (
@@ -269,10 +295,10 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     # {{{ align and intersect the footprint and the domain
 
     # (If there are independent inames, this adds extra dimensions to the domain.)
-
-    new_domain, target_var_base_indices, target_var_shape = \
-            get_footprint(kernel, subst_name, arg_names, unique_new_arg_names,
-                    sweep_inames, invocation_descriptors)
+    (non1_arg_names, new_domain,
+                arg_base_indices, non1_arg_base_indices, non1_shape) = \
+                        get_footprint(kernel, subst_name, old_arg_names, arg_names,
+                                sweep_inames, invocation_descriptors)
 
     new_domain = new_domain.coalesce()
     if isinstance(new_domain, isl.Set):
@@ -296,8 +322,8 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     new_temporary_variables[target_var_name] = TemporaryVariable(
             name=target_var_name,
             dtype=np.dtype(dtype),
-            base_indices=target_var_base_indices,
-            shape=target_var_shape,
+            base_indices=(0,)*len(non1_shape),
+            shape=non1_shape,
             is_local=None)
 
     # }}}
@@ -306,14 +332,27 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     assignee = var(target_var_name)
 
-    if unique_new_arg_names:
-        assignee = assignee[tuple(var(iname) for iname in unique_new_arg_names)]
+    if non1_arg_names:
+        assignee = assignee[tuple(var(iname) for iname in non1_arg_names)]
+
+    def zero_length_1_arg(arg_name):
+        if arg_name in non1_arg_names:
+            return var(arg_name)
+        else:
+            return 0
+
+    compute_expr = (SubstitutionMapper(
+        make_subst_func(dict(
+            (arg_name, zero_length_1_arg(arg_name)+bi)
+            for arg_name, bi in zip(arg_names, arg_base_indices)
+            )))
+        (subst_expr))
 
     from loopy.kernel import Instruction
     compute_insn = Instruction(
             id=kernel.make_unique_instruction_id(based_on=subst_name),
             assignee=assignee,
-            expression=subst_expr)
+            expression=compute_expr)
 
     # }}}
 
@@ -330,7 +369,7 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
             return
 
         args = [simplify_via_aff(new_domain.get_space(), arg-bi)
-                for arg, bi in zip(args, target_var_base_indices)]
+                for arg, bi in zip(args, non1_arg_base_indices)]
 
         new_outer_expr = var(target_var_name)
         if args:
@@ -348,7 +387,8 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     # }}}
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
-    new_iname_to_tag.update(arg_name_to_tag)
+    if sweep_inames:
+        new_iname_to_tag.update(arg_name_to_tag)
 
     new_substs = dict(
             (s.name, s.copy(expression=sub_map(subst.expression)))

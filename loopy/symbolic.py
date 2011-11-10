@@ -85,7 +85,7 @@ class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
 
 class WalkMapper(WalkMapperBase):
     def map_reduction(self, expr):
-        self.rec(expr.expression)
+        self.rec(expr.expr)
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
@@ -329,6 +329,9 @@ class LoopyCCodeMapper(CCodeMapper):
         var_subst_map = self.var_subst_map.copy()
         var_subst_map.update(assignments)
         return self.copy(var_subst_map=var_subst_map)
+
+    def map_common_subexpression(self, expr, prec):
+        raise RuntimeError("common subexpressions are not allowed in loopy")
 
     def map_variable(self, expr, prec):
         if expr.name in self.var_subst_map:

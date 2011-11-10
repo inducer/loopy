@@ -1112,12 +1112,13 @@ def find_var_base_indices_and_shape_from_inames(domain, inames, cache_manager):
         lower_bound_pw_aff = cache_manager.dim_min(domain, iname_to_dim[iname][1])
         upper_bound_pw_aff = cache_manager.dim_max(domain, iname_to_dim[iname][1])
 
-        from loopy.isl_helpers import static_max_of_pw_aff
+        from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
 
         shape.append(pw_aff_to_expr(static_max_of_pw_aff(
                 upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True)))
-        base_indices.append(pw_aff_to_expr(lower_bound_pw_aff))
+        base_indices.append(pw_aff_to_expr(
+            static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False)))
 
     return base_indices, shape
 

@@ -91,7 +91,6 @@ def extract_subst(kernel, subst_name, template, parameters):
             lhs_mapping_candidates=set(parameters) | set(matching_vars))
 
     def gather_exprs(expr, mapper):
-        print expr
         urecs = unif(template, expr)
 
         if urecs:

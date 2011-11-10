@@ -58,7 +58,7 @@ def check_for_double_use_of_hw_axes(kernel):
             if isinstance(tag, UniqueTag):
                 key = tag.key
                 if key in insn_tag_keys:
-                    raise RuntimeError("instruction '%s' has two "
+                    raise RuntimeError("instruction '%s' has multiple "
                             "inames tagged '%s'" % (insn.id, tag))
 
                 insn_tag_keys.add(key)
@@ -155,7 +155,7 @@ def check_for_write_races(kernel):
             raise RuntimeError(
                     "instruction '%s' contains a write race: "
                     "instruction will be run across parallel iname(s) '%s', which "
-                    "is/are not referenced in the assignee index"
+                    "is/are not referenced in the lhs index"
                     % (insn.id, ",".join(inames_without_write_dep)))
 
 def check_for_orphaned_user_hardware_axes(kernel):

@@ -219,8 +219,10 @@ def test_plain_matrix_mul(ctx_factory):
     knl = lp.split_dimension(knl, "j", 16,
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 16)
-    knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner", ])
+    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
+    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner", ])
+
+    print lp.preprocess_kernel(knl)
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {})
@@ -319,8 +321,8 @@ def test_rank_one(ctx_factory):
             name="rank_one", assumptions="n >= 16")
 
     def variant_1(knl):
-        knl = lp.add_prefetch(knl, "a")
-        knl = lp.add_prefetch(knl, "b")
+        knl = lp.add_prefetch(knl, "a", [])
+        knl = lp.add_prefetch(knl, "b", [])
         return knl
 
     def variant_2(knl):
@@ -329,8 +331,8 @@ def test_rank_one(ctx_factory):
         knl = lp.split_dimension(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
-        knl = lp.add_prefetch(knl, "a")
-        knl = lp.add_prefetch(knl, "b")
+        knl = lp.add_prefetch(knl, "a", [])
+        knl = lp.add_prefetch(knl, "b", [])
         return knl
 
     def variant_3(knl):
@@ -360,15 +362,16 @@ def test_rank_one(ctx_factory):
         knl = lp.split_dimension(knl, "j_inner", 16,
                 inner_tag="l.1")
 
-        knl = lp.split_dimension(knl, "j_inner_fetch_b", 16,
+        knl = lp.split_dimension(knl, "a_fetch_0", 16,
                 outer_tag="l.1", inner_tag="l.0")
-        knl = lp.split_dimension(knl, "i_inner_fetch_a", 16,
+        knl = lp.split_dimension(knl, "b_fetch_0", 16,
                 outer_tag="l.1", inner_tag="l.0")
         return knl
 
     seq_knl = knl
 
-    for variant in [variant_1, variant_2, variant_4]:
+    #for variant in [variant_1, variant_2, variant_4]:
+    for variant in [variant_2, variant_4]:
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
