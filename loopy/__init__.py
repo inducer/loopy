@@ -22,7 +22,7 @@ class LoopyAdvisory(UserWarning):
 
 from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
 
-from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph
+from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph, LoopKernel
 from loopy.subst import extract_subst, apply_subst
 from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel
@@ -31,7 +31,7 @@ from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_seq
 from loopy.check import check_kernels
 
-__all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg",
+__all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg", "LoopKernel",
         "get_dot_dependency_graph",
         "preprocess_kernel", "generate_loop_schedules",
         "generate_code",

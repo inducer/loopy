@@ -176,7 +176,7 @@ def make_initial_assignments(kernel):
 
 # {{{ main code generation entrypoint
 
-def generate_code(kernel):
+def generate_code(kernel, with_annotation=False):
     from cgen import (FunctionBody, FunctionDeclaration,
             POD, Value, ArrayOf, Module, Block,
             Line, Const, LiteralLines, Initializer)
@@ -187,7 +187,8 @@ def generate_code(kernel):
     from loopy.symbolic import LoopyCCodeMapper, pw_aff_to_expr
 
     ccm = LoopyCCodeMapper(kernel).copy_and_assign_many(
-            make_initial_assignments(kernel))
+            make_initial_assignments(kernel),
+            with_annotation=with_annotation)
 
     mod = Module()
 

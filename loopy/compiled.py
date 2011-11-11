@@ -11,10 +11,10 @@ import numpy as np
 
 class CompiledKernel:
     def __init__(self, context, kernel, size_args=None, options=[],
-             edit_code=False):
+             edit_code=False, with_annotation=False):
         self.kernel = kernel
         from loopy.codegen import generate_code
-        self.code = generate_code(kernel)
+        self.code = generate_code(kernel, with_annotation=with_annotation)
 
         if edit_code:
             from pytools import invoke_editor
@@ -227,7 +227,7 @@ def make_args(queue, kernel, seq_input_arrays, parameters):
 
 def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
         print_seq_code=False, print_code=True, warmup_rounds=2, timing_rounds=100,
-        edit_code=False, dump_binary=False):
+        edit_code=False, dump_binary=False, with_annotation=False):
     from time import time
 
     # {{{ set up CL context for sequential run
@@ -263,7 +263,8 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
         seq_sched_kernel = knl
         break
 
-    seq_compiled = CompiledKernel(seq_ctx, seq_sched_kernel)
+    seq_compiled = CompiledKernel(seq_ctx, seq_sched_kernel,
+            with_annotation=with_annotation)
     if print_seq_code:
         print "----------------------------------------------------------"
         print "Sequential Code:"
@@ -302,7 +303,9 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
         if args is None:
             args, output_arrays = make_args(queue, kernel, seq_input_arrays, parameters)
 
-        compiled = CompiledKernel(ctx, kernel, edit_code=edit_code)
+        compiled = CompiledKernel(ctx, kernel, edit_code=edit_code,
+                with_annotation=with_annotation)
+
         print "----------------------------------------------------------"
         print "Kernel #%d:" % i
         print "----------------------------------------------------------"

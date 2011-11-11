@@ -19,16 +19,12 @@ class ExprDescriptor(Record):
 
 def extract_subst(kernel, subst_name, template, parameters):
     """
-    :arg template: An expression against which all targeted subexpressions
-        must unify
+    :arg subst_name: The name of the substitution rule to be created.
+    :arg template: Unification template expression.
 
-        If None, a unification template will be chosen from among the targeted
-        CSEs. That CSE is chosen to depend on all the variables in
-        *parameters*.  It is an error if no such expression can be
-        found.
-
-        May contain '*' wildcards that will have to match exactly across all
-        unifications.
+    All targeted subexpressions must match ('unify with') *template*
+    The template may contain '*' wildcards that will have to match exactly across all
+    unifications.
     """
 
     newly_created_var_names = set()

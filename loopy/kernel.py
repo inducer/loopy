@@ -260,7 +260,7 @@ class Instruction(Record):
     :ivar boostable_into: a set of inames into which the instruction
         may need to be boosted, as a heuristic help for the scheduler.
 
-    The following two instance variables are only used until :func:`loopy.kernel.make_kernel` is
+    The following two instance variables are only used until :func:`loopy.make_kernel` is
     finished:
 
     :ivar temp_var_type: if not None, a type that will be assigned to the new temporary variable
@@ -480,7 +480,7 @@ class LoopKernel(Record):
 
     :ivar cache_manager:
 
-    The following instance variables are only used until :func:`loopy.kernel.make_kernel` is
+    The following instance variables are only used until :func:`loopy.make_kernel` is
     finished:
 
     :ivar iname_to_tag_requests:
@@ -814,8 +814,7 @@ class LoopKernel(Record):
 
     def find_readers(self):
         """
-        :return: a dict that maps variable names to ids of insns that
-            read that variable.
+        :return: a dict that maps variable names to ids of insns that read that variable.
         """
         result = {}
 
@@ -829,8 +828,7 @@ class LoopKernel(Record):
 
     def find_writers(self):
         """
-        :return: a dict that maps variable names to ids of insns that
-            write to that variable.
+        :return: a dict that maps variable names to ids of insns that write to that variable.
         """
         result = {}
 

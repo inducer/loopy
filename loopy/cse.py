@@ -37,24 +37,45 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 
 
 def get_footprint(kernel, subst_name, old_arg_names, arg_names,
-        sweep_inames, invocation_descriptors):
+        sweep_axes, invocation_descriptors):
     global_footprint_map = None
 
-    # {{{  find sweep inames referenced by arguments
+    # {{{ deal with argument names as sweep inames
 
-    processed_sweep_inames = set()
+    # An argument name as a sweep iname means that *all*
+    # inames contained in *all* uses of the rule will be
+    # made sweep inames.
+
+    sweep_inames = set()
 
     for invdesc in invocation_descriptors:
-        for iname in sweep_inames:
+        for iname in sweep_axes:
             if iname in old_arg_names:
                 arg_idx = old_arg_names.index(iname)
-                processed_sweep_inames.update(
+                sweep_inames.update(
                         get_dependencies(invdesc.args[arg_idx]))
             else:
-                processed_sweep_inames.add(iname)
+                sweep_inames.add(iname)
 
-    sweep_inames = list(processed_sweep_inames)
-    del processed_sweep_inames
+    sweep_inames = list(sweep_inames)
+
+    # }}}
+
+    # {{{ see if we need extra storage dimensions
+
+    # Realize that by default our storage dimensions are our arguments. If
+    # we're given a sweep iname that no (usage-site) argument depends on, then
+    # this sweep isn't covered in our storage. This necessitates adding an
+    # extra storage dimension.
+
+    # find inames used in argument dependencies
+
+    usage_arg_deps = set()
+    for invdesc in invocation_descriptors:
+        for arg in invdesc.args:
+            usage_arg_deps.update(get_dependencies(arg))
+
+    extra_storage_dims = list(set(sweep_inames) - usage_arg_deps)
 
     # }}}
 
@@ -72,36 +93,37 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
 
     # }}}
 
-    # {{{ construct arg mapping
+    # {{{ construct storage map
 
-    # map goes from substitution arguments to domain_dup_sweep
+    # The storage map goes from storage dimension to domain_dup_sweep.
+    # The first len(arg_names) storage dimensions are the rule's arguments.
 
     for invdesc in invocation_descriptors:
         map_space = domain_dup_sweep.get_space()
-        ln = len(arg_names)
+        stor_dim = len(arg_names) + len(extra_storage_dims)
         rn = map_space.dim(dim_type.out)
 
-        map_space = map_space.add_dims(dim_type.in_, ln)
+        map_space = map_space.add_dims(dim_type.in_, stor_dim)
         for i, iname in enumerate(arg_names):
             # arg names are initially primed, to be replaced with unprimed
             # base-0 versions below
 
             map_space = map_space.set_dim_name(dim_type.in_, i, iname+"'")
 
-        # map_space: [arg_names] -> [domain](dup_sweep_index)[dup_sweep]
+        # map_space: [stor_dims] -> [domain](dup_sweep_index)[dup_sweep]
 
         set_space = map_space.move_dims(
                 dim_type.out, rn,
-                dim_type.in_, 0, ln).range()
+                dim_type.in_, 0, stor_dim).range()
 
-        # set_space: <domain>(dup_sweep_index)<dup_sweep><arg_names>
+        # set_space: <domain>(dup_sweep_index)<dup_sweep><stor_dims>
 
         footprint_map = None
 
         from loopy.symbolic import aff_from_expr
         for uarg_name, arg_val in zip(arg_names, invdesc.args):
             cns = isl.Constraint.equality_from_aff(
-                    aff_from_expr(set_space, 
+                    aff_from_expr(set_space,
                         var(uarg_name+"'") - prime_sweep_inames(arg_val)))
 
             cns_map = isl.BasicMap.from_constraint(cns)
@@ -112,7 +134,7 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
 
         footprint_map = footprint_map.move_dims(
                 dim_type.in_, 0,
-                dim_type.out, rn, ln)
+                dim_type.out, rn, stor_dim)
 
         # footprint_map is back in map_space
 
@@ -242,8 +264,37 @@ def simplify_via_aff(expr):
 
 
 
-def precompute(kernel, subst_name, dtype, sweep_inames=[],
-        new_arg_names=None, arg_name_to_tag={}, default_tag="l.auto"):
+def precompute(kernel, subst_name, dtype, sweep_axes=[],
+        storage_axes=None, new_arg_names=None, arg_name_to_tag={},
+        default_tag="l.auto"):
+    """Precompute the expression described in the substitution rule *subst_name*
+    and store it in a temporary array. A precomputation needs two things to operate,
+    a list of *sweep_axes* (order irrelevant) and an ordered list of *storage_axes*
+    (whose order will describe the axis ordering of the temporary array).
+
+    This function will then examine all usage sites of the substitution rule and
+    determine what the storage footprint of that sweep is.
+
+    The following cases can arise for each sweep axis:
+
+    * The axis is an iname that occurs within arguments specified at
+      usage sites of the substitution rule. This case is assumed covered
+      by the storage axes provided for the argument.
+
+    * The axis is an iname that occurs within the *value* of the rule, but not
+      within its arguments. A new, dedicated storage axis is allocated for
+      such an axis.
+
+    * The axis is a formal argument name of the substitution rule.
+      This is equivalent to specifying *all* inames occurring within
+      the so-named formal argument at *all* usage sites.
+
+    :arg sweep_axes: A :class:`list` of inames and/or rule argument names to be swept.
+    :arg storage_dims: A :class:`list` of inames and/or rule argument names/indices to be used as storage axes.
+
+    Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
+    eliminated.
+    """
 
     subst = kernel.substitutions[subst_name]
     arg_names = subst.arguments
@@ -252,7 +303,6 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     # {{{ gather up invocations
 
     invocation_descriptors = []
-    invocation_arg_deps = set()
 
     def gather_substs(expr, name, args, rec):
         if len(args) != len(subst.arguments):
@@ -263,8 +313,6 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
         if not arg_deps <= kernel.all_inames():
             raise RuntimeError("CSE arguments in '%s' do not consist "
                     "exclusively of inames" % expr)
-
-        invocation_arg_deps.update(arg_deps)
 
         invocation_descriptors.append(
                 InvocationDescriptor(expr=expr, args=args))
@@ -284,12 +332,6 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
         # the invocations in subst_name occurring there.
 
         scm(subst_expander(insn.expression))
-
-    allowable_sweep_inames = invocation_arg_deps | set(arg_names)
-    if not set(sweep_inames) <= allowable_sweep_inames:
-        raise RuntimeError("independent iname(s) '%s' do not occur as arg names "
-                "of subsitution rule or in arguments of invocation" % (",".join(
-                    set(sweep_inames)-allowable_sweep_inames)))
 
     # }}}
 
@@ -358,12 +400,21 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     (non1_arg_names, new_domain,
                 arg_base_indices, non1_arg_base_indices, non1_shape) = \
                         get_footprint(kernel, subst_name, old_arg_names, arg_names,
-                                sweep_inames, invocation_descriptors)
+                                sweep_axes, invocation_descriptors)
 
     new_domain = new_domain.coalesce()
 
     if len(new_domain.get_basic_sets()) > 1:
         hull_new_domain = new_domain.simple_hull()
+        if hull_new_domain <= new_domain:
+            new_domain = hull_new_domain
+
+    if len(new_domain.get_basic_sets()) > 1:
+        print("Substitution '%s' yielded a footprint that was not "
+                "obviously convex. Now computing convex hull. "
+                "This might take a *long* time." % subst_name)
+
+        hull_new_domain = new_domain.convex_hull()
         if hull_new_domain <= new_domain:
             new_domain = hull_new_domain
 

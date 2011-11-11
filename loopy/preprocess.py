@@ -519,7 +519,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             # }}}
 
         if axis is None:
-            new_tag = None
+            new_tag = UnrollTag()
         else:
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
