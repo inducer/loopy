@@ -729,14 +729,22 @@ class LoopKernel(Record):
         temp_var_names = set(self.temporary_variables.iterkeys())
 
         # fixed point iteration until all iname dep sets have converged
+
         while True:
             did_something = False
             for insn in self.instructions:
+
+                # For all variables that insn depends on, find the intersection
+                # of iname deps of all writers, and add those to insn's
+                # dependencies.
+
                 for tv_name in (get_dependencies(insn.expression)
                         & temp_var_names):
                     implicit_inames = None
 
                     for writer_id in writers[tv_name]:
+                        #writer_insn = self.id_to_insn[writer_id]
+
                         writer_implicit_inames = (
                                 insn_id_to_inames[writer_id]
                                 - insn_assignee_inames[writer_id])
@@ -747,7 +755,8 @@ class LoopKernel(Record):
                                     & writer_implicit_inames)
 
                     inames_old = insn_id_to_inames[insn.id]
-                    inames_new = inames_old | implicit_inames
+                    inames_new = (inames_old | implicit_inames) \
+                                - insn.reduction_inames()
                     insn_id_to_inames[insn.id] = inames_new
 
                     if inames_new != inames_old:
