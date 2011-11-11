@@ -141,7 +141,7 @@ def realize_reduction(kernel):
 
         from pymbolic import var
 
-        target_var_name = kernel.make_unique_var_name("acc",
+        target_var_name = kernel.make_unique_var_name("acc_"+"_".join(expr.inames),
                 extra_used_vars=set(new_temporary_variables))
         target_var = var(target_var_name)
 
