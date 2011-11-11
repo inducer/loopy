@@ -112,18 +112,20 @@ def realize_reduction(kernel):
     from loopy.kernel import IlpTag
 
     def map_reduction(expr, rec):
-        sub_expr = rec(expr.expr)
+        # Only expand one level of reduction at a time, going from outermost to
+        # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
         # {{{ see if this reduction is nested inside some ILP loops
 
         ilp_inames = [iname
-                for iname in kernel.insn_inames(insn)
-                if isinstance(kernel.iname_to_tag.get(iname), IlpTag)]
+                for iname in temp_kernel.insn_inames(insn)
+                if isinstance(temp_kernel.iname_to_tag.get(iname), IlpTag)]
 
         from loopy.isl_helpers import static_max_of_pw_aff
 
         ilp_iname_lengths = []
         for iname in ilp_inames:
+            # original kernel ok here--we're not messing with inames
             bounds = kernel.get_iname_bounds(iname)
 
             from loopy.symbolic import pw_aff_to_expr
@@ -136,7 +138,7 @@ def realize_reduction(kernel):
         from pymbolic import var
 
         target_var_name = kernel.make_unique_var_name("acc",
-                extra_used_vars=set(tv for tv in new_temporary_variables))
+                extra_used_vars=set(new_temporary_variables))
         target_var = var(target_var_name)
 
         if ilp_inames:
@@ -152,26 +154,30 @@ def realize_reduction(kernel):
                 shape=tuple(ilp_iname_lengths),
                 is_local=False)
 
+        new_id = temp_kernel.make_unique_instruction_id(
+                based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
+                extra_used_ids=set(i.id for i in generated_insns))
+
         init_insn = Instruction(
-                id=kernel.make_unique_instruction_id(
-                    based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
-                    extra_used_ids=set(ni.id for ni in new_insns)),
+                id=new_id,
                 assignee=target_var,
-                forced_iname_deps=kernel.insn_inames(insn) - set(expr.inames),
+                forced_iname_deps=temp_kernel.insn_inames(insn) - set(expr.inames),
                 expression=expr.operation.neutral_element)
 
-        new_insns.append(init_insn)
+        generated_insns.append(init_insn)
+
+        new_id = temp_kernel.make_unique_instruction_id(
+                based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)),
+                extra_used_ids=set(i.id for i in generated_insns))
 
         reduction_insn = Instruction(
-                id=kernel.make_unique_instruction_id(
-                    based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)),
-                    extra_used_ids=set(ni.id for ni in new_insns)),
+                id=new_id,
                 assignee=target_var,
-                expression=expr.operation(target_var, sub_expr),
+                expression=expr.operation(target_var, expr.expr),
                 insn_deps=set([init_insn.id]) | insn.insn_deps,
-                forced_iname_deps=kernel.insn_inames(insn) | set(expr.inames))
+                forced_iname_deps=temp_kernel.insn_inames(insn) | set(expr.inames))
 
-        new_insns.append(reduction_insn)
+        generated_insns.append(reduction_insn)
 
         new_insn_insn_deps.add(reduction_insn.id)
 
@@ -180,18 +186,39 @@ def realize_reduction(kernel):
     from loopy.symbolic import ReductionCallbackMapper
     cb_mapper = ReductionCallbackMapper(map_reduction)
 
-    for insn in kernel.instructions:
-        new_insn_insn_deps = set()
+    insn_queue = kernel.instructions[:]
 
+    while insn_queue:
+        new_insn_insn_deps = set()
+        generated_insns = []
+
+        # The reduction expander needs an up-to-date kernel
+        # object to find dependencies. Create one.
+
+        temp_kernel = kernel.copy(
+                instructions=new_insns + insn_queue,
+                temporary_variables=new_temporary_variables)
+
+        insn = insn_queue.pop(0)
+
+        # Run reduction expansion.
         new_expression = cb_mapper(insn.expression)
 
-        new_insn = insn.copy(
+        insn = insn.copy(
                     expression=new_expression,
                     insn_deps=insn.insn_deps
                         | new_insn_insn_deps,
-                    forced_iname_deps=kernel.insn_inames(insn))
+                    forced_iname_deps=temp_kernel.insn_inames(insn))
 
-        new_insns.append(new_insn)
+        if generated_insns:
+            # An expansion happened, so insert the generated stuff plus
+            # ourselves back into the queue.
+
+            insn_queue = generated_insns + [insn] + insn_queue
+
+        else:
+            # nothing happened, we're done with insn
+            new_insns.append(insn)
 
     return kernel.copy(
             instructions=new_insns,
