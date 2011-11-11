@@ -165,7 +165,7 @@ def extract_subst(kernel, subst_name, template, parameters):
 
     for subst in kernel.substitutions.itervalues():
         new_substs[subst.name] = subst.copy(
-                expression=cbmapper(insn.expression))
+                expression=cbmapper(subst.expression))
 
     # }}}
 

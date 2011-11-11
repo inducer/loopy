@@ -153,6 +153,10 @@ class ArrayArg:
 
         self.constant_mem = constant_mem
 
+    @property
+    def dimensions(self):
+        return len(self.shape)
+
     def __repr__(self):
         return "<ArrayArg '%s' of type %s>" % (self.name, self.dtype)
 
@@ -516,11 +520,11 @@ class LoopKernel(Record):
                     "(?:\|(?P<duplicate_inames_and_tags>[\s\w,:.]*))?"
                 "\])?"
                 "\s*(?:\<(?P<temp_var_type>.+)\>)?"
-                "\s*(?P<lhs>.+)\s*=\s*(?P<rhs>.+?)"
+                "\s*(?P<lhs>.+)\s*(?<!\:)=\s*(?P<rhs>.+?)"
                 "\s*?(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
                 )
         SUBST_RE = re.compile(
-                r"^\s*(?P<lhs>.+)\s*:=\s*(?P<rhs>.+?)\s*$"
+                r"^\s*(?P<lhs>.+)\s*:=\s*(?P<rhs>.+)\s*$"
                 )
 
         def parse_iname_and_tag_list(s):
@@ -690,12 +694,6 @@ class LoopKernel(Record):
         from loopy.tools import generate_unique_possibilities
         for id_str in generate_unique_possibilities(based_on):
             if id_str not in used_ids:
-                return id_str
-
-    def make_unique_subst_rule_name(self, based_on="subst"):
-        from loopy.tools import generate_unique_possibilities
-        for id_str in generate_unique_possibilities(based_on):
-            if id_str not in self.substitutions:
                 return id_str
 
     @memoize_method
@@ -1103,7 +1101,8 @@ class LoopKernel(Record):
 
 
 
-def find_var_base_indices_and_shape_from_inames(domain, inames, cache_manager):
+def find_var_base_indices_and_shape_from_inames(
+        domain, inames, cache_manager, context=None):
     base_indices = []
     shape = []
 
@@ -1116,9 +1115,11 @@ def find_var_base_indices_and_shape_from_inames(domain, inames, cache_manager):
         from loopy.symbolic import pw_aff_to_expr
 
         shape.append(pw_aff_to_expr(static_max_of_pw_aff(
-                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True)))
+                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True,
+                context=context)))
         base_indices.append(pw_aff_to_expr(
-            static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False)))
+            static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
+                context=context)))
 
     return base_indices, shape
 

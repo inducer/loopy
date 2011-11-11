@@ -39,7 +39,8 @@ Things to consider
 To-do
 ^^^^^
 
-- CSE should be more like variable assignment
+- What if no universally valid precompute base index expression is found?
+  (test_intel_matrix_mul with n = 6*16, e.g.?)
 
 - Fix all tests
 
@@ -82,6 +83,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- CSE should be more like variable assignment
 
 - Deal with equality constraints.
   (These arise, e.g., when partitioning a loop of length 16 into 16s.)

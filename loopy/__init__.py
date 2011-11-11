@@ -421,14 +421,15 @@ def add_prefetch(kernel, var_name, sweep_dims, dim_args=None,
         new_inames=None, default_tag="l.auto", rule_name=None):
 
     if rule_name is None:
-        rule_name = kernel.make_unique_subst_rule_name("%s_fetch" % var_name)
+        rule_name = kernel.make_unique_var_name("%s_fetch" % var_name)
+
+    newly_created_vars = set([rule_name])
 
     arg = kernel.arg_dict[var_name]
 
-    newly_created_vars = set()
     parameters = []
-    for i in range(len(arg.shape)):
-        based_on = "%s_fetch_%d" % (var_name, i)
+    for i in range(arg.dimensions):
+        based_on = "%s_dim_%d" % (var_name, i)
         if dim_args is not None and i < len(dim_args):
             based_on = dim_args[i]
 

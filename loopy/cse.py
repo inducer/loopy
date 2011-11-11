@@ -40,38 +40,69 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
         sweep_inames, invocation_descriptors):
     global_footprint_map = None
 
+    # {{{  find sweep inames referenced by arguments
+
     processed_sweep_inames = set()
 
     for invdesc in invocation_descriptors:
-
         for iname in sweep_inames:
             if iname in old_arg_names:
                 arg_idx = old_arg_names.index(iname)
-                processed_sweep_inames.add(
+                processed_sweep_inames.update(
                         get_dependencies(invdesc.args[arg_idx]))
             else:
                 processed_sweep_inames.add(iname)
 
-        # {{{ construct, check mapping
+    sweep_inames = list(processed_sweep_inames)
+    del processed_sweep_inames
 
-        map_space = kernel.space
+    # }}}
+
+    # {{{ duplicate sweep inames
+
+    primed_sweep_inames = [psin+"'" for psin in sweep_inames]
+    from loopy.isl_helpers import duplicate_axes
+    dup_sweep_index = kernel.space.dim(dim_type.out)
+    domain_dup_sweep = duplicate_axes(
+            kernel.domain, sweep_inames,
+            primed_sweep_inames)
+
+    prime_sweep_inames = SubstitutionMapper(make_subst_func(
+        dict((sin, var(psin)) for sin, psin in zip(sweep_inames, primed_sweep_inames))))
+
+    # }}}
+
+    # {{{ construct arg mapping
+
+    # map goes from substitution arguments to domain_dup_sweep
+
+    for invdesc in invocation_descriptors:
+        map_space = domain_dup_sweep.get_space()
         ln = len(arg_names)
-        rn = kernel.space.dim(dim_type.out)
+        rn = map_space.dim(dim_type.out)
 
         map_space = map_space.add_dims(dim_type.in_, ln)
         for i, iname in enumerate(arg_names):
+            # arg names are initially primed, to be replaced with unprimed
+            # base-0 versions below
+
             map_space = map_space.set_dim_name(dim_type.in_, i, iname+"'")
+
+        # map_space: [arg_names] -> [domain](dup_sweep_index)[dup_sweep]
 
         set_space = map_space.move_dims(
                 dim_type.out, rn,
                 dim_type.in_, 0, ln).range()
+
+        # set_space: <domain>(dup_sweep_index)<dup_sweep><arg_names>
 
         footprint_map = None
 
         from loopy.symbolic import aff_from_expr
         for uarg_name, arg_val in zip(arg_names, invdesc.args):
             cns = isl.Constraint.equality_from_aff(
-                    aff_from_expr(set_space, var(uarg_name+"'") - arg_val))
+                    aff_from_expr(set_space, 
+                        var(uarg_name+"'") - prime_sweep_inames(arg_val)))
 
             cns_map = isl.BasicMap.from_constraint(cns)
             if footprint_map is None:
@@ -83,23 +114,26 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
                 dim_type.in_, 0,
                 dim_type.out, rn, ln)
 
+        # footprint_map is back in map_space
+
         if global_footprint_map is None:
             global_footprint_map = footprint_map
         else:
             global_footprint_map = global_footprint_map.union(footprint_map)
 
-        # }}}
+    # }}}
 
-    processed_sweep_inames = list(processed_sweep_inames)
+    if isinstance(global_footprint_map, isl.BasicMap):
+        global_footprint_map = isl.Map.from_basic_map(global_footprint_map)
+    global_footprint_map = global_footprint_map.intersect_range(domain_dup_sweep)
 
-    global_footprint_map = (isl.Map.from_basic_map(global_footprint_map)
-            .intersect_range(kernel.domain))
+    # {{{ compute bounds indices
 
     # move non-sweep-dimensions into parameter space
-    sweep_footprint_map = global_footprint_map.coalesce()
+    sweep_footprint_map = global_footprint_map
 
     for iname in kernel.all_inames():
-        if iname not in processed_sweep_inames:
+        if iname not in sweep_inames:
             sp = sweep_footprint_map.get_space()
             dt, idx = sp.get_var_dict()[iname]
             sweep_footprint_map = sweep_footprint_map.move_dims(
@@ -107,7 +141,7 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
                     dt, idx, 1)
 
     # compute bounding boxes to each set of parameters
-    sfm_dom = sweep_footprint_map.domain().coalesce()
+    sfm_dom = sweep_footprint_map.domain()
 
     if not sfm_dom.is_bounded():
         raise RuntimeError("In precomputation of substitution '%s': "
@@ -117,8 +151,9 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
     from loopy.kernel import find_var_base_indices_and_shape_from_inames
     arg_base_indices, shape = find_var_base_indices_and_shape_from_inames(
             sfm_dom, [uarg+"'" for uarg in arg_names],
-            kernel.cache_manager)
-    print arg_names, shape
+            kernel.cache_manager, context=kernel.assumptions)
+
+    # }}}
 
     # compute augmented domain
 
@@ -129,7 +164,7 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
     non1_shape = []
 
     for arg_name, bi, l in zip(arg_names, arg_base_indices, shape):
-        if l > 1:
+        if l != 1:
             non1_arg_names.append(arg_name)
             non1_arg_base_indices.append(bi)
             non1_shape.append(l)
@@ -140,26 +175,28 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
     # add the new, base-0 as new in dimensions
 
     sp = global_footprint_map.get_space()
-    tgt_idx = sp.dim(dim_type.out)
+    arg_idx = sp.dim(dim_type.out)
 
     n_args = len(arg_names)
     nn1_args = len(non1_arg_names)
 
     aug_domain = global_footprint_map.move_dims(
-            dim_type.out, tgt_idx,
+            dim_type.out, arg_idx,
             dim_type.in_, 0,
             n_args).range().coalesce()
 
-    aug_domain = aug_domain.insert_dims(dim_type.set, tgt_idx, nn1_args)
+    aug_domain = aug_domain.insert_dims(dim_type.set, arg_idx, nn1_args)
     for i, name in enumerate(non1_arg_names):
-        aug_domain = aug_domain.set_dim_name(dim_type.set, tgt_idx+i, name)
+        aug_domain = aug_domain.set_dim_name(dim_type.set, arg_idx+i, name)
 
     # index layout now:
-    # <....out.....> (tgt_idx) <base-0 non-1-length args> <args>
+    #
+    # <domain> (dup_sweep_index) <dup_sweep> (arg_index) ...
+    # ... <base-0 non-1-length args> <all args>
 
     from loopy.symbolic import aff_from_expr
     for arg_name, bi, s in zip(arg_names, arg_base_indices, shape):
-        if s > 1:
+        if s != 1:
             cns = isl.Constraint.equality_from_aff(
                     aff_from_expr(aug_domain.get_space(),
                         var(arg_name) - (var(arg_name+"'") - bi)))
@@ -170,14 +207,23 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
 
     # eliminate inames with non-zero base indices
 
-    aug_domain = aug_domain.eliminate(dim_type.set, tgt_idx+nn1_args, n_args)
-    aug_domain = aug_domain.remove_dims(dim_type.set, tgt_idx+nn1_args, n_args)
+    aug_domain = aug_domain.eliminate(dim_type.set, arg_idx+nn1_args, n_args)
+    aug_domain = aug_domain.remove_dims(dim_type.set, arg_idx+nn1_args, n_args)
 
     base_indices_2, shape_2 = find_var_base_indices_and_shape_from_inames(
-            aug_domain, non1_arg_names, kernel.cache_manager)
+            aug_domain, non1_arg_names, kernel.cache_manager,
+            context=kernel.assumptions)
 
     assert base_indices_2 == [0] * nn1_args
     assert shape_2 == non1_shape
+
+    # {{{ eliminate duplicated sweep_inames
+
+    nsweep = len(sweep_inames)
+    aug_domain = aug_domain.eliminate(dim_type.set, dup_sweep_index, nsweep)
+    aug_domain = aug_domain.remove_dims(dim_type.set, dup_sweep_index, nsweep)
+
+    # }}}
 
     return (non1_arg_names, aug_domain,
             arg_base_indices, non1_arg_base_indices, non1_shape)
@@ -186,9 +232,12 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
 
 
 
-def simplify_via_aff(space, expr):
+def simplify_via_aff(expr):
     from loopy.symbolic import aff_from_expr, aff_to_expr
-    return aff_to_expr(aff_from_expr(space, expr))
+    deps = get_dependencies(expr)
+    return aff_to_expr(aff_from_expr(
+        isl.Space.create_from_names(isl.Context(), list(deps)),
+        expr))
 
 
 
@@ -206,6 +255,10 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     invocation_arg_deps = set()
 
     def gather_substs(expr, name, args, rec):
+        if len(args) != len(subst.arguments):
+            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
+                    % (subst_name, len(args), len(subst.arguments), ))
+
         arg_deps = get_dependencies(args)
         if not arg_deps <= kernel.all_inames():
             raise RuntimeError("CSE arguments in '%s' do not consist "
@@ -219,11 +272,18 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     from loopy.symbolic import SubstitutionCallbackMapper
     scm = SubstitutionCallbackMapper([subst_name], gather_substs)
+
+    from loopy.symbolic import ParametrizedSubstitutor
+    rules_except_mine = kernel.substitutions.copy()
+    del rules_except_mine[subst_name]
+    subst_expander = ParametrizedSubstitutor(rules_except_mine)
+
     for insn in kernel.instructions:
-        scm(insn.expression)
-    for s in kernel.substitutions.itervalues():
-        if s is not subst:
-            scm(s.expression)
+        # We can't deal with invocations that involve other substitution's
+        # arguments. Therefore, fully expand each instruction and look at
+        # the invocations in subst_name occurring there.
+
+        scm(subst_expander(insn.expression))
 
     allowable_sweep_inames = invocation_arg_deps | set(arg_names)
     if not set(sweep_inames) <= allowable_sweep_inames:
@@ -356,19 +416,14 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     # }}}
 
-    # {{{ substitute rule into instructions
+    # {{{ substitute rule into expressions in kernel
 
     def do_substs(expr, name, args, rec):
-        found = False
-        for invdesc in invocation_descriptors:
-            if expr is invdesc.expr:
-                found = True
-                break
+        if len(args) != len(subst.arguments):
+            raise ValueError("invocation of '%s' with too few arguments"
+                    % name)
 
-        if not found:
-            return
-
-        args = [simplify_via_aff(new_domain.get_space(), arg-bi)
+        args = [simplify_via_aff(arg-bi)
                 for arg, bi in zip(args, non1_arg_base_indices)]
 
         new_outer_expr = var(target_var_name)
@@ -384,16 +439,16 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     for insn in kernel.instructions:
         new_insns.append(insn.copy(expression=sub_map(insn.expression)))
 
+    new_substs = dict(
+            (s.name, s.copy(expression=sub_map(s.expression)))
+            for s in kernel.substitutions.itervalues()
+            if s.name != subst_name)
+
     # }}}
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
-    if sweep_inames:
-        new_iname_to_tag.update(arg_name_to_tag)
-
-    new_substs = dict(
-            (s.name, s.copy(expression=sub_map(subst.expression)))
-            for s in kernel.substitutions.itervalues())
-    del new_substs[subst_name]
+    for arg_name in non1_arg_names:
+        new_iname_to_tag[arg_name] = arg_name_to_tag[arg_name]
 
     return kernel.copy(
             domain=new_domain,

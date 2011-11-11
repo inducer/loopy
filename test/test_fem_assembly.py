@@ -31,58 +31,60 @@ def test_laplacian_stiffness(ctx_factory):
     Nc_sym = var("Nc")
 
     knl = lp.make_kernel(ctx.devices[0],
-            "[Nc] -> {[K,i,j,q]: 0<=K<Nc and 0<=i,j<%(Nb)d and 0<=q<%(Nq)d}" 
-            % dict(Nb=Nb, Nq=Nq),
+            "[Nc] -> {[K,i,j,q, ax_a, ax_b, ax_c]: 0<=K<Nc and 0<=i,j<%(Nb)d and 0<=q<%(Nq)d "
+            "and 0<= ax_a, ax_b, ax_c < %(dim)d}" 
+            % dict(Nb=Nb, Nq=Nq, dim=dim),
             [
-                "CSE: dPsi(a,dxi) = jacInv[K,q,0,dxi] * DPsi[a,q,0] "
-                    "+ jacInv[K,q,1,dxi] * DPsi[a,q,1]",
+                "dPsi(a, dxi) := sum_float32(ax_c,"
+                    "  jacInv[ax_c,dxi,K,q] * DPsi[ax_c,a,q])",
                 "A[K, i, j] = sum_float32(q, w[q] * jacDet[K,q] * ("
                     "dPsi(0,0)*dPsi(1,0) + dPsi(0,1)*dPsi(1,1)))"
 
                 ],
             [
-            lp.ArrayArg("jacInv", dtype, shape=(Nc_sym, Nq, dim, dim), order=order),
-            lp.ConstantArrayArg("DPsi", dtype, shape=(Nb, Nq, dim), order=order),
+            lp.ArrayArg("jacInv", dtype, shape=(dim, dim, Nc_sym, Nq), order=order),
+            lp.ConstantArrayArg("DPsi", dtype, shape=(dim, Nb, Nq), order=order),
             lp.ArrayArg("jacDet", dtype, shape=(Nc_sym, Nq), order=order),
             lp.ConstantArrayArg("w", dtype, shape=(Nq, dim), order=order),
             lp.ArrayArg("A", dtype, shape=(Nc_sym, Nb, Nb), order=order),
             lp.ScalarArg("Nc",  np.int32, approximately=1000),
             ],
-            name="semlap", assumptions="Nc>=1")
+            name="lapquad", assumptions="Nc>=1")
 
+    #knl = lp.tag_dimensions(knl, dict(ax_c="unr"))
     seq_knl = knl
 
     def variant_1(knl):
         # no ILP across elements
-        knl= lp.remove_cse_by_tag(knl, "dPsi")
         knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
         knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
-        knl = lp.add_prefetch(knl, 'jacInv', ["Kii", "Kio", "q", "x", "y"],
-                uni_template="jacInv[Kii +16*Ko,q,x,y]")
+        knl = lp.add_prefetch(knl, 'jacInv', 
+                ["jacInv_dim_0", "jacInv_dim_1", "K_inner", "q"])
         return knl
 
     def variant_2(knl):
         # with ILP across elements
-        knl= lp.remove_cse_by_tag(knl, "dPsi")
         knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
         knl = lp.split_dimension(knl, "K_inner", 4, inner_tag="ilp")
         knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
-        knl = lp.add_prefetch(knl, 'jacInv', ["Kii", "Kio", "q", "x", "y"],
-                uni_template="jacInv[Kii + 4*Kio +16*Ko,q,x,y]")
+        knl = lp.add_prefetch(knl, "jacInv", 
+                ["jacInv_dim_0", "jacInv_dim_1", "K_inner_inner", "K_inner_outer", "q"])
         return knl
 
-    def variant_1(knl):
+    def variant_3(knl):
         # no ILP across elements, precompute dPsiTransf
-        knl= lp.realize_cse(knl, "dPsi", ["a", "dxi", ""])
         knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
         knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
-        knl = lp.add_prefetch(knl, 'jacInv', ["Kii", "Kio", "q", "x", "y"],
-                uni_template="jacInv[Kii +16*Ko,q,x,y]")
+        knl = lp.precompute(knl, "dPsi",
+                ["a", "dxi"])
+        knl = lp.add_prefetch(knl, "jacInv", 
+                ["jacInv_dim_0", "jacInv_dim_1", "K_inner", "q"])
         return knl
 
     for variant in [variant_1, variant_2]:
+    #for variant in [variant_3]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
-                loop_priority=["K", "i", "j"])
+                loop_priority=["jacInv_dim_0", "jacInv_dim_1"])
         kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
 
         lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,

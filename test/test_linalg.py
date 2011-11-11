@@ -222,8 +222,6 @@ def test_plain_matrix_mul(ctx_factory):
     knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner", ])
 
-    print lp.preprocess_kernel(knl)
-
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, {})
 
@@ -259,7 +257,7 @@ def test_variable_size_matrix_mul(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j,k]: 0<=i,j,k<n}",
             [
-                "label: c[i, j] = sum_float32(k, cse(a[i, k], lhsmat)*cse(b[k, j], rhsmat))"
+                "label: c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.ArrayArg("a", dtype, shape=(n, n), order=order),
@@ -275,8 +273,8 @@ def test_variable_size_matrix_mul(ctx_factory):
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 32)
 
-    knl = lp.realize_cse(knl, "lhsmat", dtype, ["k_inner", "i_inner"])
-    knl = lp.realize_cse(knl, "rhsmat", dtype, ["j_inner", "k_inner"])
+    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
+    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
@@ -362,9 +360,9 @@ def test_rank_one(ctx_factory):
         knl = lp.split_dimension(knl, "j_inner", 16,
                 inner_tag="l.1")
 
-        knl = lp.split_dimension(knl, "a_fetch_0", 16,
+        knl = lp.split_dimension(knl, "a_dim_0", 16,
                 outer_tag="l.1", inner_tag="l.0")
-        knl = lp.split_dimension(knl, "b_fetch_0", 16,
+        knl = lp.split_dimension(knl, "b_dim_0", 16,
                 outer_tag="l.1", inner_tag="l.0")
         return knl
 
@@ -443,7 +441,7 @@ def test_intel_matrix_mul(ctx_factory):
     queue = cl.CommandQueue(ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 6*16
+    n = 128+32
 
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
@@ -640,11 +638,9 @@ def test_image_matrix_mul_ilp(ctx_factory):
     knl = lp.split_dimension(knl, "j", ilp*j_inner_split, outer_tag="g.1")
     knl = lp.split_dimension(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
     knl = lp.split_dimension(knl, "k", 2)
-    # conflict-free
+    # conflict-free?
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
-    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"],
-            new_inames=["b_j_io", "b_j_ii", "b_k_i"])
-    knl = lp.join_dimensions(knl, ["b_j_io", "b_j_ii"])
+    knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))

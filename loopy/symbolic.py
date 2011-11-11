@@ -601,11 +601,11 @@ class ParametrizedSubstitutor(IdentityMapper):
                 or expr.function.name not in self.rules):
             return IdentityMapper.map_variable(self, expr)
 
-        cse_name = expr.function.name
-        rule = self.rules[cse_name]
+        rule_name = expr.function.name
+        rule = self.rules[rule_name]
         if len(rule.arguments) != len(expr.parameters):
             raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
-                    % (cse_name, len(expr.parameters), len(rule.arguments), ))
+                    % (rule_name, len(expr.parameters), len(rule.arguments), ))
 
         from pymbolic.mapper.substitutor import make_subst_func
         subst_map = SubstitutionMapper(make_subst_func(

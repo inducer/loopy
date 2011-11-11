@@ -153,19 +153,30 @@ def iname_rel_aff(space, iname, rel, aff):
 
 
 
-def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what):
+def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):
     pieces = pw_aff.get_pieces()
     if len(pieces) == 1:
         return pieces[0][1]
 
-    agg_domain = pw_aff.get_aggregate_domain()
+    reference = pw_aff.get_aggregate_domain()
+
+    if context is not None:
+        context = isl.align_spaces(context, pw_aff.get_domain_space())
+        reference = reference.intersect(context)
 
     for set, candidate_aff in pieces:
-        if constants_only and not candidate_aff.is_cst():
-            continue
+        for use_gist in [False, True]:
+            if use_gist:
+                if context is not None:
+                    candidate_aff = pw_aff.gist(set & context)
+                else:
+                    candidate_aff = pw_aff.gist(set)
 
-        if set_method(pw_aff, candidate_aff) == agg_domain:
-            return candidate_aff
+            if constants_only and not candidate_aff.is_cst():
+                continue
+
+            if reference <= set_method(pw_aff, candidate_aff):
+                return candidate_aff
 
     raise ValueError("a static %s was not found for PwAff '%s'"
             % (what, pw_aff))
@@ -173,22 +184,25 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what):
 
 
 
-def static_min_of_pw_aff(pw_aff, constants_only):
+def static_min_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.ge_set,
-            "minimum")
+            "minimum", context)
 
-def static_max_of_pw_aff(pw_aff, constants_only):
+def static_max_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.le_set,
-            "maximum")
+            "maximum", context)
 
-def static_value_of_pw_aff(pw_aff, constants_only):
+def static_value_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.eq_set,
-            "value")
+            "value", context)
 
 
 
 
 def duplicate_axes(isl_obj, duplicate_inames, new_inames):
+    if not duplicate_inames:
+        return isl_obj
+
     # {{{ add dims
 
     start_idx = isl_obj.dim(dim_type.set)
