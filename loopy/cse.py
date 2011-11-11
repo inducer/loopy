@@ -361,6 +361,12 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
                                 sweep_inames, invocation_descriptors)
 
     new_domain = new_domain.coalesce()
+
+    if len(new_domain.get_basic_sets()) > 1:
+        hull_new_domain = new_domain.simple_hull()
+        if hull_new_domain <= new_domain:
+            new_domain = hull_new_domain
+
     if isinstance(new_domain, isl.Set):
         dom_bsets = new_domain.get_basic_sets()
         if len(dom_bsets) > 1:
