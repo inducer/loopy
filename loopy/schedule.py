@@ -167,6 +167,8 @@ def dump_schedule(schedule):
             entries.append("</%s>" % sched_item.iname)
         elif isinstance(sched_item, RunInstruction):
             entries.append(sched_item.insn_id)
+        elif isinstance(sched_item, Barrier):
+            entries.append("|")
         else:
             assert False
 
@@ -270,6 +272,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
                 and len(schedule) >= debug.debug_length):
             debug_mode = True
 
+    #print dump_schedule(schedule), len(schedule)
     if debug_mode:
         print kernel
         print "--------------------------------------------"
@@ -293,8 +296,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
     reachable_insn_ids = set()
 
     for insn_id in all_insn_ids - scheduled_insn_ids:
-        if debug_mode:
-            print insn_id
         insn = kernel.id_to_insn[insn_id]
 
         schedule_now = set(insn.insn_deps) <= scheduled_insn_ids

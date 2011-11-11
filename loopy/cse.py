@@ -443,7 +443,8 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     sub_map = SubstitutionCallbackMapper([subst_name], do_substs)
     for insn in kernel.instructions:
-        new_insns.append(insn.copy(expression=sub_map(insn.expression)))
+        new_insn = insn.copy(expression=sub_map(insn.expression))
+        new_insns.append(new_insn)
 
     new_substs = dict(
             (s.name, s.copy(expression=sub_map(s.expression)))
