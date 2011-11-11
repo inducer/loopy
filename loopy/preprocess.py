@@ -84,6 +84,8 @@ def duplicate_reduction_inames(kernel):
     new_domain = kernel.domain
     new_insns = []
 
+    new_iname_to_tag = kernel.iname_to_tag.copy()
+
     for insn in kernel.instructions:
         old_insn_inames = []
         new_insn_inames = []
@@ -96,10 +98,12 @@ def duplicate_reduction_inames(kernel):
         from loopy.isl_helpers import duplicate_axes
         for old, new in zip(old_insn_inames, new_insn_inames):
             new_domain = duplicate_axes(new_domain, [old], [new])
+            new_iname_to_tag[new] = kernel.iname_to_tag[old]
 
     return kernel.copy(
             instructions=new_insns,
-            domain=new_domain)
+            domain=new_domain,
+            iname_to_tag=new_iname_to_tag)
 
 # }}}
 
