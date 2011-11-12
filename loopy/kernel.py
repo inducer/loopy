@@ -1096,9 +1096,23 @@ class LoopKernel(Record):
 
         lines.append(sep)
         lines.append("INSTRUCTIONS:")
+        loop_list_width = 35
         for insn in self.instructions:
-            lines.append(str(insn))
-            lines.append("    [%s]" % ",".join(sorted(self.insn_inames(insn))))
+            loop_list = ",".join(sorted(self.insn_inames(insn)))
+            if len(loop_list) > loop_list_width:
+                lines.append("[%s]" % loop_list)
+                lines.append("%s%s <- %s ... # %s" % (
+                    (loop_list_width+2)*" ", insn.assignee, insn.expression, insn.id))
+            else:
+                lines.append("[%s]%s%s <- %s ... # %s" % (
+                    loop_list, " "*(loop_list_width-len(loop_list)),
+                    insn.assignee, insn.expression, insn.id))
+
+        lines.append(sep)
+        lines.append("DEPENDENCIES:")
+        for insn in self.instructions:
+            if insn.insn_deps:
+                lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
         lines.append(sep)
 
         return "\n".join(lines)
