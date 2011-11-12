@@ -524,9 +524,13 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
                 from loopy import split_dimension
+
+                # Don't be tempted to switch the outer tag to unroll--this may
+                # generate tons of code on some examples.
+
                 return assign_automatic_axes(
                         split_dimension(kernel, iname, inner_length=local_size[axis],
-                            outer_tag=UnrollTag(), inner_tag=new_tag,
+                            outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
                         axis=recursion_axis, local_size=local_size)
 
