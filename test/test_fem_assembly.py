@@ -18,7 +18,7 @@ def test_laplacian_stiffness(ctx_factory):
     dim = 2
 
     Nq = 40 # num. quadrature points
-    Nc = 1000 # num. cells
+    Nc = 100 # num. cells
     Nb = 20 # num. basis functions
 
     # K - run-time symbolic
@@ -52,7 +52,7 @@ def test_laplacian_stiffness(ctx_factory):
     def variant_1(knl):
         # no ILP across elements
         knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
-        knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
+        knl = lp.tag_dimensions(knl, {"i": "l.1", "j": "l.0"})
         knl = lp.add_prefetch(knl, 'jacInv',
                 ["jacInv_dim_0", "jacInv_dim_1", "K_inner", "q"])
         return knl
@@ -61,32 +61,33 @@ def test_laplacian_stiffness(ctx_factory):
         # with ILP across elements
         knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
         knl = lp.split_dimension(knl, "K_inner", 4, inner_tag="ilp")
-        knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
+        knl = lp.tag_dimensions(knl, {"i": "l.1", "j": "l.0"})
         knl = lp.add_prefetch(knl, "jacInv",
                 ["jacInv_dim_0", "jacInv_dim_1", "K_inner_inner", "K_inner_outer", "q"])
         return knl
 
     def variant_3(knl):
         # no ILP across elements, precompute dPsiTransf
+
+        # generates correct code--but suboptimal in a few ways.
+
         knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
-        knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
-        knl = lp.precompute(knl, "dPsi", np.float32,
-                sweep_axes=["K_inner"])
         knl = lp.add_prefetch(knl, "jacInv",
-                ["jacInv_dim_0", "jacInv_dim_1", "K_inner", "q"])
-        print lp.preprocess_kernel(knl)
-        1/0
+                ["jacInv_dim_0", "jacInv_dim_1", "q"])
+        knl = lp.tag_dimensions(knl, {"i": "l.1", "j": "l.0"})
+        knl = lp.precompute(knl, "dPsi", np.float32,
+                sweep_axes=["K_inner"], default_tag=None)
         return knl
 
-    #for variant in [variant_1, variant_2, variant_3]:
-    for variant in [variant_3]:
+    for variant in [variant_1, variant_2, variant_3]:
+    #for variant in [variant_3]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["jacInv_dim_0", "jacInv_dim_1"])
         kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=0, op_label="GFlops",
-                parameters={"Nc": Nc}, print_seq_code=True,
+                parameters={"Nc": Nc}, print_ref_code=True,
                 timing_rounds=30)
 
 

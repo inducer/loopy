@@ -1101,10 +1101,10 @@ class LoopKernel(Record):
             loop_list = ",".join(sorted(self.insn_inames(insn)))
             if len(loop_list) > loop_list_width:
                 lines.append("[%s]" % loop_list)
-                lines.append("%s%s <- %s ... # %s" % (
+                lines.append("%s%s <- %s   # %s" % (
                     (loop_list_width+2)*" ", insn.assignee, insn.expression, insn.id))
             else:
-                lines.append("[%s]%s%s <- %s ... # %s" % (
+                lines.append("[%s]%s%s <- %s   # %s" % (
                     loop_list, " "*(loop_list_width-len(loop_list)),
                     insn.assignee, insn.expression, insn.id))
 
