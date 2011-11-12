@@ -186,9 +186,8 @@ def generate_code(kernel, with_annotation=False):
 
     from loopy.symbolic import LoopyCCodeMapper, pw_aff_to_expr
 
-    ccm = LoopyCCodeMapper(kernel).copy_and_assign_many(
-            make_initial_assignments(kernel),
-            with_annotation=with_annotation)
+    ccm = (LoopyCCodeMapper(kernel, with_annotation=with_annotation)
+            .copy_and_assign_many(make_initial_assignments(kernel)))
 
     mod = Module()
 
