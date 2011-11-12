@@ -36,48 +36,112 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 
 
 
-def get_footprint(kernel, subst_name, old_arg_names, arg_names,
-        sweep_axes, invocation_descriptors):
-    global_footprint_map = None
+# {{{ construct storage->sweep map
 
-    # {{{ deal with argument names as sweep inames
+def construct_storage_to_sweep_map(invocation_descriptors, domain_dup_sweep,
+        storage_axis_names, storage_axis_sources, prime_sweep_inames):
 
-    # An argument name as a sweep iname means that *all*
-    # inames contained in *all* uses of the rule will be
-    # made sweep inames.
+    # The storage map goes from storage axes to domain_dup_sweep.
+    # The first len(arg_names) storage dimensions are the rule's arguments.
 
-    sweep_inames = set()
+    result = None
 
     for invdesc in invocation_descriptors:
-        for iname in sweep_axes:
-            if iname in old_arg_names:
-                arg_idx = old_arg_names.index(iname)
-                sweep_inames.update(
-                        get_dependencies(invdesc.args[arg_idx]))
+        map_space = domain_dup_sweep.get_space()
+        stor_dim = len(storage_axis_names)
+        rn = map_space.dim(dim_type.out)
+
+        map_space = map_space.add_dims(dim_type.in_, stor_dim)
+        for i, saxis in enumerate(storage_axis_names):
+            # arg names are initially primed, to be replaced with unprimed
+            # base-0 versions below
+
+            map_space = map_space.set_dim_name(dim_type.in_, i, saxis+"'")
+
+        # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep]
+
+        set_space = map_space.move_dims(
+                dim_type.out, rn,
+                dim_type.in_, 0, stor_dim).range()
+
+        # set_space: [domain](dup_sweep_index)[dup_sweep][stor_axes']
+
+        stor2sweep = None
+
+        from loopy.symbolic import aff_from_expr
+
+        for saxis, saxis_source in zip(storage_axis_names, storage_axis_sources):
+            if isinstance(saxis_source, int):
+                # an argument
+                cns = isl.Constraint.equality_from_aff(
+                        aff_from_expr(set_space,
+                            var(saxis+"'")
+                            - prime_sweep_inames(invdesc.args[saxis_source])))
             else:
-                sweep_inames.add(iname)
+                # a 'bare' sweep iname
+                cns = isl.Constraint.equality_from_aff(
+                        aff_from_expr(set_space,
+                            var(saxis+"'")
+                            - prime_sweep_inames(var(saxis_source))))
 
-    sweep_inames = list(sweep_inames)
+            cns_map = isl.BasicMap.from_constraint(cns)
+            if stor2sweep is None:
+                stor2sweep = cns_map
+            else:
+                stor2sweep = stor2sweep.intersect(cns_map)
 
-    # }}}
+        stor2sweep = stor2sweep.move_dims(
+                dim_type.in_, 0,
+                dim_type.out, rn, stor_dim)
 
-    # {{{ see if we need extra storage dimensions
+        # stor2sweep is back in map_space
 
-    # Realize that by default our storage dimensions are our arguments. If
-    # we're given a sweep iname that no (usage-site) argument depends on, then
-    # this sweep isn't covered in our storage. This necessitates adding an
-    # extra storage dimension.
+        if result is None:
+            result = stor2sweep
+        else:
+            result = result.union(stor2sweep)
 
-    # find inames used in argument dependencies
+    return result
 
-    usage_arg_deps = set()
-    for invdesc in invocation_descriptors:
-        for arg in invdesc.args:
-            usage_arg_deps.update(get_dependencies(arg))
+# }}}
 
-    extra_storage_dims = list(set(sweep_inames) - usage_arg_deps)
+# {{{ compute storage bounds
 
-    # }}}
+def compute_bounds(kernel, subst_name, stor2sweep, sweep_inames,
+        storage_axis_names):
+
+    # move non-sweep inames into parameter space
+
+    dup_sweep_index = kernel.space.dim(dim_type.out)
+    # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep]
+
+    sp = stor2sweep.get_space()
+    bounds_footprint_map = stor2sweep.move_dims(
+            dim_type.param, sp.dim(dim_type.param),
+            dim_type.out, 0, dup_sweep_index)
+
+    # compute bounds for each storage axis
+    storage_domain = bounds_footprint_map.domain()
+
+    if not storage_domain.is_bounded():
+        raise RuntimeError("In precomputation of substitution '%s': "
+                "sweep did not result in a bounded storage domain"
+                % subst_name)
+
+    from loopy.kernel import find_var_base_indices_and_shape_from_inames
+    return find_var_base_indices_and_shape_from_inames(
+            storage_domain, [saxis+"'" for saxis in storage_axis_names],
+            kernel.cache_manager, context=kernel.assumptions)
+
+# }}}
+
+
+
+
+
+def get_access_info(kernel, subst_name,
+        storage_axis_names, storage_axis_sources,
+        sweep_inames, invocation_descriptors):
 
     # {{{ duplicate sweep inames
 
@@ -93,151 +157,73 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
 
     # }}}
 
-    # {{{ construct storage map
+    stor2sweep = construct_storage_to_sweep_map(
+            invocation_descriptors, domain_dup_sweep,
+            storage_axis_names, storage_axis_sources, prime_sweep_inames)
 
-    # The storage map goes from storage dimension to domain_dup_sweep.
-    # The first len(arg_names) storage dimensions are the rule's arguments.
+    if isinstance(stor2sweep, isl.BasicMap):
+        stor2sweep = isl.Map.from_basic_map(stor2sweep)
+    stor2sweep = stor2sweep.intersect_range(domain_dup_sweep)
 
-    for invdesc in invocation_descriptors:
-        map_space = domain_dup_sweep.get_space()
-        stor_dim = len(arg_names) + len(extra_storage_dims)
-        rn = map_space.dim(dim_type.out)
-
-        map_space = map_space.add_dims(dim_type.in_, stor_dim)
-        for i, iname in enumerate(arg_names):
-            # arg names are initially primed, to be replaced with unprimed
-            # base-0 versions below
-
-            map_space = map_space.set_dim_name(dim_type.in_, i, iname+"'")
-
-        # map_space: [stor_dims] -> [domain](dup_sweep_index)[dup_sweep]
-
-        set_space = map_space.move_dims(
-                dim_type.out, rn,
-                dim_type.in_, 0, stor_dim).range()
-
-        # set_space: <domain>(dup_sweep_index)<dup_sweep><stor_dims>
-
-        footprint_map = None
-
-        from loopy.symbolic import aff_from_expr
-        for uarg_name, arg_val in zip(arg_names, invdesc.args):
-            cns = isl.Constraint.equality_from_aff(
-                    aff_from_expr(set_space,
-                        var(uarg_name+"'") - prime_sweep_inames(arg_val)))
-
-            cns_map = isl.BasicMap.from_constraint(cns)
-            if footprint_map is None:
-                footprint_map = cns_map
-            else:
-                footprint_map = footprint_map.intersect(cns_map)
-
-        footprint_map = footprint_map.move_dims(
-                dim_type.in_, 0,
-                dim_type.out, rn, stor_dim)
-
-        # footprint_map is back in map_space
-
-        if global_footprint_map is None:
-            global_footprint_map = footprint_map
-        else:
-            global_footprint_map = global_footprint_map.union(footprint_map)
-
-    # }}}
-
-    if isinstance(global_footprint_map, isl.BasicMap):
-        global_footprint_map = isl.Map.from_basic_map(global_footprint_map)
-    global_footprint_map = global_footprint_map.intersect_range(domain_dup_sweep)
-
-    # {{{ compute bounds indices
-
-    # move non-sweep-dimensions into parameter space
-    sweep_footprint_map = global_footprint_map
-
-    for iname in kernel.all_inames():
-        if iname not in sweep_inames:
-            sp = sweep_footprint_map.get_space()
-            dt, idx = sp.get_var_dict()[iname]
-            sweep_footprint_map = sweep_footprint_map.move_dims(
-                    dim_type.param, sp.dim(dim_type.param),
-                    dt, idx, 1)
-
-    # compute bounding boxes to each set of parameters
-    sfm_dom = sweep_footprint_map.domain()
-
-    if not sfm_dom.is_bounded():
-        raise RuntimeError("In precomputation of substitution '%s': "
-                "sweep did not result in a bounded footprint"
-                % subst_name)
-
-    from loopy.kernel import find_var_base_indices_and_shape_from_inames
-    arg_base_indices, shape = find_var_base_indices_and_shape_from_inames(
-            sfm_dom, [uarg+"'" for uarg in arg_names],
-            kernel.cache_manager, context=kernel.assumptions)
-
-    # }}}
+    storage_base_indices, storage_shape = compute_bounds(
+            kernel, subst_name, stor2sweep, sweep_inames,
+            storage_axis_names)
 
     # compute augmented domain
 
     # {{{ filter out unit-length dimensions
 
-    non1_arg_names = []
-    non1_arg_base_indices = []
-    non1_shape = []
+    non1_storage_axis_names = []
+    non1_storage_base_indices = []
+    non1_storage_shape = []
 
-    for arg_name, bi, l in zip(arg_names, arg_base_indices, shape):
+    for saxis, bi, l in zip(storage_axis_names, storage_base_indices, storage_shape):
         if l != 1:
-            non1_arg_names.append(arg_name)
-            non1_arg_base_indices.append(bi)
-            non1_shape.append(l)
+            non1_storage_axis_names.append(saxis)
+            non1_storage_base_indices.append(bi)
+            non1_storage_shape.append(l)
 
     # }}}
 
     # {{{ subtract off the base indices
     # add the new, base-0 as new in dimensions
 
-    sp = global_footprint_map.get_space()
-    arg_idx = sp.dim(dim_type.out)
+    sp = stor2sweep.get_space()
+    stor_idx = sp.dim(dim_type.out)
 
-    n_args = len(arg_names)
-    nn1_args = len(non1_arg_names)
+    n_stor = len(storage_axis_names)
+    nn1_stor = len(non1_storage_axis_names)
 
-    aug_domain = global_footprint_map.move_dims(
-            dim_type.out, arg_idx,
+    aug_domain = stor2sweep.move_dims(
+            dim_type.out, stor_idx,
             dim_type.in_, 0,
-            n_args).range().coalesce()
+            n_stor).range().coalesce()
 
-    aug_domain = aug_domain.insert_dims(dim_type.set, arg_idx, nn1_args)
-    for i, name in enumerate(non1_arg_names):
-        aug_domain = aug_domain.set_dim_name(dim_type.set, arg_idx+i, name)
+    # aug_domain space now:
+    # [domain](dup_sweep_index)[dup_sweep](stor_idx)[stor_axes']
 
-    # index layout now:
-    #
-    # <domain> (dup_sweep_index) <dup_sweep> (arg_index) ...
-    # ... <base-0 non-1-length args> <all args>
+    aug_domain = aug_domain.insert_dims(dim_type.set, stor_idx, nn1_stor)
+    for i, name in enumerate(non1_storage_axis_names):
+        aug_domain = aug_domain.set_dim_name(dim_type.set, stor_idx+i, name)
+
+    # aug_domain space now:
+    # [domain](dup_sweep_index)[dup_sweep](stor_idx)[stor_axes'][n1_stor_axes]
 
     from loopy.symbolic import aff_from_expr
-    for arg_name, bi, s in zip(arg_names, arg_base_indices, shape):
+    for saxis, bi, s in zip(storage_axis_names, storage_base_indices, storage_shape):
         if s != 1:
             cns = isl.Constraint.equality_from_aff(
                     aff_from_expr(aug_domain.get_space(),
-                        var(arg_name) - (var(arg_name+"'") - bi)))
+                        var(saxis) - (var(saxis+"'") - bi)))
 
             aug_domain = aug_domain.add_constraint(cns)
 
     # }}}
 
-    # eliminate inames with non-zero base indices
+    # eliminate (primed) storage axes with non-zero base indices
 
-    aug_domain = aug_domain.eliminate(dim_type.set, arg_idx+nn1_args, n_args)
-    aug_domain = aug_domain.remove_dims(dim_type.set, arg_idx+nn1_args, n_args)
-
-    base_indices_2, shape_2 = find_var_base_indices_and_shape_from_inames(
-            aug_domain, non1_arg_names, kernel.cache_manager,
-            context=kernel.assumptions)
-
-    assert base_indices_2 == [0] * nn1_args
-    assert shape_2 == non1_shape
+    aug_domain = aug_domain.eliminate(dim_type.set, stor_idx+nn1_stor, n_stor)
+    aug_domain = aug_domain.remove_dims(dim_type.set, stor_idx+nn1_stor, n_stor)
 
     # {{{ eliminate duplicated sweep_inames
 
@@ -247,8 +233,8 @@ def get_footprint(kernel, subst_name, old_arg_names, arg_names,
 
     # }}}
 
-    return (non1_arg_names, aug_domain,
-            arg_base_indices, non1_arg_base_indices, non1_shape)
+    return (non1_storage_axis_names, aug_domain,
+            storage_base_indices, non1_storage_base_indices, non1_storage_shape)
 
 
 
@@ -265,7 +251,7 @@ def simplify_via_aff(expr):
 
 
 def precompute(kernel, subst_name, dtype, sweep_axes=[],
-        storage_axes=None, new_arg_names=None, arg_name_to_tag={},
+        storage_axes=None, new_storage_axis_names=None, storage_axis_to_tag={},
         default_tag="l.auto"):
     """Precompute the expression described in the substitution rule *subst_name*
     and store it in a temporary array. A precomputation needs two things to operate,
@@ -292,13 +278,18 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     :arg sweep_axes: A :class:`list` of inames and/or rule argument names to be swept.
     :arg storage_dims: A :class:`list` of inames and/or rule argument names/indices to be used as storage axes.
 
+    If `storage_dims` is not specified, it defaults to the arrangement
+    `<direct sweep axes><arguments>` with the direct sweep axes being the
+    slower-varying indices.
+
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
+    from loopy.kernel import parse_tag
+    default_tag = parse_tag(default_tag)
 
     subst = kernel.substitutions[subst_name]
     arg_names = subst.arguments
-    subst_expr = subst.expression
 
     # {{{ gather up invocations
 
@@ -335,72 +326,112 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     # }}}
 
-    # {{{ process ind_iname_to_tag argument
+    # {{{ deal with argument names as sweep axes
 
-    arg_name_to_tag = arg_name_to_tag.copy()
+    # An argument name as a sweep iname means that *all*
+    # inames contained in *all* uses of the rule will be
+    # made sweep inames.
 
-    from loopy.kernel import parse_tag
-    default_tag = parse_tag(default_tag)
-    for iname in arg_names:
-        arg_name_to_tag.setdefault(iname, default_tag)
+    sweep_inames = set()
 
-    if not set(arg_name_to_tag.iterkeys()) <= set(arg_names):
-        raise RuntimeError("tags for non-argument names may not be passed")
+    for invdesc in invocation_descriptors:
+        for iname in sweep_axes:
+            if iname in subst.arguments:
+                arg_idx = subst.arguments.index(iname)
+                sweep_inames.update(
+                        get_dependencies(invdesc.args[arg_idx]))
+            else:
+                sweep_inames.add(iname)
 
-    # here, all information is consolidated into ind_iname_to_tag
+    sweep_inames = list(sweep_inames)
+    del sweep_axes
+
+    # }}}
+
+    # {{{ see if we need extra storage dimensions
+
+    # find inames used in argument dependencies
+
+    usage_arg_deps = set()
+    for invdesc in invocation_descriptors:
+        for arg in invdesc.args:
+            usage_arg_deps.update(get_dependencies(arg))
+
+    extra_storage_axes = list(set(sweep_inames) - usage_arg_deps)
+
+    if storage_axes is None:
+        storage_axes = (
+                extra_storage_axes
+                + list(xrange(len(arg_names))))
 
     # }}}
 
     newly_created_var_names = set()
 
-    # {{{ make sure that new arg names are unique
+    # {{{ process storage_axes argument
 
     # (and substitute in subst_expressions if any variable name changes are necessary)
 
-    old_to_new = {}
+    expr_subst_dict = {}
 
-    unique_new_arg_names = []
-    new_arg_name_to_tag = {}
-    for i, name in enumerate(arg_names):
+    storage_axis_names = []
+    storage_axis_sources = [] # number for arg#, or iname
+    storage_axis_name_to_tag = {}
+
+    for i, saxis in enumerate(storage_axes):
         new_name = None
 
-        if new_arg_names is not None and i < len(new_arg_names):
-            new_name = new_arg_names[i]
-            if new_name in kernel.all_variable_names():
-                raise RuntimeError("new name '%s' already exists" % new_name)
+        tag_lookup_saxis = saxis
 
-        if name in kernel.all_variable_names():
-            based_on = "%s_%s" % (name, subst_name)
-            new_name = kernel.make_unique_var_name(
-                    based_on=based_on, extra_used_vars=newly_created_var_names)
+        if saxis in subst.arguments:
+            saxis = subst.arguments.index(saxis)
 
-        if new_name is not None:
-            old_to_new[name] = var(new_name)
-            unique_new_arg_names.append(new_name)
-            new_arg_name_to_tag[new_name] = arg_name_to_tag[name]
-            newly_created_var_names.add(new_name)
+        storage_axis_sources.append(saxis)
+
+        if isinstance(saxis, int):
+            # argument index
+            name = old_name = subst.arguments[saxis]
         else:
-            unique_new_arg_names.append(name)
-            new_arg_name_to_tag[name] = arg_name_to_tag[name]
-            newly_created_var_names.add(name)
+            old_name = saxis
+            name = "%s_%s" % (subst_name, old_name)
 
-    old_arg_names = arg_names
-    arg_names = unique_new_arg_names
+        if new_storage_axis_names is not None and i < len(new_storage_axis_names):
+            name = new_storage_axis_names[i]
+            tag_lookup_saxis = name
+            if new_name in (kernel.all_variable_names() | newly_created_var_names):
+                raise RuntimeError("new storage axis name '%s' already exists" % new_name)
 
-    arg_name_to_tag = new_arg_name_to_tag
-    subst_expr = (
-            SubstitutionMapper(make_subst_func(old_to_new))
-            (subst_expr))
+        if name in (kernel.all_variable_names()
+                | newly_created_var_names):
+            name = kernel.make_unique_var_name(
+                    based_on=name, extra_used_vars=newly_created_var_names)
+
+        storage_axis_names.append(name)
+        storage_axis_name_to_tag[name] = storage_axis_to_tag.get(
+                tag_lookup_saxis, default_tag)
+
+        newly_created_var_names.add(new_name)
+        expr_subst_dict[old_name] = var(name)
+
+    del storage_axis_to_tag
+    del storage_axes
+    del new_storage_axis_names
+
+    compute_expr = (
+            SubstitutionMapper(make_subst_func(expr_subst_dict))
+            (subst.expression))
+
+    del expr_subst_dict
 
     # }}}
 
-    # {{{ align and intersect the footprint and the domain
+    (non1_storage_axis_names, new_domain,
+            storage_base_indices, non1_storage_base_indices, non1_storage_shape)= \
+                    get_access_info(kernel, subst_name,
+                            storage_axis_names, storage_axis_sources,
+                            sweep_inames, invocation_descriptors)
 
-    # (If there are independent inames, this adds extra dimensions to the domain.)
-    (non1_arg_names, new_domain,
-                arg_base_indices, non1_arg_base_indices, non1_shape) = \
-                        get_footprint(kernel, subst_name, old_arg_names, arg_names,
-                                sweep_axes, invocation_descriptors)
+    # {{{ ensure convexity of new_domain
 
     new_domain = new_domain.coalesce()
 
@@ -439,8 +470,8 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     new_temporary_variables[target_var_name] = TemporaryVariable(
             name=target_var_name,
             dtype=np.dtype(dtype),
-            base_indices=(0,)*len(non1_shape),
-            shape=non1_shape,
+            base_indices=(0,)*len(non1_storage_shape),
+            shape=non1_storage_shape,
             is_local=None)
 
     # }}}
@@ -449,11 +480,11 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     assignee = var(target_var_name)
 
-    if non1_arg_names:
-        assignee = assignee[tuple(var(iname) for iname in non1_arg_names)]
+    if non1_storage_axis_names:
+        assignee = assignee[tuple(var(iname) for iname in non1_storage_axis_names)]
 
     def zero_length_1_arg(arg_name):
-        if arg_name in non1_arg_names:
+        if arg_name in non1_storage_axis_names:
             return var(arg_name)
         else:
             return 0
@@ -461,9 +492,9 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     compute_expr = (SubstitutionMapper(
         make_subst_func(dict(
             (arg_name, zero_length_1_arg(arg_name)+bi)
-            for arg_name, bi in zip(arg_names, arg_base_indices)
+            for arg_name, bi in zip(storage_axis_names, storage_base_indices)
             )))
-        (subst_expr))
+        (compute_expr))
 
     from loopy.kernel import Instruction
     compute_insn = Instruction(
@@ -480,12 +511,25 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
             raise ValueError("invocation of '%s' with too few arguments"
                     % name)
 
-        args = [simplify_via_aff(arg-bi)
-                for arg, bi in zip(args, non1_arg_base_indices)]
+        stor_subscript = []
+        for sax_name, sax_source, sax_base_idx in zip(
+                storage_axis_names, storage_axis_sources, storage_base_indices):
+            if sax_name not in non1_storage_axis_names:
+                continue
+
+            if isinstance(sax_source, int):
+                # an argument
+                ax_index = args[sax_source]
+            else:
+                # an iname
+                ax_index = var(sax_source)
+
+            ax_index = simplify_via_aff(ax_index - sax_base_idx)
+            stor_subscript.append(ax_index)
 
         new_outer_expr = var(target_var_name)
-        if args:
-            new_outer_expr = new_outer_expr[tuple(args)]
+        if stor_subscript:
+            new_outer_expr = new_outer_expr[tuple(stor_subscript)]
 
         return new_outer_expr
         # can't nest, don't recurse
@@ -505,8 +549,8 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     # }}}
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
-    for arg_name in non1_arg_names:
-        new_iname_to_tag[arg_name] = arg_name_to_tag[arg_name]
+    for arg_name in non1_storage_axis_names:
+        new_iname_to_tag[arg_name] = storage_axis_name_to_tag[arg_name]
 
     return kernel.copy(
             domain=new_domain,

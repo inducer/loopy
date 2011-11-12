@@ -417,8 +417,8 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
 # {{{ convenience: add_prefetch
 
-def add_prefetch(kernel, var_name, sweep_dims, dim_args=None,
-        new_inames=None, default_tag="l.auto", rule_name=None):
+def add_prefetch(kernel, var_name, sweep_dims, dim_arg_names=None,
+        default_tag="l.auto", rule_name=None):
 
     if rule_name is None:
         rule_name = kernel.make_unique_var_name("%s_fetch" % var_name)
@@ -430,8 +430,8 @@ def add_prefetch(kernel, var_name, sweep_dims, dim_args=None,
     parameters = []
     for i in range(arg.dimensions):
         based_on = "%s_dim_%d" % (var_name, i)
-        if dim_args is not None and i < len(dim_args):
-            based_on = dim_args[i]
+        if dim_arg_names is not None and i < len(dim_arg_names):
+            based_on = dim_arg_names[i]
 
         par_name = kernel.make_unique_var_name(based_on=based_on,
                 extra_used_vars=newly_created_vars)
@@ -454,7 +454,8 @@ def add_prefetch(kernel, var_name, sweep_dims, dim_args=None,
         else:
             new_fetch_dims.append(fd)
 
-    return precompute(kernel, rule_name, arg.dtype, sweep_dims, new_arg_names=dim_args,
+    return precompute(kernel, rule_name, arg.dtype, sweep_dims,
+            new_storage_axis_names=dim_arg_names,
             default_tag=default_tag)
 
 # }}}
