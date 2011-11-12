@@ -126,7 +126,7 @@ Finishing up
 Automatic Testing
 -----------------
 
-.. autofunction:: auto_test_vs_seq
+.. autofunction:: auto_test_ref
 
 Troubleshooting
 ---------------

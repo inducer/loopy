@@ -71,9 +71,11 @@ def test_laplacian_stiffness(ctx_factory):
         knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
         knl = lp.tag_dimensions(knl, {"i": "l.0", "j": "l.1"})
         knl = lp.precompute(knl, "dPsi", np.float32,
-                sweep_inames=["K_inner"])
+                sweep_axes=["K_inner"])
         knl = lp.add_prefetch(knl, "jacInv",
                 ["jacInv_dim_0", "jacInv_dim_1", "K_inner", "q"])
+        print lp.preprocess_kernel(knl)
+        1/0
         return knl
 
     #for variant in [variant_1, variant_2, variant_3]:
@@ -82,7 +84,7 @@ def test_laplacian_stiffness(ctx_factory):
                 loop_priority=["jacInv_dim_0", "jacInv_dim_1"])
         kernel_gen = lp.check_kernels(kernel_gen, dict(Nc=Nc))
 
-        lp.auto_test_vs_seq(seq_knl, ctx, kernel_gen,
+        lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=0, op_label="GFlops",
                 parameters={"Nc": Nc}, print_seq_code=True,
                 timing_rounds=30)

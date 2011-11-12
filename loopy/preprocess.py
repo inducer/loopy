@@ -98,7 +98,8 @@ def duplicate_reduction_inames(kernel):
         from loopy.isl_helpers import duplicate_axes
         for old, new in zip(old_insn_inames, new_insn_inames):
             new_domain = duplicate_axes(new_domain, [old], [new])
-            new_iname_to_tag[new] = kernel.iname_to_tag[old]
+            if old in kernel.iname_to_tag:
+                new_iname_to_tag[new] = kernel.iname_to_tag[old]
 
     return kernel.copy(
             instructions=new_insns,
@@ -519,7 +520,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             # }}}
 
         if axis is None:
-            new_tag = UnrollTag()
+            new_tag = None
         else:
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:

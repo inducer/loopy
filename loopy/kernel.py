@@ -1182,6 +1182,7 @@ class SetOperationCacheManager:
             if set.plain_is_equal(bkt_set) and op == bkt_op and args == bkt_args:
                 return result
 
+        #print op, set.get_dim_name(dim_type.set, args[0])
         result = getattr(set, op)(*args)
         bucket.append((set, op, args, result))
         return result

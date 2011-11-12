@@ -121,7 +121,7 @@ def compute_bounds(kernel, subst_name, stor2sweep, sweep_inames,
             dim_type.out, 0, dup_sweep_index)
 
     # compute bounds for each storage axis
-    storage_domain = bounds_footprint_map.domain()
+    storage_domain = bounds_footprint_map.domain().coalesce()
 
     if not storage_domain.is_bounded():
         raise RuntimeError("In precomputation of substitution '%s': "
@@ -197,7 +197,7 @@ def get_access_info(kernel, subst_name,
     aug_domain = stor2sweep.move_dims(
             dim_type.out, stor_idx,
             dim_type.in_, 0,
-            n_stor).range().coalesce()
+            n_stor).range()
 
     # aug_domain space now:
     # [domain](dup_sweep_index)[dup_sweep](stor_idx)[stor_axes']
@@ -335,13 +335,16 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     sweep_inames = set()
 
     for invdesc in invocation_descriptors:
-        for iname in sweep_axes:
-            if iname in subst.arguments:
-                arg_idx = subst.arguments.index(iname)
+        for swaxis in sweep_axes:
+            if isinstance(swaxis, int):
+                sweep_inames.update(
+                        get_dependencies(invdesc.args[swaxis]))
+            elif swaxis in subst.arguments:
+                arg_idx = subst.arguments.index(swaxis)
                 sweep_inames.update(
                         get_dependencies(invdesc.args[arg_idx]))
             else:
-                sweep_inames.add(iname)
+                sweep_inames.add(swaxis)
 
     sweep_inames = list(sweep_inames)
     del sweep_axes
@@ -433,19 +436,15 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     # {{{ ensure convexity of new_domain
 
-    new_domain = new_domain.coalesce()
-
     if len(new_domain.get_basic_sets()) > 1:
         hull_new_domain = new_domain.simple_hull()
         if hull_new_domain <= new_domain:
             new_domain = hull_new_domain
 
-    if len(new_domain.get_basic_sets()) > 1:
-        print("Substitution '%s' yielded a footprint that was not "
-                "obviously convex. Now computing convex hull. "
-                "This might take a *long* time." % subst_name)
+    new_domain = new_domain.coalesce()
 
-        hull_new_domain = new_domain.convex_hull()
+    if len(new_domain.get_basic_sets()) > 1:
+        hull_new_domain = new_domain.simple_hull()
         if hull_new_domain <= new_domain:
             new_domain = hull_new_domain
 

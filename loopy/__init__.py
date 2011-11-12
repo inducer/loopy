@@ -28,14 +28,14 @@ from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
-from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_seq
+from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_ref
 from loopy.check import check_kernels
 
 __all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg", "LoopKernel",
         "get_dot_dependency_graph",
         "preprocess_kernel", "generate_loop_schedules",
         "generate_code",
-        "CompiledKernel", "drive_timing_run", "auto_test_vs_seq", "check_kernels",
+        "CompiledKernel", "drive_timing_run", "auto_test_vs_ref", "check_kernels",
         "make_kernel", "split_dimension", "join_dimensions",
         "tag_dimensions",
         "extract_subst", "apply_subst",

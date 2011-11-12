@@ -134,7 +134,7 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
 
 # {{{ automatic testing
 
-def make_seq_args(kernel, queue, parameters):
+def make_ref_args(kernel, queue, parameters):
     from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
     from pymbolic import evaluate
@@ -185,7 +185,7 @@ def make_seq_args(kernel, queue, parameters):
 
 
 
-def make_args(queue, kernel, seq_input_arrays, parameters):
+def make_args(queue, kernel, ref_input_arrays, parameters):
     from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
     from pymbolic import evaluate
@@ -209,12 +209,12 @@ def make_args(queue, kernel, seq_input_arrays, parameters):
                 output_arrays.append(ary)
                 result.append(ary.data)
             else:
-                seq_arg = seq_input_arrays.pop(0)
+                ref_arg = ref_input_arrays.pop(0)
 
                 if isinstance(arg, ImageArg):
-                    result.append(cl.image_from_array(queue.context, seq_arg.get(), 1))
+                    result.append(cl.image_from_array(queue.context, ref_arg.get(), 1))
                 else:
-                    ary = cl_array.to_device(queue, seq_arg.get())
+                    ary = cl_array.to_device(queue, ref_arg.get())
                     result.append(ary.data)
 
         else:
@@ -225,12 +225,12 @@ def make_args(queue, kernel, seq_input_arrays, parameters):
 
 
 
-def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
-        print_seq_code=False, print_code=True, warmup_rounds=2, timing_rounds=100,
+def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
+        print_ref_code=False, print_code=True, warmup_rounds=2, timing_rounds=100,
         edit_code=False, dump_binary=False, with_annotation=False):
     from time import time
 
-    # {{{ set up CL context for sequential run
+    # {{{ set up CL context for reference run
     last_dev = None
     last_cpu_dev = None
 
@@ -243,7 +243,7 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
     if last_cpu_dev is None:
         dev = last_dev
         from warnings import warn
-        warn("No CPU device found for sequential test, using %s." % dev)
+        warn("No CPU device found for reference test, using %s." % dev)
     else:
         dev = last_cpu_dev
 
@@ -251,45 +251,45 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
 
     # }}}
 
-    # {{{ compile and run sequential code
+    # {{{ compile and run reference code
 
-    seq_ctx = cl.Context([dev])
-    seq_queue = cl.CommandQueue(seq_ctx,
+    ref_ctx = cl.Context([dev])
+    ref_queue = cl.CommandQueue(ref_ctx,
             properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     import loopy as lp
-    seq_kernel_gen = lp.generate_loop_schedules(seq_knl)
-    for knl in lp.check_kernels(seq_kernel_gen, {}):
-        seq_sched_kernel = knl
+    ref_kernel_gen = lp.generate_loop_schedules(ref_knl)
+    for knl in lp.check_kernels(ref_kernel_gen, parameters):
+        ref_sched_kernel = knl
         break
 
-    seq_compiled = CompiledKernel(seq_ctx, seq_sched_kernel,
+    ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel,
             with_annotation=with_annotation)
-    if print_seq_code:
+    if print_ref_code:
         print "----------------------------------------------------------"
-        print "Sequential Code:"
+        print "Reference Code:"
         print "----------------------------------------------------------"
-        print_highlighted_code(seq_compiled.code)
+        print_highlighted_code(ref_compiled.code)
         print "----------------------------------------------------------"
 
-    seq_args, seq_input_arrays, seq_output_arrays = \
-            make_seq_args(seq_sched_kernel, seq_queue, parameters)
+    ref_args, ref_input_arrays, ref_output_arrays = \
+            make_ref_args(ref_sched_kernel, ref_queue, parameters)
 
-    seq_queue.finish()
-    seq_start = time()
+    ref_queue.finish()
+    ref_start = time()
 
-    seq_evt = seq_compiled.cl_kernel(seq_queue,
-            seq_compiled.global_size_func(**parameters),
-            seq_compiled.local_size_func(**parameters),
-            *seq_args,
+    ref_evt = ref_compiled.cl_kernel(ref_queue,
+            ref_compiled.global_size_func(**parameters),
+            ref_compiled.local_size_func(**parameters),
+            *ref_args,
             g_times_l=True)
 
-    seq_queue.finish()
-    seq_stop = time()
-    seq_elapsed_wall = seq_stop-seq_start
+    ref_queue.finish()
+    ref_stop = time()
+    ref_elapsed_wall = ref_stop-ref_start
 
-    seq_evt.wait()
-    seq_elapsed = 1e-9*(seq_evt.profile.END-seq_evt.profile.SUBMIT)
+    ref_evt.wait()
+    ref_elapsed = 1e-9*(ref_evt.profile.END-ref_evt.profile.SUBMIT)
 
     # }}}
 
@@ -301,7 +301,7 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
     args = None
     for i, kernel in enumerate(kernel_gen):
         if args is None:
-            args, output_arrays = make_args(queue, kernel, seq_input_arrays, parameters)
+            args, output_arrays = make_args(queue, kernel, ref_input_arrays, parameters)
 
         compiled = CompiledKernel(ctx, kernel, edit_code=edit_code,
                 with_annotation=with_annotation)
@@ -325,8 +325,8 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
             evt = compiled.cl_kernel(queue, gsize, lsize, *args, g_times_l=True)
 
             if do_check:
-                for seq_out_ary, out_ary in zip(seq_output_arrays, output_arrays):
-                    assert np.allclose(seq_out_ary.get(), out_ary.get(),
+                for ref_out_ary, out_ary in zip(ref_output_arrays, output_arrays):
+                    assert np.allclose(ref_out_ary.get(), out_ary.get(),
                             rtol=1e-3, atol=1e-3)
                     do_check = False
 
@@ -365,11 +365,14 @@ def auto_test_vs_seq(seq_knl, ctx, kernel_gen, op_count, op_label, parameters,
 
         print "elapsed: %g s event, %s s other-event %g s wall, rate: %g %s/s" % (
                 elapsed, elapsed_evt_2, elapsed_wall, op_count/elapsed, op_label)
-        print "seq: elapsed: %g s event, %g s wall, rate: %g %s/s" % (
-                seq_elapsed, seq_elapsed_wall, op_count/seq_elapsed, op_label)
+        print "ref: elapsed: %g s event, %g s wall, rate: %g %s/s" % (
+                ref_elapsed, ref_elapsed_wall, op_count/ref_elapsed, op_label)
 
     # }}}
 
+from pytools import MovedFunctionDeprecationWrapper
+
+auto_test_vs_seq = MovedFunctionDeprecationWrapper(auto_test_vs_ref)
 
 # }}}
 
