@@ -69,14 +69,14 @@ def test_laplacian_stiffness(ctx_factory):
     def variant_3(knl):
         # no ILP across elements, precompute dPsiTransf
 
-        # generates correct code--but suboptimal in a few ways.
+        # generates correct code--but suboptimal in a bunch of ways.
 
         knl = lp.split_dimension(knl, "K", 16, outer_tag="g.0", slabs=(0,1))
         knl = lp.add_prefetch(knl, "jacInv",
                 ["jacInv_dim_0", "jacInv_dim_1", "q"])
         knl = lp.tag_dimensions(knl, {"i": "l.1", "j": "l.0"})
         knl = lp.precompute(knl, "dPsi", np.float32,
-                sweep_axes=["K_inner"], default_tag=None)
+                sweep_axes=["K_inner"])
         return knl
 
     for variant in [variant_1, variant_2, variant_3]:
