@@ -285,6 +285,12 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
+
+    from loopy.symbolic import SubstitutionCallbackMapper
+
+    c_subst_name = subst_name.replace(".", "_")
+    subst_name, subst_instance = SubstitutionCallbackMapper.parse_filter(subst_name)
+
     from loopy.kernel import parse_tag
     default_tag = parse_tag(default_tag)
 
@@ -295,7 +301,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     invocation_descriptors = []
 
-    def gather_substs(expr, name, args, rec):
+    def gather_substs(expr, name, instance, args, rec):
         if len(args) != len(subst.arguments):
             raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
                     % (subst_name, len(args), len(subst.arguments), ))
@@ -310,7 +316,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
         return expr
 
     from loopy.symbolic import SubstitutionCallbackMapper
-    scm = SubstitutionCallbackMapper([subst_name], gather_substs)
+    scm = SubstitutionCallbackMapper([(subst_name, subst_instance)], gather_substs)
 
     from loopy.symbolic import ParametrizedSubstitutor
     rules_except_mine = kernel.substitutions.copy()
@@ -323,6 +329,9 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
         # the invocations in subst_name occurring there.
 
         scm(subst_expander(insn.expression))
+
+    if not invocation_descriptors:
+        raise RuntimeError("no invocations of '%s' found" % subst_name)
 
     # }}}
 
@@ -396,7 +405,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
             name = old_name = subst.arguments[saxis]
         else:
             old_name = saxis
-            name = "%s_%s" % (subst_name, old_name)
+            name = "%s_%s" % (c_subst_name, old_name)
 
         if new_storage_axis_names is not None and i < len(new_storage_axis_names):
             name = new_storage_axis_names[i]
@@ -460,7 +469,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     # {{{ set up temp variable
 
-    target_var_name = kernel.make_unique_var_name(based_on=subst_name,
+    target_var_name = kernel.make_unique_var_name(based_on=c_subst_name,
             extra_used_vars=newly_created_var_names)
 
     from loopy.kernel import TemporaryVariable
@@ -497,7 +506,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     from loopy.kernel import Instruction
     compute_insn = Instruction(
-            id=kernel.make_unique_instruction_id(based_on=subst_name),
+            id=kernel.make_unique_instruction_id(based_on=c_subst_name),
             assignee=assignee,
             expression=compute_expr)
 
@@ -505,7 +514,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     # {{{ substitute rule into expressions in kernel
 
-    def do_substs(expr, name, args, rec):
+    def do_substs(expr, name, instance, args, rec):
         if len(args) != len(subst.arguments):
             raise ValueError("invocation of '%s' with too few arguments"
                     % name)
@@ -535,7 +544,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     new_insns = [compute_insn]
 
-    sub_map = SubstitutionCallbackMapper([subst_name], do_substs)
+    sub_map = SubstitutionCallbackMapper([(subst_name, subst_instance)], do_substs)
     for insn in kernel.instructions:
         new_insn = insn.copy(expression=sub_map(insn.expression))
         new_insns.append(new_insn)
@@ -543,7 +552,11 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     new_substs = dict(
             (s.name, s.copy(expression=sub_map(s.expression)))
             for s in kernel.substitutions.itervalues()
-            if s.name != subst_name)
+
+            # leave rule be if instance was specified
+            # (even if it might end up unused--FIXME)
+            if subst_instance is not None 
+            or s.name != subst_name)
 
     # }}}
 
