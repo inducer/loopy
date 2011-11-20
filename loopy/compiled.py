@@ -247,7 +247,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
     else:
         dev = last_cpu_dev
 
-    print "using", dev
+    print "using %s for the reference calculation" % dev
 
     # }}}
 

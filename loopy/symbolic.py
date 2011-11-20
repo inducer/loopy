@@ -579,71 +579,121 @@ class IndexVariableFinder(CombineMapper):
 
 # }}}
 
-# {{{ parametrized substitutor
-
-class ParametrizedSubstitutor(IdentityMapper):
-    def __init__(self, rules):
-        self.rules = rules
-
-    def map_variable(self, expr):
-        if expr.name not in self.rules:
-            return IdentityMapper.map_variable(self, expr)
-
-        rule = self.rules[expr.name]
-        if rule.arguments:
-            raise RuntimeError("CSE '%s' must be invoked with %d arguments"
-                    % (expr.name, len(rule.arguments)))
-
-        return self.rec(rule.expression)
-
-    def map_call(self, expr):
-        from pymbolic.primitives import Variable
-        if (not isinstance(expr.function, Variable)
-                or expr.function.name not in self.rules):
-            return IdentityMapper.map_variable(self, expr)
-
-        rule_name = expr.function.name
-        rule = self.rules[rule_name]
-        if len(rule.arguments) != len(expr.parameters):
-            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
-                    % (rule_name, len(expr.parameters), len(rule.arguments), ))
-
-        from pymbolic.mapper.substitutor import make_subst_func
-        subst_map = SubstitutionMapper(make_subst_func(
-            dict(zip(rule.arguments, expr.parameters))))
-
-        return self.rec(subst_map(rule.expression))
-
-# }}}
-
 # {{{ substitution callback mapper
 
 class SubstitutionCallbackMapper(IdentityMapper):
-    def __init__(self, names, func):
-        self.names = names
+    @staticmethod
+    def parse_filter(filt):
+        if not isinstance(filt, tuple):
+            dotted_components = filt.split(".")
+            if len(dotted_components) == 1:
+                return (dotted_components[0], None)
+            elif len(dotted_components) == 2:
+                return tuple(dotted_components)
+            else:
+                raise RuntimeError("too many dotted components in '%s'" % filt)
+        else:
+            if len(filt) != 2:
+                raise RuntimeError("substitution name filters "
+                        "may have at most two components")
+
+            return filt
+
+    def __init__(self, names_filter, func):
+        if names_filter is not None:
+            new_names_filter = []
+            for filt in names_filter:
+                new_names_filter.append(self.parse_filter(filt))
+
+            self.names_filter = new_names_filter
+        else:
+            self.names_filter = names_filter
+
         self.func = func
 
+    def parse_name(self, expr):
+        from pymbolic.primitives import Variable, Lookup
+        if isinstance(expr, Variable):
+            e_name, e_instance = expr.name, None
+        elif isinstance(expr, Lookup):
+            if not isinstance(expr.aggregate, Variable):
+                return None
+            e_name, e_instance = expr.aggregate.name, expr.name
+        else:
+            return None
+
+        if self.names_filter is not None:
+            for filt_name, filt_instance in self.names_filter:
+                if e_name == filt_name:
+                    if filt_instance is None or filt_instance == e_instance:
+                        return e_name, e_instance
+        else:
+            return e_name, e_instance
+
+        return None
+
     def map_variable(self, expr):
-        if expr.name not in self.names:
+        parsed_name = self.parse_name(expr)
+        if parsed_name is None:
             return IdentityMapper.map_variable(self, expr)
 
-        result = self.func(expr, expr.name, (), self.rec)
+        name, instance = parsed_name
+
+        result = self.func(expr, name, instance, (), self.rec)
         if result is None:
             return IdentityMapper.map_variable(self, expr)
         else:
             return result
 
-    def map_call(self, expr):
-        from pymbolic.primitives import Variable
-        if (not isinstance(expr.function, Variable)
-                or expr.function.name not in self.names):
-            return IdentityMapper.map_variable(self, expr)
+    def map_lookup(self, expr):
+        parsed_name = self.parse_name(expr)
+        if parsed_name is None:
+            return IdentityMapper.map_lookup(self, expr)
 
-        result = self.func(expr, expr.function.name, expr.parameters, self.rec)
+        name, instance = parsed_name
+
+        result = self.func(expr, name, instance, (), self.rec)
+        if result is None:
+            return IdentityMapper.map_lookup(self, expr)
+        else:
+            return result
+
+    def map_call(self, expr):
+        parsed_name = self.parse_name(expr.function)
+        if parsed_name is None:
+            return IdentityMapper.map_call(self, expr)
+
+        name, instance = parsed_name
+
+        result = self.func(expr, name, instance, expr.parameters, self.rec)
         if result is None:
             return IdentityMapper.map_call(self, expr)
         else:
             return result
+
+# }}}
+
+# {{{ parametrized substitutor
+
+class ParametrizedSubstitutor(object):
+    def __init__(self, rules):
+        self.rules = rules
+
+    def __call__(self, expr):
+        def expand_if_known(expr, name, instance, args, rec):
+            rule = self.rules[name]
+            if len(rule.arguments) != len(args):
+                raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
+                        % (name, len(args), len(rule.arguments), ))
+
+            from pymbolic.mapper.substitutor import make_subst_func
+            subst_map = SubstitutionMapper(make_subst_func(
+                dict(zip(rule.arguments, args))))
+
+            return rec(subst_map(rule.expression))
+
+        scm = SubstitutionCallbackMapper(self.rules.keys(), expand_if_known)
+        return scm(expr)
 
 # }}}
 
