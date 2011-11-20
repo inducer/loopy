@@ -258,20 +258,8 @@ def generate_code(kernel, with_annotation=False):
 
     mod.extend([
         LiteralLines(r"""
-        #define int_floor_div(a,b) \
-          (( (a) - \
-             ( ( (a)<0 ) != ( (b)<0 )) \
-              *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
-           / (b) )
-
-
-        #define int_floor_div_pos_b(a,b) ( \
-            ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
-            )
-
         #define lid(N) ((int) get_local_id(N))
         #define gid(N) ((int) get_group_id(N))
-
         """),
         Line()])
 
@@ -301,6 +289,24 @@ def generate_code(kernel, with_annotation=False):
 
     from loopy.codegen.loop import set_up_hw_parallel_loops
     gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)
+
+    gen_code_str = str(gen_code)
+
+    if "int_floor_div" in gen_code_str:
+        mod.extend("""
+            #define int_floor_div(a,b) \
+              (( (a) - \
+                 ( ( (a)<0 ) != ( (b)<0 )) \
+                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
+               / (b) )
+            """)
+
+    if "int_floor_div_pos_b" in gen_code_str:
+        mod.extend("""
+            #define int_floor_div_pos_b(a,b) ( \
+                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
+                )
+            """)
 
     body.append(Line())
 
