@@ -87,71 +87,60 @@ def get_suitable_size(ctx):
 
 
 
+def check_float4(result, ref_result):
+    for comp in ["x", "y", "z", "w"]:
+        return np.allclose(ref_result[comp], result[comp], rtol=1e-3, atol=1e-3)
+
 def test_axpy(ctx_factory):
-    dtype = np.float32
     ctx = ctx_factory()
-    order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = 20*1024**2
 
-    knl = lp.make_kernel(ctx.devices[0],
-            "[n] -> {[i]: 0<=i<n}",
-            [
-                "z[i] = a*x[i]+b*y[i]"
-                ],
-            [
-                lp.ScalarArg("a", dtype),
-                lp.ArrayArg("x", dtype, shape="n,"),
-                lp.ScalarArg("b", dtype),
-                lp.ArrayArg("y", dtype, shape="n,"),
-                lp.ArrayArg("z", dtype, shape="n,"),
-                lp.ScalarArg("n", np.int32, approximately=n),
-                ],
-            name="axpy", assumptions="n>=1")
+    vec = cl_array.vec
 
-    def variant_seq(knl):
-        return knl
+    for dtype, check, a, b in [
+            (vec.float4, check_float4,
+                vec.make_float4(1, 2, 3, 4), vec.make_float4(6, 7, 8, 9)),
+            (np.float32, None, 5, 7),
+            ]:
+        knl = lp.make_kernel(ctx.devices[0],
+                "[n] -> {[i]: 0<=i<n}",
+                [
+                    "z[i] = a*x[i]+b*y[i]"
+                    ],
+                [
+                    lp.ScalarArg("a", dtype),
+                    lp.ArrayArg("x", dtype, shape="n,"),
+                    lp.ScalarArg("b", dtype),
+                    lp.ArrayArg("y", dtype, shape="n,"),
+                    lp.ArrayArg("z", dtype, shape="n,"),
+                    lp.ScalarArg("n", np.int32, approximately=n),
+                    ],
+                name="axpy", assumptions="n>=1")
 
-    def variant_cpu(knl):
-        unroll = 16
-        block_size = unroll*4096
-        knl = lp.split_dimension(knl, "i", block_size, outer_tag="g.0", slabs=(0, 1))
-        knl = lp.split_dimension(knl, "i_inner", unroll, inner_tag="unr")
-        return knl
+        seq_knl = knl
 
-    def variant_gpu(knl):
-        unroll = 4
-        block_size = 256
-        knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0", slabs=(0, 1))
-        knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
-        return knl
+        def variant_cpu(knl):
+            unroll = 16
+            block_size = unroll*4096
+            knl = lp.split_dimension(knl, "i", block_size, outer_tag="g.0", slabs=(0, 1))
+            knl = lp.split_dimension(knl, "i_inner", unroll, inner_tag="unr")
+            return knl
 
-    #x = cl_array.to_device(queue, np.random.rand(n).astype(dtype))
-    #y = cl_array.to_device(queue, np.random.rand(n).astype(dtype))
-    x = cl_random.rand(queue, n, dtype=dtype, luxury=2)
-    y = cl_random.rand(queue, n, dtype=dtype, luxury=2)
-    #print np.isnan(x.get()).any()
-    #1/0
-    z = cl_array.zeros_like(x)
-    refsol = (2*x+3*y).get()
+        def variant_gpu(knl):
+            unroll = 4
+            block_size = 256
+            knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0", slabs=(0, 1))
+            knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
+            return knl
 
-    for variant in [variant_seq, variant_cpu, variant_gpu]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl),
-                loop_priority=["i_inner_outer"])
-        kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
+        for variant in [variant_cpu, variant_gpu]:
+            kernel_gen = lp.generate_loop_schedules(variant(knl))
+            kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-        def launcher(kernel, gsize, lsize, check):
-            evt = kernel(queue, gsize(n), lsize(n), 2, x.data, 3, y.data, z.data, n,
-                    g_times_l=True)
-
-            if check:
-                check_error(refsol, z.get())
-
-            return evt
-
-        lp.drive_timing_run(kernel_gen, queue, launcher, 5*n)
+            lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+                    op_count=np.dtype(dtype).itemsize*n*3/1e9, op_label="GBytes",
+                    parameters={"a": a, "b": b, "n": n}, check_result=check)
 
 
 
@@ -194,52 +183,43 @@ def test_transpose(ctx_factory):
 
 
 def test_plain_matrix_mul(ctx_factory):
-    dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = get_suitable_size(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
-            "{[i,j,k]: 0<=i,j,k<%d}" % n,
-            [
-                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
-                ],
-            [
-                lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
-                ],
-            name="matmul")
+    for dtype, check, vec_size, reduction_func in [
+            (cl_array.vec.float4, check_float4, 4, "sum_vec_float4"),
+            (np.float32, None, 1, "sum_float32"),
+            ]:
+        knl = lp.make_kernel(ctx.devices[0],
+                "{[i,j,k]: 0<=i,j,k<%d}" % n,
+                [
+                    "c[i, j] = %s(k, a[i, k]*b[k, j])" % reduction_func
+                    ],
+                [
+                    lp.ArrayArg("a", dtype, shape=(n, n), order=order),
+                    lp.ArrayArg("b", dtype, shape=(n, n), order=order),
+                    lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                    ],
+                name="matmul")
 
-    knl = lp.split_dimension(knl, "i", 16,
-            outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16,
-            outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16)
-    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
-    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner", ])
+        ref_knl = knl
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, {})
+        knl = lp.split_dimension(knl, "i", 16,
+                outer_tag="g.0", inner_tag="l.1")
+        knl = lp.split_dimension(knl, "j", 16,
+                outer_tag="g.1", inner_tag="l.0")
+        knl = lp.split_dimension(knl, "k", 16)
+        knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
+        knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner", ])
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
+        kernel_gen = lp.generate_loop_schedules(knl)
+        kernel_gen = lp.check_kernels(kernel_gen, {})
 
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+        lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+                op_count=vec_size*2*n**3/1e9, op_label="GFlops/s",
+                parameters={"n": n}, check_result=check)
 
 
 
