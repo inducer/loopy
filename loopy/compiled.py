@@ -134,7 +134,8 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
 
 # {{{ automatic testing
 
-def make_ref_args(kernel, queue, parameters):
+def make_ref_args(kernel, queue, parameters,
+        fill_value):
     from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
     from pymbolic import evaluate
@@ -145,7 +146,17 @@ def make_ref_args(kernel, queue, parameters):
 
     for arg in kernel.args:
         if isinstance(arg, ScalarArg):
-            result.append(arg.dtype.type(parameters[arg.name]))
+            arg_value = parameters[arg.name]
+
+            try:
+                argv_dtype = arg_value.dtype
+            except AttributeError:
+                argv_dtype = None
+
+            if argv_dtype != arg.dtype:
+                arg_value = arg.dtype.type(arg_value)
+
+            result.append(arg_value)
 
         elif isinstance(arg, (ArrayArg, ImageArg)):
             if arg.shape is None:
@@ -165,7 +176,12 @@ def make_ref_args(kernel, queue, parameters):
                     raise RuntimeError("write-mode images not supported in "
                             "automatic testing")
 
-                ary.fill(-17)
+                if isinstance(arg.dtype, np.number):
+                    ary.fill(fill_value)
+                else:
+                    from warnings import warn
+                    warn("Cannot pre-fill array of dtype '%s'" % arg.dtype)
+
                 output_arrays.append(ary)
                 result.append(ary.data)
             else:
@@ -185,7 +201,8 @@ def make_ref_args(kernel, queue, parameters):
 
 
 
-def make_args(queue, kernel, ref_input_arrays, parameters):
+def make_args(queue, kernel, ref_input_arrays, parameters,
+        fill_value):
     from loopy.kernel import ScalarArg, ArrayArg, ImageArg
 
     from pymbolic import evaluate
@@ -194,7 +211,17 @@ def make_args(queue, kernel, ref_input_arrays, parameters):
     output_arrays = []
     for arg in kernel.args:
         if isinstance(arg, ScalarArg):
-            result.append(arg.dtype.type(parameters[arg.name]))
+            arg_value = parameters[arg.name]
+
+            try:
+                argv_dtype = arg_value.dtype
+            except AttributeError:
+                argv_dtype = None
+
+            if argv_dtype != arg.dtype:
+                arg_value = arg.dtype.type(arg_value)
+
+            result.append(arg_value)
 
         elif isinstance(arg, (ArrayArg, ImageArg)):
             if arg.name in kernel.get_written_variables():
@@ -204,7 +231,13 @@ def make_args(queue, kernel, ref_input_arrays, parameters):
 
                 shape = evaluate(arg.shape, parameters)
                 ary = cl_array.empty(queue, shape, arg.dtype, order=arg.order)
-                ary.fill(-18)
+
+                if isinstance(arg.dtype, np.number):
+                    ary.fill(fill_value)
+                else:
+                    from warnings import warn
+                    warn("Cannot pre-fill array of dtype '%s'" % arg.dtype)
+
                 assert arg.offset == 0
                 output_arrays.append(ary)
                 result.append(ary.data)
@@ -225,10 +258,32 @@ def make_args(queue, kernel, ref_input_arrays, parameters):
 
 
 
+def _default_check_result(result, ref_result):
+    return np.allclose(ref_result, result, rtol=1e-3, atol=1e-3)
+
+
+
+
 def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
         print_ref_code=False, print_code=True, warmup_rounds=2, timing_rounds=100,
-        edit_code=False, dump_binary=False, with_annotation=False):
+        edit_code=False, dump_binary=False, with_annotation=False,
+        fills_entire_output=True, check_result=None):
+    """
+    :arg check_result: a callable with :cls:`numpy.ndarray` arguments
+        *(result, reference_result)* returning a class:`bool` indicating
+        correctness/acceptability of the result
+    """
     from time import time
+
+    if check_result is None:
+        check_result = _default_check_result
+
+    if fills_entire_output:
+        fill_value_ref = -17
+        fill_value = -18
+    else:
+        fill_value_ref = -17
+        fill_value = fill_value_ref
 
     # {{{ set up CL context for reference run
     last_dev = None
@@ -273,14 +328,18 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
         print "----------------------------------------------------------"
 
     ref_args, ref_input_arrays, ref_output_arrays = \
-            make_ref_args(ref_sched_kernel, ref_queue, parameters)
+            make_ref_args(ref_sched_kernel, ref_queue, parameters,
+                    fill_value=fill_value_ref)
 
     ref_queue.finish()
     ref_start = time()
 
+    domain_parameters = dict((name, parameters[name])
+            for name in ref_knl.scalar_loop_args)
+
     ref_evt = ref_compiled.cl_kernel(ref_queue,
-            ref_compiled.global_size_func(**parameters),
-            ref_compiled.local_size_func(**parameters),
+            ref_compiled.global_size_func(**domain_parameters),
+            ref_compiled.local_size_func(**domain_parameters),
             *ref_args,
             g_times_l=True)
 
@@ -301,7 +360,8 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
     args = None
     for i, kernel in enumerate(kernel_gen):
         if args is None:
-            args, output_arrays = make_args(queue, kernel, ref_input_arrays, parameters)
+            args, output_arrays = make_args(queue, kernel, ref_input_arrays, parameters,
+                    fill_value=fill_value)
 
         compiled = CompiledKernel(ctx, kernel, edit_code=edit_code,
                 with_annotation=with_annotation)
@@ -319,15 +379,15 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
 
         do_check = True
 
-        gsize = compiled.global_size_func(**parameters)
-        lsize = compiled.local_size_func(**parameters)
+        gsize = compiled.global_size_func(**domain_parameters)
+        lsize = compiled.local_size_func(**domain_parameters)
         for i in range(warmup_rounds):
             evt = compiled.cl_kernel(queue, gsize, lsize, *args, g_times_l=True)
 
             if do_check:
                 for ref_out_ary, out_ary in zip(ref_output_arrays, output_arrays):
-                    assert np.allclose(ref_out_ary.get(), out_ary.get(),
-                            rtol=1e-3, atol=1e-3)
+                    error_is_small = check_result(out_ary.get(), ref_out_ary.get())
+                    assert error_is_small
                     do_check = False
 
         events = []
