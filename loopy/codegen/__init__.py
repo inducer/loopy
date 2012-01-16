@@ -174,11 +174,22 @@ def make_initial_assignments(kernel):
 
 # }}}
 
+# {{{ cgen overrides
+
+from cgen import POD as PODBase
+
+class POD(PODBase):
+    def get_decl_pair(self):
+        from pyopencl.tools import dtype_to_ctype
+        return [dtype_to_ctype(self.dtype)], self.name
+
+# }}}
+
 # {{{ main code generation entrypoint
 
 def generate_code(kernel, with_annotation=False):
     from cgen import (FunctionBody, FunctionDeclaration,
-            POD, Value, ArrayOf, Module, Block,
+            Value, ArrayOf, Module, Block,
             Line, Const, LiteralLines, Initializer)
 
     from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
@@ -331,6 +342,7 @@ def generate_code(kernel, with_annotation=False):
     return str(mod)
 
 # }}}
+
 
 
 
