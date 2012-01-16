@@ -388,12 +388,6 @@ class ProductReductionOperation(TypedReductionOperation):
         return operand1 * operand2
 
 class FloatingPointMaxOperation(TypedReductionOperation):
-    neutral_element = -var("INFINITY")
-
-    def __call__(self, operand1, operand2):
-        return var("max")(operand1, operand2)
-
-class FloatingPointMaxOperation(TypedReductionOperation):
     # OpenCL 1.1, section 6.11.2
     neutral_element = -var("INFINITY")
 
@@ -433,14 +427,22 @@ def register_reduction_parser(parser):
 
 def parse_reduction_op(name):
     import re
-    red_op_match = re.match(r"^([a-z]+)_([a-z0-9]+)$", name)
+    red_op_match = re.match(r"^([a-z]+)_([a-z0-9_]+)$", name)
     if red_op_match:
         op_name = red_op_match.group(1)
         op_type = red_op_match.group(2)
+
         try:
             op_dtype = np.dtype(op_type)
         except TypeError:
             op_dtype = None
+
+        if op_dtype is None and op_type.startswith("vec_"):
+            import pyopencl.array as cl_array
+            try:
+                op_dtype = getattr(cl_array.vec, op_type[4:])
+            except AttributeError:
+                op_dtype = None
 
         if op_name in _REDUCTION_OPS and op_dtype is not None:
             return _REDUCTION_OPS[op_name](op_dtype)
