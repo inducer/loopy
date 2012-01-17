@@ -176,7 +176,7 @@ def make_ref_args(kernel, queue, parameters,
                     raise RuntimeError("write-mode images not supported in "
                             "automatic testing")
 
-                if isinstance(arg.dtype, np.number):
+                if arg.dtype.isbuiltin:
                     ary.fill(fill_value)
                 else:
                     from warnings import warn
@@ -232,7 +232,7 @@ def make_args(queue, kernel, ref_input_arrays, parameters,
                 shape = evaluate(arg.shape, parameters)
                 ary = cl_array.empty(queue, shape, arg.dtype, order=arg.order)
 
-                if isinstance(arg.dtype, np.number):
+                if arg.dtype.isbuiltin:
                     ary.fill(fill_value)
                 else:
                     from warnings import warn
