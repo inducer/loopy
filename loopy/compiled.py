@@ -321,11 +321,11 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
     ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel,
             with_annotation=with_annotation)
     if print_ref_code:
-        print "----------------------------------------------------------"
+        print 75*"-"
         print "Reference Code:"
-        print "----------------------------------------------------------"
+        print 75*"-"
         print_highlighted_code(ref_compiled.code)
-        print "----------------------------------------------------------"
+        print 75*"-"
 
     ref_args, ref_input_arrays, ref_output_arrays = \
             make_ref_args(ref_sched_kernel, ref_queue, parameters,
@@ -366,16 +366,16 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
         compiled = CompiledKernel(ctx, kernel, edit_code=edit_code,
                 with_annotation=with_annotation)
 
-        print "----------------------------------------------------------"
+        print 75*"-"
         print "Kernel #%d:" % i
-        print "----------------------------------------------------------"
+        print 75*"-"
         if print_code:
             print_highlighted_code(compiled.code)
-            print "----------------------------------------------------------"
+            print 75*"-"
         if dump_binary:
             print type(compiled.cl_program)
             print compiled.cl_program.binaries[0]
-            print "----------------------------------------------------------"
+            print 75*"-"
 
         do_check = True
 

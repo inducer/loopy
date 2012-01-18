@@ -36,16 +36,13 @@ Things to consider
 - We won't generate WAW barrier-needing dependencies
   from one instruction to itself.
 
+- Loopy is semi-interactive.
+
 To-do
 ^^^^^
 
 - What if no universally valid precompute base index expression is found?
   (test_intel_matrix_mul with n = 6*16, e.g.?)
-
-- "No schedule found" debug help:
-
-  - Find longest dead-end
-  - Automatically report on what hinders progress there
 
 - When duplicating, use iname aliases to relieve burden on isl
 
@@ -97,6 +94,11 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- "No schedule found" debug help:
+
+  - Find longest dead-end
+  - Automatically report on what hinders progress there
 
 - CSE should be more like variable assignment
 

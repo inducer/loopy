@@ -174,12 +174,13 @@ def dump_schedule(schedule):
 
     return " ".join(entries)
 
-class SchedulerDebugger:
-    def __init__(self, debug_length):
+class ScheduleDebugger:
+    def __init__(self, debug_length=None, interactive=True):
         self.longest_rejected_schedule = []
         self.success_counter = 0
         self.dead_end_counter = 0
         self.debug_length = debug_length
+        self.interactive = interactive
 
         self.elapsed_store = 0
         self.start()
@@ -267,8 +268,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
     # {{{ decide about debug mode
 
     debug_mode = False
-    #if len(schedule) == 15:
-        #debug_mode = True
 
     if debug is not None:
         if (debug.debug_length is not None
@@ -277,12 +276,16 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
     #print dump_schedule(schedule), len(schedule)
     if debug_mode:
+        print 75*"="
+        print "KERNEL:"
         print kernel
-        print "--------------------------------------------"
+        print 75*"="
         print "CURRENT SCHEDULE:"
         print dump_schedule(schedule), len(schedule)
-        print "boost allowed:", allow_boost
-        print "--------------------------------------------"
+        print "(entry into loop: <iname>, exit from loop: </iname>, instruction names without delimiters)"
+        #print "boost allowed:", allow_boost
+        print 75*"="
+        print "WHY IS THIS A DEAD-END SCHEDULE?"
 
     #if len(schedule) == 2:
         #from pudb import set_trace; set_trace()
@@ -378,13 +381,12 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
             )
 
     if debug_mode:
-        print "--------------------------------------------"
-        print "available :", ",".join(available_loops)
-        print "active:", ",".join(active_inames)
-        print "entered:", ",".join(entered_inames)
-        print "--------------------------------------------"
+        print 75*"-"
+        print "available inames :", ",".join(available_loops)
+        print "active inames :", ",".join(active_inames)
+        print "inames entered so far :", ",".join(entered_inames)
         print "reachable insns:", ",".join(reachable_insn_ids)
-        print "--------------------------------------------"
+        print 75*"-"
 
     # Don't be eager about scheduling new loops--if progress has been made,
     # revert to top of scheduler and see if more progress can be made another
@@ -462,7 +464,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
     # }}}
 
     if debug_mode:
-        raw_input("Enter:")
+        print 75*"="
+        raw_input("Hit Enter for next schedule:")
 
     if not active_inames and not available_loops and not unscheduled_insn_ids:
         # if done, yield result
@@ -605,7 +608,7 @@ def insert_barriers(kernel, schedule, level=0):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel, loop_priority=[], debug=None):
+def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
     from loopy.preprocess import preprocess_kernel
     kernel = preprocess_kernel(kernel)
 
@@ -614,7 +617,7 @@ def generate_loop_schedules(kernel, loop_priority=[], debug=None):
 
     schedule_count = 0
 
-    debug = SchedulerDebugger(debug)
+    debug = ScheduleDebugger(**debug_args)
 
     generators = [
             generate_loop_schedules_internal(kernel, loop_priority,
@@ -645,6 +648,28 @@ def generate_loop_schedules(kernel, loop_priority=[], debug=None):
     debug.done_scheduling()
 
     if not schedule_count:
+        if debug.interactive:
+            print 75*"-"
+            print "ERROR: Sorry--loo.py did not find a schedule for your kernel."
+            print 75*"-"
+            print "Loo.py will now show you the scheduler state at the point"
+            print "where the longest (dead-end) schedule was generated, in the"
+            print "the hope that some of this makes sense and helps you find"
+            print "the issue."
+            print
+            print "To disable this interactive behavior, pass"
+            print "  debug_args=dict(interactive=False)"
+            print "to generate_loop_schedules()."
+            print 75*"-"
+            raw_input("Enter:")
+            print
+            print
+
+            debug.debug_length = len(debug.longest_rejected_schedule)
+            for _ in generate_loop_schedules_internal(kernel, loop_priority,
+                    debug=debug):
+                pass
+
         raise RuntimeError("no valid schedules found")
 
 # }}}
