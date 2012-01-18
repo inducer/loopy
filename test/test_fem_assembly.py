@@ -75,14 +75,16 @@ def test_laplacian_stiffness(ctx_factory):
 
     def variant_fig33(knl):
         # This is meant to (mostly) reproduce Figure 3.3.
-        # It currently doesn't find a valid schedule. (I'll fix that.)
-        # (FIXME)
+
+        # For odd technical reasons, loopy has to unroll the j
+        # loop at present. I'll fix that. (FIXME)
 
         Ncloc = 16
         knl = lp.split_dimension(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
-        knl = lp.precompute(knl, "dPsi.one", np.float32, default_tag=None)
-        #knl = lp.precompute(knl, "dPsi.two", np.float32, default_tag=None)
+        knl = lp.precompute(knl, "dPsi.one", np.float32, ["dx_axis"], default_tag=None)
+        knl = lp.tag_dimensions(knl, {"j": "ilp"})
+
         return knl, ["Ko", "Kloc"]
 
     def variant_simple_gpu(knl):
