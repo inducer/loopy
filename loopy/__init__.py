@@ -25,7 +25,7 @@ from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
 from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph, LoopKernel
 from loopy.subst import extract_subst, apply_subst
 from loopy.cse import precompute
-from loopy.preprocess import preprocess_kernel
+from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_ref

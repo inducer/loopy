@@ -114,6 +114,11 @@ Precomputation and Prefetching
 
     Uses :func:`extract_subst` and :func:`precompute`.
 
+Manipulating Reductions
+-----------------------
+
+.. autofunction:: realize_reduction
+
 Finishing up
 ------------
 

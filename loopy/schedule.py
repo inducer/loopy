@@ -267,6 +267,9 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
     # {{{ decide about debug mode
 
     debug_mode = False
+    #if len(schedule) == 15:
+        #debug_mode = True
+
     if debug is not None:
         if (debug.debug_length is not None
                 and len(schedule) >= debug.debug_length):
@@ -313,6 +316,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         # nested loop without harm.
 
         if allow_boost:
+            # Note that the inames in 'insn.boostable_into' necessarily won't
+            # be contained in 'want'.
             have = have - insn.boostable_into
 
         if want != have:
@@ -330,10 +335,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
         if (not schedule_now and have <= want):
             reachable_insn_ids.add(insn_id)
-        else:
-            if debug_mode:
-                print ("    '%s' also not reachable because it won't work under '%s'"
-                        % (insn.id, ",".join(have-want)))
 
         # }}}
 

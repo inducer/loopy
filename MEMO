@@ -42,10 +42,24 @@ To-do
 - What if no universally valid precompute base index expression is found?
   (test_intel_matrix_mul with n = 6*16, e.g.?)
 
+- "No schedule found" debug help:
+
+  - Find longest dead-end
+  - Automatically report on what hinders progress there
+
+- When duplicating, use iname aliases to relieve burden on isl
+
+- Differentiate ilp.unr from ilp.seq
+
+- Expose iname-duplicate-and-rename as a primitive.
+
 - Fix all tests
 
 Future ideas
 ^^^^^^^^^^^^
+
+- How is intra-instruction ordering of ILP loops going to be determined?
+  (taking into account that it could vary even per-instruction?)
 
 - Barriers for data exchanged via global vars?
 

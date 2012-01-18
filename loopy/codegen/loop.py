@@ -149,7 +149,7 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
 
 # }}}
 
-# {{{ parallel loop
+# {{{ hw-parallel loop
 
 def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=None):
     from loopy.kernel import UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag

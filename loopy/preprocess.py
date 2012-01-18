@@ -110,7 +110,25 @@ def duplicate_reduction_inames(kernel):
 
 # {{{ rewrite reduction to imperative form
 
-def realize_reduction(kernel):
+def realize_reduction(kernel, insn_id_filter=None):
+    """Rewrites reductions into their imperative form. With *insn_id_filter* specified,
+    operate only on the instruction with an instruction id matching insn_id_filter.
+
+    If *insn_id_filter* is given, only the outermost level of reductions will be
+    expanded, inner reductions will be left alone (because they end up in a new
+    instruction with a different ID, which doesn't match the filter).
+
+    If *insn_id_filter* is not given, all reductions in all instructions will
+    be realized.
+
+    This routine also implicitly performs (global) reduction iname duplication,
+    if requested by '@' prefixes on any reduction iname.
+    """
+
+    # Reduction iname duplication needs to happen beforehand, and it is
+    # idempotent. So just call it now.
+    kernel = duplicate_reduction_inames(kernel)
+
     new_insns = []
     new_temporary_variables = kernel.temporary_variables.copy()
 
@@ -130,7 +148,9 @@ def realize_reduction(kernel):
 
         ilp_iname_lengths = []
         for iname in ilp_inames:
-            # original kernel ok here--we're not messing with inames
+            # Using the original kernel is ok here. Nothing in realize_reductions
+            # messes with inames. This is useful because it takes advantage
+            # of bounds caching.
             bounds = kernel.get_iname_bounds(iname)
 
             from loopy.symbolic import pw_aff_to_expr
@@ -205,6 +225,10 @@ def realize_reduction(kernel):
                 temporary_variables=new_temporary_variables)
 
         insn = insn_queue.pop(0)
+
+        if insn_id_filter is not None and insn.id != insn_id_filter:
+            new_insns.append(insn)
+            continue
 
         # Run reduction expansion.
         new_expression = cb_mapper(insn.expression)
@@ -681,9 +705,8 @@ def preprocess_kernel(kernel):
     from loopy.subst import apply_subst
     kernel = apply_subst(kernel)
 
-    kernel = mark_local_temporaries(kernel)
-    kernel = duplicate_reduction_inames(kernel)
     kernel = realize_reduction(kernel)
+    kernel = mark_local_temporaries(kernel)
     kernel = assign_automatic_axes(kernel)
     kernel = add_boostability_and_automatic_dependencies(kernel)
     kernel = limit_boostability(kernel)
