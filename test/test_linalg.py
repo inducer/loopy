@@ -99,6 +99,7 @@ def test_axpy(ctx_factory):
     vec = cl_array.vec
 
     for dtype, check, a, b in [
+            (np.complex64, None, 5, 7),
             (vec.float4, check_float4,
                 vec.make_float4(1, 2, 3, 4), vec.make_float4(6, 7, 8, 9)),
             (np.float32, None, 5, 7),
@@ -116,7 +117,10 @@ def test_axpy(ctx_factory):
                     lp.ArrayArg("z", dtype, shape="n,"),
                     lp.ScalarArg("n", np.int32, approximately=n),
                     ],
-                name="axpy", assumptions="n>=1")
+                name="axpy", assumptions="n>=1",
+                preamble="""
+                    #include <pyopencl-complex.h>
+                    """)
 
         seq_knl = knl
 

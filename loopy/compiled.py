@@ -134,6 +134,19 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
 
 # {{{ automatic testing
 
+def fill_rand(ary):
+    from pyopencl.clrandom import fill_rand
+    if ary.dtype.kind == "c":
+        real_dtype = ary.dtype.type(0).real.dtype
+        real_ary = ary.view(real_dtype)
+
+        fill_rand(real_ary, luxury=0)
+    else:
+        fill_rand(ary, luxury=0)
+
+
+
+
 def make_ref_args(kernel, queue, parameters,
         fill_value):
     from loopy.kernel import ScalarArg, ArrayArg, ImageArg
@@ -185,8 +198,7 @@ def make_ref_args(kernel, queue, parameters,
                 output_arrays.append(ary)
                 result.append(ary.data)
             else:
-                from pyopencl.clrandom import fill_rand
-                fill_rand(ary, luxury=2)
+                fill_rand(ary)
                 input_arrays.append(ary)
                 if isinstance(arg, ImageArg):
                     result.append(cl.image_from_array(queue.context, ary.get(), 1))

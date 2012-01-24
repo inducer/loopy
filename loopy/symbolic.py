@@ -12,8 +12,6 @@ from pymbolic.mapper import (
         WalkMapper as WalkMapperBase,
         CallbackMapper as CallbackMapperBase,
         )
-from pymbolic.mapper.c_code import CCodeMapper
-from pymbolic.mapper.stringifier import PREC_NONE
 from pymbolic.mapper.substitutor import \
         SubstitutionMapper as SubstitutionMapperBase
 from pymbolic.mapper.stringifier import \
@@ -23,7 +21,6 @@ from pymbolic.mapper.dependency import \
 from pymbolic.mapper.unifier import UnidirectionalUnifier \
         as UnidirectionalUnifierBase
 
-import numpy as np
 import islpy as isl
 from islpy import dim_type
 
@@ -290,149 +287,6 @@ class ArrayAccessFinder(CombineMapper):
             return set([expr]) | self.rec(expr.index)
         else:
             return CombineMapper.map_subscript(self, expr)
-
-# }}}
-
-# {{{ C code mapper
-
-class LoopyCCodeMapper(CCodeMapper):
-    def __init__(self, kernel, cse_name_list=[], var_subst_map={},
-            with_annotation=False):
-        def constant_mapper(c):
-            if isinstance(c, float):
-                # FIXME: type-variable
-                return "%sf" % repr(c)
-            else:
-                return repr(c)
-
-        CCodeMapper.__init__(self, constant_mapper=constant_mapper,
-                cse_name_list=cse_name_list)
-        self.kernel = kernel
-
-        self.with_annotation = with_annotation
-        self.var_subst_map = var_subst_map.copy()
-
-    def copy(self, var_subst_map=None, cse_name_list=None):
-        if var_subst_map is None:
-            var_subst_map = self.var_subst_map
-        if cse_name_list is None:
-            cse_name_list = self.cse_name_list
-        return LoopyCCodeMapper(self.kernel,
-                cse_name_list=cse_name_list, var_subst_map=var_subst_map,
-                with_annotation=self.with_annotation)
-
-    def copy_and_assign(self, name, value):
-        var_subst_map = self.var_subst_map.copy()
-        var_subst_map[name] = value
-        return self.copy(var_subst_map=var_subst_map)
-
-    def copy_and_assign_many(self, assignments):
-        var_subst_map = self.var_subst_map.copy()
-        var_subst_map.update(assignments)
-        return self.copy(var_subst_map=var_subst_map)
-
-    def map_common_subexpression(self, expr, prec):
-        raise RuntimeError("common subexpressions are not allowed in loopy")
-
-    def map_variable(self, expr, prec):
-        if expr.name in self.var_subst_map:
-            if self.with_annotation:
-                return " /* %s */ %s" % (
-                        expr.name,
-                        self.rec(self.var_subst_map[expr.name], prec))
-            else:
-                return str(self.rec(self.var_subst_map[expr.name], prec))
-        else:
-            return CCodeMapper.map_variable(self, expr, prec)
-
-    def map_subscript(self, expr, enclosing_prec):
-        from pymbolic.primitives import Variable
-        if not isinstance(expr.aggregate, Variable):
-            return CCodeMapper.map_subscript(self, expr, enclosing_prec)
-
-        if expr.aggregate.name in self.kernel.arg_dict:
-            arg = self.kernel.arg_dict[expr.aggregate.name]
-
-            from loopy.kernel import ImageArg
-            if isinstance(arg, ImageArg):
-                assert isinstance(expr.index, tuple)
-
-                base_access = ("read_imagef(%s, loopy_sampler, (float%d)(%s))"
-                        % (arg.name, arg.dimensions,
-                            ", ".join(self.rec(idx, PREC_NONE)
-                                for idx in expr.index[::-1])))
-
-                if arg.dtype == np.float32:
-                    return base_access+".x"
-                elif arg.dtype == np.float64:
-                    return "as_double(%s.xy)" % base_access
-                else:
-                    raise NotImplementedError(
-                            "non-floating-point images not supported for now")
-
-            else:
-                # ArrayArg
-                index_expr = expr.index
-                if isinstance(expr.index, tuple):
-                    ary_strides = arg.strides
-                    if ary_strides is None:
-                        raise RuntimeError("tuple-indexed variable '%s' does not "
-                                "have stride information" % expr.aggregate.name)
-                else:
-                    ary_strides = (1,)
-                    index_expr = (index_expr,)
-
-                from pymbolic.primitives import Subscript
-                return CCodeMapper.map_subscript(self,
-                        Subscript(expr.aggregate, arg.offset+sum(
-                            stride*expr_i for stride, expr_i in zip(
-                                ary_strides, index_expr))), enclosing_prec)
-
-
-        elif expr.aggregate.name in self.kernel.temporary_variables:
-            temp_var = self.kernel.temporary_variables[expr.aggregate.name]
-            if isinstance(expr.index, tuple):
-                index = expr.index
-            else:
-                index = (expr.index,)
-
-            return (temp_var.name + "".join("[%s]" % self.rec(idx, PREC_NONE)
-                for idx in index))
-
-        else:
-            raise RuntimeError("nothing known about variable '%s'" % expr.aggregate.name)
-
-    def map_floor_div(self, expr, prec):
-        from loopy.isl_helpers import is_nonnegative
-        num_nonneg = is_nonnegative(expr.numerator, self.kernel.domain)
-        den_nonneg = is_nonnegative(expr.denominator, self.kernel.domain)
-
-        if den_nonneg:
-            if num_nonneg:
-                return CCodeMapper.map_floor_div(self, expr, prec)
-            else:
-                return ("int_floor_div_pos_b(%s, %s)"
-                        % (self.rec(expr.numerator, PREC_NONE),
-                            expr.denominator))
-        else:
-            return ("int_floor_div(%s, %s)"
-                    % (self.rec(expr.numerator, PREC_NONE),
-                        self.rec(expr.denominator, PREC_NONE)))
-
-    def map_min(self, expr, prec):
-        what = type(expr).__name__.lower()
-
-        children = expr.children[:]
-
-        result = self.rec(children.pop(), PREC_NONE)
-        while children:
-            result = "%s(%s, %s)" % (what,
-                        self.rec(children.pop(), PREC_NONE),
-                        result)
-
-        return result
-
-    map_max = map_min
 
 # }}}
 

@@ -157,7 +157,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
     # {{{ pass 3: greedily group schedule items that share admissible inames
 
     def build_insn_group(sched_indices_and_cond_inames, codegen_state, done_group_lengths=set()):
-        # min_iname_count serves to prevent infinite recursion by imposing a
+        # done_group_lengths serves to prevent infinite recursion by imposing a
         # bigger and bigger minimum size on the group of shared inames found.
 
         if not sched_indices_and_cond_inames:
@@ -226,7 +226,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             # group only contains starting schedule item
             result = [generate_code_for_sched_index(kernel, sched_index, new_codegen_state)]
         else:
-            # recurse with a bigger minimum iname count
+            # recurse with a bigger done_group_lengths
             result = build_insn_group(
                     sched_indices_and_cond_inames[0:group_length],
                     new_codegen_state,

@@ -195,8 +195,7 @@ def generate_code(kernel, with_annotation=False):
     from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
             CLLocal, CLImage, CLConstant)
 
-    from loopy.symbolic import LoopyCCodeMapper, pw_aff_to_expr
-
+    from loopy.codegen.expression import LoopyCCodeMapper
     ccm = (LoopyCCodeMapper(kernel, with_annotation=with_annotation)
             .copy_and_assign_many(make_initial_assignments(kernel)))
 
@@ -301,24 +300,6 @@ def generate_code(kernel, with_annotation=False):
     from loopy.codegen.loop import set_up_hw_parallel_loops
     gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)
 
-    gen_code_str = str(gen_code)
-
-    if "int_floor_div" in gen_code_str:
-        mod.extend("""
-            #define int_floor_div(a,b) \
-              (( (a) - \
-                 ( ( (a)<0 ) != ( (b)<0 )) \
-                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
-               / (b) )
-            """)
-
-    if "int_floor_div_pos_b" in gen_code_str:
-        mod.extend("""
-            #define int_floor_div_pos_b(a,b) ( \
-                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
-                )
-            """)
-
     body.append(Line())
 
     if isinstance(gen_code.ast, Block):
@@ -326,6 +307,7 @@ def generate_code(kernel, with_annotation=False):
     else:
         body.append(gen_code.ast)
 
+    from loopy.symbolic import pw_aff_to_expr
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
@@ -334,7 +316,24 @@ def generate_code(kernel, with_annotation=False):
                     Value("void", kernel.name), args))),
             body))
 
-    # }}}
+    gen_code_str = str(gen_code)
+
+    from cgen import LiteralLines
+    if "int_floor_div" in gen_code_str:
+        mod.extend(LiteralLines("""
+            #define int_floor_div(a,b) \
+              (( (a) - \
+                 ( ( (a)<0 ) != ( (b)<0 )) \
+                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
+               / (b) )
+            """))
+
+    if "int_floor_div_pos_b" in gen_code_str:
+        mod.extend(LiteralLines("""
+            #define int_floor_div_pos_b(a,b) ( \
+                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
+                )
+            """))
 
     from loopy.check import check_implemented_domains
     assert check_implemented_domains(kernel, gen_code.implemented_domains)

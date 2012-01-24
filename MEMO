@@ -44,11 +44,16 @@ To-do
 - What if no universally valid precompute base index expression is found?
   (test_intel_matrix_mul with n = 6*16, e.g.?)
 
-- When duplicating, use iname aliases to relieve burden on isl
+- When duplicating inames, use iname aliases to relieve burden on isl
 
 - Differentiate ilp.unr from ilp.seq
 
 - Expose iname-duplicate-and-rename as a primitive.
+
+- String instructions?
+
+- Making parameters run-time varying, substituting values that
+  depend on other inames?
 
 - Fix all tests
 
@@ -94,6 +99,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Allow complex-valued arithmetic, despite CL's best efforts.
 
 - "No schedule found" debug help:
 
