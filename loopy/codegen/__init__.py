@@ -187,7 +187,8 @@ class POD(PODBase):
 
 # {{{ main code generation entrypoint
 
-def generate_code(kernel, with_annotation=False):
+def generate_code(kernel, with_annotation=False,
+        allow_complex=False):
     from cgen import (FunctionBody, FunctionDeclaration,
             Value, ArrayOf, Module, Block,
             Line, Const, LiteralLines, Initializer)
@@ -196,8 +197,9 @@ def generate_code(kernel, with_annotation=False):
             CLLocal, CLImage, CLConstant)
 
     from loopy.codegen.expression import LoopyCCodeMapper
-    ccm = (LoopyCCodeMapper(kernel, with_annotation=with_annotation)
-            .copy_and_assign_many(make_initial_assignments(kernel)))
+    ccm = (LoopyCCodeMapper(kernel, with_annotation=with_annotation,
+        allow_complex=allow_complex)
+        .copy_and_assign_many(make_initial_assignments(kernel)))
 
     mod = Module()
 
