@@ -417,7 +417,7 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
 # {{{ convenience: add_prefetch
 
-def add_prefetch(kernel, var_name, sweep_dims, dim_arg_names=None,
+def add_prefetch(kernel, var_name, sweep_dims=[], dim_arg_names=None,
         default_tag="l.auto", rule_name=None):
 
     if rule_name is None:

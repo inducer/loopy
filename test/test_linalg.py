@@ -303,8 +303,8 @@ def test_rank_one(ctx_factory):
             name="rank_one", assumptions="n >= 16")
 
     def variant_1(knl):
-        knl = lp.add_prefetch(knl, "a", [])
-        knl = lp.add_prefetch(knl, "b", [])
+        knl = lp.add_prefetch(knl, "a")
+        knl = lp.add_prefetch(knl, "b")
         return knl
 
     def variant_2(knl):
@@ -313,8 +313,8 @@ def test_rank_one(ctx_factory):
         knl = lp.split_dimension(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
-        knl = lp.add_prefetch(knl, "a", [])
-        knl = lp.add_prefetch(knl, "b", [])
+        knl = lp.add_prefetch(knl, "a")
+        knl = lp.add_prefetch(knl, "b")
         return knl
 
     def variant_3(knl):
