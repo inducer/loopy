@@ -10,6 +10,15 @@ guide :ref:`guide` instead.
 
 .. _tags:
 
+Expressions
+-----------
+
+* `if`
+* complex-valued arithmetic
+
+Assignments and Substitution Rules
+----------------------------------
+
 Tags
 ----
 
@@ -21,6 +30,7 @@ Tag                   Meaning
 `"l.auto"`            Automatically chosen local (intra-group) axis
 `"unr"`               Plain unrolling
 `"ilp"`               Unroll using instruction-level parallelism
+`"inn"`               Realize parallel iname as innermost loop
 ===================== ====================================================
 
 (Throughout this table, `N` must be replaced by an actual number.)
