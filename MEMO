@@ -48,6 +48,14 @@ To-do
 
 - Differentiate ilp.unr from ilp.seq
 
+- Add dependencies after the fact
+
+- bug? with fetching only g[j,*] inside j loop
+
+- reg rolling
+
+- nbody GPU
+
 - Expose iname-duplicate-and-rename as a primitive.
 
 - String instructions?
