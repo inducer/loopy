@@ -521,12 +521,12 @@ class LoopKernel(Record):
                     "(?P<iname_deps_and_tags>[\s\w,:.]*)"
                     "(?:\|(?P<duplicate_inames_and_tags>[\s\w,:.]*))?"
                 "\])?"
-                "\s*(?:\<(?P<temp_var_type>.+)\>)?"
-                "\s*(?P<lhs>.+)\s*(?<!\:)=\s*(?P<rhs>.+?)"
+                "\s*(?:\<(?P<temp_var_type>.+?)\>)?"
+                "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
                 "\s*?(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
                 )
         SUBST_RE = re.compile(
-                r"^\s*(?P<lhs>.+)\s*:=\s*(?P<rhs>.+)\s*$"
+                r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$"
                 )
 
         def parse_iname_and_tag_list(s):
