@@ -615,6 +615,11 @@ class LoopKernel(Record):
                 else:
                     temp_var_type = None
 
+                from pymbolic.primitives import Variable, Subscript
+                if not isinstance(lhs, (Variable, Subscript)):
+                    raise RuntimeError("left hand side of assignment '%s' must "
+                            "be variable or subscript" % lhs)
+
                 insns.append(
                         Instruction(
                             id=self.make_unique_instruction_id(insns, based_on=label),
