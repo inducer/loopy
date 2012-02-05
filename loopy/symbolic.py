@@ -126,7 +126,11 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
     def map_call(self, expr):
         from pymbolic.primitives import Variable
-        if isinstance(expr.function, Variable) and expr.function.name == "cse":
+        if not isinstance(expr.function, Variable):
+            return IdentityMapper.map_call(self, expr)
+
+        name = expr.function.name
+        if name == "cse":
             from pymbolic.primitives import CommonSubexpression
             if len(expr.parameters) in [1, 2]:
                 if len(expr.parameters) == 2:
@@ -141,47 +145,54 @@ class FunctionToPrimitiveMapper(IdentityMapper):
             else:
                 raise TypeError("cse takes two arguments")
 
-        elif isinstance(expr.function, Variable):
-            if expr.function.name == "reduce":
-                if len(expr.parameters) == 3:
-                    operation, inames, red_expr = expr.parameters
-                else:
-                    raise TypeError("invalid 'reduce' calling sequence")
+        elif name == "reduce":
+            if len(expr.parameters) == 3:
+                operation, inames, red_expr = expr.parameters
             else:
-                from loopy.kernel import parse_reduction_op
-                if parse_reduction_op(expr.function.name):
-                    if len(expr.parameters) != 2:
-                        raise RuntimeError("invalid invocation of "
-                                "reduction operation '%s'" % expr.function.name)
+                raise TypeError("invalid 'reduce' calling sequence")
 
-                    operation = expr.function
-                    inames, red_expr = expr.parameters
-                else:
-                    return IdentityMapper.map_call(self, expr)
+        elif name == "if":
+            if len(expr.parameters) in [2, 3]:
+                from pymbolic.primitives import If
+                return If(*expr.parameters)
+            else:
+                raise TypeError("if takes two or three arguments")
 
-            red_expr = self.rec(red_expr)
-
-            if not isinstance(operation, Variable):
-                raise TypeError("operation argument to reduce() must be a symbol")
-            operation = operation.name
-            if isinstance(inames, Variable):
-                inames = (inames,)
-
-            if not isinstance(inames, (tuple)):
-                raise TypeError("iname argument to reduce() must be a symbol "
-                        "or a tuple of symbols")
-
-            processed_inames = []
-            for iname in inames:
-                if not isinstance(iname, Variable):
-                    raise TypeError("iname argument to reduce() must be a symbol "
-                            "or a tuple or a tuple of symbols")
-
-                processed_inames.append(iname.name)
-
-            return Reduction(operation, tuple(processed_inames), red_expr)
         else:
-            return IdentityMapper.map_call(self, expr)
+            # see if 'name' is an existing reduction op
+
+            from loopy.kernel import parse_reduction_op
+            if parse_reduction_op(name):
+                if len(expr.parameters) != 2:
+                    raise RuntimeError("invalid invocation of "
+                            "reduction operation '%s'" % expr.function.name)
+
+                operation = expr.function
+                inames, red_expr = expr.parameters
+            else:
+                return IdentityMapper.map_call(self, expr)
+
+        red_expr = self.rec(red_expr)
+
+        if not isinstance(operation, Variable):
+            raise TypeError("operation argument to reduce() must be a symbol")
+        operation = operation.name
+        if isinstance(inames, Variable):
+            inames = (inames,)
+
+        if not isinstance(inames, (tuple)):
+            raise TypeError("iname argument to reduce() must be a symbol "
+                    "or a tuple of symbols")
+
+        processed_inames = []
+        for iname in inames:
+            if not isinstance(iname, Variable):
+                raise TypeError("iname argument to reduce() must be a symbol "
+                        "or a tuple or a tuple of symbols")
+
+            processed_inames.append(iname.name)
+
+        return Reduction(operation, tuple(processed_inames), red_expr)
 
 # }}}
 
