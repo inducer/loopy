@@ -128,12 +128,16 @@ class ArrayArg:
                 from pymbolic import parse
                 strides = parse(strides)
 
-            strides = tuple(strides)
+            if not isinstance(shape, tuple):
+                shape = (shape,)
 
         if shape is not None:
             if isinstance(shape, str):
                 from pymbolic import parse
                 shape = parse(shape)
+
+            if not isinstance(shape, tuple):
+                shape = (shape,)
 
             from pyopencl.compyte.array import (
                     f_contiguous_strides,
