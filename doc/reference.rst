@@ -14,6 +14,8 @@ Expressions
 -----------
 
 * `if`
+* `reductions`
+ * duplication of reduction inames
 * complex-valued arithmetic
 
 Assignments and Substitution Rules
@@ -28,12 +30,20 @@ Tag                   Meaning
 `None` | `"for"`      Sequential loop
 `"l.N"`               Local (intra-group) axis N
 `"l.auto"`            Automatically chosen local (intra-group) axis
+`"g.N"`               Group-number axis N
 `"unr"`               Plain unrolling
-`"ilp"`               Unroll using instruction-level parallelism
-`"inn"`               Realize parallel iname as innermost loop
+`"ilp"` | `"ilp.unr"` Unroll using instruction-level parallelism
+`"ilp.seq"`           Realize parallel iname as innermost loop
 ===================== ====================================================
 
 (Throughout this table, `N` must be replaced by an actual number.)
+
+ILP is really three things combined:
+
+* Restricts loops to be innermost (excludes them from scheduling)
+* Duplicates reduction storage for any reductions nested around ILP usage
+* Causes a loop (unrolled or not) to be opened/generated for each
+  involved instruction
 
 .. _automatic-axes:
 

@@ -85,7 +85,7 @@ def check_for_inactive_iname_access(kernel):
 
 def check_for_write_races(kernel):
     from loopy.symbolic import DependencyMapper
-    from loopy.kernel import ParallelTag, GroupIndexTag, IlpTag
+    from loopy.kernel import ParallelTag, GroupIndexTag, IlpBaseTag
     depmap = DependencyMapper()
 
     for insn in kernel.instructions:
@@ -136,7 +136,7 @@ def check_for_write_races(kernel):
                 ilp_inames = set(
                         iname
                         for iname in kernel.insn_inames(insn)
-                        if isinstance(kernel.iname_to_tag.get(iname), IlpTag))
+                        if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
 
                 inames_without_write_dep = ilp_inames - (
                         assignee_inames & ilp_inames)

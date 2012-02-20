@@ -278,7 +278,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     :arg sweep_axes: A :class:`list` of inames and/or rule argument names to be swept.
     :arg storage_dims: A :class:`list` of inames and/or rule argument names/indices to be used as storage axes.
 
-    If `storage_dims` is not specified, it defaults to the arrangement
+    If `storage_axes` is not specified, it defaults to the arrangement
     `<direct sweep axes><arguments>` with the direct sweep axes being the
     slower-varying indices.
 
@@ -318,6 +318,8 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     from loopy.symbolic import SubstitutionCallbackMapper
     scm = SubstitutionCallbackMapper([(subst_name, subst_instance)], gather_substs)
 
+    # We need to work on the fully expanded form of an expression.
+    # To that end, instantiate a substitutor.
     from loopy.symbolic import ParametrizedSubstitutor
     rules_except_mine = kernel.substitutions.copy()
     del rules_except_mine[subst_name]
@@ -328,7 +330,8 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
         # arguments. Therefore, fully expand each instruction and look at
         # the invocations in subst_name occurring there.
 
-        scm(subst_expander(insn.expression))
+        expanded_expr = subst_expander(insn.expression)
+        scm(expanded_expr)
 
     if not invocation_descriptors:
         raise RuntimeError("no invocations of '%s' found" % subst_name)

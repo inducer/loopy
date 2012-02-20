@@ -65,9 +65,16 @@ class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
     def __str__(self):
         return "l.auto"
 
-class IlpTag(ParallelTag):
+class IlpBaseTag(ParallelTag):
+    pass
+
+class UnrolledIlpTag(IlpBaseTag):
     def __str__(self):
-        return "ilp"
+        return "ilp.unr"
+
+class LoopedIlpTag(IlpBaseTag):
+    def __str__(self):
+        return "ilp.seq"
 
 class UnrollTag(IndexTag):
     def __str__(self):
@@ -87,8 +94,10 @@ def parse_tag(tag):
         return None
     elif tag in ["unr"]:
         return UnrollTag()
-    elif tag == "ilp":
-        return IlpTag()
+    elif tag in ["ilp", "ilp.unr"]:
+        return UnrolledIlpTag()
+    elif tag == "ilp.seq":
+        return LoopedIlpTag()
     elif tag.startswith("g."):
         return GroupIndexTag(int(tag[2:]))
     elif tag.startswith("l."):

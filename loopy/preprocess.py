@@ -132,17 +132,17 @@ def realize_reduction(kernel, insn_id_filter=None):
     new_insns = []
     new_temporary_variables = kernel.temporary_variables.copy()
 
-    from loopy.kernel import IlpTag
+    from loopy.kernel import IlpBaseTag
 
     def map_reduction(expr, rec):
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
-        # {{{ see if this reduction is nested inside some ILP loops
+        # {{{ see if this reduction is nested around some ILP loops
 
         ilp_inames = [iname
                 for iname in temp_kernel.insn_inames(insn)
-                if isinstance(temp_kernel.iname_to_tag.get(iname), IlpTag)]
+                if isinstance(temp_kernel.iname_to_tag.get(iname), IlpBaseTag)]
 
         from loopy.isl_helpers import static_max_of_pw_aff
 

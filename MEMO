@@ -55,10 +55,11 @@ To-do
 - reg rolling
 
 - nbody GPU
+  -> pending better prefetch spec
 
 - Expose iname-duplicate-and-rename as a primitive.
 
-- String instructions?
+- add_prefetch gets a flag to separate out each access
 
 - Making parameters run-time varying, substituting values that
   depend on other inames?
@@ -67,6 +68,8 @@ To-do
 
 Future ideas
 ^^^^^^^^^^^^
+
+- String instructions?
 
 - How is intra-instruction ordering of ILP loops going to be determined?
   (taking into account that it could vary even per-instruction?)

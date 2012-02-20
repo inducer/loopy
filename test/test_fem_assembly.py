@@ -83,7 +83,7 @@ def test_laplacian_stiffness(ctx_factory):
         knl = lp.split_dimension(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
         knl = lp.precompute(knl, "dPsi.one", np.float32, ["dx_axis"], default_tag=None)
-        knl = lp.tag_dimensions(knl, {"j": "ilp"})
+        knl = lp.tag_dimensions(knl, {"j": "ilp.seq"})
 
         return knl, ["Ko", "Kloc"]
 
@@ -124,7 +124,7 @@ def test_laplacian_stiffness(ctx_factory):
     # Plug in variant name here
     #                        |
     #                        v
-    for variant in [variant_simple_gpu_prefetch]:
+    for variant in [variant_fig33]:
         var_knl, loop_prio = variant(knl)
         kernel_gen = lp.generate_loop_schedules(var_knl,
                 loop_priority=loop_prio)
