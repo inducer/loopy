@@ -76,9 +76,6 @@ def test_laplacian_stiffness(ctx_factory):
     def variant_fig33(knl):
         # This is meant to (mostly) reproduce Figure 3.3.
 
-        # For odd technical reasons, loopy has to unroll the j
-        # loop at present. I'll fix that. (FIXME)
-
         Ncloc = 16
         knl = lp.split_dimension(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
