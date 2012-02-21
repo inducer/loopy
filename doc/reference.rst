@@ -21,6 +21,14 @@ Expressions
 Assignments and Substitution Rules
 ----------------------------------
 
+Inames
+------
+
+Loops are (by default) entered exactly once. This is necessary to preserve
+depdency semantics--otherwise e.g. a fetch could happen inside one loop nest,
+and then the instruction using that fetch could be inside a wholly different
+loop nest.
+
 Tags
 ----
 
@@ -38,9 +46,9 @@ Tag                   Meaning
 
 (Throughout this table, `N` must be replaced by an actual number.)
 
-ILP is really three things combined:
+"ILP" does three things:
 
-* Restricts loops to be innermost (excludes them from scheduling)
+* Restricts loops to be innermost
 * Duplicates reduction storage for any reductions nested around ILP usage
 * Causes a loop (unrolled or not) to be opened/generated for each
   involved instruction

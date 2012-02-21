@@ -274,7 +274,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
                 and len(schedule) >= debug.debug_length):
             debug_mode = True
 
-    #print dump_schedule(schedule), len(schedule)
     if debug_mode:
         print 75*"="
         print "KERNEL:"
@@ -292,8 +291,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
     # }}}
 
-    made_progress = False
-
     # {{{ see if any insn can be scheduled now
 
     # Also take note of insns that have a chance of being schedulable inside
@@ -301,7 +298,9 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
     reachable_insn_ids = set()
 
-    for insn_id in all_insn_ids - scheduled_insn_ids:
+    unscheduled_insn_ids = all_insn_ids - scheduled_insn_ids
+
+    for insn_id in unscheduled_insn_ids:
         insn = kernel.id_to_insn[insn_id]
 
         schedule_now = set(insn.insn_deps) <= scheduled_insn_ids
@@ -346,56 +345,100 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
                 print "scheduling '%s'" % insn.id
             scheduled_insn_ids.add(insn.id)
             schedule = schedule + [RunInstruction(insn_id=insn.id)]
-            made_progress = True
+
+            # Don't be eager about entering/leaving loops--if progress has been
+            # made, revert to top of scheduler and see if more progress can be
+            # made.
+
+            for sub_sched in generate_loop_schedules_internal(
+                    kernel, loop_priority, schedule,
+                    allow_boost=rec_allow_boost, debug=debug):
+                yield sub_sched
+
+            return
 
     unscheduled_insn_ids = list(all_insn_ids - scheduled_insn_ids)
 
     # }}}
 
-    # {{{ see if we're ready to leave a loop
+    # {{{ see if we're ready to leave the innermost loop
 
     if  last_entered_loop is not None:
         can_leave = True
-        for insn_id in unscheduled_insn_ids:
-            insn = kernel.id_to_insn[insn_id]
-            if last_entered_loop in kernel.insn_inames(insn):
-                if debug_mode:
-                    print("cannot leave '%s' because '%s' still depends on it"
-                            % (last_entered_loop, insn.id))
-                can_leave = False
-                break
+
+        if last_entered_loop not in kernel.breakable_inames:
+            # If the iname is not breakable, then check that we've
+            # scheduled all the instructions that require it.
+
+            for insn_id in unscheduled_insn_ids:
+                insn = kernel.id_to_insn[insn_id]
+                if last_entered_loop in kernel.insn_inames(insn):
+                    if debug_mode:
+                        print("cannot leave '%s' because '%s' still depends on it"
+                                % (last_entered_loop, insn.id))
+                    can_leave = False
+                    break
 
         if can_leave:
-            schedule = schedule + [LeaveLoop(iname=last_entered_loop)]
-            made_progress = True
+            can_leave = False
+
+            # We may only leave this loop if we've scheduled an instruction
+            # since entering it.
+
+            seen_an_insn = False
+            ignore_count = 0
+            for sched_item in schedule[::-1]:
+                if isinstance(sched_item, RunInstruction):
+                    seen_an_insn = True
+                elif isinstance(sched_item, LeaveLoop):
+                    ignore_count +=1
+                elif isinstance(sched_item, EnterLoop):
+                    if ignore_count:
+                        ignore_count -= 1
+                    else:
+                        assert sched_item.iname == last_entered_loop
+                        if seen_an_insn:
+                            can_leave = True
+                        break
+
+            if can_leave:
+                schedule = schedule + [LeaveLoop(iname=last_entered_loop)]
+
+                for sub_sched in generate_loop_schedules_internal(
+                        kernel, loop_priority, schedule,
+                        allow_boost=rec_allow_boost, debug=debug):
+                    yield sub_sched
+
+                return
 
     # }}}
 
     # {{{ see if any loop can be entered now
 
-    available_loops = (kernel.all_referenced_inames()
-            # loops can only be entered once
-            - entered_inames
-            # there's no notion of 'entering' a parallel loop
+    # Find inames that are being referenced by as yet unscheduled instructions.
+    needed_inames = set()
+    for insn_id in unscheduled_insn_ids:
+        needed_inames.update(kernel.insn_inames(insn_id))
+
+    needed_inames = (needed_inames
+            # There's no notion of 'entering' a parallel loop
             - parallel_inames
-            )
+
+            # Don't reenter a loop we're already in.
+            - active_inames_set)
 
     if debug_mode:
         print 75*"-"
-        print "available inames :", ",".join(available_loops)
+        print "inames still needed :", ",".join(needed_inames)
         print "active inames :", ",".join(active_inames)
         print "inames entered so far :", ",".join(entered_inames)
         print "reachable insns:", ",".join(reachable_insn_ids)
         print 75*"-"
 
-    # Don't be eager about scheduling new loops--if progress has been made,
-    # revert to top of scheduler and see if more progress can be made another
-    # way. (hence 'and not made_progress')
-
-    if available_loops and not made_progress:
+    if needed_inames:
         useful_loops = []
 
-        for iname in available_loops:
+        for iname in needed_inames:
             if not kernel.loop_nest_map()[iname] <= active_inames_set | parallel_inames:
                 continue
 
@@ -428,17 +471,28 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         # loops in the second are not even tried (and so on).
 
         loop_priority_set = set(loop_priority)
-        useful_and_desired = set(useful_loops) & loop_priority_set
+        lowest_priority_set = set(kernel.lowest_priority_inames)
+        useful_loops_set = set(useful_loops)
+        useful_and_desired = useful_loops_set & loop_priority_set
 
         if useful_and_desired:
             priority_tiers = [[iname]
                     for iname in loop_priority
-                    if iname in useful_and_desired]
+                    if iname in useful_and_desired
+                    and iname not in kernel.lowest_priority_inames]
 
             priority_tiers.append(
-                    set(useful_loops) - loop_priority_set)
+                    set(useful_loops)
+                    - loop_priority_set
+                    - lowest_priority_set)
         else:
-            priority_tiers = [useful_loops]
+            priority_tiers = [set(useful_loops) - lowest_priority_set]
+
+        priority_tiers.extend([
+            [iname]
+            for iname in kernel.lowest_priority_inames
+            if iname in useful_loops
+            ])
 
         # }}}
 
@@ -467,18 +521,12 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         print 75*"="
         raw_input("Hit Enter for next schedule:")
 
-    if not active_inames and not available_loops and not unscheduled_insn_ids:
+    if not active_inames and not unscheduled_insn_ids:
         # if done, yield result
         debug.log_success(schedule)
 
         yield schedule
 
-    elif made_progress:
-        # if not done, but made some progress--try from the top
-        for sub_sched in generate_loop_schedules_internal(
-                kernel, loop_priority, schedule,
-                allow_boost=rec_allow_boost, debug=debug):
-            yield sub_sched
     else:
         if not allow_boost and allow_boost is not None:
             # try again with boosting allowed

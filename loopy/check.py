@@ -133,13 +133,15 @@ def check_for_write_races(kernel):
                         assignee_inames & local_parallel_insn_inames)
 
             elif temp_var.is_local == False:
-                ilp_inames = set(
-                        iname
-                        for iname in kernel.insn_inames(insn)
-                        if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
+                #from loopy.kernel import IlpBaseTag
+                #ilp_inames = set(
+                        #iname
+                        #for iname in kernel.insn_inames(insn)
+                        #if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
 
-                inames_without_write_dep = ilp_inames - (
-                        assignee_inames & ilp_inames)
+                #inames_without_write_dep = ilp_inames - assignee_inames
+
+                inames_without_write_dep = set()
 
             else:
                 raise RuntimeError("temp var '%s' hasn't decided on "

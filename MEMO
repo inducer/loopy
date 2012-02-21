@@ -46,8 +46,6 @@ To-do
 
 - When duplicating inames, use iname aliases to relieve burden on isl
 
-- Differentiate ilp.unr from ilp.seq
-
 - Add dependencies after the fact
 
 - bug? with fetching only g[j,*] inside j loop
@@ -56,6 +54,8 @@ To-do
 
 - nbody GPU
   -> pending better prefetch spec
+  - Prefetch by sample access
+  - Exclude by precompute name
 
 - Expose iname-duplicate-and-rename as a primitive.
 
@@ -66,8 +66,12 @@ To-do
 
 - Fix all tests
 
+- Scalar insn priority
+
 Future ideas
 ^^^^^^^^^^^^
+
+- Check for unordered (no-dependency) writes to the same location
 
 - String instructions?
 
@@ -110,6 +114,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Differentiate ilp.unr from ilp.seq
 
 - Allow complex-valued arithmetic, despite CL's best efforts.
 

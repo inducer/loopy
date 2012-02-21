@@ -492,6 +492,8 @@ class LoopKernel(Record):
         length 16.
     :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
         objects
+    :ivar lowest_priority_inames:
+    :ivar breakable_inames: these inames' loops may be broken up by the scheduler
 
     :ivar cache_manager:
 
@@ -508,7 +510,7 @@ class LoopKernel(Record):
             temporary_variables={},
             local_sizes={},
             iname_to_tag={}, iname_to_tag_requests=None, substitutions={},
-            cache_manager=None):
+            cache_manager=None, lowest_priority_inames=[], breakable_inames=set()):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -703,7 +705,9 @@ class LoopKernel(Record):
                 iname_to_tag=iname_to_tag,
                 iname_to_tag_requests=iname_to_tag_requests,
                 substitutions=substitutions,
-                cache_manager=cache_manager)
+                cache_manager=cache_manager,
+                lowest_priority_inames=lowest_priority_inames,
+                breakable_inames=breakable_inames)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:
@@ -763,8 +767,6 @@ class LoopKernel(Record):
                     implicit_inames = None
 
                     for writer_id in writers[tv_name]:
-                        #writer_insn = self.id_to_insn[writer_id]
-
                         writer_implicit_inames = (
                                 insn_id_to_inames[writer_id]
                                 - insn_assignee_inames[writer_id])
@@ -1077,6 +1079,9 @@ class LoopKernel(Record):
         for inner_iname in self.all_inames():
             result[inner_iname] = set()
             for outer_iname in self.all_inames():
+                if outer_iname in self.breakable_inames:
+                    continue
+
                 if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
                     result[inner_iname].add(outer_iname)
 

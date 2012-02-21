@@ -6,6 +6,40 @@ import pyopencl.characterize as cl_char
 
 
 
+# {{{ transform ilp into lower-level constructs
+
+def realize_ilp(kernel):
+    from loopy.kernel import (
+
+            UnrolledIlpTag, UnrollTag, LoopedIlpTag)
+    ILP_TO_BASE_TAG = {
+            UnrolledIlpTag: UnrollTag,
+            LoopedIlpTag: None,
+            }
+
+    lpi = kernel.lowest_priority_inames[:]
+    breakable_inames = kernel.breakable_inames.copy()
+
+    new_iname_to_tag = kernel.iname_to_tag.copy()
+    for iname in kernel.all_inames():
+        tag = kernel.iname_to_tag.get(iname)
+        if type(tag) in ILP_TO_BASE_TAG:
+            new_tag_cls = ILP_TO_BASE_TAG[type(tag)]
+            if new_tag_cls is None:
+                new_iname_to_tag[iname] = None
+            else:
+                new_iname_to_tag[iname] = new_tag_cls()
+
+            lpi.append(iname)
+            breakable_inames.add(iname)
+
+    return kernel.copy(
+            iname_to_tag=new_iname_to_tag,
+            lowest_priority_inames=lpi,
+            breakable_inames=breakable_inames)
+
+# }}}
+
 # {{{ local temporary finding
 
 def mark_local_temporaries(kernel):
@@ -138,7 +172,7 @@ def realize_reduction(kernel, insn_id_filter=None):
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
-        # {{{ see if this reduction is nested around some ILP loops
+        # {{{ see if this reduction is nested inside some ILP loops
 
         ilp_inames = [iname
                 for iname in temp_kernel.insn_inames(insn)
@@ -706,6 +740,14 @@ def preprocess_kernel(kernel):
     kernel = apply_subst(kernel)
 
     kernel = realize_reduction(kernel)
+
+    # Ordering restriction:
+    # Must realize reductions before realizing ILP, because realize_ilp()
+    # gets rid of ILP tags, but realize_reduction() needs them to do
+    # reduction variable duplication.
+
+    kernel = realize_ilp(kernel)
+
     kernel = mark_local_temporaries(kernel)
     kernel = assign_automatic_axes(kernel)
     kernel = add_boostability_and_automatic_dependencies(kernel)
