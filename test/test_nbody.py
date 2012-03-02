@@ -40,6 +40,7 @@ def test_nbody(ctx_factory):
     def variant_cpu(knl):
         knl = lp.split_dimension(knl, "i", 1024,
                 outer_tag="g.0", slabs=(0,1))
+        knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
         return knl, []
 
     def variant_gpu(knl):
@@ -47,10 +48,12 @@ def test_nbody(ctx_factory):
                 outer_tag="g.0", inner_tag="l.0", slabs=(0,1))
         knl = lp.split_dimension(knl, "j", 256, slabs=(0,1))
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
-        knl = lp.add_prefetch(knl, "x[j,k]", ["j_inner", "k"])
+        knl = lp.add_prefetch(knl, "x[j,k]", ["j_inner", "k"],
+                ["x_fetch_j", "x_fetch_k"])
+        knl = lp.tag_dimensions(knl, dict(x_fetch_k="unr"))
         return knl, ["j_outer", "j_inner"]
 
-    n = 100
+    n = 3000
 
     for variant in [variant_gpu]:
         variant_knl, loop_prio = variant(knl)
@@ -59,7 +62,7 @@ def test_nbody(ctx_factory):
         kernel_gen = lp.check_kernels(kernel_gen, dict(N=n))
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
-                op_count=4*n**2*1e-9, op_label="GOps/s",
+                op_count=n**2*1e-6, op_label="M particle pairs",
                 parameters={"N": n}, print_ref_code=True)
 
 

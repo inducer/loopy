@@ -388,8 +388,7 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
     iname_to_tag = dict((iname, parse_tag(tag))
             for iname, tag in iname_to_tag.iteritems())
 
-    from loopy.kernel import (ParallelTag, AutoLocalIndexTagBase,
-            LocalIndexTag)
+    from loopy.kernel import (ParallelTag, AutoLocalIndexTagBase)
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
     for iname, new_tag in iname_to_tag.iteritems():
@@ -397,9 +396,7 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
         retag_ok = False
 
-        if (isinstance(old_tag, AutoLocalIndexTagBase)
-                and (new_tag is None
-                    or isinstance(new_tag, LocalIndexTag))):
+        if isinstance(old_tag, AutoLocalIndexTagBase):
             retag_ok = True
 
         if not retag_ok and old_tag is not None and new_tag is None:

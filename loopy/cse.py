@@ -476,8 +476,8 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
         if new_storage_axis_names is not None and i < len(new_storage_axis_names):
             name = new_storage_axis_names[i]
             tag_lookup_saxis = name
-            if new_name in (kernel.all_variable_names() | newly_created_var_names):
-                raise RuntimeError("new storage axis name '%s' already exists" % new_name)
+            if name in (kernel.all_variable_names() | newly_created_var_names):
+                raise RuntimeError("new storage axis name '%s' already exists" % name)
 
         if name in (kernel.all_variable_names()
                 | newly_created_var_names):
@@ -488,7 +488,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
         storage_axis_name_to_tag[name] = storage_axis_to_tag.get(
                 tag_lookup_saxis, default_tag)
 
-        newly_created_var_names.add(new_name)
+        newly_created_var_names.add(name)
         expr_subst_dict[old_name] = var(name)
 
     del storage_axis_to_tag
