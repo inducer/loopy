@@ -13,7 +13,7 @@ from pymbolic import var
 
 
 class InvocationDescriptor(Record):
-    __slots__ = ["expr", "args", ]
+    __slots__ = ["expr", "args", "expands_footprint", "is_in_footprint"]
 
 
 
@@ -38,70 +38,105 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 
 # {{{ construct storage->sweep map
 
-def construct_storage_to_sweep_map(invocation_descriptors, domain_dup_sweep,
+def build_per_access_storage_to_sweep_map(invdesc, domain_dup_sweep,
         storage_axis_names, storage_axis_sources, prime_sweep_inames):
+
+    map_space = domain_dup_sweep.get_space()
+    stor_dim = len(storage_axis_names)
+    rn = map_space.dim(dim_type.out)
+
+    map_space = map_space.add_dims(dim_type.in_, stor_dim)
+    for i, saxis in enumerate(storage_axis_names):
+        # arg names are initially primed, to be replaced with unprimed
+        # base-0 versions below
+
+        map_space = map_space.set_dim_name(dim_type.in_, i, saxis+"'")
+
+    # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep]
+
+    set_space = map_space.move_dims(
+            dim_type.out, rn,
+            dim_type.in_, 0, stor_dim).range()
+
+    # set_space: [domain](dup_sweep_index)[dup_sweep][stor_axes']
+
+    stor2sweep = None
+
+    from loopy.symbolic import aff_from_expr
+
+    for saxis, saxis_source in zip(storage_axis_names, storage_axis_sources):
+        if isinstance(saxis_source, int):
+            # an argument
+            cns = isl.Constraint.equality_from_aff(
+                    aff_from_expr(set_space,
+                        var(saxis+"'")
+                        - prime_sweep_inames(invdesc.args[saxis_source])))
+        else:
+            # a 'bare' sweep iname
+            cns = isl.Constraint.equality_from_aff(
+                    aff_from_expr(set_space,
+                        var(saxis+"'")
+                        - prime_sweep_inames(var(saxis_source))))
+
+        cns_map = isl.BasicMap.from_constraint(cns)
+        if stor2sweep is None:
+            stor2sweep = cns_map
+        else:
+            stor2sweep = stor2sweep.intersect(cns_map)
+
+    stor2sweep = stor2sweep.move_dims(
+            dim_type.in_, 0,
+            dim_type.out, rn, stor_dim)
+
+    # stor2sweep is back in map_space
+    return stor2sweep
+
+def build_global_storage_to_sweep_map(invocation_descriptors, domain_dup_sweep,
+        storage_axis_names, storage_axis_sources, prime_sweep_inames):
+    """
+    As a side effect, this fills out is_in_footprint in the
+    invocation descriptors.
+    """
 
     # The storage map goes from storage axes to domain_dup_sweep.
     # The first len(arg_names) storage dimensions are the rule's arguments.
 
-    result = None
+    global_stor2sweep = None
 
+    # build footprint
     for invdesc in invocation_descriptors:
-        map_space = domain_dup_sweep.get_space()
-        stor_dim = len(storage_axis_names)
-        rn = map_space.dim(dim_type.out)
+        if invdesc.expands_footprint:
+            stor2sweep = build_per_access_storage_to_sweep_map(invdesc, domain_dup_sweep,
+                    storage_axis_names, storage_axis_sources, prime_sweep_inames)
 
-        map_space = map_space.add_dims(dim_type.in_, stor_dim)
-        for i, saxis in enumerate(storage_axis_names):
-            # arg names are initially primed, to be replaced with unprimed
-            # base-0 versions below
-
-            map_space = map_space.set_dim_name(dim_type.in_, i, saxis+"'")
-
-        # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep]
-
-        set_space = map_space.move_dims(
-                dim_type.out, rn,
-                dim_type.in_, 0, stor_dim).range()
-
-        # set_space: [domain](dup_sweep_index)[dup_sweep][stor_axes']
-
-        stor2sweep = None
-
-        from loopy.symbolic import aff_from_expr
-
-        for saxis, saxis_source in zip(storage_axis_names, storage_axis_sources):
-            if isinstance(saxis_source, int):
-                # an argument
-                cns = isl.Constraint.equality_from_aff(
-                        aff_from_expr(set_space,
-                            var(saxis+"'")
-                            - prime_sweep_inames(invdesc.args[saxis_source])))
+            if global_stor2sweep is None:
+                global_stor2sweep = stor2sweep
             else:
-                # a 'bare' sweep iname
-                cns = isl.Constraint.equality_from_aff(
-                        aff_from_expr(set_space,
-                            var(saxis+"'")
-                            - prime_sweep_inames(var(saxis_source))))
+                global_stor2sweep = global_stor2sweep.union(stor2sweep)
 
-            cns_map = isl.BasicMap.from_constraint(cns)
-            if stor2sweep is None:
-                stor2sweep = cns_map
-            else:
-                stor2sweep = stor2sweep.intersect(cns_map)
+            invdesc.is_in_footprint = True
 
-        stor2sweep = stor2sweep.move_dims(
-                dim_type.in_, 0,
-                dim_type.out, rn, stor_dim)
+    if isinstance(global_stor2sweep, isl.BasicMap):
+        global_stor2sweep = isl.Map.from_basic_map(stor2sweep)
+    global_stor2sweep = global_stor2sweep.intersect_range(domain_dup_sweep)
 
-        # stor2sweep is back in map_space
+    # check if non-footprint-building invocation descriptors fall into footprint
+    for invdesc in invocation_descriptors:
+        stor2sweep = build_per_access_storage_to_sweep_map(invdesc, domain_dup_sweep,
+                    storage_axis_names, storage_axis_sources, prime_sweep_inames)
 
-        if result is None:
-            result = stor2sweep
+        if isinstance(stor2sweep, isl.BasicMap):
+            stor2sweep = isl.Map.from_basic_map(stor2sweep)
+
+        stor2sweep = stor2sweep.intersect_range(domain_dup_sweep)
+
+        if not invdesc.expands_footprint:
+            invdesc.is_in_footprint = stor2sweep.is_subset(global_stor2sweep)
         else:
-            result = result.union(stor2sweep)
+            assert stor2sweep.domain().is_subset(global_stor2sweep.domain())
 
-    return result
+
+    return global_stor2sweep
 
 # }}}
 
@@ -157,13 +192,9 @@ def get_access_info(kernel, subst_name,
 
     # }}}
 
-    stor2sweep = construct_storage_to_sweep_map(
+    stor2sweep = build_global_storage_to_sweep_map(
             invocation_descriptors, domain_dup_sweep,
             storage_axis_names, storage_axis_sources, prime_sweep_inames)
-
-    if isinstance(stor2sweep, isl.BasicMap):
-        stor2sweep = isl.Map.from_basic_map(stor2sweep)
-    stor2sweep = stor2sweep.intersect_range(domain_dup_sweep)
 
     storage_base_indices, storage_shape = compute_bounds(
             kernel, subst_name, stor2sweep, sweep_inames,
@@ -186,7 +217,7 @@ def get_access_info(kernel, subst_name,
     # }}}
 
     # {{{ subtract off the base indices
-    # add the new, base-0 as new in dimensions
+    # add the new, base-0 indices as new in dimensions
 
     sp = stor2sweep.get_space()
     stor_idx = sp.dim(dim_type.out)
@@ -251,6 +282,7 @@ def simplify_via_aff(expr):
 
 
 def precompute(kernel, subst_name, dtype, sweep_axes=[],
+        footprint_generators=None,
         storage_axes=None, new_storage_axis_names=None, storage_axis_to_tag={},
         default_tag="l.auto"):
     """Precompute the expression described in the substitution rule *subst_name*
@@ -258,8 +290,13 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     a list of *sweep_axes* (order irrelevant) and an ordered list of *storage_axes*
     (whose order will describe the axis ordering of the temporary array).
 
-    This function will then examine all usage sites of the substitution rule and
-    determine what the storage footprint of that sweep is.
+    *subst_name* may contain a period (".") to filter out a subset of the
+    usage sites of the substitution rule. (Namely those usage sites that
+    use the same dotted name.)
+
+    This function will then examine the *footprint_generators* (or all usage
+    sites of the substitution rule if not specified) and determine what the
+    storage footprint of that sweep is.
 
     The following cases can arise for each sweep axis:
 
@@ -276,7 +313,7 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
       the so-named formal argument at *all* usage sites.
 
     :arg sweep_axes: A :class:`list` of inames and/or rule argument names to be swept.
-    :arg storage_dims: A :class:`list` of inames and/or rule argument names/indices to be used as storage axes.
+    :arg storage_axes: A :class:`list` of inames and/or rule argument names/indices to be used as storage axes.
 
     If `storage_axes` is not specified, it defaults to the arrangement
     `<direct sweep axes><arguments>` with the direct sweep axes being the
@@ -312,11 +349,31 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
                     "exclusively of inames" % expr)
 
         invocation_descriptors.append(
-                InvocationDescriptor(expr=expr, args=args))
+                InvocationDescriptor(expr=expr, args=args,
+                    expands_footprint=footprint_generators is None))
         return expr
 
     from loopy.symbolic import SubstitutionCallbackMapper
     scm = SubstitutionCallbackMapper([(subst_name, subst_instance)], gather_substs)
+
+    if footprint_generators:
+        for fpg in footprint_generators:
+            if isinstance(fpg, str):
+                from loopy.symbolic import parse
+                fpg = parse(fpg)
+
+            from pymbolic.primitives import Variable, Call
+            if isinstance(fpg, Variable):
+                args = ()
+            elif isinstance(fpg, Call):
+                args = fpg.parameters
+            else:
+                raise ValueError("footprint generator must "
+                        "be substitution rule invocation")
+
+            invocation_descriptors.append(
+                    InvocationDescriptor(expr=fpg, args=args,
+                        expands_footprint=True))
 
     # We need to work on the fully expanded form of an expression.
     # To that end, instantiate a substitutor.
@@ -347,6 +404,9 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
     sweep_inames = set()
 
     for invdesc in invocation_descriptors:
+        if not invdesc.expands_footprint:
+            continue
+
         for swaxis in sweep_axes:
             if isinstance(swaxis, int):
                 sweep_inames.update(
@@ -369,6 +429,9 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     usage_arg_deps = set()
     for invdesc in invocation_descriptors:
+        if not invdesc.expands_footprint:
+            continue
+
         for arg in invdesc.args:
             usage_arg_deps.update(get_dependencies(arg))
 
@@ -515,9 +578,27 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
 
     # }}}
 
-    # {{{ substitute rule into expressions in kernel
+    # {{{ substitute rule into expressions in kernel (if within footprint)
+
+    left_unused_subst_rule_invocations = [False]
 
     def do_substs(expr, name, instance, args, rec):
+        if instance != subst_instance:
+            left_unused_subst_rule_invocations[0] = True
+            return expr
+
+        found = False
+        for invdesc in invocation_descriptors:
+            if expr == invdesc.expr:
+                found = True
+                break
+
+        if not invdesc.is_in_footprint:
+            left_unused_subst_rule_invocations[0] = True
+            return expr
+
+        assert found, expr
+
         if len(args) != len(subst.arguments):
             raise ValueError("invocation of '%s' with too few arguments"
                     % name)
@@ -543,23 +624,23 @@ def precompute(kernel, subst_name, dtype, sweep_axes=[],
             new_outer_expr = new_outer_expr[tuple(stor_subscript)]
 
         return new_outer_expr
-        # can't nest, don't recurse
+        # can't possibly be nested, don't recurse
 
     new_insns = [compute_insn]
 
-    sub_map = SubstitutionCallbackMapper([(subst_name, subst_instance)], do_substs)
+    sub_map = SubstitutionCallbackMapper([subst_name], do_substs)
     for insn in kernel.instructions:
         new_insn = insn.copy(expression=sub_map(insn.expression))
         new_insns.append(new_insn)
 
+    # also catch uses of our rule in other substitution rules
     new_substs = dict(
             (s.name, s.copy(expression=sub_map(s.expression)))
-            for s in kernel.substitutions.itervalues()
+            for s in kernel.substitutions.itervalues())
 
-            # leave rule be if instance was specified
-            # (even if it might end up unused--FIXME)
-            if subst_instance is not None 
-            or s.name != subst_name)
+    # If the subst above caught all uses of the subst rule, get rid of it.
+    if not left_unused_subst_rule_invocations[0]:
+        del new_substs[subst_name]
 
     # }}}
 

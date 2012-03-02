@@ -205,6 +205,8 @@ def split_dimension(kernel, split_iname, inner_length,
     if split_iname not in kernel.all_inames():
         raise ValueError("cannot split loop for unknown variable '%s'" % split_iname)
 
+    applied_substitutions = kernel.applied_substitutions[:]
+
     if outer_iname is None:
         outer_iname = split_iname+"_outer"
     if inner_iname is None:
@@ -248,6 +250,7 @@ def split_dimension(kernel, split_iname, inner_length,
     new_insns = []
     for insn in kernel.instructions:
         subst_map = {var(split_iname): new_loop_index}
+        applied_substitutions.append(subst_map)
 
         from loopy.symbolic import SubstitutionMapper
         subst_mapper = SubstitutionMapper(subst_map.get)
@@ -277,6 +280,7 @@ def split_dimension(kernel, split_iname, inner_length,
             .copy(domain=new_domain,
                 iname_slab_increments=iname_slab_increments,
                 instructions=new_insns,
+                applied_substitutions=applied_substitutions,
                 ))
 
     return tag_dimensions(result, {outer_iname: outer_tag, inner_iname: inner_tag})
@@ -367,7 +371,10 @@ def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
 
     result = (kernel
             .map_expressions(subst_map, exclude_instructions=True)
-            .copy(instructions=new_insns, domain=new_domain))
+            .copy(
+                instructions=new_insns, domain=new_domain,
+                applied_substitutions=kernel.applied_substitutions + [subst_map]
+                ))
 
     return tag_dimensions(result, {new_iname: tag})
 
@@ -417,8 +424,43 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
 # {{{ convenience: add_prefetch
 
-def add_prefetch(kernel, var_name, sweep_dims=[], dim_arg_names=None,
-        default_tag="l.auto", rule_name=None):
+def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
+        default_tag="l.auto", rule_name=None, footprint_indices=None):
+    """Prefetch all accesses to the variable *var_name*, with all accesses
+    being swept through *sweep_inames*.
+
+    :ivar dim_arg_names: List of names representing each fetch axis.
+    :ivar rule_name: base name of the generated temporary variable.
+    :ivar footprint_indices: A list of tuples indicating the index set used
+        to generate the footprint.
+
+        If only one such set of indices is desired, this may also be specified
+        directly by putting an index expression into *var_name*. Substitutions
+        such as those occurring in dimension splits are recorded and also
+        applied to these indices.
+    """
+
+    # {{{ fish indexing out of var_name and into sweep_indices
+
+    from loopy.symbolic import parse
+    parsed_var_name = parse(var_name)
+
+    from pymbolic.primitives import Variable, Subscript
+    if isinstance(parsed_var_name, Variable):
+        # nothing to see
+        pass
+    elif isinstance(parsed_var_name, Subscript):
+        if footprint_indices is not None:
+            raise TypeError("if footprint_indices is specified, then var_name "
+                    "may not contain a subscript")
+
+        assert isinstance(parsed_var_name.aggregate, Variable)
+        var_name = parsed_var_name.aggregate.name
+        sweep_indices = [parsed_var_name.index]
+    else:
+        raise ValueError("var_name must either be a variable name or a subscript")
+
+    # }}}
 
     if rule_name is None:
         rule_name = kernel.make_unique_var_name("%s_fetch" % var_name)
@@ -448,18 +490,56 @@ def add_prefetch(kernel, var_name, sweep_dims=[], dim_arg_names=None,
     kernel = extract_subst(kernel, rule_name, uni_template, parameters)
 
     new_fetch_dims = []
-    for fd in sweep_dims:
+    for fd in sweep_inames:
         if isinstance(fd, int):
             new_fetch_dims.append(parameters[fd])
         else:
             new_fetch_dims.append(fd)
 
-    return precompute(kernel, rule_name, arg.dtype, sweep_dims,
+    footprint_generators = None
+
+    if sweep_indices is not None:
+        if not isinstance(sweep_indices, (list, tuple)):
+            sweep_indices = [sweep_indices]
+
+        def standardize_sweep_indices(si):
+            if isinstance(si, str):
+                from loopy.symbolic import parse
+                si = parse(si)
+
+            if not isinstance(si, tuple):
+                si = (si,)
+
+            if len(si) != arg.dimensions:
+                raise ValueError("sweep index '%s' has the wrong number of dimensions")
+
+            for subst_map in kernel.applied_substitutions:
+                from loopy.symbolic import SubstitutionMapper
+                from pymbolic.mapper.substitutor import make_subst_func
+                si = SubstitutionMapper(make_subst_func(subst_map))(si)
+
+            return si
+
+        sweep_indices = [standardize_sweep_indices(si) for si in sweep_indices]
+
+        from pymbolic.primitives import Variable
+        footprint_generators = [
+                Variable(var_name)(*si) for si in sweep_indices]
+
+    new_kernel = precompute(kernel, rule_name, arg.dtype, sweep_inames,
+            footprint_generators=footprint_generators,
             new_storage_axis_names=dim_arg_names,
             default_tag=default_tag)
 
-# }}}
+    # If the rule survived past precompute() (i.e. some accesses fell outside
+    # the footprint), get rid of it before moving on.
+    if rule_name in new_kernel.substitutions:
+        return apply_subst(new_kernel, rule_name)
+    else:
+        return new_kernel
 
+
+# }}}
 
 
 

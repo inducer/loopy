@@ -61,12 +61,14 @@ To-do
 
 - add_prefetch gets a flag to separate out each access
 
-- Making parameters run-time varying, substituting values that
-  depend on other inames?
+- Allow parameters to be varying during run-time varying, substituting values
+  that depend on other inames?
 
 - Fix all tests
 
 - Scalar insn priority
+
+- : in prefetches
 
 Future ideas
 ^^^^^^^^^^^^
@@ -74,9 +76,6 @@ Future ideas
 - Check for unordered (no-dependency) writes to the same location
 
 - String instructions?
-
-- How is intra-instruction ordering of ILP loops going to be determined?
-  (taking into account that it could vary even per-instruction?)
 
 - Barriers for data exchanged via global vars?
 
@@ -87,8 +86,6 @@ Future ideas
 
 - Better for loop bound generation
   -> Try a triangular loop
-
-- Sharing of checks across ILP instances
 
 - Eliminate the first (pre-)barrier in a loop.
 
@@ -114,6 +111,11 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- How is intra-instruction ordering of ILP loops going to be determined?
+  (taking into account that it could vary even per-instruction?)
+
+- Sharing of checks across ILP instances
 
 - Differentiate ilp.unr from ilp.seq
 

@@ -117,7 +117,7 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
 
 # }}}
 
-# {{{ functions to primitives
+# {{{ functions to primitives, parsing
 
 class FunctionToPrimitiveMapper(IdentityMapper):
     """Looks for invocations of a function called 'cse' or 'reduce' and
@@ -193,6 +193,10 @@ class FunctionToPrimitiveMapper(IdentityMapper):
             processed_inames.append(iname.name)
 
         return Reduction(operation, tuple(processed_inames), red_expr)
+
+def parse(expr_str):
+    from pymbolic import parse
+    return FunctionToPrimitiveMapper()(parse(expr_str))
 
 # }}}
 

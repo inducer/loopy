@@ -494,6 +494,9 @@ class LoopKernel(Record):
         objects
     :ivar lowest_priority_inames:
     :ivar breakable_inames: these inames' loops may be broken up by the scheduler
+    :ivar applied_substitutions: A list of past substitution dictionaries that
+        were applied to the kernel. These are stored so that they may be repeated
+        on expressions the user specifies later.
 
     :ivar cache_manager:
 
@@ -510,7 +513,8 @@ class LoopKernel(Record):
             temporary_variables={},
             local_sizes={},
             iname_to_tag={}, iname_to_tag_requests=None, substitutions={},
-            cache_manager=None, lowest_priority_inames=[], breakable_inames=set()):
+            cache_manager=None, lowest_priority_inames=[], breakable_inames=set(),
+            applied_substitutions=[]):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -573,7 +577,7 @@ class LoopKernel(Record):
         # {{{ instruction parser
 
         def parse_if_necessary(insn):
-            from pymbolic import parse
+            from loopy.symbolic import parse
 
             if isinstance(insn, Instruction):
                 insns.append(insn)
@@ -597,8 +601,7 @@ class LoopKernel(Record):
                 raise RuntimeError("insn parse error")
 
             lhs = parse(groups["lhs"])
-            from loopy.symbolic import FunctionToPrimitiveMapper
-            rhs = FunctionToPrimitiveMapper()(parse(groups["rhs"]))
+            rhs = parse(groups["rhs"])
 
             if insn_match is not None:
                 if groups["label"] is not None:
@@ -707,7 +710,8 @@ class LoopKernel(Record):
                 substitutions=substitutions,
                 cache_manager=cache_manager,
                 lowest_priority_inames=lowest_priority_inames,
-                breakable_inames=breakable_inames)
+                breakable_inames=breakable_inames,
+                applied_substitutions=applied_substitutions)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:
