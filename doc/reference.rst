@@ -131,7 +131,7 @@ Dealing with Substitution Rules
 
 .. autofunction:: extract_subst
 
-.. autofunction:: apply_subst
+.. autofunction:: expand_subst
 
 Precomputation and Prefetching
 ------------------------------

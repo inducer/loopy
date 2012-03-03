@@ -545,11 +545,17 @@ class SubstitutionCallbackMapper(IdentityMapper):
 # {{{ parametrized substitutor
 
 class ParametrizedSubstitutor(object):
-    def __init__(self, rules):
+    def __init__(self, rules, one_level=False):
         self.rules = rules
+        self.one_level = one_level
 
     def __call__(self, expr):
+        level = [0]
+
         def expand_if_known(expr, name, instance, args, rec):
+            if self.one_level and level[0] > 0:
+                return None
+
             rule = self.rules[name]
             if len(rule.arguments) != len(args):
                 raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
@@ -559,7 +565,11 @@ class ParametrizedSubstitutor(object):
             subst_map = SubstitutionMapper(make_subst_func(
                 dict(zip(rule.arguments, args))))
 
-            return rec(subst_map(rule.expression))
+            level[0] += 1
+            result = rec(subst_map(rule.expression))
+            level[0] -= 1
+
+            return result
 
         scm = SubstitutionCallbackMapper(self.rules.keys(), expand_if_known)
         return scm(expr)

@@ -736,8 +736,8 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
-    from loopy.subst import apply_subst
-    kernel = apply_subst(kernel)
+    from loopy.subst import expand_subst
+    kernel = expand_subst(kernel)
 
     kernel = realize_reduction(kernel)
 

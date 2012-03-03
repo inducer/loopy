@@ -172,7 +172,7 @@ def extract_subst(kernel, subst_name, template, parameters):
 
 
 
-def apply_subst(kernel, subst_name=None):
+def expand_subst(kernel, subst_name=None):
     if subst_name is None:
         rules = kernel.substitutions
     else:

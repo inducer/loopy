@@ -23,7 +23,7 @@ class LoopyAdvisory(UserWarning):
 from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
 
 from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph, LoopKernel
-from loopy.subst import extract_subst, apply_subst
+from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import generate_loop_schedules
@@ -33,12 +33,13 @@ from loopy.check import check_kernels
 
 __all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg", "LoopKernel",
         "get_dot_dependency_graph",
-        "preprocess_kernel", "generate_loop_schedules",
+        "preprocess_kernel", "realize_reduction",
+        "generate_loop_schedules",
         "generate_code",
         "CompiledKernel", "drive_timing_run", "auto_test_vs_ref", "check_kernels",
         "make_kernel", "split_dimension", "join_dimensions",
         "tag_dimensions",
-        "extract_subst", "apply_subst",
+        "extract_subst", "expand_subst",
         "precompute", "add_prefetch"
         ]
 
@@ -422,14 +423,14 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 # {{{ convenience: add_prefetch
 
 def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
-        default_tag="l.auto", rule_name=None, footprint_indices=None):
+        default_tag="l.auto", rule_name=None, footprint_subscripts=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
     :ivar dim_arg_names: List of names representing each fetch axis.
     :ivar rule_name: base name of the generated temporary variable.
-    :ivar footprint_indices: A list of tuples indicating the index set used
-        to generate the footprint.
+    :ivar footprint_subscripts: A list of tuples indicating the index (i.e.
+        subscript) tuples used to generate the footprint.
 
         If only one such set of indices is desired, this may also be specified
         directly by putting an index expression into *var_name*. Substitutions
@@ -437,7 +438,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         applied to these indices.
     """
 
-    # {{{ fish indexing out of var_name and into sweep_indices
+    # {{{ fish indexing out of var_name and into footprint_subscripts
 
     from loopy.symbolic import parse
     parsed_var_name = parse(var_name)
@@ -447,13 +448,13 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         # nothing to see
         pass
     elif isinstance(parsed_var_name, Subscript):
-        if footprint_indices is not None:
-            raise TypeError("if footprint_indices is specified, then var_name "
+        if footprint_subscripts is not None:
+            raise TypeError("if footprint_subscripts is specified, then var_name "
                     "may not contain a subscript")
 
         assert isinstance(parsed_var_name.aggregate, Variable)
         var_name = parsed_var_name.aggregate.name
-        sweep_indices = [parsed_var_name.index]
+        footprint_subscripts = [parsed_var_name.index]
     else:
         raise ValueError("var_name must either be a variable name or a subscript")
 
@@ -486,20 +487,13 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     kernel = extract_subst(kernel, rule_name, uni_template, parameters)
 
-    new_fetch_dims = []
-    for fd in sweep_inames:
-        if isinstance(fd, int):
-            new_fetch_dims.append(parameters[fd])
-        else:
-            new_fetch_dims.append(fd)
-
     footprint_generators = None
 
-    if sweep_indices is not None:
-        if not isinstance(sweep_indices, (list, tuple)):
-            sweep_indices = [sweep_indices]
+    if footprint_subscripts is not None:
+        if not isinstance(footprint_subscripts, (list, tuple)):
+            footprint_subscripts = [footprint_subscripts]
 
-        def standardize_sweep_indices(si):
+        def standardize_footprint_indices(si):
             if isinstance(si, str):
                 from loopy.symbolic import parse
                 si = parse(si)
@@ -517,11 +511,11 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
             return si
 
-        sweep_indices = [standardize_sweep_indices(si) for si in sweep_indices]
+        footprint_subscripts = [standardize_footprint_indices(si) for si in footprint_subscripts]
 
         from pymbolic.primitives import Variable
         footprint_generators = [
-                Variable(var_name)(*si) for si in sweep_indices]
+                Variable(var_name)(*si) for si in footprint_subscripts]
 
     new_kernel = precompute(kernel, rule_name, arg.dtype, sweep_inames,
             footprint_generators=footprint_generators,
@@ -531,7 +525,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # If the rule survived past precompute() (i.e. some accesses fell outside
     # the footprint), get rid of it before moving on.
     if rule_name in new_kernel.substitutions:
-        return apply_subst(new_kernel, rule_name)
+        return expand_subst(new_kernel, rule_name)
     else:
         return new_kernel
 

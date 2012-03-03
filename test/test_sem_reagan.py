@@ -47,24 +47,28 @@ def test_tim2d(ctx_factory):
             # lp.ImageArg("D", dtype, shape=(n, n)),
             lp.ScalarArg("K", np.int32, approximately=1000),
             ],
-             name="semlap2D", assumptions="K>=1")
+            name="semlap2D", assumptions="K>=1")
 
     seq_knl = knl
 
     def variant_orig(knl):
+        knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1", e="g.0"))
+
         knl = lp.add_prefetch(knl, "D", ["m", "j", "i","o"])
         knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"])
-        knl = lp.precompute(knl, "ur", np.float32, ["a", "b"])
-        knl = lp.precompute(knl, "us", np.float32, ["a", "b"])
-        knl = lp.split_dimension(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
 
-        knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
+        knl = lp.precompute(knl, "ur", np.float32, ["m", "j"], "ur(m,j)")
+        knl = lp.precompute(knl, "us", np.float32, ["i", "m"], "us(i,m)")
+
+        knl = lp.add_prefetch(knl, "G")
+
+        knl = lp.precompute(knl, "Gux", np.float32, ["m", "j"], "Gux(m,j)")
+        knl = lp.precompute(knl, "Guy", np.float32, ["i", "m"], "Gux(i,m)")
+
         knl = lp.tag_dimensions(knl, dict(o="unr"))
         knl = lp.tag_dimensions(knl, dict(m="unr"))
 
-
-        # knl = lp.add_prefetch(knl, "G", [2,3], default_tag=None) # axis/argument indices on G
-        knl = lp.add_prefetch(knl, "G", [2,3]) # axis/argument indices on G
+        return knl
 
     def variant_prefetch(knl):
         knl = lp.precompute(knl, "ur", np.float32, ["a", "b"])
@@ -94,8 +98,8 @@ def test_tim2d(ctx_factory):
         knl = lp.precompute(knl, "Guy", np.float32, ["a", "b"])
         return knl
 
-    #for variant in [variant_orig]:
-    for variant in [variant_1]:
+    for variant in [variant_orig]:
+    #for variant in [variant_1]:
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
 
@@ -103,7 +107,7 @@ def test_tim2d(ctx_factory):
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=K*(n*n*n*2*2 + n*n*2*3 + n**3 * 2*2)/1e9,
                 op_label="GFlops",
-                parameters={"K": K})
+                parameters={"K": K}, print_ref_code=True)
 
 
 

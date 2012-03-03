@@ -44,6 +44,7 @@ def test_nbody(ctx_factory):
         return knl, []
 
     def variant_gpu(knl):
+        knl = lp.expand_subst(knl)
         knl = lp.split_dimension(knl, "i", 256,
                 outer_tag="g.0", inner_tag="l.0", slabs=(0,1))
         knl = lp.split_dimension(knl, "j", 256, slabs=(0,1))
