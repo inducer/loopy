@@ -277,7 +277,7 @@ def _default_check_result(result, ref_result):
 
 
 def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
-        print_ref_code=False, print_code=True, warmup_rounds=2, timing_rounds=100,
+        print_ref_code=False, print_code=True, warmup_rounds=2,
         edit_code=False, dump_binary=False, with_annotation=False,
         fills_entire_output=True, check_result=None):
     """
@@ -405,38 +405,47 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
         events = []
         queue.finish()
 
-        from time import time
-        start_time = time()
+        timing_rounds = warmup_rounds
 
-        evt_start = cl.enqueue_marker(queue)
+        while True:
+            from time import time
+            start_time = time()
 
-        for i in range(timing_rounds):
-            events.append(
-                    compiled.cl_kernel(queue, gsize, lsize, *args, g_times_l=True))
+            evt_start = cl.enqueue_marker(queue)
 
-        evt_end = cl.enqueue_marker(queue)
+            for i in range(timing_rounds):
+                events.append(
+                        compiled.cl_kernel(queue, gsize, lsize, *args, g_times_l=True))
 
-        queue.finish()
-        stop_time = time()
+            evt_end = cl.enqueue_marker(queue)
 
-        for evt in events:
-            evt.wait()
-        evt_start.wait()
-        evt_end.wait()
+            queue.finish()
+            stop_time = time()
 
-        elapsed = (1e-9*events[-1].profile.END-1e-9*events[0].profile.SUBMIT) \
-                / timing_rounds
-        try:
-            elapsed_evt_2 = "%g" % \
-                    ((1e-9*evt_end.profile.START-1e-9*evt_start.profile.START) \
-                    / timing_rounds)
-        except cl.RuntimeError:
-            elapsed_evt_2 = "<unavailable>"
+            for evt in events:
+                evt.wait()
+            evt_start.wait()
+            evt_end.wait()
 
-        elapsed_wall = (stop_time-start_time)/timing_rounds
+            elapsed = (1e-9*events[-1].profile.END-1e-9*events[0].profile.SUBMIT) \
+                    / timing_rounds
+            try:
+                elapsed_evt_2 = "%g" % \
+                        ((1e-9*evt_end.profile.START-1e-9*evt_start.profile.START) \
+                        / timing_rounds)
+            except cl.RuntimeError:
+                elapsed_evt_2 = "<unavailable>"
 
-        print "elapsed: %g s event, %s s other-event %g s wall, rate: %g %s/s" % (
-                elapsed, elapsed_evt_2, elapsed_wall, op_count/elapsed, op_label)
+            elapsed_wall = (stop_time-start_time)/timing_rounds
+
+            if elapsed_wall * timing_rounds < 0.3:
+                timing_rounds *= 4
+            else:
+                break
+
+        print "elapsed: %g s event, %s s other-event %g s wall, rate: %g %s/s (%d rounds)" % (
+                elapsed, elapsed_evt_2, elapsed_wall, op_count/elapsed, op_label,
+                timing_rounds)
         print "ref: elapsed: %g s event, %g s wall, rate: %g %s/s" % (
                 ref_elapsed, ref_elapsed_wall, op_count/ref_elapsed, op_label)
 
