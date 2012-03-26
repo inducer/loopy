@@ -89,7 +89,7 @@ def get_suitable_size(ctx):
 
 def check_float4(result, ref_result):
     for comp in ["x", "y", "z", "w"]:
-        return np.allclose(ref_result[comp], result[comp], rtol=1e-3, atol=1e-3)
+        return np.allclose(ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
 
 def test_axpy(ctx_factory):
     ctx = ctx_factory()

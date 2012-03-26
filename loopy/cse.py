@@ -396,12 +396,12 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
         else:
             subst_name_as_expr = use
 
-        if isinstance(subst_name_as_expr, Variable):
-            new_subst_name = subst_name_as_expr.name
-            new_subst_tag = None
-        elif isinstance(subst_name_as_expr, TaggedVariable):
+        if isinstance(subst_name_as_expr, TaggedVariable):
             new_subst_name = subst_name_as_expr.name
             new_subst_tag = subst_name_as_expr.tag
+        elif isinstance(subst_name_as_expr, Variable):
+            new_subst_name = subst_name_as_expr.name
+            new_subst_tag = None
         else:
             raise ValueError("unexpected type of subst_name")
 
@@ -473,7 +473,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
             else:
                 return None
 
-        if subst_tag != tag:
+        if subst_tag is None or subst_tag != tag:
             # use fall-back identity mapper
             return None
 

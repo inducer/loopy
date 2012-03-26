@@ -535,10 +535,10 @@ class SubstitutionCallbackMapper(IdentityMapper):
 
     def parse_name(self, expr):
         from pymbolic.primitives import Variable
-        if isinstance(expr, Variable):
-            e_name, e_tag = expr.name, None
-        elif isinstance(expr, TaggedVariable):
+        if isinstance(expr, TaggedVariable):
             e_name, e_tag = expr.name, expr.tag
+        elif isinstance(expr, Variable):
+            e_name, e_tag = expr.name, None
         else:
             return None
 
@@ -568,7 +568,13 @@ class SubstitutionCallbackMapper(IdentityMapper):
     map_tagged_variable = map_variable
 
     def map_call(self, expr):
+        from pymbolic.primitives import Lookup
+        if isinstance(expr.function, Lookup):
+            raise RuntimeError("dotted name '%s' not allowed as "
+                    "function identifier" % expr.function)
+
         parsed_name = self.parse_name(expr.function)
+
         if parsed_name is None:
             return IdentityMapper.map_call(self, expr)
 

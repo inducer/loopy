@@ -32,7 +32,7 @@ def test_laplacian_stiffness(ctx_factory):
                 "dPsi(ij, dxi) := sum_float32(@ax_b,"
                     "  jacInv[ax_b,dxi,K,q] * DPsi[ax_b,ij,q])",
                 "A[K, i, j] = sum_float32(q, w[q] * jacDet[K,q] * ("
-                    "sum_float32(dx_axis, dPsi.one(i,dx_axis)*dPsi.two(j,dx_axis))))"
+                    "sum_float32(dx_axis, dPsi$one(i,dx_axis)*dPsi$two(j,dx_axis))))"
                 ],
             [
             lp.ArrayArg("jacInv", dtype, shape=(dim, dim, Nc_sym, Nq), order=order),
@@ -79,7 +79,7 @@ def test_laplacian_stiffness(ctx_factory):
         Ncloc = 16
         knl = lp.split_dimension(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
-        knl = lp.precompute(knl, "dPsi.one", np.float32, ["dx_axis"], default_tag=None)
+        knl = lp.precompute(knl, "dPsi$one", np.float32, ["dx_axis"], default_tag=None)
         knl = lp.tag_dimensions(knl, {"j": "ilp.seq"})
 
         return knl, ["Ko", "Kloc"]
@@ -131,8 +131,7 @@ def test_laplacian_stiffness(ctx_factory):
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=0, op_label="GFlops",
-                parameters={"Nc": Nc}, print_ref_code=True,
-                timing_rounds=30)
+                parameters={"Nc": Nc}, print_ref_code=True)
 
 
 

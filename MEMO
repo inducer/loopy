@@ -57,6 +57,8 @@ To-do
 
 - Scalar insn priority
 
+- If finding a maximum proves troublesome, move parameters into the domain
+
 - : (as in, Matlab full-sclice) in prefetches
 
 Future ideas
