@@ -24,7 +24,7 @@ Expressions
 
 * `if`
 * `reductions`
- * duplication of reduction inames
+    * duplication of reduction inames
 * complex-valued arithmetic
 * tagging of array access and substitution rule use ("$")
 
@@ -191,7 +191,7 @@ Finishing up
 Automatic Testing
 -----------------
 
-.. autofunction:: auto_test_ref
+.. autofunction:: auto_test_vs_ref
 
 Troubleshooting
 ---------------
@@ -210,6 +210,3 @@ following always works::
 .. autofunction:: preprocess_kernel
 
 .. autofunction:: get_dot_dependency_graph
-
-Investigating Scheduler Problems
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
