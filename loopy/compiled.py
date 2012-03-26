@@ -271,7 +271,14 @@ def make_args(queue, kernel, ref_input_arrays, parameters,
 
 
 def _default_check_result(result, ref_result):
-    return np.allclose(ref_result, result, rtol=1e-3, atol=1e-3)
+    if not np.allclose(ref_result, result, rtol=1e-3, atol=1e-3):
+        l2_err = np.sum(np.abs(ref_result-result)**2)/np.sum(np.abs(ref_result)**2)
+        linf_err = np.max(np.abs(ref_result-result))/np.max(np.abs(ref_result-result))
+        return (False,
+                "results do not match(rel) l_2 err: %g, l_inf err: %g"
+                % (l2_err, linf_err))
+    else:
+        return True, None
 
 
 
@@ -282,8 +289,8 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
         fills_entire_output=True, check_result=None):
     """
     :arg check_result: a callable with :cls:`numpy.ndarray` arguments
-        *(result, reference_result)* returning a class:`bool` indicating
-        correctness/acceptability of the result
+        *(result, reference_result)* returning a a tuple (class:`bool`, message)
+        indicating correctness/acceptability of the result
     """
     from time import time
 
@@ -398,8 +405,8 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count, op_label, parameters,
 
             if do_check:
                 for ref_out_ary, out_ary in zip(ref_output_arrays, output_arrays):
-                    error_is_small = check_result(out_ary.get(), ref_out_ary.get())
-                    assert error_is_small
+                    error_is_small, error = check_result(out_ary.get(), ref_out_ary.get())
+                    assert error_is_small, error
                     do_check = False
 
         events = []
