@@ -54,8 +54,6 @@ To-do
 
 - Expose iname-duplicate-and-rename as a primitive.
 
-- add_prefetch gets a flag to separate out each access
-
 - Allow parameters to be varying during run-time, substituting values
   that depend on other inames?
 
@@ -63,10 +61,14 @@ To-do
 
 - Scalar insn priority
 
-- : in prefetches
+- add_prefetch tagging
+
+- : (as in, Matlab full-sclice) in prefetches
 
 Future ideas
 ^^^^^^^^^^^^
+
+- (Web) UI
 
 - Check for unordered (no-dependency) writes to the same location
 

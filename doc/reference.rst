@@ -8,7 +8,16 @@ This guide defines all functionality exposed by loopy. If you would like
 a more gentle introduction, you may consider reading the example-based
 guide :ref:`guide` instead.
 
-.. _tags:
+Inames
+------
+
+Loops are (by default) entered exactly once. This is necessary to preserve
+depdency semantics--otherwise e.g. a fetch could happen inside one loop nest,
+and then the instruction using that fetch could be inside a wholly different
+loop nest.
+
+Integer Domain
+--------------
 
 Expressions
 -----------
@@ -17,17 +26,40 @@ Expressions
 * `reductions`
  * duplication of reduction inames
 * complex-valued arithmetic
+* tagging of array access and substitution rule use ("$")
 
 Assignments and Substitution Rules
 ----------------------------------
 
-Inames
-------
+Syntax of an instruction::
 
-Loops are (by default) entered exactly once. This is necessary to preserve
-depdency semantics--otherwise e.g. a fetch could happen inside one loop nest,
-and then the instruction using that fetch could be inside a wholly different
-loop nest.
+    label: [i,j|k,l] <float32> lhs[i,j,k] = EXPRESSION : dep_label, dep_label_2
+
+The above example illustrates all the parts that are allowed in loo.py's
+instruction syntax. All of these except for `lhs` and `EXPRESSION` are
+optional.
+
+* `label` is a unique identifier for this instruction, enabling you to
+  refer back to the instruction uniquely during further transformation
+  as well as specifying ordering dependencies.
+
+* `dep_label,dep_label_2` are dependencies of the current instruction.
+  Loo.py will enforce that the instructions marked with these labels
+  are scheduled before this instruction.
+
+* `<float32>` declares `lhs` as a temporary variable, with shape given
+  by the ranges of the `lhs` subscripts. (Note that in this case, the
+  `lhs` subscripts must be pure inames, not expressions, for now.)
+
+* `[i,j|k,l]` specifies the inames within which this instruction is run.
+  Independent copies of the inames `k` and `l` will be made for this
+  instruction.
+
+Syntax of an substitution rule::
+
+    rule_name(arg1, arg2) := EXPRESSION
+
+.. _tags:
 
 Tags
 ----
