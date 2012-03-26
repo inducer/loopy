@@ -473,7 +473,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
             else:
                 return None
 
-        if subst_tag is None or subst_tag != tag:
+        if subst_tag is not None and subst_tag != tag:
             # use fall-back identity mapper
             return None
 

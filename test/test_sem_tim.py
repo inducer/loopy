@@ -7,6 +7,8 @@ import loopy as lp
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
 
+1/0 # inspect me
+
 
 
 
