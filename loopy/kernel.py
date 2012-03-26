@@ -736,62 +736,10 @@ class LoopKernel(Record):
 
     @memoize_method
     def all_insn_inames(self):
-        from loopy.symbolic import get_dependencies
-
-        insn_id_to_inames = {}
-        insn_assignee_inames = {}
-
-        for insn in self.instructions:
-            read_deps = get_dependencies(insn.expression)
-            write_deps = get_dependencies(insn.assignee)
-            deps = read_deps | write_deps
-
-            iname_deps = (
-                    deps & self.all_inames()
-                    | insn.forced_iname_deps)
-
-            insn_id_to_inames[insn.id] = iname_deps
-            insn_assignee_inames[insn.id] = write_deps & self.all_inames()
-
-        writers = self.find_writers()
-        temp_var_names = set(self.temporary_variables.iterkeys())
-
-        # fixed point iteration until all iname dep sets have converged
-
-        while True:
-            did_something = False
-            for insn in self.instructions:
-
-                # For all variables that insn depends on, find the intersection
-                # of iname deps of all writers, and add those to insn's
-                # dependencies.
-
-                for tv_name in (get_dependencies(insn.expression)
-                        & temp_var_names):
-                    implicit_inames = None
-
-                    for writer_id in writers[tv_name]:
-                        writer_implicit_inames = (
-                                insn_id_to_inames[writer_id]
-                                - insn_assignee_inames[writer_id])
-                        if implicit_inames is None:
-                            implicit_inames = writer_implicit_inames
-                        else:
-                            implicit_inames = (implicit_inames
-                                    & writer_implicit_inames)
-
-                    inames_old = insn_id_to_inames[insn.id]
-                    inames_new = (inames_old | implicit_inames) \
-                                - insn.reduction_inames()
-                    insn_id_to_inames[insn.id] = inames_new
-
-                    if inames_new != inames_old:
-                        did_something = True
-
-            if not did_something:
-                break
-
-        return insn_id_to_inames
+        return find_all_insn_inames(
+                self.instructions, self.all_inames(),
+                writer_map=self.writer_map(),
+                temporary_variables=self.temporary_variables)
 
     @memoize_method
     def all_referenced_inames(self):
@@ -1147,6 +1095,78 @@ class LoopKernel(Record):
         return "\n".join(lines)
 
 # }}}
+
+
+
+
+def find_all_insn_inames(instructions, all_inames,
+        writer_map, temporary_variables):
+    from loopy.symbolic import get_dependencies
+
+    insn_id_to_inames = {}
+    insn_assignee_inames = {}
+
+    for insn in instructions:
+        read_deps = get_dependencies(insn.expression)
+        write_deps = get_dependencies(insn.assignee)
+        deps = read_deps | write_deps
+
+        iname_deps = (
+                deps & all_inames
+                | insn.forced_iname_deps)
+
+        insn_id_to_inames[insn.id] = iname_deps
+        insn_assignee_inames[insn.id] = write_deps & all_inames
+
+    temp_var_names = set(temporary_variables.iterkeys())
+
+    # fixed point iteration until all iname dep sets have converged
+
+    # Why is fixed point iteration necessary here? Consider the following
+    # scenario:
+    #
+    # z = expr(iname)
+    # y = expr(z)
+    # x = expr(y)
+    #
+    # x clearly has a dependency on iname, but this is not found until that
+    # dependency has propagated all the way up. Doing this recursively is
+    # not guaranteed to terminate because of circular dependencies.
+
+    while True:
+        did_something = False
+        for insn in instructions:
+
+            # For all variables that insn depends on, find the intersection
+            # of iname deps of all writers, and add those to insn's
+            # dependencies.
+
+            for tv_name in (get_dependencies(insn.expression)
+                    & temp_var_names):
+                implicit_inames = None
+
+                for writer_id in writer_map[tv_name]:
+                    writer_implicit_inames = (
+                            insn_id_to_inames[writer_id]
+                            - insn_assignee_inames[writer_id])
+                    if implicit_inames is None:
+                        implicit_inames = writer_implicit_inames
+                    else:
+                        implicit_inames = (implicit_inames
+                                & writer_implicit_inames)
+
+                inames_old = insn_id_to_inames[insn.id]
+                inames_new = (inames_old | implicit_inames) \
+                            - insn.reduction_inames()
+                insn_id_to_inames[insn.id] = inames_new
+
+                if inames_new != inames_old:
+                    did_something = True
+
+        if not did_something:
+            break
+
+    return insn_id_to_inames
 
 
 
