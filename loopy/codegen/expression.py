@@ -116,6 +116,9 @@ class LoopyCCodeMapper(CCodeMapper):
         else:
             return CCodeMapper.map_variable(self, expr, prec)
 
+    def map_tagged_variable(self, expr, enclosing_prec):
+        return expr.name
+
     def map_subscript(self, expr, enclosing_prec):
         from pymbolic.primitives import Variable
         if not isinstance(expr.aggregate, Variable):

@@ -359,7 +359,7 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     from loopy.symbolic import SubstitutionCallbackMapper
 
     c_subst_name = subst_name.replace(".", "_")
-    subst_name, subst_instance = SubstitutionCallbackMapper.parse_filter(subst_name)
+    subst_name, subst_tag = SubstitutionCallbackMapper.parse_filter(subst_name)
 
     from loopy.kernel import parse_tag
     default_tag = parse_tag(default_tag)
@@ -407,7 +407,7 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     subst_expander = ParametrizedSubstitutor(rules_except_mine,
             one_level=True)
 
-    def gather_substs(expr, name, instance, args, rec):
+    def gather_substs(expr, name, tag, args, rec):
         if subst_name != name:
             if name in subst_expander.rules:
                 # We can't deal with invocations that involve other substitution's
@@ -424,7 +424,7 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
             else:
                 return None
 
-        if subst_instance != instance:
+        if subst_tag != tag:
             # use fall-back identity mapper
             return None
 
@@ -571,24 +571,10 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     # }}}
 
-    # {{{ set up temp variable
+    # {{{ set up compute insn
 
     target_var_name = kernel.make_unique_var_name(based_on=c_subst_name,
             extra_used_vars=newly_created_var_names)
-
-    from loopy.kernel import TemporaryVariable
-
-    new_temporary_variables = kernel.temporary_variables.copy()
-    new_temporary_variables[target_var_name] = TemporaryVariable(
-            name=target_var_name,
-            dtype=np.dtype(dtype),
-            base_indices=(0,)*len(non1_storage_shape),
-            shape=non1_storage_shape,
-            is_local=None)
-
-    # }}}
-
-    # {{{ set up compute insn
 
     assignee = var(target_var_name)
 
@@ -620,8 +606,8 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     left_unused_subst_rule_invocations = [False]
 
-    def do_substs(expr, name, instance, args, rec):
-        if instance != subst_instance:
+    def do_substs(expr, name, tag, args, rec):
+        if tag != subst_tag:
             left_unused_subst_rule_invocations[0] = True
             return expr
 
@@ -730,9 +716,29 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     # }}}
 
+    # {{{ fill out new_iname_to_tag
+
     new_iname_to_tag = kernel.iname_to_tag.copy()
     for arg_name in non1_storage_axis_names:
         new_iname_to_tag[arg_name] = storage_axis_name_to_tag[arg_name]
+
+    # }}}
+
+    # {{{ set up temp variable
+
+    from loopy.kernel import TemporaryVariable
+
+    new_temporary_variables = kernel.temporary_variables.copy()
+    temp_var = TemporaryVariable(
+            name=target_var_name,
+            dtype=np.dtype(dtype),
+            base_indices=(0,)*len(non1_storage_shape),
+            shape=non1_storage_shape,
+            is_local=None)
+
+    new_temporary_variables[target_var_name] = temp_var
+
+    # }}}
 
     return kernel.copy(
             domain=new_domain,

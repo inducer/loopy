@@ -22,7 +22,7 @@ class LoopyAdvisory(UserWarning):
 
 from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
 
-from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph, LoopKernel
+from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph
 from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel, realize_reduction
@@ -453,15 +453,31 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
                     "may not contain a subscript")
 
         assert isinstance(parsed_var_name.aggregate, Variable)
-        var_name = parsed_var_name.aggregate.name
         footprint_subscripts = [parsed_var_name.index]
+        parsed_var_name = parsed_var_name.aggregate
     else:
         raise ValueError("var_name must either be a variable name or a subscript")
 
     # }}}
 
+    # {{{ fish out tag
+
+    from loopy.symbolic import TaggedVariable
+    if isinstance(parsed_var_name, TaggedVariable):
+        var_name = parsed_var_name.name
+        tag = parsed_var_name.tag
+    else:
+        var_name = parsed_var_name.name
+        tag = None
+
+    # }}}
+
+    c_name = var_name
+    if tag is not None:
+        c_name = c_name + "_" + tag
+
     if rule_name is None:
-        rule_name = kernel.make_unique_var_name("%s_fetch" % var_name)
+        rule_name = kernel.make_unique_var_name("%s_fetch" % c_name)
 
     newly_created_vars = set([rule_name])
 
@@ -469,7 +485,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     parameters = []
     for i in range(arg.dimensions):
-        based_on = "%s_dim_%d" % (var_name, i)
+        based_on = "%s_dim_%d" % (c_name, i)
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]
 
@@ -479,7 +495,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         parameters.append(par_name)
 
     from pymbolic import var
-    uni_template = var(var_name)
+    uni_template = parsed_var_name
     if len(parameters) > 1:
         uni_template = uni_template[tuple(var(par_name) for par_name in parameters)]
     elif len(parameters) == 1:
@@ -531,7 +547,6 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
 
 # }}}
-
 
 
 

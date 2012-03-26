@@ -4,7 +4,9 @@ from __future__ import division
 
 from pytools import memoize, memoize_method
 
-from pymbolic.primitives import AlgebraicLeaf
+from pymbolic.primitives import (
+        AlgebraicLeaf, Variable as VariableBase)
+
 from pymbolic.mapper import (
         CombineMapper as CombineMapperBase,
         IdentityMapper as IdentityMapperBase,
@@ -28,6 +30,19 @@ from islpy import dim_type
 
 
 # {{{ loopy-specific primitives
+
+class TaggedVariable(VariableBase):
+    def __init__(self, name, tag):
+        VariableBase.__init__(self, name)
+        self.tag = tag
+
+    def __getinitargs__(self):
+        return self.name, self.tag
+
+    def stringifier(self):
+        return StringifyMapper
+
+    mapper_method = intern("map_tagged_variable")
 
 class Reduction(AlgebraicLeaf):
     def __init__(self, operation, inames, expr):
@@ -77,6 +92,10 @@ class IdentityMapperMixin(object):
     def map_reduction(self, expr):
         return Reduction(expr.operation, expr.inames, self.rec(expr.expr))
 
+    def map_tagged_variable(self, expr):
+        # leaf, doesn't change
+        return expr
+
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
 
@@ -99,11 +118,17 @@ class StringifyMapper(StringifyMapperBase):
         return "reduce(%s, [%s], %s)" % (
                 expr.operation, ", ".join(expr.inames), expr.expr)
 
+    def map_tagged_variable(self, expr, prec):
+        return "%s$%s" % (expr.name, expr.tag)
+
 class DependencyMapper(DependencyMapperBase):
     def map_reduction(self, expr):
         from pymbolic.primitives import Variable
         return (self.rec(expr.expr)
                 - set(Variable(iname) for iname in expr.untagged_inames))
+
+    def map_tagged_variable(self, expr):
+        return set([expr])
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
@@ -115,9 +140,34 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
 
         return self.rec(expr.expr, other.expr, unis)
 
+    def map_tagged_variable(self, expr, other, urecs):
+        new_uni_record = self.unification_record_from_equation(
+                expr, other)
+        if new_uni_record is None:
+            # Check if the variables match literally--that's ok, too.
+            if (isinstance(other, TaggedVariable)
+                    and expr.name == other.name
+                    and expr.tag == other.tag
+                    and expr.name not in self.lhs_mapping_candidates):
+                return urecs
+            else:
+                return []
+        else:
+            from pymbolic.mapper.unifier import unify_many
+            return unify_many(urecs, new_uni_record)
+
 # }}}
 
 # {{{ functions to primitives, parsing
+
+class VarToTaggedVarMapper(IdentityMapper):
+    def map_variable(self, expr):
+        dollar_idx = expr.name.find("$")
+        if dollar_idx == -1:
+            return expr
+        else:
+            return TaggedVariable(expr.name[:dollar_idx],
+                    expr.name[dollar_idx+1:])
 
 class FunctionToPrimitiveMapper(IdentityMapper):
     """Looks for invocations of a function called 'cse' or 'reduce' and
@@ -196,7 +246,8 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
 def parse(expr_str):
     from pymbolic import parse
-    return FunctionToPrimitiveMapper()(parse(expr_str))
+    return VarToTaggedVarMapper()(
+            FunctionToPrimitiveMapper()(parse(expr_str)))
 
 # }}}
 
@@ -272,6 +323,8 @@ class CoefficientCollector(RecursiveMapper):
 
     def map_variable(self, expr):
         return {expr.name: 1}
+
+    map_tagged_variable = map_variable
 
     def map_subscript(self, expr):
         raise RuntimeError("cannot gather coefficients--indirect addressing in use")
@@ -454,13 +507,13 @@ class SubstitutionCallbackMapper(IdentityMapper):
     @staticmethod
     def parse_filter(filt):
         if not isinstance(filt, tuple):
-            dotted_components = filt.split(".")
-            if len(dotted_components) == 1:
-                return (dotted_components[0], None)
-            elif len(dotted_components) == 2:
-                return tuple(dotted_components)
+            components = filt.split("$")
+            if len(components) == 1:
+                return (components[0], None)
+            elif len(components) == 2:
+                return tuple(components)
             else:
-                raise RuntimeError("too many dotted components in '%s'" % filt)
+                raise RuntimeError("too many components in '%s'" % filt)
         else:
             if len(filt) != 2:
                 raise RuntimeError("substitution name filters "
@@ -481,60 +534,47 @@ class SubstitutionCallbackMapper(IdentityMapper):
         self.func = func
 
     def parse_name(self, expr):
-        from pymbolic.primitives import Variable, Lookup
+        from pymbolic.primitives import Variable
         if isinstance(expr, Variable):
-            e_name, e_instance = expr.name, None
-        elif isinstance(expr, Lookup):
-            if not isinstance(expr.aggregate, Variable):
-                return None
-            e_name, e_instance = expr.aggregate.name, expr.name
+            e_name, e_tag = expr.name, None
+        elif isinstance(expr, TaggedVariable):
+            e_name, e_tag = expr.name, expr.tag
         else:
             return None
 
         if self.names_filter is not None:
-            for filt_name, filt_instance in self.names_filter:
+            for filt_name, filt_tag in self.names_filter:
                 if e_name == filt_name:
-                    if filt_instance is None or filt_instance == e_instance:
-                        return e_name, e_instance
+                    if filt_tag is None or filt_tag == e_tag:
+                        return e_name, e_tag
         else:
-            return e_name, e_instance
+            return e_name, e_tag
 
         return None
 
     def map_variable(self, expr):
         parsed_name = self.parse_name(expr)
         if parsed_name is None:
-            return IdentityMapper.map_variable(self, expr)
+            return getattr(IdentityMapper, expr.mapper_method)(self, expr)
 
-        name, instance = parsed_name
+        name, tag = parsed_name
 
-        result = self.func(expr, name, instance, (), self.rec)
+        result = self.func(expr, name, tag, (), self.rec)
         if result is None:
-            return IdentityMapper.map_variable(self, expr)
+            return getattr(IdentityMapper, expr.mapper_method)(self, expr)
         else:
             return result
 
-    def map_lookup(self, expr):
-        parsed_name = self.parse_name(expr)
-        if parsed_name is None:
-            return IdentityMapper.map_lookup(self, expr)
-
-        name, instance = parsed_name
-
-        result = self.func(expr, name, instance, (), self.rec)
-        if result is None:
-            return IdentityMapper.map_lookup(self, expr)
-        else:
-            return result
+    map_tagged_variable = map_variable
 
     def map_call(self, expr):
         parsed_name = self.parse_name(expr.function)
         if parsed_name is None:
             return IdentityMapper.map_call(self, expr)
 
-        name, instance = parsed_name
+        name, tag = parsed_name
 
-        result = self.func(expr, name, instance, expr.parameters, self.rec)
+        result = self.func(expr, name, tag, expr.parameters, self.rec)
         if result is None:
             return IdentityMapper.map_call(self, expr)
         else:
@@ -600,6 +640,13 @@ class PrimeAdder(IdentityMapper):
             return var(expr.name+"'")
         else:
             return expr
+
+    def map_tagged_variable(self, expr):
+        if expr.name in self.which_vars:
+            return TaggedVariable(expr.name+"'", expr.tag)
+        else:
+            return expr
+
 
 # }}}
 
