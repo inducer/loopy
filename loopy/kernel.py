@@ -786,7 +786,8 @@ class LoopKernel(Record):
 
         return result
 
-    def find_readers(self):
+    @memoize_method
+    def reader_map(self):
         """
         :return: a dict that maps variable names to ids of insns that read that variable.
         """
@@ -800,7 +801,8 @@ class LoopKernel(Record):
             for var_name in insn.get_read_var_names() & admissible_vars:
                 result.setdefault(var_name, set()).add(insn.id)
 
-    def find_writers(self):
+    @memoize_method
+    def writer_map(self):
         """
         :return: a dict that maps variable names to ids of insns that write to that variable.
         """

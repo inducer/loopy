@@ -46,7 +46,7 @@ def mark_local_temporaries(kernel):
     new_temp_vars = {}
     from loopy.kernel import LocalIndexTagBase
 
-    writers = kernel.find_writers()
+    writers = kernel.writer_map()
 
     from loopy.symbolic import get_dependencies
 
@@ -292,7 +292,7 @@ def realize_reduction(kernel, insn_id_filter=None):
 # {{{ automatic dependencies, find boostability of instructions
 
 def add_boostability_and_automatic_dependencies(kernel):
-    writer_map = kernel.find_writers()
+    writer_map = kernel.writer_map()
 
     arg_names = set(arg.name for arg in kernel.args)
 
