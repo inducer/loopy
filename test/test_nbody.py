@@ -1,4 +1,3 @@
-
 from __future__ import division
 
 import numpy as np
@@ -38,6 +37,7 @@ def test_nbody(ctx_factory):
         return knl, []
 
     def variant_cpu(knl):
+        knl = lp.expand_subst(knl)
         knl = lp.split_dimension(knl, "i", 1024,
                 outer_tag="g.0", slabs=(0,1))
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
@@ -56,7 +56,7 @@ def test_nbody(ctx_factory):
 
     n = 3000
 
-    for variant in [variant_gpu]:
+    for variant in [variant_1, variant_cpu, variant_gpu]:
         variant_knl, loop_prio = variant(knl)
         kernel_gen = lp.generate_loop_schedules(variant_knl,
                 loop_priority=loop_prio)

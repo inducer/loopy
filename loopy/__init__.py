@@ -502,7 +502,6 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     kernel = extract_subst(kernel, rule_name, uni_template, parameters)
 
-
     if footprint_subscripts is not None:
         if not isinstance(footprint_subscripts, (list, tuple)):
             footprint_subscripts = [footprint_subscripts]

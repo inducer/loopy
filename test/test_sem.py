@@ -10,6 +10,8 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 
 
+1/0 # not ready
+
 def test_laplacian(ctx_factory):
     1/0 # not adapted to new language
 
