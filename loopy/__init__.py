@@ -22,7 +22,7 @@ class LoopyAdvisory(UserWarning):
 
 from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
 
-from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph
+from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph, LoopKernel
 from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel, realize_reduction
@@ -52,7 +52,6 @@ def make_kernel(*args, **kwargs):
     and temporary variable declaration received as part of string instructions.
     """
 
-    from loopy.kernel import LoopKernel
     knl = LoopKernel(*args, **kwargs)
 
     knl = tag_dimensions(
@@ -503,7 +502,6 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     kernel = extract_subst(kernel, rule_name, uni_template, parameters)
 
-    footprint_generators = None
 
     if footprint_subscripts is not None:
         if not isinstance(footprint_subscripts, (list, tuple)):
@@ -530,11 +528,12 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         footprint_subscripts = [standardize_footprint_indices(si) for si in footprint_subscripts]
 
         from pymbolic.primitives import Variable
-        footprint_generators = [
-                Variable(var_name)(*si) for si in footprint_subscripts]
+        subst_use = [
+                Variable(rule_name)(*si) for si in footprint_subscripts]
+    else:
+        subst_use = rule_name
 
-    new_kernel = precompute(kernel, rule_name, arg.dtype, sweep_inames,
-            footprint_generators=footprint_generators,
+    new_kernel = precompute(kernel, subst_use, arg.dtype, sweep_inames,
             new_storage_axis_names=dim_arg_names,
             default_tag=default_tag)
 

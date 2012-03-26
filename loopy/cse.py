@@ -305,22 +305,40 @@ def simplify_via_aff(expr):
 
 
 
-def precompute(kernel, subst_name, dtype, sweep_inames=[],
-        footprint_generators=None,
+def precompute(kernel, subst_use, dtype, sweep_inames=[],
         storage_axes=None, new_storage_axis_names=None, storage_axis_to_tag={},
         default_tag="l.auto"):
-    """Precompute the expression described in the substitution rule *subst_name*
-    and store it in a temporary array. A precomputation needs two things to operate,
-    a list of *sweep_inames* (order irrelevant) and an ordered list of *storage_axes*
-    (whose order will describe the axis ordering of the temporary array).
+    """Precompute the expression described in the substitution rule determined by
+    *subst_use* and store it in a temporary array. A precomputation needs two
+    things to operate, a list of *sweep_inames* (order irrelevant) and an
+    ordered list of *storage_axes* (whose order will describe the axis ordering
+    of the temporary array).
 
-    *subst_name* may contain a period (".") to filter out a subset of the
-    usage sites of the substitution rule. (Namely those usage sites that
-    use the same dotted name.)
+    :arg subst_use: Describes what to prefetch.
 
-    This function will then examine the *footprint_generators* (or all usage
-    sites of the substitution rule if not specified) and determine what the
-    storage footprint of that sweep is.
+    The following objects may be given for *subst_use*:
+
+    * The name of the substitution rule.
+
+    * The tagged name ("name$tag") of the substitution rule.
+
+    * A list of invocations of the substitution rule.
+      This list of invocations, when swept across *sweep_inames*, then serves
+      to define the footprint of the precomputation.
+
+      Invocations may be tagged ("name$tag") to filter out a subset of the
+      usage sites of the substitution rule. (Namely those usage sites that
+      use the same tagged name.)
+
+      Invocations may be given as a string or as a
+      :class:`pymbolic.primitives.Expression` object.
+
+      If only one invocation is to be given, then the only entry of the list
+      may be given directly.
+
+    If the list of invocations generating the footprint is not given,
+    all (tag-matching, if desired) usage sites of the substitution rule
+    are used to determine the footprint.
 
     The following cases can arise for each sweep axis:
 
@@ -343,42 +361,65 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
     eliminated.
     """
 
-    # {{{ check arguments
+    # {{{ check, standardize arguments
 
     for iname in sweep_inames:
         if iname not in kernel.all_inames():
             raise RuntimeError("sweep iname '%s' is not a known iname"
                     % iname)
 
-    if footprint_generators is not None:
-        if isinstance(footprint_generators, str):
-            footprint_generators = [footprint_generators]
+    if isinstance(storage_axes, str):
+        raise TypeError("storage_axes may not be a string--likely a leftover "
+                "footprint_generators argument")
+
+    if isinstance(subst_use, str):
+        subst_use = [subst_use]
+
+    footprint_generators = None
+
+    subst_name = None
+    subst_tag = None
+
+    from pymbolic.primitives import Variable, Call
+    from loopy.symbolic import parse, TaggedVariable
+
+    for use in subst_use:
+        if isinstance(use, str):
+            use = parse(use)
+
+        if isinstance(use, Call):
+            if footprint_generators is None:
+                footprint_generators = []
+
+            footprint_generators.append(use)
+            subst_name_as_expr = use.function
+        else:
+            subst_name_as_expr = use
+
+        if isinstance(subst_name_as_expr, Variable):
+            new_subst_name = subst_name_as_expr.name
+            new_subst_tag = None
+        elif isinstance(subst_name_as_expr, TaggedVariable):
+            new_subst_name = subst_name_as_expr.name
+            new_subst_tag = subst_name_as_expr.tag
+        else:
+            raise ValueError("unexpected type of subst_name")
+
+        if (subst_name, subst_tag) == (None, None):
+            subst_name, subst_tag = new_subst_name, new_subst_tag
+        else:
+            if (subst_name, subst_tag) != (new_subst_name, new_subst_tag):
+                raise ValueError("not all uses in subst_use agree "
+                        "on rule name and tag")
 
     # }}}
 
-    from loopy.symbolic import SubstitutionCallbackMapper
-
-    c_subst_name = subst_name.replace(".", "_")
-    subst_name, subst_tag = SubstitutionCallbackMapper.parse_filter(subst_name)
-
-    from loopy.kernel import parse_tag
-    default_tag = parse_tag(default_tag)
-
-    subst = kernel.substitutions[subst_name]
-    arg_names = subst.arguments
-
-    # {{{ create list of invocation descriptors
+    # {{{ process invocations in footprint generators, start invocation_descriptors
 
     invocation_descriptors = []
 
-    # {{{ process invocations in footprint generators
-
     if footprint_generators:
         for fpg in footprint_generators:
-            if isinstance(fpg, str):
-                from loopy.symbolic import parse
-                fpg = parse(fpg)
-
             from pymbolic.primitives import Variable, Call
             if isinstance(fpg, Variable):
                 args = ()
@@ -395,7 +436,15 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     # }}}
 
-    # {{{ gather up invocations in kernel code
+    c_subst_name = subst_name.replace(".", "_")
+
+    from loopy.kernel import parse_tag
+    default_tag = parse_tag(default_tag)
+
+    subst = kernel.substitutions[subst_name]
+    arg_names = subst.arguments
+
+    # {{{ gather up invocations in kernel code, finish invocation_descriptors
 
     current_subst_rule_stack = []
 
@@ -456,8 +505,6 @@ def precompute(kernel, subst_name, dtype, sweep_inames=[],
 
     if not invocation_descriptors:
         raise RuntimeError("no invocations of '%s' found" % subst_name)
-
-    # }}}
 
     # }}}
 

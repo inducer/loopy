@@ -31,8 +31,8 @@ def test_tim2d(ctx_factory):
 
             #"Gu(mat_entry,a,b) := G[mat_entry,e,m,j]*ur(m,j)",
 
-            "Gux(a,b) := G[0,e,a,b]*ur(a,b)+G[1,e,a,b]*us(a,b)",
-            "Guy(a,b) := G[1,e,a,b]*ur(a,b)+G[2,e,a,b]*us(a,b)",
+            "Gux(a,b) := G$x[0,e,a,b]*ur(a,b)+G$x[1,e,a,b]*us(a,b)",
+            "Guy(a,b) := G$y[1,e,a,b]*ur(a,b)+G$y[2,e,a,b]*us(a,b)",
             "lap[e,i,j]  = "
             "  sum_float32(m, D[m,i]*Gux(m,j))"
             "+ sum_float32(m, D[m,j]*Guy(i,m))"
@@ -57,22 +57,17 @@ def test_tim2d(ctx_factory):
         knl = lp.add_prefetch(knl, "D", ["m", "j", "i","o"])
         knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"])
 
-        knl = lp.precompute(knl, "ur", np.float32, ["m", "j"], "ur(m,j)")
-        knl = lp.precompute(knl, "us", np.float32, ["i", "m"], "us(i,m)")
+        knl = lp.precompute(knl, "ur(m,j)", np.float32, ["m", "j"])
+        knl = lp.precompute(knl, "us(i,m)", np.float32, ["i", "m"])
 
-        knl = lp.add_prefetch(knl, "G")
+        knl = lp.precompute(knl, "Gux(m,j)", np.float32, ["m", "j"])
+        knl = lp.precompute(knl, "Guy(i,m)", np.float32, ["i", "m"])
 
-        knl = lp.precompute(knl, "Gux", np.float32, ["m", "j"], "Gux(m,j)")
-        knl = lp.precompute(knl, "Guy", np.float32, ["i", "m"], "Gux(i,m)")
+        knl = lp.add_prefetch(knl, "G$x")
 
         knl = lp.tag_dimensions(knl, dict(o="unr"))
         knl = lp.tag_dimensions(knl, dict(m="unr"))
 
-        return knl
-
-    def variant_prefetch(knl):
-        knl = lp.precompute(knl, "ur", np.float32, ["a", "b"])
-        knl = lp.precompute(knl, "us", np.float32, ["a", "b"])
         return knl
 
     def variant_1(knl):
@@ -83,19 +78,6 @@ def test_tim2d(ctx_factory):
         print knl
         1/0
         #knl = lp.precompute(knl, "us", np.float32, ["a"])
-        return knl
-
-    def variant_g_prefetch(knl):
-        knl = lp.precompute(knl, "ur", np.float32, ["a"])
-        knl = lp.precompute(knl, "us", np.float32, ["a"])
-        knl = lp.add_prefetch(knl, "G", per_access=True) # IMPLEMENT!
-        return knl
-
-    def variant_gu_precomp(knl):
-        knl = lp.precompute(knl, "ur", np.float32, ["a"])
-        knl = lp.precompute(knl, "us", np.float32, ["a"])
-        knl = lp.precompute(knl, "Gux", np.float32, ["a", "b"])
-        knl = lp.precompute(knl, "Guy", np.float32, ["a", "b"])
         return knl
 
     for variant in [variant_orig]:
