@@ -479,7 +479,8 @@ class LoopKernel(Record):
     :ivar args:
     :ivar schedule:
     :ivar name:
-    :ivar preamble:
+    :ivar preamble: a string (or list of strings) that get included before
+        the kernel.
     :ivar assumptions: the initial implemented_domain, captures assumptions
         on the parameters. (an isl.Set)
     :ivar iname_slab_increments: a dictionary mapping inames to (lower_incr,

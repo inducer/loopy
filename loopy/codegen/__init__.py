@@ -266,7 +266,12 @@ def generate_code(kernel, with_annotation=False,
     # }}}
 
     if kernel.preamble is not None:
-        mod.extend([LiteralLines(kernel.preamble), Line()])
+        if isinstance(kernel.preamble, str):
+            mod.extend([LiteralLines(kernel.preamble), Line()])
+        else:
+            mod.extend(
+                    [LiteralLines(lines) for lines in kernel.preamble]
+                    +[Line()])
 
     mod.extend([
         LiteralLines(r"""
