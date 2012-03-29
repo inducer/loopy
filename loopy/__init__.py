@@ -22,7 +22,9 @@ class LoopyAdvisory(UserWarning):
 
 from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
 
-from loopy.kernel import AutoFitLocalIndexTag, get_dot_dependency_graph, LoopKernel
+from loopy.kernel import (AutoFitLocalIndexTag, get_dot_dependency_graph,
+        LoopKernel, Instruction)
+from loopy.creation import make_kernel
 from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel, realize_reduction
@@ -32,6 +34,7 @@ from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_ref
 from loopy.check import check_kernels
 
 __all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg", "LoopKernel",
+        "Instruction", "make_kernel",
         "get_dot_dependency_graph",
         "preprocess_kernel", "realize_reduction",
         "generate_loop_schedules",
@@ -42,153 +45,6 @@ __all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg", "LoopKernel"
         "extract_subst", "expand_subst",
         "precompute", "add_prefetch"
         ]
-
-# }}}
-
-# {{{ kernel creation
-
-def make_kernel(*args, **kwargs):
-    """Second pass of kernel creation. Think about requests for iname duplication
-    and temporary variable declaration received as part of string instructions.
-    """
-
-    knl = LoopKernel(*args, **kwargs)
-
-    knl = tag_dimensions(
-            knl.copy(iname_to_tag_requests=None),
-            knl.iname_to_tag_requests)
-
-    new_insns = []
-    new_domain = knl.domain
-    new_temp_vars = knl.temporary_variables.copy()
-    new_iname_to_tag = knl.iname_to_tag.copy()
-
-    newly_created_vars = set()
-
-    for insn in knl.instructions:
-
-        # {{{ sanity checking
-
-        if not set(insn.forced_iname_deps) <= knl.all_inames():
-            raise ValueError("In instruction '%s': "
-                    "cannot force dependency on inames '%s'--"
-                    "they don't exist" % (
-                        insn.id,
-                        ",".join(
-                            set(insn.forced_iname_deps)-knl.all_inames())))
-
-        # }}}
-
-        # {{{ iname duplication
-
-        if insn.duplicate_inames_and_tags:
-            insn_dup_iname_to_tag = dict(insn.duplicate_inames_and_tags)
-
-            if not set(insn_dup_iname_to_tag.keys()) <= knl.all_inames():
-                raise ValueError("In instruction '%s': "
-                        "cannot duplicate inames '%s'--"
-                        "they don't exist" % (
-                            insn.id,
-                            ",".join(
-                                set(insn_dup_iname_to_tag.keys())-knl.all_inames())))
-
-            # {{{ duplicate non-reduction inames
-
-            reduction_inames = insn.reduction_inames()
-
-            inames_to_duplicate = [iname
-                    for iname, tag in insn.duplicate_inames_and_tags
-                    if iname not in reduction_inames]
-
-            new_inames = [
-                    knl.make_unique_var_name(
-                        based_on=iname+"_"+insn.id,
-                        extra_used_vars=
-                        newly_created_vars)
-                    for iname in inames_to_duplicate]
-
-            for old_iname, new_iname in zip(inames_to_duplicate, new_inames):
-                new_tag = insn_dup_iname_to_tag[old_iname]
-                if new_tag is None:
-                    new_tag = AutoFitLocalIndexTag()
-                new_iname_to_tag[new_iname] = new_tag
-
-            newly_created_vars.update(new_inames)
-
-            from loopy.isl_helpers import duplicate_axes
-            new_domain = duplicate_axes(new_domain, inames_to_duplicate, new_inames)
-
-            from loopy.symbolic import SubstitutionMapper
-            from pymbolic.mapper.substitutor import make_subst_func
-            from pymbolic import var
-            old_to_new = dict(
-                    (old_iname, var(new_iname))
-                    for old_iname, new_iname in zip(inames_to_duplicate, new_inames))
-            subst_map = SubstitutionMapper(make_subst_func(old_to_new))
-            new_expression = subst_map(insn.expression)
-
-            # }}}
-
-            if len(inames_to_duplicate) < len(insn.duplicate_inames_and_tags):
-                raise RuntimeError("cannot use [|...] syntax to rename reduction "
-                        "inames")
-
-            insn = insn.copy(
-                    assignee=subst_map(insn.assignee),
-                    expression=new_expression,
-                    forced_iname_deps=set(
-                        old_to_new.get(iname, iname) for iname in insn.forced_iname_deps),
-                    duplicate_inames_and_tags=[])
-
-        # }}}
-
-        # {{{ temporary variable creation
-
-        from loopy.kernel import (
-                find_var_base_indices_and_shape_from_inames,
-                TemporaryVariable)
-
-        if insn.temp_var_type is not None:
-            assignee_name = insn.get_assignee_var_name()
-
-            assignee_indices = []
-            from pymbolic.primitives import Variable
-            for index_expr in insn.get_assignee_indices():
-                if (not isinstance(index_expr, Variable)
-                        or not index_expr.name in knl.all_inames()):
-                    raise RuntimeError(
-                            "only plain inames are allowed in "
-                            "the lvalue index when declaring the "
-                            "variable '%s' in an instruction"
-                            % assignee_name)
-
-                assignee_indices.append(index_expr.name)
-
-            base_indices, shape = \
-                    find_var_base_indices_and_shape_from_inames(
-                            new_domain, assignee_indices, knl.cache_manager)
-
-            new_temp_vars[assignee_name] = TemporaryVariable(
-                    name=assignee_name,
-                    dtype=np.dtype(insn.temp_var_type),
-                    is_local=None,
-                    base_indices=base_indices,
-                    shape=shape)
-
-            newly_created_vars.add(assignee_name)
-
-            insn = insn.copy(temp_var_type=None)
-
-        # }}}
-
-        new_insns.append(insn)
-
-    return knl.copy(
-            instructions=new_insns,
-            domain=new_domain,
-            temporary_variables=new_temp_vars,
-            iname_to_tag=new_iname_to_tag,
-            iname_to_tag_requests=[])
 
 # }}}
 
