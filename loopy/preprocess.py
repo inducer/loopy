@@ -40,7 +40,7 @@ def realize_ilp(kernel):
 
 # }}}
 
-# {{{ local temporary finding
+# {{{ decide which temporaries are local
 
 def mark_local_temporaries(kernel):
     new_temp_vars = {}
@@ -84,7 +84,11 @@ def mark_local_temporaries(kernel):
             assert parallel_assignee_inames <= parallel_compute_inames
 
             wants_to_be_local_per_insn.append(
-                    parallel_assignee_inames == parallel_compute_inames)
+                    parallel_assignee_inames == parallel_compute_inames
+
+                    # doesn't want to be local if there aren't any
+                    # parallel inames:
+                    and bool(parallel_compute_inames))
 
         if not wants_to_be_local_per_insn:
             from warnings import warn
