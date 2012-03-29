@@ -141,12 +141,18 @@ class ArrayArg:
                 shape = (shape,)
 
         if shape is not None:
-            if isinstance(shape, str):
-                from pymbolic import parse
-                shape = parse(shape)
+            def parse_if_necessary(x):
+                if isinstance(x, str):
+                    from pymbolic import parse
+                    return parse(x)
+                else:
+                    return x
 
+            shape = parse_if_necessary(shape)
             if not isinstance(shape, tuple):
                 shape = (shape,)
+
+            shape = tuple(parse_if_necessary(si) for si in shape)
 
             from pyopencl.compyte.array import (
                     f_contiguous_strides,
