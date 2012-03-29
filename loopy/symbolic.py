@@ -5,7 +5,8 @@ from __future__ import division
 from pytools import memoize, memoize_method
 
 from pymbolic.primitives import (
-        AlgebraicLeaf, Variable as VariableBase)
+        AlgebraicLeaf, Variable as VariableBase,
+        CommonSubexpression)
 
 from pymbolic.mapper import (
         CombineMapper as CombineMapperBase,
@@ -30,6 +31,18 @@ from islpy import dim_type
 
 
 # {{{ loopy-specific primitives
+
+class TypedCSE(CommonSubexpression):
+    def __init__(self, child, prefix=None, dtype=None):
+        CommonSubexpression.__init__(self, child, prefix)
+        self.dtype = dtype
+
+    def __getinitargs__(self):
+        return (self.child, self.dtype, self.prefix)
+
+    def get_extra_properties(self):
+        return dict(dtype=self.dtype)
+
 
 class TaggedVariable(VariableBase):
     def __init__(self, name, tag):
