@@ -22,10 +22,10 @@ class TypeInferenceMapper(CombineMapper):
             if result.isbuiltin and other.isbuiltin:
                 result = (np.empty(0, dtype=result) + np.empty(0, dtype=other)).dtype
             elif result.isbuiltin and not other.isbuiltin:
-                # assume the non-natiev type takes over
+                # assume the non-native type takes over
                 result = other
             elif not result.isbuiltin and other.isbuiltin:
-                # assume the non-natiev type takes over
+                # assume the non-native type takes over
                 pass
             else:
                 if not result is other:
@@ -39,6 +39,15 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_subscript(self, expr):
         return self.rec(expr.aggregate)
+
+    def map_call(self, expr):
+        from pymbolic.primitives import Variable
+        if isinstance(expr.function, Variable):
+            name = expr.function.name
+            arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
+            return self.kernel.get_function_result_dtype(name, arg_dtypes)
+        else:
+            return CombineMapper.map_call(self, expr)
 
     def map_variable(self, expr):
         try:
