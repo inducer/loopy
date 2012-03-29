@@ -597,6 +597,8 @@ class LoopKernel(Record):
             from loopy.symbolic import parse
 
             if isinstance(insn, Instruction):
+                if insn.id is None:
+                    insn = insn.copy(id=self.make_unique_instruction_id(insns))
                 insns.append(insn)
                 return
 
@@ -663,6 +665,7 @@ class LoopKernel(Record):
                             assignee=lhs, expression=rhs,
                             temp_var_type=temp_var_type,
                             duplicate_inames_and_tags=duplicate_inames_and_tags))
+
             elif subst_match is not None:
                 from pymbolic.primitives import Variable, Call
 
