@@ -188,13 +188,18 @@ class POD(PODBase):
 # {{{ main code generation entrypoint
 
 def generate_code(kernel, with_annotation=False,
-        allow_complex=False):
+        allow_complex=None):
     from cgen import (FunctionBody, FunctionDeclaration,
             Value, ArrayOf, Module, Block,
             Line, Const, LiteralLines, Initializer)
 
     from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
             CLLocal, CLImage, CLConstant)
+
+    allow_complex = False
+    for var in kernel.args + list(kernel.temporary_variables.itervalues()):
+        if var.dtype.kind == "c":
+            allow_complex = True
 
     from loopy.codegen.expression import LoopyCCodeMapper
     ccm = (LoopyCCodeMapper(kernel, with_annotation=with_annotation,
