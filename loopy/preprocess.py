@@ -71,24 +71,24 @@ def mark_local_temporaries(kernel):
             # - the instruction is run across more inames (locally) parallel
             #   than are reflected in the assignee indices.
 
-            parallel_compute_inames = set(iname
+            locparallel_compute_inames = set(iname
                     for iname in kernel.insn_inames(insn_id)
                     if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase))
 
-            parallel_assignee_inames = set(iname
+            locparallel_assignee_inames = set(iname
                     for iname in
                         get_dependencies(insn.get_assignee_indices())
                         & kernel.all_inames()
                     if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase))
 
-            assert parallel_assignee_inames <= parallel_compute_inames
+            assert locparallel_assignee_inames <= locparallel_compute_inames
 
             wants_to_be_local_per_insn.append(
-                    parallel_assignee_inames == parallel_compute_inames
+                    locparallel_assignee_inames == locparallel_compute_inames
 
                     # doesn't want to be local if there aren't any
                     # parallel inames:
-                    and bool(parallel_compute_inames))
+                    and bool(locparallel_compute_inames))
 
         if not wants_to_be_local_per_insn:
             from warnings import warn
