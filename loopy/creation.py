@@ -141,8 +141,6 @@ def create_temporaries(knl):
 # {{{ duplicate inames
 
 def duplicate_inames(knl):
-    from loopy.kernel import AutoFitLocalIndexTag
-
     new_insns = []
     new_domain = knl.domain
     new_iname_to_tag = knl.iname_to_tag.copy()
@@ -177,8 +175,6 @@ def duplicate_inames(knl):
 
             for old_iname, new_iname in zip(inames_to_duplicate, new_inames):
                 new_tag = insn_dup_iname_to_tag[old_iname]
-                if new_tag is None:
-                    new_tag = AutoFitLocalIndexTag()
                 new_iname_to_tag[new_iname] = new_tag
 
             newly_created_vars.update(new_inames)
