@@ -172,10 +172,11 @@ class CompiledKernel:
         if out_host:
             outputs = [o.get() for o in outputs]
 
-        return [evt] + outputs
+        return evt, outputs
 
 
 # }}}
+
 
 
 
