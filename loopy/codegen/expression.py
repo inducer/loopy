@@ -114,7 +114,8 @@ class LoopyCCodeMapper(CCodeMapper):
         return self.copy(var_subst_map=var_subst_map)
 
     def map_common_subexpression(self, expr, prec):
-        raise RuntimeError("common subexpressions are not allowed in loopy")
+        raise RuntimeError("common subexpression should have been eliminated upon "
+                "entry to loopy")
 
     def map_variable(self, expr, prec):
         if expr.name in self.var_subst_map:
