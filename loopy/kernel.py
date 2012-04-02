@@ -872,6 +872,19 @@ class LoopKernel(Record):
             if var_name not in used_vars:
                 return var_name
 
+    def get_var_descriptor(self, name):
+        try:
+            return self.arg_dict[name]
+        except KeyError:
+            pass
+
+        try:
+            return self.temporary_variables[name]
+        except KeyError:
+            pass
+
+        raise ValueError("nothing known about variable '%s'" % name)
+
     @property
     @memoize_method
     def id_to_insn(self):
