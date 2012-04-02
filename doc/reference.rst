@@ -50,6 +50,9 @@ optional.
 * `<float32>` declares `lhs` as a temporary variable, with shape given
   by the ranges of the `lhs` subscripts. (Note that in this case, the
   `lhs` subscripts must be pure inames, not expressions, for now.)
+  Instead of a concrete type, an empty set of angle brackets `<>` may be
+  given to indicate that type inference should figure out the type of the
+  temporary.
 
 * `[i,j|k,l]` specifies the inames within which this instruction is run.
   Independent copies of the inames `k` and `l` will be made for this

@@ -46,6 +46,9 @@ __all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg", "LoopKernel"
         "precompute", "add_prefetch"
         ]
 
+class infer_type:
+    pass
+
 # }}}
 
 # {{{ dimension split

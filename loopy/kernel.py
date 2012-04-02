@@ -293,6 +293,12 @@ class Instruction(Record):
             boostable_into=None,
             temp_var_type=None, duplicate_inames_and_tags=[]):
 
+        from loopy.symbolic import parse
+        if isinstance(assignee, str):
+            assignee = parse(assignee)
+        if isinstance(expression, str):
+            assignee = parse(expression)
+
         assert isinstance(forced_iname_deps, set)
         assert isinstance(insn_deps, set)
 
@@ -557,7 +563,7 @@ class LoopKernel(Record):
                     "(?P<iname_deps_and_tags>[\s\w,:.]*)"
                     "(?:\|(?P<duplicate_inames_and_tags>[\s\w,:.]*))?"
                 "\])?"
-                "\s*(?:\<(?P<temp_var_type>.+?)\>)?"
+                "\s*(?:\<(?P<temp_var_type>.*?)\>)?"
                 "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
                 "\s*?(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
                 )
@@ -648,7 +654,11 @@ class LoopKernel(Record):
                     duplicate_inames_and_tags = []
 
                 if groups["temp_var_type"] is not None:
-                    temp_var_type = groups["temp_var_type"]
+                    if groups["temp_var_type"]:
+                        temp_var_type = np.dtype(groups["temp_var_type"])
+                    else:
+                        from loopy import infer_type
+                        temp_var_type = infer_type
                 else:
                     temp_var_type = None
 

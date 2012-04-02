@@ -8,6 +8,9 @@ from pymbolic.mapper import CombineMapper
 
 # {{{ type inference
 
+class TypeInferenceFailure(RuntimeError):
+    pass
+
 class TypeInferenceMapper(CombineMapper):
     def __init__(self, kernel, temporary_variables=None):
         self.kernel = kernel
@@ -33,7 +36,7 @@ class TypeInferenceMapper(CombineMapper):
                 pass
             else:
                 if not result is other:
-                    raise TypeError("nothing known about result of operation on "
+                    raise TypeInferenceFailure("nothing known about result of operation on "
                             "'%s' and '%s'" % (result, other))
 
         return result
@@ -60,14 +63,20 @@ class TypeInferenceMapper(CombineMapper):
             pass
 
         try:
-            return self.temporary_variables[expr.name].dtype
+            result = self.temporary_variables[expr.name].dtype
         except KeyError:
             pass
+        else:
+            from loopy import infer_type
+            if result is infer_type:
+                raise TypeInferenceFailure("attempted type inference on "
+                        "variable requiring type inference")
+            return result
 
         if expr.name in self.kernel.all_inames():
             return np.dtype(np.int16) # don't force single-precision upcast
 
-        raise RuntimeError("type inference: nothing known about '%s'" % expr.name)
+        raise TypeInferenceFailure("nothing known about '%s'" % expr.name)
 
     def map_lookup(self, expr):
         agg_result = self.rec(expr.aggregate)
