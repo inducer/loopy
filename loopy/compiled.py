@@ -94,9 +94,13 @@ class CompiledKernel:
                 lsize_expr, self.size_args)
 
     def __call__(self, queue, **kwargs):
+        """If all array arguments are :mod:`numpy` arrays, defaults to returning
+        numpy arrays as well.
+        """
+
         allocator = kwargs.pop("allocator", None)
         wait_for = kwargs.pop("wait_for", None)
-        out_host = kwargs.pop("out_host", False)
+        out_host = kwargs.pop("out_host", None)
         check = kwargs.pop("check", True)
 
         import loopy as lp
@@ -111,6 +115,7 @@ class CompiledKernel:
 
         args = []
         outputs = []
+        encountered_non_numpy = False
 
         for arg in self.kernel.args:
             is_written = arg.name in self.kernel.get_written_variables()
@@ -151,9 +156,12 @@ class CompiledKernel:
                                 % (arg.name))
 
             # automatically transfer host-side arrays
-            if isinstance(val, np.ndarray) and isinstance(arg, lp.ArrayArg):
-                # synchronous, so nothing to worry about
-                val = cl_array.to_device(queue, val, allocator=allocator)
+            if isinstance(arg, lp.ArrayArg):
+                if isinstance(val, np.ndarray):
+                    # synchronous, so nothing to worry about
+                    val = cl_array.to_device(queue, val, allocator=allocator)
+                else:
+                    encountered_non_numpy = True
 
             if is_written:
                 outputs.append(val)
@@ -169,6 +177,8 @@ class CompiledKernel:
                 *args,
                 g_times_l=True, wait_for=wait_for)
 
+        if out_host is None and encountered_non_numpy:
+            out_host = True
         if out_host:
             outputs = [o.get() for o in outputs]
 
