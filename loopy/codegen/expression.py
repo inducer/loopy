@@ -69,6 +69,11 @@ class TypeInferenceMapper(CombineMapper):
 
         raise RuntimeError("type inference: nothing known about '%s'" % expr.name)
 
+    def map_lookup(self, expr):
+        agg_result = self.rec(expr.aggregate)
+        dtype, offset = agg_result.fields[expr.name]
+        return dtype
+
 # }}}
 
 # {{{ C code mapper
