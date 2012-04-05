@@ -177,7 +177,8 @@ class ArrayArg:
         return len(self.shape)
 
     def __repr__(self):
-        return "<ArrayArg '%s' of type %s>" % (self.name, self.dtype)
+        return "<ArrayArg '%s' of type %s and shape (%s)>" % (
+                self.name, self.dtype, ",".join(str(i) for i in self.shape))
 
 class ConstantArrayArg(ArrayArg):
     pass
