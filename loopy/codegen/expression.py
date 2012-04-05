@@ -168,14 +168,20 @@ class LoopyCCodeMapper(CCodeMapper):
             else:
                 # ArrayArg
                 index_expr = expr.index
-                if isinstance(expr.index, tuple):
+                if not isinstance(expr.index, tuple):
+                    index_expr = (index_expr,)
+
+                if arg.strides is not None:
                     ary_strides = arg.strides
-                    if ary_strides is None:
-                        raise RuntimeError("tuple-indexed variable '%s' does not "
-                                "have stride information" % expr.aggregate.name)
                 else:
                     ary_strides = (1,)
                     index_expr = (index_expr,)
+
+                if len(ary_strides) != len(index_expr):
+                    raise RuntimeError("subscript to '%s' in '%s' has the wrong "
+                            "number of indices (got: %d, expected: %d)" % (
+                                expr.aggregate.name, expr,
+                                len(index_expr), len(ary_strides)))
 
                 from pymbolic.primitives import Subscript
                 return CCodeMapper.map_subscript(self,
