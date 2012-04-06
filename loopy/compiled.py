@@ -146,10 +146,12 @@ class CompiledKernel:
         outputs = []
         encountered_non_numpy = False
 
+        kwargs_copy = kwargs.copy()
+
         for arg in self.kernel.args:
             is_written = arg.name in self.kernel.get_written_variables()
 
-            val = kwargs.get(arg.name)
+            val = kwargs_copy.pop(arg.name, None)
             if val is None:
                 if not is_written:
                     raise TypeError("must supply input argument '%s'" % arg.name)
@@ -180,6 +182,9 @@ class CompiledKernel:
                 args.append(val.data)
             else:
                 args.append(val)
+
+        assert not kwargs_copy, (
+                "extra arguments: "+", ".join(kwargs_copy.iterkeys()))
 
         evt = self.cl_kernel(queue,
                 self.global_size_func(**domain_parameters),
