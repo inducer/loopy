@@ -52,7 +52,14 @@ class TypeInferenceMapper(CombineMapper):
         if isinstance(expr.function, Variable):
             name = expr.function.name
             arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
-            return self.kernel.get_function_result_dtype(name, arg_dtypes)
+            for rdg in self.kernel.function_result_dtype_getters:
+                result = rdg(name, arg_dtypes)
+                if result is not None:
+                    return result
+
+            raise RuntimeError("no type inference information on "
+                    "function '%s'" % name)
+
         else:
             return CombineMapper.map_call(self, expr)
 
