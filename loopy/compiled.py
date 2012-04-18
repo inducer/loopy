@@ -131,6 +131,7 @@ class CompiledKernel:
         allocator = kwargs.pop("allocator", None)
         wait_for = kwargs.pop("wait_for", None)
         out_host = kwargs.pop("out_host", None)
+        no_run = kwargs.pop("no_run", None)
 
         import loopy as lp
 
@@ -186,11 +187,14 @@ class CompiledKernel:
         assert not kwargs_copy, (
                 "extra arguments: "+", ".join(kwargs_copy.iterkeys()))
 
-        evt = self.cl_kernel(queue,
-                self.global_size_func(**domain_parameters),
-                self.local_size_func(**domain_parameters),
-                *args,
-                g_times_l=True, wait_for=wait_for)
+        if no_run:
+            evt = cl.enqueue_marker(queue)
+        else:
+            evt = self.cl_kernel(queue,
+                    self.global_size_func(**domain_parameters),
+                    self.local_size_func(**domain_parameters),
+                    *args,
+                    g_times_l=True, wait_for=wait_for)
 
         if out_host is None and encountered_non_numpy:
             out_host = True
