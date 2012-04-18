@@ -182,7 +182,8 @@ class GlobalArg(_ShapedArg):
 class ArrayArg(GlobalArg):
     def __init__(self, *args, **kwargs):
         from warnings import warn
-        warn("ArrayArg is a deprecated name of GlobalArg")
+        warn("ArrayArg is a deprecated name of GlobalArg", DeprecationWarning,
+                stacklevel=2)
         GlobalArg.__init__(self, *args, **kwargs)
 
 class ConstantArg(_ShapedArg):
