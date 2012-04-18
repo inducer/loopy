@@ -267,13 +267,23 @@ def generate_code(kernel, with_annotation=False,
 
     # }}}
 
-    if kernel.preamble is not None:
-        if isinstance(kernel.preamble, str):
-            mod.extend([LiteralLines(kernel.preamble), Line()])
-        else:
-            mod.extend(
-                    [LiteralLines(lines) for lines in kernel.preamble]
-                    +[Line()])
+    # {{{ handle preambles
+
+    seen_preamble_tags = set()
+    dedup_preambles = []
+
+    for tag, preamble in kernel.preambles:
+        if tag in seen_preamble_tags:
+            continue
+
+        seen_preamble_tags.add(tag)
+        dedup_preambles.append(preamble)
+
+    mod.extend(
+            [LiteralLines(lines) for lines in dedup_preambles]
+            +[Line()])
+
+    # }}}
 
     mod.extend([
         LiteralLines(r"""

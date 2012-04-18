@@ -360,9 +360,9 @@ class Instruction(Record):
         if isinstance(self.assignee, Variable):
             var_name = self.assignee.name
         elif isinstance(self.assignee, Subscript):
-            var = self.assignee.aggregate
-            assert isinstance(var, Variable)
-            var_name = var.name
+            agg = self.assignee.aggregate
+            assert isinstance(agg, Variable)
+            var_name = agg.name
         else:
             raise RuntimeError("invalid lvalue '%s'" % self.assignee)
 
@@ -507,8 +507,8 @@ class LoopKernel(Record):
     :ivar args:
     :ivar schedule:
     :ivar name:
-    :ivar preamble: a string (or list of strings) that get included before
-        the kernel.
+    :ivar preambles: a list of (tag, code) tuples that identify preamble snippets.
+        Each tag's snippet is only included once, at its first occurrence.
     :ivar assumptions: the initial implemented_domain, captures assumptions
         on the parameters. (an isl.Set)
     :ivar iname_slab_increments: a dictionary mapping inames to (lower_incr,
@@ -538,7 +538,7 @@ class LoopKernel(Record):
 
     def __init__(self, device, domain, instructions, args=None, schedule=None,
             name="loopy_kernel",
-            preamble=None, assumptions=None,
+            preambles=[], assumptions=None,
             iname_slab_increments={},
             temporary_variables={},
             local_sizes={},
@@ -738,7 +738,7 @@ class LoopKernel(Record):
                 args=args,
                 schedule=schedule,
                 name=name,
-                preamble=preamble,
+                preambles=preambles,
                 assumptions=assumptions,
                 iname_slab_increments=iname_slab_increments,
                 temporary_variables=temporary_variables,
