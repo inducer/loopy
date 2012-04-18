@@ -392,49 +392,159 @@ class Instruction(Record):
 # {{{ reduction operations
 
 class ReductionOperation(object):
-    """
-    :ivar neutral_element:
-    :ivar dtype:
-    """
+    def dtype(self, inames):
+        raise NotImplementedError
+
+    def get_preambles(self, inames, c_code_mapper):
+        return []
+
+    def neutral_element(self, inames):
+        raise NotImplementedError
 
     def __call__(self, operand1, operand2):
         raise NotImplementedError
 
-class TypedReductionOperation(ReductionOperation):
+class ScalarReductionOperation(ReductionOperation):
     def __init__(self, dtype):
-        self.dtype = dtype
+        self.scalar_dtype = dtype
+
+    def dtype(self, inames):
+        return self.scalar_dtype
 
     def __str__(self):
         return (type(self).__name__.replace("ReductionOperation", "").lower()
                 + "_" + str(self.dtype))
 
-class SumReductionOperation(TypedReductionOperation):
-    neutral_element = 0
+class SumReductionOperation(ScalarReductionOperation):
+    def neutral_element(self, inames):
+        return 0
 
-    def __call__(self, operand1, operand2):
+    def __call__(self, operand1, operand2, index):
         return operand1 + operand2
 
-class ProductReductionOperation(TypedReductionOperation):
-    neutral_element = 1
+class ProductReductionOperation(ScalarReductionOperation):
+    def neutral_element(self, inames):
+        return 1
 
-    def __call__(self, operand1, operand2):
+    def __call__(self, operand1, operand2, index):
         return operand1 * operand2
 
-class FloatingPointMaxOperation(TypedReductionOperation):
-    # OpenCL 1.1, section 6.11.2
-    neutral_element = -var("INFINITY")
+def get_le_neutral(dtype):
+    """Return a number y that satisfies (x <= y) for all y."""
 
-    def __call__(self, operand1, operand2):
-        from pymbolic.primitives import FunctionSymbol
-        return FunctionSymbol("max")(operand1, operand2)
+    if dtype.kind == "f":
+        # OpenCL 1.1, section 6.11.2
+        return var("INFINITY")
+    else:
+        raise NotImplementedError("less")
 
-class FloatingPointMinOperation(TypedReductionOperation):
-    # OpenCL 1.1, section 6.11.2
-    neutral_element = var("INFINITY")
+class MaxReductionOperation(ScalarReductionOperation):
+    def neutral_element(self, inames):
+        return get_le_neutral(self.dtype)
 
-    def __call__(self, operand1, operand2):
-        from pymbolic.primitives import FunctionSymbol
-        return FunctionSymbol("min")(operand1, operand2)
+    def __call__(self, operand1, operand2, index):
+        return var("max")(operand1, operand2)
+
+class MinReductionOperation(ScalarReductionOperation):
+    @property
+    def neutral_element(self, inames):
+        return -get_le_neutral(self.dtype)
+
+    def __call__(self, operand1, operand2, index):
+        return var("min")(operand1, operand2)
+
+
+
+
+class _ArgExtremumReductionOperation(ReductionOperation):
+    def __init__(self, dtype):
+        self.scalar_dtype = dtype
+
+        self.struct_dtype = np.dtype(
+                [("value", self.scalar_dtype),
+                ("index", np.int32)])
+
+        self.prefix = "loopy_arg%s_%s" % (self.which, self.scalar_dtype.type.__name__)
+        self.type_name = self.prefix + "_result"
+        from pyopencl.tools import register_dtype
+        register_dtype(self.struct_dtype, self.type_name, alias_ok=True)
+
+    def dtype(self, inames):
+        return self.struct_dtype
+
+    # No need to make type inference aware of our functions: Their results
+    # always get assigned directly to typed temporaries without any arithmetic.
+
+    def get_preambles(self, inames):
+        """Returns a tuple (preamble_key, preamble), where *preamble* is a string
+        that goes into the kernel preamble, and *preamble_key* is a unique
+        identifier. No two preambles with the same key will be emitted.
+        """
+
+        if len(inames) != 1:
+            raise RuntimeError("arg%s must be used with exactly one iname"
+                    % self.which)
+
+        from pyopencl.tools import dtype_to_ctype
+        from pymbolic.mapper.c_code import CCodeMapper
+
+        c_code_mapper = CCodeMapper()
+
+        return [(self.prefix, """
+        typedef struct {
+            %(scalar_type)s value;
+            int index;
+        } %(type_name)s;
+
+        inline %(type_name)s %(prefix)s_init()
+        {
+            %(type_name)s result;
+            result.value = %(neutral)s;
+            result.index = INT_MIN;
+            return result;
+        }
+
+        inline %(type_name)s %(prefix)s_update(
+            %(type_name)s state, %(scalar_type)s op2, int index)
+        {
+            %(type_name)s result;
+            if (op2 %(comp)s state.value)
+            {
+                result.value = op2;
+                result.index = index;
+                return result;
+            }
+            else return state;
+        }
+        """ % dict(
+                type_name=self.type_name,
+                scalar_type=dtype_to_ctype(self.scalar_dtype),
+                prefix=self.prefix,
+                neutral=c_code_mapper(
+                    self.neutral_sign*get_le_neutral(self.scalar_dtype)),
+                comp=self.update_comparison,
+                ))]
+
+    def neutral_element(self, inames):
+        return var(self.prefix+"_init")()
+
+    def __call__(self, operand1, operand2, inames):
+        iname, = inames
+
+        return var(self.prefix+"_update")(
+                operand1, operand2, var(iname))
+
+class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
+    which = "max"
+    update_comparison = ">="
+    neutral_sign = -1
+
+class ArgMinReductionOperation(_ArgExtremumReductionOperation):
+    which = "min"
+    update_comparison = "<="
+    neutral_sign = +1
+
+
 
 
 
@@ -442,8 +552,10 @@ class FloatingPointMinOperation(TypedReductionOperation):
 _REDUCTION_OPS = {
         "sum": SumReductionOperation,
         "product": ProductReductionOperation,
-        "fpmax": FloatingPointMaxOperation,
-        "fpmin": FloatingPointMinOperation,
+        "max": MaxReductionOperation,
+        "min": MinReductionOperation,
+        "argmax": ArgMaxReductionOperation,
+        "argmin": ArgMinReductionOperation,
         }
 
 _REDUCTION_OP_PARSERS = [

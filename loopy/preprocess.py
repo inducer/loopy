@@ -258,6 +258,7 @@ def realize_reduction(kernel, insn_id_filter=None):
 
     new_insns = []
     new_temporary_variables = kernel.temporary_variables.copy()
+    new_preambles = kernel.preambles
 
     from loopy.kernel import IlpBaseTag
 
@@ -287,6 +288,8 @@ def realize_reduction(kernel, insn_id_filter=None):
 
         # }}}
 
+        new_preambles.extend(expr.operation.get_preambles(expr.inames))
+
         from pymbolic import var
 
         target_var_name = kernel.make_unique_var_name("acc_"+"_".join(expr.inames),
@@ -302,7 +305,7 @@ def realize_reduction(kernel, insn_id_filter=None):
         from loopy.kernel import TemporaryVariable
         new_temporary_variables[target_var_name] = TemporaryVariable(
                 name=target_var_name,
-                dtype=expr.operation.dtype,
+                dtype=expr.operation.dtype(expr.inames),
                 shape=tuple(ilp_iname_lengths),
                 is_local=False)
 
@@ -314,7 +317,7 @@ def realize_reduction(kernel, insn_id_filter=None):
                 id=new_id,
                 assignee=target_var,
                 forced_iname_deps=temp_kernel.insn_inames(insn) - set(expr.inames),
-                expression=expr.operation.neutral_element)
+                expression=expr.operation.neutral_element(expr.inames))
 
         generated_insns.append(init_insn)
 
@@ -325,7 +328,7 @@ def realize_reduction(kernel, insn_id_filter=None):
         reduction_insn = Instruction(
                 id=new_id,
                 assignee=target_var,
-                expression=expr.operation(target_var, expr.expr),
+                expression=expr.operation(target_var, expr.expr, expr.inames),
                 insn_deps=set([init_insn.id]) | insn.insn_deps,
                 forced_iname_deps=temp_kernel.insn_inames(insn) | set(expr.inames))
 

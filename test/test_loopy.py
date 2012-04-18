@@ -150,6 +150,37 @@ def test_eq_constraint(ctx_factory):
 
 
 
+def test_argmax(ctx_factory):
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+    order = "C"
+
+    n = 10000
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i]: 0<=i<%d}" % n,
+            [
+                "<> result = argmax_float32(i, fabs(a[i]))",
+                "max_idx = result.index",
+                "max_val = result.value",
+                ],
+            [
+                lp.GlobalArg("a", dtype, shape=(n,), order=order),
+                lp.GlobalArg("max_idx", np.int32, shape=(), order=order),
+                lp.GlobalArg("max_val", dtype, shape=(), order=order),
+                ])
+
+    seq_knl = knl
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, {})
+
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            codegen_kwargs=dict(allow_complex=True))
+
+
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
