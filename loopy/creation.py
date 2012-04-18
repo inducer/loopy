@@ -136,6 +136,80 @@ def create_temporaries(knl):
 
 # }}}
 
+# {{{ reduction iname duplication
+
+def duplicate_reduction_inames(kernel):
+
+    # {{{ helper function
+
+    newly_created_vars = set()
+
+    def duplicate_reduction_inames(reduction_expr, rec):
+        child = rec(reduction_expr.expr)
+        new_red_inames = []
+        did_something = False
+
+        for iname in reduction_expr.inames:
+            if iname.startswith("@"):
+                new_iname = kernel.make_unique_var_name(iname[1:]+"_"+insn.id,
+                        newly_created_vars)
+
+                old_insn_inames.append(iname.lstrip("@"))
+                new_insn_inames.append(new_iname)
+                newly_created_vars.add(new_iname)
+                new_red_inames.append(new_iname)
+                did_something = True
+            else:
+                new_red_inames.append(iname)
+
+        if did_something:
+            from loopy.symbolic import SubstitutionMapper
+            from pymbolic.mapper.substitutor import make_subst_func
+            from pymbolic import var
+
+            subst_dict = dict(
+                    (old_iname, var(new_iname))
+                    for old_iname, new_iname in zip(
+                        reduction_expr.untagged_inames, new_red_inames))
+            subst_map = SubstitutionMapper(make_subst_func(subst_dict))
+
+            child = subst_map(child)
+
+        from loopy.symbolic import Reduction
+        return Reduction(
+                operation=reduction_expr.operation,
+                inames=tuple(new_red_inames),
+                expr=child)
+
+    # }}}
+
+    new_domain = kernel.domain
+    new_insns = []
+
+    new_iname_to_tag = kernel.iname_to_tag.copy()
+
+    for insn in kernel.instructions:
+        old_insn_inames = []
+        new_insn_inames = []
+
+        from loopy.symbolic import ReductionCallbackMapper
+        new_insns.append(insn.copy(
+            expression=ReductionCallbackMapper(duplicate_reduction_inames)
+            (insn.expression)))
+
+        from loopy.isl_helpers import duplicate_axes
+        for old, new in zip(old_insn_inames, new_insn_inames):
+            new_domain = duplicate_axes(new_domain, [old], [new])
+            if old in kernel.iname_to_tag:
+                new_iname_to_tag[new] = kernel.iname_to_tag[old]
+
+    return kernel.copy(
+            instructions=new_insns,
+            domain=new_domain,
+            iname_to_tag=new_iname_to_tag)
+
+# }}}
+
 # {{{ duplicate inames
 
 def duplicate_inames(knl):
@@ -229,8 +303,18 @@ def make_kernel(*args, **kwargs):
     check_kernel(knl)
 
     knl = create_temporaries(knl)
-    knl = expand_cses(knl)
+    knl = duplicate_reduction_inames(knl)
     knl = duplicate_inames(knl)
+
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must duplicate inames before expanding CSEs, otherwise inames within the
+    # scope of duplication might be CSE'd out to a different instruction and
+    # never be found by duplication.
+    # -------------------------------------------------------------------------
+
+    knl = expand_cses(knl)
 
     return knl
 
