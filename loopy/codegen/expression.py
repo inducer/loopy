@@ -11,6 +11,9 @@ from pymbolic.mapper import CombineMapper
 class TypeInferenceFailure(RuntimeError):
     pass
 
+class DependencyTypeInferenceFailure(TypeInferenceFailure):
+    pass
+
 class TypeInferenceMapper(CombineMapper):
     def __init__(self, kernel, temporary_variables=None):
         self.kernel = kernel
@@ -77,7 +80,7 @@ class TypeInferenceMapper(CombineMapper):
         else:
             from loopy import infer_type
             if tv.dtype is infer_type:
-                raise TypeInferenceFailure("attempted type inference on "
+                raise DependencyTypeInferenceFailure("attempted type inference on "
                         "variable requiring type inference")
 
             return tv.dtype
