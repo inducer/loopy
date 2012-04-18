@@ -85,6 +85,9 @@ class TypeInferenceMapper(CombineMapper):
         dtype, offset = agg_result.fields[expr.name]
         return dtype
 
+    def map_reduction(self, expr):
+        return expr.operation.dtype(expr.inames)
+
 # }}}
 
 # {{{ C code mapper
