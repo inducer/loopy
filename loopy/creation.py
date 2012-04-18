@@ -53,11 +53,13 @@ def expand_cses(knl):
         if dtype is None:
             from loopy import infer_type
             dtype = infer_type
+        else:
+            dtype=np.dtype(dtype)
 
         from loopy.kernel import TemporaryVariable
         new_temp_vars[new_var_name] = TemporaryVariable(
                 name=new_var_name,
-                dtype=np.dtype(dtype),
+                dtype=dtype,
                 is_local=None,
                 shape=())
 
@@ -288,7 +290,7 @@ def duplicate_inames(knl):
 
 def make_kernel(*args, **kwargs):
     """Second pass of kernel creation. Think about requests for iname duplication
-    and temporary variable declaration received as part of string instructions.
+    and temporary variable creation.
     """
 
     from loopy.kernel import LoopKernel
