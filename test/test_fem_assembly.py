@@ -35,11 +35,11 @@ def test_laplacian_stiffness(ctx_factory):
                     "sum_float32(dx_axis, dPsi$one(i,dx_axis)*dPsi$two(j,dx_axis))))"
                 ],
             [
-            lp.ArrayArg("jacInv", dtype, shape=(dim, dim, Nc_sym, Nq), order=order),
-            lp.ConstantArrayArg("DPsi", dtype, shape=(dim, Nb, Nq), order=order),
-            lp.ArrayArg("jacDet", dtype, shape=(Nc_sym, Nq), order=order),
-            lp.ConstantArrayArg("w", dtype, shape=(Nq,), order=order),
-            lp.ArrayArg("A", dtype, shape=(Nc_sym, Nb, Nb), order=order),
+            lp.GlobalArg("jacInv", dtype, shape=(dim, dim, Nc_sym, Nq), order=order),
+            lp.ConstantArg("DPsi", dtype, shape=(dim, Nb, Nq), order=order),
+            lp.GlobalArg("jacDet", dtype, shape=(Nc_sym, Nq), order=order),
+            lp.ConstantArg("w", dtype, shape=(Nq,), order=order),
+            lp.GlobalArg("A", dtype, shape=(Nc_sym, Nb, Nb), order=order),
             lp.ScalarArg("Nc",  np.int32, approximately=1000),
             ],
             name="lapquad", assumptions="Nc>=1")

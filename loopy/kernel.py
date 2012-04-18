@@ -113,9 +113,9 @@ def parse_tag(tag):
 
 # {{{ arguments
 
-class ArrayArg:
+class _ShapedArg:
     def __init__(self, name, dtype, strides=None, shape=None, order="C",
-            offset=0, constant_mem=False):
+            offset=0):
         """
         All of the following are optional. Specify either strides or shape.
 
@@ -170,18 +170,25 @@ class ArrayArg:
         self.shape = shape
         self.order = order
 
-        self.constant_mem = constant_mem
-
     @property
     def dimensions(self):
         return len(self.shape)
 
+class GlobalArg(_ShapedArg):
     def __repr__(self):
-        return "<ArrayArg '%s' of type %s and shape (%s)>" % (
+        return "<GlobalArg '%s' of type %s and shape (%s)>" % (
                 self.name, self.dtype, ",".join(str(i) for i in self.shape))
 
-class ConstantArrayArg(ArrayArg):
-    pass
+class ArrayArg(GlobalArg):
+    def __init__(self, *args, **kwargs):
+        from warnings import warn
+        warn("ArrayArg is a deprecated name of GlobalArg")
+        GlobalArg.__init__(self, *args, **kwargs)
+
+class ConstantArg(_ShapedArg):
+    def __repr__(self):
+        return "<ConstantArg '%s' of type %s and shape (%s)>" % (
+                self.name, self.dtype, ",".join(str(i) for i in self.shape))
 
 class ImageArg:
     def __init__(self, name, dtype, dimensions=None, shape=None):

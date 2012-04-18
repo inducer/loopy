@@ -10,7 +10,6 @@ register_mpz_with_pymbolic()
 
 import islpy as isl
 from islpy import dim_type
-import numpy as np
 
 
 
@@ -20,7 +19,7 @@ class LoopyAdvisory(UserWarning):
 
 # {{{ imported user interface
 
-from loopy.kernel import ScalarArg, ArrayArg, ConstantArrayArg, ImageArg
+from loopy.kernel import ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg
 
 from loopy.kernel import (AutoFitLocalIndexTag, get_dot_dependency_graph,
         LoopKernel, Instruction)
@@ -33,7 +32,8 @@ from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_ref
 from loopy.check import check_kernels
 
-__all__ = ["ScalarArg", "ArrayArg", "ConstantArrayArg", "ImageArg", "LoopKernel",
+__all__ = ["ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
+        "LoopKernel",
         "Instruction", "make_kernel",
         "get_dot_dependency_graph",
         "preprocess_kernel", "realize_reduction",

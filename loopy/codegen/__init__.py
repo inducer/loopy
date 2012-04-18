@@ -223,19 +223,16 @@ def generate_code(kernel, with_annotation=False,
     has_double = False
     has_image = False
 
-    from loopy.kernel import ArrayArg, ConstantArrayArg, ImageArg, ScalarArg
+    from loopy.kernel import GlobalArg, ConstantArg, ImageArg, ScalarArg
 
     args = []
     for arg in kernel.args:
-        if isinstance(arg, (ConstantArrayArg, ArrayArg)):
+        if isinstance(arg, (ConstantArg, GlobalArg)):
             arg_decl = restrict_ptr_if_not_nvidia(
                     POD(arg.dtype, arg.name))
             if arg_decl.name not in kernel.get_written_variables():
-                if arg.constant_mem:
-                    arg_decl = CLConstant(Const(arg_decl))
-                else:
-                    arg_decl = Const(arg_decl)
-            if isinstance(arg, ConstantArrayArg):
+                arg_decl = Const(arg_decl)
+            if isinstance(arg, ConstantArg):
                 arg_decl = CLConstant(arg_decl)
             else:
                 arg_decl = CLGlobal(arg_decl)

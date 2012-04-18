@@ -46,8 +46,6 @@ To-do
 
 - Add dependencies after the fact
 
-- bug? with fetching only g[j,*] inside j loop
-
 - Expose iname-duplicate-and-rename as a primitive.
 
 - Allow parameters to be varying during run-time, substituting values
@@ -61,7 +59,9 @@ To-do
 
 - If finding a maximum proves troublesome, move parameters into the domain
 
-- : (as in, Matlab full-sclice) in prefetches
+- : (as in, Matlab full-slice) in prefetches
+
+- ScalarArg is a bad name
 
 Future ideas
 ^^^^^^^^^^^^

@@ -166,7 +166,7 @@ class LoopyCCodeMapper(CCodeMapper):
                             "non-floating-point images not supported for now")
 
             else:
-                # ArrayArg
+                # GlobalArg
                 index_expr = expr.index
                 if not isinstance(expr.index, tuple):
                     index_expr = (index_expr,)

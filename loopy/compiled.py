@@ -11,7 +11,7 @@ import numpy as np
 
 def _arg_matches_spec(arg, val, other_args):
     import loopy as lp
-    if isinstance(arg, lp.ArrayArg):
+    if isinstance(arg, lp.GlobalArg):
         from pymbolic import evaluate
         shape = evaluate(arg.shape, other_args)
 
@@ -168,7 +168,7 @@ class CompiledKernel:
                 assert _arg_matches_spec(arg, val, kwargs)
 
             # automatically transfer host-side arrays
-            if isinstance(arg, lp.ArrayArg):
+            if isinstance(arg, lp.GlobalArg):
                 if isinstance(val, np.ndarray):
                     # synchronous, so nothing to worry about
                     val = cl_array.to_device(queue, val, allocator=allocator)
@@ -178,7 +178,7 @@ class CompiledKernel:
             if is_written:
                 outputs.append(val)
 
-            if isinstance(arg, lp.ArrayArg):
+            if isinstance(arg, lp.GlobalArg):
                 args.append(val.data)
             else:
                 args.append(val)
@@ -287,7 +287,7 @@ def fill_rand(ary):
 
 def make_ref_args(kernel, queue, parameters,
         fill_value):
-    from loopy.kernel import ScalarArg, ArrayArg, ImageArg
+    from loopy.kernel import ScalarArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
@@ -309,7 +309,7 @@ def make_ref_args(kernel, queue, parameters,
 
             result.append(arg_value)
 
-        elif isinstance(arg, (ArrayArg, ImageArg)):
+        elif isinstance(arg, (GlobalArg, ImageArg)):
             if arg.shape is None:
                 raise ValueError("arrays need known shape to use automatic "
                         "testing")
@@ -353,7 +353,7 @@ def make_ref_args(kernel, queue, parameters,
 
 def make_args(queue, kernel, ref_input_arrays, parameters,
         fill_value):
-    from loopy.kernel import ScalarArg, ArrayArg, ImageArg
+    from loopy.kernel import ScalarArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
@@ -373,7 +373,7 @@ def make_args(queue, kernel, ref_input_arrays, parameters,
 
             result.append(arg_value)
 
-        elif isinstance(arg, (ArrayArg, ImageArg)):
+        elif isinstance(arg, (GlobalArg, ImageArg)):
             if arg.name in kernel.get_written_variables():
                 if isinstance(arg, ImageArg):
                     raise RuntimeError("write-mode images not supported in "

@@ -121,11 +121,11 @@ Arguments
     :members:
     :undoc-members:
 
-.. autoclass:: ArrayArg
+.. autoclass:: GlobalArg
     :members:
     :undoc-members:
 
-.. autoclass:: ConstantArrayArg
+.. autoclass:: ConstantArg
     :members:
     :undoc-members:
 

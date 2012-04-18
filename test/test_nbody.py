@@ -21,8 +21,8 @@ def test_nbody(ctx_factory):
             "pot[i] = sum_float32(j, if(i != j, invdist, 0))",
             ],
             [
-            lp.ArrayArg("x", dtype, shape="N,3", order="C"),
-            lp.ArrayArg("pot", dtype, shape="N", order="C"),
+            lp.GlobalArg("x", dtype, shape="N,3", order="C"),
+            lp.GlobalArg("pot", dtype, shape="N", order="C"),
             lp.ScalarArg("N", np.int32),
             ],
              name="nbody", assumptions="N>=1")

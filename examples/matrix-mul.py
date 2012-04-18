@@ -43,7 +43,7 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
             [
                 lp.ImageArg("a", dtype, 2),
                 lp.ImageArg("b", dtype, 2),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 

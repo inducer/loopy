@@ -22,7 +22,7 @@ def test_owed_barriers(ctx_factory):
             [
                 "[i:l.0] <float32> z[i] = a[i]"
                 ],
-            [lp.ArrayArg("a", np.float32, shape=(100,))]
+            [lp.GlobalArg("a", np.float32, shape=(100,))]
             )
 
     kernel_gen = lp.generate_loop_schedules(knl)
@@ -43,7 +43,7 @@ def test_wg_too_small(ctx_factory):
             [
                 "[i:l.0] <float32> z[i] = a[i]"
                 ],
-            [lp.ArrayArg("a", np.float32, shape=(100,))],
+            [lp.GlobalArg("a", np.float32, shape=(100,))],
             local_sizes={0: 16})
 
     kernel_gen = lp.generate_loop_schedules(knl)
@@ -69,7 +69,7 @@ def test_multi_cse(ctx_factory):
             [
                 "[i] <float32> z[i] = a[i] + a[i]**2"
                 ],
-            [lp.ArrayArg("a", np.float32, shape=(100,))],
+            [lp.GlobalArg("a", np.float32, shape=(100,))],
             local_sizes={0: 16})
 
     knl = lp.split_dimension(knl, "i", 16, inner_tag="l.0")
@@ -99,7 +99,7 @@ def test_stencil(ctx_factory):
                     " + a[i+1,j]"
                 ],
             [
-                lp.ArrayArg("a", np.float32, shape=(32,32,))
+                lp.GlobalArg("a", np.float32, shape=(32,32,))
                 ])
 
 
@@ -134,8 +134,8 @@ def test_eq_constraint(ctx_factory):
                 "a[i] = b[i]"
                 ],
             [
-                lp.ArrayArg("a", np.float32, shape=(1000,)),
-                lp.ArrayArg("b", np.float32, shape=(1000,))
+                lp.GlobalArg("a", np.float32, shape=(1000,)),
+                lp.GlobalArg("b", np.float32, shape=(1000,))
                 ])
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0")

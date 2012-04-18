@@ -293,10 +293,10 @@ def get_problems(kernel, parameters):
             msg(4, "using more local memory than available--"
                     "possibly OK due to cache nature")
 
-    from loopy.kernel import ArrayArg
+    from loopy.kernel import ConstantArg
     const_arg_count = sum(
             1 for arg in kernel.args
-            if isinstance(arg, ArrayArg) and arg.constant_mem)
+            if isinstance(arg, ConstantArg))
 
     if const_arg_count > kernel.device.max_constant_args:
         msg(5, "too many constant arguments")

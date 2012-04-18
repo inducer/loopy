@@ -111,10 +111,10 @@ def test_axpy(ctx_factory):
                     ],
                 [
                     lp.ScalarArg("a", dtype),
-                    lp.ArrayArg("x", dtype, shape="n,"),
+                    lp.GlobalArg("x", dtype, shape="n,"),
                     lp.ScalarArg("b", dtype),
-                    lp.ArrayArg("y", dtype, shape="n,"),
-                    lp.ArrayArg("z", dtype, shape="n,"),
+                    lp.GlobalArg("y", dtype, shape="n,"),
+                    lp.GlobalArg("z", dtype, shape="n,"),
                     lp.ScalarArg("n", np.int32, approximately=n),
                     ],
                 name="axpy", assumptions="n>=1",
@@ -163,8 +163,8 @@ def test_transpose(ctx_factory):
                 "b[i, j] = a[j, i]"
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("a", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("b", dtype, shape=(n, n), order=order),
                 ],
             name="transpose")
 
@@ -202,9 +202,9 @@ def test_plain_matrix_mul(ctx_factory):
                     "c[i, j] = %s(k, a[i, k]*b[k, j])" % reduction_func
                     ],
                 [
-                    lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                    lp.ArrayArg("b", dtype, shape=(n, n), order=order),
-                    lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                    lp.GlobalArg("a", dtype, shape=(n, n), order=order),
+                    lp.GlobalArg("b", dtype, shape=(n, n), order=order),
+                    lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                     ],
                 name="matmul")
 
@@ -244,9 +244,9 @@ def test_variable_size_matrix_mul(ctx_factory):
                 "label: c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("a", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("b", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 lp.ScalarArg("n", np.int32, approximately=n),
                 ],
             name="matmul", assumptions="n >= 16")
@@ -295,9 +295,9 @@ def test_rank_one(ctx_factory):
                 "label: c[i, j] = a[i]*b[j]"
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n,), order=order),
-                lp.ArrayArg("b", dtype, shape=(n,), order=order),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("a", dtype, shape=(n,), order=order),
+                lp.GlobalArg("b", dtype, shape=(n,), order=order),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 lp.ScalarArg("n", np.int32, approximately=n),
                 ],
             name="rank_one", assumptions="n >= 16")
@@ -376,9 +376,9 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
                 "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("a", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("b", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
@@ -430,9 +430,9 @@ def test_intel_matrix_mul(ctx_factory):
                 "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
-                lp.ArrayArg("a", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("b", dtype, shape=(n, n), order=order),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("a", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("b", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
@@ -497,7 +497,7 @@ def test_magma_fermi_matrix_mul(ctx_factory):
             [
                 lp.ImageArg("a", dtype, 2),
                 lp.ImageArg("b", dtype, 2),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
@@ -557,7 +557,7 @@ def test_image_matrix_mul(ctx_factory):
             [
                 lp.ImageArg("a", dtype, 2),
                 lp.ImageArg("b", dtype, 2),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
@@ -607,7 +607,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
             [
                 lp.ImageArg("a", dtype, shape=(n, n)),
                 lp.ImageArg("b", dtype, shape=(n, n)),
-                lp.ArrayArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
 
@@ -650,9 +650,9 @@ def test_fancy_matrix_mul(ctx_factory):
                 "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
                 ],
             [
-                lp.ArrayArg("a", dtype, shape="(n, n)", order=order),
-                lp.ArrayArg("b", dtype, shape="(n, n)", order=order),
-                lp.ArrayArg("c", dtype, shape="(n, n)", order=order),
+                lp.GlobalArg("a", dtype, shape="(n, n)", order=order),
+                lp.GlobalArg("b", dtype, shape="(n, n)", order=order),
+                lp.GlobalArg("c", dtype, shape="(n, n)", order=order),
                 lp.ScalarArg("n", np.int32, approximately=1000),
                 ], name="fancy_matmul", assumptions="n>=1")
 
