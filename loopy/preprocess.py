@@ -6,6 +6,59 @@ import pyopencl.characterize as cl_char
 
 
 
+# {{{ infer types of temporaries
+
+def infer_types_of_temporaries(kernel):
+    new_temp_vars = {}
+
+    queue = []
+
+    from loopy import infer_type
+    for tv in kernel.temporary_variables.itervalues():
+        if tv.dtype is infer_type:
+            queue.append(tv)
+        else:
+            new_temp_vars[tv.name] = tv
+
+    from loopy.codegen.expression import (
+            TypeInferenceMapper, TypeInferenceFailure)
+    tim = TypeInferenceMapper(kernel)
+
+    first_failure = None
+    while queue:
+        tv = queue.pop(0)
+
+        try:
+            dtypes = [
+                    tim(kernel.id_to_insn[writer].expression)
+                    for writer in kernel.writer_map()[tv.name]]
+        except TypeInferenceFailure:
+            if tv is first_failure:
+                # this has failed before, give up.
+                raise RuntimeError("could not determine type of '%s'"
+                        % tv.name)
+
+            if first_failure is None:
+                # remember the first failure for this round through the queue
+                first_failure = tv
+
+            # can't infer type yet, put back into queue
+            queue.append(tv)
+
+        from pytools import is_single_valued
+        if not is_single_valued(dtypes):
+            raise RuntimeError("ambiguous type inference for '%s'"
+                    % tv.name)
+
+        new_temp_vars[tv.name] = tv.copy(dtype=dtypes[0])
+
+        # we've made progress, reset failure flag.
+        first_failure = None
+
+    return kernel.copy(temporary_variables=new_temp_vars)
+
+# }}}
+
 # {{{ transform ilp into lower-level constructs
 
 def realize_ilp(kernel):
@@ -776,6 +829,11 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
+    # all type inference must happen *after* this point (because only then all
+    # the functions return dtype getters are available.)
+
+    kernel = infer_types_of_temporaries(kernel)
+
     from loopy.subst import expand_subst
     kernel = expand_subst(kernel)
 

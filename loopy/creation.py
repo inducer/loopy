@@ -51,7 +51,8 @@ def expand_cses(knl):
         newly_created_vars.add(new_var_name)
 
         if dtype is None:
-            dtype = tim(expr)
+            from loopy import infer_type
+            dtype = infer_type
 
         from loopy.kernel import TemporaryVariable
         new_temp_vars[new_var_name] = TemporaryVariable(
@@ -78,9 +79,6 @@ def expand_cses(knl):
     newly_created_insn_ids = set()
     new_temp_vars = knl.temporary_variables.copy()
 
-    from loopy.codegen.expression import TypeInferenceMapper
-    tim = TypeInferenceMapper(knl, new_temp_vars)
-
     for insn in knl.instructions:
         new_insns.append(insn.copy(expression=cseam(insn.expression)))
 
@@ -96,9 +94,6 @@ def create_temporaries(knl):
     new_insns = []
     new_temp_vars = knl.temporary_variables.copy()
 
-    from loopy.codegen.expression import TypeInferenceMapper
-    tim = TypeInferenceMapper(knl, new_temp_vars)
-
     for insn in knl.instructions:
         from loopy.kernel import (
                 find_var_base_indices_and_shape_from_inames,
@@ -106,13 +101,6 @@ def create_temporaries(knl):
 
         if insn.temp_var_type is not None:
             assignee_name = insn.get_assignee_var_name()
-
-            temp_var_type = insn.temp_var_type
-            from loopy import infer_type
-            if temp_var_type is infer_type:
-                # FIXME dependencies among type-inferred variables
-                # are not allowed yet.
-                temp_var_type = tim(insn.expression)
 
             assignee_indices = []
             from pymbolic.primitives import Variable
@@ -133,7 +121,7 @@ def create_temporaries(knl):
 
             new_temp_vars[assignee_name] = TemporaryVariable(
                     name=assignee_name,
-                    dtype=temp_var_type,
+                    dtype=insn.temp_var_type,
                     is_local=None,
                     base_indices=base_indices,
                     shape=shape)
