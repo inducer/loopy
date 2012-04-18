@@ -6,6 +6,27 @@ import pyopencl.characterize as cl_char
 
 
 
+# {{{ gather dtype getters from reduction operations
+
+def gather_dtype_getters(kernel):
+    dtype_getters = kernel.function_result_dtype_getters
+
+    def gather_from_reduction(expr, rec):
+        red_getter = expr.operation.get_function_result_dtype_getter()
+        if red_getter is not None:
+            dtype_getters.append(red_getter)
+
+        rec(expr.expr)
+
+    from loopy.symbolic import ReductionCallbackMapper
+    rcm = ReductionCallbackMapper(gather_from_reduction)
+    for insn in kernel.instructions:
+        rcm(insn.expression)
+
+    return kernel.copy(function_result_dtype_getters=dtype_getters)
+
+# }}}
+
 # {{{ infer types of temporaries
 
 def infer_types_of_temporaries(kernel):
@@ -762,6 +783,8 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
+    kernel = gather_dtype_getters(kernel)
+
     # all type inference must happen *after* this point (because only then all
     # the functions return dtype getters are available.)
 

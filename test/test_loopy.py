@@ -153,6 +153,7 @@ def test_eq_constraint(ctx_factory):
 def test_argmax(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
     order = "C"
 
     n = 10000
@@ -170,13 +171,12 @@ def test_argmax(ctx_factory):
                 lp.GlobalArg("max_val", dtype, shape=(), order=order),
                 ])
 
-    seq_knl = knl
+    a = np.random.randn(10000).astype(dtype)
+    cknl = lp.CompiledKernel(ctx, knl)
+    evt, (max_idx, max_val) = cknl(queue, a=a)
+    assert max_val == np.max(np.abs(a))
+    assert max_idx == np.where(np.abs(a)==max_val)[-1]
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, {})
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
-            codegen_kwargs=dict(allow_complex=True))
 
 
 

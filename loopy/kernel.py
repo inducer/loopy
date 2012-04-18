@@ -396,7 +396,13 @@ class ReductionOperation(object):
     def dtype(self, inames):
         raise NotImplementedError
 
-    def get_preambles(self, inames, c_code_mapper):
+    def get_function_result_dtype_getter(self):
+        """If the reduction declares any functions, return a getter that
+        makes their return types known to type inference.
+        """
+        return None
+
+    def get_preambles(self, inames):
         return []
 
     def neutral_element(self, inames):
@@ -473,8 +479,16 @@ class _ArgExtremumReductionOperation(ReductionOperation):
     def dtype(self, inames):
         return self.struct_dtype
 
-    # No need to make type inference aware of our functions: Their results
-    # always get assigned directly to typed temporaries without any arithmetic.
+    def get_function_result_dtype_getter(self):
+        names = [self.prefix+"_init", self.prefix+"_update"]
+
+        def getter(name, arg_dtypes):
+            if name in names:
+                return self.struct_dtype
+
+            return None
+
+        return getter
 
     def get_preambles(self, inames):
         """Returns a tuple (preamble_key, preamble), where *preamble* is a string
