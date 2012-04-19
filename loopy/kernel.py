@@ -1285,7 +1285,7 @@ class SetOperationCacheManager:
         # mapping: set hash -> [(set, op, args, result)]
         self.cache = {}
 
-    def op(self, set, op, args):
+    def op(self, set, op_name, op, args):
         hashval = hash(set)
         bucket = self.cache.setdefault(hashval, [])
 
@@ -1294,15 +1294,15 @@ class SetOperationCacheManager:
                 return result
 
         #print op, set.get_dim_name(dim_type.set, args[0])
-        result = getattr(set, op)(*args)
-        bucket.append((set, op, args, result))
+        result = op(*args)
+        bucket.append((set, op_name, args, result))
         return result
 
     def dim_min(self, set, *args):
-        return self.op(set, "dim_min", args)
+        return self.op(set, "dim_min", set.dim_min, args)
 
     def dim_max(self, set, *args):
-        return self.op(set, "dim_max", args)
+        return self.op(set, "dim_max", set.dim_max, args)
 
 
 

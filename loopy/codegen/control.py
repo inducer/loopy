@@ -156,6 +156,20 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     # {{{ pass 3: greedily group schedule items that share admissible inames
 
+    from pytools import memoize_method
+
+    class BoundsCheckCache:
+        def __init__(self, domain, impl_domain):
+            self.domain = domain
+            self.impl_domain = impl_domain
+
+        @memoize_method
+        def __call__(self, check_inames):
+            from loopy.codegen.bounds import generate_bounds_checks
+            return generate_bounds_checks(self.domain,
+                    check_inames,
+                    codegen_state.implemented_domain)
+
     def build_insn_group(sched_indices_and_cond_inames, codegen_state, done_group_lengths=set()):
         # done_group_lengths serves to prevent infinite recursion by imposing a
         # bigger and bigger minimum size on the group of shared inames found.
@@ -169,6 +183,8 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
         # Keep growing schedule item group as long as group fulfills minimum
         # size requirement.
+
+        bounds_check_cache = BoundsCheckCache(kernel.domain, codegen_state.implemented_domain)
 
         current_iname_set = cond_inames
 
@@ -193,14 +209,12 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
             # }}}
 
-            from loopy.codegen.bounds import generate_bounds_checks
             only_unshared_inames = remove_inames_for_shared_hw_axes(kernel,
                     current_iname_set & used_inames)
 
-            bounds_checks = generate_bounds_checks(kernel.domain,
-                    remove_inames_for_shared_hw_axes(kernel,
-                        only_unshared_inames),
-                    codegen_state.implemented_domain)
+            bounds_checks = bounds_check_cache(
+                    frozenset(remove_inames_for_shared_hw_axes(kernel,
+                        only_unshared_inames)))
 
             if bounds_checks or candidate_group_length == 1:
                 # length-1 must always be an option to reach the recursion base case below
