@@ -6,7 +6,8 @@ import numpy as np
 from pytools import Record, memoize_method
 import islpy as isl
 from islpy import dim_type
-from pymbolic import var
+
+import re
 
 
 
@@ -390,240 +391,95 @@ class Instruction(Record):
 
 # }}}
 
-# {{{ reduction operations
+# {{{ expand defines
 
-class ReductionOperation(object):
-    def dtype(self, inames):
-        raise NotImplementedError
+MACRO_RE = re.compile(r"\{([a-zA-Z0-9_]+)\}")
 
-    def get_function_result_dtype_getter(self):
-        """If the reduction declares any functions, return a getter that
-        makes their return types known to type inference.
-        """
-        return None
+def expand_defines(insn, defines):
+    macros = set(match.group(1) for match in MACRO_RE.finditer(insn))
 
-    def get_preambles(self, inames):
-        return []
+    replacements = [()]
+    for mac in macros:
+        value = defines[mac]
+        if isinstance(value, list):
+            replacements = [
+                    rep+(("{%s}" % mac, subval),)
+                    for rep in replacements
+                    for subval in value
+                    ]
+        else:
+            replacements = [
+                    rep+(("{%s}" % mac, value),)
+                    for rep in replacements]
 
-    def neutral_element(self, inames):
-        raise NotImplementedError
+    for rep in replacements:
+        rep_value = insn
+        for name, val in rep:
+            rep_value = rep_value.replace(name, str(val))
 
-    def __call__(self, operand1, operand2):
-        raise NotImplementedError
+        yield rep_value
 
-class ScalarReductionOperation(ReductionOperation):
-    def __init__(self, dtype):
-        self.scalar_dtype = dtype
+# }}}
 
-    def dtype(self, inames):
-        return self.scalar_dtype
+# {{{ function manglers
 
-    def __str__(self):
-        return (type(self).__name__.replace("ReductionOperation", "").lower()
-                + "_" + str(self.dtype))
+def default_function_mangler(name, arg_dtypes):
+    from loopy.reduction import reduction_function_mangler
 
-class SumReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, inames):
-        return 0
-
-    def __call__(self, operand1, operand2, index):
-        return operand1 + operand2
-
-class ProductReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, inames):
-        return 1
-
-    def __call__(self, operand1, operand2, index):
-        return operand1 * operand2
-
-def get_le_neutral(dtype):
-    """Return a number y that satisfies (x <= y) for all y."""
-
-    if dtype.kind == "f":
-        # OpenCL 1.1, section 6.11.2
-        return var("INFINITY")
-    else:
-        raise NotImplementedError("less")
-
-class MaxReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, inames):
-        return get_le_neutral(self.dtype)
-
-    def __call__(self, operand1, operand2, index):
-        return var("max")(operand1, operand2)
-
-class MinReductionOperation(ScalarReductionOperation):
-    @property
-    def neutral_element(self, inames):
-        return -get_le_neutral(self.dtype)
-
-    def __call__(self, operand1, operand2, index):
-        return var("min")(operand1, operand2)
-
-
-
-
-class _ArgExtremumReductionOperation(ReductionOperation):
-    def __init__(self, dtype):
-        self.scalar_dtype = dtype
-
-        self.struct_dtype = np.dtype(
-                [("value", self.scalar_dtype),
-                ("index", np.int32)])
-
-        self.prefix = "loopy_arg%s_%s" % (self.which, self.scalar_dtype.type.__name__)
-        self.type_name = self.prefix + "_result"
-        from pyopencl.tools import register_dtype
-        register_dtype(self.struct_dtype, self.type_name, alias_ok=True)
-
-    def dtype(self, inames):
-        return self.struct_dtype
-
-    def get_function_result_dtype_getter(self):
-        names = [self.prefix+"_init", self.prefix+"_update"]
-
-        def getter(name, arg_dtypes):
-            if name in names:
-                return self.struct_dtype
-
-            return None
-
-        return getter
-
-    def get_preambles(self, inames):
-        """Returns a tuple (preamble_key, preamble), where *preamble* is a string
-        that goes into the kernel preamble, and *preamble_key* is a unique
-        identifier. No two preambles with the same key will be emitted.
-        """
-
-        if len(inames) != 1:
-            raise RuntimeError("arg%s must be used with exactly one iname"
-                    % self.which)
-
-        from pyopencl.tools import dtype_to_ctype
-        from pymbolic.mapper.c_code import CCodeMapper
-
-        c_code_mapper = CCodeMapper()
-
-        return [(self.prefix, """
-        typedef struct {
-            %(scalar_type)s value;
-            int index;
-        } %(type_name)s;
-
-        inline %(type_name)s %(prefix)s_init()
-        {
-            %(type_name)s result;
-            result.value = %(neutral)s;
-            result.index = INT_MIN;
-            return result;
-        }
-
-        inline %(type_name)s %(prefix)s_update(
-            %(type_name)s state, %(scalar_type)s op2, int index)
-        {
-            %(type_name)s result;
-            if (op2 %(comp)s state.value)
-            {
-                result.value = op2;
-                result.index = index;
-                return result;
-            }
-            else return state;
-        }
-        """ % dict(
-                type_name=self.type_name,
-                scalar_type=dtype_to_ctype(self.scalar_dtype),
-                prefix=self.prefix,
-                neutral=c_code_mapper(
-                    self.neutral_sign*get_le_neutral(self.scalar_dtype)),
-                comp=self.update_comparison,
-                ))]
-
-    def neutral_element(self, inames):
-        return var(self.prefix+"_init")()
-
-    def __call__(self, operand1, operand2, inames):
-        iname, = inames
-
-        return var(self.prefix+"_update")(
-                operand1, operand2, var(iname))
-
-class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
-    which = "max"
-    update_comparison = ">="
-    neutral_sign = -1
-
-class ArgMinReductionOperation(_ArgExtremumReductionOperation):
-    which = "min"
-    update_comparison = "<="
-    neutral_sign = +1
-
-
-
-
-
-
-_REDUCTION_OPS = {
-        "sum": SumReductionOperation,
-        "product": ProductReductionOperation,
-        "max": MaxReductionOperation,
-        "min": MinReductionOperation,
-        "argmax": ArgMaxReductionOperation,
-        "argmin": ArgMinReductionOperation,
-        }
-
-_REDUCTION_OP_PARSERS = [
-        ]
-
-
-def register_reduction_parser(parser):
-    """Register a new :class:`ReductionOperation`.
-
-    :arg parser: A function that receives a string and returns
-        a subclass of ReductionOperation.
-    """
-    _REDUCTION_OP_PARSERS.append(parser)
-
-def parse_reduction_op(name):
-    import re
-    red_op_match = re.match(r"^([a-z]+)_([a-z0-9_]+)$", name)
-    if red_op_match:
-        op_name = red_op_match.group(1)
-        op_type = red_op_match.group(2)
-
-        try:
-            op_dtype = np.dtype(op_type)
-        except TypeError:
-            op_dtype = None
-
-        if op_dtype is None and op_type.startswith("vec_"):
-            import pyopencl.array as cl_array
-            try:
-                op_dtype = getattr(cl_array.vec, op_type[4:])
-            except AttributeError:
-                op_dtype = None
-
-        if op_name in _REDUCTION_OPS and op_dtype is not None:
-            return _REDUCTION_OPS[op_name](op_dtype)
-
-    for parser in _REDUCTION_OP_PARSERS:
-        result = parser(name)
+    manglers = [reduction_function_mangler]
+    for mangler in manglers:
+        result = mangler(name, arg_dtypes)
         if result is not None:
             return result
 
     return None
 
+def single_arg_function_mangler(name, arg_dtypes):
+    if len(arg_dtypes) == 1:
+        dtype, = arg_dtypes
+        return dtype, name
+
+    return None
+
+# }}}
+
+# {{{ preamble generators
+
+def default_preamble_generator(seen_dtypes, seen_functions):
+    from loopy.reduction import reduction_preamble_generator
+
+    for result in reduction_preamble_generator(seen_dtypes, seen_functions):
+        yield result
+
+    has_double = False
+    has_complex = False
+
+    for dtype in seen_dtypes:
+        if dtype in [np.float64, np.complex128]:
+            has_double = True
+        if dtype.kind == "c":
+            has_complex = True
+
+    if has_double:
+        yield ("00_enable_double", """
+            #pragma OPENCL EXTENSION cl_khr_fp64: enable
+            """)
+
+    if has_complex:
+        if has_double:
+            yield ("10_include_complex_header", """
+                #define PYOPENCL_DEFINE_CDOUBLE
+
+                #include <pyopencl-complex.h>
+                """)
+        else:
+            yield ("10_include_complex_header", """
+                #include <pyopencl-complex.h>
+                """)
+
 # }}}
 
 # {{{ loop kernel object
-
-def _default_get_function_result_dtype(name, arg_dtypes):
-    if len(arg_dtypes) == 1:
-        dtype, = arg_dtypes
-        return dtype
-
-    return None
 
 class LoopKernel(Record):
     """
@@ -635,27 +491,39 @@ class LoopKernel(Record):
     :ivar name:
     :ivar preambles: a list of (tag, code) tuples that identify preamble snippets.
         Each tag's snippet is only included once, at its first occurrence.
+        The preambles will be inserted in order of their tags.
+    :ivar preamble_generators: a list of functions of signature
+        (seen_dtypes, seen_functions) where seen_functions is a set of
+        (name, c_name, arg_dtypes), generating extra entries for `preambles`.
     :ivar assumptions: the initial implemented_domain, captures assumptions
         on the parameters. (an isl.Set)
+    :ivar local_sizes: A dictionary from integers to integers, mapping
+        workgroup axes to their sizes, e.g. *{0: 16}* forces axis 0 to be
+        length 16.
+    :ivar temporary_variables:
+    :ivar iname_to_tag:
+    :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
+        objects
+    :ivar function_manglers: list of functions of signature (name, arg_dtypes)
+        returning a tuple (result_dtype, function_name), where the function_name
+        is the C-level function to be called.
+    :ivar defines: a dictionary of replacements to be made in instructions given
+        as strings before parsing. A macro instance intended to be replaced should 
+        look like "{MACRO}" in the instruction code. The expansion given in this
+        parameter is allowed to be a list. In this case, instructions are generated
+        for *each* combination of macro values.
+
+    The following arguments are not user-facing:
+
     :ivar iname_slab_increments: a dictionary mapping inames to (lower_incr,
         upper_incr) tuples that will be separated out in the execution to generate
         'bulk' slabs with fewer conditionals.
-    :ivar temporary_variables:
-    :ivar iname_to_tag:
-    :ivar local_sizes: A dictionary from integers to integers, mapping
-        workgroup axes to ther sizes, e.g. *{0: 16}* forces axis 0 to be
-        length 16.
-    :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
-        objects
-    :ivar lowest_priority_inames:
-    :ivar breakable_inames: these inames' loops may be broken up by the scheduler
-    :ivar applied_substitutions: A list of past substitution dictionaries that
+    :ivar applied_iname_rewrites: A list of past substitution dictionaries that
         were applied to the kernel. These are stored so that they may be repeated
         on expressions the user specifies later.
-    :ivar function_result_dtype_getters: list of functions of signature (name, arg_dtypes)
-        returning the result dtype of that function.
-
     :ivar cache_manager:
+    :ivar lowest_priority_inames:
+    :ivar breakable_inames: these inames' loops may be broken up by the scheduler
 
     The following instance variables are only used until :func:`loopy.make_kernel` is
     finished:
@@ -665,14 +533,22 @@ class LoopKernel(Record):
 
     def __init__(self, device, domain, instructions, args=None, schedule=None,
             name="loopy_kernel",
-            preambles=[], assumptions=None,
-            iname_slab_increments={},
-            temporary_variables={},
+            preambles=[], 
+            preamble_generators=[default_preamble_generator],
+            assumptions=None,
             local_sizes={},
-            iname_to_tag={}, iname_to_tag_requests=None, substitutions={},
-            cache_manager=None, lowest_priority_inames=[], breakable_inames=set(),
-            applied_substitutions=[],
-            function_result_dtype_getters=[_default_get_function_result_dtype]):
+            temporary_variables={},
+            iname_to_tag={},
+            substitutions={},
+            function_manglers=[default_function_mangler, single_arg_function_mangler],
+            defines={},
+
+            # non-user-facing
+            iname_slab_increments={},
+            applied_iname_rewrites=[],
+            cache_manager=None,
+            iname_to_tag_requests=None, 
+            lowest_priority_inames=[], breakable_inames=set()):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -734,20 +610,7 @@ class LoopKernel(Record):
 
         # {{{ instruction parser
 
-        def parse_if_necessary(insn):
-            from loopy.symbolic import parse
-
-            if isinstance(insn, Instruction):
-                if insn.id is None:
-                    insn = insn.copy(id=self.make_unique_instruction_id(insns))
-                insns.append(insn)
-                return
-
-            if not isinstance(insn, str):
-                raise TypeError("Instructions must be either an Instruction "
-                        "instance or a parseable string. got '%s' instead."
-                        % type(insn))
-
+        def parse_insn(insn):
             insn_match = INSN_RE.match(insn)
             subst_match = SUBST_RE.match(insn)
             if insn_match is not None and subst_match is not None:
@@ -760,6 +623,7 @@ class LoopKernel(Record):
             else:
                 raise RuntimeError("insn parse error")
 
+            from loopy.symbolic import parse
             lhs = parse(groups["lhs"])
             rhs = parse(groups["rhs"])
 
@@ -835,6 +699,22 @@ class LoopKernel(Record):
                         arguments=arg_names,
                         expression=rhs)
 
+        def parse_if_necessary(insn):
+            if isinstance(insn, Instruction):
+                if insn.id is None:
+                    insn = insn.copy(id=self.make_unique_instruction_id(insns))
+                insns.append(insn)
+                return
+
+            if not isinstance(insn, str):
+                raise TypeError("Instructions must be either an Instruction "
+                        "instance or a parseable string. got '%s' instead."
+                        % type(insn))
+
+            for insn in expand_defines(insn, defines):
+                parse_insn(insn)
+
+
         # }}}
 
         insns = []
@@ -866,6 +746,7 @@ class LoopKernel(Record):
                 schedule=schedule,
                 name=name,
                 preambles=preambles,
+                preamble_generators=preamble_generators,
                 assumptions=assumptions,
                 iname_slab_increments=iname_slab_increments,
                 temporary_variables=temporary_variables,
@@ -876,8 +757,8 @@ class LoopKernel(Record):
                 cache_manager=cache_manager,
                 lowest_priority_inames=lowest_priority_inames,
                 breakable_inames=breakable_inames,
-                applied_substitutions=applied_substitutions,
-                function_result_dtype_getters=function_result_dtype_getters)
+                applied_iname_rewrites=applied_iname_rewrites,
+                function_manglers=function_manglers)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:

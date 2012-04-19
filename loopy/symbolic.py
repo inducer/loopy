@@ -5,7 +5,7 @@ from __future__ import division
 from pytools import memoize, memoize_method
 
 from pymbolic.primitives import (
-        AlgebraicLeaf, Variable as VariableBase,
+        Leaf, AlgebraicLeaf, Variable as VariableBase,
         CommonSubexpression)
 
 from pymbolic.mapper import (
@@ -32,6 +32,12 @@ from islpy import dim_type
 
 # {{{ loopy-specific primitives
 
+class FunctionIdentifier(Leaf):
+    def __getinitargs__(self):
+        return ()
+
+    mapper_method = intern("map_loopy_function_identifier")
+
 class TypedCSE(CommonSubexpression):
     def __init__(self, child, prefix=None, dtype=None):
         CommonSubexpression.__init__(self, child, prefix)
@@ -45,6 +51,11 @@ class TypedCSE(CommonSubexpression):
 
 
 class TaggedVariable(VariableBase):
+    """This is an identifier with a tag, such as 'matrix$one', where
+    'one' identifies this specific use of the identifier. This mechanism
+    may then be used to address these uses--such as by prefetching only 
+    accesses tagged a certain way.
+    """
     def __init__(self, name, tag):
         VariableBase.__init__(self, name)
         self.tag = tag
@@ -62,7 +73,7 @@ class Reduction(AlgebraicLeaf):
         assert isinstance(inames, tuple)
 
         if isinstance(operation, str):
-            from loopy.kernel import parse_reduction_op
+            from loopy.reduction import parse_reduction_op
             operation = parse_reduction_op(operation)
 
         self.operation = operation
@@ -109,6 +120,9 @@ class IdentityMapperMixin(object):
         # leaf, doesn't change
         return expr
 
+    def map_loopy_function_identifier(self, expr):
+        return expr
+
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
 
@@ -142,6 +156,9 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_tagged_variable(self, expr):
         return set([expr])
+
+    def map_loopy_function_identifier(self, expr):
+        return set()
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
@@ -224,7 +241,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         else:
             # see if 'name' is an existing reduction op
 
-            from loopy.kernel import parse_reduction_op
+            from loopy.reduction import parse_reduction_op
             if parse_reduction_op(name):
                 if len(expr.parameters) != 2:
                     raise RuntimeError("invalid invocation of "

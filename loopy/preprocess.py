@@ -6,85 +6,103 @@ import pyopencl.characterize as cl_char
 
 
 
-# {{{ gather dtype getters from reduction operations
+# {{{ infer types
 
-def gather_dtype_getters(kernel):
-    dtype_getters = kernel.function_result_dtype_getters
+def infer_temp_var_type(kernel, tv, type_inf_mapper, debug):
+    dtypes = []
 
-    def gather_from_reduction(expr, rec):
-        red_getter = expr.operation.get_function_result_dtype_getter()
-        if red_getter is not None:
-            dtype_getters.append(red_getter)
+    writers = kernel.writer_map()[tv.name]
+    exprs = [kernel.id_to_insn[w].expression for w in writers]
 
-        rec(expr.expr)
+    from loopy.codegen.expression import DependencyTypeInferenceFailure
+    for expr in exprs:
+        try:
+            if debug:
+                print "             via expr", expr
+            result = type_inf_mapper(expr)
 
-    from loopy.symbolic import ReductionCallbackMapper
-    rcm = ReductionCallbackMapper(gather_from_reduction)
-    for insn in kernel.instructions:
-        rcm(insn.expression)
+            if debug:
+                print "             result", result
 
-    return kernel.copy(function_result_dtype_getters=dtype_getters)
+            dtypes.append(result)
 
-# }}}
+        except DependencyTypeInferenceFailure:
+            if debug:
+                print "             failed"
 
-# {{{ infer types of temporaries
+    if not dtypes:
+        return None
 
-def infer_types_of_temporaries(kernel):
-    new_temp_vars = {}
+    from pytools import is_single_valued
+    if not is_single_valued(dtypes):
+        raise RuntimeError("ambiguous type inference for '%s'"
+                % tv.name)
 
+    return dtypes[0]
+
+def infer_types(kernel):
+    """Infer types on temporaries and reductions."""
+
+    new_temp_vars = kernel.temporary_variables.copy()
+
+    # {{{ fill queue
+
+    # queue contains temporary variables and reductions
     queue = []
 
     from loopy import infer_type
     for tv in kernel.temporary_variables.itervalues():
         if tv.dtype is infer_type:
             queue.append(tv)
-            new_temp_vars[tv.name] = tv
-        else:
-            new_temp_vars[tv.name] = tv
 
-    from loopy.codegen.expression import (
-            TypeInferenceMapper, DependencyTypeInferenceFailure)
-    tim = TypeInferenceMapper(kernel, new_temp_vars)
+    # }}}
+
+    from loopy.codegen.expression import TypeInferenceMapper
+    type_inf_mapper = TypeInferenceMapper(kernel, new_temp_vars)
+
+    # {{{ work on type inference queue
+
+    from loopy.kernel import TemporaryVariable
+
+    debug = 0
 
     first_failure = None
     while queue:
-        tv = queue.pop(0)
+        item = queue.pop(0)
 
-        dtypes = []
+        if isinstance(item, TemporaryVariable):
+            if debug:
+                print "inferring type for tempvar", item.name
 
-        writers = kernel.writer_map()[tv.name]
-        exprs = [kernel.id_to_insn[w].expression for w in writers]
+            result = infer_temp_var_type(kernel, item, type_inf_mapper, debug)
 
-        for expr in exprs:
-            try:
-                dtypes.append(tim(expr))
-            except DependencyTypeInferenceFailure:
-                pass
+            failed = result is None
+            if not failed:
+                if debug:
+                    print "     success", result
+                new_temp_vars[item.name] = item.copy(dtype=result)
+            else:
+                if debug:
+                    print "     failure", result
+        else:
+            raise RuntimeError("unexpected item type in type inference")
 
-        if not dtypes:
-            if tv is first_failure:
-                # this has failed before, give up.
-                raise RuntimeError("could not determine type of '%s' from expression(s) '%s'"
-                        % (tv.name,
-                            ", ".join(str(e) for e in exprs)))
+        if failed:
+            if item is first_failure:
+                # this item has failed before, give up.
+                raise RuntimeError("could not determine type of '%s'" % item)
 
             if first_failure is None:
                 # remember the first failure for this round through the queue
-                first_failure = tv
+                first_failure = item
 
             # can't infer type yet, put back into queue
-            queue.append(tv)
-            continue
+            queue.append(item)
+        else:
+            # we've made progress, reset failure marker
+            first_failure = None
 
-        from pytools import is_single_valued
-        if not is_single_valued(dtypes):
-            raise RuntimeError("ambiguous type inference for '%s'"
-                    % tv.name)
-
-        new_temp_vars[tv.name] = tv.copy(dtype=dtypes[0])
-
-        # we've made progress, reset failure flag.
-        first_failure = None
+    # }}}
 
     return kernel.copy(temporary_variables=new_temp_vars)
 
@@ -209,9 +227,11 @@ def realize_reduction(kernel, insn_id_filter=None):
 
     new_insns = []
     new_temporary_variables = kernel.temporary_variables.copy()
-    new_preambles = kernel.preambles
 
     from loopy.kernel import IlpBaseTag
+
+    from loopy.codegen.expression import TypeInferenceMapper
+    type_inf_mapper = TypeInferenceMapper(kernel)
 
     def map_reduction(expr, rec):
         # Only expand one level of reduction at a time, going from outermost to
@@ -239,8 +259,6 @@ def realize_reduction(kernel, insn_id_filter=None):
 
         # }}}
 
-        new_preambles.extend(expr.operation.get_preambles(expr.inames))
-
         from pymbolic import var
 
         target_var_name = kernel.make_unique_var_name("acc_"+"_".join(expr.inames),
@@ -251,12 +269,14 @@ def realize_reduction(kernel, insn_id_filter=None):
             target_var = target_var[
                     tuple(var(ilp_iname) for ilp_iname in ilp_inames)]
 
+        arg_dtype = type_inf_mapper(expr.expr)
+
         from loopy.kernel import Instruction
 
         from loopy.kernel import TemporaryVariable
         new_temporary_variables[target_var_name] = TemporaryVariable(
                 name=target_var_name,
-                dtype=expr.operation.dtype(expr.inames),
+                dtype=expr.operation.result_dtype(arg_dtype, expr.inames),
                 shape=tuple(ilp_iname_lengths),
                 is_local=False)
 
@@ -268,7 +288,7 @@ def realize_reduction(kernel, insn_id_filter=None):
                 id=new_id,
                 assignee=target_var,
                 forced_iname_deps=temp_kernel.insn_inames(insn) - set(expr.inames),
-                expression=expr.operation.neutral_element(expr.inames))
+                expression=expr.operation.neutral_element(arg_dtype, expr.inames))
 
         generated_insns.append(init_insn)
 
@@ -279,7 +299,7 @@ def realize_reduction(kernel, insn_id_filter=None):
         reduction_insn = Instruction(
                 id=new_id,
                 assignee=target_var,
-                expression=expr.operation(target_var, expr.expr, expr.inames),
+                expression=expr.operation(arg_dtype, target_var, expr.expr, expr.inames),
                 insn_deps=set([init_insn.id]) | insn.insn_deps,
                 forced_iname_deps=temp_kernel.insn_inames(insn) | set(expr.inames))
 
@@ -783,17 +803,18 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
-    kernel = gather_dtype_getters(kernel)
 
-    # all type inference must happen *after* this point (because only then all
-    # the functions return dtype getters are available.)
 
-    kernel = infer_types_of_temporaries(kernel)
+    kernel = infer_types(kernel)
+
+    # Ordering restriction:
+    # realize_reduction must happen after type inference because it needs
+    # to be able to determine the types of the reduced expressions.
+
+    kernel = realize_reduction(kernel)
 
     from loopy.subst import expand_subst
     kernel = expand_subst(kernel)
-
-    kernel = realize_reduction(kernel)
 
     # Ordering restriction:
     # Must realize reductions before realizing ILP, because realize_ilp()

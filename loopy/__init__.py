@@ -22,8 +22,10 @@ class LoopyAdvisory(UserWarning):
 from loopy.kernel import ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg
 
 from loopy.kernel import (AutoFitLocalIndexTag, get_dot_dependency_graph,
-        LoopKernel, Instruction)
+        LoopKernel, Instruction, default_function_mangler, single_arg_function_mangler,
+        default_preamble_generator)
 from loopy.creation import make_kernel
+from loopy.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel, realize_reduction
@@ -34,7 +36,11 @@ from loopy.check import check_kernels
 
 __all__ = ["ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
         "LoopKernel",
-        "Instruction", "make_kernel",
+        "Instruction",
+        "default_function_mangler", "single_arg_function_mangler",
+        "default_preamble_generator",
+        "make_kernel",
+        "register_reduction_parser",
         "get_dot_dependency_graph",
         "preprocess_kernel", "realize_reduction",
         "generate_loop_schedules",
@@ -64,7 +70,7 @@ def split_dimension(kernel, split_iname, inner_length,
     if split_iname not in kernel.all_inames():
         raise ValueError("cannot split loop for unknown variable '%s'" % split_iname)
 
-    applied_substitutions = kernel.applied_substitutions[:]
+    applied_iname_rewrites = kernel.applied_iname_rewrites[:]
 
     if outer_iname is None:
         outer_iname = split_iname+"_outer"
@@ -109,7 +115,7 @@ def split_dimension(kernel, split_iname, inner_length,
     new_insns = []
     for insn in kernel.instructions:
         subst_map = {var(split_iname): new_loop_index}
-        applied_substitutions.append(subst_map)
+        applied_iname_rewrites.append(subst_map)
 
         from loopy.symbolic import SubstitutionMapper
         subst_mapper = SubstitutionMapper(subst_map.get)
@@ -139,7 +145,7 @@ def split_dimension(kernel, split_iname, inner_length,
             .copy(domain=new_domain,
                 iname_slab_increments=iname_slab_increments,
                 instructions=new_insns,
-                applied_substitutions=applied_substitutions,
+                applied_iname_rewrites=applied_iname_rewrites,
                 ))
 
     return tag_dimensions(result, {outer_iname: outer_tag, inner_iname: inner_tag})
@@ -232,7 +238,7 @@ def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
             .map_expressions(subst_map, exclude_instructions=True)
             .copy(
                 instructions=new_insns, domain=new_domain,
-                applied_substitutions=kernel.applied_substitutions + [subst_map]
+                applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_map]
                 ))
 
     return tag_dimensions(result, {new_iname: tag})
@@ -376,7 +382,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             if len(si) != arg.dimensions:
                 raise ValueError("sweep index '%s' has the wrong number of dimensions")
 
-            for subst_map in kernel.applied_substitutions:
+            for subst_map in kernel.applied_iname_rewrites:
                 from loopy.symbolic import SubstitutionMapper
                 from pymbolic.mapper.substitutor import make_subst_func
                 si = SubstitutionMapper(make_subst_func(subst_map))(si)

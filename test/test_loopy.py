@@ -161,7 +161,7 @@ def test_argmax(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i]: 0<=i<%d}" % n,
             [
-                "<> result = argmax_float32(i, fabs(a[i]))",
+                "<> result = argmax(i, fabs(a[i]))",
                 "max_idx = result.index",
                 "max_val = result.value",
                 ],

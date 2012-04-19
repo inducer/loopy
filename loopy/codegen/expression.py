@@ -52,19 +52,21 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_call(self, expr):
         from pymbolic.primitives import Variable
-        if isinstance(expr.function, Variable):
-            name = expr.function.name
-            arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
-            for rdg in self.kernel.function_result_dtype_getters:
-                result = rdg(name, arg_dtypes)
-                if result is not None:
-                    return result
 
-            raise RuntimeError("no type inference information on "
-                    "function '%s'" % name)
+        identifier = expr.function
+        if isinstance(identifier, Variable):
+            identifier = identifier.name
 
-        else:
-            return CombineMapper.map_call(self, expr)
+        arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
+
+        for mangler in self.kernel.function_manglers:
+            mangle_result = mangler(identifier, arg_dtypes)
+            if mangle_result is not None:
+                result_dtype, _ = mangle_result
+                return result_dtype
+
+        raise RuntimeError("no type inference information on "
+                "function '%s'" % identifier)
 
     def map_variable(self, expr):
         try:
@@ -96,33 +98,44 @@ class TypeInferenceMapper(CombineMapper):
         return dtype
 
     def map_reduction(self, expr):
-        return expr.operation.dtype(expr.inames)
+        return expr.operation.result_dtype(self.rec(expr.expr), expr.inames)
 
 # }}}
 
 # {{{ C code mapper
 
 class LoopyCCodeMapper(CCodeMapper):
-    def __init__(self, kernel, cse_name_list=[], var_subst_map={},
+    def __init__(self, kernel, seen_dtypes, seen_functions, var_subst_map={},
             with_annotation=False, allow_complex=False):
+        """
+        :arg seen_dtypes: set of dtypes that were encountered
+        :arg seen_functions: set of tuples (name, c_name, arg_types) indicating
+            functions that were encountered.
+        """
 
-        CCodeMapper.__init__(self, cse_name_list=cse_name_list)
+        CCodeMapper.__init__(self)
         self.kernel = kernel
-        self.infer_type = TypeInferenceMapper(kernel)
+        self.seen_dtypes = seen_dtypes
+        self.seen_functions = seen_functions
+
+        self.type_inf_mapper = TypeInferenceMapper(kernel)
         self.allow_complex = allow_complex
 
         self.with_annotation = with_annotation
         self.var_subst_map = var_subst_map.copy()
 
-    def copy(self, var_subst_map=None, cse_name_list=None):
+    def copy(self, var_subst_map=None):
         if var_subst_map is None:
             var_subst_map = self.var_subst_map
-        if cse_name_list is None:
-            cse_name_list = self.cse_name_list
-        return LoopyCCodeMapper(self.kernel,
-                cse_name_list=cse_name_list, var_subst_map=var_subst_map,
+        return LoopyCCodeMapper(self.kernel, self.seen_dtypes, self.seen_functions,
+                var_subst_map=var_subst_map,
                 with_annotation=self.with_annotation,
                 allow_complex=self.allow_complex)
+
+    def infer_type(self, expr):
+        result = self.type_inf_mapper(expr)
+        self.seen_dtypes.add(result)
+        return result
 
     def copy_and_assign(self, name, value):
         """Make a copy of self with variable *name* fixed to *value*."""
@@ -268,6 +281,33 @@ class LoopyCCodeMapper(CCodeMapper):
             return "%s" % repr(expr)
         else:
             return CCodeMapper.map_constant(self, expr, enclosing_prec)
+
+    def map_call(self, expr, enclosing_prec):
+        from pymbolic.primitives import Variable
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        identifier = expr.function
+
+        c_name = None
+        if isinstance(identifier, Variable):
+            identifier = identifier.name
+            c_name = identifier
+
+        arg_dtypes = tuple(self.infer_type(par) for par in expr.parameters)
+
+        for mangler in self.kernel.function_manglers:
+            mangle_result = mangler(identifier, arg_dtypes)
+            if mangle_result is not None:
+                result_dtype, c_name = mangle_result
+
+        self.seen_functions.add((identifier, c_name, arg_dtypes))
+
+        if c_name is None:
+            raise RuntimeError("unable to find C name for function identifier '%s'"
+                    % identifier)
+
+        return self.format("%s(%s)",
+                c_name, self.join_rec(", ", expr.parameters, PREC_NONE))
 
     # {{{ deal with complex-valued variables
 

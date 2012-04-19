@@ -201,12 +201,16 @@ def generate_code(kernel, with_annotation=False,
         if var.dtype.kind == "c":
             allow_complex = True
 
+    seen_dtypes = set()
+    seen_functions = set()
+
     from loopy.codegen.expression import LoopyCCodeMapper
-    ccm = (LoopyCCodeMapper(kernel, with_annotation=with_annotation,
+    ccm = (LoopyCCodeMapper(kernel, seen_dtypes, seen_functions,
+        with_annotation=with_annotation,
         allow_complex=allow_complex)
         .copy_and_assign_many(make_initial_assignments(kernel)))
 
-    mod = Module()
+    mod = []
 
     body = Block()
 
@@ -220,7 +224,6 @@ def generate_code(kernel, with_annotation=False,
         else:
             return RestrictPointer(arg)
 
-    has_double = False
     has_image = False
 
     from loopy.kernel import GlobalArg, ConstantArg, ImageArg, ScalarArg
@@ -250,38 +253,12 @@ def generate_code(kernel, with_annotation=False,
         else:
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
-        if arg.dtype in [np.float64, np.complex128]:
-            has_double = True
-
         args.append(arg_decl)
-
-    if has_double:
-        mod.extend([
-            Line("#pragma OPENCL EXTENSION cl_khr_fp64: enable"),
-            Line()])
 
     if has_image:
         body.append(Initializer(Const(Value("sampler_t", "loopy_sampler")),
             "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
                 "| CLK_FILTER_NEAREST"))
-
-    # }}}
-
-    # {{{ handle preambles
-
-    seen_preamble_tags = set()
-    dedup_preambles = []
-
-    for tag, preamble in kernel.preambles:
-        if tag in seen_preamble_tags:
-            continue
-
-        seen_preamble_tags.add(tag)
-        dedup_preambles.append(preamble)
-
-    mod.extend(
-            [LiteralLines(lines) for lines in dedup_preambles]
-            +[Line()])
 
     # }}}
 
@@ -357,7 +334,28 @@ def generate_code(kernel, with_annotation=False,
     from loopy.check import check_implemented_domains
     assert check_implemented_domains(kernel, gen_code.implemented_domains)
 
-    return str(mod)
+    # {{{ handle preambles
+
+    preambles = kernel.preambles[:]
+    for prea_gen in kernel.preamble_generators:
+        preambles.extend(prea_gen(seen_dtypes, seen_functions))
+
+    seen_preamble_tags = set()
+    dedup_preambles = []
+
+    for tag, preamble in sorted(preambles, key=lambda tag_code: tag_code[0]):
+        if tag in seen_preamble_tags:
+            continue
+
+        seen_preamble_tags.add(tag)
+        dedup_preambles.append(preamble)
+
+    mod = ([LiteralLines(lines) for lines in dedup_preambles]
+            +[Line()] + mod)
+
+    # }}}
+
+    return str(Module(mod))
 
 # }}}
 
