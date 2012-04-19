@@ -53,7 +53,7 @@ class TypedCSE(CommonSubexpression):
 class TaggedVariable(VariableBase):
     """This is an identifier with a tag, such as 'matrix$one', where
     'one' identifies this specific use of the identifier. This mechanism
-    may then be used to address these uses--such as by prefetching only 
+    may then be used to address these uses--such as by prefetching only
     accesses tagged a certain way.
     """
     def __init__(self, name, tag):

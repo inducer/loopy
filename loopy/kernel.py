@@ -508,7 +508,7 @@ class LoopKernel(Record):
         returning a tuple (result_dtype, function_name), where the function_name
         is the C-level function to be called.
     :ivar defines: a dictionary of replacements to be made in instructions given
-        as strings before parsing. A macro instance intended to be replaced should 
+        as strings before parsing. A macro instance intended to be replaced should
         look like "{MACRO}" in the instruction code. The expansion given in this
         parameter is allowed to be a list. In this case, instructions are generated
         for *each* combination of macro values.
@@ -533,7 +533,7 @@ class LoopKernel(Record):
 
     def __init__(self, device, domain, instructions, args=None, schedule=None,
             name="loopy_kernel",
-            preambles=[], 
+            preambles=[],
             preamble_generators=[default_preamble_generator],
             assumptions=None,
             local_sizes={},
@@ -547,7 +547,7 @@ class LoopKernel(Record):
             iname_slab_increments={},
             applied_iname_rewrites=[],
             cache_manager=None,
-            iname_to_tag_requests=None, 
+            iname_to_tag_requests=None,
             lowest_priority_inames=[], breakable_inames=set()):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
