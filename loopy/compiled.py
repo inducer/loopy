@@ -203,22 +203,25 @@ class CompiledKernel:
 
         return evt, outputs
 
+    def print_code(self):
+        print get_highlighted_code(self.code)
+
 
 # }}}
 
 
 
 
-def print_highlighted_code(text):
+def get_highlighted_code(text):
     try:
         from pygments import highlight
     except ImportError:
-        print text
+        return text
     else:
         from pygments.lexers import CLexer
         from pygments.formatters import TerminalFormatter
 
-        print highlight(text, CLexer(), TerminalFormatter())
+        return highlight(text, CLexer(), TerminalFormatter())
 
 
 
@@ -257,7 +260,7 @@ def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
         print "SOLUTION #%d" % soln_count
         print "-----------------------------------------------"
         if print_code:
-            print_highlighted_code(compiled.code)
+            print get_highlighted_code(compiled.code)
             print "-----------------------------------------------"
 
         elapsed = time_run(compiled)
@@ -497,7 +500,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         print 75*"-"
         print "Reference Code:"
         print 75*"-"
-        print_highlighted_code(ref_compiled.code)
+        print get_highlighted_code(ref_compiled.code)
         print 75*"-"
 
     ref_args, ref_input_arrays, ref_output_arrays = \
@@ -543,7 +546,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         print "Kernel #%d:" % i
         print 75*"-"
         if print_code:
-            print_highlighted_code(compiled.code)
+            print get_highlighted_code(compiled.code)
             print 75*"-"
         if dump_binary:
             print type(compiled.cl_program)
