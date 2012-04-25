@@ -209,7 +209,6 @@ class LoopyCCodeMapper(CCodeMapper):
                     ary_strides = arg.strides
                 else:
                     ary_strides = (1,)
-                    index_expr = (index_expr,)
 
                 if len(ary_strides) != len(index_expr):
                     raise RuntimeError("subscript to '%s' in '%s' has the wrong "
