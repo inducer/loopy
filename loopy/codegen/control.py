@@ -167,8 +167,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
         def __call__(self, check_inames):
             from loopy.codegen.bounds import generate_bounds_checks
             return generate_bounds_checks(self.domain,
-                    check_inames,
-                    codegen_state.implemented_domain)
+                    check_inames, self.impl_domain)
 
     def build_insn_group(sched_indices_and_cond_inames, codegen_state, done_group_lengths=set()):
         # done_group_lengths serves to prevent infinite recursion by imposing a
