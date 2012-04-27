@@ -783,6 +783,10 @@ class LoopKernel(Record):
 
     @memoize_method
     def all_insn_inames(self):
+        """Return a mapping from instruction ids to inames inside which
+        they should be run.
+        """
+
         return find_all_insn_inames(
                 self.instructions, self.all_inames(),
                 writer_map=self.writer_map(),
