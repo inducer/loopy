@@ -90,6 +90,12 @@ class TypeInferenceMapper(CombineMapper):
         if expr.name in self.kernel.all_inames():
             return np.dtype(np.int16) # don't force single-precision upcast
 
+        for mangler in self.kernel.symbol_manglers:
+            result = mangler(expr.name)
+            if result is not None:
+                result_dtype, _ = result
+                return result_dtype
+
         raise TypeInferenceFailure("nothing known about '%s'" % expr.name)
 
     def map_lookup(self, expr):
@@ -162,14 +168,19 @@ class LoopyCCodeMapper(CCodeMapper):
                         self.rec(self.var_subst_map[expr.name], prec))
             else:
                 return str(self.rec(self.var_subst_map[expr.name], prec))
-        else:
-            if expr.name in self.kernel.arg_dict:
-                arg = self.kernel.arg_dict[expr.name]
-                from loopy.kernel import _ShapedArg
-                if isinstance(arg, _ShapedArg) and arg.shape == ():
-                    return "*"+expr.name
+        elif expr.name in self.kernel.arg_dict:
+            arg = self.kernel.arg_dict[expr.name]
+            from loopy.kernel import _ShapedArg
+            if isinstance(arg, _ShapedArg) and arg.shape == ():
+                return "*"+expr.name
 
-            return CCodeMapper.map_variable(self, expr, prec)
+        for mangler in self.kernel.symbol_manglers:
+            result = mangler(expr.name)
+            if result is not None:
+                _, c_name = result
+                return c_name
+
+        return CCodeMapper.map_variable(self, expr, prec)
 
     def map_tagged_variable(self, expr, enclosing_prec):
         return expr.name

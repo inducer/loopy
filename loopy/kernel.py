@@ -114,7 +114,7 @@ def parse_tag(tag):
 
 # {{{ arguments
 
-class _ShapedArg:
+class _ShapedArg(object):
     def __init__(self, name, dtype, strides=None, shape=None, order="C",
             offset=0):
         """
@@ -192,7 +192,7 @@ class ConstantArg(_ShapedArg):
         return "<ConstantArg '%s' of type %s and shape (%s)>" % (
                 self.name, self.dtype, ",".join(str(i) for i in self.shape))
 
-class ImageArg:
+class ImageArg(object):
     def __init__(self, name, dtype, dimensions=None, shape=None):
         self.name = name
         self.dtype = np.dtype(dtype)
@@ -211,7 +211,7 @@ class ImageArg:
         return "<ImageArg '%s' of type %s>" % (self.name, self.dtype)
 
 
-class ScalarArg:
+class ScalarArg(object):
     def __init__(self, name, dtype, approximately=None):
         self.name = name
         self.dtype = np.dtype(dtype)
@@ -421,7 +421,7 @@ def expand_defines(insn, defines):
 
 # }}}
 
-# {{{ function manglers
+# {{{ function manglers / dtype getters
 
 def default_function_mangler(name, arg_dtypes):
     from loopy.reduction import reduction_function_mangler
@@ -440,6 +440,20 @@ def single_arg_function_mangler(name, arg_dtypes):
         return dtype, name
 
     return None
+
+def opencl_symbol_mangler(name):
+    # FIXME: should be more picky about exact names
+    if name.startswith("FLT_"):
+        return np.dtype(np.float32), name
+    elif name.startswith("DBL_"):
+        return np.dtype(np.float64), name
+    elif name.startswith("M_"):
+        if name.endswith("_F"):
+            return np.dtype(np.float32), name
+        else:
+            return np.dtype(np.float64), name
+    else:
+        return None
 
 # }}}
 
@@ -505,8 +519,11 @@ class LoopKernel(Record):
     :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
         objects
     :ivar function_manglers: list of functions of signature (name, arg_dtypes)
-        returning a tuple (result_dtype, function_name), where the function_name
+        returning a tuple (result_dtype, c_name), where c_name
         is the C-level function to be called.
+    :ivar symbol_manglers: list of functions of signature (name) returning
+        a tuple (result_dtype, c_name), where c_name is the C-level symbol to be
+        evaluated.
     :ivar defines: a dictionary of replacements to be made in instructions given
         as strings before parsing. A macro instance intended to be replaced should
         look like "{MACRO}" in the instruction code. The expansion given in this
@@ -541,6 +558,7 @@ class LoopKernel(Record):
             iname_to_tag={},
             substitutions={},
             function_manglers=[default_function_mangler, single_arg_function_mangler],
+            symbol_manglers=[opencl_symbol_mangler],
             defines={},
 
             # non-user-facing
@@ -758,7 +776,8 @@ class LoopKernel(Record):
                 lowest_priority_inames=lowest_priority_inames,
                 breakable_inames=breakable_inames,
                 applied_iname_rewrites=applied_iname_rewrites,
-                function_manglers=function_manglers)
+                function_manglers=function_manglers,
+                symbol_manglers=symbol_manglers)
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:

@@ -153,6 +153,15 @@ class CompiledKernel:
             is_written = arg.name in self.kernel.get_written_variables()
 
             val = kwargs_copy.pop(arg.name, None)
+
+            # automatically transfer host-side arrays
+            if isinstance(arg, lp.GlobalArg):
+                if isinstance(val, np.ndarray):
+                    # synchronous, so nothing to worry about
+                    val = cl_array.to_device(queue, val, allocator=allocator)
+                elif val is not None:
+                    encountered_non_numpy = True
+
             if val is None:
                 if not is_written:
                     raise TypeError("must supply input argument '%s'" % arg.name)
@@ -167,14 +176,6 @@ class CompiledKernel:
                         allocator=allocator)
             else:
                 assert _arg_matches_spec(arg, val, kwargs)
-
-            # automatically transfer host-side arrays
-            if isinstance(arg, lp.GlobalArg):
-                if isinstance(val, np.ndarray):
-                    # synchronous, so nothing to worry about
-                    val = cl_array.to_device(queue, val, allocator=allocator)
-                else:
-                    encountered_non_numpy = True
 
             if is_written:
                 outputs.append(val)
@@ -196,7 +197,7 @@ class CompiledKernel:
                     *args,
                     g_times_l=True, wait_for=wait_for)
 
-        if out_host is None and encountered_non_numpy:
+        if out_host is None and not encountered_non_numpy:
             out_host = True
         if out_host:
             outputs = [o.get() for o in outputs]
