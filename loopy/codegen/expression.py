@@ -59,11 +59,10 @@ class TypeInferenceMapper(CombineMapper):
 
         arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
 
-        for mangler in self.kernel.function_manglers:
-            mangle_result = mangler(identifier, arg_dtypes)
-            if mangle_result is not None:
-                result_dtype, _ = mangle_result
-                return result_dtype
+        mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
+        if mangle_result is not None:
+            result_dtype, c_name = mangle_result
+            return result_dtype
 
         raise RuntimeError("no type inference information on "
                 "function '%s'" % identifier)
@@ -305,10 +304,9 @@ class LoopyCCodeMapper(CCodeMapper):
 
         arg_dtypes = tuple(self.infer_type(par) for par in expr.parameters)
 
-        for mangler in self.kernel.function_manglers:
-            mangle_result = mangler(identifier, arg_dtypes)
-            if mangle_result is not None:
-                result_dtype, c_name = mangle_result
+        mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
+        if mangle_result is not None:
+            result_dtype, c_name = mangle_result
 
         self.seen_functions.add((identifier, c_name, arg_dtypes))
 

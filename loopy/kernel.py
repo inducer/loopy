@@ -495,6 +495,15 @@ def default_preamble_generator(seen_dtypes, seen_functions):
 
 # {{{ loop kernel object
 
+def _generate_unique_possibilities(prefix):
+    yield prefix
+
+    try_num = 0
+    while True:
+        yield "%s_%d" % (prefix, try_num)
+        try_num += 1
+
+
 class LoopKernel(Record):
     """
     :ivar device: :class:`pyopencl.Device`
@@ -779,14 +788,29 @@ class LoopKernel(Record):
                 function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers)
 
+    # {{{ function mangling
+
+    def register_function_mangler(self, mangler):
+        return self.copy(
+                function_manglers=[mangler]+self.function_manglers)
+
+    def mangle_function(self, identifier, arg_dtypes):
+        for mangler in self.function_manglers:
+            mangle_result = mangler(identifier, arg_dtypes)
+            if mangle_result is not None:
+                return mangle_result
+
+        return None
+
+    # }}}
+
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:
             insns = self.instructions
 
         used_ids = set(insn.id for insn in insns) | extra_used_ids
 
-        from loopy.tools import generate_unique_possibilities
-        for id_str in generate_unique_possibilities(based_on):
+        for id_str in _generate_unique_possibilities(based_on):
             if id_str not in used_ids:
                 return id_str
 
@@ -916,8 +940,7 @@ class LoopKernel(Record):
     def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
         used_vars = self.all_variable_names() | extra_used_vars
 
-        from loopy.tools import generate_unique_possibilities
-        for var_name in generate_unique_possibilities(based_on):
+        for var_name in _generate_unique_possibilities(based_on):
             if var_name not in used_vars:
                 return var_name
 
