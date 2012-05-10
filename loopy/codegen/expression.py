@@ -388,7 +388,7 @@ class LoopyCCodeMapper(CCodeMapper):
 
             if real_prd:
                 # elementwise semantics are correct
-                result = "%s * %s" % (real_prd, complex_prd)
+                result = "%s*%s" % (real_prd, complex_prd)
             else:
                 result = complex_prd
 
