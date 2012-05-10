@@ -86,6 +86,8 @@ class CompiledKernel:
             self.cl_kernel = getattr(
                     self.cl_program.build(options=options),
                     kernel.name)
+        except KeyboardInterrupt:
+            raise
         except:
             print "[Loopy] ----------------------------------------------------"
             print "[Loopy] build failed, here's the source code:"
