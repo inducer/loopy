@@ -35,9 +35,11 @@ class CSEToAssignmentMapper(IdentityMapper):
                 dtype = None
 
             child = self.rec(expr.child)
+            from pymbolic.primitives import Variable
+            if isinstance(child, Variable):
+                return child
 
             var_name = self.add_assignment(expr.prefix, child, dtype)
-            from pymbolic.primitives import Variable
             var = Variable(var_name)
             self.expr_to_var[expr.child] = var
             return var
