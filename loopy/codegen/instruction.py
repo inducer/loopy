@@ -11,14 +11,9 @@ def generate_instruction_code(kernel, insn, codegen_state):
 
     expr = insn.expression
 
-    if ccm.allow_complex:
-        # detect widen-to-complex in assignment, account for it.
-        expr_dtype = ccm.infer_type(expr)
-        var_dtype = kernel.get_var_descriptor(insn.get_assignee_var_name()).dtype
-
-        if var_dtype.kind == "c" and expr_dtype.kind != "c":
-            from pymbolic import var
-            expr = var("%s_fromreal" % ccm.complex_type_name(var_dtype))(expr)
+    from loopy.codegen.expression import perform_cast
+    expr = perform_cast(ccm, expr, expr_dtype=ccm.infer_type(expr),
+            target_dtype=kernel.get_var_descriptor(insn.get_assignee_var_name()).dtype)
 
     from cgen import Assign
     insn_code = Assign(ccm(insn.assignee), ccm(expr))

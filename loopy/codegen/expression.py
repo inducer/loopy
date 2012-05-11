@@ -61,8 +61,7 @@ class TypeInferenceMapper(CombineMapper):
 
         mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
         if mangle_result is not None:
-            result_dtype, c_name = mangle_result
-            return result_dtype
+            return mangle_result[0]
 
         raise RuntimeError("no type inference information on "
                 "function '%s'" % identifier)
@@ -106,6 +105,16 @@ class TypeInferenceMapper(CombineMapper):
         return expr.operation.result_dtype(self.rec(expr.expr), expr.inames)
 
 # }}}
+
+def perform_cast(ccm, expr, expr_dtype, target_dtype):
+    # detect widen-to-complex, account for it.
+    if (ccm.allow_complex
+            and target_dtype.kind == "c"
+            and expr_dtype.kind != "c"):
+        from pymbolic import var
+        expr = var("%s_fromreal" % ccm.complex_type_name(target_dtype))(expr)
+
+    return expr
 
 # {{{ C code mapper
 
@@ -302,20 +311,34 @@ class LoopyCCodeMapper(CCodeMapper):
             identifier = identifier.name
             c_name = identifier
 
-        arg_dtypes = tuple(self.infer_type(par) for par in expr.parameters)
+        par_dtypes = tuple(self.infer_type(par) for par in expr.parameters)
 
-        mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
+        parameters = expr.parameters
+
+        mangle_result = self.kernel.mangle_function(identifier, par_dtypes)
         if mangle_result is not None:
-            result_dtype, c_name = mangle_result
+            if len(mangle_result) == 2:
+                result_dtype, c_name = mangle_result
+            elif len(mangle_result) == 3:
+                result_dtype, c_name, arg_tgt_dtypes = mangle_result
 
-        self.seen_functions.add((identifier, c_name, arg_dtypes))
+                parameters = [
+                        perform_cast(self, par, par_dtype, tgt_dtype)
+                        for par, par_dtype, tgt_dtype in zip(
+                            parameters, par_dtypes, arg_tgt_dtypes)]
+            else:
+                raise RuntimeError("result of function mangler "
+                        "for function '%s' not understood"
+                        % identifier)
+
+        self.seen_functions.add((identifier, c_name, par_dtypes))
 
         if c_name is None:
             raise RuntimeError("unable to find C name for function identifier '%s'"
                     % identifier)
 
         return self.format("%s(%s)",
-                c_name, self.join_rec(", ", expr.parameters, PREC_NONE))
+                c_name, self.join_rec(", ", parameters, PREC_NONE))
 
     # {{{ deal with complex-valued variables
 

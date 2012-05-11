@@ -434,6 +434,28 @@ def default_function_mangler(name, arg_dtypes):
 
     return None
 
+def opencl_function_mangler(name, arg_dtypes):
+    if name == "atan2" and len(arg_dtypes) == 2:
+        return arg_dtypes[0], name
+
+    if len(arg_dtypes) == 1:
+        arg_dtype, = arg_dtypes
+
+        if arg_dtype.kind == "c":
+            if arg_dtype == np.complex64:
+                tpname = "cfloat"
+            elif arg_dtype == np.complex128:
+                tpname = "cdouble"
+            else:
+                raise RuntimeError("unexpected complex type '%s'" % arg_dtype)
+
+            if name in ["sqrt", "exp", "log",
+                    "sin", "cos", "tan",
+                    "sinh", "cosh", "tanh"]:
+                return arg_dtype, "%s_%s" % (tpname, name)
+
+    return None
+
 def single_arg_function_mangler(name, arg_dtypes):
     if len(arg_dtypes) == 1:
         dtype, = arg_dtypes
@@ -528,8 +550,9 @@ class LoopKernel(Record):
     :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
         objects
     :ivar function_manglers: list of functions of signature (name, arg_dtypes)
-        returning a tuple (result_dtype, c_name), where c_name
-        is the C-level function to be called.
+        returning a tuple (result_dtype, c_name)
+        or a tuple (result_dtype, c_name, arg_dtypes),
+        where c_name is the C-level function to be called.
     :ivar symbol_manglers: list of functions of signature (name) returning
         a tuple (result_dtype, c_name), where c_name is the C-level symbol to be
         evaluated.
@@ -566,7 +589,11 @@ class LoopKernel(Record):
             temporary_variables={},
             iname_to_tag={},
             substitutions={},
-            function_manglers=[default_function_mangler, single_arg_function_mangler],
+            function_manglers=[
+                default_function_mangler,
+                opencl_function_mangler,
+                single_arg_function_mangler,
+                ],
             symbol_manglers=[opencl_symbol_mangler],
             defines={},
 

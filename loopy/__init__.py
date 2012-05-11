@@ -22,7 +22,8 @@ class LoopyAdvisory(UserWarning):
 from loopy.kernel import ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg
 
 from loopy.kernel import (AutoFitLocalIndexTag, get_dot_dependency_graph,
-        LoopKernel, Instruction, default_function_mangler, single_arg_function_mangler,
+        LoopKernel, Instruction,
+        default_function_mangler, single_arg_function_mangler, opencl_function_mangler,
         default_preamble_generator)
 from loopy.creation import make_kernel
 from loopy.reduction import register_reduction_parser
@@ -38,6 +39,7 @@ __all__ = ["ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
         "LoopKernel",
         "Instruction",
         "default_function_mangler", "single_arg_function_mangler",
+        "opencl_function_mangler", "opencl_symbol_mangler",
         "default_preamble_generator",
         "make_kernel",
         "register_reduction_parser",
