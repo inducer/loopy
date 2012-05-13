@@ -184,20 +184,23 @@ class ScheduleDebugger:
 
         self.elapsed_store = 0
         self.start()
-        self.wrote_status = False
+        self.wrote_status = 0
 
         self.update()
 
     def update(self):
-        if (self.success_counter + self.dead_end_counter) % 50 == 0:
-            if self.debug_length or self.elapsed_time() > 1:
-                sys.stdout.write("\rscheduling... %d successes, "
-                        "%d dead ends (longest %d)" % (
-                            self.success_counter,
-                            self.dead_end_counter,
-                            len(self.longest_rejected_schedule)))
-                sys.stdout.flush()
-                self.wrote_status = True
+        if ((self.success_counter + self.dead_end_counter) % 50 == 0
+                and self.success_counter > 2
+                # ^ someone's waiting for the scheduler to go through *all* options
+                and (self.debug_length or self.elapsed_time() > 1)
+                ):
+            sys.stdout.write("\rscheduling... %d successes, "
+                    "%d dead ends (longest %d)" % (
+                        self.success_counter,
+                        self.dead_end_counter,
+                        len(self.longest_rejected_schedule)))
+            sys.stdout.flush()
+            self.wrote_status = 2
 
     def log_success(self, schedule):
         self.success_counter += 1
@@ -219,6 +222,10 @@ class ScheduleDebugger:
         return self.elapsed_store + time() - self.start_time
 
     def stop(self):
+        if self.wrote_status == 2:
+            sys.stdout.write("\r"+80*" "+"\n")
+            self.wrote_status = 1
+
         from time import time
         self.elapsed_store += time()-self.start_time
 
