@@ -79,7 +79,7 @@ class CompiledKernel:
 
         if edit_code:
             from pytools import invoke_editor
-            self.code = invoke_editor(self.code)
+            self.code = invoke_editor(self.code, "code.cl")
 
         try:
             self.cl_program = cl.Program(context, self.code)
