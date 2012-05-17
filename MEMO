@@ -41,6 +41,9 @@ Things to consider
 To-do
 ^^^^^
 
+- Group instructions by dependency/inames for scheduling, to
+  increase sched. scalability
+
 - Multi-domain
 
 - Kernel splitting (via what variables get computed in a kernel)
