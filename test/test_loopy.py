@@ -181,6 +181,154 @@ def test_argmax(ctx_factory):
 
 
 
+def test_empty_reduction(ctx_factory):
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(ctx.devices[0],
+            [
+                "{[i]: 0<=i<20}",
+                "{[j]: 0<=j<0}"
+                ],
+            [
+                "a[i] = sum(j, j)",
+                ],
+            [
+                lp.GlobalArg("a", dtype, (20,)),
+                ])
+    print knl
+
+    cknl = lp.CompiledKernel(ctx, knl)
+    cknl.print_code()
+
+    evt, (a,) = cknl(queue)
+
+
+
+
+
+def test_nested_dependent_reduction(ctx_factory):
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(ctx.devices[0],
+            [
+                "{[i]: 0<=i<20}",
+                "{[j]: 0<=j<i+sumlen}"
+                ],
+            [
+                "<> sumlen = l[i]",
+                "a[i] = sum(j, j)",
+                ],
+            [
+                lp.GlobalArg("a", dtype, (20,)),
+                lp.GlobalArg("l", np.int32, (20,)),
+                ])
+    print knl
+    1/0
+
+    cknl = lp.CompiledKernel(ctx, knl)
+    cknl.print_code()
+
+    evt, (a,) = cknl(queue)
+
+
+
+
+
+def test_dependent_loop_bounds(ctx_factory):
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            [
+                "{[i]: 0<=i<n}",
+                "{[jj]: 0<=jj<row_len}",
+                ],
+            [
+                "<> row_len = a_rowstarts[i+1] - a_rowstarts[i]",
+                "ax[i] = sum(jj, a_values[a_rowstarts[i]+jj])",
+                ],
+            [
+                lp.GlobalArg("a_rowstarts", np.int32),
+                lp.GlobalArg("a_indices", np.int32),
+                lp.GlobalArg("a_values", dtype),
+                lp.GlobalArg("x", dtype),
+                lp.GlobalArg("ax", dtype),
+                lp.ScalarArg("n", np.int32),
+                ],
+            assumptions="n>=1 and row_len>=1")
+
+    cknl = lp.CompiledKernel(ctx, knl)
+    print "---------------------------------------------------"
+    cknl.print_code()
+    print "---------------------------------------------------"
+
+
+
+
+def test_dependent_loop_bounds_2(ctx_factory):
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "[n,row_len] -> {[i,jj]: 0<=i<n and 0<=jj<row_len}",
+            [
+                "<> row_start = a_rowstarts[i]",
+                "<> row_len = a_rowstarts[i+1] - row_start",
+                "ax[i] = sum(jj, a_values[row_start+jj])",
+                ],
+            [
+                lp.GlobalArg("a_rowstarts", np.int32),
+                lp.GlobalArg("a_indices", np.int32),
+                lp.GlobalArg("a_values", dtype),
+                lp.GlobalArg("x", dtype),
+                lp.GlobalArg("ax", dtype),
+                lp.ScalarArg("n", np.int32),
+                ],
+            assumptions="n>=1 and row_len>=1")
+
+    knl = lp.split_dimension(knl, "i", 128, outer_tag="g.0",
+            inner_tag="l.0")
+    cknl = lp.CompiledKernel(ctx, knl)
+    print "---------------------------------------------------"
+    cknl.print_code()
+    print "---------------------------------------------------"
+
+
+
+
+
+def test_dependent_loop_bounds_3(ctx_factory):
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "[n,row_len] -> {[i,j]: 0<=i<n and 0<=j<row_len}",
+            [
+                "<> row_len = a_row_lengths[i]",
+                "a[i,j] = 1",
+                ],
+            [
+                lp.GlobalArg("a_row_lengths", np.int32),
+                lp.GlobalArg("a", dtype, shape=("n,n"), order="C"),
+                lp.ScalarArg("n", np.int32),
+                ])
+
+    knl = lp.split_dimension(knl, "i", 128, outer_tag="g.0",
+            inner_tag="l.0")
+    knl = lp.split_dimension(knl, "j", 128, outer_tag="g.1",
+            inner_tag="l.1")
+    cknl = lp.CompiledKernel(ctx, knl)
+    print "---------------------------------------------------"
+    cknl.print_code()
+    print "---------------------------------------------------"
+
+
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:

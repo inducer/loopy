@@ -41,12 +41,20 @@ Things to consider
 To-do
 ^^^^^
 
+- Clean up loopy.kernel.
+
 - Group instructions by dependency/inames for scheduling, to
   increase sched. scalability
 
 - Multi-domain
+  - Incorporate loop-bound-mediated iname dependencies into domain
+    parenthood.
+
+  - Reenable codegen sanity check.
 
 - Kernel splitting (via what variables get computed in a kernel)
+
+- test_loopy.py: test_empty_reduction
 
 - What if no universally valid precompute base index expression is found?
   (test_intel_matrix_mul with n = 6*16, e.g.?)
@@ -119,6 +127,13 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- relating to Multi-Domain
+  - Make sure that variables that enter into loop bounds are only written
+    exactly once. [DONE]
+
+  - Make sure that loop bound writes are scheduled before the relevant
+    loops. [DONE]
 
 - add_prefetch tagging
 

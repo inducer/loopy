@@ -18,8 +18,9 @@ def generate_instruction_code(kernel, insn, codegen_state):
     from cgen import Assign
     insn_code = Assign(ccm(insn.assignee), ccm(expr))
     from loopy.codegen.bounds import wrap_in_bounds_checks
+    insn_inames = kernel.insn_inames(insn)
     insn_code, impl_domain = wrap_in_bounds_checks(
-            ccm, kernel.domain, kernel.insn_inames(insn),
+            ccm, kernel.get_inames_domain(insn_inames), insn_inames,
             codegen_state.implemented_domain,
             insn_code)
 

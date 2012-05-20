@@ -159,14 +159,20 @@ def build_loop_nest(kernel, sched_index, codegen_state):
     from pytools import memoize_method
 
     class BoundsCheckCache:
-        def __init__(self, domain, impl_domain):
-            self.domain = domain
+        def __init__(self, kernel, impl_domain):
+            self.kernel = kernel
             self.impl_domain = impl_domain
 
         @memoize_method
         def __call__(self, check_inames):
+            if not check_inames:
+                return []
+
+            domain = isl.align_spaces(
+                    self.kernel.get_inames_domain(check_inames),
+                    self.impl_domain, obj_bigger_ok=True)
             from loopy.codegen.bounds import generate_bounds_checks
-            return generate_bounds_checks(self.domain,
+            return generate_bounds_checks(domain,
                     check_inames, self.impl_domain)
 
     def build_insn_group(sched_indices_and_cond_inames, codegen_state, done_group_lengths=set()):
@@ -183,7 +189,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
         # Keep growing schedule item group as long as group fulfills minimum
         # size requirement.
 
-        bounds_check_cache = BoundsCheckCache(kernel.domain, codegen_state.implemented_domain)
+        bounds_check_cache = BoundsCheckCache(kernel, codegen_state.implemented_domain)
 
         current_iname_set = cond_inames
 

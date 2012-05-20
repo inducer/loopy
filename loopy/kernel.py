@@ -525,11 +525,58 @@ def _generate_unique_possibilities(prefix):
         yield "%s_%d" % (prefix, try_num)
         try_num += 1
 
+_IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
+
+def _gather_identifiers(s):
+    return set(_IDENTIFIER_RE.findall(s))
+
+def _parse_domains(ctx, args_and_vars, domains):
+    result = []
+    available_parameters = args_and_vars.copy()
+    used_inames = set()
+
+    for dom in domains:
+        if isinstance(dom, str):
+            if not dom.lstrip().startswith("["):
+                # i.e. if no parameters are already given
+                ids = _gather_identifiers(dom)
+                parameters = ids & available_parameters
+                dom = "[%s] -> %s" % (",".join(parameters), dom)
+
+            try:
+                dom = isl.Set.read_from_str(ctx, dom)
+            except:
+                print "failed to parse domain '%s'" % dom
+                raise
+        else:
+            assert isinstance(dom, (isl.Set, isl.BasicSet))
+            # assert dom.get_ctx() == ctx
+
+        for i_iname in xrange(dom.dim(dim_type.set)):
+            iname = dom.get_dim_name(dim_type.set, i_iname)
+
+            if iname is None:
+                raise RuntimeError("domain '%s' provided no iname at index "
+                        "%d (redefined iname?)" % (dom, i_iname))
+
+            if iname in used_inames:
+                raise RuntimeError("domain '%s' redefines iname '%s' "
+                        "that is part of a previous domain" % (dom, iname))
+
+            used_inames.add(iname)
+            available_parameters.add(iname)
+
+        result.append(dom)
+
+    return result
+
+
+
 
 class LoopKernel(Record):
     """
     :ivar device: :class:`pyopencl.Device`
-    :ivar domain: :class:`islpy.BasicSet`
+    :ivar domains: :class:`islpy.BasicSet`
     :ivar instructions:
     :ivar args:
     :ivar schedule:
@@ -580,7 +627,7 @@ class LoopKernel(Record):
     :ivar iname_to_tag_requests:
     """
 
-    def __init__(self, device, domain, instructions, args=None, schedule=None,
+    def __init__(self, device, domains, instructions, args=[], schedule=None,
             name="loopy_kernel",
             preambles=[],
             preamble_generators=[default_preamble_generator],
@@ -614,11 +661,9 @@ class LoopKernel(Record):
         if cache_manager is None:
             cache_manager = SetOperationCacheManager()
 
-        if isinstance(domain, str):
-            ctx = isl.Context()
-            domain = isl.Set.read_from_str(ctx, domain)
-
         iname_to_tag_requests = {}
+
+        # {{{ parse instructions
 
         INAME_ENTRY_RE = re.compile(
                 r"^\s*(?P<iname>\w+)\s*(?:\:\s*(?P<tag>[\w.]+))?\s*$")
@@ -720,9 +765,9 @@ class LoopKernel(Record):
                     raise RuntimeError("left hand side of assignment '%s' must "
                             "be variable or subscript" % lhs)
 
-                insns.append(
+                parsed_instructions.append(
                         Instruction(
-                            id=self.make_unique_instruction_id(insns, based_on=label),
+                            id=self.make_unique_instruction_id(parsed_instructions, based_on=label),
                             insn_deps=insn_deps,
                             forced_iname_deps=forced_iname_deps,
                             assignee=lhs, expression=rhs,
@@ -756,8 +801,8 @@ class LoopKernel(Record):
         def parse_if_necessary(insn):
             if isinstance(insn, Instruction):
                 if insn.id is None:
-                    insn = insn.copy(id=self.make_unique_instruction_id(insns))
-                insns.append(insn)
+                    insn = insn.copy(id=self.make_unique_instruction_id(parsed_instructions))
+                parsed_instructions.append(insn)
                 return
 
             if not isinstance(insn, str):
@@ -768,10 +813,7 @@ class LoopKernel(Record):
             for insn in expand_defines(insn, defines):
                 parse_insn(insn)
 
-
-        # }}}
-
-        insns = []
+        parsed_instructions = []
 
         substitutions = substitutions.copy()
 
@@ -779,23 +821,57 @@ class LoopKernel(Record):
             # must construct list one-by-one to facilitate unique id generation
             parse_if_necessary(insn)
 
-        if len(set(insn.id for insn in insns)) != len(insns):
+        if len(set(insn.id for insn in parsed_instructions)) != len(parsed_instructions):
             raise RuntimeError("instruction ids do not appear to be unique")
 
-        if assumptions is None:
-            assumptions_space = domain.get_space().params()
-            assumptions = isl.Set.universe(assumptions_space)
+        # }}}
 
+        # Ordering dependency:
+        # Domain construction needs to know what temporary variables are
+        # available. That information can only be obtained once instructions
+        # are parsed.
+
+        # {{{ construct domains
+
+        if isinstance(domains, str):
+            domains = [domains]
+
+        ctx = isl.Context()
+        scalar_arg_names = set(arg.name for arg in args if isinstance(arg, ScalarArg))
+        var_names = (
+                set(temporary_variables)
+                | set(insn.get_assignee_var_name()
+                    for insn in parsed_instructions
+                    if insn.temp_var_type is not None))
+        domains = _parse_domains(ctx, scalar_arg_names | var_names, domains)
+
+        # }}}
+
+        # {{{ process assumptions
+
+        if assumptions is None:
+            assumptions_space = domains[0].get_space()
+            assumptions = isl.Set.universe(assumptions_space)
         elif isinstance(assumptions, str):
-            s = domain.get_space()
-            assumptions = isl.BasicSet.read_from_str(domain.get_ctx(),
-                    "[%s] -> { : %s}"
-                    % (",".join(s.get_dim_name(dim_type.param, i)
-                        for i in range(s.dim(dim_type.param))),
-                        assumptions))
+            all_inames = set()
+            all_params = set()
+            for dom in domains:
+                all_inames.update(dom.get_var_names(dim_type.set))
+                all_params.update(dom.get_var_names(dim_type.param))
+
+            domain_parameters = all_params-all_inames
+
+            assumptions_set_str = "[%s] -> { : %s}" \
+                    % (",".join(s for s in domain_parameters),
+                        assumptions)
+            assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
+                    assumptions_set_str)
+
+        # }}}
 
         Record.__init__(self,
-                device=device,  domain=domain, instructions=insns,
+                device=device, domains=domains,
+                instructions=parsed_instructions,
                 args=args,
                 schedule=schedule,
                 name=name,
@@ -831,6 +907,8 @@ class LoopKernel(Record):
 
     # }}}
 
+    # {{{ unique ids
+
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:
             insns = self.instructions
@@ -841,15 +919,131 @@ class LoopKernel(Record):
             if id_str not in used_ids:
                 return id_str
 
+    # }}}
+
+    # {{{ name listing
+
     @memoize_method
     def all_inames(self):
-        from islpy import dim_type
-        return set(self.space.get_var_dict(dim_type.set).iterkeys())
+        result = set()
+        for dom in self.domains:
+            result.update(dom.get_var_names(dim_type.set))
+        return result
 
     @memoize_method
     def non_iname_variable_names(self):
         return (set(self.arg_dict.iterkeys())
                 | set(self.temporary_variables.iterkeys()))
+
+    # }}}
+
+    # {{{ domain handling
+
+    @memoize_method
+    def parents_per_domain(self):
+        """Return a list corresponding to self.domains (by index)
+        containing domain indices which are nested around this
+        domain.
+
+        Each domains nest list walks from the leaves of the nesting
+        tree to the root.
+        """
+
+        domain_parents = []
+        iname_set_stack = []
+        result = []
+
+        for dom in self.domains:
+            parameters = set(dom.get_var_names(dim_type.param))
+            inames = set(dom.get_var_names(dim_type.set))
+
+            discard_level_count = 0
+            while discard_level_count < len(iname_set_stack):
+                last_inames = iname_set_stack[-1-discard_level_count]
+
+                if last_inames & parameters:
+                    break
+                else:
+                    discard_level_count += 1
+
+            if discard_level_count:
+                iname_set_stack = iname_set_stack[:-discard_level_count]
+
+            if domain_parents:
+                parent = len(result)-1
+            else:
+                parent = None
+
+            for i in range(discard_level_count):
+                assert parent is not None
+                parent = domain_parents[parent]
+
+            # found this domain's parent
+            domain_parents.append(parent)
+
+            # keep walking up tree to make result
+            dom_result = []
+            while parent is not None:
+                dom_result.insert(0, parent)
+                parent = domain_parents[parent]
+
+            result.append(dom_result)
+
+            if iname_set_stack:
+                parent_inames = iname_set_stack[-1]
+            else:
+                parent_inames = set()
+            iname_set_stack.append(parent_inames | inames)
+
+        return result
+
+    @memoize_method
+    def _get_home_domain_map(self):
+        return dict(
+                (iname, i_domain)
+                for i_domain, dom in enumerate(self.domains)
+                for iname in dom.get_var_names(dim_type.set))
+
+    def get_home_domain_index(self, iname):
+        return self._get_home_domain_map()[iname]
+
+    @memoize_method
+    def combine_domains(self, domains):
+        assert isinstance(domains, frozenset) # for caching
+
+        result = None
+        assert domains
+        for dom_index in domains:
+            dom = self.domains[dom_index]
+            if result is None:
+                result = dom
+            else:
+                aligned_result, aligned_dom = isl.align_two(result, dom)
+                result = aligned_result & aligned_dom
+
+        return result
+
+    def get_effective_domain(self, domain_index):
+        return self.combine_domains(
+                frozenset([domain_index]
+                    + self.get_parents_per_domain()[domain_index]))
+
+    def get_inames_domain(self, inames):
+        if isinstance(inames, str):
+            inames = [inames]
+
+        hdm = self._get_home_domain_map()
+        ppd = self.parents_per_domain()
+
+        domain_indices = set()
+        for iname in inames:
+            home_domain_index = hdm[iname]
+            domain_indices.add(home_domain_index)
+            domain_indices.update(ppd[home_domain_index])
+
+        return self.combine_domains(frozenset(domain_indices))
+
+    # }}}
 
     @memoize_method
     def all_insn_inames(self):
@@ -945,11 +1139,6 @@ class LoopKernel(Record):
 
         return result
 
-    @property
-    @memoize_method
-    def iname_to_dim(self):
-        return self.domain.get_space().get_var_dict()
-
     @memoize_method
     def get_written_variables(self):
         return set(
@@ -962,7 +1151,7 @@ class LoopKernel(Record):
                 set(self.temporary_variables.iterkeys())
                 | set(self.substitutions.iterkeys())
                 | set(arg.name for arg in self.args)
-                | set(self.iname_to_dim.keys()))
+                | set(self.all_inames()))
 
     def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
         used_vars = self.all_variable_names() | extra_used_vars
@@ -991,11 +1180,6 @@ class LoopKernel(Record):
 
     @property
     @memoize_method
-    def space(self):
-        return self.domain.get_space()
-
-    @property
-    @memoize_method
     def arg_dict(self):
         return dict((arg.name, arg) for arg in self.args)
 
@@ -1005,8 +1189,9 @@ class LoopKernel(Record):
         if self.args is None:
             return []
         else:
-            loop_arg_names = [self.space.get_dim_name(dim_type.param, i)
-                    for i in range(self.space.dim(dim_type.param))]
+            from pytools import flatten
+            loop_arg_names = list(flatten(dom.get_var_names(dim_type.param)
+                    for dom in self.domains))
             return [arg.name for arg in self.args if isinstance(arg, ScalarArg)
                     if arg.name in loop_arg_names]
 
@@ -1036,6 +1221,29 @@ class LoopKernel(Record):
                 lower_bound_pw_aff=lower_bound_pw_aff,
                 upper_bound_pw_aff=upper_bound_pw_aff,
                 size=size)
+
+    def find_var_base_indices_and_shape_from_inames(
+            self, inames, cache_manager, context=None):
+        base_indices = []
+        shape = []
+
+        for iname in inames:
+            domain = self.get_inames_domain(iname)
+            iname_to_dim = domain.space.get_var_dict()
+            lower_bound_pw_aff = cache_manager.dim_min(domain, iname_to_dim[iname][1])
+            upper_bound_pw_aff = cache_manager.dim_max(domain, iname_to_dim[iname][1])
+
+            from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
+            from loopy.symbolic import pw_aff_to_expr
+
+            shape.append(pw_aff_to_expr(static_max_of_pw_aff(
+                    upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True,
+                    context=context)))
+            base_indices.append(pw_aff_to_expr(
+                static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
+                    context=context)))
+
+        return base_indices, shape
 
     @memoize_method
     def get_constant_iname_length(self, iname):
@@ -1103,8 +1311,6 @@ class LoopKernel(Record):
             size_list = []
             sorted_axes = sorted(size_dict.iterkeys())
 
-            zero_aff = isl.Aff.zero_on_domain(self.space.params())
-
             while sorted_axes or forced_sizes:
                 if sorted_axes:
                     cur_axis = sorted_axes.pop(0)
@@ -1113,16 +1319,14 @@ class LoopKernel(Record):
 
                 if len(size_list) in forced_sizes:
                     size_list.append(
-                            isl.PwAff.from_aff(
-                                zero_aff + forced_sizes.pop(len(size_list))))
+                           forced_sizes.pop(len(size_list)))
                     continue
 
                 assert cur_axis is not None
 
-                while cur_axis > len(size_list):
+                if cur_axis > len(size_list):
                     raise RuntimeError("%s axis %d unused" % (
                         which, len(size_list)))
-                    size_list.append(zero_aff + 1)
 
                 size_list.append(size_dict[cur_axis])
 
@@ -1161,8 +1365,12 @@ class LoopKernel(Record):
         always nested around them.
         """
         result = {}
+
+        # {{{ examine instructions
+
         iname_to_insns = self.iname_to_insns()
 
+        # examine pairs of all inames--O(n**2), I know.
         for inner_iname in self.all_inames():
             result[inner_iname] = set()
             for outer_iname in self.all_inames():
@@ -1171,6 +1379,20 @@ class LoopKernel(Record):
 
                 if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
                     result[inner_iname].add(outer_iname)
+
+        # }}}
+
+        # {{{ examine domains
+
+        for i_dom, (dom, parent_indices) in enumerate(
+                zip(self.domains, self.parents_per_domain())):
+            for parent_index in parent_indices:
+                for iname in dom.get_var_names(dim_type.set):
+                    parent = self.domains[parent_index]
+                    for parent_iname in parent.get_var_names(dim_type.set):
+                        result[iname].add(parent_iname)
+
+        # }}}
 
         return result
 
@@ -1197,8 +1419,9 @@ class LoopKernel(Record):
             lines.append("%s: %s" % (iname, self.iname_to_tag.get(iname)))
 
         lines.append(sep)
-        lines.append("DOMAIN:")
-        lines.append(str(self.domain))
+        lines.append("DOMAINS:")
+        for dom, parents in zip(self.domains, self.parents_per_domain()):
+            lines.append(str(dom))
 
         if self.substitutions:
             lines.append(sep)
@@ -1302,31 +1525,6 @@ def find_all_insn_inames(instructions, all_inames,
             break
 
     return insn_id_to_inames
-
-
-
-
-def find_var_base_indices_and_shape_from_inames(
-        domain, inames, cache_manager, context=None):
-    base_indices = []
-    shape = []
-
-    iname_to_dim = domain.get_space().get_var_dict()
-    for iname in inames:
-        lower_bound_pw_aff = cache_manager.dim_min(domain, iname_to_dim[iname][1])
-        upper_bound_pw_aff = cache_manager.dim_max(domain, iname_to_dim[iname][1])
-
-        from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
-        from loopy.symbolic import pw_aff_to_expr
-
-        shape.append(pw_aff_to_expr(static_max_of_pw_aff(
-                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True,
-                context=context)))
-        base_indices.append(pw_aff_to_expr(
-            static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
-                context=context)))
-
-    return base_indices, shape
 
 
 

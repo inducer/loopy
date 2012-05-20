@@ -200,6 +200,11 @@ def static_value_of_pw_aff(pw_aff, constants_only, context=None):
 
 
 def duplicate_axes(isl_obj, duplicate_inames, new_inames):
+    if isinstance(isl_obj, list):
+        return [
+                duplicate_axes(i, duplicate_inames, new_inames)
+                for i in isl_obj]
+
     if not duplicate_inames:
         return isl_obj
 
@@ -240,6 +245,7 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
                 old_dt, old_idx, old_iname)
 
     return moved_dims.intersect(more_dims)
+
 
 
 
