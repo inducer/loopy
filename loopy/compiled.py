@@ -42,16 +42,26 @@ def _arg_matches_spec(arg, val, other_args):
 class CompiledKernel:
     def __init__(self, context, kernel, size_args=None, options=[],
              edit_code=False, codegen_kwargs={}):
+        """
+        :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
+          (a warning will be issued if more than one is returned). If the kernel
+          has not yet been loop-scheduled, that is done, too, with no specific
+          arguments.
+        """
         import loopy as lp
 
         # {{{ do scheduling, if not yet done
 
         needs_check = False
 
-        if kernel.schedule is None:
+        if not isinstance(kernel, lp.LoopKernel) or kernel.schedule is None:
+            if isinstance(kernel, lp.LoopKernel):
+                # kernel-iterable, really
+                kernel = lp.generate_loop_schedules(kernel)
+
             kernel_count = 0
 
-            for scheduled_kernel in lp.generate_loop_schedules(kernel):
+            for scheduled_kernel in kernel:
                 kernel_count += 1
 
                 if kernel_count == 1:
