@@ -336,6 +336,11 @@ def generate_code(kernel, with_annotation=False,
 
     # {{{ handle preambles
 
+    for arg in kernel.args:
+        seen_dtypes.add(arg.dtype)
+    for tv in kernel.temporary_variables:
+        seen_dtypes.add(tv.dtype)
+
     preambles = kernel.preambles[:]
     for prea_gen in kernel.preamble_generators:
         preambles.extend(prea_gen(seen_dtypes, seen_functions))

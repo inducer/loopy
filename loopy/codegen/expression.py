@@ -294,11 +294,9 @@ class LoopyCCodeMapper(CCodeMapper):
         if isinstance(expr, complex):
             # FIXME: type-variable
             return "(cdouble_t) (%s, %s)" % (repr(expr.real), repr(expr.imag))
-        elif isinstance(expr, float):
-            # FIXME: type-variable
-            return "%s" % repr(expr)
         else:
-            return CCodeMapper.map_constant(self, expr, enclosing_prec)
+            # FIXME: type-variable
+            return repr(float(expr))
 
     def map_call(self, expr, enclosing_prec):
         from pymbolic.primitives import Variable
