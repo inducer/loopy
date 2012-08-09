@@ -16,7 +16,7 @@ def check_for_nonexistent_iname_deps(knl):
                             set(insn.forced_iname_deps)-knl.all_inames())))
 
 def check_for_multiple_writes_to_loop_bounds(knl):
-    from isl import dim_type
+    from islpy import dim_type
 
     domain_parameters = set()
     for dom in knl.domains:

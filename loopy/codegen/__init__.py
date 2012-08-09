@@ -338,7 +338,7 @@ def generate_code(kernel, with_annotation=False,
 
     for arg in kernel.args:
         seen_dtypes.add(arg.dtype)
-    for tv in kernel.temporary_variables:
+    for tv in kernel.temporary_variables.itervalues():
         seen_dtypes.add(tv.dtype)
 
     preambles = kernel.preambles[:]

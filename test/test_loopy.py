@@ -294,12 +294,11 @@ def test_empty_reduction(ctx_factory):
             [
                 lp.GlobalArg("a", dtype, (20,)),
                 ])
-    print knl
-
     cknl = lp.CompiledKernel(ctx, knl)
-    cknl.print_code()
 
     evt, (a,) = cknl(queue)
+
+    assert (a.get() == 0).all()
 
 
 
@@ -323,8 +322,6 @@ def test_nested_dependent_reduction(ctx_factory):
                 lp.GlobalArg("a", dtype, (20,)),
                 lp.GlobalArg("l", np.int32, (20,)),
                 ])
-    print knl
-    1/0
 
     cknl = lp.CompiledKernel(ctx, knl)
     cknl.print_code()

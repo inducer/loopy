@@ -115,14 +115,14 @@ def parse_tag(tag):
 # {{{ arguments
 
 class _ShapedArg(object):
-    def __init__(self, name, dtype, strides=None, shape=None, order="C",
+    def __init__(self, name, dtype, shape=None, strides=None, order="C",
             offset=0):
         """
         All of the following are optional. Specify either strides or shape.
 
+        :arg shape:
         :arg strides: like numpy strides, but in multiples of
             data type size
-        :arg shape:
         :arg order:
         :arg offset: Offset from the beginning of the vector from which
             the strides are counted.
@@ -707,8 +707,6 @@ class LoopKernel(Record):
 
             return result
 
-        # {{{ instruction parser
-
         def parse_insn(insn):
             insn_match = INSN_RE.match(insn)
             subst_match = SUBST_RE.match(insn)
@@ -949,13 +947,22 @@ class LoopKernel(Record):
         tree to the root.
         """
 
-        domain_parents = []
+        # The stack of iname sets records which inames are active
+        # as we step through the linear list of domains. It also
+        # determines the granularity of inames to be popped/decactivated
+        # if we ascend a level.
+
         iname_set_stack = []
         result = []
 
         for dom in self.domains:
             parameters = set(dom.get_var_names(dim_type.param))
             inames = set(dom.get_var_names(dim_type.set))
+
+            # This next domain may be nested inside the previous domain.
+            # Or it may not, in which case we need to figure out how many
+            # levels of parents we need to discard in order to find the
+            # true parent.
 
             discard_level_count = 0
             while discard_level_count < len(iname_set_stack):
@@ -969,31 +976,46 @@ class LoopKernel(Record):
             if discard_level_count:
                 iname_set_stack = iname_set_stack[:-discard_level_count]
 
-            if domain_parents:
+            if result:
                 parent = len(result)-1
             else:
                 parent = None
 
             for i in range(discard_level_count):
                 assert parent is not None
-                parent = domain_parents[parent]
+                parent = result[parent]
 
             # found this domain's parent
-            domain_parents.append(parent)
-
-            # keep walking up tree to make result
-            dom_result = []
-            while parent is not None:
-                dom_result.insert(0, parent)
-                parent = domain_parents[parent]
-
-            result.append(dom_result)
+            result.append(parent)
 
             if iname_set_stack:
                 parent_inames = iname_set_stack[-1]
             else:
                 parent_inames = set()
             iname_set_stack.append(parent_inames | inames)
+
+        return result
+
+    @memoize_method
+    def all_parents_per_domain(self):
+        """Return a list corresponding to self.domains (by index)
+        containing domain indices which are nested around this
+        domain.
+
+        Each domains nest list walks from the leaves of the nesting
+        tree to the root.
+        """
+        result = []
+
+        ppd = self.parents_per_domain()
+        for dom, parent in zip(self.domains, ppd):
+            # keep walking up tree to find *all* parents
+            dom_result = []
+            while parent is not None:
+                dom_result.insert(0, parent)
+                parent = ppd[parent]
+
+            result.append(dom_result)
 
         return result
 
@@ -1009,7 +1031,12 @@ class LoopKernel(Record):
 
     @memoize_method
     def combine_domains(self, domains):
-        assert isinstance(domains, frozenset) # for caching
+        """
+        :arg domains: domain indices of domains to be combined. More 'dominant'
+            domains (those which get most say on the actual dim_type of an iname)
+            must be later in the order.
+        """
+        assert isinstance(domains, tuple) # for caching
 
         result = None
         assert domains
@@ -1018,22 +1045,27 @@ class LoopKernel(Record):
             if result is None:
                 result = dom
             else:
-                aligned_result, aligned_dom = isl.align_two(result, dom)
+                aligned_dom, aligned_result = isl.align_two(
+                        dom, result, across_dim_types=True)
                 result = aligned_result & aligned_dom
 
         return result
 
-    def get_effective_domain(self, domain_index):
-        return self.combine_domains(
-                frozenset([domain_index]
-                    + self.get_parents_per_domain()[domain_index]))
-
     def get_inames_domain(self, inames):
         if isinstance(inames, str):
-            inames = [inames]
+            inames = frozenset([inames])
+        if not isinstance(inames, frozenset):
+            inames = frozenset(inames)
 
+            from warnings import warn
+            warn("get_inames_domain did not get a frozenset", stacklevel=2)
+
+        return self._get_inames_domain_backend(inames)
+
+    @memoize_method
+    def _get_inames_domain_backend(self, inames):
         hdm = self._get_home_domain_map()
-        ppd = self.parents_per_domain()
+        ppd = self.all_parents_per_domain()
 
         domain_indices = set()
         for iname in inames:
@@ -1041,7 +1073,7 @@ class LoopKernel(Record):
             domain_indices.add(home_domain_index)
             domain_indices.update(ppd[home_domain_index])
 
-        return self.combine_domains(frozenset(domain_indices))
+        return self.combine_domains(tuple(sorted(domain_indices)))
 
     # }}}
 
@@ -1197,18 +1229,20 @@ class LoopKernel(Record):
 
     @memoize_method
     def get_iname_bounds(self, iname):
+        domain = self.get_inames_domain(frozenset([iname]))
+        d_var_dict = domain.get_var_dict()
+
         dom_intersect_assumptions = (
-                isl.align_spaces(self.assumptions, self.domain)
-                & self.domain)
+                isl.align_spaces(self.assumptions, domain) & domain)
         lower_bound_pw_aff = (
                 self.cache_manager.dim_min(
                     dom_intersect_assumptions,
-                    self.iname_to_dim[iname][1])
+                    d_var_dict[iname][1])
                 .coalesce())
         upper_bound_pw_aff = (
                 self.cache_manager.dim_max(
                     dom_intersect_assumptions,
-                    self.iname_to_dim[iname][1])
+                    d_var_dict[iname][1])
                 .coalesce())
 
         class BoundsRecord(Record):
@@ -1385,7 +1419,7 @@ class LoopKernel(Record):
         # {{{ examine domains
 
         for i_dom, (dom, parent_indices) in enumerate(
-                zip(self.domains, self.parents_per_domain())):
+                zip(self.domains, self.all_parents_per_domain())):
             for parent_index in parent_indices:
                 for iname in dom.get_var_names(dim_type.set):
                     parent = self.domains[parent_index]
@@ -1420,8 +1454,8 @@ class LoopKernel(Record):
 
         lines.append(sep)
         lines.append("DOMAINS:")
-        for dom, parents in zip(self.domains, self.parents_per_domain()):
-            lines.append(str(dom))
+        for dom, parents in zip(self.domains, self.all_parents_per_domain()):
+            lines.append(len(parents)*"  " + str(dom))
 
         if self.substitutions:
             lines.append(sep)

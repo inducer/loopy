@@ -8,9 +8,7 @@ from loopy.codegen.control import build_loop_nest
 
 
 
-def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
-    iname_domain = kernel.get_inames_domain(iname)
-
+def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain, iname_domain):
     from loopy.codegen.bounds import get_bounds_constraints, get_defined_inames
     lower_constraints_orig, upper_constraints_orig, equality_constraints_orig = \
             get_bounds_constraints(iname_domain, iname,
@@ -34,8 +32,13 @@ def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
 # {{{ conditional-minimizing slab decomposition
 
 def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
+    iname_domain = kernel.get_inames_domain(iname)
+
+    if iname_domain.is_empty():
+        return ()
+
     lb_cns_orig, ub_cns_orig = get_simple_loop_bounds(kernel, sched_index, iname,
-            codegen_state.implemented_domain)
+            codegen_state.implemented_domain, iname_domain)
 
     space = lb_cns_orig.space
 
@@ -192,12 +195,13 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
     result = []
 
     bounds = kernel.get_iname_bounds(iname)
+    domain = kernel.get_inames_domain(iname)
 
     from loopy.isl_helpers import make_slab
     from loopy.isl_helpers import static_value_of_pw_aff
     lower_bound = static_value_of_pw_aff(bounds.lower_bound_pw_aff,
             constants_only=False)
-    slab = make_slab(kernel.space, iname,
+    slab = make_slab(domain.get_space(), iname,
             lower_bound, lower_bound+hw_axis_size)
     codegen_state = codegen_state.intersect(slab)
 
@@ -219,7 +223,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
         if len(slabs) == 1:
             cmt = None
 
-        new_kernel = kernel.copy(domain=kernel.domain & slab)
+        new_kernel = kernel.copy(domain=domain & slab)
         inner = set_up_hw_parallel_loops(
                 new_kernel, sched_index, codegen_state, hw_inames_left)
         result.append(add_comment(cmt, inner))

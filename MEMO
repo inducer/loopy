@@ -54,17 +54,12 @@ To-do
 
 - Kernel splitting (via what variables get computed in a kernel)
 
-- test_loopy.py: test_empty_reduction
-
 - What if no universally valid precompute base index expression is found?
   (test_intel_matrix_mul with n = 6*16, e.g.?)
 
 - Add dependencies after the fact
 
 - Expose iname-duplicate-and-rename as a primitive.
-
-- Allow parameters to be varying during run-time, substituting values
-  that depend on other inames?
 
 - Fix all tests
 
