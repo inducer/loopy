@@ -1235,7 +1235,8 @@ class LoopKernel(Record):
         d_var_dict = domain.get_var_dict()
 
         dom_intersect_assumptions = (
-                isl.align_spaces(self.assumptions, domain) & domain)
+                isl.align_spaces(self.assumptions, domain, obj_bigger_ok=True)
+                & domain)
         lower_bound_pw_aff = (
                 self.cache_manager.dim_min(
                     dom_intersect_assumptions,
@@ -1610,8 +1611,6 @@ class SetOperationCacheManager:
 
     def dim_max(self, set, *args):
         return self.op(set, "dim_max", set.dim_max, args)
-
-
 
 
 

@@ -80,6 +80,9 @@ def split_dimension(kernel, split_iname, inner_length,
         inner_iname = split_iname+"_inner"
 
     def process_set(s):
+        if split_iname not in s.get_var_dict():
+            return s
+
         outer_var_nr = s.dim(dim_type.set)
         inner_var_nr = s.dim(dim_type.set)+1
 

@@ -105,11 +105,10 @@ def dump_space(ls):
 def make_slab(space, iname, start, stop):
     zero = isl.Aff.zero_on_domain(space)
 
-    from islpy import align_spaces
     if isinstance(start, (isl.Aff, isl.PwAff)):
-        start = align_spaces(pw_aff_to_aff(start), zero)
+        start, zero = isl.align_two(pw_aff_to_aff(start), zero)
     if isinstance(stop, (isl.Aff, isl.PwAff)):
-        stop = align_spaces(pw_aff_to_aff(stop), zero)
+        stop, zero = isl.align_two(pw_aff_to_aff(stop), zero)
 
     if isinstance(start, int): start = zero + start
     if isinstance(stop, int): stop = zero + stop

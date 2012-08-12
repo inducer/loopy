@@ -22,6 +22,7 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
             elim_type.append(dim_type.param)
 
         set = set.eliminate_except(admissible_inames, elim_type)
+        set = set.compute_divs()
 
     basic_sets = set.get_basic_sets()
     if len(basic_sets) > 1:
@@ -106,11 +107,12 @@ def constraint_to_code(ccm, cns):
     return "%s %s 0" % (ccm(constraint_to_expr(cns)), comp_op)
 
 def filter_necessary_constraints(implemented_domain, constraints):
-    space = implemented_domain.get_space()
     return [cns
         for cns in constraints
         if not implemented_domain.is_subset(
-            isl.Set.universe(space).add_constraint(cns))]
+            isl.align_spaces(
+                isl.BasicSet.universe(cns.get_space()).add_constraint(cns),
+                implemented_domain))]
 
 def generate_bounds_checks(domain, check_inames, implemented_domain):
     """Will not overapproximate."""

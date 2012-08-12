@@ -368,7 +368,10 @@ def test_dependent_loop_bounds_2(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(ctx.devices[0],
-            "[n,row_len] -> {[i,jj]: 0<=i<n and 0<=jj<row_len}",
+            [
+                "{[i]: 0<=i<n}",
+                "{[jj]: 0<=jj<row_len}",
+                ],
             [
                 "<> row_start = a_rowstarts[i]",
                 "<> row_len = a_rowstarts[i+1] - row_start",
@@ -400,7 +403,10 @@ def test_dependent_loop_bounds_3(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(ctx.devices[0],
-            "[n,row_len] -> {[i,j]: 0<=i<n and 0<=j<row_len}",
+            [
+                "{[i]: 0<=i<n}",
+                "{[jj]: 0<=jj<row_len}",
+                ],
             [
                 "<> row_len = a_row_lengths[i]",
                 "a[i,j] = 1",
