@@ -173,7 +173,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
             from pymbolic import var
             rhs += iname_coeff*var(iname)
             end_conds.append("%s >= 0" %
-                    ccm(cfm(rhs)))
+                    ccm(cfm(rhs), 'i'))
         else: #  iname_coeff > 0
             kind, bound = solve_constraint_for_bound(cns, iname)
             assert kind == ">="
@@ -205,7 +205,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
         from cgen import For
         from loopy.codegen import wrap_in
         return wrap_in(For,
-                "int %s = %s" % (iname, ccm(start_expr)),
+                "int %s = %s" % (iname, ccm(start_expr, 'i')),
                 " && ".join(end_conds),
                 "++%s" % iname,
                 stmt)

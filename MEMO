@@ -65,7 +65,6 @@ To-do
 
 - Scalar insn priority
 
-- What to do about constants in codegen? (...f suffix, complex types)
 
 - If finding a maximum proves troublesome, move parameters into the domain
 
@@ -122,6 +121,9 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- What to do about constants in codegen? (...f suffix, complex types)
+  -> dealt with by type contexts
 
 - relating to Multi-Domain
   - Make sure that variables that enter into loop bounds are only written

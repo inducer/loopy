@@ -12,11 +12,18 @@ def generate_instruction_code(kernel, insn, codegen_state):
     expr = insn.expression
 
     from loopy.codegen.expression import perform_cast
-    expr = perform_cast(ccm, expr, expr_dtype=ccm.infer_type(expr),
-            target_dtype=kernel.get_var_descriptor(insn.get_assignee_var_name()).dtype)
+    target_dtype = kernel.get_var_descriptor(insn.get_assignee_var_name()).dtype
+    expr_dtype = ccm.infer_type(expr)
+
+    expr = perform_cast(ccm, expr,
+            expr_dtype=expr_dtype,
+            target_dtype=target_dtype)
 
     from cgen import Assign
-    insn_code = Assign(ccm(insn.assignee), ccm(expr))
+    from loopy.codegen.expression import dtype_to_type_context
+    insn_code = Assign(
+            ccm(insn.assignee, prec=None, type_context=None),
+            ccm(expr, prec=None, type_context=dtype_to_type_context(target_dtype)))
     from loopy.codegen.bounds import wrap_in_bounds_checks
     insn_inames = kernel.insn_inames(insn)
     insn_code, impl_domain = wrap_in_bounds_checks(
