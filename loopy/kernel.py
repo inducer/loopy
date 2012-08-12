@@ -299,7 +299,7 @@ class Instruction(Record):
     """
     def __init__(self,
             id, assignee, expression,
-            forced_iname_deps=set(), insn_deps=set(), boostable=None,
+            forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
             boostable_into=None,
             temp_var_type=None, duplicate_inames_and_tags=[]):
 
@@ -309,7 +309,7 @@ class Instruction(Record):
         if isinstance(expression, str):
             assignee = parse(expression)
 
-        assert isinstance(forced_iname_deps, set)
+        assert isinstance(forced_iname_deps, frozenset)
         assert isinstance(insn_deps, set)
 
         Record.__init__(self,
@@ -738,10 +738,10 @@ class LoopKernel(Record):
                 if groups["iname_deps_and_tags"] is not None:
                     inames_and_tags = parse_iname_and_tag_list(
                             groups["iname_deps_and_tags"])
-                    forced_iname_deps = set(iname for iname, tag in inames_and_tags)
+                    forced_iname_deps = frozenset(iname for iname, tag in inames_and_tags)
                     iname_to_tag_requests.update(dict(inames_and_tags))
                 else:
-                    forced_iname_deps = set()
+                    forced_iname_deps = frozenset()
 
                 if groups["duplicate_inames_and_tags"] is not None:
                     duplicate_inames_and_tags = parse_iname_and_tag_list(

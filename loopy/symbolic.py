@@ -691,7 +691,7 @@ def get_dependencies(expr):
     from loopy.symbolic import DependencyMapper
     dep_mapper = DependencyMapper(composite_leaves=False)
 
-    return set(dep.name for dep in dep_mapper(expr))
+    return frozenset(dep.name for dep in dep_mapper(expr))
 
 
 
