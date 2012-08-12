@@ -224,8 +224,8 @@ def make_random_expression(var_values, size):
         return make_random_expression(var_values, size) / make_random_expression(var_values, size)
 
 
-def generate_random_fuzz_examples():
-    for i in xrange(20):
+def generate_random_fuzz_examples(count):
+    for i in xrange(count):
         size = [0]
         var_values = {}
         expr = make_random_expression(var_values, size)
@@ -235,8 +235,8 @@ def test_fuzz_code_generator(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    from expr_fuzz import get_fuzz_examples
-    for expr, var_values in generate_random_fuzz_examples():
+    #from expr_fuzz import get_fuzz_examples
+    for expr, var_values in generate_random_fuzz_examples(20):
     #for expr, var_values in get_fuzz_examples():
         from pymbolic import evaluate
         true_value = evaluate(expr, var_values)
@@ -255,7 +255,7 @@ def test_fuzz_code_generator(ctx_factory):
                     for name, val in var_values.iteritems()
                     ])
         ck = lp.CompiledKernel(ctx, knl)
-        evt, (lp_value,) = ck(queue, **var_values)
+        evt, (lp_value,) = ck(queue, out_host=True, **var_values)
         err = abs(true_value-lp_value)/abs(true_value)
         if abs(err) > 1e-10:
             print "---------------------------------------------------------------------"

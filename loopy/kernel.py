@@ -1038,8 +1038,10 @@ class LoopKernel(Record):
         """
         assert isinstance(domains, tuple) # for caching
 
+        if not domains:
+            return isl.BasicSet.universe(self.domains[0].get_space())
+
         result = None
-        assert domains
         for dom_index in domains:
             dom = self.domains[dom_index]
             if result is None:
