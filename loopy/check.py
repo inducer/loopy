@@ -209,12 +209,7 @@ def run_automatic_checks(kernel):
 def check_implemented_domains(kernel, implemented_domains):
     from islpy import dim_type
 
-    parameter_inames = set(
-            kernel.domain.get_dim_name(dim_type.param, i)
-            for i in range(kernel.domain.dim(dim_type.param)))
-
-    from islpy import align_spaces
-    assumptions = align_spaces(kernel.assumptions, kernel.domain)
+    from islpy import align_spaces, align_two
 
     for insn_id, idomains in implemented_domains.iteritems():
         insn = kernel.id_to_insn[insn_id]
@@ -224,16 +219,33 @@ def check_implemented_domains(kernel, implemented_domains):
         insn_impl_domain = idomains[0]
         for idomain in idomains[1:]:
             insn_impl_domain = insn_impl_domain | idomain
+        assumptions = align_spaces(kernel.assumptions, insn_impl_domain,
+                obj_bigger_ok=True)
         insn_impl_domain = (
                 (insn_impl_domain & assumptions)
                 .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
 
-        desired_domain = ((kernel.domain & assumptions)
+        insn_inames = kernel.insn_inames(insn)
+        insn_domain = kernel.get_inames_domain(insn_inames)
+        assumptions = align_spaces(kernel.assumptions, insn_domain,
+                obj_bigger_ok=True)
+        desired_domain = ((insn_domain & assumptions)
             .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
+
+        insn_impl_domain, desired_domain = align_two(
+                insn_impl_domain, desired_domain)
+
+        print insn_impl_domain
+        print desired_domain
+        print insn_impl_domain != desired_domain
 
         if insn_impl_domain != desired_domain:
             i_minus_d = insn_impl_domain - desired_domain
             d_minus_i = desired_domain - insn_impl_domain
+
+            parameter_inames = set(
+                    insn_domain.get_dim_name(dim_type.param, i)
+                    for i in range(kernel.domain.dim(dim_type.param)))
 
             lines = []
             for kind, diff_set in [

@@ -331,8 +331,8 @@ def generate_code(kernel, with_annotation=False,
                 )
             """))
 
-    #from loopy.check import check_implemented_domains
-    #assert check_implemented_domains(kernel, gen_code.implemented_domains)
+    from loopy.check import check_implemented_domains
+    assert check_implemented_domains(kernel, gen_code.implemented_domains)
 
     # {{{ handle preambles
 

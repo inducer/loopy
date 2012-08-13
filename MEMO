@@ -46,17 +46,12 @@ To-do
 - Group instructions by dependency/inames for scheduling, to
   increase sched. scalability
 
-- Multi-domain
-  - Reenable codegen sanity check.
-
 - Kernel splitting (via what variables get computed in a kernel)
 
 - What if no universally valid precompute base index expression is found?
   (test_intel_matrix_mul with n = 6*16, e.g.?)
 
 - Add dependencies after the fact
-
-- Expose iname-duplicate-and-rename as a primitive.
 
 - Fix all tests
 
@@ -70,6 +65,8 @@ To-do
 
 Future ideas
 ^^^^^^^^^^^^
+
+- Expose iname-duplicate-and-rename as a primitive.
 
 - Array language
 
@@ -121,7 +118,9 @@ Dealt with
 - What to do about constants in codegen? (...f suffix, complex types)
   -> dealt with by type contexts
 
-- relating to Multi-Domain
+- relating to Multi-Domain [DONE]
+  - Reenable codegen sanity check. [DONE]
+
   - Incorporate loop-bound-mediated iname dependencies into domain
     parenthood. [DONE]
 
