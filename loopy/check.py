@@ -1,4 +1,5 @@
 from __future__ import division
+from islpy import dim_type
 
 
 
@@ -85,7 +86,7 @@ def check_for_inactive_iname_access(kernel):
 
 def check_for_write_races(kernel):
     from loopy.symbolic import DependencyMapper
-    from loopy.kernel import ParallelTag, GroupIndexTag, IlpBaseTag
+    from loopy.kernel import ParallelTag, GroupIndexTag
     depmap = DependencyMapper()
 
     for insn in kernel.instructions:
@@ -173,6 +174,26 @@ def check_for_orphaned_user_hardware_axes(kernel):
             raise RuntimeError("user-requested local hardware axis %d "
                     "has no iname mapped to it" % axis)
 
+def check_for_data_dependent_parallel_bounds(kernel):
+    from loopy.kernel import ParallelTag
+
+    for i, dom in enumerate(kernel.domains):
+        dom_inames = set(dom.get_var_names(dim_type.set))
+        par_inames = set(iname
+                for iname in dom_inames
+                if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
+
+        if not par_inames:
+            continue
+
+        parameters = set(dom.get_var_names(dim_type.param))
+        for par in parameters:
+            if par in kernel.temporary_variables:
+                raise RuntimeError("Domain number %d has a data-dependent "
+                        "parameter '%s' and contains parallel "
+                        "inames '%s'. This is not allowed (for now)."
+                        % (i, par, ", ".join(par_inames)))
+
 # }}}
 
 def run_automatic_checks(kernel):
@@ -181,7 +202,7 @@ def run_automatic_checks(kernel):
     check_for_unused_hw_axes_in_insns(kernel)
     check_for_inactive_iname_access(kernel)
     check_for_write_races(kernel)
-
+    check_for_data_dependent_parallel_bounds(kernel)
 
 # {{{ sanity-check for implemented domains of each instruction
 

@@ -120,7 +120,9 @@ def build_loop_nest(kernel, sched_index, codegen_state):
     from loopy.schedule import (EnterLoop, LeaveLoop, RunInstruction, Barrier,
             gather_schedule_subloop)
 
-    # {{{ pass 1: pre-scan schedule for my schedule items' indices
+    # {{{ pass 1: pre-scan schedule for my schedule item's siblings' indices
+
+    # i.e. go up to the next LeaveLoop, and skip over inner loops.
 
     my_sched_indices = []
 
@@ -146,7 +148,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     # }}}
 
-    # {{{ pass 2: find admissible conditional inames for each schedule item
+    # {{{ pass 2: find admissible conditional inames for each sibling schedule item
 
     admissible_cond_inames = [
             get_admissible_conditional_inames_for(kernel, sched_index)
@@ -232,14 +234,21 @@ def build_loop_nest(kernel, sched_index, codegen_state):
         # pick largest such group
         group_length, bounds_checks = max(found_hoists)
 
-        if bounds_checks:
-            check_set = isl.BasicSet.universe(kernel.space)
-            for cns in bounds_checks:
-                check_set = check_set.add_constraint(cns)
+        check_set = None
+        for cns in bounds_checks:
+            cns_set = (isl.BasicSet.universe(cns.get_space())
+                    .add_constraint(cns))
 
-            new_codegen_state = codegen_state.intersect(check_set)
-        else:
+            if check_set is None:
+                check_set = cns_set
+            else:
+                check_set, cns_set = isl.align_two(check_set, cns_set)
+                check_set = check_set.intersect(cns_set)
+
+        if check_set is None:
             new_codegen_state = codegen_state
+        else:
+            new_codegen_state = codegen_state.intersect(check_set)
 
         if group_length == 1:
             # group only contains starting schedule item

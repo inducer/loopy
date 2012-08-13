@@ -104,7 +104,7 @@ def constraint_to_code(ccm, cns):
         comp_op = ">="
 
     from loopy.symbolic import constraint_to_expr
-    return "%s %s 0" % (ccm(constraint_to_expr(cns)), comp_op)
+    return "%s %s 0" % (ccm(constraint_to_expr(cns), 'i'), comp_op)
 
 def filter_necessary_constraints(implemented_domain, constraints):
     return [cns
@@ -131,8 +131,10 @@ def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
             domain, check_inames,
             implemented_domain)
 
-    new_implemented_domain = implemented_domain & (
-            isl.Set.universe(domain.get_space()).add_constraints(bounds_checks))
+    bounds_check_set = isl.Set.universe(domain.get_space()).add_constraints(bounds_checks)
+    bounds_check_set, new_implemented_domain = isl.align_two(
+            bounds_check_set, implemented_domain)
+    new_implemented_domain = new_implemented_domain & bounds_check_set
 
     condition_codelets = [
             constraint_to_code(ccm, cns) for cns in
@@ -190,7 +192,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
         from cgen import Initializer, POD, Const, Line
         return gen_code_block([
             Initializer(Const(POD(np.int32, iname)),
-                ccm(equality_expr)),
+                ccm(equality_expr, 'i')),
             Line(),
             stmt,
             ])

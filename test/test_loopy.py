@@ -399,6 +399,11 @@ def test_dependent_loop_bounds_2(ctx_factory):
 
 
 def test_dependent_loop_bounds_3(ctx_factory):
+    # The point of this test is that it shows a dependency between
+    # domains that is exclusively mediated by the row_len temporary.
+    # It also makes sure that row_len gets read before any
+    # conditionals use it.
+
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
 
@@ -409,7 +414,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
                 ],
             [
                 "<> row_len = a_row_lengths[i]",
-                "a[i,j] = 1",
+                "a[i,jj] = 1",
                 ],
             [
                 lp.GlobalArg("a_row_lengths", np.int32),
@@ -417,14 +422,86 @@ def test_dependent_loop_bounds_3(ctx_factory):
                 lp.ScalarArg("n", np.int32),
                 ])
 
+    assert knl.parents_per_domain()[1] == 0
+
     knl = lp.split_dimension(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
-    knl = lp.split_dimension(knl, "j", 128, outer_tag="g.1",
-            inner_tag="l.1")
+
     cknl = lp.CompiledKernel(ctx, knl)
     print "---------------------------------------------------"
     cknl.print_code()
     print "---------------------------------------------------"
+
+    knl_bad = lp.split_dimension(knl, "jj", 128, outer_tag="g.1",
+            inner_tag="l.1")
+
+    import pytest
+    with pytest.raises(RuntimeError):
+        list(lp.generate_loop_schedules(knl_bad))
+
+
+
+
+def test_independent_multi_domains(ctx_factory):
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(ctx.devices[0],
+            [
+                "{[i]: 0<=i<n}",
+                "{[j]: 0<=j<n}",
+                ],
+            [
+                "a[i,j] = 1",
+                ],
+            [
+                lp.GlobalArg("a", dtype, shape=("n,n"), order="C"),
+                lp.ScalarArg("n", np.int32),
+                ])
+
+
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0",
+            inner_tag="l.0")
+    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1",
+            inner_tag="l.1")
+    assert knl.parents_per_domain() == 2*[None]
+
+    n = 50
+    cknl = lp.CompiledKernel(ctx, knl)
+    evt, (a,) = cknl(queue, n=n, out_host=True)
+
+    assert a.shape == (50, 50)
+    assert (a == 1).all()
+
+
+
+
+
+def test_bare_data_dependency(ctx_factory):
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(ctx.devices[0],
+            [
+                "[znirp] -> {[i]: 0<=i<znirp}",
+                ],
+            [
+                "<> znirp = n",
+                "a[i] = 1",
+                ],
+            [
+                lp.GlobalArg("a", dtype, shape=("n"), order="C"),
+                lp.ScalarArg("n", np.int32),
+                ])
+
+    cknl = lp.CompiledKernel(ctx, knl)
+    n = 20000
+    evt, (a,) = cknl(queue, n=n, out_host=True)
+
+    assert a.shape == (n,)
+    assert (a == 1).all()
 
 
 

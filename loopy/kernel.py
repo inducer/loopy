@@ -848,8 +848,14 @@ class LoopKernel(Record):
         # {{{ process assumptions
 
         if assumptions is None:
-            assumptions_space = domains[0].get_space()
+            dom0_space = domains[0].get_space()
+            assumptions_space = isl.Space.params_alloc(
+                    dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
+            for i in xrange(dom0_space.dim(dim_type.param)):
+                assumptions_space = assumptions_space.set_dim_name(
+                        dim_type.param, i, dom0_space.get_dim_name(dim_type.param, i))
             assumptions = isl.Set.universe(assumptions_space)
+
         elif isinstance(assumptions, str):
             all_inames = set()
             all_params = set()
@@ -864,6 +870,8 @@ class LoopKernel(Record):
                         assumptions)
             assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
                     assumptions_set_str)
+
+        assert assumptions.is_params()
 
         # }}}
 
@@ -955,6 +963,8 @@ class LoopKernel(Record):
         iname_set_stack = []
         result = []
 
+        writer_map = self.writer_map()
+
         for dom in self.domains:
             parameters = set(dom.get_var_names(dim_type.param))
             inames = set(dom.get_var_names(dim_type.set))
@@ -966,12 +976,38 @@ class LoopKernel(Record):
 
             discard_level_count = 0
             while discard_level_count < len(iname_set_stack):
-                last_inames = iname_set_stack[-1-discard_level_count]
+                # {{{ check for parenthood by loop bound iname
 
+                last_inames = iname_set_stack[-1-discard_level_count]
                 if last_inames & parameters:
                     break
-                else:
-                    discard_level_count += 1
+
+                # }}}
+
+                # {{{ check for parenthood by written variable
+
+                is_parent_by_variable = False
+                for par in parameters:
+                    if par in self.temporary_variables:
+                        writer_insns = writer_map[par]
+
+                        if len(writer_insns) > 1:
+                            raise RuntimeError("loop bound '%s' "
+                                    "may only be written to once" % par)
+
+                        writer_insn, = writer_insns
+                        writer_inames = self.insn_inames(writer_insn)
+
+                        if writer_inames & last_inames:
+                            is_parent_by_variable = True
+                            break
+
+                if is_parent_by_variable:
+                    break
+
+                # }}}
+
+                discard_level_count += 1
 
             if discard_level_count:
                 iname_set_stack = iname_set_stack[:-discard_level_count]
@@ -1234,9 +1270,10 @@ class LoopKernel(Record):
         domain = self.get_inames_domain(frozenset([iname]))
         d_var_dict = domain.get_var_dict()
 
-        dom_intersect_assumptions = (
-                isl.align_spaces(self.assumptions, domain, obj_bigger_ok=True)
+        dom_intersect_assumptions = (isl.align_spaces(
+                self.assumptions, domain, obj_bigger_ok=True)
                 & domain)
+
         lower_bound_pw_aff = (
                 self.cache_manager.dim_min(
                     dom_intersect_assumptions,
@@ -1252,7 +1289,7 @@ class LoopKernel(Record):
             pass
 
         size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
-        size = size.intersect_domain(self.assumptions)
+        size = size.gist(self.assumptions)
 
         return BoundsRecord(
                 lower_bound_pw_aff=lower_bound_pw_aff,

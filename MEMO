@@ -47,9 +47,6 @@ To-do
   increase sched. scalability
 
 - Multi-domain
-  - Incorporate loop-bound-mediated iname dependencies into domain
-    parenthood.
-
   - Reenable codegen sanity check.
 
 - Kernel splitting (via what variables get computed in a kernel)
@@ -64,7 +61,6 @@ To-do
 - Fix all tests
 
 - Scalar insn priority
-
 
 - If finding a maximum proves troublesome, move parameters into the domain
 
@@ -126,6 +122,9 @@ Dealt with
   -> dealt with by type contexts
 
 - relating to Multi-Domain
+  - Incorporate loop-bound-mediated iname dependencies into domain
+    parenthood. [DONE]
+
   - Make sure that variables that enter into loop bounds are only written
     exactly once. [DONE]
 
