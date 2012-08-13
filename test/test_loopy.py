@@ -173,7 +173,7 @@ def test_argmax(ctx_factory):
 
     a = np.random.randn(10000).astype(dtype)
     cknl = lp.CompiledKernel(ctx, knl)
-    evt, (max_idx, max_val) = cknl(queue, a=a)
+    evt, (max_idx, max_val) = cknl(queue, a=a, out_host=True)
     assert max_val == np.max(np.abs(a))
     assert max_idx == np.where(np.abs(a)==max_val)[-1]
 

@@ -58,7 +58,7 @@ class TypeInferenceMapper(CombineMapper):
         if isinstance(identifier, Variable):
             identifier = identifier.name
 
-        arg_dtypes = tuple(self.rec(par, None) for par in expr.parameters)
+        arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
 
         mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
         if mangle_result is not None:
@@ -230,6 +230,11 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     def map_tagged_variable(self, expr, enclosing_prec, type_context):
         return expr.name
+
+    def map_lookup(self, expr, enclosing_prec, type_context):
+        return self.parenthesize_if_needed(
+                "%s.%s" %(self.rec(expr.aggregate, PREC_CALL, type_context), expr.name),
+                enclosing_prec, PREC_CALL)
 
     def map_subscript(self, expr, enclosing_prec, type_context):
         def base_impl(expr, enclosing_prec, type_context):

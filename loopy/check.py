@@ -235,10 +235,6 @@ def check_implemented_domains(kernel, implemented_domains):
         insn_impl_domain, desired_domain = align_two(
                 insn_impl_domain, desired_domain)
 
-        print insn_impl_domain
-        print desired_domain
-        print insn_impl_domain != desired_domain
-
         if insn_impl_domain != desired_domain:
             i_minus_d = insn_impl_domain - desired_domain
             d_minus_i = desired_domain - insn_impl_domain
