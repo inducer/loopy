@@ -128,9 +128,10 @@ def split_dimension(kernel, split_iname, inner_length,
         new_expr = subst_mapper(rls(insn.expression))
 
         if split_iname in insn.forced_iname_deps:
-            new_forced_iname_deps = insn.forced_iname_deps.copy()
-            new_forced_iname_deps.remove(split_iname)
-            new_forced_iname_deps.update([outer_iname, inner_iname])
+            new_forced_iname_deps = (
+                    (insn.forced_iname_deps.copy()
+                    - frozenset([split_iname]))
+                    | frozenset([outer_iname, inner_iname]))
         else:
             new_forced_iname_deps = insn.forced_iname_deps
 

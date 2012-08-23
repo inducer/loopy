@@ -1090,6 +1090,9 @@ class LoopKernel(Record):
         return result
 
     def get_inames_domain(self, inames):
+        if not inames:
+            return self.combine_domains(())
+
         if isinstance(inames, str):
             inames = frozenset([inames])
         if not isinstance(inames, frozenset):
@@ -1101,17 +1104,43 @@ class LoopKernel(Record):
         return self._get_inames_domain_backend(inames)
 
     @memoize_method
-    def _get_inames_domain_backend(self, inames):
+    def get_leaf_domain_index(self, inames):
+        """Find the leaf of the domain tree needed to cover all inames."""
+
         hdm = self._get_home_domain_map()
         ppd = self.all_parents_per_domain()
 
         domain_indices = set()
+
+        leaf_domain_index = None
+
         for iname in inames:
             home_domain_index = hdm[iname]
-            domain_indices.add(home_domain_index)
-            domain_indices.update(ppd[home_domain_index])
+            if home_domain_index in domain_indices:
+                # nothin' new
+                continue
 
-        return self.combine_domains(tuple(sorted(domain_indices)))
+            leaf_domain_index = home_domain_index
+
+            all_parents = set(ppd[home_domain_index])
+            if not domain_indices <= all_parents:
+                raise RuntimeError("iname set '%s' requires "
+                        "branch in domain tree (when adding '%s')"
+                        % (", ".join(inames), iname))
+
+            domain_indices.add(home_domain_index)
+            domain_indices.update(all_parents)
+
+        return leaf_domain_index
+
+    @memoize_method
+    def _get_inames_domain_backend(self, inames):
+        leaf_dom_idx = self.get_leaf_domain_index(inames)
+
+        return self.combine_domains(tuple(sorted(
+            self.all_parents_per_domain()[leaf_dom_idx]
+            + [leaf_dom_idx]
+            )))
 
     # }}}
 
@@ -1193,15 +1222,8 @@ class LoopKernel(Record):
         """
         result = {}
 
-        admissible_vars = (
-                set(arg.name for arg in self.args)
-                | set(self.temporary_variables.iterkeys()))
-
         for insn in self.instructions:
             var_name = insn.get_assignee_var_name()
-
-            if var_name not in admissible_vars:
-                raise RuntimeError("variable '%s' not declared or not allowed for writing" % var_name)
             var_names = [var_name]
 
             for var_name in var_names:
@@ -1298,26 +1320,14 @@ class LoopKernel(Record):
 
     def find_var_base_indices_and_shape_from_inames(
             self, inames, cache_manager, context=None):
-        base_indices = []
-        shape = []
+        if not inames:
+            return [], []
 
-        for iname in inames:
-            domain = self.get_inames_domain(iname)
-            iname_to_dim = domain.space.get_var_dict()
-            lower_bound_pw_aff = cache_manager.dim_min(domain, iname_to_dim[iname][1])
-            upper_bound_pw_aff = cache_manager.dim_max(domain, iname_to_dim[iname][1])
-
-            from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
-            from loopy.symbolic import pw_aff_to_expr
-
-            shape.append(pw_aff_to_expr(static_max_of_pw_aff(
-                    upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True,
-                    context=context)))
-            base_indices.append(pw_aff_to_expr(
-                static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
-                    context=context)))
-
-        return base_indices, shape
+        base_indices_and_sizes = [
+                cache_manager.base_index_and_length(
+                    self.get_inames_domain(iname), iname, context)
+                for iname in inames]
+        return zip(*base_indices_and_sizes)
 
     @memoize_method
     def get_constant_iname_length(self, iname):
@@ -1418,7 +1428,7 @@ class LoopKernel(Record):
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
-            return tuple(pw_aff_to_expr(i) for i in tup)
+            return tuple(pw_aff_to_expr(i, int_ok=True) for i in tup)
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
@@ -1648,6 +1658,23 @@ class SetOperationCacheManager:
 
     def dim_max(self, set, *args):
         return self.op(set, "dim_max", set.dim_max, args)
+
+    def base_index_and_length(self, set, iname, context=None):
+        iname_to_dim = set.space.get_var_dict()
+        lower_bound_pw_aff = self.dim_min(set, iname_to_dim[iname][1])
+        upper_bound_pw_aff = self.dim_max(set, iname_to_dim[iname][1])
+
+        from loopy.isl_helpers import static_max_of_pw_aff, static_min_of_pw_aff
+        from loopy.symbolic import pw_aff_to_expr
+
+        size = pw_aff_to_expr(static_max_of_pw_aff(
+                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True,
+                context=context))
+        base_index = pw_aff_to_expr(
+            static_min_of_pw_aff(lower_bound_pw_aff, constants_only=False,
+                context=context))
+
+        return base_index, size
 
 
 

@@ -303,11 +303,10 @@ def generate_code(kernel, with_annotation=False,
     else:
         body.append(gen_code.ast)
 
-    from loopy.symbolic import pw_aff_to_expr
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
-                tuple(pw_aff_to_expr(sz) for sz in kernel.get_grid_sizes()[1]),
+                kernel.get_grid_sizes_as_exprs()[1],
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),
             body))

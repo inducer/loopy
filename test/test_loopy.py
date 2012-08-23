@@ -92,14 +92,15 @@ def test_stencil(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j]: 0<= i,j < 32}",
             [
-                "[i] <float32> z[i,j] = -2*a[i,j]"
+                "[i] z[i,j] = -2*a[i,j]"
                     " + a[i,j-1]"
                     " + a[i,j+1]"
                     " + a[i-1,j]"
                     " + a[i+1,j]"
                 ],
             [
-                lp.GlobalArg("a", np.float32, shape=(32,32,))
+                lp.GlobalArg("a", np.float32, shape=(32,32,)),
+                lp.GlobalArg("z", np.float32, shape=(32,32,))
                 ])
 
 
@@ -305,13 +306,13 @@ def test_empty_reduction(ctx_factory):
 
 
 def test_nested_dependent_reduction(ctx_factory):
-    dtype = np.dtype(np.float32)
+    dtype = np.dtype(np.int32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(ctx.devices[0],
             [
-                "{[i]: 0<=i<20}",
+                "{[i]: 0<=i<n}",
                 "{[j]: 0<=j<i+sumlen}"
                 ],
             [
@@ -319,14 +320,21 @@ def test_nested_dependent_reduction(ctx_factory):
                 "a[i] = sum(j, j)",
                 ],
             [
-                lp.GlobalArg("a", dtype, (20,)),
-                lp.GlobalArg("l", np.int32, (20,)),
+                lp.ScalarArg("n", np.int32),
+                lp.GlobalArg("a", dtype, ("n",)),
+                lp.GlobalArg("l", np.int32, ("n",)),
                 ])
 
     cknl = lp.CompiledKernel(ctx, knl)
-    cknl.print_code()
 
-    evt, (a,) = cknl(queue)
+    n = 330
+    l = np.arange(n, dtype=np.int32)
+    evt, (a,) = cknl(queue, l=l, n=n, out_host=True)
+
+    tgt_result = (2*l-1)*2*l/2
+    assert (a == tgt_result).all()
+
+
 
 
 
@@ -442,7 +450,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
 
 
 
-def test_independent_multi_domains(ctx_factory):
+def test_independent_multi_domain(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -453,26 +461,30 @@ def test_independent_multi_domains(ctx_factory):
                 "{[j]: 0<=j<n}",
                 ],
             [
-                "a[i,j] = 1",
+                "a[i] = 1",
+                "b[j] = 2",
                 ],
             [
-                lp.GlobalArg("a", dtype, shape=("n,n"), order="C"),
+                lp.GlobalArg("a", dtype, shape=("n"), order="C"),
+                lp.GlobalArg("b", dtype, shape=("n"), order="C"),
                 lp.ScalarArg("n", np.int32),
                 ])
 
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0",
             inner_tag="l.0")
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1",
-            inner_tag="l.1")
+    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.0",
+            inner_tag="l.0")
     assert knl.parents_per_domain() == 2*[None]
 
     n = 50
     cknl = lp.CompiledKernel(ctx, knl)
-    evt, (a,) = cknl(queue, n=n, out_host=True)
+    evt, (a, b) = cknl(queue, n=n, out_host=True)
 
-    assert a.shape == (50, 50)
+    assert a.shape == (50,)
+    assert b.shape == (50,)
     assert (a == 1).all()
+    assert (b == 2).all()
 
 
 
