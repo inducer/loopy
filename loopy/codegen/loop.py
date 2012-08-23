@@ -89,11 +89,11 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
                     .add_constraint(ub_cns_orig)
                     .add_constraint(
                         isl.Constraint.inequality_from_aff(
-                            iname_rel_aff(kernel.space,
+                            iname_rel_aff(space,
                                 iname, ">=", upper_bound_aff-upper_incr))))
             upper_bulk_bound = (
                     isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(kernel.space,
+                        iname_rel_aff(space,
                             iname, "<", upper_bound_aff-upper_incr)))
         else:
             lower_slab = None
@@ -144,7 +144,7 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
 
         for i in range(length):
             idx_aff = lower_bound_aff + i
-            new_codegen_state = codegen_state.fix(iname, idx_aff, kernel.space)
+            new_codegen_state = codegen_state.fix(iname, idx_aff)
             result.append(
                     build_loop_nest(kernel, sched_index+1, new_codegen_state))
 

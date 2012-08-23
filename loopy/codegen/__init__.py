@@ -128,9 +128,10 @@ class CodeGenerationState(object):
                 new_impl & new_other,
                 self.c_code_mapper)
 
-    def fix(self, iname, aff, space):
+    def fix(self, iname, aff):
         from loopy.isl_helpers import iname_rel_aff
-        iname_plus_lb_aff = iname_rel_aff(space, iname, "==", aff)
+        iname_plus_lb_aff = iname_rel_aff(
+                self.implemented_domain.get_space(), iname, "==", aff)
 
         from loopy.symbolic import pw_aff_to_expr
         cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
