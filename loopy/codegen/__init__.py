@@ -263,11 +263,12 @@ def generate_code(kernel, with_annotation=False,
 
     # }}}
 
+    from pyopencl.tools import dtype_to_ctype
     mod.extend([
         LiteralLines(r"""
-        #define lid(N) ((int) get_local_id(N))
-        #define gid(N) ((int) get_group_id(N))
-        """),
+        #define lid(N) ((%(idx_ctype)s) get_local_id(N))
+        #define gid(N) ((%(idx_ctype)s) get_group_id(N))
+        """ % dict(idx_ctype=dtype_to_ctype(kernel.index_dtype))),
         Line()])
 
     # {{{ build lmem array declarators for temporary variables

@@ -649,7 +649,8 @@ class LoopKernel(Record):
             applied_iname_rewrites=[],
             cache_manager=None,
             iname_to_tag_requests=None,
-            lowest_priority_inames=[], breakable_inames=set()):
+            lowest_priority_inames=[], breakable_inames=set(),
+            index_dtype=np.int32):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -895,7 +896,8 @@ class LoopKernel(Record):
                 breakable_inames=breakable_inames,
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
-                symbol_manglers=symbol_manglers)
+                symbol_manglers=symbol_manglers,
+                index_dtype=np.dtype(index_dtype))
 
     # {{{ function mangling
 

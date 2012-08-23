@@ -259,7 +259,8 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
             from cgen import Comment
             result.append(Comment(cmt))
         result.append(
-                wrap_in_for_from_constraints(ccm, iname, slab, inner))
+                wrap_in_for_from_constraints(ccm, iname, slab, inner,
+                    kernel.index_dtype))
 
     return gen_code_block(result)
 

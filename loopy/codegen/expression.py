@@ -87,7 +87,7 @@ class TypeInferenceMapper(CombineMapper):
             return tv.dtype
 
         if expr.name in self.kernel.all_inames():
-            return np.dtype(np.int16) # don't force single-precision upcast
+            return self.kernel.index_dtype
 
         for mangler in self.kernel.symbol_manglers:
             result = mangler(expr.name)

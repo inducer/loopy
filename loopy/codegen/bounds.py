@@ -146,7 +146,8 @@ def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
 
     return stmt, new_implemented_domain
 
-def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
+def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt,
+        index_dtype):
     # FIXME add admissible vars
     if isinstance(constraint_bset, isl.Set):
         constraint_bset, = constraint_bset.get_basic_sets()
@@ -191,7 +192,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
         from loopy.codegen import gen_code_block
         from cgen import Initializer, POD, Const, Line
         return gen_code_block([
-            Initializer(Const(POD(np.int32, iname)),
+            Initializer(Const(POD(index_dtype, iname)),
                 ccm(equality_expr, 'i')),
             Line(),
             stmt,
