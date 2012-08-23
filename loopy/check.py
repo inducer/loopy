@@ -241,7 +241,7 @@ def check_implemented_domains(kernel, implemented_domains):
 
             parameter_inames = set(
                     insn_domain.get_dim_name(dim_type.param, i)
-                    for i in range(kernel.domain.dim(dim_type.param)))
+                    for i in range(insn_domain.dim(dim_type.param)))
 
             lines = []
             for kind, diff_set in [
