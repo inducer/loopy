@@ -876,6 +876,12 @@ class LoopKernel(Record):
 
         # }}}
 
+        index_dtype = np.dtype(index_dtype)
+        if index_dtype.kind != 'i':
+            raise TypeError("index_dtype must be an integer")
+        if np.iinfo(index_dtype).min >= 0:
+            raise TypeError("index_dtype must be signed")
+
         Record.__init__(self,
                 device=device, domains=domains,
                 instructions=parsed_instructions,
@@ -897,7 +903,7 @@ class LoopKernel(Record):
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers,
-                index_dtype=np.dtype(index_dtype))
+                index_dtype=index_dtype)
 
     # {{{ function mangling
 
