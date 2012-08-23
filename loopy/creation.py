@@ -170,6 +170,13 @@ def create_temporaries(knl):
                     knl.find_var_base_indices_and_shape_from_inames(
                             assignee_indices, knl.cache_manager)
 
+            if assignee_name in new_temp_vars:
+                raise RuntimeError("cannot create temporary variable '%s'--"
+                        "already exists" % assignee_name)
+            if assignee_name in knl.arg_dict:
+                raise RuntimeError("cannot create temporary variable '%s'--"
+                        "already exists as argument" % assignee_name)
+
             new_temp_vars[assignee_name] = TemporaryVariable(
                     name=assignee_name,
                     dtype=insn.temp_var_type,
