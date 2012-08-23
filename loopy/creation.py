@@ -5,6 +5,25 @@ from loopy.symbolic import IdentityMapper
 
 # {{{ sanity checking
 
+def check_for_duplicate_names(knl):
+    name_to_source = {}
+
+    def add_name(name, source):
+        if name in name_to_source:
+            raise RuntimeError("invalid %s name '%s'--name already used as "
+                    "%s" % (source, name, name_to_source[name]))
+
+        name_to_source[name] = source
+
+    for name in knl.all_inames():
+        add_name(name, "iname")
+    for arg in knl.args:
+        add_name(arg.name, "argument")
+    for name in knl.temporary_variables:
+        add_name(name, "temporary")
+    for name in knl.substitutions:
+        add_name(name, "substitution")
+
 def check_for_nonexistent_iname_deps(knl):
     for insn in knl.instructions:
         if not set(insn.forced_iname_deps) <= knl.all_inames():
@@ -31,6 +50,19 @@ def check_for_multiple_writes_to_loop_bounds(knl):
         if len(par_writers) != 1:
             raise RuntimeError("there must be exactly one write to data-dependent "
                     "domain parameter '%s' (found %d)" % (tvpar, len(par_writers)))
+
+
+def check_written_variable_names(knl):
+    admissible_vars = (
+            set(arg.name for arg in knl.args)
+            | set(knl.temporary_variables.iterkeys()))
+
+    for insn in knl.instructions:
+        var_name = insn.get_assignee_var_name()
+
+        if var_name not in admissible_vars:
+            raise RuntimeError("variable '%s' not declared or not "
+                    "allowed for writing" % var_name)
 
 # }}}
 
@@ -342,6 +374,8 @@ def make_kernel(*args, **kwargs):
     # that are domain parameters.
     # -------------------------------------------------------------------------
     check_for_multiple_writes_to_loop_bounds(knl)
+    check_for_duplicate_names(knl)
+    check_written_variable_names(knl)
 
     return knl
 
