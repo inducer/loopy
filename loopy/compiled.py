@@ -479,6 +479,12 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
     last_cpu_dev = None
 
     for pf in cl.get_platforms():
+        if pf.name == "Portable OpenCL":
+            # That implementation [1] isn't quite good enough yet.
+            # [1] https://launchpad.net/pocl
+            # FIXME remove when no longer true.
+            continue
+
         for dev in pf.get_devices():
             last_dev  = dev
             if dev.type == cl.device_type.CPU:
