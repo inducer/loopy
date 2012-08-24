@@ -134,6 +134,10 @@ def dtype_to_type_context(dtype):
         return 'd'
     if dtype in [np.float32, np.complex64]:
         return 'f'
+    from pyopencl.array import vec
+    if dtype in vec.types.values():
+        return dtype_to_type_context(dtype.fields["x"][0])
+
     return None
 
 
