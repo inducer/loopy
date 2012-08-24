@@ -960,7 +960,7 @@ class LoopKernel(Record):
         result = set()
         for dom in self.domains:
             result.update(dom.get_var_names(dim_type.set))
-        return result
+        return frozenset(result)
 
     @memoize_method
     def non_iname_variable_names(self):
