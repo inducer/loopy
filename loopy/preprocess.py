@@ -40,14 +40,14 @@ def infer_temp_var_type(kernel, tv, type_inf_mapper, debug):
 
     return dtypes[0]
 
-def infer_types(kernel):
-    """Infer types on temporaries and reductions."""
+def infer_types_of_temporaries(kernel):
+    """Infer types on temporaries."""
 
     new_temp_vars = kernel.temporary_variables.copy()
 
     # {{{ fill queue
 
-    # queue contains temporary variables and reductions
+    # queue contains temporary variables
     queue = []
 
     from loopy import infer_type
@@ -803,18 +803,20 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
+    from loopy.subst import expand_subst
+    kernel = expand_subst(kernel)
 
+    # Ordering restriction:
+    # Type inference doesn't handle substitutions. Get them out of the
+    # way.
 
-    kernel = infer_types(kernel)
+    kernel = infer_types_of_temporaries(kernel)
 
     # Ordering restriction:
     # realize_reduction must happen after type inference because it needs
     # to be able to determine the types of the reduced expressions.
 
     kernel = realize_reduction(kernel)
-
-    from loopy.subst import expand_subst
-    kernel = expand_subst(kernel)
 
     # Ordering restriction:
     # Must realize reductions before realizing ILP, because realize_ilp()
