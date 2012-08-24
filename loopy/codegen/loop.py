@@ -155,6 +155,14 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
 
 # }}}
 
+def intersect_kernel_with_slab(kernel, slab, iname):
+    hdi = kernel.get_home_domain_index(iname)
+    home_domain = kernel.domains[hdi]
+    new_domains = kernel.domains[:]
+    new_domains[hdi] = home_domain & isl.align_spaces(slab, home_domain)
+    return kernel.copy(domains=new_domains)
+
+
 # {{{ hw-parallel loop
 
 def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=None):
@@ -223,9 +231,12 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
         if len(slabs) == 1:
             cmt = None
 
-        new_codegen_state = codegen_state.intersect(slab)
+        # Have the conditional infrastructure generate the
+        # slabbin conditionals.
+        slabbed_kernel = intersect_kernel_with_slab(kernel, slab, iname)
+
         inner = set_up_hw_parallel_loops(
-                kernel, sched_index, new_codegen_state, hw_inames_left)
+                slabbed_kernel, sched_index, codegen_state, hw_inames_left)
         result.append(add_comment(cmt, inner))
 
     from loopy.codegen import gen_code_block
@@ -249,7 +260,9 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
         if len(slabs) == 1:
             cmt = None
 
+        # Conditionals for slab are generated below.
         new_codegen_state = codegen_state.intersect(slab)
+
         inner = build_loop_nest(kernel, sched_index+1,
                 new_codegen_state)
 
