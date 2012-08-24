@@ -166,12 +166,22 @@ def build_global_storage_to_sweep_map(invocation_descriptors,
 
 # {{{ compute storage bounds
 
-def compute_bounds(kernel, subst_name, stor2sweep, sweep_inames,
+def find_var_base_indices_and_shape_from_inames(
+        domain, inames, cache_manager, context=None):
+    base_indices_and_sizes = [
+            cache_manager.base_index_and_length(domain, iname, context)
+            for iname in inames]
+    return zip(*base_indices_and_sizes)
+
+
+
+
+def compute_bounds(kernel, sweep_domain, subst_name, stor2sweep, sweep_inames,
         storage_axis_names):
 
     # move non-sweep inames into parameter space
 
-    dup_sweep_index = kernel.space.dim(dim_type.out)
+    dup_sweep_index = sweep_domain.get_space().dim(dim_type.out)
     # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep]
 
     sp = stor2sweep.get_space()
@@ -187,7 +197,6 @@ def compute_bounds(kernel, subst_name, stor2sweep, sweep_inames,
                 "sweep did not result in a bounded storage domain"
                 % subst_name)
 
-    from loopy.kernel import find_var_base_indices_and_shape_from_inames
     return find_var_base_indices_and_shape_from_inames(
             storage_domain, [saxis+"'" for saxis in storage_axis_names],
             kernel.cache_manager, context=kernel.assumptions)
@@ -198,7 +207,7 @@ def compute_bounds(kernel, subst_name, stor2sweep, sweep_inames,
 
 
 
-def get_access_info(kernel, subst_name,
+def get_access_info(kernel, sweep_domain, subst_name,
         storage_axis_names, storage_axis_sources,
         sweep_inames, invocation_descriptors):
 
@@ -206,9 +215,9 @@ def get_access_info(kernel, subst_name,
 
     primed_sweep_inames = [psin+"'" for psin in sweep_inames]
     from loopy.isl_helpers import duplicate_axes
-    dup_sweep_index = kernel.space.dim(dim_type.out)
+    dup_sweep_index = sweep_domain.space.dim(dim_type.out)
     domain_dup_sweep = duplicate_axes(
-            kernel.domain, sweep_inames,
+            sweep_domain, sweep_inames,
             primed_sweep_inames)
 
     prime_sweep_inames = SubstitutionMapper(make_subst_func(
@@ -221,7 +230,7 @@ def get_access_info(kernel, subst_name,
             storage_axis_names, storage_axis_sources, prime_sweep_inames)
 
     storage_base_indices, storage_shape = compute_bounds(
-            kernel, subst_name, stor2sweep, sweep_inames,
+            kernel, sweep_domain, subst_name, stor2sweep, sweep_inames,
             storage_axis_names)
 
     # compute augmented domain
@@ -588,9 +597,20 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # }}}
 
+    if sweep_inames:
+        leaf_domain_index = kernel.get_leaf_domain_index(frozenset(sweep_inames))
+        sweep_domain = kernel.domains[leaf_domain_index]
+
+        for iname in sweep_inames:
+            if kernel.get_home_domain_index(iname) != leaf_domain_index:
+                raise RuntimeError("sweep iname '%s' is not 'at home' in the "
+                        "sweep's leaf domain" % iname)
+    else:
+        sweep_domain = kernel.combine_domains(())
+
     (non1_storage_axis_names, new_domain,
-            storage_base_indices, non1_storage_base_indices, non1_storage_shape)= \
-                    get_access_info(kernel, subst_name,
+            storage_base_indices, non1_storage_base_indices, non1_storage_shape) = \
+                    get_access_info(kernel, sweep_domain, subst_name,
                             storage_axis_names, storage_axis_sources,
                             sweep_inames, invocation_descriptors)
 
@@ -598,7 +618,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     if len(new_domain.get_basic_sets()) > 1:
         hull_new_domain = new_domain.simple_hull()
-        if hull_new_domain <= new_domain:
+        if isl.Set.from_basic_set(hull_new_domain) <= new_domain:
             new_domain = hull_new_domain
 
     new_domain = new_domain.coalesce()
@@ -793,8 +813,12 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # }}}
 
+    new_domains = kernel.domains[:]
+    if sweep_inames:
+        new_domains[leaf_domain_index] = new_domain
+
     return kernel.copy(
-            domain=new_domain,
+            domains=new_domains,
             instructions=new_insns,
             substitutions=new_substs,
             temporary_variables=new_temporary_variables,

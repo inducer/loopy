@@ -5,7 +5,26 @@ from loopy.symbolic import IdentityMapper
 
 # {{{ sanity checking
 
-def check_kernel(knl):
+def check_for_duplicate_names(knl):
+    name_to_source = {}
+
+    def add_name(name, source):
+        if name in name_to_source:
+            raise RuntimeError("invalid %s name '%s'--name already used as "
+                    "%s" % (source, name, name_to_source[name]))
+
+        name_to_source[name] = source
+
+    for name in knl.all_inames():
+        add_name(name, "iname")
+    for arg in knl.args:
+        add_name(arg.name, "argument")
+    for name in knl.temporary_variables:
+        add_name(name, "temporary")
+    for name in knl.substitutions:
+        add_name(name, "substitution")
+
+def check_for_nonexistent_iname_deps(knl):
     for insn in knl.instructions:
         if not set(insn.forced_iname_deps) <= knl.all_inames():
             raise ValueError("In instruction '%s': "
@@ -14,6 +33,36 @@ def check_kernel(knl):
                         insn.id,
                         ",".join(
                             set(insn.forced_iname_deps)-knl.all_inames())))
+
+def check_for_multiple_writes_to_loop_bounds(knl):
+    from islpy import dim_type
+
+    domain_parameters = set()
+    for dom in knl.domains:
+        domain_parameters.update(dom.get_space().get_var_dict(dim_type.param))
+
+    temp_var_domain_parameters = domain_parameters & set(
+            knl.temporary_variables)
+
+    wmap = knl.writer_map()
+    for tvpar in temp_var_domain_parameters:
+        par_writers = wmap[tvpar]
+        if len(par_writers) != 1:
+            raise RuntimeError("there must be exactly one write to data-dependent "
+                    "domain parameter '%s' (found %d)" % (tvpar, len(par_writers)))
+
+
+def check_written_variable_names(knl):
+    admissible_vars = (
+            set(arg.name for arg in knl.args)
+            | set(knl.temporary_variables.iterkeys()))
+
+    for insn in knl.instructions:
+        var_name = insn.get_assignee_var_name()
+
+        if var_name not in admissible_vars:
+            raise RuntimeError("variable '%s' not declared or not "
+                    "allowed for writing" % var_name)
 
 # }}}
 
@@ -99,9 +148,7 @@ def create_temporaries(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
     for insn in knl.instructions:
-        from loopy.kernel import (
-                find_var_base_indices_and_shape_from_inames,
-                TemporaryVariable)
+        from loopy.kernel import TemporaryVariable
 
         if insn.temp_var_type is not None:
             assignee_name = insn.get_assignee_var_name()
@@ -120,8 +167,15 @@ def create_temporaries(knl):
                 assignee_indices.append(index_expr.name)
 
             base_indices, shape = \
-                    find_var_base_indices_and_shape_from_inames(
-                            knl.domain, assignee_indices, knl.cache_manager)
+                    knl.find_var_base_indices_and_shape_from_inames(
+                            assignee_indices, knl.cache_manager)
+
+            if assignee_name in new_temp_vars:
+                raise RuntimeError("cannot create temporary variable '%s'--"
+                        "already exists" % assignee_name)
+            if assignee_name in knl.arg_dict:
+                raise RuntimeError("cannot create temporary variable '%s'--"
+                        "already exists as argument" % assignee_name)
 
             new_temp_vars[assignee_name] = TemporaryVariable(
                     name=assignee_name,
@@ -187,7 +241,7 @@ def duplicate_reduction_inames(kernel):
 
     # }}}
 
-    new_domain = kernel.domain
+    new_domains = kernel.domains
     new_insns = []
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
@@ -203,13 +257,13 @@ def duplicate_reduction_inames(kernel):
 
         from loopy.isl_helpers import duplicate_axes
         for old, new in zip(old_insn_inames, new_insn_inames):
-            new_domain = duplicate_axes(new_domain, [old], [new])
+            new_domains = duplicate_axes(new_domains, [old], [new])
             if old in kernel.iname_to_tag:
                 new_iname_to_tag[new] = kernel.iname_to_tag[old]
 
     return kernel.copy(
             instructions=new_insns,
-            domain=new_domain,
+            domains=new_domains,
             iname_to_tag=new_iname_to_tag)
 
 # }}}
@@ -218,7 +272,7 @@ def duplicate_reduction_inames(kernel):
 
 def duplicate_inames(knl):
     new_insns = []
-    new_domain = knl.domain
+    new_domains = knl.domains
     new_iname_to_tag = knl.iname_to_tag.copy()
 
     newly_created_vars = set()
@@ -256,7 +310,7 @@ def duplicate_inames(knl):
             newly_created_vars.update(new_inames)
 
             from loopy.isl_helpers import duplicate_axes
-            new_domain = duplicate_axes(new_domain, inames_to_duplicate, new_inames)
+            new_domains = duplicate_axes(new_domains, inames_to_duplicate, new_inames)
 
             from loopy.symbolic import SubstitutionMapper
             from pymbolic.mapper.substitutor import make_subst_func
@@ -284,7 +338,7 @@ def duplicate_inames(knl):
 
     return knl.copy(
             instructions=new_insns,
-            domain=new_domain,
+            domains=new_domains,
             iname_to_tag=new_iname_to_tag)
 # }}}
 
@@ -304,7 +358,7 @@ def make_kernel(*args, **kwargs):
             knl.iname_to_tag_requests).copy(
                     iname_to_tag_requests=[])
 
-    check_kernel(knl)
+    check_for_nonexistent_iname_deps(knl)
 
     knl = create_temporaries(knl)
     knl = duplicate_reduction_inames(knl)
@@ -319,6 +373,16 @@ def make_kernel(*args, **kwargs):
     # -------------------------------------------------------------------------
 
     knl = expand_cses(knl)
+
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must create temporary before checking for writes to temporary variables
+    # that are domain parameters.
+    # -------------------------------------------------------------------------
+    check_for_multiple_writes_to_loop_bounds(knl)
+    check_for_duplicate_names(knl)
+    check_written_variable_names(knl)
 
     return knl
 

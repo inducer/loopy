@@ -8,10 +8,10 @@ from loopy.codegen.control import build_loop_nest
 
 
 
-def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
+def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain, iname_domain):
     from loopy.codegen.bounds import get_bounds_constraints, get_defined_inames
     lower_constraints_orig, upper_constraints_orig, equality_constraints_orig = \
-            get_bounds_constraints(kernel.domain, iname,
+            get_bounds_constraints(iname_domain, iname,
                     frozenset([iname])
                     | frozenset(get_defined_inames(kernel, sched_index+1)),
                     allow_parameters=True)
@@ -32,12 +32,17 @@ def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain):
 # {{{ conditional-minimizing slab decomposition
 
 def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
+    iname_domain = kernel.get_inames_domain(iname)
+
+    if iname_domain.is_empty():
+        return ()
+
     lb_cns_orig, ub_cns_orig = get_simple_loop_bounds(kernel, sched_index, iname,
-            codegen_state.implemented_domain)
+            codegen_state.implemented_domain, iname_domain)
+
+    space = lb_cns_orig.space
 
     lower_incr, upper_incr = kernel.iname_slab_increments.get(iname, (0, 0))
-
-    iname_tp, iname_idx = kernel.iname_to_dim[iname]
 
     if lower_incr or upper_incr:
         bounds = kernel.get_iname_bounds(iname)
@@ -60,9 +65,10 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
         from loopy.isl_helpers import iname_rel_aff
 
+
         if lower_incr:
             assert lower_incr > 0
-            lower_slab = ("initial", isl.BasicSet.universe(kernel.space)
+            lower_slab = ("initial", isl.BasicSet.universe(space)
                     .add_constraint(lb_cns_orig)
                     .add_constraint(ub_cns_orig)
                     .add_constraint(
@@ -78,16 +84,16 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
         if upper_incr:
             assert upper_incr > 0
-            upper_slab = ("final", isl.BasicSet.universe(kernel.space)
+            upper_slab = ("final", isl.BasicSet.universe(space)
                     .add_constraint(lb_cns_orig)
                     .add_constraint(ub_cns_orig)
                     .add_constraint(
                         isl.Constraint.inequality_from_aff(
-                            iname_rel_aff(kernel.space,
+                            iname_rel_aff(space,
                                 iname, ">=", upper_bound_aff-upper_incr))))
             upper_bulk_bound = (
                     isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(kernel.space,
+                        iname_rel_aff(space,
                             iname, "<", upper_bound_aff-upper_incr)))
         else:
             lower_slab = None
@@ -98,7 +104,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
             slabs.append(lower_slab)
         slabs.append((
             ("bulk",
-                (isl.BasicSet.universe(kernel.space)
+                (isl.BasicSet.universe(space)
                     .add_constraint(lower_bulk_bound)
                     .add_constraint(upper_bulk_bound)))))
         if upper_slab:
@@ -108,7 +114,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
     else:
         return [("bulk",
-            (isl.BasicSet.universe(kernel.space)
+            (isl.BasicSet.universe(space)
             .add_constraint(lb_cns_orig)
             .add_constraint(ub_cns_orig)))]
 
@@ -138,7 +144,7 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
 
         for i in range(length):
             idx_aff = lower_bound_aff + i
-            new_codegen_state = codegen_state.fix(iname, idx_aff, kernel.space)
+            new_codegen_state = codegen_state.fix(iname, idx_aff)
             result.append(
                     build_loop_nest(kernel, sched_index+1, new_codegen_state))
 
@@ -148,6 +154,14 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
         raise RuntimeError("unexpected tag")
 
 # }}}
+
+def intersect_kernel_with_slab(kernel, slab, iname):
+    hdi = kernel.get_home_domain_index(iname)
+    home_domain = kernel.domains[hdi]
+    new_domains = kernel.domains[:]
+    new_domains[hdi] = home_domain & isl.align_spaces(slab, home_domain)
+    return kernel.copy(domains=new_domains)
+
 
 # {{{ hw-parallel loop
 
@@ -189,12 +203,13 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
     result = []
 
     bounds = kernel.get_iname_bounds(iname)
+    domain = kernel.get_inames_domain(iname)
 
     from loopy.isl_helpers import make_slab
     from loopy.isl_helpers import static_value_of_pw_aff
     lower_bound = static_value_of_pw_aff(bounds.lower_bound_pw_aff,
             constants_only=False)
-    slab = make_slab(kernel.space, iname,
+    slab = make_slab(domain.get_space(), iname,
             lower_bound, lower_bound+hw_axis_size)
     codegen_state = codegen_state.intersect(slab)
 
@@ -216,9 +231,12 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
         if len(slabs) == 1:
             cmt = None
 
-        new_kernel = kernel.copy(domain=kernel.domain & slab)
+        # Have the conditional infrastructure generate the
+        # slabbin conditionals.
+        slabbed_kernel = intersect_kernel_with_slab(kernel, slab, iname)
+
         inner = set_up_hw_parallel_loops(
-                new_kernel, sched_index, codegen_state, hw_inames_left)
+                slabbed_kernel, sched_index, codegen_state, hw_inames_left)
         result.append(add_comment(cmt, inner))
 
     from loopy.codegen import gen_code_block
@@ -242,7 +260,9 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
         if len(slabs) == 1:
             cmt = None
 
+        # Conditionals for slab are generated below.
         new_codegen_state = codegen_state.intersect(slab)
+
         inner = build_loop_nest(kernel, sched_index+1,
                 new_codegen_state)
 
@@ -252,7 +272,8 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
             from cgen import Comment
             result.append(Comment(cmt))
         result.append(
-                wrap_in_for_from_constraints(ccm, iname, slab, inner))
+                wrap_in_for_from_constraints(ccm, iname, slab, inner,
+                    kernel.index_dtype))
 
     return gen_code_block(result)
 

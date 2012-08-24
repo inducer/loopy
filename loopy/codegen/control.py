@@ -120,7 +120,9 @@ def build_loop_nest(kernel, sched_index, codegen_state):
     from loopy.schedule import (EnterLoop, LeaveLoop, RunInstruction, Barrier,
             gather_schedule_subloop)
 
-    # {{{ pass 1: pre-scan schedule for my schedule items' indices
+    # {{{ pass 1: pre-scan schedule for my schedule item's siblings' indices
+
+    # i.e. go up to the next LeaveLoop, and skip over inner loops.
 
     my_sched_indices = []
 
@@ -146,7 +148,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     # }}}
 
-    # {{{ pass 2: find admissible conditional inames for each schedule item
+    # {{{ pass 2: find admissible conditional inames for each sibling schedule item
 
     admissible_cond_inames = [
             get_admissible_conditional_inames_for(kernel, sched_index)
@@ -159,14 +161,20 @@ def build_loop_nest(kernel, sched_index, codegen_state):
     from pytools import memoize_method
 
     class BoundsCheckCache:
-        def __init__(self, domain, impl_domain):
-            self.domain = domain
+        def __init__(self, kernel, impl_domain):
+            self.kernel = kernel
             self.impl_domain = impl_domain
 
         @memoize_method
         def __call__(self, check_inames):
+            if not check_inames:
+                return []
+
+            domain = isl.align_spaces(
+                    self.kernel.get_inames_domain(check_inames),
+                    self.impl_domain, obj_bigger_ok=True)
             from loopy.codegen.bounds import generate_bounds_checks
-            return generate_bounds_checks(self.domain,
+            return generate_bounds_checks(domain,
                     check_inames, self.impl_domain)
 
     def build_insn_group(sched_indices_and_cond_inames, codegen_state, done_group_lengths=set()):
@@ -183,7 +191,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
         # Keep growing schedule item group as long as group fulfills minimum
         # size requirement.
 
-        bounds_check_cache = BoundsCheckCache(kernel.domain, codegen_state.implemented_domain)
+        bounds_check_cache = BoundsCheckCache(kernel, codegen_state.implemented_domain)
 
         current_iname_set = cond_inames
 
@@ -226,14 +234,21 @@ def build_loop_nest(kernel, sched_index, codegen_state):
         # pick largest such group
         group_length, bounds_checks = max(found_hoists)
 
-        if bounds_checks:
-            check_set = isl.BasicSet.universe(kernel.space)
-            for cns in bounds_checks:
-                check_set = check_set.add_constraint(cns)
+        check_set = None
+        for cns in bounds_checks:
+            cns_set = (isl.BasicSet.universe(cns.get_space())
+                    .add_constraint(cns))
 
-            new_codegen_state = codegen_state.intersect(check_set)
-        else:
+            if check_set is None:
+                check_set = cns_set
+            else:
+                check_set, cns_set = isl.align_two(check_set, cns_set)
+                check_set = check_set.intersect(cns_set)
+
+        if check_set is None:
             new_codegen_state = codegen_state
+        else:
+            new_codegen_state = codegen_state.intersect(check_set)
 
         if group_length == 1:
             # group only contains starting schedule item

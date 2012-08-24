@@ -41,10 +41,10 @@ Things to consider
 To-do
 ^^^^^
 
+- Clean up loopy.kernel.
+
 - Group instructions by dependency/inames for scheduling, to
   increase sched. scalability
-
-- Multi-domain
 
 - Kernel splitting (via what variables get computed in a kernel)
 
@@ -53,16 +53,9 @@ To-do
 
 - Add dependencies after the fact
 
-- Expose iname-duplicate-and-rename as a primitive.
-
-- Allow parameters to be varying during run-time, substituting values
-  that depend on other inames?
-
 - Fix all tests
 
 - Scalar insn priority
-
-- What to do about constants in codegen? (...f suffix, complex types)
 
 - If finding a maximum proves troublesome, move parameters into the domain
 
@@ -72,6 +65,8 @@ To-do
 
 Future ideas
 ^^^^^^^^^^^^
+
+- Expose iname-duplicate-and-rename as a primitive.
 
 - Array language
 
@@ -119,6 +114,21 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- What to do about constants in codegen? (...f suffix, complex types)
+  -> dealt with by type contexts
+
+- relating to Multi-Domain [DONE]
+  - Reenable codegen sanity check. [DONE]
+
+  - Incorporate loop-bound-mediated iname dependencies into domain
+    parenthood. [DONE]
+
+  - Make sure that variables that enter into loop bounds are only written
+    exactly once. [DONE]
+
+  - Make sure that loop bound writes are scheduled before the relevant
+    loops. [DONE]
 
 - add_prefetch tagging
 

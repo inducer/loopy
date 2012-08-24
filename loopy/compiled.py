@@ -157,7 +157,7 @@ class CompiledKernel:
 
         args = []
         outputs = []
-        encountered_non_numpy = False
+        encountered_numpy = False
 
         kwargs_copy = kwargs.copy()
 
@@ -172,7 +172,7 @@ class CompiledKernel:
                     # synchronous, so nothing to worry about
                     val = cl_array.to_device(queue, val, allocator=allocator)
                 elif val is not None:
-                    encountered_non_numpy = True
+                    encountered_numpy = True
 
             if val is None:
                 if not is_written:
@@ -209,7 +209,7 @@ class CompiledKernel:
                     *args,
                     g_times_l=True, wait_for=wait_for)
 
-        if out_host is None and not encountered_non_numpy:
+        if out_host is None and encountered_numpy:
             out_host = True
         if out_host:
             outputs = [o.get() for o in outputs]
@@ -479,6 +479,12 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
     last_cpu_dev = None
 
     for pf in cl.get_platforms():
+        if pf.name == "Portable OpenCL":
+            # That implementation [1] isn't quite good enough yet.
+            # [1] https://launchpad.net/pocl
+            # FIXME remove when no longer true.
+            continue
+
         for dev in pf.get_devices():
             last_dev  = dev
             if dev.type == cl.device_type.CPU:

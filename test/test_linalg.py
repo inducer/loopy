@@ -117,10 +117,7 @@ def test_axpy(ctx_factory):
                     lp.GlobalArg("z", dtype, shape="n,"),
                     lp.ScalarArg("n", np.int32, approximately=n),
                     ],
-                name="axpy", assumptions="n>=1",
-                preamble="""
-                    #include <pyopencl-complex.h>
-                    """)
+                name="axpy", assumptions="n>=1")
 
         seq_knl = knl
 
@@ -139,11 +136,13 @@ def test_axpy(ctx_factory):
             return knl
 
         for variant in [variant_cpu, variant_gpu]:
+        #for variant in [ variant_gpu]:
             kernel_gen = lp.generate_loop_schedules(variant(knl))
             kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
             lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
-                    op_count=np.dtype(dtype).itemsize*n*3/1e9, op_label="GBytes",
+                    op_count=[np.dtype(dtype).itemsize*n*3/1e9],
+                    op_label=["GBytes"],
                     parameters={"a": a, "b": b, "n": n}, check_result=check)
 
 
@@ -180,7 +179,7 @@ def test_transpose(ctx_factory):
     kernel_gen = lp.check_kernels(kernel_gen, {})
 
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
-            op_count=dtype.itemsize*n**2*2/1e9, op_label="GByte",
+            op_count=[dtype.itemsize*n**2*2/1e9], op_label=["GByte"],
             parameters={})
 
 
@@ -627,7 +626,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
-            op_count=2*n**3/1e9, op_label="GFlops",
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
 
 

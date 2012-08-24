@@ -122,14 +122,16 @@ class CodeGenerationState(object):
 
         self.c_code_mapper = c_code_mapper
 
-    def intersect(self, set):
+    def intersect(self, other):
+        new_impl, new_other = isl.align_two(self.implemented_domain, other)
         return CodeGenerationState(
-                self.implemented_domain & set,
+                new_impl & new_other,
                 self.c_code_mapper)
 
-    def fix(self, iname, aff, space):
+    def fix(self, iname, aff):
         from loopy.isl_helpers import iname_rel_aff
-        iname_plus_lb_aff = iname_rel_aff(space, iname, "==", aff)
+        iname_plus_lb_aff = iname_rel_aff(
+                self.implemented_domain.get_space(), iname, "==", aff)
 
         from loopy.symbolic import pw_aff_to_expr
         cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
@@ -262,11 +264,12 @@ def generate_code(kernel, with_annotation=False,
 
     # }}}
 
+    from pyopencl.tools import dtype_to_ctype
     mod.extend([
         LiteralLines(r"""
-        #define lid(N) ((int) get_local_id(N))
-        #define gid(N) ((int) get_group_id(N))
-        """),
+        #define lid(N) ((%(idx_ctype)s) get_local_id(N))
+        #define gid(N) ((%(idx_ctype)s) get_group_id(N))
+        """ % dict(idx_ctype=dtype_to_ctype(kernel.index_dtype))),
         Line()])
 
     # {{{ build lmem array declarators for temporary variables
@@ -289,8 +292,7 @@ def generate_code(kernel, with_annotation=False,
 
     # }}}
 
-    from islpy import align_spaces
-    initial_implemented_domain = align_spaces(kernel.assumptions, kernel.domain)
+    initial_implemented_domain = kernel.assumptions
     codegen_state = CodeGenerationState(initial_implemented_domain, c_code_mapper=ccm)
 
     from loopy.codegen.loop import set_up_hw_parallel_loops
@@ -303,33 +305,13 @@ def generate_code(kernel, with_annotation=False,
     else:
         body.append(gen_code.ast)
 
-    from loopy.symbolic import pw_aff_to_expr
     mod.append(
         FunctionBody(
             CLRequiredWorkGroupSize(
-                tuple(pw_aff_to_expr(sz) for sz in kernel.get_grid_sizes()[1]),
+                kernel.get_grid_sizes_as_exprs()[1],
                 CLKernel(FunctionDeclaration(
                     Value("void", kernel.name), args))),
             body))
-
-    gen_code_str = str(gen_code)
-
-    from cgen import LiteralLines
-    if "int_floor_div" in gen_code_str:
-        mod.extend(LiteralLines("""
-            #define int_floor_div(a,b) \
-              (( (a) - \
-                 ( ( (a)<0 ) != ( (b)<0 )) \
-                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
-               / (b) )
-            """))
-
-    if "int_floor_div_pos_b" in gen_code_str:
-        mod.extend(LiteralLines("""
-            #define int_floor_div_pos_b(a,b) ( \
-                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
-                )
-            """))
 
     from loopy.check import check_implemented_domains
     assert check_implemented_domains(kernel, gen_code.implemented_domains)

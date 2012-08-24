@@ -105,11 +105,10 @@ def dump_space(ls):
 def make_slab(space, iname, start, stop):
     zero = isl.Aff.zero_on_domain(space)
 
-    from islpy import align_spaces
     if isinstance(start, (isl.Aff, isl.PwAff)):
-        start = align_spaces(pw_aff_to_aff(start), zero)
+        start, zero = isl.align_two(pw_aff_to_aff(start), zero)
     if isinstance(stop, (isl.Aff, isl.PwAff)):
-        stop = align_spaces(pw_aff_to_aff(stop), zero)
+        stop, zero = isl.align_two(pw_aff_to_aff(stop), zero)
 
     if isinstance(start, int): start = zero + start
     if isinstance(stop, int): stop = zero + stop
@@ -200,6 +199,11 @@ def static_value_of_pw_aff(pw_aff, constants_only, context=None):
 
 
 def duplicate_axes(isl_obj, duplicate_inames, new_inames):
+    if isinstance(isl_obj, list):
+        return [
+                duplicate_axes(i, duplicate_inames, new_inames)
+                for i in isl_obj]
+
     if not duplicate_inames:
         return isl_obj
 
@@ -240,6 +244,7 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
                 old_dt, old_idx, old_iname)
 
     return moved_dims.intersect(more_dims)
+
 
 
 

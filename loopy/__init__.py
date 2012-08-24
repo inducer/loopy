@@ -79,10 +79,13 @@ def split_dimension(kernel, split_iname, inner_length,
     if inner_iname is None:
         inner_iname = split_iname+"_inner"
 
-    outer_var_nr = kernel.space.dim(dim_type.set)
-    inner_var_nr = kernel.space.dim(dim_type.set)+1
-
     def process_set(s):
+        if split_iname not in s.get_var_dict():
+            return s
+
+        outer_var_nr = s.dim(dim_type.set)
+        inner_var_nr = s.dim(dim_type.set)+1
+
         s = s.add_dims(dim_type.set, 2)
         s = s.set_dim_name(dim_type.set, outer_var_nr, outer_iname)
         s = s.set_dim_name(dim_type.set, inner_var_nr, inner_iname)
@@ -102,7 +105,7 @@ def split_dimension(kernel, split_iname, inner_length,
                 .eliminate(name_dim_type, name_idx, 1)
                 .remove_dims(name_dim_type, name_idx, 1))
 
-    new_domain = process_set(kernel.domain)
+    new_domains = [process_set(dom) for dom in kernel.domains]
 
     from pymbolic import var
     inner = var(inner_iname)
@@ -125,9 +128,10 @@ def split_dimension(kernel, split_iname, inner_length,
         new_expr = subst_mapper(rls(insn.expression))
 
         if split_iname in insn.forced_iname_deps:
-            new_forced_iname_deps = insn.forced_iname_deps.copy()
-            new_forced_iname_deps.remove(split_iname)
-            new_forced_iname_deps.update([outer_iname, inner_iname])
+            new_forced_iname_deps = (
+                    (insn.forced_iname_deps.copy()
+                    - frozenset([split_iname]))
+                    | frozenset([outer_iname, inner_iname]))
         else:
             new_forced_iname_deps = insn.forced_iname_deps
 
@@ -144,7 +148,7 @@ def split_dimension(kernel, split_iname, inner_length,
     iname_slab_increments[outer_iname] = slabs
     result = (kernel
             .map_expressions(subst_mapper, exclude_instructions=True)
-            .copy(domain=new_domain,
+            .copy(domains=new_domains,
                 iname_slab_increments=iname_slab_increments,
                 instructions=new_insns,
                 applied_iname_rewrites=applied_iname_rewrites,

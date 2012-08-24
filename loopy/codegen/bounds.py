@@ -2,7 +2,6 @@ from __future__ import division
 
 import islpy as isl
 from islpy import dim_type
-import numpy as np
 
 
 
@@ -22,6 +21,7 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
             elim_type.append(dim_type.param)
 
         set = set.eliminate_except(admissible_inames, elim_type)
+        set = set.compute_divs()
 
     basic_sets = set.get_basic_sets()
     if len(basic_sets) > 1:
@@ -103,21 +103,40 @@ def constraint_to_code(ccm, cns):
         comp_op = ">="
 
     from loopy.symbolic import constraint_to_expr
-    return "%s %s 0" % (ccm(constraint_to_expr(cns)), comp_op)
+    return "%s %s 0" % (ccm(constraint_to_expr(cns), 'i'), comp_op)
 
 def filter_necessary_constraints(implemented_domain, constraints):
-    space = implemented_domain.get_space()
     return [cns
         for cns in constraints
         if not implemented_domain.is_subset(
-            isl.Set.universe(space).add_constraint(cns))]
+            isl.align_spaces(
+                isl.BasicSet.universe(cns.get_space()).add_constraint(cns),
+                implemented_domain))]
 
 def generate_bounds_checks(domain, check_inames, implemented_domain):
-    """Will not overapproximate."""
-    domain_bset, = (domain
-            .eliminate_except(check_inames, [dim_type.set])
-            .coalesce()
-            .get_basic_sets())
+    """Will not overapproximate if check_inames consists of all inames in the domain."""
+
+    if len(check_inames) == domain.dim(dim_type.set):
+        assert check_inames == frozenset(domain.get_var_names(dim_type.set))
+    else:
+        domain = (domain
+                .eliminate_except(check_inames, [dim_type.set])
+                .remove_divs())
+
+    if isinstance(domain, isl.Set):
+        bsets = domain.get_basic_sets()
+        if len(bsets) == 1:
+            domain_bset, = bsets
+        else:
+            domain = domain.coalesce()
+            bsets = domain.get_basic_sets()
+            if len(bsets) == 1:
+                raise RuntimeError("domain of inames '%s' projected onto '%s' "
+                        "did not reduce to a single conjunction"
+                        % (", ".join(domain.get_var_names(dim_type.set)),
+                            check_inames))
+    else:
+        domain_bset = domain
 
     domain_bset = domain_bset.remove_redundancies()
 
@@ -129,8 +148,10 @@ def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
             domain, check_inames,
             implemented_domain)
 
-    new_implemented_domain = implemented_domain & (
-            isl.Set.universe(domain.get_space()).add_constraints(bounds_checks))
+    bounds_check_set = isl.Set.universe(domain.get_space()).add_constraints(bounds_checks)
+    bounds_check_set, new_implemented_domain = isl.align_two(
+            bounds_check_set, implemented_domain)
+    new_implemented_domain = new_implemented_domain & bounds_check_set
 
     condition_codelets = [
             constraint_to_code(ccm, cns) for cns in
@@ -142,7 +163,8 @@ def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
 
     return stmt, new_implemented_domain
 
-def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
+def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt,
+        index_dtype):
     # FIXME add admissible vars
     if isinstance(constraint_bset, isl.Set):
         constraint_bset, = constraint_bset.get_basic_sets()
@@ -173,7 +195,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
             from pymbolic import var
             rhs += iname_coeff*var(iname)
             end_conds.append("%s >= 0" %
-                    ccm(cfm(rhs)))
+                    ccm(cfm(rhs), 'i'))
         else: #  iname_coeff > 0
             kind, bound = solve_constraint_for_bound(cns, iname)
             assert kind == ">="
@@ -187,8 +209,8 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
         from loopy.codegen import gen_code_block
         from cgen import Initializer, POD, Const, Line
         return gen_code_block([
-            Initializer(Const(POD(np.int32, iname)),
-                ccm(equality_expr)),
+            Initializer(Const(POD(index_dtype, iname)),
+                ccm(equality_expr, 'i')),
             Line(),
             stmt,
             ])
@@ -205,7 +227,7 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt):
         from cgen import For
         from loopy.codegen import wrap_in
         return wrap_in(For,
-                "int %s = %s" % (iname, ccm(start_expr)),
+                "int %s = %s" % (iname, ccm(start_expr, 'i')),
                 " && ".join(end_conds),
                 "++%s" % iname,
                 stmt)

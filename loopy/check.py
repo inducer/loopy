@@ -1,4 +1,5 @@
 from __future__ import division
+from islpy import dim_type
 
 
 
@@ -85,7 +86,7 @@ def check_for_inactive_iname_access(kernel):
 
 def check_for_write_races(kernel):
     from loopy.symbolic import DependencyMapper
-    from loopy.kernel import ParallelTag, GroupIndexTag, IlpBaseTag
+    from loopy.kernel import ParallelTag, GroupIndexTag
     depmap = DependencyMapper()
 
     for insn in kernel.instructions:
@@ -173,6 +174,26 @@ def check_for_orphaned_user_hardware_axes(kernel):
             raise RuntimeError("user-requested local hardware axis %d "
                     "has no iname mapped to it" % axis)
 
+def check_for_data_dependent_parallel_bounds(kernel):
+    from loopy.kernel import ParallelTag
+
+    for i, dom in enumerate(kernel.domains):
+        dom_inames = set(dom.get_var_names(dim_type.set))
+        par_inames = set(iname
+                for iname in dom_inames
+                if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
+
+        if not par_inames:
+            continue
+
+        parameters = set(dom.get_var_names(dim_type.param))
+        for par in parameters:
+            if par in kernel.temporary_variables:
+                raise RuntimeError("Domain number %d has a data-dependent "
+                        "parameter '%s' and contains parallel "
+                        "inames '%s'. This is not allowed (for now)."
+                        % (i, par, ", ".join(par_inames)))
+
 # }}}
 
 def run_automatic_checks(kernel):
@@ -181,19 +202,14 @@ def run_automatic_checks(kernel):
     check_for_unused_hw_axes_in_insns(kernel)
     check_for_inactive_iname_access(kernel)
     check_for_write_races(kernel)
-
+    check_for_data_dependent_parallel_bounds(kernel)
 
 # {{{ sanity-check for implemented domains of each instruction
 
 def check_implemented_domains(kernel, implemented_domains):
     from islpy import dim_type
 
-    parameter_inames = set(
-            kernel.domain.get_dim_name(dim_type.param, i)
-            for i in range(kernel.domain.dim(dim_type.param)))
-
-    from islpy import align_spaces
-    assumptions = align_spaces(kernel.assumptions, kernel.domain)
+    from islpy import align_spaces, align_two
 
     for insn_id, idomains in implemented_domains.iteritems():
         insn = kernel.id_to_insn[insn_id]
@@ -203,16 +219,29 @@ def check_implemented_domains(kernel, implemented_domains):
         insn_impl_domain = idomains[0]
         for idomain in idomains[1:]:
             insn_impl_domain = insn_impl_domain | idomain
+        assumptions = align_spaces(kernel.assumptions, insn_impl_domain,
+                obj_bigger_ok=True)
         insn_impl_domain = (
                 (insn_impl_domain & assumptions)
                 .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
 
-        desired_domain = ((kernel.domain & assumptions)
+        insn_inames = kernel.insn_inames(insn)
+        insn_domain = kernel.get_inames_domain(insn_inames)
+        assumptions = align_spaces(kernel.assumptions, insn_domain,
+                obj_bigger_ok=True)
+        desired_domain = ((insn_domain & assumptions)
             .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
+
+        insn_impl_domain, desired_domain = align_two(
+                insn_impl_domain, desired_domain)
 
         if insn_impl_domain != desired_domain:
             i_minus_d = insn_impl_domain - desired_domain
             d_minus_i = desired_domain - insn_impl_domain
+
+            parameter_inames = set(
+                    insn_domain.get_dim_name(dim_type.param, i)
+                    for i in range(insn_domain.dim(dim_type.param)))
 
             lines = []
             for kind, diff_set in [

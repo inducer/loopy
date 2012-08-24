@@ -446,8 +446,40 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         useful_loops = []
 
         for iname in needed_inames:
-            if not kernel.loop_nest_map()[iname] <= active_inames_set | parallel_inames:
+
+            # {{{ check if scheduling this iname now is allowed/plausible
+
+            currently_accessible_inames = active_inames_set | parallel_inames
+            if not kernel.loop_nest_map()[iname] <= currently_accessible_inames:
                 continue
+
+            iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
+            from islpy import dim_type
+            iname_home_domain_params = set(iname_home_domain.get_var_names(dim_type.param))
+
+            # The previous check should have ensured this is true, because
+            # Kernel.loop_nest_map takes the domain dependency graph into
+            # consideration.
+            assert (iname_home_domain_params & kernel.all_inames()
+                    <= currently_accessible_inames)
+
+            # Check if any parameters are temporary variables, and if so, if their
+            # writes have already been scheduled.
+
+            data_dep_written = True
+            for domain_par in (
+                    iname_home_domain_params
+                    &
+                    set(kernel.temporary_variables)):
+                writer_insn, = kernel.writer_map()[domain_par]
+                if writer_insn not in scheduled_insn_ids:
+                    data_dep_written = False
+                    break
+
+            if not data_dep_written:
+                continue
+
+            # }}}
 
             # {{{ determine if that gets us closer to being able to schedule an insn
 

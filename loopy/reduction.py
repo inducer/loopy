@@ -93,8 +93,8 @@ class _ArgExtremumReductionOperation(ReductionOperation):
             struct_dtype = np.dtype([("value", dtype), ("index", np.int32)])
             ARGEXT_STRUCT_DTYPES[dtype] = struct_dtype
 
-            from pyopencl.tools import register_dtype
-            register_dtype(struct_dtype, self.prefix(dtype)+"_result", alias_ok=True)
+            from pyopencl.tools import get_or_register_dtype
+            get_or_register_dtype(self.prefix(dtype)+"_result", struct_dtype)
             return struct_dtype
 
     def neutral_element(self, dtype, inames):

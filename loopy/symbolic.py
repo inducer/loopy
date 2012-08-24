@@ -432,10 +432,12 @@ def aff_to_expr(aff, except_name=None, error_on_name=None):
 
 
 
-def pw_aff_to_expr(pw_aff):
+def pw_aff_to_expr(pw_aff, int_ok=False):
     if isinstance(pw_aff, int):
-        from warnings import warn
-        warn("expected PwAff, got int", stacklevel=2)
+        if not int_ok:
+            from warnings import warn
+            warn("expected PwAff, got int", stacklevel=2)
+
         return pw_aff
 
     pieces = pw_aff.get_pieces()
@@ -691,7 +693,7 @@ def get_dependencies(expr):
     from loopy.symbolic import DependencyMapper
     dep_mapper = DependencyMapper(composite_leaves=False)
 
-    return set(dep.name for dep in dep_mapper(expr))
+    return frozenset(dep.name for dep in dep_mapper(expr))
 
 
 
