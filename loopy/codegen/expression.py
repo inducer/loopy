@@ -318,19 +318,25 @@ class LoopyCCodeMapper(RecursiveMapper):
         num_nonneg = is_nonnegative(expr.numerator, domain)
         den_nonneg = is_nonnegative(expr.denominator, domain)
 
+        def seen_func(name):
+            idt = self.kernel.index_dtype
+            self.seen_functions.add((name, name, (idt, idt)))
+
         if den_nonneg:
             if num_nonneg:
                 return self.parenthesize_if_needed(
-                        "%s // %s" % (
+                        "%s / %s" % (
                             self.rec(expr.numerator, PREC_PRODUCT, type_context),
                             # analogous to ^{-1}
                             self.rec(expr.denominator, PREC_POWER, type_context)),
                         enclosing_prec, PREC_PRODUCT)
             else:
+                seen_func("int_floor_div_pos_b")
                 return ("int_floor_div_pos_b(%s, %s)"
                         % (self.rec(expr.numerator, PREC_NONE, 'i'),
                             self.rec(expr.denominator, PREC_NONE, 'i')))
         else:
+            seen_func("int_floor_div")
             return ("int_floor_div(%s, %s)"
                     % (self.rec(expr.numerator, PREC_NONE, 'i'),
                         self.rec(expr.denominator, PREC_NONE, 'i')))

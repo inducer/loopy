@@ -313,25 +313,6 @@ def generate_code(kernel, with_annotation=False,
                     Value("void", kernel.name), args))),
             body))
 
-    gen_code_str = str(gen_code)
-
-    from cgen import LiteralLines
-    if "int_floor_div" in gen_code_str:
-        mod.extend(LiteralLines("""
-            #define int_floor_div(a,b) \
-              (( (a) - \
-                 ( ( (a)<0 ) != ( (b)<0 )) \
-                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
-               / (b) )
-            """))
-
-    if "int_floor_div_pos_b" in gen_code_str:
-        mod.extend(LiteralLines("""
-            #define int_floor_div_pos_b(a,b) ( \
-                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
-                )
-            """))
-
     from loopy.check import check_implemented_domains
     assert check_implemented_domains(kernel, gen_code.implemented_domains)
 

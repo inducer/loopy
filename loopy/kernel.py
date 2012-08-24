@@ -513,6 +513,24 @@ def default_preamble_generator(seen_dtypes, seen_functions):
                 #include <pyopencl-complex.h>
                 """)
 
+    c_funcs = set(c_name for name, c_name, arg_dtypes in seen_functions)
+    if "int_floor_div" in c_funcs:
+        yield ("05_int_floor_div", """
+            #define int_floor_div(a,b) \
+              (( (a) - \
+                 ( ( (a)<0 ) != ( (b)<0 )) \
+                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
+               / (b) )
+            """)
+
+    if "int_floor_div_pos_b" in c_funcs:
+        yield ("05_int_floor_div_pos_b", """
+            #define int_floor_div_pos_b(a,b) ( \
+                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
+                )
+            """)
+
+
 # }}}
 
 # {{{ loop kernel object
