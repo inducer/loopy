@@ -228,7 +228,7 @@ def generate_code(kernel, with_annotation=False,
 
     has_image = False
 
-    from loopy.kernel import GlobalArg, ConstantArg, ImageArg, ScalarArg
+    from loopy.kernel import GlobalArg, ConstantArg, ImageArg, ValueArg
 
     args = []
     for arg in kernel.args:
@@ -250,7 +250,7 @@ def generate_code(kernel, with_annotation=False,
             arg_decl = CLImage(arg.dimensions, mode, arg.name)
 
             has_image = True
-        elif isinstance(arg, ScalarArg):
+        elif isinstance(arg, ValueArg):
             arg_decl = Const(POD(arg.dtype, arg.name))
         else:
             raise ValueError("argument type not understood: '%s'" % type(arg))

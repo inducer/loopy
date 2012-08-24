@@ -492,12 +492,12 @@ def limit_boostability(kernel):
 # {{{ rank inames by stride
 
 def get_auto_axis_iname_ranking_by_stride(kernel, insn):
-    from loopy.kernel import ImageArg, ScalarArg
+    from loopy.kernel import ImageArg, ValueArg
 
     approximate_arg_values = dict(
             (arg.name, arg.approximately)
             for arg in kernel.args
-            if isinstance(arg, ScalarArg))
+            if isinstance(arg, ValueArg))
 
     # {{{ find all array accesses in insn
 

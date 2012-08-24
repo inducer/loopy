@@ -117,7 +117,7 @@ Creating Kernels
 Arguments
 ^^^^^^^^^
 
-.. autoclass:: ScalarArg
+.. autoclass:: ValueArg
     :members:
     :undoc-members:
 

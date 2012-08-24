@@ -108,11 +108,11 @@ class CompiledKernel:
             print "[Loopy] ----------------------------------------------------"
             raise
 
-        from loopy.kernel import ScalarArg
+        from loopy.kernel import ValueArg
 
         arg_types = []
         for arg in kernel.args:
-            if isinstance(arg, ScalarArg):
+            if isinstance(arg, ValueArg):
                 arg_types.append(arg.dtype)
             else:
                 arg_types.append(None)
@@ -307,7 +307,7 @@ def fill_rand(ary):
 
 def make_ref_args(kernel, queue, parameters,
         fill_value):
-    from loopy.kernel import ScalarArg, GlobalArg, ImageArg
+    from loopy.kernel import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
@@ -316,7 +316,7 @@ def make_ref_args(kernel, queue, parameters,
     output_arrays = []
 
     for arg in kernel.args:
-        if isinstance(arg, ScalarArg):
+        if isinstance(arg, ValueArg):
             arg_value = parameters[arg.name]
 
             try:
@@ -373,14 +373,14 @@ def make_ref_args(kernel, queue, parameters,
 
 def make_args(queue, kernel, ref_input_arrays, parameters,
         fill_value):
-    from loopy.kernel import ScalarArg, GlobalArg, ImageArg
+    from loopy.kernel import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
     result = []
     output_arrays = []
     for arg in kernel.args:
-        if isinstance(arg, ScalarArg):
+        if isinstance(arg, ValueArg):
             arg_value = parameters[arg.name]
 
             try:

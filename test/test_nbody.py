@@ -23,7 +23,7 @@ def test_nbody(ctx_factory):
             [
             lp.GlobalArg("x", dtype, shape="N,3", order="C"),
             lp.GlobalArg("pot", dtype, shape="N", order="C"),
-            lp.ScalarArg("N", np.int32),
+            lp.ValueArg("N", np.int32),
             ],
              name="nbody", assumptions="N>=1")
 

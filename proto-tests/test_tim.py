@@ -42,7 +42,7 @@ def test_tim2d(ctx_factory):
 #            lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
 #            lp.ImageArg("D", dtype, shape=(n, n)),
-            lp.ScalarArg("K", np.int32, approximately=1000),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
              name="semlap2D", assumptions="K>=1")
 
@@ -104,7 +104,7 @@ def test_red2d(ctx_factory):
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
             lp.ArrayArg("G", dtype, shape=(3,)+field_shape, order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
-            lp.ScalarArg("K", np.int32, approximately=1000),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
              name="semlap2D", assumptions="K>=1")
 
@@ -172,7 +172,7 @@ def test_tim3d(ctx_factory):
 #            lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
 #            lp.ImageArg("D", dtype, shape=(n, n)),
-            lp.ScalarArg("K", np.int32, approximately=1000),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
              name="semlap3D", assumptions="K>=1")
     

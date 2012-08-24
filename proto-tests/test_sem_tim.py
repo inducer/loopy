@@ -56,7 +56,7 @@ def test_laplacian(ctx_factory):
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
             lp.ArrayArg("G", dtype, shape=(6,)+field_shape, order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
-            lp.ScalarArg("K", np.int32, approximately=1000),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="semlap", assumptions="K>=1")
 
@@ -142,7 +142,7 @@ def test_laplacian_lmem(ctx_factory):
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
             lp.ArrayArg("G", dtype, shape=(6,)+field_shape, order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
-            lp.ScalarArg("K", np.int32, approximately=1000),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="semlap", assumptions="K>=1")
 
@@ -230,7 +230,7 @@ def test_laplacian_lmem_ilp(ctx_factory):
             lp.ArrayArg("lap", dtype, shape=field_shape, order=order),
             lp.ArrayArg("G", dtype, shape=(6,)+field_shape, order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
-            lp.ScalarArg("K", np.int32, approximately=1000),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="semlap", assumptions="K>=1")
 
@@ -332,7 +332,7 @@ def test_advect(ctx_factory):
             lp.ArrayArg("Nw",  dtype, shape=field_shape, order=order),
             lp.ArrayArg("G",   dtype, shape=(9,)+field_shape, order=order),
             lp.ArrayArg("D",   dtype, shape=(N, N),  order=order),
-            lp.ScalarArg("K",  np.int32, approximately=1000),
+            lp.ValueArg("K",  np.int32, approximately=1000),
             ],
             name="sem_advect", assumptions="K>=1")
 
@@ -452,7 +452,7 @@ def test_advect_dealias(ctx_factory):
             lp.ArrayArg("D",   dtype, shape=(M,M),  order=order),
             lp.ArrayArg("I",   dtype, shape=(M, N), order=order),
             lp.ArrayArg("V",   dtype, shape=(N, M), order=order),
-            lp.ScalarArg("K",  np.int32, approximately=1000),
+            lp.ValueArg("K",  np.int32, approximately=1000),
             ],
             name="sem_advect", assumptions="K>=1")
 
@@ -516,7 +516,7 @@ def test_interp_diff(ctx_factory):
             lp.ArrayArg("I",   dtype, shape=(M, N), order=order),
             lp.ArrayArg("V",   dtype, shape=(N, M), order=order),
             lp.ArrayArg("Pu",  dtype, shape=field_shape, order=order),
-            lp.ScalarArg("K",  np.int32, approximately=1000),
+            lp.ValueArg("K",  np.int32, approximately=1000),
             ],
             name="sem_lap_precon", assumptions="K>=1")
 

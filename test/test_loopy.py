@@ -254,7 +254,7 @@ def test_fuzz_code_generator(ctx_factory):
                 [lp.Instruction(None, "value", expr)],
                 [lp.GlobalArg("value", np.complex128, shape=())]
                 + [
-                    lp.ScalarArg(name, get_dtype(val))
+                    lp.ValueArg(name, get_dtype(val))
                     for name, val in var_values.iteritems()
                     ])
         ck = lp.CompiledKernel(ctx, knl)
@@ -322,7 +322,7 @@ def test_nested_dependent_reduction(ctx_factory):
                 "a[i] = sum(j, j)",
                 ],
             [
-                lp.ScalarArg("n", np.int32),
+                lp.ValueArg("n", np.int32),
                 lp.GlobalArg("a", dtype, ("n",)),
                 lp.GlobalArg("l", np.int32, ("n",)),
                 ])
@@ -361,7 +361,7 @@ def test_dependent_loop_bounds(ctx_factory):
                 lp.GlobalArg("a_values", dtype),
                 lp.GlobalArg("x", dtype),
                 lp.GlobalArg("ax", dtype),
-                lp.ScalarArg("n", np.int32),
+                lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and row_len>=1")
 
@@ -393,7 +393,7 @@ def test_dependent_loop_bounds_2(ctx_factory):
                 lp.GlobalArg("a_values", dtype),
                 lp.GlobalArg("x", dtype),
                 lp.GlobalArg("ax", dtype),
-                lp.ScalarArg("n", np.int32),
+                lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and row_len>=1")
 
@@ -429,7 +429,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
             [
                 lp.GlobalArg("a_row_lengths", np.int32),
                 lp.GlobalArg("a", dtype, shape=("n,n"), order="C"),
-                lp.ScalarArg("n", np.int32),
+                lp.ValueArg("n", np.int32),
                 ])
 
     assert knl.parents_per_domain()[1] == 0
@@ -469,7 +469,7 @@ def test_independent_multi_domain(ctx_factory):
             [
                 lp.GlobalArg("a", dtype, shape=("n"), order="C"),
                 lp.GlobalArg("b", dtype, shape=("n"), order="C"),
-                lp.ScalarArg("n", np.int32),
+                lp.ValueArg("n", np.int32),
                 ])
 
 
@@ -507,7 +507,7 @@ def test_bare_data_dependency(ctx_factory):
                 ],
             [
                 lp.GlobalArg("a", dtype, shape=("n"), order="C"),
-                lp.ScalarArg("n", np.int32),
+                lp.ValueArg("n", np.int32),
                 ])
 
     cknl = lp.CompiledKernel(ctx, knl)

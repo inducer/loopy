@@ -19,7 +19,7 @@ class LoopyAdvisory(UserWarning):
 
 # {{{ imported user interface
 
-from loopy.kernel import ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg
+from loopy.kernel import ValueArg, ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg
 
 from loopy.kernel import (AutoFitLocalIndexTag, get_dot_dependency_graph,
         LoopKernel, Instruction,
@@ -35,7 +35,7 @@ from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_ref
 from loopy.check import check_kernels
 
-__all__ = ["ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
+__all__ = ["ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
         "LoopKernel",
         "Instruction",
         "default_function_mangler", "single_arg_function_mangler",

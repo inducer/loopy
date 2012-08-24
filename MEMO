@@ -53,15 +53,11 @@ To-do
 
 - Add dependencies after the fact
 
-- Fix all tests
-
 - Scalar insn priority
 
 - If finding a maximum proves troublesome, move parameters into the domain
 
 - : (as in, Matlab full-slice) in prefetches
-
-- ScalarArg is a bad name
 
 Future ideas
 ^^^^^^^^^^^^
@@ -114,6 +110,9 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- ScalarArg is a bad name
+  -> renamed to ValueArg
 
 - What to do about constants in codegen? (...f suffix, complex types)
   -> dealt with by type contexts

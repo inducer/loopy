@@ -45,7 +45,7 @@ def test_tim2d(ctx_factory):
             # lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
             lp.ArrayArg("D", dtype, shape=(n, n), order=order),
             # lp.ImageArg("D", dtype, shape=(n, n)),
-            lp.ScalarArg("K", np.int32, approximately=1000),
+            lp.ValueArg("K", np.int32, approximately=1000),
             ],
             name="semlap2D", assumptions="K>=1")
 

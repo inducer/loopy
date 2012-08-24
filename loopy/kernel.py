@@ -211,14 +211,22 @@ class ImageArg(object):
         return "<ImageArg '%s' of type %s>" % (self.name, self.dtype)
 
 
-class ScalarArg(object):
+class ValueArg(object):
     def __init__(self, name, dtype, approximately=None):
         self.name = name
         self.dtype = np.dtype(dtype)
         self.approximately = approximately
 
     def __repr__(self):
-        return "<ScalarArg '%s' of type %s>" % (self.name, self.dtype)
+        return "<ValueArg '%s' of type %s>" % (self.name, self.dtype)
+
+class ScalarArg(ValueArg):
+    def __init__(self, name, dtype, approximately=None):
+        from warnings import warn
+        warn("ScalarArg is a deprecated name of ValueArg",
+                DeprecationWarning, stacklevel=2)
+
+        ValueArg.__init__(self, name, dtype, approximately)
 
 # }}}
 
@@ -854,7 +862,7 @@ class LoopKernel(Record):
             domains = [domains]
 
         ctx = isl.Context()
-        scalar_arg_names = set(arg.name for arg in args if isinstance(arg, ScalarArg))
+        scalar_arg_names = set(arg.name for arg in args if isinstance(arg, ValueArg))
         var_names = (
                 set(temporary_variables)
                 | set(insn.get_assignee_var_name()
@@ -1310,7 +1318,7 @@ class LoopKernel(Record):
             from pytools import flatten
             loop_arg_names = list(flatten(dom.get_var_names(dim_type.param)
                     for dom in self.domains))
-            return [arg.name for arg in self.args if isinstance(arg, ScalarArg)
+            return [arg.name for arg in self.args if isinstance(arg, ValueArg)
                     if arg.name in loop_arg_names]
 
     @memoize_method

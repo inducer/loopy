@@ -110,12 +110,12 @@ def test_axpy(ctx_factory):
                     "z[i] = a*x[i]+b*y[i]"
                     ],
                 [
-                    lp.ScalarArg("a", dtype),
+                    lp.ValueArg("a", dtype),
                     lp.GlobalArg("x", dtype, shape="n,"),
-                    lp.ScalarArg("b", dtype),
+                    lp.ValueArg("b", dtype),
                     lp.GlobalArg("y", dtype, shape="n,"),
                     lp.GlobalArg("z", dtype, shape="n,"),
-                    lp.ScalarArg("n", np.int32, approximately=n),
+                    lp.ValueArg("n", np.int32, approximately=n),
                     ],
                 name="axpy", assumptions="n>=1")
 
@@ -246,7 +246,7 @@ def test_variable_size_matrix_mul(ctx_factory):
                 lp.GlobalArg("a", dtype, shape=(n, n), order=order),
                 lp.GlobalArg("b", dtype, shape=(n, n), order=order),
                 lp.GlobalArg("c", dtype, shape=(n, n), order=order),
-                lp.ScalarArg("n", np.int32, approximately=n),
+                lp.ValueArg("n", np.int32, approximately=n),
                 ],
             name="matmul", assumptions="n >= 16")
 
@@ -297,7 +297,7 @@ def test_rank_one(ctx_factory):
                 lp.GlobalArg("a", dtype, shape=(n,), order=order),
                 lp.GlobalArg("b", dtype, shape=(n,), order=order),
                 lp.GlobalArg("c", dtype, shape=(n, n), order=order),
-                lp.ScalarArg("n", np.int32, approximately=n),
+                lp.ValueArg("n", np.int32, approximately=n),
                 ],
             name="rank_one", assumptions="n >= 16")
 
@@ -652,7 +652,7 @@ def test_fancy_matrix_mul(ctx_factory):
                 lp.GlobalArg("a", dtype, shape="(n, n)", order=order),
                 lp.GlobalArg("b", dtype, shape="(n, n)", order=order),
                 lp.GlobalArg("c", dtype, shape="(n, n)", order=order),
-                lp.ScalarArg("n", np.int32, approximately=1000),
+                lp.ValueArg("n", np.int32, approximately=1000),
                 ], name="fancy_matmul", assumptions="n>=1")
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
