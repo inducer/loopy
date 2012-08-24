@@ -89,39 +89,41 @@ def test_multi_cse(ctx_factory):
 def test_stencil(ctx_factory):
     ctx = ctx_factory()
 
+    # n=32 causes corner case behavior in size calculations for temprorary (a
+    # non-unifiable, two-constant-segments PwAff as the base index)
+
+    n = 256
     knl = lp.make_kernel(ctx.devices[0],
-            "{[i,j]: 0<= i,j < 32}",
+            "{[i,j]: 0<= i,j < %d}" % n,
             [
-                "[i] z[i,j] = -2*a[i,j]"
-                    " + a[i,j-1]"
-                    " + a[i,j+1]"
-                    " + a[i-1,j]"
-                    " + a[i+1,j]"
+                "a_offset(ii, jj) := a[ii+1, jj+1]",
+                "z[i,j] = -2*a_offset(i,j)"
+                    " + a_offset(i,j-1)"
+                    " + a_offset(i,j+1)"
+                    " + a_offset(i-1,j)"
+                    " + a_offset(i+1,j)"
                 ],
             [
-                lp.GlobalArg("a", np.float32, shape=(32,32,)),
-                lp.GlobalArg("z", np.float32, shape=(32,32,))
+                lp.GlobalArg("a", np.float32, shape=(n+2,n+2,)),
+                lp.GlobalArg("z", np.float32, shape=(n+2,n+2,))
                 ])
 
+    ref_knl = knl
 
     def variant_1(knl):
-        knl = lp.add_prefetch(knl, "a", [0, 1])
-        return knl
-
-    def variant_2(knl):
         knl = lp.split_dimension(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_dimension(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
         return knl
 
-    #for variant in [variant_1, variant_2]:
-    for variant in [variant_2]:
+    for variant in [variant_1]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["i_outer", "i_inner_0", "j_0"])
         kernel_gen = lp.check_kernels(kernel_gen)
 
-        for knl in kernel_gen:
-            print lp.generate_code(knl)
+        lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+                fills_entire_output=False, print_ref_code=True,
+                op_count=[n*n], op_label=["cells"])
 
 
 

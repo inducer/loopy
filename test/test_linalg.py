@@ -221,7 +221,7 @@ def test_plain_matrix_mul(ctx_factory):
         kernel_gen = lp.check_kernels(kernel_gen, {})
 
         lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
-                op_count=vec_size*2*n**3/1e9, op_label="GFlops/s",
+                op_count=[vec_size*2*n**3/1e9], op_label=["GFlops"],
                 parameters={"n": n}, check_result=check)
 
 
@@ -354,7 +354,7 @@ def test_rank_one(ctx_factory):
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
-                op_count=np.dtype(dtype).itemsize*n**2/1e9, op_label="GBytes",
+                op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
                 parameters={"n": n})
 
 

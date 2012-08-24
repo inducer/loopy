@@ -353,6 +353,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     arg = kernel.arg_dict[var_name]
 
+    # {{{ make parameter names and unification template
+
     parameters = []
     for i in range(arg.dimensions):
         based_on = "%s_dim_%d" % (c_name, i)
@@ -371,7 +373,11 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     elif len(parameters) == 1:
         uni_template = uni_template[var(parameters[0])]
 
+    # }}}
+
     kernel = extract_subst(kernel, rule_name, uni_template, parameters)
+
+    # {{{ track applied iname rewrites on footprint_subscripts
 
     if footprint_subscripts is not None:
         if not isinstance(footprint_subscripts, (list, tuple)):
@@ -402,6 +408,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
                 Variable(rule_name)(*si) for si in footprint_subscripts]
     else:
         subst_use = rule_name
+
+    # }}}
 
     new_kernel = precompute(kernel, subst_use, arg.dtype, sweep_inames,
             new_storage_axis_names=dim_arg_names,

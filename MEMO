@@ -78,7 +78,7 @@ Future ideas
 
 - Check for unordered (no-dependency) writes to the same location
 
-- String instructions?
+- Vanilla C string instructions?
 
 - Barriers for data exchanged via global vars?
 

@@ -33,7 +33,7 @@ class ScalarReductionOperation(ReductionOperation):
         result = type(self).__name__.replace("ReductionOperation", "").lower()
 
         if self.forced_result_dtype is not None:
-            result = "%s<%s>" % (result, str(self.dtype))
+            result = "%s<%s>" % (result, str(self.forced_result_dtype))
 
         return result
 

@@ -1690,14 +1690,14 @@ class SetOperationCacheManager:
         lower_bound_pw_aff = self.dim_min(set, iname_to_dim[iname][1])
         upper_bound_pw_aff = self.dim_max(set, iname_to_dim[iname][1])
 
-        from loopy.isl_helpers import static_max_of_pw_aff, static_min_of_pw_aff
+        from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
 
         size = pw_aff_to_expr(static_max_of_pw_aff(
                 upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True,
                 context=context))
         base_index = pw_aff_to_expr(
-            static_min_of_pw_aff(lower_bound_pw_aff, constants_only=False,
+            static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
                 context=context))
 
         return base_index, size
