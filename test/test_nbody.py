@@ -63,7 +63,7 @@ def test_nbody(ctx_factory):
         kernel_gen = lp.check_kernels(kernel_gen, dict(N=n))
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
-                op_count=n**2*1e-6, op_label="M particle pairs",
+                op_count=[n**2*1e-6], op_label=["M particle pairs"],
                 parameters={"N": n}, print_ref_code=True)
 
 
