@@ -21,7 +21,7 @@ def get_bounds_constraints(set, iname, admissible_inames, allow_parameters):
             elim_type.append(dim_type.param)
 
         set = set.eliminate_except(admissible_inames, elim_type)
-        set = set.compute_divs()
+        set = set.remove_divs()
 
     basic_sets = set.get_basic_sets()
     if len(basic_sets) > 1:
