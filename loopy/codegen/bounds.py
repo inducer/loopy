@@ -2,7 +2,6 @@ from __future__ import division
 
 import islpy as isl
 from islpy import dim_type
-import numpy as np
 
 
 
@@ -115,11 +114,29 @@ def filter_necessary_constraints(implemented_domain, constraints):
                 implemented_domain))]
 
 def generate_bounds_checks(domain, check_inames, implemented_domain):
-    """Will not overapproximate."""
-    domain_bset, = (domain
-            .eliminate_except(check_inames, [dim_type.set])
-            .coalesce()
-            .get_basic_sets())
+    """Will not overapproximate if check_inames consists of all inames in the domain."""
+
+    if len(check_inames) == domain.dim(dim_type.set):
+        assert check_inames == frozenset(domain.get_var_names(dim_type.set))
+    else:
+        domain = (domain
+                .eliminate_except(check_inames, [dim_type.set])
+                .remove_divs())
+
+    if isinstance(domain, isl.Set):
+        bsets = domain.get_basic_sets()
+        if len(bsets) == 1:
+            domain_bset, = bsets
+        else:
+            domain = domain.coalesce()
+            bsets = domain.get_basic_sets()
+            if len(bsets) == 1:
+                raise RuntimeError("domain of inames '%s' projected onto '%s' "
+                        "did not reduce to a single conjunction"
+                        % (", ".join(domain.get_var_names(dim_type.set)),
+                            check_inames))
+    else:
+        domain_bset = domain
 
     domain_bset = domain_bset.remove_redundancies()
 
