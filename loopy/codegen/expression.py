@@ -360,6 +360,24 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     map_max = map_min
 
+    def map_if(self, expr, enclosing_prec, type_context):
+        from pymbolic.mapper.stringifier import PREC_NONE
+        return "(%s ? %s : %s)" % (
+                self.rec(expr.condition, PREC_NONE, "i"),
+                self.rec(expr.then, PREC_NONE, type_context),
+                self.rec(expr.else_, PREC_NONE, type_context),
+                )
+
+    def map_comparison(self, expr, enclosing_prec, type_context):
+        from pymbolic.mapper.stringifier import PREC_COMPARISON
+
+        return self.parenthesize_if_needed(
+                "%s %s %s" % (
+                    self.rec(expr.left, PREC_COMPARISON, None),
+                    expr.operator,
+                    self.rec(expr.right, PREC_COMPARISON, None)),
+                enclosing_prec, PREC_COMPARISON)
+
     def map_constant(self, expr, enclosing_prec, type_context):
         if isinstance(expr, complex):
             cast_type = "cdouble_t"
@@ -375,6 +393,9 @@ class LoopyCCodeMapper(RecursiveMapper):
             elif type_context == "i":
                 return str(int(expr))
             else:
+                if isinstance(expr, int):
+                    return str(int(expr))
+
                 raise RuntimeError("don't know how to generated code "
                         "for constant '%s'" % expr)
 
