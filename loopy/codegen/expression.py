@@ -97,6 +97,8 @@ class TypeInferenceMapper(CombineMapper):
 
         raise TypeInferenceFailure("nothing known about '%s'" % expr.name)
 
+    map_tagged_variable = map_variable
+
     def map_lookup(self, expr):
         agg_result = self.rec(expr.aggregate)
         dtype, offset = agg_result.fields[expr.name]
