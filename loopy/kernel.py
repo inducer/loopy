@@ -654,6 +654,7 @@ class LoopKernel(Record):
     :ivar cache_manager:
     :ivar lowest_priority_inames: (used internally to realize ILP)
     :ivar breakable_inames: these inames' loops may be broken up by the scheduler
+    :ivar isl_context:
 
     The following instance variables are only used until :func:`loopy.make_kernel` is
     finished:
@@ -684,7 +685,8 @@ class LoopKernel(Record):
             cache_manager=None,
             iname_to_tag_requests=None,
             lowest_priority_inames=[], breakable_inames=set(),
-            index_dtype=np.int32):
+            index_dtype=np.int32,
+            isl_context=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -888,14 +890,19 @@ class LoopKernel(Record):
         if isinstance(domains, str):
             domains = [domains]
 
-        ctx = isl.Context()
+        for domain in domains:
+            if isinstance(domain, isl.BasicSet):
+                isl_context = domain.get_ctx()
+        if isl_context is None:
+            isl_context = isl.Context()
+
         scalar_arg_names = set(arg.name for arg in args if isinstance(arg, ValueArg))
         var_names = (
                 set(temporary_variables)
                 | set(insn.get_assignee_var_name()
                     for insn in parsed_instructions
                     if insn.temp_var_type is not None))
-        domains = _parse_domains(ctx, scalar_arg_names | var_names, domains)
+        domains = _parse_domains(isl_context, scalar_arg_names | var_names, domains)
 
         # }}}
 
@@ -956,7 +963,8 @@ class LoopKernel(Record):
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers,
-                index_dtype=index_dtype)
+                index_dtype=index_dtype,
+                isl_context=isl_context)
 
     # {{{ function mangling
 
@@ -1136,7 +1144,8 @@ class LoopKernel(Record):
         assert isinstance(domains, tuple) # for caching
 
         if not domains:
-            return isl.BasicSet.universe(self.domains[0].get_space())
+            return isl.BasicSet.universe(isl.Space.alloc(
+                self.isl_context, 0, 0, 0))
 
         result = None
         for dom_index in domains:

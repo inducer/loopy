@@ -597,8 +597,11 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # }}}
 
-    if sweep_inames:
-        leaf_domain_index = kernel.get_leaf_domain_index(frozenset(sweep_inames))
+    referenced_inames = frozenset(sweep_inames) | frozenset(usage_arg_deps)
+    assert referenced_inames <= kernel.all_inames()
+
+    if referenced_inames:
+        leaf_domain_index = kernel.get_leaf_domain_index(referenced_inames)
         sweep_domain = kernel.domains[leaf_domain_index]
 
         for iname in sweep_inames:
@@ -607,6 +610,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
                         "sweep's leaf domain" % iname)
     else:
         sweep_domain = kernel.combine_domains(())
+        leaf_domain_index = None
 
     (non1_storage_axis_names, new_domain,
             storage_base_indices, non1_storage_base_indices, non1_storage_shape) = \
@@ -814,8 +818,10 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
     # }}}
 
     new_domains = kernel.domains[:]
-    if sweep_inames:
+    if leaf_domain_index is not None:
         new_domains[leaf_domain_index] = new_domain
+    else:
+        new_domains.append(new_domain)
 
     return kernel.copy(
             domains=new_domains,
