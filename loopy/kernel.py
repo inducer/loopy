@@ -915,7 +915,7 @@ class LoopKernel(Record):
             for i in xrange(dom0_space.dim(dim_type.param)):
                 assumptions_space = assumptions_space.set_dim_name(
                         dim_type.param, i, dom0_space.get_dim_name(dim_type.param, i))
-            assumptions = isl.Set.universe(assumptions_space)
+            assumptions = isl.BasicSet.universe(assumptions_space)
 
         elif isinstance(assumptions, str):
             all_inames = set()
@@ -1144,8 +1144,8 @@ class LoopKernel(Record):
         assert isinstance(domains, tuple) # for caching
 
         if not domains:
-            return isl.BasicSet.universe(isl.Space.alloc(
-                self.isl_context, 0, 0, 0))
+            return isl.BasicSet.universe(isl.Space.set_alloc(
+                self.isl_context, 0, 0))
 
         result = None
         for dom_index in domains:

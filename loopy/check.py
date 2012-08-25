@@ -1,5 +1,6 @@
 from __future__ import division
 from islpy import dim_type
+import islpy as isl
 
 
 
@@ -219,15 +220,18 @@ def check_implemented_domains(kernel, implemented_domains):
         insn_impl_domain = idomains[0]
         for idomain in idomains[1:]:
             insn_impl_domain = insn_impl_domain | idomain
-        assumptions = align_spaces(kernel.assumptions, insn_impl_domain,
-                obj_bigger_ok=True)
+        assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
+        assumptions = align_spaces(
+                assumption_non_param,
+                insn_impl_domain, obj_bigger_ok=True)
         insn_impl_domain = (
                 (insn_impl_domain & assumptions)
                 .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
 
         insn_inames = kernel.insn_inames(insn)
         insn_domain = kernel.get_inames_domain(insn_inames)
-        assumptions = align_spaces(kernel.assumptions, insn_domain,
+        assumptions = align_spaces(
+                assumption_non_param, insn_domain,
                 obj_bigger_ok=True)
         desired_domain = ((insn_domain & assumptions)
             .project_out_except(kernel.insn_inames(insn), [dim_type.set]))

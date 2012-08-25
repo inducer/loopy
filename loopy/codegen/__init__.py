@@ -292,7 +292,7 @@ def generate_code(kernel, with_annotation=False,
 
     # }}}
 
-    initial_implemented_domain = kernel.assumptions
+    initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(initial_implemented_domain, c_code_mapper=ccm)
 
     from loopy.codegen.loop import set_up_hw_parallel_loops
