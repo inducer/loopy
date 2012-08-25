@@ -41,8 +41,6 @@ Things to consider
 To-do
 ^^^^^
 
-- Clean up loopy.kernel.
-
 - Group instructions by dependency/inames for scheduling, to
   increase sched. scalability
 
@@ -50,10 +48,6 @@ To-do
 
 - What if no universally valid precompute base index expression is found?
   (test_intel_matrix_mul with n = 6*16, e.g.?)
-
-- Add dependencies after the fact
-
-- Scalar insn priority
 
 - If finding a maximum proves troublesome, move parameters into the domain
 
@@ -110,6 +104,10 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Add dependencies after the fact
+
+- Scalar insn priority
 
 - ScalarArg is a bad name
   -> renamed to ValueArg

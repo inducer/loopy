@@ -182,6 +182,13 @@ Manipulating Reductions
 
 .. autofunction:: realize_reduction
 
+Manipulating Instructions
+-------------------------
+
+.. autofunction:: set_instruction_priority
+
+.. autofunction:: add_dependency
+
 Finishing up
 ------------
 

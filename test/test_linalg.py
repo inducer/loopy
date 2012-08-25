@@ -240,7 +240,7 @@ def test_variable_size_matrix_mul(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j,k]: 0<=i,j,k<n}",
             [
-                "label: c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
+                "c[i, j] = sum_float32(k, a[i, k]*b[k, j]) {id=labl}"
                 ],
             [
                 lp.GlobalArg("a", dtype, shape=(n, n), order=order),
@@ -291,7 +291,7 @@ def test_rank_one(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j]: 0<=i,j<n}",
             [
-                "label: c[i, j] = a[i]*b[j]"
+                "c[i, j] = a[i]*b[j] {id=mylabel, priority =5}"
                 ],
             [
                 lp.GlobalArg("a", dtype, shape=(n,), order=order),
@@ -478,62 +478,48 @@ def test_intel_matrix_mul(ctx_factory):
 
 
 def test_magma_fermi_matrix_mul(ctx_factory):
-    1/0 # not updated to new conventions
-
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    n = 6*16*16
+    n = get_suitable_size(ctx)
 
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
                 ],
             [
-                lp.ImageArg("a", dtype, 2),
-                lp.ImageArg("b", dtype, 2),
+                lp.ImageArg("a", dtype, shape=(n, n)),
+                lp.ImageArg("b", dtype, shape=(n, n)),
                 lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
+
+    seq_knl = knl
 
     i_reg = 4
     j_reg = 4
     i_chunks = 16
     j_chunks = 16
+
+
     knl = lp.split_dimension(knl, "i", i_reg*i_chunks, outer_tag="g.0")
     knl = lp.split_dimension(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
     knl = lp.split_dimension(knl, "j", j_reg*j_chunks, outer_tag="g.1")
     knl = lp.split_dimension(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
     knl = lp.split_dimension(knl, "k", 16)
-    #knl = lp.split_dimension(knl, "k_inner", 8, outer_tag="unr")
-    knl = lp.add_prefetch(knl, 'a', ["k_inner", ("i_inner_inner", "i_inner_outer")])
-    knl = lp.add_prefetch(knl, 'b', ["k_inner", ("j_inner_inner", "j_inner_outer"),])
+    knl = lp.split_dimension(knl, "k_inner", 8, outer_tag="unr")
+    # FIXME
+    #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"])
+    #knl = lp.add_prefetch(knl, 'b', ["k_inner", ("j_inner_inner", "j_inner_outer"),])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    #hints=["k_outer", "k_inner_outer", "k_inner_inner"]
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    a_img = cl.image_from_array(ctx, a.get(), 1)
-    b_img = cl.image_from_array(ctx, b.get(), 1)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a_img, b_img, c.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
+            parameters={})
 
 
 

@@ -41,7 +41,7 @@ def test_wg_too_small(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i]: 0<=i<100}",
             [
-                "[i:l.0] <float32> z[i] = a[i]"
+                "[i:l.0] <float32> z[i] = a[i] {id=copy}"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))],
             local_sizes={0: 16})

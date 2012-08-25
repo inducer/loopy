@@ -263,6 +263,9 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
     for iname, new_tag in iname_to_tag.iteritems():
+        if iname not in kernel.all_inames():
+            raise RuntimeError("iname '%s' does not exist" % iname)
+
         old_tag = kernel.iname_to_tag.get(iname)
 
         retag_ok = False
@@ -422,6 +425,79 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     else:
         return new_kernel
 
+# }}}
+
+# {{{ instruction processing
+
+class _IdMatch(object):
+    def __init__(self, value):
+        self.value = value
+
+class _ExactIdMatch(_IdMatch):
+    def __call__(self, insn):
+        return insn.id == self.value
+
+class _ReIdMatch:
+    def __call__(self, insn):
+        return self.value.match(insn.id) is not None
+
+def _parse_insn_match(insn_match):
+    import re
+    colon_idx = insn_match.find(":")
+    if colon_idx == -1:
+        return _ExactIdMatch(insn_match)
+
+    match_tp = insn_match[:colon_idx]
+    match_val = insn_match[colon_idx+1:]
+
+    if match_tp == "glob":
+        from fnmatch import translate
+        return _ReIdMatch(re.compile(translate(match_val)))
+    elif match_tp == "re":
+        return _ReIdMatch(re.compile(match_val))
+    else:
+        raise ValueError("match type '%s' not understood" % match_tp)
+
+
+
+
+def find_instructions(kernel, insn_match):
+    match = _parse_insn_match(insn_match)
+    return [insn for insn in kernel.instructions if match(insn)]
+
+def map_instructions(kernel, insn_match, f):
+    match = _parse_insn_match(insn_match)
+
+    new_insns = []
+
+    for insn in kernel.instructions:
+        if match(insn):
+            new_insns.append(f(insn))
+        else:
+            new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
+
+def set_instruction_priority(kernel, insn_match, priority):
+    """Set the priority of instructions matching *insn_match* to *priority*.
+
+    *insn_match* may be an instruction id, a regular expression prefixed by `re:`,
+    or a file-name-style glob prefixed by `glob:`.
+    """
+
+    def set_prio(insn): return insn.copy(priority=priority)
+    return map_instructions(kernel, insn_match, set_prio)
+
+def add_dependency(kernel, insn_match, dependency):
+    """Add the instruction dependency *dependency* to the instructions matched
+    by *insn_match*.
+
+    *insn_match* may be an instruction id, a regular expression prefixed by `re:`,
+    or a file-name-style glob prefixed by `glob:`.
+    """
+
+    def add_dep(insn): return insn.copy(insn_deps=insn.insn_deps + [dependency])
+    return map_instructions(kernel, insn_match, add_dep)
 
 # }}}
 

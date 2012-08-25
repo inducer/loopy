@@ -236,11 +236,17 @@ class ScheduleDebugger:
 
 # {{{ scheduling algorithm
 
-def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_boost=False, debug=None):
+def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
+        allow_boost=False, allow_insn=False, debug=None):
+    # allow_insn is set to False initially and after entering each loop
+    # to give loops containing high-priority instructions a chance.
+
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
     scheduled_insn_ids = set(sched_item.insn_id for sched_item in schedule
             if isinstance(sched_item, RunInstruction))
+
+    unscheduled_insn_ids = all_insn_ids - scheduled_insn_ids
 
     if allow_boost is None:
         rec_allow_boost = None
@@ -298,21 +304,22 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
     # }}}
 
-    # {{{ see if any insn can be scheduled now
+    # {{{ see if any insns are ready to be scheduled now
 
     # Also take note of insns that have a chance of being schedulable inside
     # the current loop nest, in this set:
 
     reachable_insn_ids = set()
 
-    unscheduled_insn_ids = all_insn_ids - scheduled_insn_ids
+    for insn_id in sorted(unscheduled_insn_ids,
+            key=lambda insn_id: kernel.id_to_insn[insn_id].priority,
+            reverse=True):
 
-    for insn_id in unscheduled_insn_ids:
         insn = kernel.id_to_insn[insn_id]
 
-        schedule_now = set(insn.insn_deps) <= scheduled_insn_ids
+        is_ready = set(insn.insn_deps) <= scheduled_insn_ids
 
-        if not schedule_now:
+        if not is_ready:
             if debug_mode:
                 print "instruction '%s' is missing insn depedencies '%s'" % (
                         insn.id, ",".join(set(insn.insn_deps) - scheduled_insn_ids))
@@ -330,7 +337,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
             have = have - insn.boostable_into
 
         if want != have:
-            schedule_now = False
+            is_ready = False
 
             if debug_mode:
                 if want-have:
@@ -342,12 +349,12 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
         # {{{ determine reachability
 
-        if (not schedule_now and have <= want):
+        if (not is_ready and have <= want):
             reachable_insn_ids.add(insn_id)
 
         # }}}
 
-        if schedule_now:
+        if is_ready and allow_insn:
             if debug_mode:
                 print "scheduling '%s'" % insn.id
             scheduled_insn_ids.add(insn.id)
@@ -359,12 +366,11 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
             for sub_sched in generate_loop_schedules_internal(
                     kernel, loop_priority, schedule,
-                    allow_boost=rec_allow_boost, debug=debug):
+                    allow_boost=rec_allow_boost, debug=debug,
+                    allow_insn=True):
                 yield sub_sched
 
             return
-
-    unscheduled_insn_ids = list(all_insn_ids - scheduled_insn_ids)
 
     # }}}
 
@@ -413,7 +419,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
                 for sub_sched in generate_loop_schedules_internal(
                         kernel, loop_priority, schedule,
-                        allow_boost=rec_allow_boost, debug=debug):
+                        allow_boost=rec_allow_boost, debug=debug,
+                        allow_insn=allow_insn):
                     yield sub_sched
 
                 return
@@ -443,7 +450,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         print 75*"-"
 
     if needed_inames:
-        useful_loops = []
+        iname_to_usefulness = {}
 
         for iname in needed_inames:
 
@@ -483,7 +490,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
             # {{{ determine if that gets us closer to being able to schedule an insn
 
-            useful = False
+            usefulness = None # highest insn priority enabled by iname
 
             hypothetically_active_loops = active_inames_set | set([iname])
             for insn_id in reachable_insn_ids:
@@ -492,15 +499,17 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
                 want = kernel.insn_inames(insn) | insn.boostable_into
 
                 if hypothetically_active_loops <= want:
-                    useful = True
-                    break
+                    if usefulness is None:
+                        usefulness = insn.priority
+                    else:
+                        usefulness = max(usefulness, insn.priority)
 
-            if not useful:
+            if usefulness is None:
                 if debug_mode:
                     print "iname '%s' deemed not useful" % iname
                 continue
 
-            useful_loops.append(iname)
+            iname_to_usefulness[iname] = usefulness
 
             # }}}
 
@@ -511,7 +520,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
 
         loop_priority_set = set(loop_priority)
         lowest_priority_set = set(kernel.lowest_priority_inames)
-        useful_loops_set = set(useful_loops)
+        useful_loops_set = set(iname_to_usefulness.iterkeys())
         useful_and_desired = useful_loops_set & loop_priority_set
 
         if useful_and_desired:
@@ -521,27 +530,29 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
                     and iname not in kernel.lowest_priority_inames]
 
             priority_tiers.append(
-                    set(useful_loops)
+                    useful_loops_set
                     - loop_priority_set
                     - lowest_priority_set)
         else:
-            priority_tiers = [set(useful_loops) - lowest_priority_set]
+            priority_tiers = [useful_loops_set - lowest_priority_set]
 
         priority_tiers.extend([
             [iname]
             for iname in kernel.lowest_priority_inames
-            if iname in useful_loops
+            if iname in useful_loops_set
             ])
 
         # }}}
 
         if debug_mode:
-            print "useful inames: %s" % ",".join(useful_loops)
+            print "useful inames: %s" % ",".join(useful_loops_set)
 
         for tier in priority_tiers:
             found_viable_schedule = False
 
-            for iname in tier:
+            for iname in sorted(tier,
+                    key=lambda iname: iname_to_usefulness.get(iname, 0),
+                    reverse=True):
                 new_schedule = schedule + [EnterLoop(iname=iname)]
 
                 for sub_sched in generate_loop_schedules_internal(
@@ -567,11 +578,20 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[], allow_b
         yield schedule
 
     else:
+        if not allow_insn:
+            # try again with boosting allowed
+            for sub_sched in generate_loop_schedules_internal(
+                    kernel, loop_priority, schedule=schedule,
+                    allow_boost=allow_boost, debug=debug,
+                    allow_insn=True):
+                yield sub_sched
+
         if not allow_boost and allow_boost is not None:
             # try again with boosting allowed
             for sub_sched in generate_loop_schedules_internal(
                     kernel, loop_priority, schedule=schedule,
-                    allow_boost=True, debug=debug):
+                    allow_boost=True, debug=debug,
+                    allow_insn=allow_insn):
                 yield sub_sched
         else:
             # dead end

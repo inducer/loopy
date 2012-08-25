@@ -296,6 +296,7 @@ class Instruction(Record):
         of the program. Allowed values are *None* (for unknown), *True*, and *False*.
     :ivar boostable_into: a set of inames into which the instruction
         may need to be boosted, as a heuristic help for the scheduler.
+    :ivar priority: scheduling priority
 
     The following two instance variables are only used until :func:`loopy.make_kernel` is
     finished:
@@ -309,7 +310,8 @@ class Instruction(Record):
             id, assignee, expression,
             forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
             boostable_into=None,
-            temp_var_type=None, duplicate_inames_and_tags=[]):
+            temp_var_type=None, duplicate_inames_and_tags=[],
+            priority=0):
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -325,7 +327,9 @@ class Instruction(Record):
                 forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps, boostable=boostable,
                 boostable_into=boostable_into,
-                temp_var_type=temp_var_type, duplicate_inames_and_tags=duplicate_inames_and_tags)
+                temp_var_type=temp_var_type,
+                duplicate_inames_and_tags=duplicate_inames_and_tags,
+                priority=priority)
 
     @memoize_method
     def reduction_inames(self):
@@ -358,8 +362,12 @@ class Instruction(Record):
         else:
             raise RuntimeError("unexpected value for Instruction.boostable")
 
+        options = []
+
         if self.insn_deps:
-            result += "\n    : " + ", ".join(self.insn_deps)
+            options.append("deps="+":".join(self.insn_deps))
+        if self.priority:
+            options.append("priority=%d" % self.priority)
 
         return result
 
@@ -644,7 +652,7 @@ class LoopKernel(Record):
         were applied to the kernel. These are stored so that they may be repeated
         on expressions the user specifies later.
     :ivar cache_manager:
-    :ivar lowest_priority_inames:
+    :ivar lowest_priority_inames: (used internally to realize ILP)
     :ivar breakable_inames: these inames' loops may be broken up by the scheduler
 
     The following instance variables are only used until :func:`loopy.make_kernel` is
@@ -695,14 +703,13 @@ class LoopKernel(Record):
         INAME_ENTRY_RE = re.compile(
                 r"^\s*(?P<iname>\w+)\s*(?:\:\s*(?P<tag>[\w.]+))?\s*$")
         INSN_RE = re.compile(
-                r"^\s*(?:(?P<label>\w+):)?"
                 "\s*(?:\["
                     "(?P<iname_deps_and_tags>[\s\w,:.]*)"
                     "(?:\|(?P<duplicate_inames_and_tags>[\s\w,:.]*))?"
                 "\])?"
                 "\s*(?:\<(?P<temp_var_type>.*?)\>)?"
                 "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
-                "\s*?(?:\:\s*(?P<insn_deps>[\s\w,]+))?$"
+                "\s*?(?:\{(?P<options>[\s\w=,:]+)\}\s*)?$"
                 )
         SUBST_RE = re.compile(
                 r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$"
@@ -738,7 +745,7 @@ class LoopKernel(Record):
             insn_match = INSN_RE.match(insn)
             subst_match = SUBST_RE.match(insn)
             if insn_match is not None and subst_match is not None:
-                raise RuntimeError("insn parse error")
+                raise RuntimeError("instruction parse error: %s" % insn)
 
             if insn_match is not None:
                 groups = insn_match.groupdict()
@@ -752,15 +759,33 @@ class LoopKernel(Record):
             rhs = parse(groups["rhs"])
 
             if insn_match is not None:
-                if groups["label"] is not None:
-                    label = groups["label"]
-                else:
-                    label = "insn"
+                insn_deps = set()
+                insn_id = "insn"
+                priority = 0
 
-                if groups["insn_deps"] is not None:
-                    insn_deps = set(dep.strip() for dep in groups["insn_deps"].split(","))
-                else:
-                    insn_deps = set()
+                if groups["options"] is not None:
+                    for option in groups["options"].split(","):
+                        option = option.strip()
+                        if not option:
+                            raise RuntimeError("empty option supplied")
+
+                        equal_idx = option.find("=")
+                        if equal_idx == -1:
+                            opt_key = option
+                            opt_value = None
+                        else:
+                            opt_key = option[:equal_idx].strip()
+                            opt_value = option[equal_idx+1:].strip()
+
+                        if opt_key == "id":
+                            insn_id = opt_value
+                        elif opt_key == "priority":
+                            priority = int(opt_value)
+                        elif opt_key == "dep":
+                            insn_deps = opt_value.split(":")
+                        else:
+                            raise ValueError("unrecognized instruction option '%s'"
+                                    % opt_key)
 
                 if groups["iname_deps_and_tags"] is not None:
                     inames_and_tags = parse_iname_and_tag_list(
@@ -792,12 +817,14 @@ class LoopKernel(Record):
 
                 parsed_instructions.append(
                         Instruction(
-                            id=self.make_unique_instruction_id(parsed_instructions, based_on=label),
+                            id=self.make_unique_instruction_id(
+                                parsed_instructions, based_on=insn_id),
                             insn_deps=insn_deps,
                             forced_iname_deps=forced_iname_deps,
                             assignee=lhs, expression=rhs,
                             temp_var_type=temp_var_type,
-                            duplicate_inames_and_tags=duplicate_inames_and_tags))
+                            duplicate_inames_and_tags=duplicate_inames_and_tags,
+                            priority=priority))
 
             elif subst_match is not None:
                 from pymbolic.primitives import Variable, Call
@@ -1378,8 +1405,8 @@ class LoopKernel(Record):
             all_inames_by_insns |= self.insn_inames(insn)
 
         if not all_inames_by_insns <= self.all_inames():
-            raise RuntimeError("inames collected from instructions (%s) "
-                    "that are not present in domain (%s)"
+            raise RuntimeError("some inames collected from instructions (%s) "
+                    "are not present in domain (%s)"
                     % (", ".join(sorted(all_inames_by_insns)),
                         ", ".join(sorted(self.all_inames()))))
 
@@ -1552,14 +1579,20 @@ class LoopKernel(Record):
         loop_list_width = 35
         for insn in self.instructions:
             loop_list = ",".join(sorted(self.insn_inames(insn)))
+
+            options = [insn.id]
+            if insn.priority:
+                options.append("priority=%d" % insn.priority)
+
             if len(loop_list) > loop_list_width:
                 lines.append("[%s]" % loop_list)
                 lines.append("%s%s <- %s   # %s" % (
-                    (loop_list_width+2)*" ", insn.assignee, insn.expression, insn.id))
+                    (loop_list_width+2)*" ", insn.assignee,
+                    insn.expression, ", ".join(options)))
             else:
                 lines.append("[%s]%s%s <- %s   # %s" % (
                     loop_list, " "*(loop_list_width-len(loop_list)),
-                    insn.assignee, insn.expression, insn.id))
+                    insn.assignee, insn.expression, ", ".join(options)))
 
         lines.append(sep)
         lines.append("DEPENDENCIES:")
