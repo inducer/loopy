@@ -209,11 +209,11 @@ def duplicate_reduction_inames(kernel):
 
         for iname in reduction_expr.inames:
             if iname.startswith("@"):
-                new_iname = kernel.make_unique_var_name(iname[1:]+"_"+insn.id,
+                new_iname = kernel.make_unique_var_name(iname[1:]+"_"+name_base,
                         newly_created_vars)
 
-                old_insn_inames.append(iname.lstrip("@"))
-                new_insn_inames.append(new_iname)
+                old_inames.append(iname.lstrip("@"))
+                new_inames.append(new_iname)
                 newly_created_vars.add(new_iname)
                 new_red_inames.append(new_iname)
                 did_something = True
@@ -241,28 +241,46 @@ def duplicate_reduction_inames(kernel):
 
     # }}}
 
+    from loopy.symbolic import ReductionCallbackMapper
+    from loopy.isl_helpers import duplicate_axes
+
     new_domains = kernel.domains
     new_insns = []
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
 
     for insn in kernel.instructions:
-        old_insn_inames = []
-        new_insn_inames = []
+        old_inames = []
+        new_inames = []
+        name_base = insn.id
 
-        from loopy.symbolic import ReductionCallbackMapper
         new_insns.append(insn.copy(
             expression=ReductionCallbackMapper(duplicate_reduction_inames)
             (insn.expression)))
 
-        from loopy.isl_helpers import duplicate_axes
-        for old, new in zip(old_insn_inames, new_insn_inames):
+        for old, new in zip(old_inames, new_inames):
+            new_domains = duplicate_axes(new_domains, [old], [new])
+            if old in kernel.iname_to_tag:
+                new_iname_to_tag[new] = kernel.iname_to_tag[old]
+
+    new_substs = {}
+    for sub_name, sub_rule in kernel.substitutions.iteritems():
+        old_inames = []
+        new_inames = []
+        name_base = sub_name
+
+        new_substs[sub_name] = sub_rule.copy(
+                expression=ReductionCallbackMapper(duplicate_reduction_inames)
+                (sub_rule.expression))
+
+        for old, new in zip(old_inames, new_inames):
             new_domains = duplicate_axes(new_domains, [old], [new])
             if old in kernel.iname_to_tag:
                 new_iname_to_tag[new] = kernel.iname_to_tag[old]
 
     return kernel.copy(
             instructions=new_insns,
+            substitutions=new_substs,
             domains=new_domains,
             iname_to_tag=new_iname_to_tag)
 
