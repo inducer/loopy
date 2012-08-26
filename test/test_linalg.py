@@ -191,14 +191,14 @@ def test_plain_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    for dtype, check, vec_size, reduction_func in [
-            (cl_array.vec.float4, check_float4, 4, "sum_vec_float4"),
-            (np.float32, None, 1, "sum_float32"),
+    for dtype, check, vec_size in [
+            (cl_array.vec.float4, check_float4, 4),
+            (np.float32, None, 1),
             ]:
         knl = lp.make_kernel(ctx.devices[0],
                 "{[i,j,k]: 0<=i,j,k<%d}" % n,
                 [
-                    "c[i, j] = %s(k, a[i, k]*b[k, j])" % reduction_func
+                    "c[i, j] = sum(k, a[i, k]*b[k, j])"
                     ],
                 [
                     lp.GlobalArg("a", dtype, shape=(n, n), order=order),
@@ -232,15 +232,13 @@ def test_variable_size_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = get_suitable_size(ctx)
 
     knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j,k]: 0<=i,j,k<n}",
             [
-                "c[i, j] = sum_float32(k, a[i, k]*b[k, j]) {id=labl}"
+                "c[i, j] = sum(k, a[i, k]*b[k, j]) {id=labl}"
                 ],
             [
                 lp.GlobalArg("a", dtype, shape=(n, n), order=order),
@@ -249,6 +247,8 @@ def test_variable_size_matrix_mul(ctx_factory):
                 lp.ValueArg("n", np.int32, approximately=n),
                 ],
             name="matmul", assumptions="n >= 16")
+
+    ref_knl = knl
 
     knl = lp.split_dimension(knl, "i", 16,
             outer_tag="g.0", inner_tag="l.1")
@@ -262,21 +262,10 @@ def test_variable_size_matrix_mul(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
+    lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
+            parameters={"n": n})
 
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
 
 
 
@@ -364,15 +353,13 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = 6*16*2
 
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.GlobalArg("a", dtype, shape=(n, n), order=order),
@@ -380,6 +367,8 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
                 lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
+
+    seq_knl = knl
 
     i_reg = 2
     j_reg = 2
@@ -395,21 +384,9 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
+            parameters={})
 
 
 
@@ -418,15 +395,13 @@ def test_intel_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = 128+32
 
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.GlobalArg("a", dtype, shape=(n, n), order=order),
@@ -434,6 +409,8 @@ def test_intel_matrix_mul(ctx_factory):
                 lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
+
+    seq_knl = knl
 
     i_reg = 4
     j_reg = 4
@@ -457,21 +434,9 @@ def test_intel_matrix_mul(ctx_factory):
     #hints=["k_outer", "k_inner_outer", "k_inner_inner"]
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a.data, b.data, c.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
+            parameters={})
 
 
 
@@ -529,22 +494,22 @@ def test_image_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     n = get_suitable_size(ctx)
 
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
                 ],
             [
-                lp.ImageArg("a", dtype, 2),
-                lp.ImageArg("b", dtype, 2),
+                lp.ImageArg("a", dtype, shape=(n, n)),
+                lp.ImageArg("b", dtype, shape=(n, n)),
                 lp.GlobalArg("c", dtype, shape=(n, n), order=order),
                 ],
             name="matmul")
+
+    seq_knl = knl
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
@@ -556,24 +521,9 @@ def test_image_matrix_mul(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
-    a_img = cl.image_from_array(ctx, a.get(), 1)
-    b_img = cl.image_from_array(ctx, b.get(), 1)
-
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(), lsize(), a_img, b_img, c.data,
-                g_times_l=True)
-
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
-
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
+            parameters={})
 
 
 
@@ -587,7 +537,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
-                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.ImageArg("a", dtype, shape=(n, n)),
@@ -622,8 +572,6 @@ def test_image_matrix_mul_ilp(ctx_factory):
 def test_fancy_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
 
     order = "C"
 
@@ -632,7 +580,7 @@ def test_fancy_matrix_mul(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j,k]: 0<=i,j,k<n }",
             [
-                "c[i, j] = sum_float32(k, a[i, k]*b[k, j])"
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
                 ],
             [
                 lp.GlobalArg("a", dtype, shape="(n, n)", order=order),
@@ -640,6 +588,8 @@ def test_fancy_matrix_mul(ctx_factory):
                 lp.GlobalArg("c", dtype, shape="(n, n)", order=order),
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ], name="fancy_matmul", assumptions="n>=1")
+
+    seq_knl = knl
 
     knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
@@ -650,23 +600,11 @@ def test_fancy_matrix_mul(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-    a = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order, 
-            ran_factor=0)
-    b = make_well_conditioned_dev_matrix(queue, n, dtype=dtype, order=order,
-            ran_factor=0)
-    c = cl_array.empty_like(a)
-    refsol = np.dot(a.get(), b.get())
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
+            parameters=dict(n=n))
 
-    def launcher(kernel, gsize, lsize, check):
-        evt = kernel(queue, gsize(n), lsize(n), a.data, b.data, c.data, n,
-                g_times_l=True)
 
-        if check:
-            check_error(refsol, c.get())
-
-        return evt
-
-    lp.drive_timing_run(kernel_gen, queue, launcher, 2*n**3)
 
 
 
