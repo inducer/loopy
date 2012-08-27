@@ -693,6 +693,8 @@ class LoopKernel(Record):
     :ivar iname_to_tag_requests:
     """
 
+    # {{{ constructor
+
     def __init__(self, device, domains, instructions, args=[], schedule=None,
             name="loopy_kernel",
             preambles=[],
@@ -1012,6 +1014,8 @@ class LoopKernel(Record):
                 index_dtype=index_dtype,
                 isl_context=isl_context)
 
+    # }}}
+
     # {{{ function mangling
 
     def register_function_mangler(self, mangler):
@@ -1028,7 +1032,27 @@ class LoopKernel(Record):
 
     # }}}
 
-    # {{{ unique ids
+    # {{{ name wrangling
+
+    @memoize_method
+    def non_iname_variable_names(self):
+        return (set(self.arg_dict.iterkeys())
+                | set(self.temporary_variables.iterkeys()))
+
+    @memoize_method
+    def all_variable_names(self):
+        return (
+                set(self.temporary_variables.iterkeys())
+                | set(self.substitutions.iterkeys())
+                | set(arg.name for arg in self.args)
+                | set(self.all_inames()))
+
+    def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
+        used_vars = self.all_variable_names() | extra_used_vars
+
+        for var_name in _generate_unique_possibilities(based_on):
+            if var_name not in used_vars:
+                return var_name
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:
@@ -1040,25 +1064,27 @@ class LoopKernel(Record):
             if id_str not in used_ids:
                 return id_str
 
+    def get_var_descriptor(self, name):
+        try:
+            return self.arg_dict[name]
+        except KeyError:
+            pass
+
+        try:
+            return self.temporary_variables[name]
+        except KeyError:
+            pass
+
+        raise ValueError("nothing known about variable '%s'" % name)
+
+    @property
+    @memoize_method
+    def id_to_insn(self):
+        return dict((insn.id, insn) for insn in self.instructions)
+
     # }}}
 
-    # {{{ name listing
-
-    @memoize_method
-    def all_inames(self):
-        result = set()
-        for dom in self.domains:
-            result.update(dom.get_var_names(dim_type.set))
-        return frozenset(result)
-
-    @memoize_method
-    def non_iname_variable_names(self):
-        return (set(self.arg_dict.iterkeys())
-                | set(self.temporary_variables.iterkeys()))
-
-    # }}}
-
-    # {{{ domain handling
+    # {{{ domain wrangling
 
     @memoize_method
     def parents_per_domain(self):
@@ -1260,6 +1286,15 @@ class LoopKernel(Record):
 
     # }}}
 
+    # {{{ iname wrangling
+
+    @memoize_method
+    def all_inames(self):
+        result = set()
+        for dom in self.domains:
+            result.update(dom.get_var_names(dim_type.set))
+        return frozenset(result)
+
     @memoize_method
     def all_insn_inames(self):
         """Return a mapping from instruction ids to inames inside which
@@ -1317,6 +1352,47 @@ class LoopKernel(Record):
         return result
 
     @memoize_method
+    def loop_nest_map(self):
+        """Returns a dictionary mapping inames to other inames that are
+        always nested around them.
+        """
+        result = {}
+
+        # {{{ examine instructions
+
+        iname_to_insns = self.iname_to_insns()
+
+        # examine pairs of all inames--O(n**2), I know.
+        for inner_iname in self.all_inames():
+            result[inner_iname] = set()
+            for outer_iname in self.all_inames():
+                if outer_iname in self.breakable_inames:
+                    continue
+
+                if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
+                    result[inner_iname].add(outer_iname)
+
+        # }}}
+
+        # {{{ examine domains
+
+        for i_dom, (dom, parent_indices) in enumerate(
+                zip(self.domains, self.all_parents_per_domain())):
+            for parent_index in parent_indices:
+                for iname in dom.get_var_names(dim_type.set):
+                    parent = self.domains[parent_index]
+                    for parent_iname in parent.get_var_names(dim_type.set):
+                        result[iname].add(parent_iname)
+
+        # }}}
+
+        return result
+
+    # }}}
+
+    # {{{ read and written variables
+
+    @memoize_method
     def reader_map(self):
         """
         :return: a dict that maps variable names to ids of insns that read that variable.
@@ -1353,38 +1429,9 @@ class LoopKernel(Record):
             insn.get_assignee_var_name()
             for insn in self.instructions)
 
-    @memoize_method
-    def all_variable_names(self):
-        return (
-                set(self.temporary_variables.iterkeys())
-                | set(self.substitutions.iterkeys())
-                | set(arg.name for arg in self.args)
-                | set(self.all_inames()))
+    # }}}
 
-    def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
-        used_vars = self.all_variable_names() | extra_used_vars
-
-        for var_name in _generate_unique_possibilities(based_on):
-            if var_name not in used_vars:
-                return var_name
-
-    def get_var_descriptor(self, name):
-        try:
-            return self.arg_dict[name]
-        except KeyError:
-            pass
-
-        try:
-            return self.temporary_variables[name]
-        except KeyError:
-            pass
-
-        raise ValueError("nothing known about variable '%s'" % name)
-
-    @property
-    @memoize_method
-    def id_to_insn(self):
-        return dict((insn.id, insn) for insn in self.instructions)
+    # {{{ argument wrangling
 
     @property
     @memoize_method
@@ -1402,6 +1449,9 @@ class LoopKernel(Record):
                     for dom in self.domains))
             return [arg.name for arg in self.args if isinstance(arg, ValueArg)
                     if arg.name in loop_arg_names]
+    # }}}
+
+    # {{{ bounds finding
 
     @memoize_method
     def get_iname_bounds(self, iname):
@@ -1548,6 +1598,10 @@ class LoopKernel(Record):
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
+    # }}}
+
+    # {{{ local memory
+
     @memoize_method
     def local_var_names(self):
         return set(
@@ -1559,42 +1613,7 @@ class LoopKernel(Record):
         return sum(lv.nbytes for lv in self.temporary_variables.itervalues()
                 if lv.is_local)
 
-    @memoize_method
-    def loop_nest_map(self):
-        """Returns a dictionary mapping inames to other inames that are
-        always nested around them.
-        """
-        result = {}
-
-        # {{{ examine instructions
-
-        iname_to_insns = self.iname_to_insns()
-
-        # examine pairs of all inames--O(n**2), I know.
-        for inner_iname in self.all_inames():
-            result[inner_iname] = set()
-            for outer_iname in self.all_inames():
-                if outer_iname in self.breakable_inames:
-                    continue
-
-                if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
-                    result[inner_iname].add(outer_iname)
-
-        # }}}
-
-        # {{{ examine domains
-
-        for i_dom, (dom, parent_indices) in enumerate(
-                zip(self.domains, self.all_parents_per_domain())):
-            for parent_index in parent_indices:
-                for iname in dom.get_var_names(dim_type.set):
-                    parent = self.domains[parent_index]
-                    for parent_iname in parent.get_var_names(dim_type.set):
-                        result[iname].add(parent_iname)
-
-        # }}}
-
-        return result
+    # }}}
 
     def map_expressions(self, func, exclude_instructions=False):
         if exclude_instructions:
@@ -1608,6 +1627,8 @@ class LoopKernel(Record):
                 substitutions=dict(
                     (subst.name, subst.copy(expression=func(subst.expression)))
                     for subst in self.substitutions.itervalues()))
+
+    # {{{ pretty-printing
 
     def __str__(self):
         lines = []
@@ -1658,10 +1679,11 @@ class LoopKernel(Record):
 
         return "\n".join(lines)
 
+    # }}}
+
 # }}}
 
-
-
+# {{{ find_all_insn_inames fixed point iteration
 
 def find_all_insn_inames(instructions, all_inames,
         writer_map, temporary_variables):
@@ -1732,30 +1754,9 @@ def find_all_insn_inames(instructions, all_inames,
 
     return insn_id_to_inames
 
+# }}}
 
-
-
-def get_dot_dependency_graph(kernel, iname_cluster=False, iname_edge=True):
-    lines = []
-    for insn in kernel.instructions:
-        lines.append("%s [shape=\"box\"];" % insn.id)
-        for dep in insn.insn_deps:
-            lines.append("%s -> %s;" % (dep, insn.id))
-
-        if iname_edge:
-            for iname in kernel.insn_inames(insn):
-                lines.append("%s -> %s [style=\"dotted\"];" % (iname, insn.id))
-
-    if iname_cluster:
-        for iname in kernel.all_inames():
-            lines.append("subgraph cluster_%s { label=\"%s\" %s }" % (iname, iname,
-                " ".join(insn.id for insn in kernel.instructions
-                    if iname in kernel.insn_inames(insn))))
-
-    return "digraph loopy_deps {\n%s\n}" % "\n".join(lines)
-
-
-
+# {{{ set operation cache
 
 class SetOperationCacheManager:
     def __init__(self):
@@ -1798,7 +1799,9 @@ class SetOperationCacheManager:
 
         return base_index, size
 
+# }}}
 
+# {{{ domain change helper
 
 class DomainChanger:
     """Helps change the domain responsible for *inames* within a kernel.
@@ -1825,10 +1828,9 @@ class DomainChanger:
 
         return result
 
+# }}}
 
-
-
-# {{{ maxima output
+# {{{ maxima export
 
 from pymbolic.maxima import MaximaStringifyMapper as MaximaStringifyMapperBase
 
@@ -1895,6 +1897,29 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
             write_insn(insn)
 
     return "\n".join(result)
+
+# }}}
+
+# {{{ dot export
+
+def get_dot_dependency_graph(kernel, iname_cluster=False, iname_edge=True):
+    lines = []
+    for insn in kernel.instructions:
+        lines.append("%s [shape=\"box\"];" % insn.id)
+        for dep in insn.insn_deps:
+            lines.append("%s -> %s;" % (dep, insn.id))
+
+        if iname_edge:
+            for iname in kernel.insn_inames(insn):
+                lines.append("%s -> %s [style=\"dotted\"];" % (iname, insn.id))
+
+    if iname_cluster:
+        for iname in kernel.all_inames():
+            lines.append("subgraph cluster_%s { label=\"%s\" %s }" % (iname, iname,
+                " ".join(insn.id for insn in kernel.instructions
+                    if iname in kernel.insn_inames(insn))))
+
+    return "digraph loopy_deps {\n%s\n}" % "\n".join(lines)
 
 # }}}
 
