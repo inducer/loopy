@@ -41,17 +41,17 @@ Things to consider
 To-do
 ^^^^^
 
+- Kernel splitting (via what variables get computed in a kernel)
+
+Fixes:
+
 - Group instructions by dependency/inames for scheduling, to
   increase sched. scalability
-
-- Kernel splitting (via what variables get computed in a kernel)
 
 - What if no universally valid precompute base index expression is found?
   (test_intel_matrix_mul with n = 6*16, e.g.?)
 
 - If finding a maximum proves troublesome, move parameters into the domain
-
-- : (as in, Matlab full-slice) in prefetches
 
 Future ideas
 ^^^^^^^^^^^^
@@ -104,6 +104,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- : (as in, Matlab full-slice) in prefetches
 
 - Add dependencies after the fact
 

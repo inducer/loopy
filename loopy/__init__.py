@@ -295,6 +295,93 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
 # {{{ convenience: add_prefetch
 
+# {{{ process footprint_subscripts
+
+def _add_kernel_axis(kernel, axis_name, start, stop, base_inames):
+    from loopy.kernel import DomainChanger
+    domch = DomainChanger(kernel, base_inames)
+
+    domain = domch.domain
+    new_dim_idx = domain.dim(dim_type.set)
+    domain = (domain
+            .insert_dims(dim_type.set, new_dim_idx, 1)
+            .set_dim_name(dim_type.set, new_dim_idx, axis_name))
+
+    from loopy.isl_helpers import make_slab
+    slab = make_slab(domain.get_space(), axis_name, start, stop)
+
+    domain = domain & slab
+
+    return kernel.copy(domains=domch.get_domains_with(domain))
+
+def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
+        footprint_subscripts, arg, newly_created_vars):
+    """Track applied iname rewrites, deal with slice specifiers ':'."""
+
+    from pymbolic.primitives import Variable
+
+    if footprint_subscripts is None:
+        return kernel, rule_name, sweep_inames, []
+
+    if not isinstance(footprint_subscripts, (list, tuple)):
+        footprint_subscripts = [footprint_subscripts]
+
+    inames_to_be_removed = []
+
+    new_footprint_subscripts = []
+    for fsub in footprint_subscripts:
+        if isinstance(fsub, str):
+            from loopy.symbolic import parse
+            fsub = parse(fsub)
+
+        if not isinstance(fsub, tuple):
+            fsub = (fsub,)
+
+        if len(fsub) != arg.dimensions:
+            raise ValueError("sweep index '%s' has the wrong number of dimensions")
+
+        for subst_map in kernel.applied_iname_rewrites:
+            from loopy.symbolic import SubstitutionMapper
+            from pymbolic.mapper.substitutor import make_subst_func
+            fsub = SubstitutionMapper(make_subst_func(subst_map))(fsub)
+
+        from loopy.symbolic import get_dependencies
+        fsub_dependencies = get_dependencies(fsub)
+
+        new_fsub = []
+        for axis_nr, fsub_axis in enumerate(fsub):
+            from pymbolic.primitives import Slice
+            if isinstance(fsub_axis, Slice):
+                if fsub_axis.children != (None,):
+                    raise NotImplementedError("add_prefetch only "
+                            "supports full slices")
+
+                axis_name = kernel.make_unique_var_name(
+                        based_on="%s_fetch_axis_%d" % (arg.name, axis_nr),
+                        extra_used_vars=newly_created_vars)
+
+                newly_created_vars.add(axis_name)
+                kernel = _add_kernel_axis(kernel, axis_name, 0, arg.shape[axis_nr],
+                        frozenset(sweep_inames) | fsub_dependencies)
+                sweep_inames = sweep_inames + [axis_name]
+
+                inames_to_be_removed.append(axis_name)
+                new_fsub.append(Variable(axis_name))
+
+            else:
+                new_fsub.append(fsub_axis)
+
+        new_footprint_subscripts.append(tuple(new_fsub))
+        del new_fsub
+
+    footprint_subscripts = new_footprint_subscripts
+    del new_footprint_subscripts
+
+    subst_use = [Variable(rule_name)(*si) for si in footprint_subscripts]
+    return kernel, subst_use, sweep_inames, inames_to_be_removed
+
+# }}}
+
 def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         default_tag="l.auto", rule_name=None, footprint_subscripts=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
@@ -380,43 +467,31 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     kernel = extract_subst(kernel, rule_name, uni_template, parameters)
 
-    # {{{ track applied iname rewrites on footprint_subscripts
-
-    if footprint_subscripts is not None:
-        if not isinstance(footprint_subscripts, (list, tuple)):
-            footprint_subscripts = [footprint_subscripts]
-
-        def standardize_footprint_indices(si):
-            if isinstance(si, str):
-                from loopy.symbolic import parse
-                si = parse(si)
-
-            if not isinstance(si, tuple):
-                si = (si,)
-
-            if len(si) != arg.dimensions:
-                raise ValueError("sweep index '%s' has the wrong number of dimensions")
-
-            for subst_map in kernel.applied_iname_rewrites:
-                from loopy.symbolic import SubstitutionMapper
-                from pymbolic.mapper.substitutor import make_subst_func
-                si = SubstitutionMapper(make_subst_func(subst_map))(si)
-
-            return si
-
-        footprint_subscripts = [standardize_footprint_indices(si) for si in footprint_subscripts]
-
-        from pymbolic.primitives import Variable
-        subst_use = [
-                Variable(rule_name)(*si) for si in footprint_subscripts]
-    else:
-        subst_use = rule_name
-
-    # }}}
+    kernel, subst_use, sweep_inames, inames_to_be_removed = \
+            _process_footprint_subscripts(
+                    kernel,  rule_name, sweep_inames,
+                    footprint_subscripts, arg, newly_created_vars)
 
     new_kernel = precompute(kernel, subst_use, arg.dtype, sweep_inames,
             new_storage_axis_names=dim_arg_names,
             default_tag=default_tag)
+
+    # {{{ remove inames that were temporarily added by slice sweeps
+
+    new_domains = new_kernel.domains[:]
+
+    for iname in inames_to_be_removed:
+        home_domain_index = kernel.get_home_domain_index(iname)
+        domain = new_domains[home_domain_index]
+
+        dt, idx = domain.get_var_dict()[iname]
+        assert dt == dim_type.set
+
+        new_domains[home_domain_index] = domain.project_out(dt, idx, 1)
+
+    new_kernel = new_kernel.copy(domains=new_domains)
+
+    # }}}
 
     # If the rule survived past precompute() (i.e. some accesses fell outside
     # the footprint), get rid of it before moving on.

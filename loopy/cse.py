@@ -49,10 +49,11 @@ def to_parameters_or_project_out(param_inames, set_inames, set):
 
 # {{{ construct storage->sweep map
 
-def build_per_access_storage_to_sweep_map(invdesc, domain_dup_sweep,
-        storage_axis_names, storage_axis_sources, prime_sweep_inames):
+def build_per_access_storage_to_domain_map(invdesc, domain,
+        storage_axis_names, storage_axis_sources,
+        prime_sweep_inames):
 
-    map_space = domain_dup_sweep.get_space()
+    map_space = domain.get_space()
     stor_dim = len(storage_axis_names)
     rn = map_space.dim(dim_type.out)
 
@@ -63,13 +64,13 @@ def build_per_access_storage_to_sweep_map(invdesc, domain_dup_sweep,
 
         map_space = map_space.set_dim_name(dim_type.in_, i, saxis+"'")
 
-    # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep]
+    # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep](rn)
 
     set_space = map_space.move_dims(
             dim_type.out, rn,
             dim_type.in_, 0, stor_dim).range()
 
-    # set_space: [domain](dup_sweep_index)[dup_sweep][stor_axes']
+    # set_space: [domain](dup_sweep_index)[dup_sweep](rn)[stor_axes']
 
     stor2sweep = None
 
@@ -102,15 +103,30 @@ def build_per_access_storage_to_sweep_map(invdesc, domain_dup_sweep,
     # stor2sweep is back in map_space
     return stor2sweep
 
-def build_global_storage_to_sweep_map(invocation_descriptors,
-        dup_sweep_index, domain_dup_sweep,
-        storage_axis_names, storage_axis_sources, prime_sweep_inames):
+def move_to_par_from_out(s2smap, except_inames):
+    while True:
+        var_dict = s2smap.get_var_dict(dim_type.out)
+        todo_inames = set(var_dict) - except_inames
+        if todo_inames:
+            iname = todo_inames.pop()
+
+            _, dim_idx = var_dict[iname]
+            s2smap = s2smap.move_dims(
+                    dim_type.param, s2smap.dim(dim_type.param),
+                    dim_type.out, dim_idx, 1)
+        else:
+            return s2smap
+
+def build_global_storage_to_sweep_map(kernel, invocation_descriptors,
+        domain_dup_sweep, dup_sweep_index,
+        storage_axis_names, storage_axis_sources,
+        sweep_inames, primed_sweep_inames, prime_sweep_inames):
     """
     As a side effect, this fills out is_in_footprint in the
     invocation descriptors.
     """
 
-    # The storage map goes from storage axes to domain_dup_sweep.
+    # The storage map goes from storage axes to the domain.
     # The first len(arg_names) storage dimensions are the rule's arguments.
 
     global_stor2sweep = None
@@ -118,8 +134,10 @@ def build_global_storage_to_sweep_map(invocation_descriptors,
     # build footprint
     for invdesc in invocation_descriptors:
         if invdesc.expands_footprint:
-            stor2sweep = build_per_access_storage_to_sweep_map(invdesc, domain_dup_sweep,
-                    storage_axis_names, storage_axis_sources, prime_sweep_inames)
+            stor2sweep = build_per_access_storage_to_domain_map(
+                    invdesc, domain_dup_sweep,
+                    storage_axis_names, storage_axis_sources,
+                    prime_sweep_inames)
 
             if global_stor2sweep is None:
                 global_stor2sweep = stor2sweep
@@ -132,33 +150,55 @@ def build_global_storage_to_sweep_map(invocation_descriptors,
         global_stor2sweep = isl.Map.from_basic_map(stor2sweep)
     global_stor2sweep = global_stor2sweep.intersect_range(domain_dup_sweep)
 
-    # function to move non-sweep inames into parameter space
-    def move_non_sweep_to_par(s2smap):
-        sp = s2smap.get_space()
-        return s2smap.move_dims(
-                dim_type.param, sp.dim(dim_type.param),
-                dim_type.out, 0, dup_sweep_index)
 
-    global_s2s_par_dom = move_non_sweep_to_par(global_stor2sweep).domain()
+    # {{{ check if non-footprint-building invocation descriptors fall into footprint
 
-    # check if non-footprint-building invocation descriptors fall into footprint
+    # Make all inames except the sweep parameters. (The footprint may depend on those.)
+    # (I.e. only leave sweep inames as out parameters.)
+    global_s2s_par_dom = move_to_par_from_out(
+            global_stor2sweep, except_inames=frozenset(primed_sweep_inames)).domain()
+
     for invdesc in invocation_descriptors:
-        stor2sweep = build_per_access_storage_to_sweep_map(invdesc, domain_dup_sweep,
-                    storage_axis_names, storage_axis_sources, prime_sweep_inames)
-
-        if isinstance(stor2sweep, isl.BasicMap):
-            stor2sweep = isl.Map.from_basic_map(stor2sweep)
-
-        stor2sweep = move_non_sweep_to_par(
-                stor2sweep.intersect_range(domain_dup_sweep))
-
-        is_in_footprint = stor2sweep.domain().is_subset(
-                global_s2s_par_dom)
-
         if not invdesc.expands_footprint:
+            arg_inames = set()
+
+            for arg in invdesc.args:
+                arg_inames.update(get_dependencies(arg))
+            arg_inames = frozenset(arg_inames)
+
+            usage_domain = kernel.get_inames_domain(arg_inames)
+            for i in xrange(usage_domain.dim(dim_type.set)):
+                iname = usage_domain.get_dim_name(dim_type.set, i)
+                if iname in sweep_inames:
+                    usage_domain = usage_domain.set_dim_name(
+                            dim_type.set, i, iname+"'")
+
+            stor2sweep = build_per_access_storage_to_domain_map(invdesc,
+                    usage_domain, storage_axis_names, storage_axis_sources,
+                    prime_sweep_inames)
+
+            if isinstance(stor2sweep, isl.BasicMap):
+                stor2sweep = isl.Map.from_basic_map(stor2sweep)
+
+            stor2sweep = stor2sweep.intersect_range(usage_domain)
+
+            stor2sweep = move_to_par_from_out(stor2sweep,
+                    except_inames=frozenset(primed_sweep_inames))
+
+            s2s_domain = stor2sweep.domain()
+            s2s_domain, aligned_g_s2s_parm_dom = isl.align_two(
+                    s2s_domain, global_s2s_par_dom)
+
+            s2s_domain = s2s_domain.project_out_except(
+                    arg_inames, [dim_type.param])
+            aligned_g_s2s_parm_dom = aligned_g_s2s_parm_dom.project_out_except(
+                    arg_inames, [dim_type.param])
+
+            is_in_footprint = s2s_domain.is_subset(aligned_g_s2s_parm_dom)
+
             invdesc.is_in_footprint = is_in_footprint
-        else:
-            assert is_in_footprint
+
+    # }}}
 
     return global_stor2sweep
 
@@ -176,18 +216,11 @@ def find_var_base_indices_and_shape_from_inames(
 
 
 
-def compute_bounds(kernel, sweep_domain, subst_name, stor2sweep, sweep_inames,
-        storage_axis_names):
+def compute_bounds(kernel, domain, subst_name, stor2sweep,
+        primed_sweep_inames, storage_axis_names):
 
-    # move non-sweep inames into parameter space
-
-    dup_sweep_index = sweep_domain.get_space().dim(dim_type.out)
-    # map_space: [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep]
-
-    sp = stor2sweep.get_space()
-    bounds_footprint_map = stor2sweep.move_dims(
-            dim_type.param, sp.dim(dim_type.param),
-            dim_type.out, 0, dup_sweep_index)
+    bounds_footprint_map = move_to_par_from_out(
+            stor2sweep, except_inames=frozenset(primed_sweep_inames))
 
     # compute bounds for each storage axis
     storage_domain = bounds_footprint_map.domain().coalesce()
@@ -207,17 +240,20 @@ def compute_bounds(kernel, sweep_domain, subst_name, stor2sweep, sweep_inames,
 
 
 
-def get_access_info(kernel, sweep_domain, subst_name,
+def get_access_info(kernel, domain, subst_name,
         storage_axis_names, storage_axis_sources,
         sweep_inames, invocation_descriptors):
 
     # {{{ duplicate sweep inames
 
+    # The duplication is necessary, otherwise the storage fetch
+    # inames remain weirdly tied to the original sweep inames.
+
     primed_sweep_inames = [psin+"'" for psin in sweep_inames]
     from loopy.isl_helpers import duplicate_axes
-    dup_sweep_index = sweep_domain.space.dim(dim_type.out)
+    dup_sweep_index = domain.space.dim(dim_type.out)
     domain_dup_sweep = duplicate_axes(
-            sweep_domain, sweep_inames,
+            domain, sweep_inames,
             primed_sweep_inames)
 
     prime_sweep_inames = SubstitutionMapper(make_subst_func(
@@ -226,11 +262,13 @@ def get_access_info(kernel, sweep_domain, subst_name,
     # }}}
 
     stor2sweep = build_global_storage_to_sweep_map(
-            invocation_descriptors, dup_sweep_index, domain_dup_sweep,
-            storage_axis_names, storage_axis_sources, prime_sweep_inames)
+            kernel, invocation_descriptors,
+            domain_dup_sweep, dup_sweep_index,
+            storage_axis_names, storage_axis_sources,
+            sweep_inames, primed_sweep_inames, prime_sweep_inames)
 
     storage_base_indices, storage_shape = compute_bounds(
-            kernel, sweep_domain, subst_name, stor2sweep, sweep_inames,
+            kernel, domain, subst_name, stor2sweep, primed_sweep_inames,
             storage_axis_names)
 
     # compute augmented domain
@@ -285,17 +323,11 @@ def get_access_info(kernel, sweep_domain, subst_name,
     # }}}
 
     # eliminate (primed) storage axes with non-zero base indices
+    aug_domain = aug_domain.project_out(dim_type.set, stor_idx+nn1_stor, n_stor)
 
-    aug_domain = aug_domain.eliminate(dim_type.set, stor_idx+nn1_stor, n_stor)
-    aug_domain = aug_domain.remove_dims(dim_type.set, stor_idx+nn1_stor, n_stor)
-
-    # {{{ eliminate duplicated sweep_inames
-
+    # eliminate duplicated sweep_inames
     nsweep = len(sweep_inames)
-    aug_domain = aug_domain.eliminate(dim_type.set, dup_sweep_index, nsweep)
-    aug_domain = aug_domain.remove_dims(dim_type.set, dup_sweep_index, nsweep)
-
-    # }}}
+    aug_domain = aug_domain.project_out(dim_type.set, dup_sweep_index, nsweep)
 
     return (non1_storage_axis_names, aug_domain,
             storage_base_indices, non1_storage_base_indices, non1_storage_shape)
@@ -519,32 +551,27 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     sweep_inames = list(sweep_inames)
 
-    # {{{ see if we need extra storage dimensions
+    # {{{ find inames used in argument dependencies
 
-    # find inames used in argument dependencies
+    expanding_usage_arg_deps = set()
 
-    usage_arg_deps = set()
     for invdesc in invocation_descriptors:
-        if not invdesc.expands_footprint:
-            continue
-
-        for arg in invdesc.args:
-            usage_arg_deps.update(get_dependencies(arg))
-
-    extra_storage_axes = list(set(sweep_inames) - usage_arg_deps)
-
-    if storage_axes is None:
-        storage_axes = (
-                extra_storage_axes
-                + list(xrange(len(arg_names))))
+        if invdesc.expands_footprint:
+            for arg in invdesc.args:
+                expanding_usage_arg_deps.update(get_dependencies(arg))
 
     # }}}
 
     newly_created_var_names = set()
 
-    # {{{ process storage_axes argument
+    # {{{ use given / find new storage_axes
 
-    # (and substitute in subst_expressions if any variable name changes are necessary)
+    extra_storage_axes = list(set(sweep_inames) - expanding_usage_arg_deps)
+
+    if storage_axes is None:
+        storage_axes = (
+                extra_storage_axes
+                + list(xrange(len(arg_names))))
 
     expr_subst_dict = {}
 
@@ -597,26 +624,32 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # }}}
 
-    referenced_inames = frozenset(sweep_inames) | frozenset(usage_arg_deps)
-    assert referenced_inames <= kernel.all_inames()
+    expanding_inames = frozenset(sweep_inames) | frozenset(expanding_usage_arg_deps)
+    assert expanding_inames <= kernel.all_inames()
 
-    if referenced_inames:
-        leaf_domain_index = kernel.get_leaf_domain_index(referenced_inames)
-        sweep_domain = kernel.domains[leaf_domain_index]
+    # {{{ find domain to be changed
+
+    from loopy.kernel import DomainChanger
+    domch = DomainChanger(kernel, expanding_inames)
+
+    if domch.leaf_domain_index is not None:
+        # If the sweep inames are at home in parent domains, then we'll add
+        # fetches with loops over copies of these parent inames that will end
+        # up being scheduled *within* loops over these parents.
 
         for iname in sweep_inames:
-            if kernel.get_home_domain_index(iname) != leaf_domain_index:
+            if kernel.get_home_domain_index(iname) != domch.leaf_domain_index:
                 raise RuntimeError("sweep iname '%s' is not 'at home' in the "
                         "sweep's leaf domain" % iname)
-    else:
-        sweep_domain = kernel.combine_domains(())
-        leaf_domain_index = None
+
+    # }}}
 
     (non1_storage_axis_names, new_domain,
             storage_base_indices, non1_storage_base_indices, non1_storage_shape) = \
-                    get_access_info(kernel, sweep_domain, subst_name,
+                    get_access_info(kernel, domch.domain, subst_name,
                             storage_axis_names, storage_axis_sources,
                             sweep_inames, invocation_descriptors)
+
 
     # {{{ try a few ways to get new_domain to be convex
 
@@ -635,6 +668,9 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
     if isinstance(new_domain, isl.Set):
         dom_bsets = new_domain.get_basic_sets()
         if len(dom_bsets) > 1:
+            print "PIECES:"
+            for dbs in dom_bsets:
+                print "  %s" % (isl.Set.from_basic_set(dbs).gist(new_domain))
             raise NotImplementedError("Substitution '%s' yielded a non-convex footprint"
                     % subst_name)
 
@@ -817,14 +853,8 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # }}}
 
-    new_domains = kernel.domains[:]
-    if leaf_domain_index is not None:
-        new_domains[leaf_domain_index] = new_domain
-    else:
-        new_domains.append(new_domain)
-
     return kernel.copy(
-            domains=new_domains,
+            domains=domch.get_domains_with(new_domain),
             instructions=new_insns,
             substitutions=new_substs,
             temporary_variables=new_temporary_variables,

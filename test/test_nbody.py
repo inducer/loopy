@@ -56,7 +56,8 @@ def test_nbody(ctx_factory):
 
     n = 3000
 
-    for variant in [variant_1, variant_cpu, variant_gpu]:
+    for variant in [ variant_cpu]:
+    #for variant in [variant_1, variant_cpu, variant_gpu]:
         variant_knl, loop_prio = variant(knl)
         kernel_gen = lp.generate_loop_schedules(variant_knl,
                 loop_priority=loop_prio)

@@ -1362,9 +1362,9 @@ class LoopKernel(Record):
         domain = self.get_inames_domain(frozenset([iname]))
         d_var_dict = domain.get_var_dict()
 
-        dom_intersect_assumptions = (isl.align_spaces(
-                self.assumptions, domain, obj_bigger_ok=True)
-                & domain)
+        assumptions, domain = isl.align_two(self.assumptions, domain)
+
+        dom_intersect_assumptions = assumptions & domain
 
         lower_bound_pw_aff = (
                 self.cache_manager.dim_min(
@@ -1752,6 +1752,33 @@ class SetOperationCacheManager:
 
         return base_index, size
 
+
+
+
+class DomainChanger:
+    """Helps change the domain responsible for *inames* within a kernel.
+
+    .. note: Does not perform an in-place change!
+    """
+
+    def __init__(self, kernel, inames):
+        self.kernel = kernel
+        if inames:
+            self.leaf_domain_index = kernel.get_leaf_domain_index(inames)
+            self.domain = kernel.domains[self.leaf_domain_index]
+
+        else:
+            self.domain = kernel.combine_domains(())
+            self.leaf_domain_index = None
+
+    def get_domains_with(self, replacement):
+        result = self.kernel.domains[:]
+        if self.leaf_domain_index is not None:
+            result[self.leaf_domain_index] = replacement
+        else:
+            result.append(replacement)
+
+        return result
 
 
 

@@ -608,6 +608,40 @@ def test_fancy_matrix_mul(ctx_factory):
 
 
 
+def test_small_batched_matvec(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+
+    order = "C"
+
+    K = 10000
+    Np = 36
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "[K] -> {[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,
+            [
+                "result[k, i] = sum(j, d[i, j]*f[k, j])"
+                ],
+            [
+                lp.GlobalArg("d", dtype, shape=(Np, Np), order=order),
+                lp.GlobalArg("f", dtype, shape=("K", Np), order=order),
+                lp.GlobalArg("result", dtype, shape=("K", Np), order=order),
+                lp.ValueArg("K", np.int32, approximately=1000),
+                ], name="batched_matvec", assumptions="K>=1")
+
+    seq_knl = knl
+
+    knl = lp.add_prefetch(knl, 'd[:,:]')
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(K=K))
+
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            op_count=[K*2*Np**2/1e9], op_label=["GFlops"],
+            parameters=dict(K=K))
+
+
+
 
 if __name__ == "__main__":
     import sys

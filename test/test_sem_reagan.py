@@ -54,8 +54,8 @@ def test_tim2d(ctx_factory):
     def variant_orig(knl):
         knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1", e="g.0"))
 
-        knl = lp.add_prefetch(knl, "D", ["m", "j", "i","o"])
-        knl = lp.add_prefetch(knl, "u", ["i", "j", "o_ur", "o_us"])
+        knl = lp.add_prefetch(knl, "D[:,:]")
+        knl = lp.add_prefetch(knl, "u[e, :, :]")
 
         knl = lp.precompute(knl, "ur(m,j)", np.float32, ["m", "j"])
         knl = lp.precompute(knl, "us(i,m)", np.float32, ["i", "m"])
