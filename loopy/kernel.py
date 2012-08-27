@@ -114,7 +114,7 @@ def parse_tag(tag):
 
 # {{{ arguments
 
-class _ShapedArg(object):
+class _ShapedArg(Record):
     def __init__(self, name, dtype, shape=None, strides=None, order="C",
             offset=0):
         """
@@ -127,34 +127,29 @@ class _ShapedArg(object):
         :arg offset: Offset from the beginning of the vector from which
             the strides are counted.
         """
-        self.name = name
-        self.dtype = np.dtype(dtype)
+        dtype = np.dtype(dtype)
 
-        if strides is not None and shape is not None:
-            raise ValueError("can only specify one of shape and strides")
+        def parse_if_necessary(x):
+            if isinstance(x, str):
+                from pymbolic import parse
+                return parse(x)
+            else:
+                return x
+
+        def process_tuple(x):
+            x = parse_if_necessary(x)
+            if not isinstance(x, tuple):
+                x = (x,)
+
+            return tuple(parse_if_necessary(xi) for xi in x)
 
         if strides is not None:
-            if isinstance(strides, str):
-                from pymbolic import parse
-                strides = parse(strides)
-
-            if not isinstance(shape, tuple):
-                shape = (shape,)
+            strides = process_tuple(strides)
 
         if shape is not None:
-            def parse_if_necessary(x):
-                if isinstance(x, str):
-                    from pymbolic import parse
-                    return parse(x)
-                else:
-                    return x
+            shape = process_tuple(shape)
 
-            shape = parse_if_necessary(shape)
-            if not isinstance(shape, tuple):
-                shape = (shape,)
-
-            shape = tuple(parse_if_necessary(si) for si in shape)
-
+        if strides is None and shape is not None:
             from pyopencl.compyte.array import (
                     f_contiguous_strides,
                     c_contiguous_strides)
@@ -166,10 +161,13 @@ class _ShapedArg(object):
             else:
                 raise ValueError("invalid order: %s" % order)
 
-        self.strides = strides
-        self.offset = offset
-        self.shape = shape
-        self.order = order
+        Record.__init__(self,
+                name=name,
+                dtype=dtype,
+                strides=strides,
+                offset=offset,
+                shape=shape,
+                order=order)
 
     @property
     def dimensions(self):
@@ -409,31 +407,56 @@ class Instruction(Record):
 
 # {{{ expand defines
 
-MACRO_RE = re.compile(r"\{([a-zA-Z0-9_]+)\}")
+WORD_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
 
-def expand_defines(insn, defines):
-    macros = set(match.group(1) for match in MACRO_RE.finditer(insn))
+def expand_defines(insn, defines, single_valued=True):
+    words = set(match.group(1) for match in WORD_RE.finditer(insn))
 
     replacements = [()]
-    for mac in macros:
-        value = defines[mac]
+    for word in words:
+        if word not in defines:
+            continue
+
+        value = defines[word]
         if isinstance(value, list):
+            if single_valued:
+                raise ValueError("multi-valued macro expansion not allowed "
+                        "in this context (when expanding '%s')" % word)
+
             replacements = [
-                    rep+(("{%s}" % mac, subval),)
+                    rep+((r"\b%s\b" % word, subval),)
                     for rep in replacements
                     for subval in value
                     ]
         else:
             replacements = [
-                    rep+(("{%s}" % mac, value),)
+                    rep+((r"\b%s\b" % word, value),)
                     for rep in replacements]
 
     for rep in replacements:
         rep_value = insn
-        for name, val in rep:
-            rep_value = rep_value.replace(name, str(val))
+        for pattern, val in rep:
+            rep_value = re.sub(pattern, str(val), rep_value)
 
         yield rep_value
+
+def expand_defines_in_expr(expr, defines):
+    from pymbolic.primitives import Variable
+    from loopy.symbolic import parse
+
+    def subst_func(var):
+        if isinstance(var, Variable):
+            try:
+                var_value = defines[var.name]
+            except KeyError:
+                return None
+            else:
+                return parse(str(var_value))
+        else:
+            return None
+
+    from loopy.symbolic import SubstitutionMapper
+    return SubstitutionMapper(subst_func)(expr)
 
 # }}}
 
@@ -564,13 +587,15 @@ _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 def _gather_identifiers(s):
     return set(_IDENTIFIER_RE.findall(s))
 
-def _parse_domains(ctx, args_and_vars, domains):
+def _parse_domains(ctx, args_and_vars, domains, defines):
     result = []
     available_parameters = args_and_vars.copy()
     used_inames = set()
 
     for dom in domains:
         if isinstance(dom, str):
+            dom, = expand_defines(dom, defines)
+
             if not dom.lstrip().startswith("["):
                 # i.e. if no parameters are already given
                 ids = _gather_identifiers(dom)
@@ -639,9 +664,12 @@ class LoopKernel(Record):
         evaluated.
     :ivar defines: a dictionary of replacements to be made in instructions given
         as strings before parsing. A macro instance intended to be replaced should
-        look like "{MACRO}" in the instruction code. The expansion given in this
+        look like "MACRO" in the instruction code. The expansion given in this
         parameter is allowed to be a list. In this case, instructions are generated
         for *each* combination of macro values.
+
+        These defines may also be used in the domain and in argument shapes and
+        strides. They are expanded only upon kernel creation.
 
     The following arguments are not user-facing:
 
@@ -864,7 +892,7 @@ class LoopKernel(Record):
                         "instance or a parseable string. got '%s' instead."
                         % type(insn))
 
-            for insn in expand_defines(insn, defines):
+            for insn in expand_defines(insn, defines, single_valued=False):
                 parse_insn(insn)
 
         parsed_instructions = []
@@ -902,7 +930,8 @@ class LoopKernel(Record):
                 | set(insn.get_assignee_var_name()
                     for insn in parsed_instructions
                     if insn.temp_var_type is not None))
-        domains = _parse_domains(isl_context, scalar_arg_names | var_names, domains)
+        domains = _parse_domains(isl_context, scalar_arg_names | var_names, domains,
+                defines)
 
         # }}}
 
@@ -936,6 +965,20 @@ class LoopKernel(Record):
 
         # }}}
 
+        # {{{ expand macros in arg shapes
+
+        processed_args = []
+        for arg in args:
+            if isinstance(arg, _ShapedArg):
+                if arg.shape is not None:
+                    arg = arg.copy(shape=expand_defines_in_expr(arg.shape, defines))
+                if arg.strides is not None:
+                    arg = arg.copy(strides=expand_defines_in_expr(arg.strides, defines))
+
+            processed_args.append(arg)
+
+        # }}}
+
         index_dtype = np.dtype(index_dtype)
         if index_dtype.kind != 'i':
             raise TypeError("index_dtype must be an integer")
@@ -945,7 +988,7 @@ class LoopKernel(Record):
         Record.__init__(self,
                 device=device, domains=domains,
                 instructions=parsed_instructions,
-                args=args,
+                args=processed_args,
                 schedule=schedule,
                 name=name,
                 preambles=preambles,

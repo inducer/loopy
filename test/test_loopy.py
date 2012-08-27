@@ -520,6 +520,47 @@ def test_bare_data_dependency(ctx_factory):
 
 
 
+def test_split(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+
+    order = "C"
+
+    K = 10000
+    Np = 36
+    Nq = 50
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "[K] -> {[i,j,k,ii,jj]: 0<=k<K and 0<= i,j,ii < Np and 0 <= jj < Nq}",
+            [
+                "<> temp[ii] = sum(jj, d[ii, jj]*f[k, jj])",
+                "result[k, i] = sum(j, d2[i, j]*temp[j])"
+                ],
+            [
+                lp.GlobalArg("d", dtype, shape="Np, Nq", order=order),
+                lp.GlobalArg("d2", dtype, shape="Np, Np", order=order),
+                lp.GlobalArg("f", dtype, shape="K, Nq", order=order),
+                lp.GlobalArg("result", dtype, shape="K, Np", order=order),
+                lp.ValueArg("K", np.int32, approximately=1000),
+                ],
+            name="batched_matvec", assumptions="K>=1",
+            defines=dict(Np=Np, Nq=Nq))
+
+    seq_knl = knl
+
+    knl = lp.add_prefetch(knl, 'd[:,:]')
+    knl = lp.add_prefetch(knl, 'd2[:,:]')
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(K=K))
+
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            op_count=[K*2*(Np**2+Np*Nq)/1e9], op_label=["GFlops"],
+            parameters=dict(K=K), print_ref_code=True)
+
+
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
