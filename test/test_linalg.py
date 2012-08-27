@@ -241,9 +241,9 @@ def test_variable_size_matrix_mul(ctx_factory):
                 "c[i, j] = sum(k, a[i, k]*b[k, j]) {id=labl}"
                 ],
             [
-                lp.GlobalArg("a", dtype, shape=(n, n), order=order),
-                lp.GlobalArg("b", dtype, shape=(n, n), order=order),
-                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("a", dtype, shape="n, n", order=order),
+                lp.GlobalArg("b", dtype, shape="n, n", order=order),
+                lp.GlobalArg("c", dtype, shape="n, n", order=order),
                 lp.ValueArg("n", np.int32, approximately=n),
                 ],
             name="matmul", assumptions="n >= 16")
@@ -283,9 +283,9 @@ def test_rank_one(ctx_factory):
                 "c[i, j] = a[i]*b[j] {id=mylabel, priority =5}"
                 ],
             [
-                lp.GlobalArg("a", dtype, shape=(n,), order=order),
-                lp.GlobalArg("b", dtype, shape=(n,), order=order),
-                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("a", dtype, shape=("n",), order=order),
+                lp.GlobalArg("b", dtype, shape=("n",), order=order),
+                lp.GlobalArg("c", dtype, shape=("n, n"), order=order),
                 lp.ValueArg("n", np.int32, approximately=n),
                 ],
             name="rank_one", assumptions="n >= 16")
@@ -338,7 +338,7 @@ def test_rank_one(ctx_factory):
     seq_knl = knl
 
     for variant in [variant_1, variant_2, variant_3, variant_4]:
-    #for variant in [variant_4]:
+    #for variant in [variant_1]:
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 

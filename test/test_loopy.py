@@ -289,7 +289,7 @@ def test_empty_reduction(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             [
                 "{[i]: 0<=i<20}",
-                "{[j]: 0<=j<0}"
+                "[i] -> {[j]: 0<=j<0}"
                 ],
             [
                 "a[i] = sum(j, j)",

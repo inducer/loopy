@@ -110,13 +110,26 @@ def make_slab(space, iname, start, stop):
     if isinstance(stop, (isl.Aff, isl.PwAff)):
         stop, zero = isl.align_two(pw_aff_to_aff(stop), zero)
 
+    space = zero.get_domain_space()
+
+    from pymbolic.primitives import Expression
+    from loopy.symbolic import aff_from_expr
+    if isinstance(start, Expression):
+        start = aff_from_expr(space, start)
+    if isinstance(stop, Expression):
+        stop = aff_from_expr(space, stop)
+
     if isinstance(start, int): start = zero + start
     if isinstance(stop, int): stop = zero + stop
 
-    iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
+    if isinstance(iname, str):
+        iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
+    else:
+        iname_dt, iname_idx = iname
+
     iname_aff = zero.add_coefficient(iname_dt, iname_idx, 1)
 
-    result = (isl.Set.universe(space)
+    result = (isl.BasicSet.universe(space)
             # start <= iname
             .add_constraint(isl.Constraint.inequality_from_aff(
                 iname_aff - start))

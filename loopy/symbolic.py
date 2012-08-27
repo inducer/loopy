@@ -128,7 +128,15 @@ class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
 
 class WalkMapper(WalkMapperBase):
     def map_reduction(self, expr):
+        if not self.visit(expr):
+            return
+
         self.rec(expr.expr)
+
+    map_tagged_variable = WalkMapperBase.map_variable
+
+    def map_loopy_function_identifier(self, expr):
+        self.visit(expr)
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant

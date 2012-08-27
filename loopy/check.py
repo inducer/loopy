@@ -1,6 +1,7 @@
 from __future__ import division
 from islpy import dim_type
 import islpy as isl
+from loopy.symbolic import WalkMapper
 
 
 
@@ -195,6 +196,97 @@ def check_for_data_dependent_parallel_bounds(kernel):
                         "inames '%s'. This is not allowed (for now)."
                         % (i, par, ", ".join(par_inames)))
 
+class _AccessCheckMapper(WalkMapper):
+    def __init__(self, kernel, domain, insn_id):
+        self.kernel = kernel
+        self.domain = domain
+        self.insn_id = insn_id
+
+    def map_subscript(self, expr):
+        from pymbolic.primitives import Variable
+        assert isinstance(expr.aggregate, Variable)
+
+        shape = None
+        var_name = expr.aggregate.name
+        if var_name in self.kernel.arg_dict:
+            arg = self.kernel.arg_dict[var_name]
+            shape = arg.shape
+        elif var_name in self.kernel.temporary_variables:
+            tv = self.kernel.temporary_variables[var_name]
+            shape = tv.shape
+
+        if shape is not None:
+            index = expr.index
+
+            if not isinstance(index, tuple):
+                index = (index,)
+
+            from loopy.symbolic import get_dependencies, aff_from_expr
+            available_vars = set(self.domain.get_var_dict())
+            if (get_dependencies(index) <= available_vars
+                    and get_dependencies(shape) <= available_vars):
+
+                dims = len(index)
+
+                # we build access_map as a set because (idiocy!) Affs
+                # cannot live on maps.
+
+                # dims: [domain](dn)[storage]
+                access_map = self.domain
+
+                if isinstance(access_map, isl.BasicSet):
+                    access_map = isl.Set.from_basic_set(access_map)
+
+                dn = access_map.dim(dim_type.set)
+                access_map = access_map.insert_dims(dim_type.set, dn, dims)
+
+                for idim in xrange(dims):
+                    idx_aff = aff_from_expr(access_map.get_space(),
+                            index[idim])
+                    idx_aff = idx_aff.set_coefficient(
+                            dim_type.in_, dn+idim, -1)
+
+                    access_map = access_map.add_constraint(
+                            isl.Constraint.equality_from_aff(idx_aff))
+
+                access_map_as_map = isl.Map.universe(access_map.get_space())
+                access_map_as_map = access_map_as_map.intersect_range(access_map)
+                access_map = access_map_as_map.move_dims(
+                        dim_type.in_, 0,
+                        dim_type.out, 0, dn)
+                del access_map_as_map
+
+                access_range = access_map.range()
+
+                shape_domain = isl.BasicSet.universe(access_range.get_space())
+                for idim in xrange(dims):
+                    from loopy.isl_helpers import make_slab
+                    slab = make_slab(
+                            shape_domain.get_space(), (dim_type.in_, idim),
+                            0, shape[idim])
+
+                    shape_domain = shape_domain.intersect(slab)
+
+                if not access_range.is_subset(shape_domain):
+                    raise RuntimeError("'%s' in instruction '%s' "
+                            "accesses out-of-bounds array element"
+                            % (expr, self.insn_id))
+
+        WalkMapper.map_subscript(self, expr)
+
+def check_bounds(kernel):
+    temp_var_names = set(kernel.temporary_variables)
+    for insn in kernel.instructions:
+        domain = kernel.get_inames_domain(kernel.insn_inames(insn))
+
+        # data-dependent bounds? can't do much
+        if set(domain.get_var_names(dim_type.param)) & temp_var_names:
+            continue
+
+        acm = _AccessCheckMapper(kernel, domain, insn.id)
+        acm(insn.expression)
+        acm(insn.assignee)
+
 # }}}
 
 def run_automatic_checks(kernel):
@@ -204,6 +296,7 @@ def run_automatic_checks(kernel):
     check_for_inactive_iname_access(kernel)
     check_for_write_races(kernel)
     check_for_data_dependent_parallel_bounds(kernel)
+    check_bounds(kernel)
 
 # {{{ sanity-check for implemented domains of each instruction
 

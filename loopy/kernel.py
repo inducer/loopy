@@ -245,6 +245,9 @@ class TemporaryVariable(Record):
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
+        if shape is not None and not isinstance(shape, tuple):
+            shape = tuple(shape)
+
         Record.__init__(self, name=name, dtype=dtype, shape=shape, is_local=is_local,
                 base_indices=base_indices,
                 storage_shape=storage_shape)
@@ -603,7 +606,7 @@ def _parse_domains(ctx, args_and_vars, domains, defines):
                 dom = "[%s] -> %s" % (",".join(parameters), dom)
 
             try:
-                dom = isl.Set.read_from_str(ctx, dom)
+                dom = isl.BasicSet.read_from_str(ctx, dom)
             except:
                 print "failed to parse domain '%s'" % dom
                 raise

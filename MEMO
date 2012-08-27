@@ -38,6 +38,8 @@ Things to consider
 
 - Loopy is semi-interactive.
 
+- Limitation: base index for parallel axes is 0.
+
 To-do
 ^^^^^
 
@@ -84,8 +86,6 @@ Future ideas
 
 - Generate automatic test against sequential code.
 
-- Automatically verify that all array access is within bounds.
-
 - Reason about generated code, give user feedback on potential
   improvements.
 
@@ -104,6 +104,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Automatically verify that all array access is within bounds.
 
 - : (as in, Matlab full-slice) in prefetches
 
