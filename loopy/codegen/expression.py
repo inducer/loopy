@@ -557,7 +557,7 @@ class LoopyCCodeMapper(RecursiveMapper):
         if not (n_complex or d_complex):
             return base_impl(expr, enclosing_prec, type_context)
         elif n_complex and not d_complex:
-            # elementwise semnatics are correct
+            # elementwise semantics are correct
             return base_impl(expr, enclosing_prec, type_context)
         elif not n_complex and d_complex:
             return "%s_rdivide(%s, %s)" % (
