@@ -745,11 +745,11 @@ def adjust_local_temp_var_storage(kernel):
         if storage_shape is None:
             storage_shape = temp_var.shape
 
+        storage_shape = list(storage_shape)
+
         # sizes of all dims except the last one, which we may change
         # below to avoid bank conflicts
         from pytools import product
-        other_dim_sizes = (tv.dtype.itemsize
-                * product(storage_shape[:-1]))
 
         if kernel.device.local_mem_type == cl.device_local_mem_type.GLOBAL:
             # FIXME: could try to avoid cache associativity disasters
