@@ -236,11 +236,9 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt,
 
 # {{{ on which variables may a conditional depend?
 
-def get_defined_inames(kernel, sched_index, allow_tag_classes=()):
-    """
-    :param exclude_tags: a tuple of tag classes to exclude
-    """
+def get_defined_inames(kernel, sched_index):
     from loopy.schedule import EnterLoop, LeaveLoop
+    from loopy.kernel import ParallelTag
 
     result = set()
 
@@ -255,10 +253,33 @@ def get_defined_inames(kernel, sched_index, allow_tag_classes=()):
     for iname in kernel.all_inames():
         tag = kernel.iname_to_tag.get(iname)
 
-        if isinstance(tag, allow_tag_classes):
+        # these are always defined
+        if isinstance(tag, ParallelTag):
             result.add(iname)
 
-    return result
+    return frozenset(result)
+
+# }}}
+
+# {{{ get_simple_loop_bounds
+
+def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain, iname_domain):
+    from loopy.codegen.bounds import get_bounds_constraints, get_defined_inames
+    lower_constraints_orig, upper_constraints_orig, equality_constraints_orig = \
+            get_bounds_constraints(iname_domain, iname,
+                    frozenset([iname])
+                    | get_defined_inames(kernel, sched_index+1),
+                    allow_parameters=True)
+
+    lower_constraints_orig.extend(equality_constraints_orig)
+    upper_constraints_orig.extend(equality_constraints_orig)
+    #assert not equality_constraints_orig
+
+    from loopy.codegen.bounds import pick_simple_constraint
+    lb_cns_orig = pick_simple_constraint(lower_constraints_orig, iname)
+    ub_cns_orig = pick_simple_constraint(upper_constraints_orig, iname)
+
+    return lb_cns_orig, ub_cns_orig
 
 # }}}
 
@@ -279,6 +300,9 @@ def pick_simple_constraint(constraints, iname):
             for cns in constraints)
 
 # }}}
+
+
+
 
 
 
