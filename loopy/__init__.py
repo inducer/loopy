@@ -80,15 +80,19 @@ def split_dimension(kernel, split_iname, inner_length,
         inner_iname = split_iname+"_inner"
 
     def process_set(s):
-        if split_iname not in s.get_var_dict():
+        var_dict = s.get_var_dict()
+
+        if split_iname not in var_dict:
             return s
 
-        outer_var_nr = s.dim(dim_type.set)
-        inner_var_nr = s.dim(dim_type.set)+1
+        orig_dim_type, _ = var_dict[split_iname]
 
-        s = s.add_dims(dim_type.set, 2)
-        s = s.set_dim_name(dim_type.set, outer_var_nr, outer_iname)
-        s = s.set_dim_name(dim_type.set, inner_var_nr, inner_iname)
+        outer_var_nr = s.dim(orig_dim_type)
+        inner_var_nr = s.dim(orig_dim_type)+1
+
+        s = s.add_dims(orig_dim_type, 2)
+        s = s.set_dim_name(orig_dim_type, outer_var_nr, outer_iname)
+        s = s.set_dim_name(orig_dim_type, inner_var_nr, inner_iname)
 
         from loopy.isl_helpers import make_slab
 
