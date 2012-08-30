@@ -475,8 +475,9 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         fill_value = fill_value_ref
 
     # {{{ set up CL context for reference run
-    last_dev = None
-    last_cpu_dev = None
+
+    all_devs = []
+    cpu_devs = []
 
     for pf in cl.get_platforms():
         if pf.name == "Portable OpenCL":
@@ -486,64 +487,75 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             continue
 
         for dev in pf.get_devices():
-            last_dev  = dev
+            all_devs.append(dev)
             if dev.type == cl.device_type.CPU:
-                last_cpu_dev = dev
+                cpu_devs.append(dev)
 
-    if last_cpu_dev is None:
-        dev = last_dev
+    if not cpu_devs:
+        if not all_devs:
+            raise RuntimeError("no CL device found for test")
+
+        ref_devs = all_devs
+
         from warnings import warn
-        warn("No CPU device found for reference test, using %s." % dev)
+        warn("No CPU device found for reference test.")
     else:
-        dev = last_cpu_dev
-
-    print "using %s for the reference calculation" % dev
+        ref_devs = cpu_devs
 
     # }}}
 
     # {{{ compile and run reference code
 
-    ref_ctx = cl.Context([dev])
-    ref_queue = cl.CommandQueue(ref_ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
+    for dev in ref_devs:
+        ref_ctx = cl.Context([dev])
+        ref_queue = cl.CommandQueue(ref_ctx,
+                properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-    import loopy as lp
-    ref_kernel_gen = lp.generate_loop_schedules(ref_knl)
-    for knl in lp.check_kernels(ref_kernel_gen, parameters):
-        ref_sched_kernel = knl
+        import loopy as lp
+        ref_kernel_gen = lp.generate_loop_schedules(ref_knl)
+        for knl in lp.check_kernels(ref_kernel_gen, parameters):
+            ref_sched_kernel = knl
+            break
+
+        ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel,
+                codegen_kwargs=codegen_kwargs)
+        if print_ref_code:
+            print 75*"-"
+            print "Reference Code:"
+            print 75*"-"
+            print get_highlighted_code(ref_compiled.code)
+            print 75*"-"
+
+        try:
+            ref_args, ref_input_arrays, ref_output_arrays = \
+                    make_ref_args(ref_sched_kernel, ref_queue, parameters,
+                            fill_value=fill_value_ref)
+        except cl.RuntimeError, e:
+            if e.code == cl.status_code.IMAGE_FORMAT_NOT_SUPPORTED:
+                continue
+
+        ref_queue.finish()
+        ref_start = time()
+
+        print "using %s for the reference calculation" % dev
+
+        domain_parameters = dict((name, parameters[name])
+                for name in ref_knl.scalar_loop_args)
+
+        ref_evt = ref_compiled.cl_kernel(ref_queue,
+                ref_compiled.global_size_func(**domain_parameters),
+                ref_compiled.local_size_func(**domain_parameters),
+                *ref_args,
+                g_times_l=True)
+
+        ref_queue.finish()
+        ref_stop = time()
+        ref_elapsed_wall = ref_stop-ref_start
+
+        ref_evt.wait()
+        ref_elapsed = 1e-9*(ref_evt.profile.END-ref_evt.profile.SUBMIT)
+
         break
-
-    ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel,
-            codegen_kwargs=codegen_kwargs)
-    if print_ref_code:
-        print 75*"-"
-        print "Reference Code:"
-        print 75*"-"
-        print get_highlighted_code(ref_compiled.code)
-        print 75*"-"
-
-    ref_args, ref_input_arrays, ref_output_arrays = \
-            make_ref_args(ref_sched_kernel, ref_queue, parameters,
-                    fill_value=fill_value_ref)
-
-    ref_queue.finish()
-    ref_start = time()
-
-    domain_parameters = dict((name, parameters[name])
-            for name in ref_knl.scalar_loop_args)
-
-    ref_evt = ref_compiled.cl_kernel(ref_queue,
-            ref_compiled.global_size_func(**domain_parameters),
-            ref_compiled.local_size_func(**domain_parameters),
-            *ref_args,
-            g_times_l=True)
-
-    ref_queue.finish()
-    ref_stop = time()
-    ref_elapsed_wall = ref_stop-ref_start
-
-    ref_evt.wait()
-    ref_elapsed = 1e-9*(ref_evt.profile.END-ref_evt.profile.SUBMIT)
 
     # }}}
 
