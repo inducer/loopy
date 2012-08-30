@@ -97,13 +97,13 @@ Future ideas
 
 - Try, fix indirect addressing
 
-- Use gists (why do disjoint sets arise?)
-
 - Nested slab decomposition (in conjunction with conditional hoisting) could
   generate nested conditional code.
 
 Dealt with
 ^^^^^^^^^^
+
+- Use gists (why do disjoint sets arise?)
 
 - Automatically verify that all array access is within bounds.
 

@@ -650,33 +650,8 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
                             storage_axis_names, storage_axis_sources,
                             sweep_inames, invocation_descriptors)
 
-
-    # {{{ try a few ways to get new_domain to be convex
-
-    if len(new_domain.get_basic_sets()) > 1:
-        hull_new_domain = new_domain.simple_hull()
-        if isl.Set.from_basic_set(hull_new_domain) <= new_domain:
-            new_domain = hull_new_domain
-
-    new_domain = new_domain.coalesce()
-
-    if len(new_domain.get_basic_sets()) > 1:
-        hull_new_domain = new_domain.simple_hull()
-        if isl.Set.from_basic_set(hull_new_domain) <= new_domain:
-            new_domain = hull_new_domain
-
-    if isinstance(new_domain, isl.Set):
-        dom_bsets = new_domain.get_basic_sets()
-        if len(dom_bsets) > 1:
-            print "PIECES:"
-            for dbs in dom_bsets:
-                print "  %s" % (isl.Set.from_basic_set(dbs).gist(new_domain))
-            raise NotImplementedError("Substitution '%s' yielded a non-convex footprint"
-                    % subst_name)
-
-        new_domain, = dom_bsets
-
-    # }}}
+    from loopy.isl_helpers import convexify
+    new_domain = convexify(new_domain)
 
     # {{{ set up compute insn
 

@@ -277,6 +277,44 @@ def is_nonnegative(expr, over_set):
 
 
 
+def convexify(domain):
+    """Try a few ways to get *domain* to be a BasicSet, i.e.
+    explicitly convex.
+    """
+
+    if isinstance(domain, isl.BasicSet):
+        return domain
+
+    dom_bsets = domain.get_basic_sets()
+    if len(dom_bsets) == 1:
+        domain, = dom_bsets
+        return domain
+
+    hull_domain = domain.simple_hull()
+    if isl.Set.from_basic_set(hull_domain) <= domain:
+        return hull_domain
+
+    domain = domain.coalesce()
+
+    dom_bsets = domain.get_basic_sets()
+    if len(domain.get_basic_sets()) == 1:
+        domain, = dom_bsets
+        return domain
+
+    hull_domain = domain.simple_hull()
+    if isl.Set.from_basic_set(hull_domain) <= domain:
+        return hull_domain
+
+    dom_bsets = domain.get_basic_sets()
+    assert len(dom_bsets) > 1
+
+    print "PIECES:"
+    for dbs in dom_bsets:
+        print "  %s" % (isl.Set.from_basic_set(dbs).gist(domain))
+    raise NotImplementedError("Could not find convex representation of set")
+
+
+
 
 
 # vim: foldmethod=marker

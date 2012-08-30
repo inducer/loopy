@@ -105,43 +105,36 @@ def constraint_to_code(ccm, cns):
     from loopy.symbolic import constraint_to_expr
     return "%s %s 0" % (ccm(constraint_to_expr(cns), 'i'), comp_op)
 
-def filter_necessary_constraints(implemented_domain, constraints):
-    return [cns
-        for cns in constraints
-        if not implemented_domain.is_subset(
-            isl.align_spaces(
-                isl.BasicSet.universe(cns.get_space()).add_constraint(cns),
-                implemented_domain))]
-
 def generate_bounds_checks(domain, check_inames, implemented_domain):
-    """Will not overapproximate if check_inames consists of all inames in the domain."""
+    """Will not overapproximate."""
 
-    if len(check_inames) == domain.dim(dim_type.set):
-        assert check_inames == frozenset(domain.get_var_names(dim_type.set))
-    else:
-        domain = (domain
-                .eliminate_except(check_inames, [dim_type.set])
-                .remove_divs())
+    domain = (domain
+            .eliminate_except(check_inames, [dim_type.set])
+            .compute_divs())
 
     if isinstance(domain, isl.Set):
         bsets = domain.get_basic_sets()
-        if len(bsets) == 1:
-            domain_bset, = bsets
-        else:
+        if len(bsets) != 1:
             domain = domain.coalesce()
             bsets = domain.get_basic_sets()
-            if len(bsets) == 1:
+            if len(bsets) != 1:
                 raise RuntimeError("domain of inames '%s' projected onto '%s' "
                         "did not reduce to a single conjunction"
                         % (", ".join(domain.get_var_names(dim_type.set)),
                             check_inames))
+
+        domain, = bsets
     else:
-        domain_bset = domain
+        domain = domain
 
-    domain_bset = domain_bset.remove_redundancies()
+    domain = domain.remove_redundancies()
+    domain = isl.Set.from_basic_set(domain)
+    domain = isl.align_spaces(domain, implemented_domain)
 
-    return filter_necessary_constraints(
-            implemented_domain, domain_bset.get_constraints())
+    result = domain.gist(implemented_domain)
+
+    from loopy.isl_helpers import convexify
+    return convexify(result).get_constraints()
 
 def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
     bounds_checks = generate_bounds_checks(
