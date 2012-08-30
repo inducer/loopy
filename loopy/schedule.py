@@ -458,6 +458,9 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
 
             currently_accessible_inames = active_inames_set | parallel_inames
             if not kernel.loop_nest_map()[iname] <= currently_accessible_inames:
+                if debug_mode:
+                    print "scheduling %s prohibited by loop nest map" % iname
+                    print kernel.loop_nest_map()
                 continue
 
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
