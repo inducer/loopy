@@ -817,7 +817,7 @@ class LoopKernel(Record):
                         elif opt_key == "priority":
                             priority = int(opt_value)
                         elif opt_key == "dep":
-                            insn_deps = opt_value.split(":")
+                            insn_deps = set(opt_value.split(":"))
                         else:
                             raise ValueError("unrecognized instruction option '%s'"
                                     % opt_key)
