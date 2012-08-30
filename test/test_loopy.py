@@ -520,43 +520,40 @@ def test_bare_data_dependency(ctx_factory):
 
 
 
-def test_split(ctx_factory):
+def test_equality_constraints(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
 
     order = "C"
 
-    K = 10000
-    Np = 36
-    Nq = 50
+    n = 10
 
-    knl = lp.make_kernel(ctx.devices[0],
-            "[K] -> {[i,j,k,ii,jj]: 0<=k<K and 0<= i,j,ii < Np and 0 <= jj < Nq}",
+    knl = lp.make_kernel(ctx.devices[0], [
+            "[n] -> {[i,j]: 0<=i,j<n }",
+            "{[k]: k =i+5 and k < n}",
+            ],
             [
-                "<> temp[ii] = sum(jj, d[ii, jj]*f[k, jj])",
-                "result[k, i] = sum(j, d2[i, j]*temp[j])"
+                "a[i,j] = 5 {id=set_all}",
+                "a[i,k] = 22 {dep=set_all}",
                 ],
             [
-                lp.GlobalArg("d", dtype, shape="Np, Nq", order=order),
-                lp.GlobalArg("d2", dtype, shape="Np, Np", order=order),
-                lp.GlobalArg("f", dtype, shape="K, Nq", order=order),
-                lp.GlobalArg("result", dtype, shape="K, Np", order=order),
-                lp.ValueArg("K", np.int32, approximately=1000),
+                lp.GlobalArg("a", dtype, shape="n, n", order=order),
+                lp.ValueArg("n", np.int32, approximately=1000),
                 ],
-            name="batched_matvec", assumptions="K>=1",
-            defines=dict(Np=Np, Nq=Nq))
+            name="equality_constraints", assumptions="n>=1")
 
     seq_knl = knl
 
-    knl = lp.add_prefetch(knl, 'd[:,:]')
-    knl = lp.add_prefetch(knl, 'd2[:,:]')
+    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.1")
+    #print knl
+    #print knl.domains[0].detect_equalities()
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=K))
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
-            op_count=[K*2*(Np**2+Np*Nq)/1e9], op_label=["GFlops"],
-            parameters=dict(K=K), print_ref_code=True)
+            parameters=dict(n=n), print_ref_code=True)
 
 
 
