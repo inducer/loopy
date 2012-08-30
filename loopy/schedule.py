@@ -293,7 +293,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
         print kernel
         print 75*"="
         print "CURRENT SCHEDULE:"
-        print dump_schedule(schedule), len(schedule)
+        print "%s (length: %d)" % (dump_schedule(schedule), len(schedule))
         print "(entry into loop: <iname>, exit from loop: </iname>, instruction names without delimiters)"
         #print "boost allowed:", allow_boost
         print 75*"="
