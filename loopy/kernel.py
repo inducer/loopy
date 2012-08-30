@@ -1358,12 +1358,14 @@ class LoopKernel(Record):
         """
         result = {}
 
+        all_inames = self.all_inames()
+
         # {{{ examine instructions
 
         iname_to_insns = self.iname_to_insns()
 
         # examine pairs of all inames--O(n**2), I know.
-        for inner_iname in self.all_inames():
+        for inner_iname in all_inames:
             result[inner_iname] = set()
             for outer_iname in self.all_inames():
                 if outer_iname in self.breakable_inames:
@@ -1376,13 +1378,11 @@ class LoopKernel(Record):
 
         # {{{ examine domains
 
-        for i_dom, (dom, parent_indices) in enumerate(
-                zip(self.domains, self.all_parents_per_domain())):
-            for parent_index in parent_indices:
-                for iname in dom.get_var_names(dim_type.set):
-                    parent = self.domains[parent_index]
-                    for parent_iname in parent.get_var_names(dim_type.set):
-                        result[iname].add(parent_iname)
+        for i_dom, dom in enumerate(self.domains):
+            for iname in dom.get_var_names(dim_type.set):
+                for par_iname in dom.get_var_names(dim_type.param):
+                    if par_iname in all_inames:
+                        result[iname].add(par_iname)
 
         # }}}
 
