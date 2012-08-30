@@ -330,12 +330,12 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         if den_nonneg:
             if num_nonneg:
-                return self.parenthesize_if_needed(
-                        "%s / %s" % (
+                # parenthesize to avoid negative signs being dragged in from the
+                # outside by associativity
+                return "(%s / %s)" % (
                             self.rec(expr.numerator, PREC_PRODUCT, type_context),
                             # analogous to ^{-1}
-                            self.rec(expr.denominator, PREC_POWER, type_context)),
-                        enclosing_prec, PREC_PRODUCT)
+                            self.rec(expr.denominator, PREC_POWER, type_context))
             else:
                 seen_func("int_floor_div_pos_b")
                 return ("int_floor_div_pos_b(%s, %s)"
