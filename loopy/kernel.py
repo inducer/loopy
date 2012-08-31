@@ -81,6 +81,10 @@ class UnrollTag(IndexTag):
     def __str__(self):
         return "unr"
 
+class ForceSequentialTag(IndexTag):
+    def __str__(self):
+        return "forceseq"
+
 def parse_tag(tag):
     if tag is None:
         return tag
@@ -683,8 +687,6 @@ class LoopKernel(Record):
         were applied to the kernel. These are stored so that they may be repeated
         on expressions the user specifies later.
     :ivar cache_manager:
-    :ivar lowest_priority_inames: (used internally to realize ILP)
-    :ivar breakable_inames: these inames' loops may be broken up by the scheduler
     :ivar isl_context:
 
     The following instance variables are only used until :func:`loopy.make_kernel` is
@@ -717,7 +719,6 @@ class LoopKernel(Record):
             applied_iname_rewrites=[],
             cache_manager=None,
             iname_to_tag_requests=None,
-            lowest_priority_inames=[], breakable_inames=set(),
             index_dtype=np.int32,
             isl_context=None):
         """
@@ -1006,8 +1007,6 @@ class LoopKernel(Record):
                 iname_to_tag_requests=iname_to_tag_requests,
                 substitutions=substitutions,
                 cache_manager=cache_manager,
-                lowest_priority_inames=lowest_priority_inames,
-                breakable_inames=breakable_inames,
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers,
@@ -1329,51 +1328,6 @@ class LoopKernel(Record):
 
         return result
 
-    @property
-    @memoize_method
-    def sequential_inames(self):
-        result = set()
-
-        def map_reduction(red_expr, rec):
-            rec(red_expr.expr)
-            result.update(red_expr.inames)
-
-        from loopy.symbolic import ReductionCallbackMapper
-        for insn in self.instructions:
-            ReductionCallbackMapper(map_reduction)(insn.expression)
-
-        for iname in result:
-            tag = self.iname_to_tag.get(iname)
-            if tag is not None and isinstance(tag, ParallelTag):
-                raise RuntimeError("inconsistency detected: "
-                        "sequential/reduction iname '%s' has "
-                        "a parallel tag" % iname)
-
-        return result
-
-    @memoize_method
-    def loop_nest_map(self):
-        """Returns a dictionary mapping inames to other inames that are
-        always nested around them.
-        """
-        result = {}
-
-        all_inames = self.all_inames()
-
-        # {{{ examine instructions
-
-        iname_to_insns = self.iname_to_insns()
-
-        # examine pairs of all inames--O(n**2), I know.
-        for inner_iname in all_inames:
-            result[inner_iname] = set()
-            for outer_iname in self.all_inames():
-                if outer_iname in self.breakable_inames:
-                    continue
-
-                if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
-                    result[inner_iname].add(outer_iname)
-
         # }}}
 
         # {{{ examine domains
@@ -1637,7 +1591,8 @@ class LoopKernel(Record):
         lines.append(sep)
         lines.append("INAME-TO-TAG MAP:")
         for iname in sorted(self.all_inames()):
-            lines.append("%s: %s" % (iname, self.iname_to_tag.get(iname)))
+            line = "%s: %s" % (iname, self.iname_to_tag.get(iname))
+            lines.append(line)
 
         lines.append(sep)
         lines.append("DOMAINS:")
@@ -1676,6 +1631,12 @@ class LoopKernel(Record):
             if insn.insn_deps:
                 lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
         lines.append(sep)
+
+        if self.schedule is not None:
+            lines.append("SCHEDULE:")
+            from loopy.schedule import dump_schedule
+            lines.append(dump_schedule(self.schedule))
+            lines.append(sep)
 
         return "\n".join(lines)
 

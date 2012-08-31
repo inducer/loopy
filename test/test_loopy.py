@@ -558,6 +558,69 @@ def test_equality_constraints(ctx_factory):
 
 
 
+# {{{ test race detection
+
+def test_ilp_write_race_detection_global(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "[n] -> {[i,j]: 0<=i,j<n }",
+            ],
+            [
+                "[j:ilp] a[i] = 5+i+j",
+                ],
+            [
+                lp.GlobalArg("a", np.float32),
+                lp.ValueArg("n", np.int32, approximately=1000),
+                ],
+            assumptions="n>=1")
+
+    from loopy.check import WriteRaceConditionError
+    import pytest
+    with pytest.raises(WriteRaceConditionError):
+        list(lp.generate_loop_schedules(knl))
+
+
+
+
+def test_ilp_write_race_detection_local(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i,j]: 0<=i,j<16 }",
+            [
+                "[i:l.0, j:ilp] <> a[i] = 5+i+j",
+                ],
+            [])
+
+    from loopy.check import WriteRaceConditionError
+    import pytest
+    with pytest.raises(WriteRaceConditionError):
+        list(lp.generate_loop_schedules(knl))
+
+
+
+
+def test_ilp_write_race_detection_private(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[j]: 0<=j<16 }",
+            [
+                "[j:ilp] <> a = 5+j",
+                ],
+            [])
+
+    from loopy.check import WriteRaceConditionError
+    import pytest
+    with pytest.raises(WriteRaceConditionError):
+        list(lp.generate_loop_schedules(knl))
+
+# }}}
+
+
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
@@ -565,3 +628,5 @@ if __name__ == "__main__":
     else:
         from py.test.cmdline import main
         main([__file__])
+
+# vim: foldmethod=marker

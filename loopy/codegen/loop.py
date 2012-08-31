@@ -104,7 +104,6 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
 def generate_unroll_loop(kernel, sched_index, codegen_state):
     iname = kernel.schedule[sched_index].iname
-    tag = kernel.iname_to_tag.get(iname)
 
     bounds = kernel.get_iname_bounds(iname)
 
@@ -118,20 +117,15 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
             bounds.lower_bound_pw_aff.coalesce(),
             constants_only=False)
 
-    from loopy.kernel import UnrollTag
-    if isinstance(tag, UnrollTag):
-        result = []
+    result = []
 
-        for i in range(length):
-            idx_aff = lower_bound_aff + i
-            new_codegen_state = codegen_state.fix(iname, idx_aff)
-            result.append(
-                    build_loop_nest(kernel, sched_index+1, new_codegen_state))
+    for i in range(length):
+        idx_aff = lower_bound_aff + i
+        new_codegen_state = codegen_state.fix(iname, idx_aff)
+        result.append(
+                build_loop_nest(kernel, sched_index+1, new_codegen_state))
 
-        return gen_code_block(result)
-
-    else:
-        raise RuntimeError("unexpected tag")
+    return gen_code_block(result)
 
 # }}}
 

@@ -536,6 +536,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
                 InvocationDescriptor(expr=expr, args=args,
                     expands_footprint=footprint_generators is None,
                     from_subst_rule=current_subst_rule))
+
         return expr
 
     from loopy.symbolic import SubstitutionCallbackMapper
@@ -550,15 +551,17 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
     # }}}
 
     sweep_inames = list(sweep_inames)
+    sweep_inames_set = frozenset(sweep_inames)
 
-    # {{{ find inames used in argument dependencies
+    # {{{ find inames used in arguments
 
     expanding_usage_arg_deps = set()
 
     for invdesc in invocation_descriptors:
         if invdesc.expands_footprint:
             for arg in invdesc.args:
-                expanding_usage_arg_deps.update(get_dependencies(arg))
+                expanding_usage_arg_deps.update(
+                        get_dependencies(arg) & kernel.all_inames())
 
     # }}}
 
@@ -566,18 +569,28 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # {{{ use given / find new storage_axes
 
-    extra_storage_axes = list(set(sweep_inames) - expanding_usage_arg_deps)
+    # extra axes made necessary because they don't occur in the arguments
+    extra_storage_axes = sweep_inames_set - expanding_usage_arg_deps
+
+    from loopy.symbolic import ParametrizedSubstitutor
+    submap = ParametrizedSubstitutor(kernel.substitutions)
+
+    value_inames = get_dependencies(submap(subst.expression)) & kernel.all_inames()
+    if value_inames - expanding_usage_arg_deps < extra_storage_axes:
+        raise RuntimeError("unreferenced sweep inames specified: "
+                + ", ".join(extra_storage_axes - value_inames - expanding_usage_arg_deps))
+
+    new_iname_to_tag = {}
 
     if storage_axes is None:
         storage_axes = (
-                extra_storage_axes
+                list(extra_storage_axes)
                 + list(xrange(len(arg_names))))
 
     expr_subst_dict = {}
 
     storage_axis_names = []
     storage_axis_sources = [] # number for arg#, or iname
-    storage_axis_name_to_tag = {}
 
     for i, saxis in enumerate(storage_axes):
         tag_lookup_saxis = saxis
@@ -606,7 +619,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
                     based_on=name, extra_used_vars=newly_created_var_names)
 
         storage_axis_names.append(name)
-        storage_axis_name_to_tag[name] = storage_axis_to_tag.get(
+        new_iname_to_tag[name] = storage_axis_to_tag.get(
                 tag_lookup_saxis, default_tag)
 
         newly_created_var_names.add(name)
@@ -624,7 +637,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # }}}
 
-    expanding_inames = frozenset(sweep_inames) | frozenset(expanding_usage_arg_deps)
+    expanding_inames = sweep_inames_set | frozenset(expanding_usage_arg_deps)
     assert expanding_inames <= kernel.all_inames()
 
     # {{{ find domain to be changed
@@ -637,7 +650,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
         # fetches with loops over copies of these parent inames that will end
         # up being scheduled *within* loops over these parents.
 
-        for iname in sweep_inames:
+        for iname in sweep_inames_set:
             if kernel.get_home_domain_index(iname) != domch.leaf_domain_index:
                 raise RuntimeError("sweep iname '%s' is not 'at home' in the "
                         "sweep's leaf domain" % iname)
@@ -652,6 +665,10 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     from loopy.isl_helpers import convexify
     new_domain = convexify(new_domain)
+
+    for saxis in storage_axis_names:
+        if saxis not in non1_storage_axis_names:
+            del new_iname_to_tag[saxis]
 
     # {{{ set up compute insn
 
@@ -804,14 +821,6 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # }}}
 
-    # {{{ fill out new_iname_to_tag
-
-    new_iname_to_tag = kernel.iname_to_tag.copy()
-    for arg_name in non1_storage_axis_names:
-        new_iname_to_tag[arg_name] = storage_axis_name_to_tag[arg_name]
-
-    # }}}
-
     # {{{ set up temp variable
 
     from loopy.kernel import TemporaryVariable
@@ -828,12 +837,14 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # }}}
 
-    return kernel.copy(
+    result =  kernel.copy(
             domains=domch.get_domains_with(new_domain),
             instructions=new_insns,
             substitutions=new_substs,
-            temporary_variables=new_temporary_variables,
-            iname_to_tag=new_iname_to_tag)
+            temporary_variables=new_temporary_variables)
+
+    from loopy import tag_dimensions
+    return tag_dimensions(result, new_iname_to_tag)
 
 
 

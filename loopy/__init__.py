@@ -66,7 +66,11 @@ def split_dimension(kernel, split_iname, inner_length,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True):
 
-    if do_tagged_check and kernel.iname_to_tag.get(split_iname) is not None:
+    existing_tag = kernel.iname_to_tag.get(split_iname)
+    from loopy.kernel import ForceSequentialTag
+    if do_tagged_check and (
+            existing_tag is not None
+            and not isinstance(existing_tag, ForceSequentialTag)):
         raise RuntimeError("cannot split already tagged iname '%s'" % split_iname)
 
     if split_iname not in kernel.all_inames():
@@ -157,6 +161,10 @@ def split_dimension(kernel, split_iname, inner_length,
                 instructions=new_insns,
                 applied_iname_rewrites=applied_iname_rewrites,
                 ))
+
+    if existing_tag is not None:
+        result = tag_dimensions(result,
+                {outer_iname: existing_tag, inner_iname: existing_tag})
 
     return tag_dimensions(result, {outer_iname: outer_tag, inner_iname: inner_tag})
 
@@ -263,7 +271,8 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
     iname_to_tag = dict((iname, parse_tag(tag))
             for iname, tag in iname_to_tag.iteritems())
 
-    from loopy.kernel import (ParallelTag, AutoLocalIndexTagBase)
+    from loopy.kernel import (ParallelTag, AutoLocalIndexTagBase,
+            ForceSequentialTag)
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
     for iname, new_tag in iname_to_tag.iteritems():
@@ -274,7 +283,7 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
 
         retag_ok = False
 
-        if isinstance(old_tag, AutoLocalIndexTagBase):
+        if isinstance(old_tag, (AutoLocalIndexTagBase, ForceSequentialTag)):
             retag_ok = True
 
         if not retag_ok and old_tag is not None and new_tag is None:
@@ -283,9 +292,15 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
 
-        if isinstance(new_tag, ParallelTag) and iname in kernel.sequential_inames:
+        if isinstance(new_tag, ParallelTag) and isinstance(old_tag, ForceSequentialTag):
             raise ValueError("cannot tag '%s' as parallel--"
                     "iname requires sequential execution" % iname)
+
+        if isinstance(new_tag, ForceSequentialTag) and isinstance(old_tag, ParallelTag):
+            raise ValueError("'%s' is already tagged as parallel, "
+                    "but is now prohibited from being parallel "
+                    "(likely because of participation in a precompute or "
+                    "a reduction)" % iname)
 
         if (not retag_ok) and (not force) and old_tag is not None and (old_tag != new_tag):
             raise RuntimeError("'%s' is already tagged '%s'--cannot retag"

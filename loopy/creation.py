@@ -3,6 +3,33 @@ import numpy as np
 from loopy.symbolic import IdentityMapper
 
 
+def tag_reduction_inames_as_sequential(knl):
+    result = set()
+
+    def map_reduction(red_expr, rec):
+        rec(red_expr.expr)
+        result.update(red_expr.inames)
+
+    from loopy.symbolic import ReductionCallbackMapper
+    for insn in knl.instructions:
+        ReductionCallbackMapper(map_reduction)(insn.expression)
+
+    from loopy.kernel import ParallelTag, ForceSequentialTag
+
+    new_iname_to_tag = {}
+    for iname in result:
+        tag = knl.iname_to_tag.get(iname)
+        if tag is not None and isinstance(tag, ParallelTag):
+            raise RuntimeError("inconsistency detected: "
+                    "reduction iname '%s' has "
+                    "a parallel tag" % iname)
+
+        if tag is None:
+            new_iname_to_tag[iname] = ForceSequentialTag()
+
+    from loopy import tag_dimensions
+    return tag_dimensions(knl, new_iname_to_tag)
+
 # {{{ sanity checking
 
 def check_for_duplicate_names(knl):
@@ -377,6 +404,8 @@ def make_kernel(*args, **kwargs):
                     iname_to_tag_requests=[])
 
     check_for_nonexistent_iname_deps(knl)
+
+    knl = tag_reduction_inames_as_sequential(knl)
 
     knl = create_temporaries(knl)
     knl = duplicate_reduction_inames(knl)

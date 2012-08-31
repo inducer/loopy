@@ -154,6 +154,39 @@ def find_used_inames_within(kernel, sched_index):
 
     return result
 
+
+
+
+def loop_nest_map(kernel):
+    """Returns a dictionary mapping inames to other inames that are
+    always nested around them.
+    """
+    result = {}
+
+    all_inames = kernel.all_inames()
+
+    iname_to_insns = kernel.iname_to_insns()
+
+    # examine pairs of all inames--O(n**2), I know.
+    from loopy.kernel import IlpBaseTag
+    for inner_iname in all_inames:
+        result[inner_iname] = set()
+        for outer_iname in kernel.all_inames():
+            tag = kernel.iname_to_tag.get(outer_iname)
+            if isinstance(tag, IlpBaseTag):
+                # ILP tags are special because they are parallel tags
+                # and therefore 'in principle' nest around everything.
+                # But they're realized by the scheduler as a loop
+                # (and the scheduler is the only custom
+                # at the innermost level, so we'll cut them some
+                # slack here.
+                continue
+
+            if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
+                result[inner_iname].add(outer_iname)
+
+    return result
+
 # }}}
 
 # {{{ debug help
@@ -236,11 +269,15 @@ class ScheduleDebugger:
 
 # {{{ scheduling algorithm
 
-def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
+class SchedulerState(Record):
+    pass
+
+def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         allow_boost=False, allow_insn=False, debug=None):
     # allow_insn is set to False initially and after entering each loop
     # to give loops containing high-priority instructions a chance.
 
+    kernel = sched_state.kernel
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
     scheduled_insn_ids = set(sched_item.insn_id for sched_item in schedule
@@ -271,10 +308,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
         last_entered_loop = None
     active_inames_set = set(active_inames)
 
-    from loopy.kernel import ParallelTag
-    parallel_inames = set(
-            iname for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
 
     # }}}
 
@@ -325,8 +358,8 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
                         insn.id, ",".join(set(insn.insn_deps) - scheduled_insn_ids))
             continue
 
-        want = kernel.insn_inames(insn) - parallel_inames
-        have = active_inames_set - parallel_inames
+        want = kernel.insn_inames(insn) - sched_state.parallel_inames
+        have = active_inames_set - sched_state.parallel_inames
 
         # If insn is boostable, it may be placed inside a more deeply
         # nested loop without harm.
@@ -365,7 +398,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
             # made.
 
             for sub_sched in generate_loop_schedules_internal(
-                    kernel, loop_priority, schedule,
+                    sched_state, loop_priority, schedule,
                     allow_boost=rec_allow_boost, debug=debug,
                     allow_insn=True):
                 yield sub_sched
@@ -379,7 +412,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
     if  last_entered_loop is not None:
         can_leave = True
 
-        if last_entered_loop not in kernel.breakable_inames:
+        if last_entered_loop not in sched_state.breakable_inames:
             # If the iname is not breakable, then check that we've
             # scheduled all the instructions that require it.
 
@@ -418,7 +451,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
                 schedule = schedule + [LeaveLoop(iname=last_entered_loop)]
 
                 for sub_sched in generate_loop_schedules_internal(
-                        kernel, loop_priority, schedule,
+                        sched_state, loop_priority, schedule,
                         allow_boost=rec_allow_boost, debug=debug,
                         allow_insn=allow_insn):
                     yield sub_sched
@@ -436,7 +469,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
 
     needed_inames = (needed_inames
             # There's no notion of 'entering' a parallel loop
-            - parallel_inames
+            - sched_state.parallel_inames
 
             # Don't reenter a loop we're already in.
             - active_inames_set)
@@ -456,11 +489,11 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
 
             # {{{ check if scheduling this iname now is allowed/plausible
 
-            currently_accessible_inames = active_inames_set | parallel_inames
-            if not kernel.loop_nest_map()[iname] <= currently_accessible_inames:
+            currently_accessible_inames = active_inames_set | sched_state.parallel_inames
+            if not sched_state.loop_nest_map[iname] <= currently_accessible_inames:
                 if debug_mode:
                     print "scheduling %s prohibited by loop nest map" % iname
-                    print kernel.loop_nest_map()
+                    print sched_state.loop_nest_map
                 continue
 
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
@@ -468,7 +501,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
             iname_home_domain_params = set(iname_home_domain.get_var_names(dim_type.param))
 
             # The previous check should have ensured this is true, because
-            # Kernel.loop_nest_map takes the domain dependency graph into
+            # the loop_nest_map takes the domain dependency graph into
             # consideration.
             assert (iname_home_domain_params & kernel.all_inames()
                     <= currently_accessible_inames)
@@ -522,7 +555,6 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
         # loops in the second are not even tried (and so on).
 
         loop_priority_set = set(loop_priority)
-        lowest_priority_set = set(kernel.lowest_priority_inames)
         useful_loops_set = set(iname_to_usefulness.iterkeys())
         useful_and_desired = useful_loops_set & loop_priority_set
 
@@ -535,13 +567,13 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
             priority_tiers.append(
                     useful_loops_set
                     - loop_priority_set
-                    - lowest_priority_set)
+                    - sched_state.lowest_priority_inames)
         else:
-            priority_tiers = [useful_loops_set - lowest_priority_set]
+            priority_tiers = [useful_loops_set - sched_state.lowest_priority_inames]
 
         priority_tiers.extend([
             [iname]
-            for iname in kernel.lowest_priority_inames
+            for iname in sched_state.lowest_priority_inames
             if iname in useful_loops_set
             ])
 
@@ -559,7 +591,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
                 new_schedule = schedule + [EnterLoop(iname=iname)]
 
                 for sub_sched in generate_loop_schedules_internal(
-                        kernel, loop_priority, new_schedule,
+                        sched_state, loop_priority, new_schedule,
                         allow_boost=rec_allow_boost,
                         debug=debug):
                     found_viable_schedule = True
@@ -584,7 +616,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
         if not allow_insn:
             # try again with boosting allowed
             for sub_sched in generate_loop_schedules_internal(
-                    kernel, loop_priority, schedule=schedule,
+                    sched_state, loop_priority, schedule=schedule,
                     allow_boost=allow_boost, debug=debug,
                     allow_insn=True):
                 yield sub_sched
@@ -592,7 +624,7 @@ def generate_loop_schedules_internal(kernel, loop_priority, schedule=[],
         if not allow_boost and allow_boost is not None:
             # try again with boosting allowed
             for sub_sched in generate_loop_schedules_internal(
-                    kernel, loop_priority, schedule=schedule,
+                    sched_state, loop_priority, schedule=schedule,
                     allow_boost=True, debug=debug,
                     allow_insn=allow_insn):
                 yield sub_sched
@@ -729,10 +761,27 @@ def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
 
     debug = ScheduleDebugger(**debug_args)
 
+    from loopy.kernel import IlpBaseTag, ParallelTag
+    ilp_inames = set(
+            iname
+            for iname in kernel.all_inames()
+            if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
+    parallel_inames = set(
+            iname for iname in kernel.all_inames()
+            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
+
+    sched_state = SchedulerState(
+            kernel=kernel,
+            loop_nest_map=loop_nest_map(kernel),
+            breakable_inames=ilp_inames,
+            lowest_priority_inames=ilp_inames,
+            # ILP is not parallel for the purposes of the scheduler
+            parallel_inames=parallel_inames - ilp_inames)
+
     generators = [
-            generate_loop_schedules_internal(kernel, loop_priority,
+            generate_loop_schedules_internal(sched_state, loop_priority,
                 debug=debug, allow_boost=None),
-            generate_loop_schedules_internal(kernel, loop_priority,
+            generate_loop_schedules_internal(sched_state, loop_priority,
                 debug=debug)]
     for gen in generators:
         for gen_sched in gen:
@@ -783,9 +832,5 @@ def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
         raise RuntimeError("no valid schedules found")
 
 # }}}
-
-
-
-
 
 # vim: foldmethod=marker

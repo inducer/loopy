@@ -86,11 +86,15 @@ def check_for_inactive_iname_access(kernel):
 
 
 
+class WriteRaceConditionError(RuntimeError):
+    pass
+
 def check_for_write_races(kernel):
     from loopy.symbolic import DependencyMapper
-    from loopy.kernel import ParallelTag, GroupIndexTag
+    from loopy.kernel import ParallelTag, GroupIndexTag, LocalIndexTagBase
     depmap = DependencyMapper()
 
+    iname_to_tag = kernel.iname_to_tag.get
     for insn in kernel.instructions:
         assignee_name = insn.get_assignee_var_name()
         assignee_indices = depmap(insn.get_assignee_indices())
@@ -109,42 +113,33 @@ def check_for_write_races(kernel):
                     "iname that the instruction does not depend on"
                     % insn.id)
 
-        inames_without_write_dep = None
-
         if assignee_name in kernel.arg_dict:
             # Any parallel tags that are not depended upon by the assignee
             # will cause write races.
 
-            parallel_insn_inames = set(
+            raceable_parallel_insn_inames = set(
                     iname
                     for iname in kernel.insn_inames(insn)
-                    if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
-
-            inames_without_write_dep = parallel_insn_inames - (
-                    assignee_inames & parallel_insn_inames)
+                    if isinstance(iname_to_tag(iname), ParallelTag))
 
         elif assignee_name in kernel.temporary_variables:
             temp_var = kernel.temporary_variables[assignee_name]
             if temp_var.is_local == True:
-                local_parallel_insn_inames = set(
+                raceable_parallel_insn_inames = set(
                         iname
                         for iname in kernel.insn_inames(insn)
-                        if isinstance(kernel.iname_to_tag.get(iname), ParallelTag)
-                        and not isinstance(kernel.iname_to_tag.get(iname), GroupIndexTag))
-
-                inames_without_write_dep = local_parallel_insn_inames - (
-                        assignee_inames & local_parallel_insn_inames)
+                        if isinstance(iname_to_tag(iname), ParallelTag)
+                        and not isinstance(iname_to_tag(iname), GroupIndexTag))
 
             elif temp_var.is_local == False:
-                #from loopy.kernel import IlpBaseTag
-                #ilp_inames = set(
-                        #iname
-                        #for iname in kernel.insn_inames(insn)
-                        #if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
-
-                #inames_without_write_dep = ilp_inames - assignee_inames
-
-                inames_without_write_dep = set()
+                raceable_parallel_insn_inames = set(
+                        iname
+                        for iname in kernel.insn_inames(insn)
+                        if isinstance(iname_to_tag(iname), ParallelTag)
+                        and not isinstance(iname_to_tag(iname),
+                            GroupIndexTag)
+                        and not isinstance(iname_to_tag(iname),
+                            LocalIndexTagBase))
 
             else:
                 raise RuntimeError("temp var '%s' hasn't decided on "
@@ -154,14 +149,15 @@ def check_for_write_races(kernel):
             raise RuntimeError("invalid assignee name in instruction '%s'"
                     % insn.id)
 
-        assert inames_without_write_dep is not None
+        race_inames = \
+                raceable_parallel_insn_inames - assignee_inames
 
-        if inames_without_write_dep:
-            raise RuntimeError(
+        if race_inames:
+            raise WriteRaceConditionError(
                     "instruction '%s' contains a write race: "
                     "instruction will be run across parallel iname(s) '%s', which "
                     "is/are not referenced in the lhs index"
-                    % (insn.id, ",".join(inames_without_write_dep)))
+                    % (insn.id, ",".join(race_inames)))
 
 def check_for_orphaned_user_hardware_axes(kernel):
     from loopy.kernel import LocalIndexTag
