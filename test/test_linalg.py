@@ -565,6 +565,39 @@ def test_image_matrix_mul_ilp(ctx_factory):
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
 
+def test_image_matrix_mul_ilp_simplified(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+    order = "C"
+
+    n = 9 #get_suitable_size(ctx)
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i,j,k]: 0<=i,j,k<%d}" % n,
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+                ],
+            [
+                lp.ImageArg("a", dtype, shape=(n, n)),
+                lp.ImageArg("b", dtype, shape=(n, n)),
+                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
+                ],
+            name="matmul")
+
+    seq_knl = knl
+
+    knl = lp.split_dimension(knl, "j", 4, inner_tag="l.0")
+    knl = lp.split_dimension(knl, "k", 2)
+    knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
+
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
+            parameters={}, options=["-g"])
+
+
 
 
 
