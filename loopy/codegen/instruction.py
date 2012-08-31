@@ -24,6 +24,7 @@ def generate_instruction_code(kernel, insn, codegen_state):
     insn_code = Assign(
             ccm(insn.assignee, prec=None, type_context=None),
             ccm(expr, prec=None, type_context=dtype_to_type_context(target_dtype)))
+
     from loopy.codegen.bounds import wrap_in_bounds_checks
     insn_inames = kernel.insn_inames(insn)
     insn_code, impl_domain = wrap_in_bounds_checks(
@@ -31,10 +32,29 @@ def generate_instruction_code(kernel, insn, codegen_state):
             codegen_state.implemented_domain,
             insn_code)
 
-    return GeneratedInstruction(
+    result = GeneratedInstruction(
         insn_id=insn.id,
         implemented_domain=impl_domain,
         ast=insn_code)
+
+    if 0:
+        from loopy.codegen import gen_code_block
+        from cgen import Statement as S
+        idx = insn.get_assignee_indices()
+
+        if idx:
+            result = gen_code_block([
+                GeneratedInstruction(
+                    ast=S(r'printf("write %s[%s]\n", %s);'
+                        % (insn.get_assignee_var_name(),
+                            ",".join(len(idx) * ["%d"]),
+                            ",".join(ccm(i, prec=None, type_context="i") for i in idx))),
+                    implemented_domain=None),
+                result
+                ])
+
+    return result
+
 
 
 
