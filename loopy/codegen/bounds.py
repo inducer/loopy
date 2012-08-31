@@ -108,30 +108,15 @@ def constraint_to_code(ccm, cns):
 def generate_bounds_checks(domain, check_inames, implemented_domain):
     """Will not overapproximate."""
 
-    domain = (domain
-            .eliminate_except(check_inames, [dim_type.set])
-            .compute_divs())
-
-    if isinstance(domain, isl.Set):
-        bsets = domain.get_basic_sets()
-        if len(bsets) != 1:
-            domain = domain.coalesce()
-            bsets = domain.get_basic_sets()
-            if len(bsets) != 1:
-                raise RuntimeError("domain of inames '%s' projected onto '%s' "
-                        "did not reduce to a single conjunction"
-                        % (", ".join(domain.get_var_names(dim_type.set)),
-                            check_inames))
-
-        domain, = bsets
-    else:
-        domain = domain
-
+    if isinstance(domain, isl.BasicSet):
+        domain = isl.Set.from_basic_set(domain)
     domain = domain.remove_redundancies()
-    domain = isl.Set.from_basic_set(domain)
     domain = isl.align_spaces(domain, implemented_domain)
-
     result = domain.gist(implemented_domain)
+
+    result = (result
+        .eliminate_except(check_inames, [dim_type.set])
+        .compute_divs())
 
     from loopy.isl_helpers import convexify
     return convexify(result).get_constraints()
