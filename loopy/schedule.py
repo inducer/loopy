@@ -223,9 +223,7 @@ class ScheduleDebugger:
 
     def update(self):
         if ((self.success_counter + self.dead_end_counter) % 50 == 0
-                and self.success_counter > 2
-                # ^ someone's waiting for the scheduler to go through *all* options
-                and (self.debug_length or self.elapsed_time() > 1)
+                and self.elapsed_time() > 10
                 ):
             sys.stdout.write("\rscheduling... %d successes, "
                     "%d dead ends (longest %d)" % (
@@ -321,6 +319,8 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
             debug_mode = True
 
     if debug_mode:
+        if debug.wrote_status == 2:
+            print
         print 75*"="
         print "KERNEL:"
         print kernel
@@ -329,6 +329,10 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         print "%s (length: %d)" % (dump_schedule(schedule), len(schedule))
         print "(entry into loop: <iname>, exit from loop: </iname>, instruction names without delimiters)"
         #print "boost allowed:", allow_boost
+        print 75*"="
+        print "LOOP NEST MAP:"
+        for iname, val in sched_state.loop_nest_map.iteritems():
+            print "%s : %s" % (iname, ", ".join(val))
         print 75*"="
         print "WHY IS THIS A DEAD-END SCHEDULE?"
 
@@ -493,7 +497,6 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
             if not sched_state.loop_nest_map[iname] <= currently_accessible_inames:
                 if debug_mode:
                     print "scheduling %s prohibited by loop nest map" % iname
-                    print sched_state.loop_nest_map
                 continue
 
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
