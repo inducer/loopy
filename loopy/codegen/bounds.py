@@ -229,9 +229,9 @@ def wrap_in_for_from_constraints(ccm, iname, constraint_bset, stmt,
 
 # {{{ on which variables may a conditional depend?
 
-def get_defined_inames(kernel, sched_index):
+def get_usable_inames_for_conditional(kernel, sched_index):
     from loopy.schedule import EnterLoop, LeaveLoop
-    from loopy.kernel import ParallelTag
+    from loopy.kernel import ParallelTag, LocalIndexTagBase
 
     result = set()
 
@@ -246,8 +246,11 @@ def get_defined_inames(kernel, sched_index):
     for iname in kernel.all_inames():
         tag = kernel.iname_to_tag.get(iname)
 
-        # these are always defined
-        if isinstance(tag, ParallelTag):
+        # Parallel inames are always defined, BUT local indices may not be used
+        # in conditionals that cross barriers.
+
+        if (isinstance(tag, ParallelTag)
+                and not isinstance(tag, LocalIndexTagBase)):
             result.add(iname)
 
     return frozenset(result)
@@ -257,11 +260,12 @@ def get_defined_inames(kernel, sched_index):
 # {{{ get_simple_loop_bounds
 
 def get_simple_loop_bounds(kernel, sched_index, iname, implemented_domain, iname_domain):
-    from loopy.codegen.bounds import get_bounds_constraints, get_defined_inames
+    from loopy.codegen.bounds import (get_bounds_constraints,
+            get_usable_inames_for_conditional)
     lower_constraints_orig, upper_constraints_orig, equality_constraints_orig = \
             get_bounds_constraints(iname_domain, iname,
                     frozenset([iname])
-                    | get_defined_inames(kernel, sched_index+1),
+                    | get_usable_inames_for_conditional(kernel, sched_index+1),
                     allow_parameters=True)
 
     lower_constraints_orig.extend(equality_constraints_orig)
