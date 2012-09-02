@@ -239,57 +239,6 @@ def get_highlighted_code(text):
 
 
 
-# {{{ timing driver
-
-def drive_timing_run(kernel_generator, queue, launch, flop_count=None,
-        options=[], print_code=True, edit_code=False):
-
-    def time_run(compiled_knl, warmup_rounds=2, timing_rounds=5):
-        check = True
-        for i in range(warmup_rounds):
-            launch(compiled_knl.cl_kernel,
-                    compiled.global_size_func, compiled.local_size_func,
-                    check=check)
-            check = False
-
-        events = []
-        for i in range(timing_rounds):
-            events.append(
-                    launch(compiled_knl.cl_kernel,
-                        compiled.global_size_func, compiled.local_size_func,
-                        check=check))
-        for evt in events:
-            evt.wait()
-
-        return sum(1e-9*evt.profile.END-1e-9*evt.profile.START for evt in events)/timing_rounds
-
-    soln_count = 0
-    for kernel in kernel_generator:
-
-        compiled = CompiledKernel(queue.context, kernel, options=options,
-                edit_code=edit_code)
-
-        print "-----------------------------------------------"
-        print "SOLUTION #%d" % soln_count
-        print "-----------------------------------------------"
-        if print_code:
-            print get_highlighted_code(compiled.code)
-            print "-----------------------------------------------"
-
-        elapsed = time_run(compiled)
-
-        print "time: %f" % elapsed
-        if flop_count is not None:
-            print "gflops/s: %f (#%d)" % (
-                    flop_count/elapsed/1e9, soln_count)
-        print "-----------------------------------------------"
-
-        soln_count += 1
-
-    print "%d solutions" % soln_count
-
-# }}}
-
 # {{{ automatic testing
 
 def fill_rand(ary):

@@ -32,7 +32,7 @@ from loopy.cse import precompute
 from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
-from loopy.compiled import CompiledKernel, drive_timing_run, auto_test_vs_ref
+from loopy.compiled import CompiledKernel, auto_test_vs_ref
 from loopy.check import check_kernels
 
 __all__ = ["ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
@@ -47,7 +47,7 @@ __all__ = ["ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "Ima
         "preprocess_kernel", "realize_reduction",
         "generate_loop_schedules",
         "generate_code",
-        "CompiledKernel", "drive_timing_run", "auto_test_vs_ref", "check_kernels",
+        "CompiledKernel", "auto_test_vs_ref", "check_kernels",
         "make_kernel", "split_dimension", "join_dimensions",
         "tag_dimensions",
         "extract_subst", "expand_subst",
