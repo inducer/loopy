@@ -53,11 +53,11 @@ def test_tim2d(ctx_factory):
     knl = lp.add_prefetch(knl, "u", ["i", "j",  "o"])
     knl = lp.precompute(knl, "ur", np.float32, ["a", "b"])
     knl = lp.precompute(knl, "us", np.float32, ["a", "b"])
-    knl = lp.split_dimension(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
 
-    knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
-    knl = lp.tag_dimensions(knl, dict(o="unr"))
-    knl = lp.tag_dimensions(knl, dict(m="unr"))
+    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, dict(o="unr"))
+    knl = lp.tag_inames(knl, dict(m="unr"))
 
     
 #    knl = lp.add_prefetch(knl, "G", [2,3], default_tag=None) # axis/argument indices on G
@@ -116,12 +116,12 @@ def test_red2d(ctx_factory):
     knl = lp.precompute(knl, "ue", np.float32, ["a", "b", "m"])
     knl = lp.precompute(knl, "ur", np.float32, ["a", "b"])
     knl = lp.precompute(knl, "us", np.float32, ["a", "b"])
-    knl = lp.split_dimension(knl, "e", 2, outer_tag="g.0")
-    knl = lp.split_dimension(knl, "j", n, inner_tag="l.0")#, slabs=(0, 1))
-    knl = lp.split_dimension(knl, "i", n, inner_tag="l.1")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e", 2, outer_tag="g.0")
+    knl = lp.split_iname(knl, "j", n, inner_tag="l.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "i", n, inner_tag="l.1")#, slabs=(0, 1))
 
-    knl = lp.tag_dimensions(knl, dict(o="unr"))
-    knl = lp.tag_dimensions(knl, dict(m="unr"))
+    knl = lp.tag_inames(knl, dict(o="unr"))
+    knl = lp.tag_inames(knl, dict(m="unr"))
 
     
     knl = lp.add_prefetch(knl, "G", [2,3]) # axis/argument indices on G
@@ -182,16 +182,16 @@ def test_tim3d(ctx_factory):
     knl = lp.precompute(knl, "ur", np.float32, ["a", "b", "c"])
     knl = lp.precompute(knl, "us", np.float32, ["a", "b", "c"])
     knl = lp.precompute(knl, "ut", np.float32, ["a", "b", "c"])
-    knl = lp.split_dimension(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
-    knl = lp.split_dimension(knl, "k", n, inner_tag="l.2")#, slabs=(0, 1))
-    knl = lp.split_dimension(knl, "j", n, inner_tag="l.1")#, slabs=(0, 1))
-    knl = lp.split_dimension(knl, "i", n, inner_tag="l.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "k", n, inner_tag="l.2")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "j", n, inner_tag="l.1")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "i", n, inner_tag="l.0")#, slabs=(0, 1))
 
-#    knl = lp.tag_dimensions(knl, dict(k_nner="unr"))
+#    knl = lp.tag_inames(knl, dict(k_nner="unr"))
 
-    knl = lp.tag_dimensions(knl, dict(o="unr"))
-    knl = lp.tag_dimensions(knl, dict(m="unr"))
-#    knl = lp.tag_dimensions(knl, dict(i="unr"))
+    knl = lp.tag_inames(knl, dict(o="unr"))
+    knl = lp.tag_inames(knl, dict(m="unr"))
+#    knl = lp.tag_inames(knl, dict(i="unr"))
 
     knl = lp.add_prefetch(knl, "G", [2,3,4]) # axis/argument indices on G
 

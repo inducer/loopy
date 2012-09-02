@@ -47,7 +47,13 @@ To-do
 
 - Make xfail test for strided access.
 
+- Test join_inames
+
 - *_dimension -> *_iname
+
+- Debug axpy nondet fail
+
+- Make tests run on GPUs
 
 Fixes:
 

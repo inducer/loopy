@@ -124,15 +124,15 @@ def test_axpy(ctx_factory):
         def variant_cpu(knl):
             unroll = 16
             block_size = unroll*4096
-            knl = lp.split_dimension(knl, "i", block_size, outer_tag="g.0", slabs=(0, 1))
-            knl = lp.split_dimension(knl, "i_inner", unroll, inner_tag="unr")
+            knl = lp.split_iname(knl, "i", block_size, outer_tag="g.0", slabs=(0, 1))
+            knl = lp.split_iname(knl, "i_inner", unroll, inner_tag="unr")
             return knl
 
         def variant_gpu(knl):
             unroll = 4
             block_size = 256
-            knl = lp.split_dimension(knl, "i", unroll*block_size, outer_tag="g.0", slabs=(0, 1))
-            knl = lp.split_dimension(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
+            knl = lp.split_iname(knl, "i", unroll*block_size, outer_tag="g.0", slabs=(0, 1))
+            knl = lp.split_iname(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
             return knl
 
         for variant in [variant_cpu, variant_gpu]:
@@ -169,9 +169,9 @@ def test_transpose(ctx_factory):
 
     seq_knl = knl
 
-    knl = lp.split_dimension(knl, "i", 16,
+    knl = lp.split_iname(knl, "i", 16,
             outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16,
+    knl = lp.split_iname(knl, "j", 16,
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "j_inner"])
 
@@ -209,11 +209,11 @@ def test_plain_matrix_mul(ctx_factory):
 
         ref_knl = knl
 
-        knl = lp.split_dimension(knl, "i", 16,
+        knl = lp.split_iname(knl, "i", 16,
                 outer_tag="g.0", inner_tag="l.1")
-        knl = lp.split_dimension(knl, "j", 16,
+        knl = lp.split_iname(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.0")
-        knl = lp.split_dimension(knl, "k", 16)
+        knl = lp.split_iname(knl, "k", 16)
         knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
         knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner", ])
 
@@ -250,11 +250,11 @@ def test_variable_size_matrix_mul(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.split_dimension(knl, "i", 16,
+    knl = lp.split_iname(knl, "i", 16,
             outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 8,
+    knl = lp.split_iname(knl, "j", 8,
             outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 32)
+    knl = lp.split_iname(knl, "k", 32)
 
     knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
@@ -296,9 +296,9 @@ def test_rank_one(ctx_factory):
         return knl
 
     def variant_2(knl):
-        knl = lp.split_dimension(knl, "i", 16,
+        knl = lp.split_iname(knl, "i", 16,
                 outer_tag="g.0", inner_tag="l.0")
-        knl = lp.split_dimension(knl, "j", 16,
+        knl = lp.split_iname(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
         knl = lp.add_prefetch(knl, "a")
@@ -306,9 +306,9 @@ def test_rank_one(ctx_factory):
         return knl
 
     def variant_3(knl):
-        knl = lp.split_dimension(knl, "i", 16,
+        knl = lp.split_iname(knl, "i", 16,
                 outer_tag="g.0", inner_tag="l.0")
-        knl = lp.split_dimension(knl, "j", 16,
+        knl = lp.split_iname(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
         knl = lp.add_prefetch(knl, "a", ["i_inner"])
@@ -316,22 +316,22 @@ def test_rank_one(ctx_factory):
         return knl
 
     def variant_4(knl):
-        knl = lp.split_dimension(knl, "i", 256,
+        knl = lp.split_iname(knl, "i", 256,
                 outer_tag="g.0", slabs=(0, 1))
-        knl = lp.split_dimension(knl, "j", 256,
+        knl = lp.split_iname(knl, "j", 256,
                 outer_tag="g.1", slabs=(0, 1))
 
         knl = lp.add_prefetch(knl, "a", ["i_inner"], default_tag=None)
         knl = lp.add_prefetch(knl, "b", ["j_inner"], default_tag=None)
 
-        knl = lp.split_dimension(knl, "i_inner", 16,
+        knl = lp.split_iname(knl, "i_inner", 16,
                 inner_tag="l.0")
-        knl = lp.split_dimension(knl, "j_inner", 16,
+        knl = lp.split_iname(knl, "j_inner", 16,
                 inner_tag="l.1")
 
-        knl = lp.split_dimension(knl, "a_dim_0", 16,
+        knl = lp.split_iname(knl, "a_dim_0", 16,
                 outer_tag="l.1", inner_tag="l.0")
-        knl = lp.split_dimension(knl, "b_dim_0", 16,
+        knl = lp.split_iname(knl, "b_dim_0", 16,
                 outer_tag="l.1", inner_tag="l.0")
         return knl
 
@@ -374,11 +374,11 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     j_reg = 2
     i_chunks = 16
     j_chunks = 16
-    knl = lp.split_dimension(knl, "i", i_reg*i_chunks, outer_tag="g.0")
-    knl = lp.split_dimension(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
-    knl = lp.split_dimension(knl, "j", j_reg*j_chunks, outer_tag="g.1")
-    knl = lp.split_dimension(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
-    knl = lp.split_dimension(knl, "k", 16)
+    knl = lp.split_iname(knl, "i", i_reg*i_chunks, outer_tag="g.0")
+    knl = lp.split_iname(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
+    knl = lp.split_iname(knl, "j", j_reg*j_chunks, outer_tag="g.1")
+    knl = lp.split_iname(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
+    knl = lp.split_iname(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"])
 
     kernel_gen = lp.generate_loop_schedules(knl)
@@ -416,12 +416,12 @@ def test_intel_matrix_mul(ctx_factory):
     j_reg = 4
     i_chunks = 16
     j_chunks = 16
-    knl = lp.split_dimension(knl, "i", i_reg*i_chunks, outer_tag="g.0")
-    knl = lp.split_dimension(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
-    knl = lp.split_dimension(knl, "j", j_reg*j_chunks, outer_tag="g.1")
-    knl = lp.split_dimension(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
-    knl = lp.split_dimension(knl, "k", 16)
-    #knl = lp.split_dimension(knl, "k_inner", 8, outer_tag="unr")
+    knl = lp.split_iname(knl, "i", i_reg*i_chunks, outer_tag="g.0")
+    knl = lp.split_iname(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
+    knl = lp.split_iname(knl, "j", j_reg*j_chunks, outer_tag="g.1")
+    knl = lp.split_iname(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
+    knl = lp.split_iname(knl, "k", 16)
+    #knl = lp.split_iname(knl, "k_inner", 8, outer_tag="unr")
 
     knl = lp.add_prefetch(knl, 'a', ["i_inner_inner", "k_inner", "i_inner_outer"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_inner", "k_inner", "j_inner_outer"])
@@ -469,12 +469,12 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     j_chunks = 16
 
 
-    knl = lp.split_dimension(knl, "i", i_reg*i_chunks, outer_tag="g.0")
-    knl = lp.split_dimension(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
-    knl = lp.split_dimension(knl, "j", j_reg*j_chunks, outer_tag="g.1")
-    knl = lp.split_dimension(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
-    knl = lp.split_dimension(knl, "k", 16)
-    knl = lp.split_dimension(knl, "k_inner", 8, outer_tag="unr")
+    knl = lp.split_iname(knl, "i", i_reg*i_chunks, outer_tag="g.0")
+    knl = lp.split_iname(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
+    knl = lp.split_iname(knl, "j", j_reg*j_chunks, outer_tag="g.1")
+    knl = lp.split_iname(knl, "j_inner", j_reg, outer_tag="l.1", inner_tag="ilp")
+    knl = lp.split_iname(knl, "k", 16)
+    knl = lp.split_iname(knl, "k_inner", 8, outer_tag="unr")
     # FIXME
     #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"])
     #knl = lp.add_prefetch(knl, 'b', ["k_inner", ("j_inner_inner", "j_inner_outer"),])
@@ -511,9 +511,9 @@ def test_image_matrix_mul(ctx_factory):
 
     seq_knl = knl
 
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 32)
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 32)
     # conflict-free
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
@@ -549,11 +549,11 @@ def test_image_matrix_mul_ilp(ctx_factory):
     seq_knl = knl
 
     ilp = 4
-    knl = lp.split_dimension(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
     j_inner_split = 4
-    knl = lp.split_dimension(knl, "j", ilp*j_inner_split, outer_tag="g.1")
-    knl = lp.split_dimension(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 2)
+    knl = lp.split_iname(knl, "j", ilp*j_inner_split, outer_tag="g.1")
+    knl = lp.split_iname(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 2)
     # conflict-free?
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
@@ -586,8 +586,8 @@ def test_ilp_race_matmul(ctx_factory):
                 ],
             name="matmul")
 
-    knl = lp.split_dimension(knl, "j", 2, outer_tag="ilp", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 2)
+    knl = lp.split_iname(knl, "j", 2, outer_tag="ilp", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 2)
     knl = lp.add_prefetch(knl, 'b', ["k_inner"])
 
     from loopy.check import WriteRaceConditionError
@@ -621,9 +621,9 @@ def test_fancy_matrix_mul(ctx_factory):
 
     seq_knl = knl
 
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16, slabs=(0,1))
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 16, slabs=(0,1))
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
 

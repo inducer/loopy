@@ -843,8 +843,8 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
             substitutions=new_substs,
             temporary_variables=new_temporary_variables)
 
-    from loopy import tag_dimensions
-    return tag_dimensions(result, new_iname_to_tag)
+    from loopy import tag_inames
+    return tag_inames(result, new_iname_to_tag)
 
 
 

@@ -72,7 +72,7 @@ def test_multi_cse(ctx_factory):
             [lp.GlobalArg("a", np.float32, shape=(100,))],
             local_sizes={0: 16})
 
-    knl = lp.split_dimension(knl, "i", 16, inner_tag="l.0")
+    knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", [])
 
     kernel_gen = lp.generate_loop_schedules(knl)
@@ -111,8 +111,8 @@ def test_stencil(ctx_factory):
     ref_knl = knl
 
     def variant_1(knl):
-        knl = lp.split_dimension(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
-        knl = lp.split_dimension(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
+        knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
+        knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
         return knl
 
@@ -141,8 +141,8 @@ def test_eq_constraint(ctx_factory):
                 lp.GlobalArg("b", np.float32, shape=(1000,))
                 ])
 
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0")
-    knl = lp.split_dimension(knl, "i_inner", 16, outer_tag=None, inner_tag="l.0")
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
+    knl = lp.split_iname(knl, "i_inner", 16, outer_tag=None, inner_tag="l.0")
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen)
@@ -397,7 +397,7 @@ def test_dependent_loop_bounds_2(ctx_factory):
                 ],
             assumptions="n>=1 and row_len>=1")
 
-    knl = lp.split_dimension(knl, "i", 128, outer_tag="g.0",
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
     cknl = lp.CompiledKernel(ctx, knl)
     print "---------------------------------------------------"
@@ -434,7 +434,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
 
     assert knl.parents_per_domain()[1] == 0
 
-    knl = lp.split_dimension(knl, "i", 128, outer_tag="g.0",
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
 
     cknl = lp.CompiledKernel(ctx, knl)
@@ -442,7 +442,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
     cknl.print_code()
     print "---------------------------------------------------"
 
-    knl_bad = lp.split_dimension(knl, "jj", 128, outer_tag="g.1",
+    knl_bad = lp.split_iname(knl, "jj", 128, outer_tag="g.1",
             inner_tag="l.1")
 
     import pytest
@@ -473,9 +473,9 @@ def test_independent_multi_domain(ctx_factory):
                 ])
 
 
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0",
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0",
             inner_tag="l.0")
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.0",
+    knl = lp.split_iname(knl, "j", 16, outer_tag="g.0",
             inner_tag="l.0")
     assert knl.parents_per_domain() == 2*[None]
 
@@ -544,8 +544,8 @@ def test_equality_constraints(ctx_factory):
 
     seq_knl = knl
 
-    knl = lp.split_dimension(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "j", 16, outer_tag="g.1", inner_tag="l.1")
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.1")
     #print knl
     #print knl.domains[0].detect_equalities()
 

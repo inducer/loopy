@@ -27,8 +27,8 @@ def tag_reduction_inames_as_sequential(knl):
         if tag is None:
             new_iname_to_tag[iname] = ForceSequentialTag()
 
-    from loopy import tag_dimensions
-    return tag_dimensions(knl, new_iname_to_tag)
+    from loopy import tag_inames
+    return tag_inames(knl, new_iname_to_tag)
 
 # {{{ sanity checking
 
@@ -397,8 +397,8 @@ def make_kernel(*args, **kwargs):
     from loopy.kernel import LoopKernel
     knl = LoopKernel(*args, **kwargs)
 
-    from loopy import tag_dimensions
-    knl = tag_dimensions(
+    from loopy import tag_inames
+    knl = tag_inames(
             knl.copy(iname_to_tag_requests=None),
             knl.iname_to_tag_requests).copy(
                     iname_to_tag_requests=[])

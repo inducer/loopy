@@ -152,10 +152,10 @@ def split_arg_axis(kernel, args_and_axes, count):
             .map_expressions(aash)
             .copy(args=new_args))
 
-    from loopy import split_dimension
+    from loopy import split_iname
 
-    for split_iname, (outer_iname, inner_iname) in split_vars.iteritems():
-        result = split_dimension(result, split_iname, count,
+    for iname, (outer_iname, inner_iname) in split_vars.iteritems():
+        result = split_iname(result, iname, count,
                 outer_iname=outer_iname, inner_iname=inner_iname)
 
     return result

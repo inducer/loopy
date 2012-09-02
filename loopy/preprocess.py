@@ -557,8 +557,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 # {{{ assign automatic axes
 
 def assign_automatic_axes(kernel, axis=0, local_size=None):
-    from loopy.kernel import (AutoLocalIndexTagBase, LocalIndexTag,
-            UnrollTag)
+    from loopy.kernel import (AutoLocalIndexTagBase, LocalIndexTag)
 
     # Realize that at this point in time, axis lengths are already
     # fixed. So we compute them once and pass them to our recursive
@@ -615,13 +614,13 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
         else:
             new_tag = LocalIndexTag(axis)
             if desired_length > local_size[axis]:
-                from loopy import split_dimension
+                from loopy import split_iname
 
                 # Don't be tempted to switch the outer tag to unroll--this may
                 # generate tons of code on some examples.
 
                 return assign_automatic_axes(
-                        split_dimension(kernel, iname, inner_length=local_size[axis],
+                        split_iname(kernel, iname, inner_length=local_size[axis],
                             outer_tag=None, inner_tag=new_tag,
                             do_tagged_check=False),
                         axis=recursion_axis, local_size=local_size)

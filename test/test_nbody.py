@@ -30,28 +30,28 @@ def test_nbody(ctx_factory):
     seq_knl = knl
 
     def variant_1(knl):
-        knl = lp.split_dimension(knl, "i", 256,
+        knl = lp.split_iname(knl, "i", 256,
                 outer_tag="g.0", inner_tag="l.0",
                 slabs=(0,1))
-        knl = lp.split_dimension(knl, "j", 256, slabs=(0,1))
+        knl = lp.split_iname(knl, "j", 256, slabs=(0,1))
         return knl, []
 
     def variant_cpu(knl):
         knl = lp.expand_subst(knl)
-        knl = lp.split_dimension(knl, "i", 1024,
+        knl = lp.split_iname(knl, "i", 1024,
                 outer_tag="g.0", slabs=(0,1))
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
         return knl, []
 
     def variant_gpu(knl):
         knl = lp.expand_subst(knl)
-        knl = lp.split_dimension(knl, "i", 256,
+        knl = lp.split_iname(knl, "i", 256,
                 outer_tag="g.0", inner_tag="l.0", slabs=(0,1))
-        knl = lp.split_dimension(knl, "j", 256, slabs=(0,1))
+        knl = lp.split_iname(knl, "j", 256, slabs=(0,1))
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
         knl = lp.add_prefetch(knl, "x[j,k]", ["j_inner", "k"],
                 ["x_fetch_j", "x_fetch_k"])
-        knl = lp.tag_dimensions(knl, dict(x_fetch_k="unr"))
+        knl = lp.tag_inames(knl, dict(x_fetch_k="unr"))
         return knl, ["j_outer", "j_inner"]
 
     n = 3000

@@ -103,8 +103,8 @@ Automatic local axes are chosen as follows:
     #. Assign the low-stride iname to the available axis, splitting
         the iname if it is too long for the available axis size.
 
-If you need different behavior, use :func:`tag_dimensions` and
-:func:`split_dimension` to change the assignment of `"l.auto"` axes
+If you need different behavior, use :func:`tag_inames` and
+:func:`split_iname` to change the assignment of `"l.auto"` axes
 manually.
 
 .. _creating-kernels:
@@ -152,14 +152,14 @@ function, which takes the same arguments, but does some extra post-processing.
 
 .. autofunction:: make_kernel
 
-Wrangling dimensions
---------------------
+Wrangling inames
+----------------
 
-.. autofunction:: split_dimension
+.. autofunction:: split_iname
 
-.. autofunction:: join_dimensions
+.. autofunction:: join_inames
 
-.. autofunction:: tag_dimensions
+.. autofunction:: tag_inames
 
 Dealing with Substitution Rules
 -------------------------------

@@ -85,19 +85,19 @@ def test_laplacian(ctx_factory):
     else:
         seq_knl = knl
 
-    knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
 
     knl = lp.add_prefetch(knl, "G", ["gi", "m", "j", "k"], "G[gi,e,m,j,k]")
     knl = lp.add_prefetch(knl, "D", ["m", "j"])
     #knl = lp.add_prefetch(knl, "u", ["i", "j", "k"], "u[*,i,j,k]")
 
-    #knl = lp.split_dimension(knl, "e_inner", 4, inner_tag="ilp")
+    #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
     #print seq_knl
     #print lp.preprocess_kernel(knl)
     #1/0
 
-    knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
     kernel_gen = lp.generate_loop_schedules(knl,
             loop_priority=["m_fetch_G", "i_fetch_u"])
@@ -154,7 +154,7 @@ def test_laplacian_lmem(ctx_factory):
         knl = lp.precompute(knl, "ur", np.float32, ["a", "b", "c"])
         knl = lp.precompute(knl, "us", np.float32, ["a", "b", "c"])
         knl = lp.precompute(knl, "ut", np.float32, ["a", "b", "c"])
-        knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
+        knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
         knl = lp.add_prefetch(knl, "D", ["m", "j", "k", "i"])
     else:
         # experiment
@@ -163,7 +163,7 @@ def test_laplacian_lmem(ctx_factory):
         knl = lp.precompute(knl, "ur", np.float32, ["b", "c"])
         knl = lp.precompute(knl, "us", np.float32, ["b", "c"])
         knl = lp.precompute(knl, "ut", np.float32, ["b", "c"])
-        knl = lp.split_dimension(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
+        knl = lp.split_iname(knl, "e", 1, outer_tag="g.0")#, slabs=(0, 1))
         knl = lp.add_prefetch(knl, "D", ["m", "j", "k", "i"])
 
 
@@ -173,7 +173,7 @@ def test_laplacian_lmem(ctx_factory):
     #print knl
     #1/0
 
-    #knl = lp.split_dimension(knl, "e_inner", 4, inner_tag="ilp")
+    #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 #    knl = lp.join_dimensions(knl, ["i", "j"], "i_and_j")
 
     #print seq_knl
@@ -182,7 +182,7 @@ def test_laplacian_lmem(ctx_factory):
 
 # TW: turned this off since it generated:
 # ValueError: cannot tag 'i_and_j'--not known
-#    knl = lp.tag_dimensions(knl, dict(i_and_j="l.0", k="l.1"))
+#    knl = lp.tag_inames(knl, dict(i_and_j="l.0", k="l.1"))
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
@@ -238,8 +238,8 @@ def test_laplacian_lmem_ilp(ctx_factory):
     # Must act on u first, otherwise stencil becomes crooked and
     # footprint becomes non-convex.
 
-    knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
-    knl = lp.split_dimension(knl, "e_inner", 4, inner_tag="ilp")
+    knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
     knl = lp.add_prefetch(knl, "u", [1, 2, 3, "e_inner_inner"])
 
@@ -253,7 +253,7 @@ def test_laplacian_lmem_ilp(ctx_factory):
     #print seq_knl
     #1/0
 
-    knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
@@ -341,9 +341,9 @@ def test_advect(ctx_factory):
 
     seq_knl = knl
 
-    knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
 
-    knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
 
     kernel_gen = lp.generate_loop_schedules(knl)
@@ -459,9 +459,9 @@ def test_advect_dealias(ctx_factory):
     print knl
     1/0
 
-    knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
 
-    knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
     print knl
     #1/0
@@ -523,9 +523,9 @@ def test_interp_diff(ctx_factory):
     print knl
     1/0
 
-    knl = lp.split_dimension(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
+    knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
 
-    knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1"))
+    knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
     print knl
     #1/0

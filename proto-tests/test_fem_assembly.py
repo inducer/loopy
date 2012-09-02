@@ -44,21 +44,21 @@ def test_laplacian_stiffness(ctx_factory):
             ],
             name="lapquad", assumptions="Nc>=1")
 
-    knl = lp.tag_dimensions(knl, dict(ax_b="unr"))
+    knl = lp.tag_inames(knl, dict(ax_b="unr"))
     seq_knl = knl
 
     def variant_fig31(knl):
         # This (mostly) reproduces Figure 3.1.
 
-        knl = lp.tag_dimensions(knl, {"dx_axis": "unr"})
+        knl = lp.tag_inames(knl, {"dx_axis": "unr"})
         return knl, ["K", "i", "j", "q", "ax_b_insn"]
 
     def variant_pg4(knl):
         # This (mostly) reproduces the unlabeled code snippet on pg. 4.
 
-        knl = lp.tag_dimensions(knl, {"dx_axis": "unr"})
+        knl = lp.tag_inames(knl, {"dx_axis": "unr"})
         Ncloc = 16
-        knl = lp.split_dimension(knl, "K", Ncloc,
+        knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
         return knl, ["Ko", "Kloc", "i", "j", "q", "ax_b_insn"]
 
@@ -66,21 +66,21 @@ def test_laplacian_stiffness(ctx_factory):
         # This (mostly) reproduces Figure 3.2.
 
         Ncloc = 16
-        knl = lp.split_dimension(knl, "K", Ncloc,
+        knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
         knl = lp.precompute(knl, "dPsi", np.float32, ["i", "q", "dx_axis"],
                 default_tag=None)
-        knl = lp.tag_dimensions(knl, {"dx_axis": "unr", "dxi": "unr"})
+        knl = lp.tag_inames(knl, {"dx_axis": "unr", "dxi": "unr"})
         return knl, ["Ko", "Kloc", "dPsi_q", "ij", "i", "j", "q", "ax_b_insn"]
 
     def variant_fig33(knl):
         # This is meant to (mostly) reproduce Figure 3.3.
 
         Ncloc = 16
-        knl = lp.split_dimension(knl, "K", Ncloc,
+        knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
         knl = lp.precompute(knl, "dPsi$one", np.float32, ["dx_axis"], default_tag=None)
-        knl = lp.tag_dimensions(knl, {"j": "ilp.seq"})
+        knl = lp.tag_inames(knl, {"j": "ilp.seq"})
 
         return knl, ["Ko", "Kloc"]
 
@@ -91,12 +91,12 @@ def test_laplacian_stiffness(ctx_factory):
         # to reverse-engineer what is going on there. Some discussion might
         # help, too. :)
 
-        knl = lp.tag_dimensions(knl, {"dx_axis": "unr"})
+        knl = lp.tag_inames(knl, {"dx_axis": "unr"})
         Ncloc = 16
-        knl = lp.split_dimension(knl, "K", Ncloc,
+        knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc",
                 outer_tag="g.0")
-        knl = lp.tag_dimensions(knl, {"i": "l.1", "j": "l.0"})
+        knl = lp.tag_inames(knl, {"i": "l.1", "j": "l.0"})
         return knl, ["K", "i", "j", "q", "ax_b_insn"]
 
     def variant_simple_gpu_prefetch(knl):
@@ -106,12 +106,12 @@ def test_laplacian_stiffness(ctx_factory):
         # for the upper bound of Kloc (it uses Nc). I'll investigate and
         # fix that. (FIXME)
 
-        knl = lp.tag_dimensions(knl, {"dx_axis": "unr"})
+        knl = lp.tag_inames(knl, {"dx_axis": "unr"})
         Ncloc = 16
-        knl = lp.split_dimension(knl, "K", Ncloc,
+        knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc",
                 outer_tag="g.0")
-        knl = lp.tag_dimensions(knl, {"i": "l.1", "j": "l.0"})
+        knl = lp.tag_inames(knl, {"i": "l.1", "j": "l.0"})
         knl = lp.add_prefetch(knl, "w", ["q"])
         knl = lp.add_prefetch(knl, "DPsi", [0, 1, 2])
         knl = lp.add_prefetch(knl, "jacInv", [0, 1, 3])

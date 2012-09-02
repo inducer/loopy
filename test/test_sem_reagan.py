@@ -52,7 +52,7 @@ def test_tim2d(ctx_factory):
     seq_knl = knl
 
     def variant_orig(knl):
-        knl = lp.tag_dimensions(knl, dict(i="l.0", j="l.1", e="g.0"))
+        knl = lp.tag_inames(knl, dict(i="l.0", j="l.1", e="g.0"))
 
         knl = lp.add_prefetch(knl, "D[:,:]")
         knl = lp.add_prefetch(knl, "u[e, :, :]")
@@ -66,8 +66,8 @@ def test_tim2d(ctx_factory):
         knl = lp.add_prefetch(knl, "G$x")
         knl = lp.add_prefetch(knl, "G$y")
 
-        knl = lp.tag_dimensions(knl, dict(o="unr"))
-        knl = lp.tag_dimensions(knl, dict(m="unr"))
+        knl = lp.tag_inames(knl, dict(o="unr"))
+        knl = lp.tag_inames(knl, dict(m="unr"))
 
         knl = lp.set_instruction_priority(knl, "D_fetch", 5)
 

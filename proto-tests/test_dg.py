@@ -61,13 +61,13 @@ def test_dg_matrix_mul(ctx_factory):
             name="dg_matmul")
 
     #ilp = 4
-    knl = lp.split_dimension(knl, "i", 30, 32, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 16, outer_tag="g.1", inner_tag="l.1")
-    #knl = lp.split_dimension(knl, "k_inner", 16, outer_tag="ilp", inner_tag="l.1")
+    knl = lp.split_iname(knl, "i", 30, 32, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 16, outer_tag="g.1", inner_tag="l.1")
+    #knl = lp.split_iname(knl, "k_inner", 16, outer_tag="ilp", inner_tag="l.1")
 
     assert Np % 2 == 0
-    #knl = lp.split_dimension(knl, "j", Np//2)
-    #knl = lp.split_dimension(knl, "k", 32)
+    #knl = lp.split_iname(knl, "j", Np//2)
+    #knl = lp.split_iname(knl, "k", 32)
 
     #for mn in matrix_names:
         #knl = lp.add_prefetch(knl, mn, ["j", "i_inner"])

@@ -11,6 +11,8 @@ register_mpz_with_pymbolic()
 import islpy as isl
 from islpy import dim_type
 
+from pytools import MovedFunctionDeprecationWrapper
+
 
 
 
@@ -50,8 +52,9 @@ __all__ = ["ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "Ima
         "generate_loop_schedules",
         "generate_code",
         "CompiledKernel", "auto_test_vs_ref", "check_kernels",
-        "make_kernel", "split_dimension", "join_dimensions",
-        "tag_dimensions",
+        "make_kernel", 
+        "split_iname", "join_inames", "tag_inames",
+        "split_dimension", "join_dimensions", "tag_dimensions",
         "extract_subst", "expand_subst",
         "precompute", "add_prefetch",
         "split_arg_axis", "find_padding_multiple", "add_padding"
@@ -62,9 +65,9 @@ class infer_type:
 
 # }}}
 
-# {{{ dimension split
+# {{{ split inames
 
-def split_dimension(kernel, split_iname, inner_length,
+def split_iname(kernel, split_iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True):
@@ -168,16 +171,18 @@ def split_dimension(kernel, split_iname, inner_length,
                 ))
 
     if existing_tag is not None:
-        result = tag_dimensions(result,
+        result = tag_inames(result,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
-    return tag_dimensions(result, {outer_iname: outer_tag, inner_iname: inner_tag})
+    return tag_inames(result, {outer_iname: outer_tag, inner_iname: inner_tag})
+
+split_dimension = MovedFunctionDeprecationWrapper(split_iname)
 
 # }}}
 
-# {{{ dimension join
+# {{{ join inames
 
-def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
+def join_inames(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
     """
     :arg inames: fastest varying last
     """
@@ -264,13 +269,15 @@ def join_dimensions(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
                 applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_map]
                 ))
 
-    return tag_dimensions(result, {new_iname: tag})
+    return tag_inames(result, {new_iname: tag})
+
+join_dimensions = MovedFunctionDeprecationWrapper(join_inames)
 
 # }}}
 
-# {{{ dimension tag
+# {{{ tag inames
 
-def tag_dimensions(kernel, iname_to_tag, force=False):
+def tag_inames(kernel, iname_to_tag, force=False):
     from loopy.kernel import parse_tag
 
     iname_to_tag = dict((iname, parse_tag(tag))
@@ -314,6 +321,8 @@ def tag_dimensions(kernel, iname_to_tag, force=False):
         new_iname_to_tag[iname] = new_tag
 
     return kernel.copy(iname_to_tag=new_iname_to_tag)
+
+tag_dimensions = MovedFunctionDeprecationWrapper(tag_inames)
 
 # }}}
 

@@ -48,11 +48,11 @@ def image_matrix_mul_ilp(ctx_factory=cl.create_some_context):
             name="matmul")
 
     ilp = 4
-    knl = lp.split_dimension(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
     j_inner_split = 16
-    knl = lp.split_dimension(knl, "j", ilp*j_inner_split, outer_tag="g.1")
-    knl = lp.split_dimension(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
-    knl = lp.split_dimension(knl, "k", 2)
+    knl = lp.split_iname(knl, "j", ilp*j_inner_split, outer_tag="g.1")
+    knl = lp.split_iname(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 2)
 
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
