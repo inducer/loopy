@@ -1304,10 +1304,7 @@ class LoopKernel(Record):
         they should be run.
         """
 
-        return find_all_insn_inames(
-                self.instructions, self.all_inames(),
-                writer_map=self.writer_map(),
-                temporary_variables=self.temporary_variables)
+        return find_all_insn_inames(self)
 
     @memoize_method
     def all_referenced_inames(self):
@@ -1653,26 +1650,27 @@ class LoopKernel(Record):
 
 # {{{ find_all_insn_inames fixed point iteration
 
-def find_all_insn_inames(instructions, all_inames,
-        writer_map, temporary_variables):
+def find_all_insn_inames(kernel):
     from loopy.symbolic import get_dependencies
+
+    writer_map = kernel.writer_map()
 
     insn_id_to_inames = {}
     insn_assignee_inames = {}
 
-    for insn in instructions:
+    for insn in kernel.instructions:
         read_deps = get_dependencies(insn.expression)
         write_deps = get_dependencies(insn.assignee)
         deps = read_deps | write_deps
 
         iname_deps = (
-                deps & all_inames
+                deps & kernel.all_inames()
                 | insn.forced_iname_deps)
 
         insn_id_to_inames[insn.id] = iname_deps
-        insn_assignee_inames[insn.id] = write_deps & all_inames
+        insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
 
-    temp_var_names = set(temporary_variables.iterkeys())
+    temp_var_names = set(kernel.temporary_variables.iterkeys())
 
     # fixed point iteration until all iname dep sets have converged
 
@@ -1689,7 +1687,9 @@ def find_all_insn_inames(instructions, all_inames,
 
     while True:
         did_something = False
-        for insn in instructions:
+        for insn in kernel.instructions:
+
+            # {{{ depdency-based propagation
 
             # For all variables that insn depends on, find the intersection
             # of iname deps of all writers, and add those to insn's
@@ -1716,6 +1716,29 @@ def find_all_insn_inames(instructions, all_inames,
 
                 if inames_new != inames_old:
                     did_something = True
+
+            # }}}
+
+            # {{{ domain-based propagation
+
+            # Add all inames occurring in parameters of domains that my current
+            # inames refer to.
+
+            inames_old = insn_id_to_inames[insn.id]
+            inames_new = set(insn_id_to_inames[insn.id])
+
+            for iname in inames_old:
+                home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
+
+                for par in home_domain.get_var_names(dim_type.param):
+                    if par in kernel.all_inames():
+                        inames_new.add(par)
+
+            if inames_new != inames_old:
+                did_something = True
+                insn_id_to_inames[insn.id] = frozenset(inames_new)
+
+            # }}}
 
         if not did_something:
             break

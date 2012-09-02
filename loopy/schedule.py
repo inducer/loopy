@@ -2,6 +2,7 @@ from __future__ import division
 
 from pytools import Record
 import sys
+import islpy as isl
 
 
 
@@ -183,6 +184,14 @@ def loop_nest_map(kernel):
                 continue
 
             if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
+                result[inner_iname].add(outer_iname)
+
+    for dom_idx, dom in enumerate(kernel.domains):
+        for outer_iname in dom.get_var_names(isl.dim_type.param):
+            if outer_iname not in kernel.all_inames():
+                continue
+
+            for inner_iname in dom.get_var_names(isl.dim_type.set):
                 result[inner_iname].add(outer_iname)
 
     return result
@@ -828,7 +837,7 @@ def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
             print
 
             debug.debug_length = len(debug.longest_rejected_schedule)
-            for _ in generate_loop_schedules_internal(kernel, loop_priority,
+            for _ in generate_loop_schedules_internal(sched_state, loop_priority,
                     debug=debug):
                 pass
 
