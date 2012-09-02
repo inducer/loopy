@@ -45,6 +45,10 @@ To-do
 
 - Kernel splitting (via what variables get computed in a kernel)
 
+- Make xfail test for strided access.
+
+- *_dimension -> *_iname
+
 Fixes:
 
 - Group instructions by dependency/inames for scheduling, to

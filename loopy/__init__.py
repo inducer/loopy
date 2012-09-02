@@ -29,6 +29,8 @@ from loopy.creation import make_kernel
 from loopy.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
+from loopy.padding import (split_arg_axis, find_padding_multiple,
+        add_padding)
 from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
@@ -51,7 +53,8 @@ __all__ = ["ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "Ima
         "make_kernel", "split_dimension", "join_dimensions",
         "tag_dimensions",
         "extract_subst", "expand_subst",
-        "precompute", "add_prefetch"
+        "precompute", "add_prefetch",
+        "split_arg_axis", "find_padding_multiple", "add_padding"
         ]
 
 class infer_type:
@@ -79,9 +82,11 @@ def split_dimension(kernel, split_iname, inner_length,
     applied_iname_rewrites = kernel.applied_iname_rewrites[:]
 
     if outer_iname is None:
-        outer_iname = split_iname+"_outer"
+        outer_iname = kernel.make_unique_var_name(
+                split_iname+"_outer")
     if inner_iname is None:
-        inner_iname = split_iname+"_inner"
+        inner_iname = kernel.make_unique_var_name(
+                split_iname+"_inner")
 
     def process_set(s):
         var_dict = s.get_var_dict()
@@ -594,6 +599,7 @@ def add_dependency(kernel, insn_match, dependency):
     return map_instructions(kernel, insn_match, add_dep)
 
 # }}}
+
 
 
 

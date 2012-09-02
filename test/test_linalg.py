@@ -94,7 +94,7 @@ def check_float4(result, ref_result):
 def test_axpy(ctx_factory):
     ctx = ctx_factory()
 
-    n = 20*1024**2
+    n = 3145182
 
     vec = cl_array.vec
 
@@ -644,7 +644,7 @@ def test_small_batched_matvec(ctx_factory):
 
     order = "C"
 
-    K = 10000
+    K = 9997
     Np = 36
 
     knl = lp.make_kernel(ctx.devices[0],
@@ -661,7 +661,11 @@ def test_small_batched_matvec(ctx_factory):
 
     seq_knl = knl
 
+    align_bytes = 64
     knl = lp.add_prefetch(knl, 'd[:,:]')
+    pad_mult = lp.find_padding_multiple(knl, "f", 0, align_bytes)
+    knl = lp.split_arg_axis(knl, ("f", 0), pad_mult)
+    knl = lp.add_padding(knl, "f", 0, align_bytes)
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=K))

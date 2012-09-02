@@ -170,8 +170,12 @@ class _ShapedArg(Record):
                 dtype=dtype,
                 strides=strides,
                 offset=offset,
-                shape=shape,
-                order=order)
+                shape=shape)
+
+    @property
+    @memoize_method
+    def numpy_strides(self):
+        return tuple(self.dtype.itemsize*s for s in self.strides)
 
     @property
     def dimensions(self):
@@ -1573,7 +1577,10 @@ class LoopKernel(Record):
         if exclude_instructions:
             new_insns = self.instructions
         else:
-            new_insns = [insn.copy(expression=func(insn.expression))
+            new_insns = [insn.copy(
+                expression=func(insn.expression),
+                assignee=func(insn.assignee),
+                )
                     for insn in self.instructions]
 
         return self.copy(

@@ -4,6 +4,8 @@ import pyopencl.array as cl_array
 
 import numpy as np
 
+from pytools import Record
+
 
 
 
@@ -14,6 +16,7 @@ def _arg_matches_spec(arg, val, other_args):
     if isinstance(arg, lp.GlobalArg):
         from pymbolic import evaluate
         shape = evaluate(arg.shape, other_args)
+        strides = evaluate(arg.numpy_strides, other_args)
 
         if arg.dtype != val.dtype:
             raise TypeError("dtype mismatch on argument '%s' "
@@ -23,15 +26,10 @@ def _arg_matches_spec(arg, val, other_args):
             raise TypeError("shape mismatch on argument '%s' "
                     "(got: %s, expected: %s)"
                     % (arg.name, val.shape, shape))
-        if arg.order == "F" and not val.flags.f_contiguous:
-            raise TypeError("order mismatch on argument '%s' "
-                    "(expected Fortran-contiguous, but isn't)"
-                    % (arg.name))
-        if arg.order == "C" and not val.flags.c_contiguous:
-            print id(val), val.flags
-            raise TypeError("order mismatch on argument '%s' "
-                    "(expected C-contiguous, but isn't)"
-                    % (arg.name))
+        if strides != tuple(val.strides):
+            raise ValueError("strides mismatch on argument '%s' "
+                    "(got: %s, expected: %s)"
+                    % (arg.name, val.strides, strides))
 
     return True
 
@@ -152,7 +150,7 @@ class CompiledKernel:
 
             self.needs_check = False
 
-        domain_parameters = dict((name, kwargs[name])
+        domain_parameters = dict((name, int(kwargs[name]))
                 for name in self.kernel.scalar_loop_args)
 
         args = []
@@ -184,8 +182,15 @@ class CompiledKernel:
 
                 from pymbolic import evaluate
                 shape = evaluate(arg.shape, kwargs)
-                val = cl_array.empty(queue, shape, arg.dtype, order=arg.order,
-                        allocator=allocator)
+                numpy_strides = evaluate(arg.numpy_strides, kwargs)
+
+                from pytools import all
+                assert all(s > 0 for s in numpy_strides)
+                alloc_size = sum(astrd*(alen-1)
+                        for alen, astrd in zip(shape, numpy_strides)) + 1
+
+                storage = cl_array.empty(queue, alloc_size, arg.dtype)
+                val = cl_array.as_strided(storage, shape, numpy_strides)
             else:
                 assert _arg_matches_spec(arg, val, kwargs)
 
@@ -254,15 +259,18 @@ def fill_rand(ary):
 
 
 
+
+class TestArgInfo(Record):
+    pass
+
 def make_ref_args(kernel, queue, parameters,
         fill_value):
     from loopy.kernel import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
-    result = []
-    input_arrays = []
-    output_arrays = []
+    ref_args = {}
+    arg_descriptors = []
 
     for arg in kernel.args:
         if isinstance(arg, ValueArg):
@@ -276,7 +284,9 @@ def make_ref_args(kernel, queue, parameters,
             if argv_dtype != arg.dtype:
                 arg_value = arg.dtype.type(arg_value)
 
-            result.append(arg_value)
+            ref_args[arg.name] = arg_value
+
+            arg_descriptors.append(None)
 
         elif isinstance(arg, (GlobalArg, ImageArg)):
             if arg.shape is None:
@@ -284,51 +294,77 @@ def make_ref_args(kernel, queue, parameters,
                         "testing")
 
             shape = evaluate(arg.shape, parameters)
-            if isinstance(arg, ImageArg):
-                order = "C"
+
+            is_output = arg.name in kernel.get_written_variables()
+            is_image = isinstance(arg, ImageArg)
+
+            if is_image:
+                storage_array = ary = cl_array.empty(queue, shape, arg.dtype, order="C")
+                numpy_strides = None
+                alloc_size = None
+                strides = None
             else:
-                order = arg.order
                 assert arg.offset == 0
 
-            ary = cl_array.empty(queue, shape, arg.dtype, order=order)
-            if arg.name in kernel.get_written_variables():
-                if isinstance(arg, ImageArg):
+                strides = evaluate(arg.strides, parameters)
+
+                from pytools import all
+                assert all(s > 0 for s in strides)
+                alloc_size = sum(astrd*(alen-1)
+                        for alen, astrd in zip(shape, strides)) + 1
+
+                itemsize = arg.dtype.itemsize
+                numpy_strides = [itemsize*s for s in strides]
+
+                storage_array = cl_array.empty(queue, alloc_size, arg.dtype)
+                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
+
+            if is_output:
+                if is_image:
                     raise RuntimeError("write-mode images not supported in "
                             "automatic testing")
 
                 if arg.dtype.isbuiltin:
-                    ary.fill(fill_value)
+                    storage_array.fill(fill_value)
                 else:
                     from warnings import warn
                     warn("Cannot pre-fill array of dtype '%s'" % arg.dtype)
 
-                output_arrays.append(ary)
-                result.append(ary.data)
+                ref_args[arg.name] = ary
             else:
-                fill_rand(ary)
-                input_arrays.append(ary)
+                fill_rand(storage_array)
                 if isinstance(arg, ImageArg):
-                    result.append(cl.image_from_array(queue.context, ary.get(), 1))
+                    # must be contiguous
+                    ref_args[arg.name] = cl.image_from_array(queue.context, ary.get(), 1)
                 else:
-                    result.append(ary.data)
+                    ref_args[arg.name] = ary
 
+            arg_descriptors.append(
+                    TestArgInfo(
+                        name=arg.name,
+                        ref_array=ary,
+                        ref_storage_array=storage_array,
+                        ref_shape=shape,
+                        ref_strides=strides,
+                        ref_alloc_size=alloc_size,
+                        ref_numpy_strides=numpy_strides,
+                        needs_checking=is_output))
         else:
             raise RuntimeError("arg type not understood")
 
-    return result, input_arrays, output_arrays
+    return ref_args, arg_descriptors
 
 
 
 
-def make_args(queue, kernel, ref_input_arrays, parameters,
+def make_args(queue, kernel, arg_descriptors, parameters,
         fill_value):
     from loopy.kernel import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
-    result = []
-    output_arrays = []
-    for arg in kernel.args:
+    args = {}
+    for arg, arg_desc in zip(kernel.args, arg_descriptors):
         if isinstance(arg, ValueArg):
             arg_value = parameters[arg.name]
 
@@ -340,39 +376,84 @@ def make_args(queue, kernel, ref_input_arrays, parameters,
             if argv_dtype != arg.dtype:
                 arg_value = arg.dtype.type(arg_value)
 
-            result.append(arg_value)
+            args[arg.name] = arg_value
 
-        elif isinstance(arg, (GlobalArg, ImageArg)):
+        elif isinstance(arg, ImageArg):
             if arg.name in kernel.get_written_variables():
-                if isinstance(arg, ImageArg):
-                    raise RuntimeError("write-mode images not supported in "
-                            "automatic testing")
+                raise NotImplementedError("write-mode images not supported in "
+                        "automatic testing")
 
-                shape = evaluate(arg.shape, parameters)
-                ary = cl_array.empty(queue, shape, arg.dtype, order=arg.order)
+            shape = evaluate(arg.shape, parameters)
+            assert shape == arg_desc.ref_shape
+
+            # must be contiguous
+            args[arg.name] = cl.image_from_array(
+                    queue.context, arg_desc.ref_array.get(), 1)
+
+        elif isinstance(arg, GlobalArg):
+            assert arg.offset == 0
+
+            shape = evaluate(arg.shape, parameters)
+            strides = evaluate(arg.strides, parameters)
+
+            itemsize = arg.dtype.itemsize
+            numpy_strides = [itemsize*s for s in strides]
+
+            assert all(s > 0 for s in strides)
+            alloc_size = sum(astrd*(alen-1)
+                    for alen, astrd in zip(shape, strides)) + 1
+
+            if arg.name in kernel.get_written_variables():
+                storage_array = cl_array.empty(queue, alloc_size, arg.dtype)
+                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
 
                 if arg.dtype.isbuiltin:
-                    ary.fill(fill_value)
+                    storage_array.fill(fill_value)
                 else:
                     from warnings import warn
                     warn("Cannot pre-fill array of dtype '%s'" % arg.dtype)
 
-                assert arg.offset == 0
-                output_arrays.append(ary)
-                result.append(ary.data)
+                args[arg.name] = ary
             else:
-                ref_arg = ref_input_arrays.pop(0)
+                # use contiguous array to transfer to host
+                host_ref_contig_array = arg_desc.ref_storage_array.get()
 
-                if isinstance(arg, ImageArg):
-                    result.append(cl.image_from_array(queue.context, ref_arg.get(), 1))
-                else:
-                    ary = cl_array.to_device(queue, ref_arg.get())
-                    result.append(ary.data)
+                # use device shape/strides
+                from pyopencl.compyte.array import as_strided
+                host_ref_array = as_strided(host_ref_contig_array,
+                        arg_desc.ref_shape, arg_desc.ref_numpy_strides)
+
+                # flatten the thing
+                host_ref_flat_array = host_ref_array.flatten()
+
+                # create host array with test shape (but not strides)
+                host_contig_array = np.empty(shape, dtype=arg.dtype)
+
+                common_len = min(len(host_ref_flat_array), len(host_contig_array.ravel()))
+                host_contig_array.ravel()[:common_len] = host_ref_flat_array[:common_len]
+
+                # create host array with test shape and storage layout
+                host_storage_array = np.empty(alloc_size, arg.dtype)
+                host_array = as_strided(host_storage_array, shape, numpy_strides)
+                host_array[:] = host_contig_array
+
+                host_contig_array = arg_desc.ref_storage_array.get()
+                storage_array = cl_array.to_device(queue, host_storage_array)
+                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
+
+                args[arg.name] = ary
+
+            arg_desc.test_storage_array = storage_array
+            arg_desc.test_array = ary
+            arg_desc.test_shape = shape
+            arg_desc.test_strides = strides
+            arg_desc.test_numpy_strides = numpy_strides
+            arg_desc.test_alloc_size = alloc_size
 
         else:
             raise RuntimeError("arg type not understood")
 
-    return result, output_arrays
+    return args
 
 
 
@@ -478,7 +559,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             print 75*"-"
 
         try:
-            ref_args, ref_input_arrays, ref_output_arrays = \
+            ref_args, arg_descriptors = \
                     make_ref_args(ref_sched_kernel, ref_queue, parameters,
                             fill_value=fill_value_ref)
         except cl.RuntimeError, e:
@@ -490,14 +571,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
 
         print "using %s for the reference calculation" % dev
 
-        domain_parameters = dict((name, parameters[name])
-                for name in ref_knl.scalar_loop_args)
-
-        ref_evt = ref_compiled.cl_kernel(ref_queue,
-                ref_compiled.global_size_func(**domain_parameters),
-                ref_compiled.local_size_func(**domain_parameters),
-                *ref_args,
-                g_times_l=True)
+        ref_evt, _ = ref_compiled(ref_queue, **ref_args)
 
         ref_queue.finish()
         ref_stop = time()
@@ -518,7 +592,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
     args = None
     for i, kernel in enumerate(kernel_gen):
         if args is None:
-            args, output_arrays = make_args(queue, kernel, ref_input_arrays, parameters,
+            args = make_args(queue, kernel, arg_descriptors, parameters,
                     fill_value=fill_value)
 
         compiled = CompiledKernel(ctx, kernel, edit_code=edit_code,
@@ -538,14 +612,30 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
 
         do_check = True
 
-        gsize = compiled.global_size_func(**domain_parameters)
-        lsize = compiled.local_size_func(**domain_parameters)
         for i in range(warmup_rounds):
-            evt = compiled.cl_kernel(queue, gsize, lsize, *args, g_times_l=True)
+            evt, _ = compiled(queue, **args)
 
             if do_check:
-                for ref_out_ary, out_ary in zip(ref_output_arrays, output_arrays):
-                    error_is_small, error = check_result(out_ary.get(), ref_out_ary.get())
+                for arg_desc in arg_descriptors:
+                    if arg_desc is None:
+                        continue
+                    if not arg_desc.needs_checking:
+                        continue
+
+                    from pyopencl.compyte.array import as_strided
+                    ref_ary = as_strided(
+                            arg_desc.ref_storage_array.get(),
+                            shape=arg_desc.ref_shape,
+                            strides=arg_desc.ref_numpy_strides).flatten()
+                    test_ary = as_strided(
+                            arg_desc.test_storage_array.get(),
+                            shape=arg_desc.test_shape,
+                            strides=arg_desc.test_numpy_strides).flatten()
+                    common_len = min(len(ref_ary), len(test_ary))
+                    ref_ary = ref_ary[:common_len]
+                    test_ary = test_ary[:common_len]
+
+                    error_is_small, error = check_result(test_ary, ref_ary)
                     assert error_is_small, error
                     do_check = False
 
@@ -561,8 +651,8 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             evt_start = cl.enqueue_marker(queue)
 
             for i in range(timing_rounds):
-                events.append(
-                        compiled.cl_kernel(queue, gsize, lsize, *args, g_times_l=True))
+                evt, _ = compiled(queue, **args)
+                events.append(evt)
 
             evt_end = cl.enqueue_marker(queue)
 

@@ -177,10 +177,14 @@ Precomputation and Prefetching
 
     Uses :func:`extract_subst` and :func:`precompute`.
 
-Manipulating Reductions
------------------------
+Padding
+-------
 
-.. autofunction:: realize_reduction
+.. autofunction:: split_arg_axis
+
+.. autofunction:: find_padding_multiple
+
+.. autofunction:: add_padding
 
 Manipulating Instructions
 -------------------------
@@ -205,6 +209,14 @@ Automatic Testing
 
 Troubleshooting
 ---------------
+
+Special-purpose functionality
+-----------------------------
+
+Manipulating Reductions
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: realize_reduction
 
 Printing :class:`LoopKernel` objects
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
