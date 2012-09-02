@@ -45,11 +45,7 @@ To-do
 
 - Kernel splitting (via what variables get computed in a kernel)
 
-- Make xfail test for strided access.
-
 - Test join_inames
-
-- *_dimension -> *_iname
 
 - Debug axpy nondet fail
 
@@ -103,15 +99,20 @@ Future ideas
 
 - DMA engine threads?
 
-- Divisibility, modulo, strides?
-
 - Try, fix indirect addressing
 
 - Nested slab decomposition (in conjunction with conditional hoisting) could
   generate nested conditional code.
 
+- Better code for strides.
+
 Dealt with
 ^^^^^^^^^^
+
+- Divisibility, modulo, strides?
+  -> Tested, gives correct (but suboptimal) code.
+
+- *_dimension -> *_iname
 
 - Use gists (why do disjoint sets arise?)
 

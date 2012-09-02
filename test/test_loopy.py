@@ -558,6 +558,70 @@ def test_equality_constraints(ctx_factory):
 
 
 
+def test_stride(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+
+    order = "C"
+
+    n = 10
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i]: 0<=i<n and (exists l: i = 2*l)}",
+            ],
+            [
+                "a[i] = 5",
+                ],
+            [
+                lp.GlobalArg("a", dtype, shape="n", order=order),
+                lp.ValueArg("n", np.int32, approximately=1000),
+                ],
+            assumptions="n>=1")
+
+    seq_knl = knl
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
+
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            parameters=dict(n=n), fills_entire_output=False)
+
+
+
+
+def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+
+    order = "C"
+
+    n = 10
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i]: 0<=i<n }",
+            "{[k]: k=i and (exists l: k = 2*l) }",
+            ],
+            [
+                "a[i] = 5 {id=set}",
+                "a[k] = 6 {dep=set}",
+                ],
+            [
+                lp.GlobalArg("a", dtype, shape="n", order=order),
+                lp.ValueArg("n", np.int32, approximately=1000),
+                ],
+            assumptions="n>=1")
+
+    seq_knl = knl
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
+
+    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            parameters=dict(n=n), )
+
+
+
+
 # {{{ test race detection
 
 def test_ilp_write_race_detection_global(ctx_factory):
