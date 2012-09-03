@@ -6,6 +6,7 @@ from pymbolic.mapper import RecursiveMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
         PREC_POWER)
 from pymbolic.mapper import CombineMapper
+import islpy as isl
 
 # {{{ type inference
 
@@ -319,6 +320,12 @@ class LoopyCCodeMapper(RecursiveMapper):
         from loopy.symbolic import get_dependencies
         iname_deps = get_dependencies(expr) & self.kernel.all_inames()
         domain = self.kernel.get_inames_domain(iname_deps)
+
+        assumption_non_param = isl.BasicSet.from_params(self.kernel.assumptions)
+        assumptions = isl.align_spaces(
+                assumption_non_param,
+                domain, obj_bigger_ok=True)
+        domain = domain & assumptions
 
         from loopy.isl_helpers import is_nonnegative
         num_nonneg = is_nonnegative(expr.numerator, domain)
