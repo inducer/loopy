@@ -2,6 +2,7 @@ from __future__ import division
 
 from loopy.codegen import gen_code_block
 import islpy as isl
+from islpy import dim_type
 from loopy.codegen.control import build_loop_nest
 
 
@@ -16,13 +17,11 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
     if iname_domain.is_empty():
         return ()
 
-    from loopy.codegen.bounds import get_simple_loop_bounds
-    lb_cns_orig, ub_cns_orig = get_simple_loop_bounds(kernel, sched_index, iname,
-            codegen_state.implemented_domain, iname_domain)
-
-    space = lb_cns_orig.space
+    space = iname_domain.space
 
     lower_incr, upper_incr = kernel.iname_slab_increments.get(iname, (0, 0))
+    lower_bulk_bound = None
+    upper_bulk_bound = None
 
     if lower_incr or upper_incr:
         bounds = kernel.get_iname_bounds(iname)
@@ -40,17 +39,11 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
         (_, lower_bound_aff), = lower_bound_pw_aff_pieces
         (_, upper_bound_aff), = upper_bound_pw_aff_pieces
 
-        lower_bulk_bound = lb_cns_orig
-        upper_bulk_bound = lb_cns_orig
-
         from loopy.isl_helpers import iname_rel_aff
-
 
         if lower_incr:
             assert lower_incr > 0
             lower_slab = ("initial", isl.BasicSet.universe(space)
-                    .add_constraint(lb_cns_orig)
-                    .add_constraint(ub_cns_orig)
                     .add_constraint(
                         isl.Constraint.inequality_from_aff(
                             iname_rel_aff(kernel.space,
@@ -65,8 +58,6 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
         if upper_incr:
             assert upper_incr > 0
             upper_slab = ("final", isl.BasicSet.universe(space)
-                    .add_constraint(lb_cns_orig)
-                    .add_constraint(ub_cns_orig)
                     .add_constraint(
                         isl.Constraint.inequality_from_aff(
                             iname_rel_aff(space,
@@ -82,21 +73,19 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
         if lower_slab:
             slabs.append(lower_slab)
-        slabs.append((
-            ("bulk",
-                (isl.BasicSet.universe(space)
-                    .add_constraint(lower_bulk_bound)
-                    .add_constraint(upper_bulk_bound)))))
+        bulk_slab = isl.BasicSet.universe(space)
+        if lower_bulk_bound is not None:
+            bulk_slab = bulk_slab.add_constraint(lower_bulk_bound)
+        if upper_bulk_bound is not None:
+            bulk_slab = bulk_slab.add_constraint(upper_bulk_bound)
+        slabs.append(("bulk", bulk_slab))
         if upper_slab:
             slabs.append(upper_slab)
 
         return slabs
 
     else:
-        return [("bulk",
-            (isl.BasicSet.universe(space)
-            .add_constraint(lb_cns_orig)
-            .add_constraint(ub_cns_orig)))]
+        return [("bulk", (isl.BasicSet.universe(space)))]
 
 # }}}
 
@@ -206,7 +195,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
             cmt = None
 
         # Have the conditional infrastructure generate the
-        # slabbin conditionals.
+        # slabbing conditionals.
         slabbed_kernel = intersect_kernel_with_slab(kernel, slab, iname)
 
         inner = set_up_hw_parallel_loops(
@@ -222,32 +211,99 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
 
 def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
     ccm = codegen_state.c_code_mapper
-    iname = kernel.schedule[sched_index].iname
+    loop_iname = kernel.schedule[sched_index].iname
 
     slabs = get_slab_decomposition(
-            kernel, iname, sched_index, codegen_state)
+            kernel, loop_iname, sched_index, codegen_state)
+
+    from loopy.codegen.bounds import get_usable_inames_for_conditional
+
+    # Note: this does note include loop_iname itself!
+    usable_inames = get_usable_inames_for_conditional(kernel, sched_index)
+    domain = kernel.get_inames_domain(loop_iname)
+
+    # move inames that are usable into parameters
+    for iname in domain.get_var_names(dim_type.set):
+        if iname in usable_inames:
+            dt, idx = domain.get_var_dict()[iname]
+            domain = domain.move_dims(
+                    dim_type.param, domain.dim(dim_type.param),
+                    dt, idx, 1)
+
 
     result = []
 
     for slab_name, slab in slabs:
-        cmt = "%s slab for '%s'" % (slab_name, iname)
+        cmt = "%s slab for '%s'" % (slab_name, loop_iname)
         if len(slabs) == 1:
             cmt = None
 
-        # Conditionals for slab are generated below.
-        new_codegen_state = codegen_state.intersect(slab)
+        # {{{ find bounds
+
+        domain = isl.align_spaces(domain, slab, across_dim_types=True,
+                obj_bigger_ok=True)
+        dom_and_slab = domain & slab
+        _, loop_iname_idx = domain.get_var_dict()[loop_iname]
+        lbound = kernel.cache_manager.dim_min(
+                dom_and_slab, loop_iname_idx).coalesce()
+        ubound = kernel.cache_manager.dim_max(
+                dom_and_slab, loop_iname_idx).coalesce()
+
+        from loopy.isl_helpers import (
+                static_min_of_pw_aff,
+                static_max_of_pw_aff)
+
+        lbound = static_min_of_pw_aff(lbound,
+                constants_only=False)
+        ubound = static_max_of_pw_aff(ubound,
+                constants_only=False)
+
+        # }}}
+
+        # {{{ find implemented slab, build inner code
+
+        from loopy.isl_helpers import iname_rel_aff
+        impl_slab = (
+                isl.BasicSet.universe(domain.space)
+                .add_constraint(
+                    isl.Constraint.inequality_from_aff(
+                        iname_rel_aff(domain.space,
+                            loop_iname, ">=", lbound)))
+                .add_constraint(
+                    isl.Constraint.inequality_from_aff(
+                        iname_rel_aff(domain.space,
+                            loop_iname, "<=", ubound))))
+
+        new_codegen_state = codegen_state.intersect(impl_slab)
 
         inner = build_loop_nest(kernel, sched_index+1,
                 new_codegen_state)
 
-        from loopy.codegen.bounds import wrap_in_for_from_constraints
+        # }}}
 
         if cmt is not None:
             from cgen import Comment
             result.append(Comment(cmt))
-        result.append(
-                wrap_in_for_from_constraints(ccm, iname, slab, inner,
-                    kernel.index_dtype))
+
+        from cgen import Initializer, POD, Const, Line, For
+        from loopy.symbolic import aff_to_expr
+
+        if (ubound - lbound).plain_is_zero():
+            # single-trip, generate just a variable assignment, not a loop
+            result.append(gen_code_block([
+                Initializer(Const(POD(kernel.index_dtype, loop_iname)),
+                    ccm(aff_to_expr(lbound), "i")),
+                Line(),
+                inner,
+                ]))
+
+        else:
+            from loopy.codegen import wrap_in
+            result.append(wrap_in(For,
+                    "int %s = %s" % (loop_iname, ccm(aff_to_expr(lbound), "i")),
+                    "%s <= %s" % (loop_iname, ccm(aff_to_expr(ubound), "i")),
+                    "++%s" % loop_iname,
+                    inner))
 
     return gen_code_block(result)
 

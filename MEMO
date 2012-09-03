@@ -47,8 +47,6 @@ To-do
 
 - Test join_inames
 
-- Debug axpy nondet fail
-
 - Make tests run on GPUs
 
 Fixes:

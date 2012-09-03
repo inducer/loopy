@@ -1,6 +1,30 @@
 """Code generation for Instruction objects."""
 from __future__ import division
 
+import islpy as isl
+
+
+
+
+def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
+    from loopy.codegen.bounds import get_bounds_checks, constraint_to_code
+    bounds_checks = get_bounds_checks(
+            domain, check_inames,
+            implemented_domain, overapproximate=False)
+
+    bounds_check_set = isl.Set.universe(domain.get_space()).add_constraints(bounds_checks)
+    bounds_check_set, new_implemented_domain = isl.align_two(
+            bounds_check_set, implemented_domain)
+    new_implemented_domain = new_implemented_domain & bounds_check_set
+
+    condition_codelets = [constraint_to_code(ccm, cns) for cns in bounds_checks]
+
+    if condition_codelets:
+        from cgen import If
+        stmt = If("\n&& ".join(condition_codelets), stmt)
+
+    return stmt, new_implemented_domain
+
 
 
 
@@ -25,7 +49,6 @@ def generate_instruction_code(kernel, insn, codegen_state):
             ccm(insn.assignee, prec=None, type_context=None),
             ccm(expr, prec=None, type_context=dtype_to_type_context(target_dtype)))
 
-    from loopy.codegen.bounds import wrap_in_bounds_checks
     insn_inames = kernel.insn_inames(insn)
     insn_code, impl_domain = wrap_in_bounds_checks(
             ccm, kernel.get_inames_domain(insn_inames), insn_inames,

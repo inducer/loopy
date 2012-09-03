@@ -482,6 +482,13 @@ def ineq_constraint_from_expr(space, expr):
     return isl.Constraint.inequality_from_aff(aff_from_expr(space,expr))
 
 def constraint_to_expr(cns, except_name=None):
+    # Looks like this is ok after all--get_aff() performs some magic.
+    # Not entirely sure though... FIXME
+    #
+    #ls = cns.get_local_space()
+    #if ls.dim(dim_type.div):
+        #raise RuntimeError("constraint has an existentially quantified variable")
+
     return aff_to_expr(cns.get_aff(), except_name=except_name)
 
 # }}}

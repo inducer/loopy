@@ -313,9 +313,6 @@ def generate_code(kernel, with_annotation=False,
                     Value("void", kernel.name), args))),
             body))
 
-    from loopy.check import check_implemented_domains
-    assert check_implemented_domains(kernel, gen_code.implemented_domains)
-
     # {{{ handle preambles
 
     for arg in kernel.args:
@@ -342,7 +339,14 @@ def generate_code(kernel, with_annotation=False,
 
     # }}}
 
-    return str(Module(mod))
+    result = str(Module(mod))
+
+    from loopy.check import check_implemented_domains
+    assert check_implemented_domains(kernel, gen_code.implemented_domains,
+            result)
+
+    return result
+
 
 # }}}
 

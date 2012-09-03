@@ -174,9 +174,13 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             domain = isl.align_spaces(
                     self.kernel.get_inames_domain(check_inames),
                     self.impl_domain, obj_bigger_ok=True)
-            from loopy.codegen.bounds import generate_bounds_checks
-            return generate_bounds_checks(domain,
-                    check_inames, self.impl_domain)
+            from loopy.codegen.bounds import get_bounds_checks
+            return get_bounds_checks(domain,
+                    check_inames, self.impl_domain,
+
+                    # Each instruction individually gets its bounds checks,
+                    # so we can safely overapproximate here.
+                    overapproximate=True)
 
     def build_insn_group(sched_indices_and_cond_inames, codegen_state, done_group_lengths=set()):
         # done_group_lengths serves to prevent infinite recursion by imposing a

@@ -296,7 +296,7 @@ def run_automatic_checks(kernel):
 
 # {{{ sanity-check for implemented domains of each instruction
 
-def check_implemented_domains(kernel, implemented_domains):
+def check_implemented_domains(kernel, implemented_domains, code=None):
     from islpy import dim_type
 
     from islpy import align_spaces, align_two
@@ -357,6 +357,14 @@ def check_implemented_domains(kernel, implemented_domains):
 
                 lines.append(
                         "sample point %s: %s" % (kind, ", ".join(point_axes)))
+
+            if code is not None:
+                print 79*"-"
+                print "CODE:"
+                print 79*"-"
+                from loopy.compiled import get_highlighted_code
+                print get_highlighted_code(code)
+                print 79*"-"
 
             raise RuntimeError("sanity check failed--implemented and desired "
                     "domain for instruction '%s' do not match\n\n"
