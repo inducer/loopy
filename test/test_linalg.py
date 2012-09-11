@@ -339,7 +339,8 @@ def test_rank_one(ctx_factory):
 
     for variant in [variant_1, variant_2, variant_3, variant_4]:
     #for variant in [variant_1]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl))
+        kernel_gen = lp.generate_loop_schedules(variant(knl),
+                loop_priority=["i", "j"])
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,

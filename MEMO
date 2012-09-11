@@ -62,6 +62,8 @@ Fixes:
 Future ideas
 ^^^^^^^^^^^^
 
+- Fuse: store/fetch elimination?
+
 - Expose iname-duplicate-and-rename as a primitive.
 
 - Array language
