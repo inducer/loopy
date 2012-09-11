@@ -574,7 +574,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
             priority_tiers = [[iname]
                     for iname in loop_priority
                     if iname in useful_and_desired
-                    and iname not in kernel.lowest_priority_inames]
+                    and iname not in sched_state.lowest_priority_inames]
 
             priority_tiers.append(
                     useful_loops_set
