@@ -1329,20 +1329,6 @@ class LoopKernel(Record):
 
         return result
 
-        # }}}
-
-        # {{{ examine domains
-
-        for i_dom, dom in enumerate(self.domains):
-            for iname in dom.get_var_names(dim_type.set):
-                for par_iname in dom.get_var_names(dim_type.param):
-                    if par_iname in all_inames:
-                        result[iname].add(par_iname)
-
-        # }}}
-
-        return result
-
     # }}}
 
     # {{{ read and written variables

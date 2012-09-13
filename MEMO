@@ -45,8 +45,6 @@ To-do
 
 - Kernel splitting (via what variables get computed in a kernel)
 
-- Test join_inames
-
 - Make tests run on GPUs
 
 - Fuse: store/fetch elimination?
@@ -110,6 +108,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Test join_inames
 
 - Divisibility, modulo, strides?
   -> Tested, gives correct (but suboptimal) code.

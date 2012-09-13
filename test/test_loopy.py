@@ -61,6 +61,34 @@ def test_wg_too_small(ctx_factory):
 
 
 
+def test_join_inames(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i,j]: 0<=i,j<16}",
+            [
+                "b[i,j] = 2*a[i,j]"
+                ],
+            [
+                lp.GlobalArg("a", np.float32, shape=(16, 16,)),
+                lp.GlobalArg("b", np.float32, shape=(16, 16,))
+                ],
+            )
+
+    ref_knl = knl
+
+    knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"])
+    knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen)
+
+    lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen)
+
+
+
+
+
 def test_multi_cse(ctx_factory):
     ctx = ctx_factory()
 
