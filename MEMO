@@ -49,6 +49,10 @@ To-do
 
 - Make tests run on GPUs
 
+- Fuse: store/fetch elimination?
+
+- divisibility constraints
+
 Fixes:
 
 - Group instructions by dependency/inames for scheduling, to
@@ -61,8 +65,6 @@ Fixes:
 
 Future ideas
 ^^^^^^^^^^^^
-
-- Fuse: store/fetch elimination?
 
 - Expose iname-duplicate-and-rename as a primitive.
 
