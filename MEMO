@@ -49,8 +49,6 @@ To-do
 
 - Fuse: store/fetch elimination?
 
-- divisibility constraints
-
 Fixes:
 
 - Group instructions by dependency/inames for scheduling, to
@@ -108,6 +106,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- test divisibility constraints
 
 - Test join_inames
 

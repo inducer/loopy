@@ -89,6 +89,38 @@ def test_join_inames(ctx_factory):
 
 
 
+def test_divisibility_assumption(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "[n] -> {[i]: 0<=i<n}",
+            [
+                "b[i] = 2*a[i]"
+                ],
+            [
+                lp.GlobalArg("a", np.float32, shape=("n",)),
+                lp.GlobalArg("b", np.float32, shape=("n",)),
+                lp.ValueArg("n", np.int32),
+                ],
+            assumptions="n>=1 and (exists zz: n = 16*zz)")
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 16)
+
+    for k in lp.generate_loop_schedules(knl):
+        code = lp.generate_code(k)
+        assert "if" not in code
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen)
+
+    lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+            parameters={"n": 16**3})
+
+
+
+
 def test_multi_cse(ctx_factory):
     ctx = ctx_factory()
 
