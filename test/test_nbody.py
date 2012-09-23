@@ -48,16 +48,15 @@ def test_nbody(ctx_factory):
         knl = lp.split_iname(knl, "i", 256,
                 outer_tag="g.0", inner_tag="l.0", slabs=(0,1))
         knl = lp.split_iname(knl, "j", 256, slabs=(0,1))
-        knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
         knl = lp.add_prefetch(knl, "x[j,k]", ["j_inner", "k"],
                 ["x_fetch_j", "x_fetch_k"])
+        knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
         knl = lp.tag_inames(knl, dict(x_fetch_k="unr"))
         return knl, ["j_outer", "j_inner"]
 
     n = 3000
 
-    for variant in [ variant_cpu]:
-    #for variant in [variant_1, variant_cpu, variant_gpu]:
+    for variant in [variant_1, variant_cpu, variant_gpu]:
         variant_knl, loop_prio = variant(knl)
         kernel_gen = lp.generate_loop_schedules(variant_knl,
                 loop_priority=loop_prio)
@@ -65,7 +64,7 @@ def test_nbody(ctx_factory):
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=[n**2*1e-6], op_label=["M particle pairs"],
-                parameters={"N": n}, print_ref_code=True)
+                parameters={"N": n})
 
 
 

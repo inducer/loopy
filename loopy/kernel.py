@@ -12,6 +12,8 @@ import re
 
 
 
+class CannotBranchDomainTree(RuntimeError):
+    pass
 
 # {{{ index tags
 
@@ -1278,7 +1280,7 @@ class LoopKernel(Record):
 
             all_parents = set(ppd[home_domain_index])
             if not domain_indices <= all_parents:
-                raise RuntimeError("iname set '%s' requires "
+                raise CannotBranchDomainTree("iname set '%s' requires "
                         "branch in domain tree (when adding '%s')"
                         % (", ".join(inames), iname))
 
