@@ -254,6 +254,12 @@ class _AccessCheckMapper(WalkMapper):
 
                 access_range = access_map.range()
 
+                if dims != len(shape):
+                    raise RuntimeError("subscript to '%s' in '%s' has the wrong "
+                            "number of indices (got: %d, expected: %d)" % (
+                                expr.aggregate.name, expr,
+                                dims, len(shape)))
+
                 shape_domain = isl.BasicSet.universe(access_range.get_space())
                 for idim in xrange(dims):
                     from loopy.isl_helpers import make_slab
