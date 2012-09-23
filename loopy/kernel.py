@@ -724,7 +724,12 @@ class LoopKernel(Record):
             cache_manager=None,
             iname_to_tag_requests=None,
             index_dtype=np.int32,
-            isl_context=None):
+            isl_context=None,
+
+            # When kernels get intersected in slab decomposition,
+            # their grid sizes shouldn't change. This provides
+            # a way to forward sub-kernel grid size requests.
+            get_grid_sizes=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -994,6 +999,10 @@ class LoopKernel(Record):
             raise TypeError("index_dtype must be an integer")
         if np.iinfo(index_dtype).min >= 0:
             raise TypeError("index_dtype must be signed")
+
+        if get_grid_sizes is not None:
+            # overwrites method down below
+            self.get_grid_sizes = get_grid_sizes
 
         Record.__init__(self,
                 device=device, domains=domains,

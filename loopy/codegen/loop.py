@@ -123,7 +123,9 @@ def intersect_kernel_with_slab(kernel, slab, iname):
     home_domain = kernel.domains[hdi]
     new_domains = kernel.domains[:]
     new_domains[hdi] = home_domain & isl.align_spaces(slab, home_domain)
-    return kernel.copy(domains=new_domains)
+
+    return kernel.copy(domains=new_domains,
+            get_grid_sizes=kernel.get_grid_sizes)
 
 
 # {{{ hw-parallel loop
