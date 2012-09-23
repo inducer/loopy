@@ -29,7 +29,8 @@ def split_arg_axis(kernel, args_and_axes, count):
         If *args_and_axes* is a :class:`tuple`, it is automatically
         wrapped in a list, to make single splits easier.
 
-    Note that the corresponding index variables may *not* be split beforehand.
+    Note that splits on the corresponding inames are carried out implicitly.
+    The inames may *not* be split beforehand.
     """
 
     if count == 1:
