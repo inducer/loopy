@@ -45,8 +45,6 @@ To-do
 
 - Kernel splitting (via what variables get computed in a kernel)
 
-- Test join_inames
-
 - Make tests run on GPUs
 
 - Streamline arg
@@ -58,6 +56,8 @@ To-do
 - make sure simple side effects in global work
 
 - syntax for linear array access
+
+- Fuse: store/fetch elimination?
 
 Fixes:
 
@@ -72,10 +72,13 @@ Fixes:
 Future ideas
 ^^^^^^^^^^^^
 
+<<<<<<< HEAD
 - Put all OpenCL functions into mangler
 
 - Fuse: store/fetch elimination?
 
+=======
+>>>>>>> d0f46221e2249d7894aed2d5e7ab21e84c419eac
 - Expose iname-duplicate-and-rename as a primitive.
 
 - Array language
@@ -120,6 +123,10 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Test divisibility constraints
+
+- Test join_inames
 
 - Divisibility, modulo, strides?
   -> Tested, gives correct (but suboptimal) code.

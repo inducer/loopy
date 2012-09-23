@@ -12,6 +12,8 @@ import re
 
 
 
+class CannotBranchDomainTree(RuntimeError):
+    pass
 
 # {{{ index tags
 
@@ -727,7 +729,12 @@ class LoopKernel(Record):
             cache_manager=None,
             iname_to_tag_requests=None,
             index_dtype=np.int32,
-            isl_context=None):
+            isl_context=None,
+
+            # When kernels get intersected in slab decomposition,
+            # their grid sizes shouldn't change. This provides
+            # a way to forward sub-kernel grid size requests.
+            get_grid_sizes=None):
         """
         :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
             Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
@@ -1010,6 +1017,10 @@ class LoopKernel(Record):
         if np.iinfo(index_dtype).min >= 0:
             raise TypeError("index_dtype must be signed")
 
+        if get_grid_sizes is not None:
+            # overwrites method down below
+            self.get_grid_sizes = get_grid_sizes
+
         Record.__init__(self,
                 device=device, domains=domains,
                 instructions=parsed_instructions,
@@ -1284,7 +1295,7 @@ class LoopKernel(Record):
 
             all_parents = set(ppd[home_domain_index])
             if not domain_indices <= all_parents:
-                raise RuntimeError("iname set '%s' requires "
+                raise CannotBranchDomainTree("iname set '%s' requires "
                         "branch in domain tree (when adding '%s')"
                         % (", ".join(inames), iname))
 
@@ -1341,20 +1352,6 @@ class LoopKernel(Record):
         for insn in self.instructions:
             for iname in self.insn_inames(insn):
                 result[iname].add(insn.id)
-
-        return result
-
-        # }}}
-
-        # {{{ examine domains
-
-        for i_dom, dom in enumerate(self.domains):
-            for iname in dom.get_var_names(dim_type.set):
-                for par_iname in dom.get_var_names(dim_type.param):
-                    if par_iname in all_inames:
-                        result[iname].add(par_iname)
-
-        # }}}
 
         return result
 

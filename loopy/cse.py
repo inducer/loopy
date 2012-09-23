@@ -160,13 +160,22 @@ def build_global_storage_to_sweep_map(kernel, invocation_descriptors,
 
     for invdesc in invocation_descriptors:
         if not invdesc.expands_footprint:
-            arg_inames = set()
+            arg_inames = (
+                    set(global_s2s_par_dom.get_var_names(dim_type.param))
+                    & kernel.all_inames())
 
             for arg in invdesc.args:
                 arg_inames.update(get_dependencies(arg))
             arg_inames = frozenset(arg_inames)
 
-            usage_domain = kernel.get_inames_domain(arg_inames)
+            from loopy.kernel import CannotBranchDomainTree
+            try:
+                usage_domain = kernel.get_inames_domain(arg_inames)
+            except CannotBranchDomainTree:
+                # and that's the end of that.
+                invdesc.is_in_footprint = False
+                continue
+
             for i in xrange(usage_domain.dim(dim_type.set)):
                 iname = usage_domain.get_dim_name(dim_type.set, i)
                 if iname in sweep_inames:

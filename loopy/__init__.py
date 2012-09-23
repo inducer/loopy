@@ -193,12 +193,19 @@ def join_inames(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
     if new_iname is None:
         new_iname = kernel.make_unique_var_name("_and_".join(inames))
 
-    new_domain = kernel.domain
+    from loopy.kernel import DomainChanger
+    domch = DomainChanger(kernel, frozenset(inames))
+    for iname in inames:
+        if kernel.get_home_domain_index(iname) != domch.leaf_domain_index:
+            raise RuntimeError("iname '%s' is not 'at home' in the "
+                    "join's leaf domain" % iname)
+
+    new_domain = domch.domain
     new_dim_idx = new_domain.dim(dim_type.set)
     new_domain = new_domain.add_dims(dim_type.set, 1)
     new_domain = new_domain.set_dim_name(dim_type.set, new_dim_idx, new_iname)
 
-    joint_aff = zero = isl.Aff.zero_on_domain(kernel.space)
+    joint_aff = zero = isl.Aff.zero_on_domain(new_domain.space)
     subst_dict = {}
     base_divisor = 1
 
@@ -253,7 +260,7 @@ def join_inames(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
             else:
                 result.add(iname)
 
-        return result
+        return frozenset(result)
 
     new_insns = [
             insn.copy(
@@ -265,7 +272,8 @@ def join_inames(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
     result = (kernel
             .map_expressions(subst_map, exclude_instructions=True)
             .copy(
-                instructions=new_insns, domain=new_domain,
+                instructions=new_insns,
+                domains=domch.get_domains_with(new_domain),
                 applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_map]
                 ))
 
