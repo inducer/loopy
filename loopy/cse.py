@@ -150,7 +150,6 @@ def build_global_storage_to_sweep_map(kernel, invocation_descriptors,
         global_stor2sweep = isl.Map.from_basic_map(stor2sweep)
     global_stor2sweep = global_stor2sweep.intersect_range(domain_dup_sweep)
 
-
     # {{{ check if non-footprint-building invocation descriptors fall into footprint
 
     # Make all inames except the sweep parameters. (The footprint may depend on those.)
@@ -203,7 +202,8 @@ def build_global_storage_to_sweep_map(kernel, invocation_descriptors,
             aligned_g_s2s_parm_dom = aligned_g_s2s_parm_dom.project_out_except(
                     arg_inames, [dim_type.param])
 
-            is_in_footprint = s2s_domain.is_subset(aligned_g_s2s_parm_dom)
+            is_in_footprint = ((s2s_domain & aligned_g_s2s_parm_dom)
+                    .is_subset(aligned_g_s2s_parm_dom))
 
             invdesc.is_in_footprint = is_in_footprint
 
