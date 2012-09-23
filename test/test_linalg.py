@@ -347,7 +347,7 @@ def test_rank_one(ctx_factory):
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
-                parameters={"n": n}, edit_code=True, do_check=False)
+                parameters={"n": n})
 
 
 

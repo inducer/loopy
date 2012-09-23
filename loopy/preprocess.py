@@ -153,7 +153,8 @@ def mark_local_temporaries(kernel):
 
             if (locparallel_assignee_inames != locparallel_compute_inames
                     and bool(locparallel_assignee_inames)):
-                raise RuntimeError("instruction '%s' looks invalid: "
+                from loopy.check import WriteRaceConditionError
+                raise WriteRaceConditionError("instruction '%s' looks invalid: "
                         "it assigns to indices based on local IDs, but "
                         "its temporary '%s' cannot be made local because "
                         "a write race across the iname(s) '%s' would emerge. "
