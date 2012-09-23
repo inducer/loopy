@@ -194,8 +194,6 @@ def realize_reduction(kernel, insn_id_filter=None):
     new_insns = []
     new_temporary_variables = kernel.temporary_variables.copy()
 
-    from loopy.kernel import IlpBaseTag
-
     from loopy.codegen.expression import TypeInferenceMapper
     type_inf_mapper = TypeInferenceMapper(kernel)
 
@@ -203,37 +201,11 @@ def realize_reduction(kernel, insn_id_filter=None):
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
-        # {{{ see if this reduction is nested inside some ILP loops
-
-        ilp_inames = [iname
-                for iname in temp_kernel.insn_inames(insn)
-                if isinstance(temp_kernel.iname_to_tag.get(iname), IlpBaseTag)]
-
-        from loopy.isl_helpers import static_max_of_pw_aff
-
-        ilp_iname_lengths = []
-        for iname in ilp_inames:
-            # Using the original kernel is ok here. Nothing in realize_reductions
-            # messes with inames. This is useful because it takes advantage
-            # of bounds caching.
-            bounds = kernel.get_iname_bounds(iname)
-
-            from loopy.symbolic import pw_aff_to_expr
-            ilp_iname_lengths.append(
-                    int(pw_aff_to_expr(
-                        static_max_of_pw_aff(bounds.size, constants_only=True))))
-
-        # }}}
-
         from pymbolic import var
 
         target_var_name = kernel.make_unique_var_name("acc_"+"_".join(expr.inames),
                 extra_used_vars=set(new_temporary_variables))
         target_var = var(target_var_name)
-
-        if ilp_inames:
-            target_var = target_var[
-                    tuple(var(ilp_iname) for ilp_iname in ilp_inames)]
 
         arg_dtype = type_inf_mapper(expr.expr)
 
@@ -242,8 +214,8 @@ def realize_reduction(kernel, insn_id_filter=None):
         from loopy.kernel import TemporaryVariable
         new_temporary_variables[target_var_name] = TemporaryVariable(
                 name=target_var_name,
+                shape=(),
                 dtype=expr.operation.result_dtype(arg_dtype, expr.inames),
-                shape=tuple(ilp_iname_lengths),
                 is_local=False)
 
         new_id = temp_kernel.make_unique_instruction_id(
@@ -319,6 +291,111 @@ def realize_reduction(kernel, insn_id_filter=None):
     return kernel.copy(
             instructions=new_insns,
             temporary_variables=new_temporary_variables)
+
+# }}}
+
+# {{{ duplicate private vars for ilp
+
+from loopy.symbolic import IdentityMapper
+
+class ExtraInameIndexInserter(IdentityMapper):
+    def __init__(self, var_to_new_inames):
+        self.var_to_new_inames = var_to_new_inames
+
+    def map_subscript(self, expr):
+        res = IdentityMapper.map_subscript(self, expr)
+        try:
+            new_idx = self.var_to_new_inames[expr.aggregate.name]
+        except KeyError:
+            return IdentityMapper.map_subscript(self, expr)
+        else:
+            return res.aggregate[res.index + new_idx]
+
+    def map_variable(self, expr):
+        try:
+            new_idx = self.var_to_new_inames[expr.name]
+        except KeyError:
+            return expr
+        else:
+            return expr[new_idx]
+
+def duplicate_private_temporaries_for_ilp(kernel):
+    wmap = kernel.writer_map()
+
+    from loopy.kernel import IlpBaseTag
+    from loopy.symbolic import get_dependencies
+
+    var_to_new_ilp_inames = {}
+
+    # {{{ find variables that need extra indices
+
+    for tv in kernel.temporary_variables.itervalues():
+        for writer_insn_id in wmap[tv.name]:
+            writer_insn = kernel.id_to_insn[writer_insn_id]
+            ilp_inames = frozenset(iname
+                    for iname in kernel.insn_inames(writer_insn)
+                    if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
+
+            referenced_ilp_inames = (ilp_inames
+                    & get_dependencies(writer_insn.assignee))
+
+            new_ilp_inames = ilp_inames - referenced_ilp_inames
+
+            if tv.name in var_to_new_ilp_inames:
+                if new_ilp_inames != set(var_to_new_ilp_inames[tv.name]):
+                    raise RuntimeError("instruction '%s' requires adding "
+                            "indices for ILP inames '%s', but previous "
+                            "instructions required inames'%s'"
+                            % (writer_insn_id, ", ".join(new_ilp_inames),
+                                ", ".join(var_to_new_ilp_inames[tv.name])))
+
+                continue
+
+            var_to_new_ilp_inames[tv.name] = set(new_ilp_inames)
+
+    # }}}
+
+    # {{{ find ilp iname lengths
+
+    from loopy.isl_helpers import static_max_of_pw_aff
+    from loopy.symbolic import pw_aff_to_expr
+
+    ilp_iname_to_length = {}
+    for ilp_inames in var_to_new_ilp_inames.itervalues():
+        for iname in ilp_inames:
+            if iname in ilp_iname_to_length:
+                continue
+
+            bounds = kernel.get_iname_bounds(iname)
+            ilp_iname_to_length[iname] = int(pw_aff_to_expr(
+                        static_max_of_pw_aff(bounds.size, constants_only=True)))
+
+            assert static_max_of_pw_aff(
+                    bounds.lower_bound_pw_aff, constants_only=True).plain_is_zero()
+
+    # }}}
+
+    # {{{ change temporary variables
+
+    new_temp_vars = kernel.temporary_variables.copy()
+    for tv_name, inames in var_to_new_ilp_inames.iteritems():
+        tv = new_temp_vars[tv_name]
+        extra_shape = tuple(ilp_iname_to_length[iname] for iname in inames)
+
+        shape = tv.shape
+        if shape is None:
+            shape = ()
+
+        new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape)
+
+    # }}}
+
+    from pymbolic import var
+    return (kernel
+            .copy(temporary_variables=new_temp_vars)
+            .map_expressions(ExtraInameIndexInserter(
+                dict((var_name, tuple(var(iname) for iname in inames))
+                    for var_name, inames in var_to_new_ilp_inames.iteritems()))))
 
 # }}}
 
@@ -782,6 +859,13 @@ def preprocess_kernel(kernel):
     # to be able to determine the types of the reduced expressions.
 
     kernel = realize_reduction(kernel)
+
+    # Ordering restriction:
+    # duplicate_private_temporaries_for_ilp because reduction accumulators
+    # need to be duplicated by this.
+
+    kernel = duplicate_private_temporaries_for_ilp(kernel)
+    print kernel
 
     kernel = mark_local_temporaries(kernel)
     kernel = assign_automatic_axes(kernel)

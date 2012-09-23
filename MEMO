@@ -72,13 +72,10 @@ Fixes:
 Future ideas
 ^^^^^^^^^^^^
 
-<<<<<<< HEAD
 - Put all OpenCL functions into mangler
 
 - Fuse: store/fetch elimination?
 
-=======
->>>>>>> d0f46221e2249d7894aed2d5e7ab21e84c419eac
 - Expose iname-duplicate-and-rename as a primitive.
 
 - Array language

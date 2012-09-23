@@ -1340,10 +1340,10 @@ class LoopKernel(Record):
         return result
 
     def insn_inames(self, insn):
-        if isinstance(insn, str):
-            return self.all_insn_inames()[insn]
-        else:
+        if isinstance(insn, Instruction):
             return self.all_insn_inames()[insn.id]
+        else:
+            return self.all_insn_inames()[insn]
 
     @memoize_method
     def iname_to_insns(self):
