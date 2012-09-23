@@ -107,7 +107,7 @@ def remove_inames_for_shared_hw_axes(kernel, cond_inames):
         if isinstance(tag, HardwareParallelTag) and tag.key in multi_use_keys:
             multi_use_inames.add(iname)
 
-    return cond_inames - multi_use_inames
+    return frozenset(cond_inames - multi_use_inames)
 
 
 
@@ -224,9 +224,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             only_unshared_inames = remove_inames_for_shared_hw_axes(kernel,
                     current_iname_set & used_inames)
 
-            bounds_checks = bounds_check_cache(
-                    frozenset(remove_inames_for_shared_hw_axes(kernel,
-                        only_unshared_inames)))
+            bounds_checks = bounds_check_cache(only_unshared_inames)
 
             if bounds_checks or candidate_group_length == 1:
                 # length-1 must always be an option to reach the recursion base case below
