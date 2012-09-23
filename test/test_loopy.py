@@ -707,25 +707,23 @@ def test_ilp_write_race_detection_global(ctx_factory):
 
 
 
-def test_ilp_write_race_detection_local(ctx_factory):
+def test_ilp_write_race_avoidance_local(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(ctx.devices[0],
-            "{[i,j]: 0<=i,j<16 }",
+            "{[i,j]: 0<=i<16 and 0<=j<17 }",
             [
                 "[i:l.0, j:ilp] <> a[i] = 5+i+j",
                 ],
             [])
 
-    from loopy.check import WriteRaceConditionError
-    import pytest
-    with pytest.raises(WriteRaceConditionError):
-        list(lp.generate_loop_schedules(knl))
+    for k in lp.generate_loop_schedules(knl):
+        assert k.temporary_variables["a"].shape == (16,17)
 
 
 
 
-def test_ilp_write_race_detection_private(ctx_factory):
+def test_ilp_write_race_avoidance_private(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(ctx.devices[0],
@@ -735,10 +733,8 @@ def test_ilp_write_race_detection_private(ctx_factory):
                 ],
             [])
 
-    from loopy.check import WriteRaceConditionError
-    import pytest
-    with pytest.raises(WriteRaceConditionError):
-        list(lp.generate_loop_schedules(knl))
+    for k in lp.generate_loop_schedules(knl):
+        assert k.temporary_variables["a"].shape == (16,)
 
 # }}}
 

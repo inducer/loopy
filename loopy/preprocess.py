@@ -313,13 +313,17 @@ class ExtraInameIndexInserter(IdentityMapper):
         self.var_to_new_inames = var_to_new_inames
 
     def map_subscript(self, expr):
-        res = IdentityMapper.map_subscript(self, expr)
         try:
             new_idx = self.var_to_new_inames[expr.aggregate.name]
         except KeyError:
             return IdentityMapper.map_subscript(self, expr)
         else:
-            return res.aggregate[res.index + new_idx]
+            index = expr.index
+            if not isinstance(index, tuple):
+                index = (index,)
+            index = tuple(self.rec(i) for i in index)
+
+            return expr.aggregate[index + new_idx]
 
     def map_variable(self, expr):
         try:
