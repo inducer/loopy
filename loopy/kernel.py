@@ -198,30 +198,33 @@ class ConstantArg(_ShapedArg):
         return "<ConstantArg '%s' of type %s and shape (%s)>" % (
                 self.name, self.dtype, ",".join(str(i) for i in self.shape))
 
-class ImageArg(object):
+class ImageArg(Record):
     def __init__(self, name, dtype, dimensions=None, shape=None):
-        self.name = name
-        self.dtype = np.dtype(dtype)
+        dtype = np.dtype(dtype)
         if shape is not None:
-            if dimensions is not None:
-                raise RuntimeError("cannot specify both shape and dimensions "
-                        "in ImageArg")
-            self.dimensions = len(shape)
-            self.shape = shape
+            if dimensions is not None and dimensions != len(shape):
+                raise RuntimeError("cannot specify both shape and "
+                        "disagreeing dimensions in ImageArg")
+            dimensions = len(shape)
         else:
             if not isinstance(dimensions, int):
                 raise RuntimeError("ImageArg: dimensions must be an integer")
-            self.dimensions = dimensions
+
+        Record.__init__(self,
+                dimensions=dimensions,
+                shape=shape,
+                dtype=dtype,
+                name=name)
+
 
     def __repr__(self):
         return "<ImageArg '%s' of type %s>" % (self.name, self.dtype)
 
 
-class ValueArg(object):
+class ValueArg(Record):
     def __init__(self, name, dtype, approximately=None):
-        self.name = name
-        self.dtype = np.dtype(dtype)
-        self.approximately = approximately
+        Record.__init__(self, name=name, dtype=np.dtype(dtype),
+                approximately=approximately)
 
     def __repr__(self):
         return "<ValueArg '%s' of type %s>" % (self.name, self.dtype)

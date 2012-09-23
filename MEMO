@@ -49,6 +49,16 @@ To-do
 
 - Make tests run on GPUs
 
+- Streamline arg
+
+- Fix timer / call code
+
+- variant_prefetch_fields in test_dg
+
+- make sure simple side effects in global work
+
+- syntax for linear array access
+
 Fixes:
 
 - Group instructions by dependency/inames for scheduling, to
@@ -61,6 +71,8 @@ Fixes:
 
 Future ideas
 ^^^^^^^^^^^^
+
+- Put all OpenCL functions into mangler
 
 - Fuse: store/fetch elimination?
 

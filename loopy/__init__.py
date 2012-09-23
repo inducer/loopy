@@ -609,6 +609,22 @@ def add_dependency(kernel, insn_match, dependency):
 
 # }}}
 
+# {{{ change variable kinds
+
+def change_arg_to_image(knl, name):
+    new_args = []
+    for arg in knl.args:
+        if arg.name == name:
+            assert arg.offset == 0
+            assert arg.shape is not None
+            new_args.append(ImageArg(arg.name, dtype=arg.dtype, shape=arg.shape))
+        else:
+            new_args.append(arg)
+
+    return knl.copy(args=new_args)
+
+# }}}
+
 
 
 

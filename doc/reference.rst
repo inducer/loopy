@@ -168,14 +168,16 @@ Dealing with Substitution Rules
 
 .. autofunction:: expand_subst
 
-Precomputation and Prefetching
-------------------------------
+Caching, Precomputation and Prefetching
+---------------------------------------
 
 .. autofunction:: precompute
 
 .. autofunction:: add_prefetch
 
     Uses :func:`extract_subst` and :func:`precompute`.
+
+.. autofunction:: change_arg_to_image
 
 Padding
 -------
