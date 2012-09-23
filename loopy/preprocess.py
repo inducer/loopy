@@ -865,7 +865,6 @@ def preprocess_kernel(kernel):
     # need to be duplicated by this.
 
     kernel = duplicate_private_temporaries_for_ilp(kernel)
-    print kernel
 
     kernel = mark_local_temporaries(kernel)
     kernel = assign_automatic_axes(kernel)
