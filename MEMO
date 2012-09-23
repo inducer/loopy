@@ -47,11 +47,9 @@ To-do
 
 - Make tests run on GPUs
 
-- Streamline arg
+- Streamline argument specification
 
 - Fix timer / call code
-
-- variant_prefetch_fields in test_dg
 
 - make sure simple side effects in global work
 

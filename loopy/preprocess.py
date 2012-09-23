@@ -151,6 +151,16 @@ def mark_local_temporaries(kernel):
 
             assert locparallel_assignee_inames <= locparallel_compute_inames
 
+            if (locparallel_assignee_inames != locparallel_compute_inames
+                    and bool(locparallel_assignee_inames)):
+                raise RuntimeError("instruction '%s' looks invalid: "
+                        "it assigns to indices based on local IDs, but "
+                        "its temporary '%s' cannot be made local because "
+                        "a write race across the iname(s) '%s' would emerge. "
+                        "(Do you need to add an extra iname to your prefetch?)"
+                        % (insn_id, temp_var.name, ", ".join(
+                            locparallel_compute_inames - locparallel_assignee_inames)))
+
             wants_to_be_local_per_insn.append(
                     locparallel_assignee_inames == locparallel_compute_inames
 
