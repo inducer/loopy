@@ -749,7 +749,7 @@ def adjust_local_temp_var_storage(kernel):
                 from loopy import LoopyAdvisory
                 warn("could not find a conflict-free mem layout "
                         "for local variable '%s' "
-                        "(currently: %dx conflict, increment: %d, reason: %s)"
+                        "(currently: %dx conflict, increment: %s, reason: %s)"
                         % (temp_var.name, min_mult, good_incr, min_why_not),
                         LoopyAdvisory)
         else:
