@@ -28,6 +28,8 @@ def split_arg_axis(kernel, args_and_axes, count):
 
         If *args_and_axes* is a :class:`tuple`, it is automatically
         wrapped in a list, to make single splits easier.
+
+    Note that the corresponding index variables may *not* be split beforehand.
     """
 
     if count == 1:
@@ -120,7 +122,9 @@ def split_arg_axis(kernel, args_and_axes, count):
         from pymbolic.primitives import Variable
         if not isinstance(axis_idx, Variable):
             raise RuntimeError("found access '%s' in which axis %d is not a "
-                    "single variable--cannot split" % (expr, axis_nr))
+                    "single variable--cannot split (Have you tried to do the split "
+                    "yourself, manually, beforehand? If so, you shouldn't.)"
+                    % (expr, axis_nr))
 
         split_iname = expr.index[axis_nr].name
         assert split_iname in kernel.all_inames()
@@ -134,7 +138,6 @@ def split_arg_axis(kernel, args_and_axes, count):
                     split_iname+"_inner")
             split_vars[split_iname] = outer_iname, inner_iname
 
-
         idx[axis_nr] = Variable(inner_iname)
 
         if order == "F":
@@ -146,7 +149,7 @@ def split_arg_axis(kernel, args_and_axes, count):
 
         return expr.aggregate[tuple(idx)]
 
-    aash = ArgAxisSplitHelper(arg_name, split_access_axis)
+    aash = ArgAxisSplitHelper(set(arg_to_rest.iterkeys()), split_access_axis)
 
     result = (kernel
             .map_expressions(aash)
