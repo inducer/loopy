@@ -222,15 +222,6 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
     usable_inames = get_usable_inames_for_conditional(kernel, sched_index)
     domain = kernel.get_inames_domain(loop_iname)
 
-    # move inames that are usable into parameters
-    for iname in domain.get_var_names(dim_type.set):
-        if iname in usable_inames:
-            dt, idx = domain.get_var_dict()[iname]
-            domain = domain.move_dims(
-                    dim_type.param, domain.dim(dim_type.param),
-                    dt, idx, 1)
-
-
     result = []
 
     for slab_name, slab in slabs:
@@ -243,7 +234,18 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
         domain = isl.align_spaces(domain, slab, across_dim_types=True,
                 obj_bigger_ok=True)
         dom_and_slab = domain & slab
-        _, loop_iname_idx = domain.get_var_dict()[loop_iname]
+
+        # move inames that are usable into parameters
+        moved_inames = []
+        for iname in dom_and_slab.get_var_names(dim_type.set):
+            if iname in usable_inames:
+                moved_inames.append(iname)
+                dt, idx = dom_and_slab.get_var_dict()[iname]
+                dom_and_slab = dom_and_slab.move_dims(
+                        dim_type.param, dom_and_slab.dim(dim_type.param),
+                        dt, idx, 1)
+
+        _, loop_iname_idx = dom_and_slab.get_var_dict()[loop_iname]
         lbound = kernel.cache_manager.dim_min(
                 dom_and_slab, loop_iname_idx).coalesce()
         ubound = kernel.cache_manager.dim_max(
@@ -264,15 +266,21 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
 
         from loopy.isl_helpers import iname_rel_aff
         impl_slab = (
-                isl.BasicSet.universe(domain.space)
+                isl.BasicSet.universe(dom_and_slab.space)
                 .add_constraint(
                     isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(domain.space,
+                        iname_rel_aff(dom_and_slab.space,
                             loop_iname, ">=", lbound)))
                 .add_constraint(
                     isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(domain.space,
+                        iname_rel_aff(dom_and_slab.space,
                             loop_iname, "<=", ubound))))
+
+        for iname in moved_inames:
+            dt, idx = impl_slab.get_var_dict()[iname]
+            impl_slab = impl_slab.move_dims(
+                    dim_type.set, impl_slab.dim(dim_type.set),
+                    dt, idx, 1)
 
         new_codegen_state = codegen_state.intersect(impl_slab)
 
