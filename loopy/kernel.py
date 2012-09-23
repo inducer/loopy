@@ -913,11 +913,12 @@ class LoopKernel(Record):
                         % type(insn))
 
             for insn in insn.split("\n"):
-                insn = insn.strip()
+                comment_start = insn.find("#")
+                if comment_start >= 0:
+                    insn = insn[:comment_start]
 
+                insn = insn.strip()
                 if not insn:
-                    continue
-                if insn.startswith("#"):
                     continue
 
                 for sub_insn in expand_defines(insn, defines, single_valued=False):
