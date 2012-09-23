@@ -54,6 +54,9 @@ class TypeInferenceMapper(CombineMapper):
     def map_subscript(self, expr):
         return self.rec(expr.aggregate)
 
+    def map_linear_subscript(self, expr):
+        return self.rec(expr.aggregate)
+
     def map_call(self, expr):
         from pymbolic.primitives import Variable
 
@@ -316,6 +319,40 @@ class LoopyCCodeMapper(RecursiveMapper):
 
             return (temp_var.name + "".join("[%s]" % self.rec(idx, PREC_NONE, 'i')
                 for idx in index))
+
+        else:
+            raise RuntimeError("nothing known about variable '%s'" % expr.aggregate.name)
+
+    def map_linear_subscript(self, expr, enclosing_prec, type_context):
+        def base_impl(expr, enclosing_prec, type_context):
+            return self.parenthesize_if_needed(
+                    "%s[%s]" % (
+                        self.rec(expr.aggregate, PREC_CALL, type_context),
+                        self.rec(expr.index, PREC_NONE, 'i')),
+                    enclosing_prec, PREC_CALL)
+
+        from pymbolic.primitives import Variable
+        if not isinstance(expr.aggregate, Variable):
+            return base_impl(expr, enclosing_prec, type_context)
+
+        if expr.aggregate.name in self.kernel.arg_dict:
+            arg = self.kernel.arg_dict[expr.aggregate.name]
+
+            from loopy.kernel import ImageArg
+            if isinstance(arg, ImageArg):
+                raise RuntimeError("linear indexing doesn't work on images: %s"
+                        % expr)
+
+            else:
+                # GlobalArg
+                from pymbolic.primitives import Subscript
+                return base_impl(
+                        Subscript(expr.aggregate, arg.offset+expr.index),
+                        enclosing_prec, type_context)
+
+        elif expr.aggregate.name in self.kernel.temporary_variables:
+            raise RuntimeError("linear indexing doesn't work on temporaries: %s"
+                    % expr)
 
         else:
             raise RuntimeError("nothing known about variable '%s'" % expr.aggregate.name)

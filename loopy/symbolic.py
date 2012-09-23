@@ -3,6 +3,7 @@
 from __future__ import division
 
 from pytools import memoize, memoize_method
+import pytools.lex
 
 from pymbolic.primitives import (
         Leaf, AlgebraicLeaf, Variable as VariableBase,
@@ -23,6 +24,8 @@ from pymbolic.mapper.dependency import \
         DependencyMapper as DependencyMapperBase
 from pymbolic.mapper.unifier import UnidirectionalUnifier \
         as UnidirectionalUnifierBase
+
+from pymbolic.parser import Parser as ParserBase
 
 import islpy as isl
 from islpy import dim_type
@@ -108,6 +111,16 @@ class Reduction(AlgebraicLeaf):
 
     mapper_method = intern("map_reduction")
 
+class LinearSubscript(AlgebraicLeaf):
+    def __init__(self, aggregate, index):
+        self.aggregate = aggregate
+        self.index = index
+
+    def __getinitargs__(self):
+        return self.aggregate, self.index
+
+    mapper_method = intern("map_linear_subscript")
+
 # }}}
 
 # {{{ mappers with support for loopy-specific primitives
@@ -122,6 +135,8 @@ class IdentityMapperMixin(object):
 
     def map_loopy_function_identifier(self, expr):
         return expr
+
+    map_linear_subscript = IdentityMapperBase.map_subscript
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
@@ -138,12 +153,16 @@ class WalkMapper(WalkMapperBase):
     def map_loopy_function_identifier(self, expr):
         self.visit(expr)
 
+    map_linear_subscript = WalkMapperBase.map_subscript
+
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
 
 class CombineMapper(CombineMapperBase):
     def map_reduction(self, expr):
         return self.rec(expr.expr)
+
+    map_linear_subscript = CombineMapperBase.map_subscript
 
 class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
     pass
@@ -156,6 +175,15 @@ class StringifyMapper(StringifyMapperBase):
     def map_tagged_variable(self, expr, prec):
         return "%s$%s" % (expr.name, expr.tag)
 
+    def map_linear_subscript(self, expr, enclosing_prec):
+        from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
+        return self.parenthesize_if_needed(
+                self.format("%s[[%s]]",
+                    self.rec(expr.aggregate, PREC_CALL),
+                    self.rec(expr.index, PREC_NONE)),
+                enclosing_prec, PREC_CALL)
+
+
 class DependencyMapper(DependencyMapperBase):
     def map_reduction(self, expr):
         from pymbolic.primitives import Variable
@@ -167,6 +195,8 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_loopy_function_identifier(self, expr):
         return set()
+
+    map_linear_subscript = DependencyMapperBase.map_subscript
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
@@ -282,10 +312,34 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
         return Reduction(operation, tuple(processed_inames), red_expr)
 
+# {{{ parser extension
+
+_open_dbl_bracket = intern("open_dbl_bracket")
+_close_dbl_bracket = intern("close_dbl_bracket")
+
+class LoopyParser(ParserBase):
+    lex_table = [
+            (_open_dbl_bracket, pytools.lex.RE(r"\[\[")),
+            (_close_dbl_bracket, pytools.lex.RE(r"\]\]")),
+            ] + ParserBase.lex_table
+
+    def parse_postfix(self, pstate, min_precedence, left_exp):
+        from pymbolic.parser import _PREC_CALL
+        if pstate.next_tag() is _open_dbl_bracket and _PREC_CALL > min_precedence:
+            pstate.advance()
+            pstate.expect_not_end()
+            left_exp = LinearSubscript(left_exp, self.parse_expression(pstate))
+            pstate.expect(_close_dbl_bracket)
+            pstate.advance()
+            return left_exp, True
+
+        return ParserBase.parse_postfix(self, pstate, min_precedence, left_exp)
+
+# }}}
+
 def parse(expr_str):
-    from pymbolic import parse
     return VarToTaggedVarMapper()(
-            FunctionToPrimitiveMapper()(parse(expr_str)))
+            FunctionToPrimitiveMapper()(LoopyParser()(expr_str)))
 
 # }}}
 
