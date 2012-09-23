@@ -902,13 +902,23 @@ class LoopKernel(Record):
                         "instance or a parseable string. got '%s' instead."
                         % type(insn))
 
-            for insn in expand_defines(insn, defines, single_valued=False):
-                parse_insn(insn)
+            for insn in insn.split("\n"):
+                insn = insn.strip()
+
+                if not insn:
+                    continue
+                if insn.startswith("#"):
+                    continue
+
+                for sub_insn in expand_defines(insn, defines, single_valued=False):
+                    parse_insn(sub_insn)
 
         parsed_instructions = []
 
         substitutions = substitutions.copy()
 
+        if isinstance(instructions, str):
+            instructions = [instructions]
         for insn in instructions:
             # must construct list one-by-one to facilitate unique id generation
             parse_if_necessary(insn)
@@ -979,13 +989,15 @@ class LoopKernel(Record):
 
         processed_args = []
         for arg in args:
-            if isinstance(arg, _ShapedArg):
-                if arg.shape is not None:
-                    arg = arg.copy(shape=expand_defines_in_expr(arg.shape, defines))
-                if arg.strides is not None:
-                    arg = arg.copy(strides=expand_defines_in_expr(arg.strides, defines))
+            for name in arg.name.split(","):
+                new_arg = arg.copy(name=name)
+                if isinstance(arg, _ShapedArg):
+                    if arg.shape is not None:
+                        new_arg = new_arg.copy(shape=expand_defines_in_expr(arg.shape, defines))
+                    if arg.strides is not None:
+                        new_arg = new_arg.copy(strides=expand_defines_in_expr(arg.strides, defines))
 
-            processed_args.append(arg)
+                processed_args.append(new_arg)
 
         # }}}
 

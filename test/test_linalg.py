@@ -273,9 +273,10 @@ def test_variable_size_matrix_mul(ctx_factory):
 def test_rank_one(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
-    order = "C"
+    order = "F"
 
-    n = int(get_suitable_size(ctx)**(2.7/2))
+    #n = int(get_suitable_size(ctx)**(2.7/2))
+    n = 16**3
 
     knl = lp.make_kernel(ctx.devices[0],
             "[n] -> {[i,j]: 0<=i,j<n}",
@@ -288,7 +289,8 @@ def test_rank_one(ctx_factory):
                 lp.GlobalArg("c", dtype, shape=("n, n"), order=order),
                 lp.ValueArg("n", np.int32, approximately=n),
                 ],
-            name="rank_one", assumptions="n >= 16")
+            name="rank_one",
+            assumptions="n >= 16")
 
     def variant_1(knl):
         knl = lp.add_prefetch(knl, "a")
@@ -337,15 +339,15 @@ def test_rank_one(ctx_factory):
 
     seq_knl = knl
 
-    for variant in [variant_1, variant_2, variant_3, variant_4]:
-    #for variant in [variant_1]:
+    #for variant in [variant_1, variant_2, variant_3, variant_4]:
+    for variant in [variant_4]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["i", "j"])
         kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
-                parameters={"n": n})
+                parameters={"n": n}, edit_code=True, do_check=False)
 
 
 
