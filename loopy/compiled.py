@@ -335,7 +335,7 @@ def make_ref_args(kernel, queue, parameters,
                 fill_rand(storage_array)
                 if isinstance(arg, ImageArg):
                     # must be contiguous
-                    ref_args[arg.name] = cl.image_from_array(queue.context, ary.get(), 1)
+                    ref_args[arg.name] = cl.image_from_array(queue.context, ary.get())
                 else:
                     ref_args[arg.name] = ary
 
@@ -388,7 +388,7 @@ def make_args(queue, kernel, arg_descriptors, parameters,
 
             # must be contiguous
             args[arg.name] = cl.image_from_array(
-                    queue.context, arg_desc.ref_array.get(), 1)
+                    queue.context, arg_desc.ref_array.get())
 
         elif isinstance(arg, GlobalArg):
             assert arg.offset == 0

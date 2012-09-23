@@ -7,6 +7,8 @@ from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
         PREC_POWER)
 from pymbolic.mapper import CombineMapper
 import islpy as isl
+import pyopencl as cl
+import pyopencl.array
 
 # {{{ type inference
 
@@ -269,6 +271,8 @@ class LoopyCCodeMapper(RecursiveMapper):
 
                 if arg.dtype == np.float32:
                     return base_access+".x"
+                if arg.dtype in cl.array.vec.type_to_scalar_and_count:
+                    return base_access
                 elif arg.dtype == np.float64:
                     return "as_double(%s.xy)" % base_access
                 else:
