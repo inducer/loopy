@@ -292,13 +292,21 @@ def check_bounds(kernel):
 # }}}
 
 def run_automatic_checks(kernel):
-    check_for_orphaned_user_hardware_axes(kernel)
-    check_for_double_use_of_hw_axes(kernel)
-    check_for_unused_hw_axes_in_insns(kernel)
-    check_for_inactive_iname_access(kernel)
-    check_for_write_races(kernel)
-    check_for_data_dependent_parallel_bounds(kernel)
-    check_bounds(kernel)
+    try:
+        check_for_orphaned_user_hardware_axes(kernel)
+        check_for_double_use_of_hw_axes(kernel)
+        check_for_unused_hw_axes_in_insns(kernel)
+        check_for_inactive_iname_access(kernel)
+        check_for_write_races(kernel)
+        check_for_data_dependent_parallel_bounds(kernel)
+        check_bounds(kernel)
+    except:
+        print 75*"="
+        print "failing kernel after processing:"
+        print 75*"="
+        print kernel
+        print 75*"="
+        raise
 
 # {{{ sanity-check for implemented domains of each instruction
 
