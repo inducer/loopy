@@ -14,6 +14,46 @@ __all__ = ["pytest_generate_tests",
 
 
 
+def test_simple_side_effect(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i,j]: 0<=i,j<100}",
+            """
+                a[i] = a[i] + 1
+                """,
+            [lp.GlobalArg("a", np.float32, shape=(100,))]
+            )
+
+    kernel_gen = lp.generate_loop_schedules(knl)
+    kernel_gen = lp.check_kernels(kernel_gen)
+
+    for gen_knl in kernel_gen:
+        print gen_knl
+        compiled = lp.CompiledKernel(ctx, gen_knl)
+        print compiled.code
+
+
+
+
+def test_nonsense_reduction(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i]: 0<=i<100}",
+            """
+                a[i] = sum(i, 2)
+                """,
+            [lp.GlobalArg("a", np.float32, shape=(100,))]
+            )
+
+    import pytest
+    with pytest.raises(RuntimeError):
+        list(lp.generate_loop_schedules(knl))
+
+
+
+
 def test_owed_barriers(ctx_factory):
     ctx = ctx_factory()
 
