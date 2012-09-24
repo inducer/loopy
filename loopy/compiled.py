@@ -493,6 +493,17 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         warn("op_label should be a list", stacklevel=2)
         op_label = [op_label]
 
+    read_and_written_args = (
+            ref_knl.get_read_variables()
+            & ref_knl.get_written_variables()
+            & set(ref_knl.arg_dict))
+
+    if read_and_written_args:
+        # FIXME: In principle, that's possible to test
+        raise RuntimeError("kernel reads *and* writes argument(s) '%s' "
+                "and therefore cannot be automatically tested"
+                % ", ".join(read_and_written_args))
+
     from time import time
 
     if check_result is None:

@@ -1396,8 +1396,15 @@ class LoopKernel(Record):
         return result
 
     @memoize_method
+    def get_read_variables(self):
+        result = set()
+        for insn in self.instructions:
+            result.update(insn.get_read_var_names())
+        return result
+
+    @memoize_method
     def get_written_variables(self):
-        return set(
+        return frozenset(
             insn.get_assignee_var_name()
             for insn in self.instructions)
 
