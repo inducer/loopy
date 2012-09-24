@@ -509,6 +509,10 @@ def opencl_function_mangler(name, arg_dtypes):
                     "sinh", "cosh", "tanh"]:
                 return arg_dtype, "%s_%s" % (tpname, name)
 
+    if name == "dot":
+        scalar_dtype, offset, field_name = arg_dtypes[0].fields["s0"]
+        return scalar_dtype, name
+
     return None
 
 def single_arg_function_mangler(name, arg_dtypes):

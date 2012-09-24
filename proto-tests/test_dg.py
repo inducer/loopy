@@ -14,10 +14,6 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 
 
 
-def dot_mangler(name, arg_dtypes):
-    scalar_dtype, offset, field_name = arg_dtypes[0].fields["s0"]
-    return scalar_dtype, name
-
 def test_dg_volume(ctx_factory):
     dtype = np.float32
     dtype4 = cl.array.vec.float4
@@ -33,18 +29,19 @@ def test_dg_volume(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0], [
             "{[n,m,k]: 0<= n,m < Np and 0<= k < K}",
             ],
-            [
-                "<> dudR = sum(m, DrDsDt[n,m]*u[m,k])",
-                "<> dvdR = sum(m, DrDsDt[n,m]*v[m,k])",
-                "<> dwdR = sum(m, DrDsDt[n,m]*w[m,k])",
-                "<> dpdR = sum(m, DrDsDt[n,m]*p[m,k])",
+            """
+                <> du_drst = sum(m, DrDsDt[n,m]*u[k,m])
+                <> dv_drst = sum(m, DrDsDt[n,m]*v[k,m])
+                <> dw_drst = sum(m, DrDsDt[n,m]*w[k,m])
+                <> dp_drst = sum(m, DrDsDt[n,m]*p[k,m])
+
                 # volume flux
-                "rhsu[n,k] = dot(dRdx[k],dpdR)",
-                "rhsv[n,k] = dot(dRdy[k],dpdR)",
-                "rhsw[n,k] = dot(dRdz[k],dpdR)",
-                "rhsp[n,k] = dot(dRdx[k], dudR) + dot(dRdy[k], dvdR)"
-                "+ dot(dRdz[k], dwdR)",
-                ],
+                rhsu[k,n] = dot(drst_dx[k],dp_drst)
+                rhsv[k,n] = dot(drst_dy[k],dp_drst)
+                rhsw[k,n] = dot(drst_dz[k],dp_drst)
+                rhsp[k,n] = dot(drst_dx[k], du_drst) + dot(drst_dy[k], dv_drst) \
+                    + dot(drst_dz[k], dw_drst)
+                """,
             [
                 lp.GlobalArg("u,v,w,p,rhsu,rhsv,rhsw,rhsp",
                     dtype, shape="Np, K", order=order),
@@ -53,13 +50,7 @@ def test_dg_volume(ctx_factory):
                 lp.ValueArg("K", np.int32, approximately=1000),
                 ],
             name="dg_volume", assumptions="K>=1",
-            defines=dict(Np=Np),
-            function_manglers=[
-                lp.default_function_mangler,
-                lp.opencl_function_mangler,
-                lp.single_arg_function_mangler,
-                dot_mangler]
-            )
+            defines=dict(Np=Np))
 
     seq_knl = knl
 
@@ -87,6 +78,7 @@ def test_dg_volume(ctx_factory):
     def variant_prefetch_fields(knl):
         knl = lp.tag_inames(knl, dict(n="l.0"))
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
+        # FIXME generates too many ifs
         for name in ["u", "v", "w", "p"]:
             knl = lp.add_prefetch(knl, "%s[:,k]" % name, ["k_inner"])
 
@@ -170,10 +162,10 @@ def test_dg_surface(ctx_factory):
 
                 # can we bounce to single index (row/column major is important)
                 # can we use this indexing here for clarity ?
-                <> du = u[[idP]]-u[idM]
-                <> dv = v[idP]-v[idM]
-                <> dw = w[idP]-w[idM]
-                <> dp = bc[m,k]*p[idP] - p[idM]
+                <> du = u[[idP]]-u[[idM]]
+                <> dv = v[[idP]]-v[[idM]]
+                <> dw = w[[idP]]-w[[idM]]
+                <> dp = bc[m,k]*p[[idP]] - p[[idM]]
 
                 <> dQ = 0.5*Fscale[m,k]* \
                         (dp - nx[m,k]*du - ny[m,k]*dv - nz[m,k]*dw)
@@ -195,7 +187,7 @@ def test_dg_surface(ctx_factory):
                 lp.GlobalArg("u,v,w,p,rhsu,rhsv,rhsw,rhsp",
                     dtype, shape="Np, K", order=order),
                 lp.GlobalArg("nx,ny,nz,Fscale,bc",
-                    dtype, shape="nsurf_dofs", order=order),
+                    dtype, shape="NfpNfaces, K", order=order),
                 lp.GlobalArg("LIFT", dtype, shape="Np, NfpNfaces", order="C"),
                 lp.ValueArg("K", np.int32, approximately=1000),
                 ],

@@ -53,8 +53,6 @@ To-do
 
 - make sure simple side effects in global work
 
-- syntax for linear array access
-
 - Fuse: store/fetch elimination?
 
 Fixes:
@@ -118,6 +116,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- syntax for linear array access
 
 - Test divisibility constraints
 
