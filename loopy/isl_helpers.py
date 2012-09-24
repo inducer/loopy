@@ -168,7 +168,11 @@ def iname_rel_aff(space, iname, rel, aff):
 def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):
     pieces = pw_aff.get_pieces()
     if len(pieces) == 1:
-        return pieces[0][1]
+        (_, result), = pieces
+        if constants_only and not result.is_cst():
+            raise ValueError("a numeric %s was not found for PwAff '%s'"
+                    % (what, pw_aff))
+        return result
 
     # put constant bounds first
     pieces = (
