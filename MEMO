@@ -16,9 +16,6 @@ Things to consider
 - Every loop in loopy is opened at most once.
   Too restrictive?
 
-- Loop bounds currently may not depend on parallel dimensions
-  Does it make sense to relax this?
-
 - Why do CSEs necessarily have to duplicate the inames?
   -> because that would be necessary for a sequential prefetch
 
@@ -48,8 +45,6 @@ To-do
 - Make tests run on GPUs
 
 - Fix timer / call code
-
-- make sure simple side effects in global work
 
 - Fuse: store/fetch elimination?
 
@@ -114,6 +109,11 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- make sure simple side effects work
+
+- Loop bounds currently may not depend on parallel dimensions
+  Does it make sense to relax this?
 
 - Streamline argument specification
 

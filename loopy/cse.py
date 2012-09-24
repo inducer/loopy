@@ -197,13 +197,12 @@ def build_global_storage_to_sweep_map(kernel, invocation_descriptors,
             s2s_domain, aligned_g_s2s_parm_dom = isl.align_two(
                     s2s_domain, global_s2s_par_dom)
 
-            s2s_domain = s2s_domain.project_out_except(
-                    arg_inames, [dim_type.param])
-            aligned_g_s2s_parm_dom = aligned_g_s2s_parm_dom.project_out_except(
-                    arg_inames, [dim_type.param])
+            arg_restrictions = (
+                    aligned_g_s2s_parm_dom
+                    .eliminate(dim_type.set, 0, aligned_g_s2s_parm_dom.dim(dim_type.set))
+                    .remove_divs())
 
-            is_in_footprint = ((s2s_domain & aligned_g_s2s_parm_dom)
-                    .is_subset(aligned_g_s2s_parm_dom))
+            is_in_footprint = (arg_restrictions & s2s_domain).is_subset(aligned_g_s2s_parm_dom)
 
             invdesc.is_in_footprint = is_in_footprint
 
