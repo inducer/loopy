@@ -229,6 +229,12 @@ def realize_reduction(kernel, insn_id_filter=None):
                 dtype=expr.operation.result_dtype(arg_dtype, expr.inames),
                 is_local=False)
 
+        outer_insn_inames = temp_kernel.insn_inames(insn)
+        bad_inames = set(expr.inames) & outer_insn_inames
+        if bad_inames:
+            raise RuntimeError("reduction used within loop(s) that it was "
+                    "supposed to reduce over: " + ", ".join(bad_inames))
+
         new_id = temp_kernel.make_unique_instruction_id(
                 based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
                 extra_used_ids=set(i.id for i in generated_insns))
@@ -236,7 +242,7 @@ def realize_reduction(kernel, insn_id_filter=None):
         init_insn = Instruction(
                 id=new_id,
                 assignee=target_var,
-                forced_iname_deps=temp_kernel.insn_inames(insn) - set(expr.inames),
+                forced_iname_deps=outer_insn_inames - set(expr.inames),
                 expression=expr.operation.neutral_element(arg_dtype, expr.inames))
 
         generated_insns.append(init_insn)
