@@ -44,9 +44,9 @@ def test_dg_volume(ctx_factory):
                 """,
             [
                 lp.GlobalArg("u,v,w,p,rhsu,rhsv,rhsw,rhsp",
-                    dtype, shape="Np, K", order=order),
+                    dtype, shape="K, Np", order="C"),
                 lp.GlobalArg("DrDsDt", dtype4, shape="Np, Np", order="C"),
-                lp.GlobalArg("dRdx,dRdy,dRdz", dtype4, shape="K", order=order),
+                lp.GlobalArg("drst_dx,drst_dy,drst_dz", dtype4, shape="K", order=order),
                 lp.ValueArg("K", np.int32, approximately=1000),
                 ],
             name="dg_volume", assumptions="K>=1",
@@ -80,7 +80,7 @@ def test_dg_volume(ctx_factory):
         knl = lp.split_iname(knl, "k", 3, outer_tag="g.0", inner_tag="l.1")
         # FIXME generates too many ifs
         for name in ["u", "v", "w", "p"]:
-            knl = lp.add_prefetch(knl, "%s[:,k]" % name, ["k_inner"])
+            knl = lp.add_prefetch(knl, "%s[k,:]" % name, ["k_inner"])
 
         return knl
 
@@ -137,7 +137,8 @@ def test_dg_volume(ctx_factory):
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, parameters_dict)
 
-        lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen, parameters=parameters_dict)
+        lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen, parameters=parameters_dict,
+                codegen_kwargs=dict(with_annotation=True))
 
 
 def test_dg_surface(ctx_factory):

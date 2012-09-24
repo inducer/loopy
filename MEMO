@@ -47,8 +47,6 @@ To-do
 
 - Make tests run on GPUs
 
-- Streamline argument specification
-
 - Fix timer / call code
 
 - make sure simple side effects in global work
@@ -116,6 +114,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Streamline argument specification
 
 - syntax for linear array access
 
