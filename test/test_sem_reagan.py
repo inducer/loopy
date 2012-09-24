@@ -63,13 +63,14 @@ def test_tim2d(ctx_factory):
         knl = lp.precompute(knl, "Gux(m,j)", np.float32, ["m", "j"])
         knl = lp.precompute(knl, "Guy(i,m)", np.float32, ["i", "m"])
 
-        knl = lp.add_prefetch(knl, "G$x")
-        knl = lp.add_prefetch(knl, "G$y")
+        knl = lp.add_prefetch(knl, "G$x[:,e,:,:]")
+        knl = lp.add_prefetch(knl, "G$y[:,e,:,:]")
 
         knl = lp.tag_inames(knl, dict(o="unr"))
         knl = lp.tag_inames(knl, dict(m="unr"))
 
         knl = lp.set_instruction_priority(knl, "D_fetch", 5)
+        print knl
 
         return knl
 
@@ -81,7 +82,7 @@ def test_tim2d(ctx_factory):
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
                 op_count=[K*(n*n*n*2*2 + n*n*2*3 + n**3 * 2*2)/1e9],
                 op_label=["GFlops"],
-                parameters={"K": K}, print_ref_code=True)
+                parameters={"K": K})
 
 
 
