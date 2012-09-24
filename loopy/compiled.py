@@ -563,9 +563,11 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             ref_args, arg_descriptors = \
                     make_ref_args(ref_sched_kernel, ref_queue, parameters,
                             fill_value=fill_value_ref)
+            ref_args["out_host"] = False
         except cl.RuntimeError, e:
             if e.code == cl.status_code.IMAGE_FORMAT_NOT_SUPPORTED:
                 continue
+
 
         if not do_check:
             break
@@ -611,6 +613,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         if args is None:
             args = make_args(queue, kernel, arg_descriptors, parameters,
                     fill_value=fill_value)
+        args["out_host"] = False
 
         compiled = CompiledKernel(ctx, kernel, edit_code=edit_code,
                 options=options,
