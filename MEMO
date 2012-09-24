@@ -46,8 +46,6 @@ To-do
 
 - Fix timer / call code
 
-- Fuse: store/fetch elimination?
-
 Fixes:
 
 - Group instructions by dependency/inames for scheduling, to
