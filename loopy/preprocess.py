@@ -463,7 +463,7 @@ def add_boostability_and_automatic_dependencies(kernel):
                         % (var, insn.id))
 
             if len(var_writers) == 1:
-                auto_deps.update(var_writers)
+                auto_deps.update(var_writers - set([insn.id]))
 
         # }}}
 
