@@ -336,7 +336,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         print 75*"="
         print "CURRENT SCHEDULE:"
         print "%s (length: %d)" % (dump_schedule(schedule), len(schedule))
-        print "(entry into loop: <iname>, exit from loop: </iname>, instruction names without delimiters)"
+        print "(LEGEND: entry: <iname>, exit: </iname>, instructions w/ no delimiters)"
         #print "boost allowed:", allow_boost
         print 75*"="
         print "LOOP NEST MAP:"
