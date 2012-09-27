@@ -142,6 +142,7 @@ class CompiledKernel:
         wait_for = kwargs.pop("wait_for", None)
         out_host = kwargs.pop("out_host", None)
         no_run = kwargs.pop("no_run", None)
+        warn_numpy = kwargs.pop("warn_numpy", None)
 
         import loopy as lp
 
@@ -169,8 +170,12 @@ class CompiledKernel:
                 if isinstance(val, np.ndarray):
                     # synchronous, so nothing to worry about
                     val = cl_array.to_device(queue, val, allocator=allocator)
-                elif val is not None:
                     encountered_numpy = True
+                    if warn_numpy:
+                        from warnings import warn
+                        warn("argument '%s' was passed as a numpy array, "
+                                "performing implicit transfer" % arg.name,
+                                stacklevel=2)
 
             if val is None:
                 if not is_written:
@@ -223,7 +228,6 @@ class CompiledKernel:
 
     def print_code(self):
         print get_highlighted_code(self.code)
-
 
 # }}}
 
@@ -700,9 +704,9 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
 
         rates = ""
         for cnt, lbl in zip(op_count, op_label):
-            rates += " %g %s/s" % (cnt/elapsed, lbl)
+            rates += " %g %s/s" % (cnt/elapsed_wall, lbl)
 
-        print "elapsed: %g s event, %s s other-event %g s wall (%d rounds)%s" % (
+        print "elapsed: %g s event, %s s marker-event %g s wall (%d rounds)%s" % (
                 elapsed, elapsed_evt_2, elapsed_wall, timing_rounds, rates)
 
         if do_check:
