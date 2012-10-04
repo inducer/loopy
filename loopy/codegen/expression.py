@@ -49,7 +49,26 @@ class TypeInferenceMapper(CombineMapper):
         return result
 
     def map_constant(self, expr):
-        return np.asarray(expr).dtype
+        if isinstance(expr, int):
+            for tp in [np.int8, np.int16, np.int32, np.int64]:
+                iinfo = np.iinfo(tp)
+                if iinfo.min <= expr <= iinfo.max:
+                    return np.dtype(tp)
+
+            else:
+                raise TypeInferenceFailure("integer constant '%s' too large" % expr)
+
+        dt = np.asarray(expr).dtype
+        if dt.kind == "f":
+            # deduce the smaller type by default
+            return np.dtype(np.float32)
+        elif dt.kind == "f":
+            # deduce the smaller type by default
+            return np.dtype(np.complex64)
+        elif hasattr(expr, "dtype"):
+            return expr.dtype
+        else:
+            raise TypeInferenceFailure("cannot deduce type of constant '%s'" % expr)
 
     def map_subscript(self, expr):
         return self.rec(expr.aggregate)

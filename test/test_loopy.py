@@ -14,6 +14,30 @@ __all__ = ["pytest_generate_tests",
 
 
 
+def test_type_inference_no_artificial_doubles(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i]: 0<=i<n}",
+            """
+                <> bb = a[i] - b[i]
+                c[i] = bb
+                """,
+            [
+                lp.GlobalArg("a", np.float32, shape=("n",)),
+                lp.GlobalArg("b", np.float32, shape=("n",)),
+                lp.GlobalArg("c", np.float32, shape=("n",)),
+                lp.ValueArg("n", np.int32),
+                ],
+            assumptions="n>=1")
+
+    for k in lp.generate_loop_schedules(knl):
+        code = lp.generate_code(k)
+        assert "double" not in code
+
+
+
+
 def test_simple_side_effect(ctx_factory):
     ctx = ctx_factory()
 

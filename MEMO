@@ -46,6 +46,8 @@ To-do
 
 - Fix timer / call code
 
+- use memory pools for arrays
+
 Fixes:
 
 - Group instructions by dependency/inames for scheduling, to
