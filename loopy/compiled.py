@@ -194,7 +194,8 @@ class CompiledKernel:
                 alloc_size = sum(astrd*(alen-1)
                         for alen, astrd in zip(shape, numpy_strides)) + 1
 
-                storage = cl_array.empty(queue, alloc_size, arg.dtype)
+                storage = cl_array.empty(queue, alloc_size, arg.dtype,
+                        allocator=allocator)
                 val = cl_array.as_strided(storage, shape, numpy_strides)
             else:
                 assert _arg_matches_spec(arg, val, kwargs)
