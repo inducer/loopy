@@ -191,12 +191,17 @@ class CompiledKernel:
 
                 from pytools import all
                 assert all(s > 0 for s in numpy_strides)
-                alloc_size = sum(astrd*(alen-1)
-                        for alen, astrd in zip(shape, numpy_strides)) + 1
+                alloc_size = (sum(astrd*(alen-1)
+                        for alen, astrd in zip(shape, numpy_strides))
+                        + arg.dtype.itemsize)
 
-                storage = cl_array.empty(queue, alloc_size, arg.dtype,
-                        allocator=allocator)
-                val = cl_array.as_strided(storage, shape, numpy_strides)
+                if allocator is None:
+                    storage = cl.Buffer(queue.context, cl.mem_flags.READ_WRITE, alloc_size)
+                else:
+                    storage = allocator(alloc_size)
+
+                val = cl_array.Array(queue, shape, arg.dtype,
+                        strides=numpy_strides, data=storage, allocator=allocator)
             else:
                 assert _arg_matches_spec(arg, val, kwargs)
 
