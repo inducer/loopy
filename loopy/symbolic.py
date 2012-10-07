@@ -119,6 +119,9 @@ class LinearSubscript(AlgebraicLeaf):
     def __getinitargs__(self):
         return self.aggregate, self.index
 
+    def stringifier(self):
+        return StringifyMapper
+
     mapper_method = intern("map_linear_subscript")
 
 # }}}
