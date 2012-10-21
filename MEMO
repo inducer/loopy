@@ -37,16 +37,22 @@ Things to consider
 
 - Limitation: base index for parallel axes is 0.
 
+- Dependency on order of operations is ill-formed
+
+- Dependency on non-local global writes is ill-formed
+
 To-do
 ^^^^^
 
 - Kernel splitting (via what variables get computed in a kernel)
 
+- Kernel fusion
+
+- Data implementation tags
+
 - Make tests run on GPUs
 
 - Fix timer / call code
-
-- use memory pools for arrays
 
 Fixes:
 
