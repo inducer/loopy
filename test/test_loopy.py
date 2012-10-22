@@ -344,7 +344,11 @@ def make_random_value():
     elif v == 1:
         return uniform(-10, 10)
     else:
-        return uniform(-10, 10) + 1j*uniform(-10, 10)
+        cval = uniform(-10, 10) + 1j*uniform(-10, 10)
+        if randrange(0, 2) == 0:
+            return np.complex128(cval)
+        else:
+            return np.complex128(cval)
 
 
 
@@ -371,9 +375,15 @@ def make_random_expression(var_values, size):
         var_values[var_name] = make_random_value()
         return p.Variable(var_name)
     elif v < 1250:
-        return make_random_expression(var_values, size) - make_random_expression(var_values, size)
+        # Cannot use '-' because that destroys numpy constants.
+        return p.Sum((
+            make_random_expression(var_values, size),
+            - make_random_expression(var_values, size)))
     elif v < 1500:
-        return make_random_expression(var_values, size) / make_random_expression(var_values, size)
+        # Cannot use '/' because that destroys numpy constants.
+        return p.Quotient(
+                make_random_expression(var_values, size),
+                make_random_expression(var_values, size))
 
 
 def generate_random_fuzz_examples(count):
@@ -388,13 +398,13 @@ def test_fuzz_code_generator(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     #from expr_fuzz import get_fuzz_examples
-    for expr, var_values in generate_random_fuzz_examples(20):
+    for expr, var_values in generate_random_fuzz_examples(50):
     #for expr, var_values in get_fuzz_examples():
         from pymbolic import evaluate
         true_value = evaluate(expr, var_values)
 
         def get_dtype(x):
-            if isinstance(x, complex):
+            if isinstance(x, (complex, np.complexfloating)):
                 return np.complex128
             else:
                 return np.float64

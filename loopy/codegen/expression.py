@@ -34,6 +34,7 @@ from pymbolic.mapper import CombineMapper
 import islpy as isl
 import pyopencl as cl
 import pyopencl.array
+from pytools import memoize_method
 
 # {{{ type inference
 
@@ -84,16 +85,21 @@ class TypeInferenceMapper(CombineMapper):
                 raise TypeInferenceFailure("integer constant '%s' too large" % expr)
 
         dt = np.asarray(expr).dtype
-        if dt.kind == "f":
-            # deduce the smaller type by default
-            return np.dtype(np.float32)
+        if hasattr(expr, "dtype"):
+            return expr.dtype
+        elif isinstance(expr, np.number):
+            # Numpy types are sized
+            return np.dtype(type(expr))
         elif dt.kind == "f":
             # deduce the smaller type by default
-            return np.dtype(np.complex64)
-        elif hasattr(expr, "dtype"):
-            return expr.dtype
+            return np.dtype(np.float32)
+        elif dt.kind == "c":
+            # Codegen for complex types depends on exactly correct types.
+            # Refuse temptation to guess.
+            raise TypeInferenceFailure("Complex constant '%s' needs to "
+                    "be sized for type inference " % expr)
         else:
-            raise TypeInferenceFailure("cannot deduce type of constant '%s'" % expr)
+            raise TypeInferenceFailure("Cannot deduce type of constant '%s'" % expr)
 
     def map_subscript(self, expr):
         return self.rec(expr.aggregate)
@@ -157,17 +163,17 @@ class TypeInferenceMapper(CombineMapper):
     def map_reduction(self, expr):
         return expr.operation.result_dtype(self.rec(expr.expr), expr.inames)
 
+    # {{{ use caching
+
+    @memoize_method
+    def __call__(self, expr):
+        return CombineMapper.__call__(self, expr)
+
+    rec = __call__
+
+    # }}}
+
 # }}}
-
-def perform_cast(ccm, expr, expr_dtype, target_dtype):
-    # detect widen-to-complex, account for it.
-    if (ccm.allow_complex
-            and target_dtype.kind == "c"
-            and expr_dtype.kind != "c"):
-        from pymbolic import var
-        expr = var("%s_fromreal" % ccm.complex_type_name(target_dtype))(expr)
-
-    return expr
 
 # {{{ C code mapper
 
@@ -244,15 +250,34 @@ class LoopyCCodeMapper(RecursiveMapper):
         self.seen_dtypes.add(result)
         return result
 
-    def join_rec(self, joiner, iterable, prec, type_context):
+    def join_rec(self, joiner, iterable, prec, type_context, needed_dtype=None):
         f = joiner.join("%s" for i in iterable)
-        return f % tuple(self.rec(i, prec, type_context) for i in iterable)
+        return f % tuple(
+                self.rec(i, prec, type_context, needed_dtype) for i in iterable)
 
     def parenthesize_if_needed(self, s, enclosing_prec, my_prec):
         if enclosing_prec > my_prec:
             return "(%s)" % s
         else:
             return s
+
+    def rec(self, expr, prec, type_context, needed_dtype=None):
+        if needed_dtype is None:
+            return RecursiveMapper.rec(self, expr, prec, type_context)
+
+        actual_type = self.infer_type(expr)
+
+        if (actual_type.kind == "c" and needed_dtype.kind == "c"
+                and actual_type != needed_dtype):
+            result = RecursiveMapper.rec(self, expr, PREC_NONE, type_context)
+            return "%s_cast(%s)" % (self.complex_type_name(needed_dtype), result)
+        elif actual_type.kind != "c" and needed_dtype.kind == "c":
+            result = RecursiveMapper.rec(self, expr, PREC_NONE, type_context)
+            return "%s_fromreal(%s)" % (self.complex_type_name(needed_dtype), result)
+        else:
+            return RecursiveMapper.rec(self, expr, prec, type_context)
+
+    __call__ = rec
 
     # }}}
 
@@ -473,10 +498,14 @@ class LoopyCCodeMapper(RecursiveMapper):
                 enclosing_prec, PREC_COMPARISON)
 
     def map_constant(self, expr, enclosing_prec, type_context):
-        if isinstance(expr, complex):
-            cast_type = "cdouble_t"
-            if type_context == "f":
+        if isinstance(expr, (complex, np.complexfloating)):
+            if expr.dtype == np.complex128:
+                cast_type = "cdouble_t"
+            elif expr.dtype == np.complex64:
                 cast_type = "cfloat_t"
+            else:
+                raise RuntimeError("unsupported complex type in expression "
+                        "generation: %s" % type(expr))
 
             return "(%s) (%s, %s)" % (cast_type, repr(expr.real), repr(expr.imag))
         else:
@@ -516,9 +545,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                 result_dtype, c_name, arg_tgt_dtypes = mangle_result
 
                 str_parameters = [
-                        self.rec(
-                            perform_cast(self, par, par_dtype, tgt_dtype),
-                            PREC_NONE, dtype_to_type_context(tgt_dtype))
+                        self.rec(par, PREC_NONE, dtype_to_type_context(tgt_dtype),
+                            tgt_dtype)
                         for par, par_dtype, tgt_dtype in zip(
                             expr.parameters, par_dtypes, arg_tgt_dtypes)]
             else:
@@ -573,7 +601,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                     if 'c' == self.infer_type(child).kind]
 
             real_sum = self.join_rec(" + ", reals, PREC_SUM, type_context)
-            complex_sum = self.join_rec(" + ", complexes, PREC_SUM, type_context)
+            complex_sum = self.join_rec(" + ", complexes, PREC_SUM, type_context, tgt_dtype)
 
             if real_sum:
                 result = "%s_fromreal(%s) + %s" % (tgt_name, real_sum, complex_sum)
@@ -606,18 +634,19 @@ class LoopyCCodeMapper(RecursiveMapper):
             complexes = [child for child in expr.children
                     if 'c' == self.infer_type(child).kind]
 
-            real_prd = self.join_rec("*", reals, PREC_PRODUCT, type_context)
+            real_prd = self.join_rec(" * ", reals, PREC_PRODUCT,
+                    type_context)
 
             if len(complexes) == 1:
                 myprec = PREC_PRODUCT
             else:
                 myprec = PREC_NONE
 
-            complex_prd = self.rec(complexes[0], myprec, type_context)
+            complex_prd = self.rec(complexes[0], myprec, type_context, tgt_dtype)
             for child in complexes[1:]:
                 complex_prd = "%s_mul(%s, %s)" % (
                         tgt_name, complex_prd,
-                        self.rec(child, PREC_NONE, type_context))
+                        self.rec(child, PREC_NONE, type_context, tgt_dtype))
 
             if real_prd:
                 # elementwise semantics are correct
@@ -628,12 +657,13 @@ class LoopyCCodeMapper(RecursiveMapper):
             return self.parenthesize_if_needed(result, enclosing_prec, PREC_PRODUCT)
 
     def map_quotient(self, expr, enclosing_prec, type_context):
-        def base_impl(expr, enclosing_prec, type_context):
+        def base_impl(expr, enclosing_prec, type_context, num_tgt_dtype=None):
             return self.parenthesize_if_needed(
                     "%s / %s" % (
-                        # space is necessary--otherwise '/*' becomes
+                        # Space is necessary--otherwise '/*'
+                        # (i.e. divide-dererference) becomes
                         # start-of-comment in C.
-                        self.rec(expr.numerator, PREC_PRODUCT, type_context),
+                        self.rec(expr.numerator, PREC_PRODUCT, type_context, num_tgt_dtype),
                         # analogous to ^{-1}
                         self.rec(expr.denominator, PREC_POWER, type_context)),
                     enclosing_prec, PREC_PRODUCT)
@@ -650,17 +680,18 @@ class LoopyCCodeMapper(RecursiveMapper):
             return base_impl(expr, enclosing_prec, type_context)
         elif n_complex and not d_complex:
             # elementwise semantics are correct
-            return base_impl(expr, enclosing_prec, type_context)
+            return base_impl(expr, enclosing_prec, type_context,
+                    num_tgt_dtype=tgt_dtype)
         elif not n_complex and d_complex:
             return "%s_rdivide(%s, %s)" % (
                     self.complex_type_name(tgt_dtype),
                     self.rec(expr.numerator, PREC_NONE, type_context),
-                    self.rec(expr.denominator, PREC_NONE, type_context))
+                    self.rec(expr.denominator, PREC_NONE, type_context, tgt_dtype))
         else:
             return "%s_divide(%s, %s)" % (
                     self.complex_type_name(tgt_dtype),
-                    self.rec(expr.numerator, PREC_NONE, type_context),
-                    self.rec(expr.denominator, PREC_NONE, type_context))
+                    self.rec(expr.numerator, PREC_NONE, type_context, tgt_dtype),
+                    self.rec(expr.denominator, PREC_NONE, type_context, tgt_dtype))
 
     def map_remainder(self, expr, enclosing_prec, type_context):
         tgt_dtype = self.infer_type(expr)
@@ -704,21 +735,17 @@ class LoopyCCodeMapper(RecursiveMapper):
                 if b_complex and not e_complex:
                     return "%s_powr(%s, %s)" % (
                             self.complex_type_name(tgt_dtype),
-                            self.rec(expr.base, PREC_NONE, type_context),
+                            self.rec(expr.base, PREC_NONE, type_context, tgt_dtype),
                             self.rec(expr.exponent, PREC_NONE, type_context))
                 else:
                     return "%s_pow(%s, %s)" % (
                             self.complex_type_name(tgt_dtype),
-                            self.rec(expr.base, PREC_NONE, type_context),
-                            self.rec(expr.exponent, PREC_NONE, type_context))
+                            self.rec(expr.base, PREC_NONE, type_context, tgt_dtype),
+                            self.rec(expr.exponent, PREC_NONE, type_context, tgt_dtype))
 
         return base_impl(self, expr, enclosing_prec, type_context)
 
     # }}}
-
-    def __call__(self, expr, type_context, prec=PREC_NONE):
-        from pymbolic.mapper import RecursiveMapper
-        return RecursiveMapper.__call__(self, expr, prec, type_context)
 
 # }}}
 
