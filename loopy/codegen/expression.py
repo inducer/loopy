@@ -52,6 +52,9 @@ class TypeInferenceMapper(CombineMapper):
 
         self.temporary_variables = temporary_variables
 
+    # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
+    # are Python-equal.
+
     def combine(self, dtypes):
         dtypes = list(dtypes)
 
@@ -163,16 +166,6 @@ class TypeInferenceMapper(CombineMapper):
     def map_reduction(self, expr):
         return expr.operation.result_dtype(self.rec(expr.expr), expr.inames)
 
-    # {{{ use caching
-
-    @memoize_method
-    def __call__(self, expr):
-        return CombineMapper.__call__(self, expr)
-
-    rec = __call__
-
-    # }}}
-
 # }}}
 
 # {{{ C code mapper
@@ -261,7 +254,7 @@ class LoopyCCodeMapper(RecursiveMapper):
         else:
             return s
 
-    def rec(self, expr, prec, type_context, needed_dtype=None):
+    def rec(self, expr, prec, type_context=None, needed_dtype=None):
         if needed_dtype is None:
             return RecursiveMapper.rec(self, expr, prec, type_context)
 

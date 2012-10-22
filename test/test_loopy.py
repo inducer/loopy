@@ -63,6 +63,32 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
 
 
 
+def test_sized_and_complex_literals(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i]: 0<=i<n}",
+            """
+                <> aa = 5jf
+                <> bb = 5j
+                a[i] = imag(aa)
+                b[i] = imag(bb)
+                c[i] = 5f
+                """,
+            [
+                lp.GlobalArg("a", np.float32, shape=("n",)),
+                lp.GlobalArg("b", np.float32, shape=("n",)),
+                lp.GlobalArg("c", np.float32, shape=("n",)),
+                lp.ValueArg("n", np.int32),
+                ],
+            assumptions="n>=1")
+
+    lp.auto_test_vs_ref(knl, ctx, lp.generate_loop_schedules(knl),
+            parameters=dict(n=5))
+
+
+
+
 def test_simple_side_effect(ctx_factory):
     ctx = ctx_factory()
 

@@ -55,6 +55,9 @@ from pymbolic.parser import Parser as ParserBase
 import islpy as isl
 from islpy import dim_type
 
+import re
+import numpy as np
+
 
 
 
@@ -345,11 +348,29 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 _open_dbl_bracket = intern("open_dbl_bracket")
 _close_dbl_bracket = intern("close_dbl_bracket")
 
+TRAILING_FLOAT_TAG_RE = re.compile("^(.*?)([a-zA-Z]*)$")
+
 class LoopyParser(ParserBase):
     lex_table = [
             (_open_dbl_bracket, pytools.lex.RE(r"\[\[")),
             (_close_dbl_bracket, pytools.lex.RE(r"\]\]")),
             ] + ParserBase.lex_table
+
+    def parse_float(self, s):
+        match = TRAILING_FLOAT_TAG_RE.match(s)
+
+        val = match.group(1)
+        tag = frozenset(match.group(2))
+        if tag == frozenset("j"):
+            return np.float64(val)*np.complex128(1j)
+        elif tag == frozenset("jf"):
+            return np.float32(val)*np.complex64(1j)
+        elif tag == frozenset("f"):
+            return np.float32(val)
+        elif tag == frozenset("d"):
+            return np.float64(val)
+        else:
+            return float(val) # generic float
 
     def parse_postfix(self, pstate, min_precedence, left_exp):
         from pymbolic.parser import _PREC_CALL
