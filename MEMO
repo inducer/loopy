@@ -44,15 +44,26 @@ Things to consider
 To-do
 ^^^^^
 
-- Kernel splitting (via what variables get computed in a kernel)
+- Prohibit known variable names as subst rule arguments
+
+- Expose iname-duplicate-and-rename as a primitive.
 
 - Kernel fusion
 
 - Data implementation tags
+  TODO initial bringup:
+  - implemented_arg_info
+  - Arg declaration
+  - Temp var declaration
+  - Adapt padding
+  - loopy.compiled
+
+  TODO further:
+  - vectorization
+  - automatic copies
+  - write_image()
 
 - Make tests run on GPUs
-
-- Fix timer / call code
 
 Fixes:
 
@@ -67,11 +78,11 @@ Fixes:
 Future ideas
 ^^^^^^^^^^^^
 
+- Kernel splitting (via what variables get computed in a kernel)
+
 - Put all OpenCL functions into mangler
 
 - Fuse: store/fetch elimination?
-
-- Expose iname-duplicate-and-rename as a primitive.
 
 - Array language
 
