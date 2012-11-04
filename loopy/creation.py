@@ -431,10 +431,19 @@ def make_kernel(*args, **kwargs):
 
     check_for_nonexistent_iname_deps(knl)
 
+    knl = duplicate_reduction_inames(knl)
+
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must duplicate reduction inames before tagging reduction inames as
+    # sequential because otherwise the latter operation will run into @iname
+    # (i.e. duplication) markers and not understand them.
+    # -------------------------------------------------------------------------
+
     knl = tag_reduction_inames_as_sequential(knl)
 
     knl = create_temporaries(knl)
-    knl = duplicate_reduction_inames(knl)
     knl = duplicate_inames(knl)
 
     # -------------------------------------------------------------------------
