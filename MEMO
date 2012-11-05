@@ -51,6 +51,7 @@ To-do
 - ExpandingIdentityMapper
   extract_subst -> needs WalkMapper
   padding
+  replace make_unique_var_name
   join_inames [DONE]
   duplicate_inames [DONE]
   split_iname [DONE]
