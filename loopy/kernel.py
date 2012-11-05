@@ -896,9 +896,11 @@ class LoopKernel(Record):
                     subst_name = lhs.function.name
                     arg_names = []
 
-                    for arg in lhs.parameters:
+                    for i, arg in enumerate(lhs.parameters):
                         if not isinstance(arg, Variable):
-                            raise RuntimeError("Invalid substitution rule left-hand side")
+                            raise RuntimeError("Invalid substitution rule "
+					    "left-hand side: %s--arg number %d "
+					    "is not a variable"% (lhs, i))
                         arg_names.append(arg.name)
                 else:
                     raise RuntimeError("Invalid substitution rule left-hand side")
