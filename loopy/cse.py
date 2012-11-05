@@ -385,8 +385,8 @@ class InvocationGatherer(ExpandingIdentityMapper):
         ExpandingIdentityMapper.__init__(self,
                 kernel.substitutions, kernel.get_var_name_generator())
 
-        from loopy.symbolic import ParametrizedSubstitutor
-        self.subst_expander = ParametrizedSubstitutor(
+        from loopy.symbolic import SubstitutionRuleExpander
+        self.subst_expander = SubstitutionRuleExpander(
                 kernel.substitutions)
 
         self.kernel = kernel
@@ -449,8 +449,8 @@ class InvocationReplacer(ExpandingIdentityMapper):
         ExpandingIdentityMapper.__init__(self,
                 kernel.substitutions, kernel.get_var_name_generator())
 
-        from loopy.symbolic import ParametrizedSubstitutor
-        self.subst_expander = ParametrizedSubstitutor(
+        from loopy.symbolic import SubstitutionRuleExpander
+        self.subst_expander = SubstitutionRuleExpander(
                 kernel.substitutions, kernel.get_var_name_generator())
 
         self.kernel = kernel
@@ -714,8 +714,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     # extra axes made necessary because they don't occur in the arguments
     extra_storage_axes = sweep_inames_set - expanding_usage_arg_deps
 
-    from loopy.symbolic import ParametrizedSubstitutor
-    submap = ParametrizedSubstitutor(kernel.substitutions)
+    from loopy.symbolic import SubstitutionRuleExpander
+    submap = SubstitutionRuleExpander(kernel.substitutions)
 
     value_inames = get_dependencies(
             submap(subst.expression, insn_id=None)) & kernel.all_inames()

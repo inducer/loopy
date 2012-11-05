@@ -173,9 +173,9 @@ def extract_subst(kernel, subst_name, template, parameters):
 
 
 def expand_subst(kernel, ctx_match=None):
-    from loopy.symbolic import ParametrizedSubstitutor
+    from loopy.symbolic import SubstitutionRuleExpander
     from loopy.context_matching import parse_stack_match
-    submap = ParametrizedSubstitutor(kernel.substitutions,
+    submap = SubstitutionRuleExpander(kernel.substitutions,
             kernel.get_var_name_generator(),
             parse_stack_match(ctx_match))
 

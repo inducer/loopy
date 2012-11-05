@@ -50,8 +50,8 @@ To-do
 
 - ExpandingIdentityMapper
   extract_subst -> needs WalkMapper
-  join_inames
   padding
+  join_inames [DONE]
   duplicate_inames [DONE]
   split_iname [DONE]
   CSE [DONE]
@@ -69,8 +69,6 @@ To-do
   - automatic copies
   - write_image()
   - change_arg_to_image (test!)
-
-- Import SEM test
 
 - Make tests run on GPUs
 

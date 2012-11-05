@@ -244,10 +244,14 @@ split_dimension = MovedFunctionDeprecationWrapper(split_iname)
 
 # {{{ join inames
 
-def join_inames(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
+def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     """
     :arg inames: fastest varying last
+    :arg within: a stack match as understood by :func:`loopy.context_matching.parse_stack_match`.
     """
+
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
 
     # now fastest varying first
     inames = inames[::-1]
@@ -310,10 +314,6 @@ def join_inames(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
         new_domain = new_domain.eliminate(iname_dt, iname_idx, 1)
         new_domain = new_domain.remove_dims(iname_dt, iname_idx, 1)
 
-    from loopy.symbolic import SubstitutionMapper
-    from pymbolic.mapper.substitutor import make_subst_func
-    subst_map = SubstitutionMapper(make_subst_func(subst_dict))
-
     def subst_forced_iname_deps(fid):
         result = set()
         for iname in fid:
@@ -326,20 +326,28 @@ def join_inames(kernel, inames, new_iname=None, tag=AutoFitLocalIndexTag()):
 
     new_insns = [
             insn.copy(
-                assignee=subst_map(insn.assignee),
-                expression=subst_map(insn.expression),
                 forced_iname_deps=subst_forced_iname_deps(insn.forced_iname_deps))
             for insn in kernel.instructions]
 
-    result = (kernel
-            .map_expressions(subst_map, exclude_instructions=True)
+    kernel = (kernel
             .copy(
                 instructions=new_insns,
                 domains=domch.get_domains_with(new_domain),
-                applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_map]
+                applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
                 ))
 
-    return tag_inames(result, {new_iname: tag})
+    from loopy.symbolic import ExpandingSubstitutionMapper
+    from pymbolic.mapper.substitutor import make_subst_func
+    subst_map = ExpandingSubstitutionMapper(
+            kernel.substitutions, kernel.get_var_name_generator(),
+            make_subst_func(subst_dict), within)
+
+    kernel = subst_map.map_kernel(kernel)
+
+    if tag is not None:
+        kernel = tag_inames(kernel, {new_iname: tag})
+
+    return kernel
 
 join_dimensions = MovedFunctionDeprecationWrapper(join_inames)
 

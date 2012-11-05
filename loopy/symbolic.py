@@ -474,11 +474,25 @@ class ExpandingIdentityMapper(IdentityMapper):
             substitutions=new_substs,
             instructions=rename_subst_rules_in_instructions(new_insns, renames))
 
+class ExpandingSubstitutionMapper(ExpandingIdentityMapper):
+    def __init__(self, rules, make_unique_var_name, subst_func, within):
+        ExpandingIdentityMapper.__init__(self, rules, make_unique_var_name)
+
+        self.subst_func = subst_func
+        self.within = within
+
+    def map_variable(self, expr, expn_state):
+        result = self.subst_func(expr)
+        if result is not None or not self.within(expn_state.stack):
+            return result
+        else:
+            return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+
 # }}}
 
-# {{{ parametrized substitutor
+# {{{ substitution rule expander
 
-class ParametrizedSubstitutor(ExpandingIdentityMapper):
+class SubstitutionRuleExpander(ExpandingIdentityMapper):
     def __init__(self, rules, make_unique_var=None, ctx_match=None):
         ExpandingIdentityMapper.__init__(self, rules, make_unique_var)
 

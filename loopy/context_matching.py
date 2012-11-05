@@ -163,8 +163,11 @@ def parse_stack_match(smatch):
 
         lowest < next < ... < highest
 
-    where `lowest` is necessarily the bottom of the stack. There is currently
-    no way to anchor to the top of the stack.
+    where `lowest` is necessarily the bottom of the stack.  `...` matches an
+    arbitrary number of intervening stack levels. There is currently no way to
+    match the top of the stack.
+
+    Each of the entries is an identifier match as understood by :func:`parse_id_match`.
     """
 
     if isinstance(smatch, StackMatchBase):
