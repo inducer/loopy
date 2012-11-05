@@ -91,7 +91,7 @@ def extract_subst(kernel, subst_name, template, parameters):
 
         if urecs:
             if len(urecs) > 1:
-                raise RuntimeError("ambiguous unification of '%s' with template '%s'" 
+                raise RuntimeError("ambiguous unification of '%s' with template '%s'"
                         % (expr, template))
 
             urec, = urecs
@@ -155,7 +155,7 @@ def extract_subst(kernel, subst_name, template, parameters):
     new_substs = {
             subst_name: SubstitutionRule(
                 name=subst_name,
-                arguments=parameters,
+                arguments=tuple(parameters),
                 expression=template,
                 )}
 
@@ -172,27 +172,13 @@ def extract_subst(kernel, subst_name, template, parameters):
 
 
 
-def expand_subst(kernel, subst_name=None):
-    if subst_name is None:
-        rules = kernel.substitutions
-    else:
-        rule = kernel.substitutions[subst_name]
-        rules = {rule.name: rule}
-
+def expand_subst(kernel, ctx_match=None):
     from loopy.symbolic import ParametrizedSubstitutor
-    submap = ParametrizedSubstitutor(rules)
+    from loopy.context_matching import parse_stack_match
+    submap = ParametrizedSubstitutor(kernel.substitutions,
+            kernel.get_var_name_generator(),
+            parse_stack_match(ctx_match))
 
-    if subst_name:
-        new_substs = kernel.substitutions.copy()
-        del new_substs[subst_name]
-    else:
-        new_substs = {}
-
-    return (kernel
-            .copy(substitutions=new_substs)
-            .map_expressions(submap))
-
-
-
+    return submap.map_kernel(kernel)
 
 # vim: foldmethod=marker

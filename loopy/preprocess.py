@@ -229,6 +229,7 @@ def realize_reduction(kernel, insn_id_filter=None):
 
     new_insns = []
     new_temporary_variables = kernel.temporary_variables.copy()
+    orig_temp_var_names = set(kernel.temporary_variables)
 
     from loopy.codegen.expression import TypeInferenceMapper
     type_inf_mapper = TypeInferenceMapper(kernel)
@@ -240,7 +241,7 @@ def realize_reduction(kernel, insn_id_filter=None):
         from pymbolic import var
 
         target_var_name = kernel.make_unique_var_name("acc_"+"_".join(expr.inames),
-                extra_used_vars=set(new_temporary_variables))
+                extra_used_vars=set(new_temporary_variables) - orig_temp_var_names)
         target_var = var(target_var_name)
 
         arg_dtype = type_inf_mapper(expr.expr)
@@ -437,11 +438,20 @@ def duplicate_private_temporaries_for_ilp(kernel):
     # }}}
 
     from pymbolic import var
-    return (kernel
-            .copy(temporary_variables=new_temp_vars)
-            .map_expressions(ExtraInameIndexInserter(
-                dict((var_name, tuple(var(iname) for iname in inames))
-                    for var_name, inames in var_to_new_ilp_inames.iteritems()))))
+    eiii = ExtraInameIndexInserter(
+            dict((var_name, tuple(var(iname) for iname in inames))
+                for var_name, inames in var_to_new_ilp_inames.iteritems()))
+
+
+    new_insns = [
+            insn.copy(
+                assignee=eiii(insn.assignee),
+                expression=eiii(insn.expression))
+            for insn in kernel.instructions]
+
+    return kernel.copy(
+        temporary_variables=new_temp_vars,
+        instructions=new_insns)
 
 # }}}
 

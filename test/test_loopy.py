@@ -39,6 +39,40 @@ __all__ = ["pytest_generate_tests",
 
 
 
+def test_complicated_subst(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i]: 0<=i<n}",
+            """
+                f(x) := x*a[x]
+                g(x) := 12 + f(x)
+                h(x) := 1 + g(x) + 20*g$two(x)
+
+                a[i] = h$one(i) * h$two(i)
+                """,
+            [
+                lp.GlobalArg("a", np.float32, shape=("n",)),
+                lp.ValueArg("n", np.int32),
+                ])
+
+    from loopy.subst import expand_subst
+    knl = expand_subst(knl, "g$two < h$two")
+
+    print knl
+
+    sr_keys = knl.substitutions.keys()
+    for letter, how_many in [
+            ("f", 1),
+            ("g", 1),
+            ("h", 2)
+            ]:
+        substs_with_letter = sum(1 for k in sr_keys if k.startswith(letter))
+        assert substs_with_letter == how_many
+
+
+
+
 def test_type_inference_no_artificial_doubles(ctx_factory):
     ctx = ctx_factory()
 
@@ -135,10 +169,12 @@ def test_owed_barriers(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i]: 0<=i<100}",
             [
-                "[i:l.0] <float32> z[i] = a[i]"
+                "<float32> z[i] = a[i]"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))]
             )
+
+    knl = lp.tag_inames(knl, dict(i="l.0"))
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen)
@@ -156,10 +192,12 @@ def test_wg_too_small(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i]: 0<=i<100}",
             [
-                "[i:l.0] <float32> z[i] = a[i] {id=copy}"
+                "<float32> z[i] = a[i] {id=copy}"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))],
             local_sizes={0: 16})
+
+    knl = lp.tag_inames(knl, dict(i="l.0"))
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen)
@@ -242,7 +280,7 @@ def test_multi_cse(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i]: 0<=i<100}",
             [
-                "[i] <float32> z[i] = a[i] + a[i]**2"
+                "<float32> z[i] = a[i] + a[i]**2"
                 ],
             [lp.GlobalArg("a", np.float32, shape=(100,))],
             local_sizes={0: 16})
@@ -816,13 +854,15 @@ def test_ilp_write_race_detection_global(ctx_factory):
             "[n] -> {[i,j]: 0<=i,j<n }",
             ],
             [
-                "[j:ilp] a[i] = 5+i+j",
+                "a[i] = 5+i+j",
                 ],
             [
                 lp.GlobalArg("a", np.float32),
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ],
             assumptions="n>=1")
+
+    knl = lp.tag_inames(knl, dict(j="ilp"))
 
     from loopy.check import WriteRaceConditionError
     import pytest
@@ -838,9 +878,11 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[i,j]: 0<=i<16 and 0<=j<17 }",
             [
-                "[i:l.0, j:ilp] <> a[i] = 5+i+j",
+                "<> a[i] = 5+i+j",
                 ],
             [])
+
+    knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
 
     for k in lp.generate_loop_schedules(knl):
         assert k.temporary_variables["a"].shape == (16,17)
@@ -854,9 +896,11 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "{[j]: 0<=j<16 }",
             [
-                "[j:ilp] <> a = 5+j",
+                "<> a = 5+j",
                 ],
             [])
+
+    knl = lp.tag_inames(knl, dict(j="ilp"))
 
     for k in lp.generate_loop_schedules(knl):
         assert k.temporary_variables["a"].shape == (16,)

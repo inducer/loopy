@@ -308,6 +308,8 @@ class SubstitutionRule(Record):
     """
 
     def __init__(self, name, arguments, expression):
+        assert isinstance(arguments, tuple)
+
         Record.__init__(self,
                 name=name, arguments=arguments, expression=expression)
 
@@ -343,15 +345,12 @@ class Instruction(Record):
 
     :ivar temp_var_type: if not None, a type that will be assigned to the new temporary variable
         created from the assignee
-    :ivar duplicate_inames_and_tags: a list of inames used in the instruction that will be duplicated onto
-        different inames.
     """
     def __init__(self,
             id, assignee, expression,
             forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
             boostable_into=None,
-            temp_var_type=None, duplicate_inames_and_tags=[],
-            priority=0):
+            temp_var_type=None, priority=0):
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -368,14 +367,13 @@ class Instruction(Record):
                 insn_deps=insn_deps, boostable=boostable,
                 boostable_into=boostable_into,
                 temp_var_type=temp_var_type,
-                duplicate_inames_and_tags=duplicate_inames_and_tags,
                 priority=priority)
 
     @memoize_method
     def reduction_inames(self):
         def map_reduction(expr, rec):
             rec(expr.expr)
-            for iname in expr.untagged_inames:
+            for iname in expr.inames:
                 result.add(iname)
 
         from loopy.symbolic import ReductionCallbackMapper
@@ -631,6 +629,29 @@ def _generate_unique_possibilities(prefix):
         yield "%s_%d" % (prefix, try_num)
         try_num += 1
 
+class _UniqueNameGenerator:
+    def __init__(self, existing_names):
+        self.existing_names = existing_names.copy()
+
+    def is_name_conflicting(self, name):
+        return name in self.existing_names
+
+    def add_name(self, name):
+        assert name not in self.existing_names
+        self.existing_names.add(name)
+
+    def add_names(self, names):
+        assert not frozenset(names) & self.existing_names
+        self.existing_names.update(names)
+
+    def __call__(self, based_on="var"):
+        for var_name in _generate_unique_possibilities(based_on):
+            if not self.is_name_conflicting(var_name):
+                break
+
+        self.existing_names.add(var_name)
+        return var_name
+
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
 def _gather_identifiers(s):
@@ -783,13 +804,7 @@ class LoopKernel(Record):
 
         # {{{ parse instructions
 
-        INAME_ENTRY_RE = re.compile(
-                r"^\s*(?P<iname>\w+)\s*(?:\:\s*(?P<tag>[\w.]+))?\s*$")
         INSN_RE = re.compile(
-                "\s*(?:\["
-                    "(?P<iname_deps_and_tags>[\s\w,:.]*)"
-                    "(?:\|(?P<duplicate_inames_and_tags>[\s\w,:.]*))?"
-                "\])?"
                 "\s*(?:\<(?P<temp_var_type>.*?)\>)?"
                 "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
                 "\s*?(?:\{(?P<options>[\s\w=,:]+)\}\s*)?$"
@@ -797,32 +812,6 @@ class LoopKernel(Record):
         SUBST_RE = re.compile(
                 r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$"
                 )
-
-        def parse_iname_and_tag_list(s):
-            dup_entries = [
-                    dep.strip() for dep in s.split(",")]
-            result = []
-            for entry in dup_entries:
-                if not entry:
-                    continue
-
-                entry_match = INAME_ENTRY_RE.match(entry)
-                if entry_match is None:
-                    raise RuntimeError(
-                            "could not parse iname:tag entry '%s'"
-                            % entry)
-
-                groups = entry_match.groupdict()
-                iname = groups["iname"]
-                assert iname
-
-                tag = None
-                if groups["tag"] is not None:
-                    tag = parse_tag(groups["tag"])
-
-                result.append((iname, tag))
-
-            return result
 
         def parse_insn(insn):
             insn_match = INSN_RE.match(insn)
@@ -870,20 +859,6 @@ class LoopKernel(Record):
                             raise ValueError("unrecognized instruction option '%s'"
                                     % opt_key)
 
-                if groups["iname_deps_and_tags"] is not None:
-                    inames_and_tags = parse_iname_and_tag_list(
-                            groups["iname_deps_and_tags"])
-                    forced_iname_deps = frozenset(iname for iname, tag in inames_and_tags)
-                    iname_to_tag_requests.update(dict(inames_and_tags))
-                else:
-                    forced_iname_deps = frozenset()
-
-                if groups["duplicate_inames_and_tags"] is not None:
-                    duplicate_inames_and_tags = parse_iname_and_tag_list(
-                            groups["duplicate_inames_and_tags"])
-                else:
-                    duplicate_inames_and_tags = []
-
                 if groups["temp_var_type"] is not None:
                     if groups["temp_var_type"]:
                         temp_var_type = np.dtype(groups["temp_var_type"])
@@ -903,10 +878,9 @@ class LoopKernel(Record):
                             id=self.make_unique_instruction_id(
                                 parsed_instructions, based_on=insn_id),
                             insn_deps=insn_deps,
-                            forced_iname_deps=forced_iname_deps,
+                            forced_iname_deps=frozenset(),
                             assignee=lhs, expression=rhs,
                             temp_var_type=temp_var_type,
-                            duplicate_inames_and_tags=duplicate_inames_and_tags,
                             priority=priority))
 
             elif subst_match is not None:
@@ -930,7 +904,7 @@ class LoopKernel(Record):
 
                 substitutions[subst_name] = SubstitutionRule(
                         name=subst_name,
-                        arguments=arg_names,
+                        arguments=tuple(arg_names),
                         expression=rhs)
 
         def parse_if_necessary(insn):
@@ -1111,11 +1085,16 @@ class LoopKernel(Record):
                 | set(self.all_inames()))
 
     def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
-        used_vars = self.all_variable_names() | extra_used_vars
+        from warnings import warn
+        warn("make_unique_var_name is deprecated, use get_var_name_generator "
+                "instead", DeprecationWarning, stacklevel=2)
 
-        for var_name in _generate_unique_possibilities(based_on):
-            if var_name not in used_vars:
-                return var_name
+        gen = self.get_var_name_generator()
+        gen.add_names(extra_used_vars)
+        return gen(based_on)
+
+    def get_var_name_generator(self):
+        return _UniqueNameGenerator(self.all_variable_names())
 
     def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
         if insns is None:
@@ -1623,22 +1602,6 @@ class LoopKernel(Record):
 
     # }}}
 
-    def map_expressions(self, func, exclude_instructions=False):
-        if exclude_instructions:
-            new_insns = self.instructions
-        else:
-            new_insns = [insn.copy(
-                expression=func(insn.expression),
-                assignee=func(insn.assignee),
-                )
-                    for insn in self.instructions]
-
-        return self.copy(
-                instructions=new_insns,
-                substitutions=dict(
-                    (subst.name, subst.copy(expression=func(subst.expression)))
-                    for subst in self.substitutions.itervalues()))
-
     # {{{ pretty-printing
 
     def __str__(self):
@@ -1711,9 +1674,15 @@ def find_all_insn_inames(kernel):
     insn_id_to_inames = {}
     insn_assignee_inames = {}
 
+    all_read_deps = {}
+    all_write_deps = {}
+
+    from loopy.subst import expand_subst
+    kernel = expand_subst(kernel)
+
     for insn in kernel.instructions:
-        read_deps = get_dependencies(insn.expression)
-        write_deps = get_dependencies(insn.assignee)
+        all_read_deps[insn.id] = read_deps = get_dependencies(insn.expression)
+        all_write_deps[insn.id] = write_deps = get_dependencies(insn.assignee)
         deps = read_deps | write_deps
 
         iname_deps = (
@@ -1748,8 +1717,7 @@ def find_all_insn_inames(kernel):
             # of iname deps of all writers, and add those to insn's
             # dependencies.
 
-            for tv_name in (get_dependencies(insn.expression)
-                    & temp_var_names):
+            for tv_name in (all_read_deps[insn.id] & temp_var_names):
                 implicit_inames = None
 
                 for writer_id in writer_map[tv_name]:
@@ -1874,8 +1842,7 @@ class DomainChanger:
 
 # }}}
 
-
-# {{{ dot export
+# {{{ graphviz / dot export
 
 def get_dot_dependency_graph(kernel, iname_cluster=False, iname_edge=True):
     lines = []

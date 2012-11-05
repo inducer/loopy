@@ -39,6 +39,8 @@ from islpy import dim_type
 
 from pytools import MovedFunctionDeprecationWrapper
 
+from loopy.symbolic import ExpandingIdentityMapper
+
 
 
 
@@ -93,10 +95,46 @@ class infer_type:
 
 # {{{ split inames
 
+class _InameSplitter(ExpandingIdentityMapper):
+    def __init__(self, kernel, within,
+            split_iname, outer_iname, inner_iname, replacement_index):
+        ExpandingIdentityMapper.__init__(self,
+                kernel.substitutions, kernel.get_var_name_generator())
+
+        self.within = within
+
+        self.split_iname = split_iname
+        self.outer_iname = outer_iname
+        self.inner_iname = inner_iname
+
+        self.replacement_index = replacement_index
+
+    def map_reduction(self, expr, expn_state):
+        if self.split_iname in expr.inames and self.within(expn_state.stack):
+            new_inames = list(expr.inames)
+            new_inames.remove(self.split_iname)
+            new_inames.extend([self.outer_iname, self.inner_iname])
+
+            from loopy.symbolic import Reduction
+            return Reduction(expr.operation, tuple(new_inames),
+                        self.rec(expr.expr, expn_state))
+        else:
+            return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
+
+    def map_variable(self, expr, expn_state):
+        if expr.name == self.split_iname and self.within(expn_state.stack):
+            return self.replacement_index
+        else:
+            return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+
 def split_iname(kernel, split_iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
-        slabs=(0, 0), do_tagged_check=True):
+        slabs=(0, 0), do_tagged_check=True,
+        within=None):
+
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
 
     existing_tag = kernel.iname_to_tag.get(split_iname)
     from loopy.kernel import ForceSequentialTag
@@ -154,21 +192,16 @@ def split_iname(kernel, split_iname, inner_length,
     outer = var(outer_iname)
     new_loop_index = inner + outer*inner_length
 
+    subst_map = {var(split_iname): new_loop_index}
+    applied_iname_rewrites.append(subst_map)
+
     # {{{ actually modify instructions
 
-    from loopy.symbolic import ReductionLoopSplitter
+    ins = _InameSplitter(kernel, within,
+            split_iname, outer_iname, inner_iname, new_loop_index)
 
-    rls = ReductionLoopSplitter(split_iname, outer_iname, inner_iname)
     new_insns = []
     for insn in kernel.instructions:
-        subst_map = {var(split_iname): new_loop_index}
-        applied_iname_rewrites.append(subst_map)
-
-        from loopy.symbolic import SubstitutionMapper
-        subst_mapper = SubstitutionMapper(subst_map.get)
-
-        new_expr = subst_mapper(rls(insn.expression))
-
         if split_iname in insn.forced_iname_deps:
             new_forced_iname_deps = (
                     (insn.forced_iname_deps.copy()
@@ -178,8 +211,8 @@ def split_iname(kernel, split_iname, inner_length,
             new_forced_iname_deps = insn.forced_iname_deps
 
         insn = insn.copy(
-                assignee=subst_mapper(insn.assignee),
-                expression=new_expr,
+                assignee=ins(insn.assignee, insn.id),
+                expression=ins(insn.expression, insn.id),
                 forced_iname_deps=new_forced_iname_deps)
 
         new_insns.append(insn)
@@ -188,10 +221,11 @@ def split_iname(kernel, split_iname, inner_length,
 
     iname_slab_increments = kernel.iname_slab_increments.copy()
     iname_slab_increments[outer_iname] = slabs
+
     result = (kernel
-            .map_expressions(subst_mapper, exclude_instructions=True)
             .copy(domains=new_domains,
                 iname_slab_increments=iname_slab_increments,
+                substitutions=ins.get_new_substitutions(),
                 instructions=new_insns,
                 applied_iname_rewrites=applied_iname_rewrites,
                 ))
@@ -382,8 +416,10 @@ def _add_kernel_axis(kernel, axis_name, start, stop, base_inames):
     return kernel.copy(domains=domch.get_domains_with(domain))
 
 def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
-        footprint_subscripts, arg, newly_created_vars):
+        footprint_subscripts, arg):
     """Track applied iname rewrites, deal with slice specifiers ':'."""
+
+    name_gen = kernel.get_var_name_generator()
 
     from pymbolic.primitives import Variable
 
@@ -423,11 +459,9 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
                     raise NotImplementedError("add_prefetch only "
                             "supports full slices")
 
-                axis_name = kernel.make_unique_var_name(
-                        based_on="%s_fetch_axis_%d" % (arg.name, axis_nr),
-                        extra_used_vars=newly_created_vars)
+                axis_name = name_gen(
+                        based_on="%s_fetch_axis_%d" % (arg.name, axis_nr))
 
-                newly_created_vars.add(axis_name)
                 kernel = _add_kernel_axis(kernel, axis_name, 0, arg.shape[axis_nr],
                         frozenset(sweep_inames) | fsub_dependencies)
                 sweep_inames = sweep_inames + [axis_name]
@@ -537,11 +571,11 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     kernel, subst_use, sweep_inames, inames_to_be_removed = \
             _process_footprint_subscripts(
                     kernel,  rule_name, sweep_inames,
-                    footprint_subscripts, arg, newly_created_vars)
+                    footprint_subscripts, arg)
 
-    new_kernel = precompute(kernel, subst_use, arg.dtype, sweep_inames,
+    new_kernel = precompute(kernel, subst_use, sweep_inames,
             new_storage_axis_names=dim_arg_names,
-            default_tag=default_tag)
+            default_tag=default_tag, dtype=arg.dtype)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
@@ -571,49 +605,19 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
 # {{{ instruction processing
 
-class _IdMatch(object):
-    def __init__(self, value):
-        self.value = value
-
-class _ExactIdMatch(_IdMatch):
-    def __call__(self, insn):
-        return insn.id == self.value
-
-class _ReIdMatch:
-    def __call__(self, insn):
-        return self.value.match(insn.id) is not None
-
-def _parse_insn_match(insn_match):
-    import re
-    colon_idx = insn_match.find(":")
-    if colon_idx == -1:
-        return _ExactIdMatch(insn_match)
-
-    match_tp = insn_match[:colon_idx]
-    match_val = insn_match[colon_idx+1:]
-
-    if match_tp == "glob":
-        from fnmatch import translate
-        return _ReIdMatch(re.compile(translate(match_val)))
-    elif match_tp == "re":
-        return _ReIdMatch(re.compile(match_val))
-    else:
-        raise ValueError("match type '%s' not understood" % match_tp)
-
-
-
-
 def find_instructions(kernel, insn_match):
-    match = _parse_insn_match(insn_match)
-    return [insn for insn in kernel.instructions if match(insn)]
+    from loopy.context_matching import parse_id_match
+    match = parse_id_match(insn_match)
+    return [insn for insn in kernel.instructions if match(insn.id, None)]
 
 def map_instructions(kernel, insn_match, f):
-    match = _parse_insn_match(insn_match)
+    from loopy.context_matching import parse_id_match
+    match = parse_id_match(insn_match)
 
     new_insns = []
 
     for insn in kernel.instructions:
-        if match(insn):
+        if match(insn.id, None):
             new_insns.append(f(insn))
         else:
             new_insns.append(insn)
@@ -623,8 +627,8 @@ def map_instructions(kernel, insn_match, f):
 def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
-    *insn_match* may be an instruction id, a regular expression prefixed by `re:`,
-    or a file-name-style glob prefixed by `glob:`.
+    *insn_match* may be any instruction id match understood by
+    :func:`loopy.context_matching.parse_id_match`.
     """
 
     def set_prio(insn): return insn.copy(priority=priority)
@@ -634,8 +638,8 @@ def add_dependency(kernel, insn_match, dependency):
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
 
-    *insn_match* may be an instruction id, a regular expression prefixed by `re:`,
-    or a file-name-style glob prefixed by `glob:`.
+    *insn_match* may be any instruction id match understood by
+    :func:`loopy.context_matching.parse_id_match`.
     """
 
     def add_dep(insn): return insn.copy(insn_deps=insn.insn_deps + [dependency])
@@ -656,6 +660,13 @@ def change_arg_to_image(knl, name):
             new_args.append(arg)
 
     return knl.copy(args=new_args)
+
+# }}}
+
+# {{{ duplicate inames
+
+def duplicate_inames(knl, inames):
+    pass
 
 # }}}
 

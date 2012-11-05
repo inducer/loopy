@@ -41,14 +41,22 @@ Things to consider
 
 - Dependency on non-local global writes is ill-formed
 
+- No substitution rules allowed on lhs of insns
+
 To-do
 ^^^^^
-
-- Prohibit known variable names as subst rule arguments
 
 - Expose iname-duplicate-and-rename as a primitive.
 
 - Kernel fusion
+
+- ExpandingIdentityMapper
+  extract_subst -> needs WalkMapper
+  duplicate_inames
+  join_inames
+  padding
+  split_iname [DONE]
+  CSE [DONE]
 
 - Data implementation tags
   TODO initial bringup:
@@ -62,10 +70,17 @@ To-do
   - vectorization
   - automatic copies
   - write_image()
+  - change_arg_to_image (test!)
+
+- Import SEM test
 
 - Make tests run on GPUs
 
 Fixes:
+
+- applied_iname_rewrites tracking for prefetch footprints isn't bulletproof
+  old inames may still be around, so the rewrite may or may not have to be
+  applied.
 
 - Group instructions by dependency/inames for scheduling, to
   increase sched. scalability

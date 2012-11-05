@@ -29,7 +29,6 @@ import numpy as np
 import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.array as cl_array
-import pyopencl.clrandom as cl_random
 import loopy as lp
 
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \

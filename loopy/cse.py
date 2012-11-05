@@ -27,7 +27,8 @@ THE SOFTWARE.
 
 import islpy as isl
 from islpy import dim_type
-from loopy.symbolic import get_dependencies, SubstitutionMapper
+from loopy.symbolic import (get_dependencies, SubstitutionMapper,
+        ExpandingIdentityMapper)
 from pymbolic.mapper.substitutor import make_subst_func
 import numpy as np
 
@@ -39,16 +40,13 @@ from pymbolic import var
 
 class InvocationDescriptor(Record):
     __slots__ = [
-            "expr",
             "args",
             "expands_footprint",
             "is_in_footprint",
 
-            # Record from which substitution rule this invocation of the rule
-            # being precomputed originated. If all invocations end up being
-            # in-footprint, then the replacement with the prefetch can be made
-            # within the rule.
-            "from_subst_rule"
+            # Remember where the invocation happened, in terms of the expansion
+            # call stack.
+            "expansion_stack",
             ]
 
 
@@ -379,9 +377,161 @@ def simplify_via_aff(expr):
 
 
 
-def precompute(kernel, subst_use, dtype, sweep_inames=[],
+class InvocationGatherer(ExpandingIdentityMapper):
+    def __init__(self, kernel, subst_name, subst_tag, within):
+        ExpandingIdentityMapper.__init__(self,
+                kernel.substitutions, kernel.get_var_name_generator())
+
+        from loopy.symbolic import ParametrizedSubstitutor
+        self.subst_expander = ParametrizedSubstitutor(
+                kernel.substitutions)
+
+        self.kernel = kernel
+        self.subst_name = subst_name
+        self.subst_tag = subst_tag
+        self.within = within
+
+        self.invocation_descriptors = []
+
+    def map_substitution(self, name, tag, arguments, expn_state):
+        process_me = name == self.subst_name
+
+        if self.subst_tag is not None and self.subst_tag != tag:
+            process_me = False
+
+        process_me = process_me and self.within(expn_state.stack)
+
+        if not process_me:
+            return ExpandingIdentityMapper.map_substitution(
+                    self, name, tag, arguments, expn_state)
+
+        rule = self.old_subst_rules[name]
+        arg_context = self.make_new_arg_context(
+                    name, rule.arguments, arguments, expn_state.arg_context)
+
+        arg_deps = set()
+        for arg_val in arg_context.itervalues():
+            arg_deps = (arg_deps
+                    | get_dependencies(self.subst_expander(arg_val, insn_id=None)))
+
+        if not arg_deps <= self.kernel.all_inames():
+            from warnings import warn
+            warn("Precompute arguments in '%s(%s)' do not consist exclusively "
+                    "of inames and constants--specifically, these are "
+                    "not inames: %s. Ignoring." % (
+                        name,
+                        ", ".join(str(arg) for arg in arguments),
+                        ", ".join(arg_deps - self.kernel.all_inames()),
+                        ))
+
+            return ExpandingIdentityMapper.map_substitution(
+                    self, name, tag, arguments, expn_state)
+
+        self.invocation_descriptors.append(
+                InvocationDescriptor(
+                    args=[arg_context[arg_name] for arg_name in rule.arguments],
+                    expansion_stack=expn_state.stack))
+
+        return 0 # exact value irrelevant
+
+
+
+
+class InvocationReplacer(ExpandingIdentityMapper):
+    def __init__(self, kernel, subst_name, subst_tag, within,
+            invocation_descriptors,
+            storage_axis_names, storage_axis_sources,
+            storage_base_indices, non1_storage_axis_names,
+            target_var_name):
+        ExpandingIdentityMapper.__init__(self,
+                kernel.substitutions, kernel.get_var_name_generator())
+
+        from loopy.symbolic import ParametrizedSubstitutor
+        self.subst_expander = ParametrizedSubstitutor(
+                kernel.substitutions, kernel.get_var_name_generator())
+
+        self.kernel = kernel
+        self.subst_name = subst_name
+        self.subst_tag = subst_tag
+        self.within = within
+
+        self.invocation_descriptors = invocation_descriptors
+
+        self.storage_axis_names = storage_axis_names
+        self.storage_axis_sources = storage_axis_sources
+        self.storage_base_indices = storage_base_indices
+        self.non1_storage_axis_names = non1_storage_axis_names
+
+        self.target_var_name = target_var_name
+
+    def map_substitution(self, name, tag, arguments, expn_state):
+        process_me = name == self.subst_name
+
+        if self.subst_tag is not None and self.subst_tag != tag:
+            process_me = False
+
+        process_me = process_me and self.within(expn_state.stack)
+
+        # {{{ find matching invocation descriptor
+
+        rule = self.old_subst_rules[name]
+        arg_context = self.make_new_arg_context(
+                    name, rule.arguments, arguments, expn_state.arg_context)
+        args = [arg_context[arg_name] for arg_name in rule.arguments]
+
+        if not process_me:
+            return ExpandingIdentityMapper.map_substitution(
+                    self, name, tag, arguments, expn_state)
+
+        matching_invdesc = None
+        for invdesc in self.invocation_descriptors:
+            if invdesc.args == args and expn_state.stack:
+                # Could be more than one, that's fine.
+                matching_invdesc = invdesc
+                break
+
+        assert matching_invdesc is not None
+
+        invdesc = matching_invdesc
+        del matching_invdesc
+
+        # }}}
+
+        if not invdesc.is_in_footprint:
+            return ExpandingIdentityMapper.map_substitution(
+                    self, name, tag, arguments, expn_state)
+
+        assert len(arguments) == len(rule.arguments)
+
+        stor_subscript = []
+        for sax_name, sax_source, sax_base_idx in zip(
+                self.storage_axis_names,
+                self.storage_axis_sources, 
+                self.storage_base_indices):
+            if sax_name not in self.non1_storage_axis_names:
+                continue
+
+            if isinstance(sax_source, int):
+                # an argument
+                ax_index = arguments[sax_source]
+            else:
+                # an iname
+                ax_index = var(sax_source)
+
+            ax_index = simplify_via_aff(ax_index - sax_base_idx)
+            stor_subscript.append(ax_index)
+
+        new_outer_expr = var(self.target_var_name)
+        if stor_subscript:
+            new_outer_expr = new_outer_expr[tuple(stor_subscript)]
+
+        return new_outer_expr
+        # can't possibly be nested, don't recurse
+
+
+def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, new_storage_axis_names=None, storage_axis_to_tag={},
-        default_tag="l.auto"):
+        default_tag="l.auto", dtype=None):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -426,6 +576,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     :arg sweep_inames: A :class:`list` of inames and/or rule argument names to be swept.
     :arg storage_axes: A :class:`list` of inames and/or rule argument names/indices to be used as storage axes.
+    :arg within: a stack match as understood by :func:`loopy.context_matching.parse_stack_match`.
 
     If `storage_axes` is not specified, it defaults to the arrangement
     `<direct sweep axes><arguments>` with the direct sweep axes being the
@@ -486,6 +637,13 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
                 raise ValueError("not all uses in subst_use agree "
                         "on rule name and tag")
 
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
+
+    from loopy import infer_type
+    if dtype is None:
+        dtype = infer_type
+
     # }}}
 
     # {{{ process invocations in footprint generators, start invocation_descriptors
@@ -504,9 +662,9 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
                         "be substitution rule invocation")
 
             invocation_descriptors.append(
-                    InvocationDescriptor(expr=fpg, args=args,
+                    InvocationDescriptor(args=args,
                         expands_footprint=True,
-                        from_subst_rule=None))
+                        ))
 
     # }}}
 
@@ -520,63 +678,14 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # {{{ gather up invocations in kernel code, finish invocation_descriptors
 
-    current_subst_rule_stack = []
-
-    # We need to work on the fully expanded form of an expression.
-    # To that end, instantiate a substitutor.
-    from loopy.symbolic import ParametrizedSubstitutor
-    rules_except_mine = kernel.substitutions.copy()
-    del rules_except_mine[subst_name]
-    subst_expander = ParametrizedSubstitutor(rules_except_mine,
-            one_level=True)
-
-    def gather_substs(expr, name, tag, args, rec):
-        if subst_name != name:
-            if name in subst_expander.rules:
-                # We can't deal with invocations that involve other substitution's
-                # arguments. Therefore, fully expand each encountered substitution
-                # rule and look at the invocations of subst_name occurring in its
-                # body.
-
-                expanded_expr = subst_expander(expr)
-                current_subst_rule_stack.append(name)
-                result = rec(expanded_expr)
-                current_subst_rule_stack.pop()
-                return result
-
-            else:
-                return None
-
-        if subst_tag is not None and subst_tag != tag:
-            # use fall-back identity mapper
-            return None
-
-        if len(args) != len(subst.arguments):
-            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
-                    % (subst_name, len(args), len(subst.arguments), ))
-
-        arg_deps = get_dependencies(args)
-        if not arg_deps <= kernel.all_inames():
-            raise RuntimeError("CSE arguments in '%s' do not consist "
-                    "exclusively of inames" % expr)
-
-        if current_subst_rule_stack:
-            current_subst_rule = current_subst_rule_stack[-1]
-        else:
-            current_subst_rule = None
-
-        invocation_descriptors.append(
-                InvocationDescriptor(expr=expr, args=args,
-                    expands_footprint=footprint_generators is None,
-                    from_subst_rule=current_subst_rule))
-
-        return expr
-
-    from loopy.symbolic import SubstitutionCallbackMapper
-    scm = SubstitutionCallbackMapper(names_filter=None, func=gather_substs)
+    invg = InvocationGatherer(kernel, subst_name, subst_tag, within)
 
     for insn in kernel.instructions:
-        scm(insn.expression)
+        invg(insn.expression, insn.id)
+
+    for invdesc in invg.invocation_descriptors:
+        invocation_descriptors.append(
+                invdesc.copy(expands_footprint=footprint_generators is None))
 
     if not invocation_descriptors:
         raise RuntimeError("no invocations of '%s' found" % subst_name)
@@ -608,7 +717,8 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
     from loopy.symbolic import ParametrizedSubstitutor
     submap = ParametrizedSubstitutor(kernel.substitutions)
 
-    value_inames = get_dependencies(submap(subst.expression)) & kernel.all_inames()
+    value_inames = get_dependencies(
+            submap(subst.expression, insn_id=None)) & kernel.all_inames()
     if value_inames - expanding_usage_arg_deps < extra_storage_axes:
         raise RuntimeError("unreferenced sweep inames specified: "
                 + ", ".join(extra_storage_axes - value_inames - expanding_usage_arg_deps))
@@ -736,121 +846,13 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     # {{{ substitute rule into expressions in kernel (if within footprint)
 
-    left_unused_subst_rule_invocations = [False]
+    invr = InvocationReplacer(kernel, subst_name, subst_tag, within,
+            invocation_descriptors,
+            storage_axis_names, storage_axis_sources,
+            storage_base_indices, non1_storage_axis_names,
+            target_var_name)
 
-    def do_substs(expr, name, tag, args, rec):
-        if tag != subst_tag:
-            left_unused_subst_rule_invocations[0] = True
-            return expr
-
-        # {{{ check if current use is in-footprint
-
-        if current_subst_rule is None:
-            # The current subsitution was *not* found inside another
-            # substitution rule. Try and dig up the corresponding invocation
-            # descriptor.
-
-            found = False
-            for invdesc in invocation_descriptors:
-                if expr == invdesc.expr:
-                    found = True
-                    break
-
-            if footprint_generators is None:
-                # We only have a right to find the expression if the
-                # invocation descriptors if they were generated by a scan
-                # of the code in the first place. If the user gave us
-                # the footprint generators, that isn't true.
-
-                assert found, expr
-
-            if not found or not invdesc.is_in_footprint:
-                left_unused_subst_rule_invocations[0] = True
-                return expr
-
-        else:
-            # The current subsitution *was* found inside another substitution
-            # rule. We can't dig up the corresponding invocation descriptor,
-            # because it was the result of expanding that outer substitution
-            # rule. But we do know what the current outer substitution rule is,
-            # and we can check if all uses within that rule were uniformly
-            # in-footprint. If so, we'll go ahead, otherwise we'll bomb out.
-
-            current_rule_invdescs_in_footprint = [
-                    invdesc.is_in_footprint
-                    for invdesc in invocation_descriptors
-                    if invdesc.from_subst_rule == current_subst_rule]
-
-            from pytools import all
-            all_in = all(current_rule_invdescs_in_footprint)
-            all_out = all(not b for b in current_rule_invdescs_in_footprint)
-
-            assert not (all_in and all_out)
-
-            if not (all_in or all_out):
-                raise RuntimeError("substitution '%s' (being precomputed) is used "
-                        "from within substitution '%s', but not all uses of "
-                        "'%s' within '%s' "
-                        "are uniformly within-footprint or outside of the footprint, "
-                        "making a unique replacement of '%s' impossible. Please expand "
-                        "'%s' and try again."
-                        % (subst_name, current_subst_rule,
-                            subst_name, current_subst_rule,
-                            subst_name, current_subst_rule))
-
-            if all_out:
-                left_unused_subst_rule_invocations[0] = True
-                return expr
-
-            assert all_in
-
-        # }}}
-
-        if len(args) != len(subst.arguments):
-            raise ValueError("invocation of '%s' with too few arguments"
-                    % name)
-
-        stor_subscript = []
-        for sax_name, sax_source, sax_base_idx in zip(
-                storage_axis_names, storage_axis_sources, storage_base_indices):
-            if sax_name not in non1_storage_axis_names:
-                continue
-
-            if isinstance(sax_source, int):
-                # an argument
-                ax_index = args[sax_source]
-            else:
-                # an iname
-                ax_index = var(sax_source)
-
-            ax_index = simplify_via_aff(ax_index - sax_base_idx)
-            stor_subscript.append(ax_index)
-
-        new_outer_expr = var(target_var_name)
-        if stor_subscript:
-            new_outer_expr = new_outer_expr[tuple(stor_subscript)]
-
-        return new_outer_expr
-        # can't possibly be nested, don't recurse
-
-    new_insns = [compute_insn]
-
-    current_subst_rule = None
-    sub_map = SubstitutionCallbackMapper([subst_name], do_substs)
-    for insn in kernel.instructions:
-        new_insn = insn.copy(expression=sub_map(insn.expression))
-        new_insns.append(new_insn)
-
-    # also catch uses of our rule in other substitution rules
-    new_substs = {}
-    for s in kernel.substitutions.itervalues():
-        current_subst_rule = s.name
-        new_substs[s.name] = s.copy(
-                expression=sub_map(s.expression))
-
-    # If the subst above caught all uses of the subst rule, get rid of it.
-    if not left_unused_subst_rule_invocations[0]:
-        del new_substs[subst_name]
+    kernel = invr.map_kernel(kernel)
 
     # }}}
 
@@ -872,8 +874,7 @@ def precompute(kernel, subst_use, dtype, sweep_inames=[],
 
     result =  kernel.copy(
             domains=domch.get_domains_with(new_domain),
-            instructions=new_insns,
-            substitutions=new_substs,
+            instructions=[compute_insn] + kernel.instructions,
             temporary_variables=new_temporary_variables)
 
     from loopy import tag_inames

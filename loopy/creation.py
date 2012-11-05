@@ -247,170 +247,29 @@ def create_temporaries(knl):
 
 # }}}
 
-# {{{ reduction iname duplication
+# {{{ check for reduction iname duplication
 
-def duplicate_reduction_inames(kernel):
+def check_for_reduction_inames_duplication_requests(kernel):
 
     # {{{ helper function
 
-    newly_created_vars = set()
-
-    def duplicate_reduction_inames(reduction_expr, rec):
-        child = rec(reduction_expr.expr)
-        new_red_inames = []
-        did_something = False
-
+    def check_reduction_inames(reduction_expr, rec):
         for iname in reduction_expr.inames:
             if iname.startswith("@"):
-                new_iname = kernel.make_unique_var_name(iname[1:]+"_"+name_base,
-                        newly_created_vars)
-
-                old_inames.append(iname.lstrip("@"))
-                new_inames.append(new_iname)
-                newly_created_vars.add(new_iname)
-                new_red_inames.append(new_iname)
-                did_something = True
-            else:
-                new_red_inames.append(iname)
-
-        if did_something:
-            from loopy.symbolic import SubstitutionMapper
-            from pymbolic.mapper.substitutor import make_subst_func
-            from pymbolic import var
-
-            subst_dict = dict(
-                    (old_iname, var(new_iname))
-                    for old_iname, new_iname in zip(
-                        reduction_expr.untagged_inames, new_red_inames))
-            subst_map = SubstitutionMapper(make_subst_func(subst_dict))
-
-            child = subst_map(child)
-
-        from loopy.symbolic import Reduction
-        return Reduction(
-                operation=reduction_expr.operation,
-                inames=tuple(new_red_inames),
-                expr=child)
+                raise RuntimeError("Reduction iname duplication with '@' is no "
+                        "longer supported. Use loopy.duplicate_inames instead.")
 
     # }}}
 
+
     from loopy.symbolic import ReductionCallbackMapper
-    from loopy.isl_helpers import duplicate_axes
-
-    new_domains = kernel.domains
-    new_insns = []
-
-    new_iname_to_tag = kernel.iname_to_tag.copy()
-
+    rcm = ReductionCallbackMapper(check_reduction_inames)
     for insn in kernel.instructions:
-        old_inames = []
-        new_inames = []
-        name_base = insn.id
+        rcm(insn.expression)
 
-        new_insns.append(insn.copy(
-            expression=ReductionCallbackMapper(duplicate_reduction_inames)
-            (insn.expression)))
-
-        for old, new in zip(old_inames, new_inames):
-            new_domains = duplicate_axes(new_domains, [old], [new])
-            if old in kernel.iname_to_tag:
-                new_iname_to_tag[new] = kernel.iname_to_tag[old]
-
-    new_substs = {}
     for sub_name, sub_rule in kernel.substitutions.iteritems():
-        old_inames = []
-        new_inames = []
-        name_base = sub_name
+        rcm(sub_rule.expression)
 
-        new_substs[sub_name] = sub_rule.copy(
-                expression=ReductionCallbackMapper(duplicate_reduction_inames)
-                (sub_rule.expression))
-
-        for old, new in zip(old_inames, new_inames):
-            new_domains = duplicate_axes(new_domains, [old], [new])
-            if old in kernel.iname_to_tag:
-                new_iname_to_tag[new] = kernel.iname_to_tag[old]
-
-    return kernel.copy(
-            instructions=new_insns,
-            substitutions=new_substs,
-            domains=new_domains,
-            iname_to_tag=new_iname_to_tag)
-
-# }}}
-
-# {{{ duplicate inames
-
-def duplicate_inames(knl):
-    new_insns = []
-    new_domains = knl.domains
-    new_iname_to_tag = knl.iname_to_tag.copy()
-
-    newly_created_vars = set()
-
-    for insn in knl.instructions:
-        if insn.duplicate_inames_and_tags:
-            insn_dup_iname_to_tag = dict(insn.duplicate_inames_and_tags)
-
-            if not set(insn_dup_iname_to_tag.keys()) <= knl.all_inames():
-                raise ValueError("In instruction '%s': "
-                        "cannot duplicate inames '%s'--"
-                        "they don't exist" % (
-                            insn.id,
-                            ",".join(
-                                set(insn_dup_iname_to_tag.keys())-knl.all_inames())))
-
-            # {{{ duplicate non-reduction inames
-
-            reduction_inames = insn.reduction_inames()
-
-            inames_to_duplicate = [iname
-                    for iname, tag in insn.duplicate_inames_and_tags
-                    if iname not in reduction_inames]
-
-            new_inames = [
-                    knl.make_unique_var_name(
-                        based_on=iname+"_"+insn.id,
-                        extra_used_vars=newly_created_vars)
-                    for iname in inames_to_duplicate]
-
-            for old_iname, new_iname in zip(inames_to_duplicate, new_inames):
-                new_tag = insn_dup_iname_to_tag[old_iname]
-                new_iname_to_tag[new_iname] = new_tag
-
-            newly_created_vars.update(new_inames)
-
-            from loopy.isl_helpers import duplicate_axes
-            new_domains = duplicate_axes(new_domains, inames_to_duplicate, new_inames)
-
-            from loopy.symbolic import SubstitutionMapper
-            from pymbolic.mapper.substitutor import make_subst_func
-            from pymbolic import var
-            old_to_new = dict(
-                    (old_iname, var(new_iname))
-                    for old_iname, new_iname in zip(inames_to_duplicate, new_inames))
-            subst_map = SubstitutionMapper(make_subst_func(old_to_new))
-            new_expression = subst_map(insn.expression)
-
-            # }}}
-
-            if len(inames_to_duplicate) < len(insn.duplicate_inames_and_tags):
-                raise RuntimeError("cannot use [|...] syntax to rename reduction "
-                        "inames")
-
-            insn = insn.copy(
-                    assignee=subst_map(insn.assignee),
-                    expression=new_expression,
-                    forced_iname_deps=set(
-                        old_to_new.get(iname, iname) for iname in insn.forced_iname_deps),
-                    duplicate_inames_and_tags=[])
-
-        new_insns.append(insn)
-
-    return knl.copy(
-            instructions=new_insns,
-            domains=new_domains,
-            iname_to_tag=new_iname_to_tag)
 # }}}
 
 # {{{ kernel creation top-level
@@ -430,30 +289,11 @@ def make_kernel(*args, **kwargs):
                     iname_to_tag_requests=[])
 
     check_for_nonexistent_iname_deps(knl)
+    check_for_reduction_inames_duplication_requests(knl)
 
-    knl = duplicate_reduction_inames(knl)
-
-    # -------------------------------------------------------------------------
-    # Ordering dependency:
-    # -------------------------------------------------------------------------
-    # Must duplicate reduction inames before tagging reduction inames as
-    # sequential because otherwise the latter operation will run into @iname
-    # (i.e. duplication) markers and not understand them.
-    # -------------------------------------------------------------------------
 
     knl = tag_reduction_inames_as_sequential(knl)
-
     knl = create_temporaries(knl)
-    knl = duplicate_inames(knl)
-
-    # -------------------------------------------------------------------------
-    # Ordering dependency:
-    # -------------------------------------------------------------------------
-    # Must duplicate inames before expanding CSEs, otherwise inames within the
-    # scope of duplication might be CSE'd out to a different instruction and
-    # never be found by duplication.
-    # -------------------------------------------------------------------------
-
     knl = expand_cses(knl)
 
     # -------------------------------------------------------------------------
@@ -462,6 +302,7 @@ def make_kernel(*args, **kwargs):
     # Must create temporary before checking for writes to temporary variables
     # that are domain parameters.
     # -------------------------------------------------------------------------
+
     check_for_multiple_writes_to_loop_bounds(knl)
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)

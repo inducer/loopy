@@ -27,11 +27,11 @@ THE SOFTWARE.
 
 
 
-from pytools import memoize, memoize_method
+from pytools import memoize, memoize_method, Record
 import pytools.lex
 
 from pymbolic.primitives import (
-        Leaf, AlgebraicLeaf, Variable as VariableBase,
+        Leaf, AlgebraicLeaf, Variable,
         CommonSubexpression)
 
 from pymbolic.mapper import (
@@ -81,14 +81,14 @@ class TypedCSE(CommonSubexpression):
         return dict(dtype=self.dtype)
 
 
-class TaggedVariable(VariableBase):
+class TaggedVariable(Variable):
     """This is an identifier with a tag, such as 'matrix$one', where
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
     accesses tagged a certain way.
     """
     def __init__(self, name, tag):
-        VariableBase.__init__(self, name)
+        Variable.__init__(self, name)
         self.tag = tag
 
     def __getinitargs__(self):
@@ -129,13 +129,8 @@ class Reduction(AlgebraicLeaf):
 
     @property
     @memoize_method
-    def untagged_inames(self):
-        return tuple(iname.lstrip("@") for iname in self.inames)
-
-    @property
-    @memoize_method
-    def untagged_inames_set(self):
-        return set(self.untagged_inames)
+    def inames_set(self):
+        return set(self.inames)
 
     mapper_method = intern("map_reduction")
 
@@ -157,14 +152,14 @@ class LinearSubscript(AlgebraicLeaf):
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(object):
-    def map_reduction(self, expr):
-        return Reduction(expr.operation, expr.inames, self.rec(expr.expr))
+    def map_reduction(self, expr, *args):
+        return Reduction(expr.operation, expr.inames, self.rec(expr.expr, *args))
 
-    def map_tagged_variable(self, expr):
+    def map_tagged_variable(self, expr, *args):
         # leaf, doesn't change
         return expr
 
-    def map_loopy_function_identifier(self, expr):
+    def map_loopy_function_identifier(self, expr, *args):
         return expr
 
     map_linear_subscript = IdentityMapperBase.map_subscript
@@ -217,9 +212,8 @@ class StringifyMapper(StringifyMapperBase):
 
 class DependencyMapper(DependencyMapperBase):
     def map_reduction(self, expr):
-        from pymbolic.primitives import Variable
         return (self.rec(expr.expr)
-                - set(Variable(iname) for iname in expr.untagged_inames))
+                - set(Variable(iname) for iname in expr.inames))
 
     def map_tagged_variable(self, expr):
         return set([expr])
@@ -254,6 +248,187 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
         else:
             from pymbolic.mapper.unifier import unify_many
             return unify_many(urecs, new_uni_record)
+
+# }}}
+
+# {{{ identity mapper that expands subst rules on the fly
+
+def parse_tagged_name(expr):
+    if isinstance(expr, TaggedVariable):
+        return expr.name, expr.tag
+    elif isinstance(expr, Variable):
+        return expr.name, None
+    else:
+        raise RuntimeError("subst rule name not understood: %s" % expr)
+
+class ExpansionState(Record):
+    """
+    :ivar stack: a tuple representing the current expansion stack, as a tuple
+        of (name, tag) pairs. At the top level, this should be initialized to a
+        tuple with the id of the calling instruction.
+    :ivar arg_context: a dict representing current argument values
+    """
+
+class ExpandingIdentityMapper(IdentityMapper):
+    """Note: the third argument dragged around by this mapper is the
+    current expansion expansion state.
+    """
+
+    def __init__(self, old_subst_rules, make_unique_var_name):
+        self.old_subst_rules = old_subst_rules
+        self.make_unique_var_name = make_unique_var_name
+
+        # maps subst rule (args, bodies) to names
+        self.subst_rule_registry = dict(
+                ((rule.arguments, rule.expression), name)
+                for name, rule in old_subst_rules.iteritems())
+
+        # maps subst rule (args, bodies) to use counts
+        self.subst_rule_use_count = {}
+
+    def register_subst_rule(self, name, args, body):
+        """Returns a name (as a string) for a newly created substitution
+        rule.
+        """
+        key = (args, body)
+        existing_name = self.subst_rule_registry.get(key)
+
+        if existing_name is None:
+            new_name = self.make_unique_var_name(name)
+            self.subst_rule_registry[key] = new_name
+        else:
+            new_name = existing_name
+
+        self.subst_rule_use_count[key] = self.subst_rule_use_count.get(key, 0) + 1
+        return new_name
+
+    def map_variable(self, expr, expn_state):
+        name, tag = parse_tagged_name(expr)
+        if name not in self.old_subst_rules:
+            return IdentityMapper.map_variable(self, expr, expn_state)
+        else:
+            return self.map_substitution(name, tag, (), expn_state)
+
+    def map_call(self, expr, expn_state):
+        if not isinstance(expr.function, Variable):
+            return IdentityMapper.map_call(self, expr, expn_state)
+
+        name, tag = parse_tagged_name(expr.function)
+
+        if name not in self.old_subst_rules:
+            return IdentityMapper.map_call(self, expr, expn_state)
+        else:
+            return self.map_substitution(name, tag, expr.parameters, expn_state)
+
+    @staticmethod
+    def make_new_arg_context(rule_name, arg_names, arguments, arg_context):
+        if len(arg_names) != len(arguments):
+            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
+                    % (rule_name, len(arguments), len(arg_names), ))
+
+        from pymbolic.mapper.substitutor import make_subst_func
+        arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
+        return dict(
+                (formal_arg_name, arg_subst_map(arg_value))
+                for formal_arg_name, arg_value in zip(arg_names, arguments))
+
+    def map_substitution(self, name, tag, arguments, expn_state):
+        rule = self.old_subst_rules[name]
+
+        rec_arguments = self.rec(arguments, expn_state)
+        new_expn_state = expn_state.copy(
+                stack=expn_state.stack + ((name, tag),),
+                arg_context=self.make_new_arg_context(
+                    name, rule.arguments, rec_arguments, expn_state.arg_context))
+
+        result = self.rec(rule.expression, new_expn_state)
+
+        new_name = self.register_subst_rule(name, rule.arguments, result)
+
+        if tag is None:
+            sym = Variable(new_name)
+        else:
+            sym = TaggedVariable(new_name, tag)
+
+        if arguments:
+            return sym(*rec_arguments)
+        else:
+            return sym
+
+    def __call__(self, expr, insn_id):
+        if insn_id is not None:
+            stack = (insn_id,)
+        else:
+            stack = ()
+
+        return IdentityMapper.__call__(self, expr, ExpansionState(
+            stack=stack, arg_context={}))
+
+    def get_new_substitutions(self):
+        from loopy.kernel import SubstitutionRule
+
+        result = {}
+        for key, name in self.subst_rule_registry.iteritems():
+            args, body = key
+
+            if self.subst_rule_use_count.get(key, 0):
+                result[name] = SubstitutionRule(
+                        name=name,
+                        arguments=args,
+                        expression=body)
+
+        return result
+
+    def map_kernel(self, kernel):
+        new_insns = [
+                insn.copy(
+                    assignee=self(insn.assignee, insn.id),
+                    expression=self(insn.expression, insn.id))
+                for insn in kernel.instructions]
+
+        return kernel.copy(
+            substitutions=self.get_new_substitutions(),
+            instructions=new_insns)
+
+
+# }}}
+
+# {{{ parametrized substitutor
+
+class ParametrizedSubstitutor(ExpandingIdentityMapper):
+    def __init__(self, rules, make_unique_var=None, ctx_match=None):
+        ExpandingIdentityMapper.__init__(self, rules, make_unique_var)
+
+        if ctx_match is None:
+            from loopy.context_matching import AllStackMatch
+            ctx_match = AllStackMatch()
+
+        self.ctx_match = ctx_match
+
+    def map_substitution(self, name, tag, arguments, expn_state):
+        new_stack = expn_state.stack + ((name, tag),)
+        if self.ctx_match(new_stack):
+            # expand
+            rule = self.old_subst_rules[name]
+
+            new_expn_state = expn_state.copy(
+                    stack=new_stack,
+                    arg_context=self.make_new_arg_context(
+                        name, rule.arguments, arguments, expn_state.arg_context))
+
+            result = self.rec(rule.expression, new_expn_state)
+
+            # substitute in argument values
+            from pymbolic.mapper.substitutor import make_subst_func
+            subst_map = SubstitutionMapper(make_subst_func(
+                new_expn_state.arg_context))
+
+            return subst_map(result)
+
+        else:
+            # do not expand
+            return ExpandingIdentityMapper.map_substitution(
+                    self, name, tag, arguments, expn_state)
 
 # }}}
 
@@ -343,7 +518,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
         return Reduction(operation, tuple(processed_inames), red_expr)
 
-# {{{ parser extension
+# {{{ customization to pymbolic parser
 
 _open_dbl_bracket = intern("open_dbl_bracket")
 _close_dbl_bracket = intern("close_dbl_bracket")
@@ -389,26 +564,6 @@ class LoopyParser(ParserBase):
 def parse(expr_str):
     return VarToTaggedVarMapper()(
             FunctionToPrimitiveMapper()(LoopyParser()(expr_str)))
-
-# }}}
-
-# {{{ reduction loop splitter
-
-class ReductionLoopSplitter(IdentityMapper):
-    def __init__(self, old_iname, outer_iname, inner_iname):
-        self.old_iname = old_iname
-        self.outer_iname = outer_iname
-        self.inner_iname = inner_iname
-
-    def map_reduction(self, expr):
-        if self.old_iname in expr.inames:
-            new_inames = list(expr.inames)
-            new_inames.remove(self.old_iname)
-            new_inames.extend([self.outer_iname, self.inner_iname])
-            return Reduction(expr.operation, tuple(new_inames),
-                        expr.expr)
-        else:
-            return IdentityMapper.map_reduction(self, expr)
 
 # }}}
 
@@ -641,134 +796,13 @@ class IndexVariableFinder(CombineMapper):
     def map_reduction(self, expr):
         result = self.rec(expr.expr)
 
-        if not (expr.untagged_inames_set & result):
+        if not (expr.inames_set & result):
             raise RuntimeError("reduction '%s' does not depend on "
                     "reduction inames (%s)" % (expr, ",".join(expr.inames)))
         if self.include_reduction_inames:
             return result
         else:
-            return result - expr.untagged_inames_set
-
-# }}}
-
-# {{{ substitution callback mapper
-
-class SubstitutionCallbackMapper(IdentityMapper):
-    @staticmethod
-    def parse_filter(filt):
-        if not isinstance(filt, tuple):
-            components = filt.split("$")
-            if len(components) == 1:
-                return (components[0], None)
-            elif len(components) == 2:
-                return tuple(components)
-            else:
-                raise RuntimeError("too many components in '%s'" % filt)
-        else:
-            if len(filt) != 2:
-                raise RuntimeError("substitution name filters "
-                        "may have at most two components")
-
-            return filt
-
-    def __init__(self, names_filter, func):
-        if names_filter is not None:
-            new_names_filter = []
-            for filt in names_filter:
-                new_names_filter.append(self.parse_filter(filt))
-
-            self.names_filter = new_names_filter
-        else:
-            self.names_filter = names_filter
-
-        self.func = func
-
-    def parse_name(self, expr):
-        from pymbolic.primitives import Variable
-        if isinstance(expr, TaggedVariable):
-            e_name, e_tag = expr.name, expr.tag
-        elif isinstance(expr, Variable):
-            e_name, e_tag = expr.name, None
-        else:
-            return None
-
-        if self.names_filter is not None:
-            for filt_name, filt_tag in self.names_filter:
-                if e_name == filt_name:
-                    if filt_tag is None or filt_tag == e_tag:
-                        return e_name, e_tag
-        else:
-            return e_name, e_tag
-
-        return None
-
-    def map_variable(self, expr):
-        parsed_name = self.parse_name(expr)
-        if parsed_name is None:
-            return getattr(IdentityMapper, expr.mapper_method)(self, expr)
-
-        name, tag = parsed_name
-
-        result = self.func(expr, name, tag, (), self.rec)
-        if result is None:
-            return getattr(IdentityMapper, expr.mapper_method)(self, expr)
-        else:
-            return result
-
-    map_tagged_variable = map_variable
-
-    def map_call(self, expr):
-        from pymbolic.primitives import Lookup
-        if isinstance(expr.function, Lookup):
-            raise RuntimeError("dotted name '%s' not allowed as "
-                    "function identifier" % expr.function)
-
-        parsed_name = self.parse_name(expr.function)
-
-        if parsed_name is None:
-            return IdentityMapper.map_call(self, expr)
-
-        name, tag = parsed_name
-
-        result = self.func(expr, name, tag, expr.parameters, self.rec)
-        if result is None:
-            return IdentityMapper.map_call(self, expr)
-        else:
-            return result
-
-# }}}
-
-# {{{ parametrized substitutor
-
-class ParametrizedSubstitutor(object):
-    def __init__(self, rules, one_level=False):
-        self.rules = rules
-        self.one_level = one_level
-
-    def __call__(self, expr):
-        level = [0]
-
-        def expand_if_known(expr, name, instance, args, rec):
-            if self.one_level and level[0] > 0:
-                return None
-
-            rule = self.rules[name]
-            if len(rule.arguments) != len(args):
-                raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
-                        % (name, len(args), len(rule.arguments), ))
-
-            from pymbolic.mapper.substitutor import make_subst_func
-            subst_map = SubstitutionMapper(make_subst_func(
-                dict(zip(rule.arguments, args))))
-
-            level[0] += 1
-            result = rec(subst_map(rule.expression))
-            level[0] -= 1
-
-            return result
-
-        scm = SubstitutionCallbackMapper(self.rules.keys(), expand_if_known)
-        return scm(expr)
+            return result - expr.inames_set
 
 # }}}
 
