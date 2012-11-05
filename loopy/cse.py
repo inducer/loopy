@@ -707,7 +707,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
-    newly_created_var_names = set()
+    var_name_gen = kernel.get_var_name_generator()
 
     # {{{ use given / find new storage_axes
 
@@ -753,19 +753,16 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         if new_storage_axis_names is not None and i < len(new_storage_axis_names):
             name = new_storage_axis_names[i]
             tag_lookup_saxis = name
-            if name in (kernel.all_variable_names() | newly_created_var_names):
-                raise RuntimeError("new storage axis name '%s' already exists" % name)
+            if var_name_gen.is_name_conflicting(name):
+                raise RuntimeError("new storage axis name '%s' "
+                        "conflicts with existing name" % name)
 
-        if name in (kernel.all_variable_names()
-                | newly_created_var_names):
-            name = kernel.make_unique_var_name(
-                    based_on=name, extra_used_vars=newly_created_var_names)
+        name = var_name_gen(name)
 
         storage_axis_names.append(name)
         new_iname_to_tag[name] = storage_axis_to_tag.get(
                 tag_lookup_saxis, default_tag)
 
-        newly_created_var_names.add(name)
         expr_subst_dict[old_name] = var(name)
 
     del storage_axis_to_tag
@@ -815,8 +812,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ set up compute insn
 
-    target_var_name = kernel.make_unique_var_name(based_on=c_subst_name,
-            extra_used_vars=newly_created_var_names)
+    target_var_name = var_name_gen(based_on=c_subst_name)
 
     assignee = var(target_var_name)
 

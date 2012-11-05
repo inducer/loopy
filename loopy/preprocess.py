@@ -228,8 +228,9 @@ def realize_reduction(kernel, insn_id_filter=None):
 
 
     new_insns = []
+
+    var_name_gen = kernel.get_var_name_generator()
     new_temporary_variables = kernel.temporary_variables.copy()
-    orig_temp_var_names = set(kernel.temporary_variables)
 
     from loopy.codegen.expression import TypeInferenceMapper
     type_inf_mapper = TypeInferenceMapper(kernel)
@@ -240,8 +241,7 @@ def realize_reduction(kernel, insn_id_filter=None):
 
         from pymbolic import var
 
-        target_var_name = kernel.make_unique_var_name("acc_"+"_".join(expr.inames),
-                extra_used_vars=set(new_temporary_variables) - orig_temp_var_names)
+        target_var_name = var_name_gen("acc_"+"_".join(expr.inames))
         target_var = var(target_var_name)
 
         arg_dtype = type_inf_mapper(expr.expr)

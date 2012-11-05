@@ -899,8 +899,8 @@ class LoopKernel(Record):
                     for i, arg in enumerate(lhs.parameters):
                         if not isinstance(arg, Variable):
                             raise RuntimeError("Invalid substitution rule "
-					    "left-hand side: %s--arg number %d "
-					    "is not a variable"% (lhs, i))
+                                            "left-hand side: %s--arg number %d "
+                                            "is not a variable"% (lhs, i))
                         arg_names.append(arg.name)
                 else:
                     raise RuntimeError("Invalid substitution rule left-hand side")
@@ -1086,15 +1086,6 @@ class LoopKernel(Record):
                 | set(self.substitutions.iterkeys())
                 | set(arg.name for arg in self.args)
                 | set(self.all_inames()))
-
-    def make_unique_var_name(self, based_on="var", extra_used_vars=set()):
-        from warnings import warn
-        warn("make_unique_var_name is deprecated, use get_var_name_generator "
-                "instead", DeprecationWarning, stacklevel=2)
-
-        gen = self.get_var_name_generator()
-        gen.add_names(extra_used_vars)
-        return gen(based_on)
 
     def get_var_name_generator(self):
         return _UniqueNameGenerator(self.all_variable_names())

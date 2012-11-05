@@ -695,10 +695,10 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     if tag is not None:
         c_name = c_name + "_" + tag
 
-    if rule_name is None:
-        rule_name = kernel.make_unique_var_name("%s_fetch" % c_name)
+    var_name_gen = kernel.get_var_name_generator()
 
-    newly_created_vars = set([rule_name])
+    if rule_name is None:
+        rule_name = var_name_gen("%s_fetch" % c_name)
 
     arg = kernel.arg_dict[var_name]
 
@@ -710,9 +710,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]
 
-        par_name = kernel.make_unique_var_name(based_on=based_on,
-                extra_used_vars=newly_created_vars)
-        newly_created_vars.add(par_name)
+        par_name = var_name_gen(based_on=based_on)
         parameters.append(par_name)
 
     from pymbolic import var

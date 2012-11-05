@@ -137,6 +137,8 @@ def split_arg_axis(kernel, args_and_axes, count):
 
     split_vars = {}
 
+    var_name_gen = kernel.get_var_name_generator()
+
     def split_access_axis(expr):
         axis_nr, order = arg_to_rest[expr.aggregate.name]
 
@@ -159,10 +161,8 @@ def split_arg_axis(kernel, args_and_axes, count):
         try:
             outer_iname, inner_iname = split_vars[split_iname]
         except KeyError:
-            outer_iname = kernel.make_unique_var_name(
-                    split_iname+"_outer")
-            inner_iname = kernel.make_unique_var_name(
-                    split_iname+"_inner")
+            outer_iname = var_name_gen(split_iname+"_outer")
+            inner_iname = var_name_gen(split_iname+"_inner")
             split_vars[split_iname] = outer_iname, inner_iname
 
         idx[axis_nr] = Variable(inner_iname)

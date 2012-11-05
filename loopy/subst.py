@@ -27,20 +27,18 @@ def extract_subst(kernel, subst_name, template, parameters):
     unifications.
     """
 
-    newly_created_var_names = set()
-
     if isinstance(template, str):
         from pymbolic import parse
         template = parse(template)
+
+    var_name_gen = kernel.get_var_name_generator()
 
     # {{{ replace any wildcards in template with new variables
 
     def get_unique_var_name():
         based_on = subst_name+"_wc"
 
-        result = kernel.make_unique_var_name(
-                based_on=based_on, extra_used_vars=newly_created_var_names)
-        newly_created_var_names.add(result)
+        result = var_name_gen(based_on)
         return result
 
     from loopy.symbolic import WildcardToUniqueVariableMapper
@@ -63,10 +61,8 @@ def extract_subst(kernel, subst_name, template, parameters):
             - kernel.non_iname_variable_names()):
         if iname in kernel.all_inames():
             # need to rename to be unique
-            new_iname = kernel.make_unique_var_name(
-                    based_on=iname, extra_used_vars=newly_created_var_names)
+            new_iname = var_name_gen(iname)
             old_to_new[iname] = var(new_iname)
-            newly_created_var_names.add(new_iname)
             matching_vars.append(new_iname)
         else:
             matching_vars.append(iname)

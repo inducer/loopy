@@ -148,11 +148,10 @@ class CSEToAssignmentMapper(IdentityMapper):
 
 def expand_cses(knl):
     def add_assignment(base_name, expr, dtype):
-        kwargs = dict(extra_used_vars=newly_created_vars)
-        if base_name is not None:
-            kwargs["based_on"] = base_name
-        new_var_name = knl.make_unique_var_name(**kwargs)
-        newly_created_vars.add(new_var_name)
+        if base_name is None:
+            base_name = "var"
+
+        new_var_name = var_name_gen(base_name)
 
         if dtype is None:
             from loopy import infer_type
@@ -181,7 +180,8 @@ def expand_cses(knl):
 
     new_insns = []
 
-    newly_created_vars = set()
+    var_name_gen = knl.get_var_name_generator()
+
     newly_created_insn_ids = set()
     new_temp_vars = knl.temporary_variables.copy()
 
