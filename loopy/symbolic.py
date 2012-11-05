@@ -396,7 +396,7 @@ class ExpandingIdentityMapper(IdentityMapper):
 
     def __call__(self, expr, insn_id):
         if insn_id is not None:
-            stack = (insn_id,)
+            stack = ((insn_id, None),)
         else:
             stack = ()
 
