@@ -81,7 +81,7 @@ __all__ = ["ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "Ima
         "generate_code",
         "CompiledKernel", "auto_test_vs_ref", "check_kernels",
         "make_kernel", 
-        "split_iname", "join_inames", "tag_inames",
+        "split_iname", "join_inames", "tag_inames", "duplicate_inames",
         "split_dimension", "join_dimensions", "tag_dimensions",
         "extract_subst", "expand_subst",
         "precompute", "add_prefetch",
@@ -132,6 +132,9 @@ def split_iname(kernel, split_iname, inner_length,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True,
         within=None):
+    """
+    :arg within: a stack match as understood by :func:`loopy.context_matching.parse_stack_match`.
+    """
 
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
@@ -197,9 +200,6 @@ def split_iname(kernel, split_iname, inner_length,
 
     # {{{ actually modify instructions
 
-    ins = _InameSplitter(kernel, within,
-            split_iname, outer_iname, inner_iname, new_loop_index)
-
     new_insns = []
     for insn in kernel.instructions:
         if split_iname in insn.forced_iname_deps:
@@ -211,8 +211,6 @@ def split_iname(kernel, split_iname, inner_length,
             new_forced_iname_deps = insn.forced_iname_deps
 
         insn = insn.copy(
-                assignee=ins(insn.assignee, insn.id),
-                expression=ins(insn.expression, insn.id),
                 forced_iname_deps=new_forced_iname_deps)
 
         new_insns.append(insn)
@@ -222,19 +220,23 @@ def split_iname(kernel, split_iname, inner_length,
     iname_slab_increments = kernel.iname_slab_increments.copy()
     iname_slab_increments[outer_iname] = slabs
 
-    result = (kernel
+    kernel = (kernel
             .copy(domains=new_domains,
                 iname_slab_increments=iname_slab_increments,
-                substitutions=ins.get_new_substitutions(),
                 instructions=new_insns,
                 applied_iname_rewrites=applied_iname_rewrites,
                 ))
 
+    ins = _InameSplitter(kernel, within,
+            split_iname, outer_iname, inner_iname, new_loop_index)
+
+    kernel = ins.map_kernel(kernel)
+
     if existing_tag is not None:
-        result = tag_inames(result,
+        kernel = tag_inames(kernel,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
-    return tag_inames(result, {outer_iname: outer_tag, inner_iname: inner_tag})
+    return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
 
 split_dimension = MovedFunctionDeprecationWrapper(split_iname)
 
@@ -391,6 +393,118 @@ def tag_inames(kernel, iname_to_tag, force=False):
     return kernel.copy(iname_to_tag=new_iname_to_tag)
 
 tag_dimensions = MovedFunctionDeprecationWrapper(tag_inames)
+
+# }}}
+
+# {{{ duplicate inames
+
+class _InameDuplicator(ExpandingIdentityMapper):
+    def __init__(self, rules, make_unique_var_name,
+            old_to_new, within):
+        ExpandingIdentityMapper.__init__(self,
+                rules, make_unique_var_name)
+
+        self.old_to_new = old_to_new
+        self.old_inames_set = set(old_to_new.iterkeys())
+        self.within = within
+
+    def map_reduction(self, expr, expn_state):
+        if set(expr.inames) & self.old_inames_set and self.within(expn_state.stack):
+            new_inames = tuple(
+                    self.old_to_new.get(iname, iname)
+                    for iname in expr.inames)
+
+            from loopy.symbolic import Reduction
+            return Reduction(expr.operation, new_inames,
+                        self.rec(expr.expr, expn_state))
+        else:
+            return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
+
+    def map_variable(self, expr, expn_state):
+        new_name = self.old_to_new.get(expr.name)
+
+        if new_name is None or not self.within(expn_state.stack):
+            return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+        else:
+            from pymbolic import var
+            return var(new_name)
+
+def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
+        tags={}):
+    """
+    :arg within: a stack match as understood by :func:`loopy.context_matching.parse_stack_match`.
+    """
+
+    # {{{ normalize arguments, find unique new_inames
+
+    if isinstance(inames, str):
+        inames = inames.split(",")
+    if isinstance(new_inames, str):
+        new_inames = new_inames.split(",")
+
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
+
+    if new_inames is None:
+        new_inames = [None] * len(inames)
+
+    if len(new_inames) != len(inames):
+        raise ValueError("new_inames must have the same number of entries as inames")
+
+    name_gen = knl.get_var_name_generator()
+
+    for i, iname in enumerate(inames):
+        new_iname = new_inames[i]
+
+        if new_iname is None:
+            new_iname = iname
+
+            if suffix is not None:
+                new_iname += suffix
+
+            new_iname = name_gen(new_iname)
+
+        else:
+            name_gen.add_name(new_iname)
+            raise ValueError("new iname '%s' conflicts with existing names"
+                    % new_iname)
+
+        new_inames[i] = new_iname
+
+    # }}}
+
+    # {{{ duplicate the inames
+
+    for old_iname, new_iname in zip(inames, new_inames):
+        from loopy.kernel import DomainChanger
+        domch = DomainChanger(knl, frozenset([old_iname]))
+
+        from loopy.isl_helpers import duplicate_axes
+        knl = knl.copy(
+                domains=domch.get_domains_with(
+                    duplicate_axes(domch.domain, [old_iname], [new_iname])))
+    # }}}
+
+    # {{{ change the inames in the code
+
+    indup = _InameDuplicator(knl.substitutions, name_gen,
+            old_to_new=dict(zip(inames, new_inames)),
+            within=within)
+
+    knl = indup.map_kernel(knl)
+
+    # }}}
+
+    # {{{ realize tags
+
+    for old_iname, new_iname in zip(inames, new_inames):
+        new_tag = tags.get(old_iname)
+        if new_tag is not None:
+            knl = tag_inames(knl, {new_iname: new_tag})
+
+    # }}}
+
+    return knl
 
 # }}}
 
@@ -572,7 +686,6 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             _process_footprint_subscripts(
                     kernel,  rule_name, sweep_inames,
                     footprint_subscripts, arg)
-
     new_kernel = precompute(kernel, subst_use, sweep_inames,
             new_storage_axis_names=dim_arg_names,
             default_tag=default_tag, dtype=arg.dtype)
@@ -660,13 +773,6 @@ def change_arg_to_image(knl, name):
             new_args.append(arg)
 
     return knl.copy(args=new_args)
-
-# }}}
-
-# {{{ duplicate inames
-
-def duplicate_inames(knl, inames):
-    pass
 
 # }}}
 

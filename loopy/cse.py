@@ -173,6 +173,9 @@ def build_global_storage_to_sweep_map(kernel, invocation_descriptors,
         global_stor2sweep = isl.Map.from_basic_map(stor2sweep)
     global_stor2sweep = global_stor2sweep.intersect_range(domain_dup_sweep)
 
+    # space for global_stor2sweep:
+    # [stor_axes'] -> [domain](dup_sweep_index)[dup_sweep](rn)
+
     # {{{ check if non-footprint-building invocation descriptors fall into footprint
 
     # Make all inames except the sweep parameters. (The footprint may depend on those.)
@@ -506,7 +509,7 @@ class InvocationReplacer(ExpandingIdentityMapper):
         stor_subscript = []
         for sax_name, sax_source, sax_base_idx in zip(
                 self.storage_axis_names,
-                self.storage_axis_sources, 
+                self.storage_axis_sources,
                 self.storage_base_indices):
             if sax_name not in self.non1_storage_axis_names:
                 continue
@@ -640,10 +643,6 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
 
-    from loopy import infer_type
-    if dtype is None:
-        dtype = infer_type
-
     # }}}
 
     # {{{ process invocations in footprint generators, start invocation_descriptors
@@ -664,6 +663,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             invocation_descriptors.append(
                     InvocationDescriptor(args=args,
                         expands_footprint=True,
+                        expansion_stack=None,
                         ))
 
     # }}}
@@ -858,12 +858,18 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ set up temp variable
 
+    from loopy import infer_type
+    if dtype is None:
+        dtype = infer_type
+    else:
+        dtype = np.dtype(dtype)
+
     from loopy.kernel import TemporaryVariable
 
     new_temporary_variables = kernel.temporary_variables.copy()
     temp_var = TemporaryVariable(
             name=target_var_name,
-            dtype=np.dtype(dtype),
+            dtype=dtype,
             base_indices=(0,)*len(non1_storage_shape),
             shape=non1_storage_shape,
             is_local=None)
@@ -872,13 +878,13 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
-    result =  kernel.copy(
+    kernel =  kernel.copy(
             domains=domch.get_domains_with(new_domain),
             instructions=[compute_insn] + kernel.instructions,
             temporary_variables=new_temporary_variables)
 
     from loopy import tag_inames
-    return tag_inames(result, new_iname_to_tag)
+    return tag_inames(kernel, new_iname_to_tag)
 
 
 

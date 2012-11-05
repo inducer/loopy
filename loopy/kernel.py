@@ -637,12 +637,13 @@ class _UniqueNameGenerator:
         return name in self.existing_names
 
     def add_name(self, name):
-        assert name not in self.existing_names
+        if self.is_name_conflicting(name):
+            raise ValueError("name '%s' conflicts with existing names")
         self.existing_names.add(name)
 
     def add_names(self, names):
-        assert not frozenset(names) & self.existing_names
-        self.existing_names.update(names)
+        for name in names:
+            self.add_name(name)
 
     def __call__(self, based_on="var"):
         for var_name in _generate_unique_possibilities(based_on):
@@ -1288,15 +1289,16 @@ class LoopKernel(Record):
         return self._get_inames_domain_backend(inames)
 
     @memoize_method
-    def get_leaf_domain_index(self, inames):
-        """Find the leaf of the domain tree needed to cover all inames."""
+    def get_leaf_domain_indices(self, inames):
+        """Find the leaves of the domain tree needed to cover all inames."""
 
         hdm = self._get_home_domain_map()
         ppd = self.all_parents_per_domain()
 
         domain_indices = set()
 
-        leaf_domain_index = None
+        # map root -> leaf
+        root_to_leaf = {}
 
         for iname in inames:
             home_domain_index = hdm[iname]
@@ -1304,27 +1306,39 @@ class LoopKernel(Record):
                 # nothin' new
                 continue
 
-            leaf_domain_index = home_domain_index
+            domain_parents = [home_domain_index] + ppd[home_domain_index]
+            current_root = domain_parents[-1]
+            previous_leaf = root_to_leaf.get(current_root)
 
-            all_parents = set(ppd[home_domain_index])
-            if not domain_indices <= all_parents:
-                raise CannotBranchDomainTree("iname set '%s' requires "
-                        "branch in domain tree (when adding '%s')"
-                        % (", ".join(inames), iname))
+            if previous_leaf is not None:
+                # Check that we don't branch the domain tree.
+                #
+                # Branching the domain tree is dangerous/ill-formed because
+                # it can introduce artificial restrictions on variables
+                # further up the tree.
 
-            domain_indices.add(home_domain_index)
-            domain_indices.update(all_parents)
+                prev_parents = set(ppd[previous_leaf])
+                if not prev_parents <= set(domain_parents):
+                    raise CannotBranchDomainTree("iname set '%s' requires "
+                            "branch in domain tree (when adding '%s')"
+                            % (", ".join(inames), iname))
+            else:
+                # We're adding a new root. That's fine.
+                pass
 
-        return leaf_domain_index
+            root_to_leaf[current_root] = home_domain_index
+            domain_indices.update(domain_parents)
+
+        return root_to_leaf.values()
 
     @memoize_method
     def _get_inames_domain_backend(self, inames):
-        leaf_dom_idx = self.get_leaf_domain_index(inames)
+        domain_indices = set()
+        for leaf_dom_idx in self.get_leaf_domain_indices(inames):
+            domain_indices.add(leaf_dom_idx)
+            domain_indices.update(self.all_parents_per_domain()[leaf_dom_idx])
 
-        return self.combine_domains(tuple(sorted(
-            self.all_parents_per_domain()[leaf_dom_idx]
-            + [leaf_dom_idx]
-            )))
+        return self.combine_domains(tuple(sorted(domain_indices)))
 
     # }}}
 
@@ -1824,7 +1838,13 @@ class DomainChanger:
     def __init__(self, kernel, inames):
         self.kernel = kernel
         if inames:
-            self.leaf_domain_index = kernel.get_leaf_domain_index(inames)
+            ldi = kernel.get_leaf_domain_indices(inames)
+            if len(ldi) > 1:
+                raise RuntimeError("Inames '%s' require more than one leaf "
+                        "domain, which makes the domain change that is part "
+                        "of your current operation ambiguous." % ", ".join(inames))
+
+            self.leaf_domain_index, = ldi
             self.domain = kernel.domains[self.leaf_domain_index]
 
         else:

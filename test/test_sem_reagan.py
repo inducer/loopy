@@ -51,8 +51,8 @@ def test_tim2d(ctx_factory):
     knl = lp.make_kernel(ctx.devices[0],
             "[K] -> {[i,j,e,m,o,gi]: 0<=i,j,m,o<%d and 0<=e<K and 0<=gi<3}" % n,
            [
-            "ur(a,b) := sum(@o, D[a,o]*u[e,o,b])",
-            "us(a,b) := sum(@o, D[b,o]*u[e,a,o])",
+            "ur(a,b) := sum(o, D[a,o]*u[e,o,b])",
+            "us(a,b) := sum(o, D[b,o]*u[e,a,o])",
 
             #"Gu(mat_entry,a,b) := G[mat_entry,e,m,j]*ur(m,j)",
 
@@ -74,6 +74,9 @@ def test_tim2d(ctx_factory):
             ],
             name="semlap2D", assumptions="K>=1")
 
+    knl = lp.duplicate_inames(knl, "o", within="ur")
+    knl = lp.duplicate_inames(knl, "o", within="us")
+
     seq_knl = knl
 
     def variant_orig(knl):
@@ -82,11 +85,11 @@ def test_tim2d(ctx_factory):
         knl = lp.add_prefetch(knl, "D[:,:]")
         knl = lp.add_prefetch(knl, "u[e, :, :]")
 
-        knl = lp.precompute(knl, "ur(m,j)", np.float32, ["m", "j"])
-        knl = lp.precompute(knl, "us(i,m)", np.float32, ["i", "m"])
+        knl = lp.precompute(knl, "ur(m,j)", ["m", "j"])
+        knl = lp.precompute(knl, "us(i,m)", ["i", "m"])
 
-        knl = lp.precompute(knl, "Gux(m,j)", np.float32, ["m", "j"])
-        knl = lp.precompute(knl, "Guy(i,m)", np.float32, ["i", "m"])
+        knl = lp.precompute(knl, "Gux(m,j)", ["m", "j"])
+        knl = lp.precompute(knl, "Guy(i,m)", ["i", "m"])
 
         knl = lp.add_prefetch(knl, "G$x[:,e,:,:]")
         knl = lp.add_prefetch(knl, "G$y[:,e,:,:]")

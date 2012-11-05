@@ -269,6 +269,45 @@ class ExpansionState(Record):
     :ivar arg_context: a dict representing current argument values
     """
 
+class SubstitutionRuleRenamer(IdentityMapper):
+    def __init__(self, renames):
+        self.renames = renames
+
+    def map_call(self, expr):
+        if not isinstance(expr.function, Variable):
+            return IdentityMapper.map_call(self, expr)
+
+        name, tag = parse_tagged_name(expr.function)
+
+        new_name = self.renames.get(name)
+        if new_name is None:
+            return IdentityMapper.map_call(self, expr)
+
+        if tag is None:
+            sym = Variable(new_name)
+        else:
+            sym = TaggedVariable(new_name, tag)
+
+        return type(expr)(sym, tuple(self.rec(child) for child in expr.parameters))
+
+    def map_variable(self, expr):
+        name, tag = parse_tagged_name(expr)
+
+        new_name = self.renames.get(name)
+        if new_name is None:
+            return IdentityMapper.map_variable(self, expr)
+
+        if tag is None:
+            return Variable(new_name)
+        else:
+            return TaggedVariable(new_name, tag)
+
+def rename_subst_rules_in_instructions(insns, renames):
+    subst_renamer = SubstitutionRuleRenamer(renames)
+    return [
+            insn.copy(expression=subst_renamer(insn.expression))
+            for insn in insns]
+
 class ExpandingIdentityMapper(IdentityMapper):
     """Note: the third argument dragged around by this mapper is the
     current expansion expansion state.
@@ -278,26 +317,26 @@ class ExpandingIdentityMapper(IdentityMapper):
         self.old_subst_rules = old_subst_rules
         self.make_unique_var_name = make_unique_var_name
 
-        # maps subst rule (args, bodies) to names
+        # maps subst rule (args, bodies) to (names, original_name)
         self.subst_rule_registry = dict(
-                ((rule.arguments, rule.expression), name)
+                ((rule.arguments, rule.expression), (name, name))
                 for name, rule in old_subst_rules.iteritems())
 
         # maps subst rule (args, bodies) to use counts
         self.subst_rule_use_count = {}
 
-    def register_subst_rule(self, name, args, body):
+    def register_subst_rule(self, original_name, args, body):
         """Returns a name (as a string) for a newly created substitution
         rule.
         """
         key = (args, body)
-        existing_name = self.subst_rule_registry.get(key)
+        reg_value = self.subst_rule_registry.get(key)
 
-        if existing_name is None:
-            new_name = self.make_unique_var_name(name)
-            self.subst_rule_registry[key] = new_name
+        if reg_value is None:
+            new_name = self.make_unique_var_name(original_name)
+            self.subst_rule_registry[key] = (new_name, original_name)
         else:
-            new_name = existing_name
+            new_name, _ = reg_value
 
         self.subst_rule_use_count[key] = self.subst_rule_use_count.get(key, 0) + 1
         return new_name
@@ -364,32 +403,76 @@ class ExpandingIdentityMapper(IdentityMapper):
         return IdentityMapper.__call__(self, expr, ExpansionState(
             stack=stack, arg_context={}))
 
-    def get_new_substitutions(self):
+    def _get_new_substitutions_and_renames(self):
+        """This makes a new dictionary of substitutions from the ones
+        encountered in mapping all the encountered expressions.
+        It tries hard to keep substitution names the same--i.e.
+        if all derivative versions of a substitution rule ended
+        up with the same mapped version, then this version should
+        retain the name that the substitution rule had previously.
+        Unfortunately, this can't be done in a single pass, and so
+        the routine returns an additional dictionary *subst_renames*
+        of renamings to be performed on the processed expressions.
+
+        The returned substitutions already have the rename applied
+        to them.
+
+        :returns: (new_substitutions, subst_renames)
+        """
+
         from loopy.kernel import SubstitutionRule
 
+        orig_name_histogram = {}
+        for key, (name, orig_name) in self.subst_rule_registry.iteritems():
+            if self.subst_rule_use_count.get(key, 0):
+                orig_name_histogram[orig_name] = \
+                        orig_name_histogram.get(orig_name, 0) + 1
+
         result = {}
-        for key, name in self.subst_rule_registry.iteritems():
+        renames = {}
+
+        for key, (name, orig_name) in self.subst_rule_registry.iteritems():
             args, body = key
 
             if self.subst_rule_use_count.get(key, 0):
+                if orig_name_histogram[orig_name] == 1 and name != orig_name:
+                    renames[name] = orig_name
+                    name = orig_name
+
                 result[name] = SubstitutionRule(
                         name=name,
                         arguments=args,
                         expression=body)
 
-        return result
+        # {{{ perform renames on new substitutions
+
+        subst_renamer = SubstitutionRuleRenamer(renames)
+
+        renamed_result = {}
+        for name, rule in result.iteritems():
+            renamed_result[name] = rule.copy(
+                    expression=subst_renamer(rule.expression))
+
+        # }}}
+
+        return renamed_result, renames
 
     def map_kernel(self, kernel):
         new_insns = [
                 insn.copy(
+                    # While subst rules are not allowed in assignees, the mapper
+                    # may perform tasks entirely unrelated to subst rules, so
+                    # we must map assignees, too.
                     assignee=self(insn.assignee, insn.id),
+
                     expression=self(insn.expression, insn.id))
+
                 for insn in kernel.instructions]
 
+        new_substs, renames = self._get_new_substitutions_and_renames()
         return kernel.copy(
-            substitutions=self.get_new_substitutions(),
-            instructions=new_insns)
-
+            substitutions=new_substs,
+            instructions=rename_subst_rules_in_instructions(new_insns, renames))
 
 # }}}
 

@@ -46,15 +46,13 @@ Things to consider
 To-do
 ^^^^^
 
-- Expose iname-duplicate-and-rename as a primitive.
-
 - Kernel fusion
 
 - ExpandingIdentityMapper
   extract_subst -> needs WalkMapper
-  duplicate_inames
   join_inames
   padding
+  duplicate_inames [DONE]
   split_iname [DONE]
   CSE [DONE]
 
@@ -141,6 +139,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- Expose iname-duplicate-and-rename as a primitive.
 
 - make sure simple side effects work
 

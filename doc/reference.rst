@@ -161,6 +161,8 @@ Wrangling inames
 
 .. autofunction:: tag_inames
 
+.. autofunction:: duplicate_inames
+
 Dealing with Substitution Rules
 -------------------------------
 
