@@ -148,7 +148,10 @@ class StackWildcardMatch(StackMatchBase):
 
         n = len(stack)
 
-        for i in xrange(n):
+        if self.up_match(stack):
+            return True
+
+        for i in xrange(1, n):
             if self.up_match(stack[:-i]):
                 return True
 
