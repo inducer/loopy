@@ -48,8 +48,6 @@ To-do
 
 - Kernel fusion
 
-- rename iname
-
 - when are link_inames, duplicate_inames safe?
 
 - ExpandingIdentityMapper
@@ -144,6 +142,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- rename iname
 
 - delete unused inames
 

@@ -165,9 +165,9 @@ Wrangling inames
 
 .. autofunction:: link_inames
 
-.. autofunction:: rename_inames
+.. autofunction:: rename_iname
 
-.. autofunction:: delete_unused_inames
+.. autofunction:: remove_unused_inames
 
 Dealing with Substitution Rules
 -------------------------------

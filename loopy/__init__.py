@@ -550,6 +550,23 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 
 # }}}
 
+def rename_iname(knl, old_iname, new_iname, within):
+    """
+    :arg within: a stack match as understood by 
+        :func:`loopy.context_matching.parse_stack_match`.
+    """
+
+    var_name_gen = knl.get_var_name_generator()
+
+    if var_name_gen.is_name_conflicting(new_iname):
+        raise ValueError("iname '%s' conflicts with an existing identifier"
+                "--cannot rename" % new_iname)
+
+    knl = duplicate_inames([old_iname], within, [new_iname])
+    knl = remove_unused_inames(knl, [old_iname])
+
+    return knl
+
 # {{{ link inames
 
 def link_inames(knl, inames, new_iname, within=None, tag=None):
@@ -646,7 +663,7 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
 
     # }}}
 
-    knl = delete_unused_inames(knl, inames)
+    knl = remove_unused_inames(knl, inames)
 
     if tag is not None:
         knl = tag_inames(knl, {new_iname: tag})
@@ -655,9 +672,9 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
 
 # }}}
 
-# {{{ delete unused inames
+# {{{ remove unused inames
 
-def delete_unused_inames(knl, inames=None):
+def remove_unused_inames(knl, inames=None):
     """Delete those among *inames* that are unused, i.e. project them
     out of the domain. If these inames pose implicit restrictions on
     other inames, these restrictions will persist as existentially
