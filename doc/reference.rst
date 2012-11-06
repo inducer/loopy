@@ -163,6 +163,12 @@ Wrangling inames
 
 .. autofunction:: duplicate_inames
 
+.. autofunction:: link_inames
+
+.. autofunction:: rename_inames
+
+.. autofunction:: delete_unused_inames
+
 Dealing with Substitution Rules
 -------------------------------
 

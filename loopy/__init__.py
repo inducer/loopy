@@ -527,6 +527,7 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
         knl = knl.copy(
                 domains=domch.get_domains_with(
                     duplicate_axes(domch.domain, [old_iname], [new_iname])))
+
     # }}}
 
     # {{{ change the inames in the code
@@ -548,6 +549,92 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 
     # }}}
 
+    return knl
+
+# }}}
+
+# {{{ link inames
+
+def link_inames(knl, inames, new_iname, within=None, tag=None):
+    # {{{ normalize arguments
+
+    if isinstance(inames, str):
+        inames = inames.split(",")
+
+    new_iname = knl.get_var_name_generator()(new_iname)
+
+    # }}}
+
+    # {{{ ensure that each iname is used at most once in each instruction
+
+    inames_set = set(inames)
+
+    for insn in knl.instructions:
+        insn_inames = knl.insn_inames(insn.id) | insn.reduction_inames()
+
+        if len(insn_inames & inames_set) > 1:
+            raise RuntimeError("To-be-linked inames '%s' are used in "
+                    "instruction '%s'. No more than one such iname can "
+                    "be used in one instruction."
+                    % (", ".join(insn_inames & inames_set), insn.id))
+
+    # }}}
+
+    from loopy.kernel import DomainChanger
+    domch = DomainChanger(knl, inames)
+
+    # {{{ ensure that projections are identical
+
+    unrelated_dom_inames = list(
+            set(domch.domain.get_var_names(dim_type.set))
+            - inames_set)
+
+    projections = [
+            domch.domain.project_out_except(unrelated_dom_inames + [iname], dim_type.set)
+            for iname in inames]
+
+    from pytools import all_equal
+    if not all_equal(projections):
+        raise RuntimeError("Inames cannot be linked because their domain "
+                "constraints are not the same.")
+
+    # }}}
+
+    # change the domain
+    from loopy.isl_helpers import duplicate_axes
+    knl = knl.copy(
+            domains=domch.get_domains_with(
+                duplicate_axes(domch.domain, [inames[0]], [new_iname])))
+
+    # {{{ change the code
+
+    subst_dict = dict((iname, new_iname) for iname in inames)
+
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
+
+    from pymbolic.mapper.substitutor import make_subst_func
+    ijoin = ExpandingSubstitutionMapper(knl, within,
+            make_subst_func(subst_dict))
+
+    knl = ijoin.map_kernel(knl)
+
+    # }}}
+
+    knl = knl.delete_unused_inames(knl, inames)
+
+    if tag is not None:
+        knl = tag_inames(knl, {new_iname: tag})
+
+    return knl
+
+# }}}
+
+# {{{ delete unused inames
+
+def delete_unused_inames(knl, inames=None):
+    from warnings import warn
+    warn("delete_unused_inames is unimplemented")
     return knl
 
 # }}}

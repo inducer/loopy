@@ -48,6 +48,12 @@ To-do
 
 - Kernel fusion
 
+- rename iname
+
+- delete unused inames
+
+- link_inames
+
 - ExpandingIdentityMapper
   extract_subst -> needs WalkMapper
   padding
