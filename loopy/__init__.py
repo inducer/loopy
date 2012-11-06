@@ -80,7 +80,7 @@ __all__ = ["ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "Ima
         "generate_loop_schedules",
         "generate_code",
         "CompiledKernel", "auto_test_vs_ref", "check_kernels",
-        "make_kernel", 
+        "make_kernel",
         "split_iname", "join_inames", "tag_inames", "duplicate_inames",
         "split_dimension", "join_dimensions", "tag_dimensions",
         "extract_subst", "expand_subst",
@@ -561,7 +561,8 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
     if isinstance(inames, str):
         inames = inames.split(",")
 
-    new_iname = knl.get_var_name_generator()(new_iname)
+    var_name_gen = knl.get_var_name_generator()
+    new_iname = var_name_gen(new_iname)
 
     # }}}
 
@@ -569,19 +570,21 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
 
     inames_set = set(inames)
 
-    for insn in knl.instructions:
-        insn_inames = knl.insn_inames(insn.id) | insn.reduction_inames()
+    if 0:
+        # FIXME!
+        for insn in knl.instructions:
+            insn_inames = knl.insn_inames(insn.id) | insn.reduction_inames()
 
-        if len(insn_inames & inames_set) > 1:
-            raise RuntimeError("To-be-linked inames '%s' are used in "
-                    "instruction '%s'. No more than one such iname can "
-                    "be used in one instruction."
-                    % (", ".join(insn_inames & inames_set), insn.id))
+            if len(insn_inames & inames_set) > 1:
+                raise RuntimeError("To-be-linked inames '%s' are used in "
+                        "instruction '%s'. No more than one such iname can "
+                        "be used in one instruction."
+                        % (", ".join(insn_inames & inames_set), insn.id))
 
     # }}}
 
     from loopy.kernel import DomainChanger
-    domch = DomainChanger(knl, inames)
+    domch = DomainChanger(knl, tuple(inames))
 
     # {{{ ensure that projections are identical
 
@@ -589,14 +592,38 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
             set(domch.domain.get_var_names(dim_type.set))
             - inames_set)
 
+    domain = domch.domain
+
+    # move all inames to be linked to end to prevent shuffly confusion
+    for iname in inames:
+        dt, index = domain.get_var_dict()[iname]
+        assert dt == dim_type.set
+
+        # move to tail of param dim_type
+        domain = domain.move_dims(
+                    dim_type.param, domain.dim(dim_type.param),
+                    dt, index, 1)
+        # move to tail of set dim_type
+        domain = domain.move_dims(
+                    dim_type.set, domain.dim(dim_type.set),
+                    dim_type.param, domain.dim(dim_type.param)-1, 1)
+
     projections = [
-            domch.domain.project_out_except(unrelated_dom_inames + [iname], dim_type.set)
+            domch.domain.project_out_except(unrelated_dom_inames + [iname], [dim_type.set])
             for iname in inames]
 
-    from pytools import all_equal
-    if not all_equal(projections):
+    all_equal = True
+    first_proj = projections[0]
+    for proj in projections[1:]:
+        print proj.gist(first_proj)
+        print first_proj.gist(proj)
+        all_equal = all_equal and (proj <= first_proj and first_proj <= proj)
+
+    if not all_equal:
         raise RuntimeError("Inames cannot be linked because their domain "
                 "constraints are not the same.")
+
+    del domain # messed up for testing, do not use
 
     # }}}
 
@@ -608,20 +635,21 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
 
     # {{{ change the code
 
-    subst_dict = dict((iname, new_iname) for iname in inames)
+    from pymbolic import var
+    subst_dict = dict((iname, var(new_iname)) for iname in inames)
 
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
 
     from pymbolic.mapper.substitutor import make_subst_func
-    ijoin = ExpandingSubstitutionMapper(knl, within,
-            make_subst_func(subst_dict))
+    ijoin = ExpandingSubstitutionMapper(knl.substitutions, var_name_gen,
+                    make_subst_func(subst_dict), within)
 
     knl = ijoin.map_kernel(knl)
 
     # }}}
 
-    knl = knl.delete_unused_inames(knl, inames)
+    knl = delete_unused_inames(knl, inames)
 
     if tag is not None:
         knl = tag_inames(knl, {new_iname: tag})
