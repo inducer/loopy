@@ -50,15 +50,6 @@ To-do
 
 - when are link_inames, duplicate_inames safe?
 
-- ExpandingIdentityMapper
-  extract_subst -> needs WalkMapper
-  padding
-  replace make_unique_var_name [DONE]
-  join_inames [DONE]
-  duplicate_inames [DONE]
-  split_iname [DONE]
-  CSE [DONE]
-
 - Data implementation tags
   TODO initial bringup:
   - implemented_arg_info
@@ -142,6 +133,15 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- ExpandingIdentityMapper
+  extract_subst -> needs WalkMapper [actually fine as is]
+  padding [DONE]
+  replace make_unique_var_name [DONE]
+  join_inames [DONE]
+  duplicate_inames [DONE]
+  split_iname [DONE]
+  CSE [DONE]
 
 - rename iname
 
