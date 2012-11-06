@@ -317,7 +317,6 @@ class SubstitutionRule(Record):
         return "%s(%s) := %s" % (
                 self.name, ", ".join(self.arguments), self.expression)
 
-
 # }}}
 
 # {{{ instruction
@@ -1629,8 +1628,8 @@ class LoopKernel(Record):
         if self.substitutions:
             lines.append(sep)
             lines.append("SUBSTIUTION RULES:")
-            for rule in self.substitutions.itervalues():
-                lines.append(str(rule))
+            for rule_name in sorted(self.substitutions.iterkeys()):
+                lines.append(str(self.substitutions[rule_name]))
 
         lines.append(sep)
         lines.append("INSTRUCTIONS:")
