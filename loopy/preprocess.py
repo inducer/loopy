@@ -391,8 +391,8 @@ def duplicate_private_temporaries_for_ilp(kernel):
             if tv.name in var_to_new_ilp_inames:
                 if new_ilp_inames != set(var_to_new_ilp_inames[tv.name]):
                     raise RuntimeError("instruction '%s' requires adding "
-                            "indices for ILP inames '%s', but previous "
-                            "instructions required inames'%s'"
+                            "indices for ILP inames '%s' on var '%s', but previous "
+                            "instructions required inames '%s'"
                             % (writer_insn_id, ", ".join(new_ilp_inames),
                                 ", ".join(var_to_new_ilp_inames[tv.name])))
 
