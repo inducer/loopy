@@ -50,9 +50,7 @@ To-do
 
 - rename iname
 
-- delete unused inames
-
-- link_inames
+- when are link_inames, duplicate_inames safe?
 
 - ExpandingIdentityMapper
   extract_subst -> needs WalkMapper
@@ -95,6 +93,8 @@ Fixes:
 
 Future ideas
 ^^^^^^^^^^^^
+
+- Storage sharing for temporaries?
 
 - Kernel splitting (via what variables get computed in a kernel)
 
@@ -144,6 +144,8 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- delete unused inames
 
 - Expose iname-duplicate-and-rename as a primitive.
 

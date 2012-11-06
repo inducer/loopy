@@ -183,9 +183,7 @@ def split_iname(kernel, split_iname, inner_length,
         s = s.intersect(inner_constraint_set)
 
         if within is None:
-            s = (s
-                .eliminate(name_dim_type, name_idx, 1)
-                .remove_dims(name_dim_type, name_idx, 1))
+            s = s.project_out(name_dim_type, name_idx, 1)
 
         return s
 
@@ -345,8 +343,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
         iname_dt, iname_idx = iname_to_dim[iname]
 
         if within is None:
-            new_domain = new_domain.eliminate(iname_dt, iname_idx, 1)
-            new_domain = new_domain.remove_dims(iname_dt, iname_idx, 1)
+            new_domain = new_domain.project_out(iname_dt, iname_idx, 1)
 
     def subst_forced_iname_deps(fid):
         result = set()
@@ -661,8 +658,49 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
 # {{{ delete unused inames
 
 def delete_unused_inames(knl, inames=None):
-    from warnings import warn
-    warn("delete_unused_inames is unimplemented")
+    """Delete those among *inames* that are unused, i.e. project them
+    out of the domain. If these inames pose implicit restrictions on
+    other inames, these restrictions will persist as existentially
+    quantified variables.
+
+    :arg inames: may be an iterable of inames or a string of comma-separated inames.
+    """
+
+    # {{{ normalize arguments
+
+    if inames is None:
+        inames = knl.all_inames()
+    elif isinstance(inames, str):
+        inames = inames.split(",")
+
+    # }}}
+
+    # {{{ check which inames are unused
+
+    inames = set(inames)
+    used_inames = set()
+    for insn in knl.instructions:
+        used_inames.update(knl.insn_inames(insn.id))
+
+    unused_inames = inames - used_inames
+
+    # }}}
+
+    # {{{ remove them
+
+    from loopy.kernel import DomainChanger
+
+    for iname in unused_inames:
+        domch = DomainChanger(knl, (iname,))
+
+        dom = domch.domain
+        dt, idx = dom.get_var_dict()[iname]
+        dom = dom.project_out(dt, idx, 1)
+
+        knl = knl.copy(domains=domch.get_domains_with(dom))
+
+    # }}}
+
     return knl
 
 # }}}
