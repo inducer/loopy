@@ -528,8 +528,12 @@ class InvocationReplacer(ExpandingIdentityMapper):
         if stor_subscript:
             new_outer_expr = new_outer_expr[tuple(stor_subscript)]
 
+        # Can't possibly be nested, but recurse anyway to
+        # make sure substitution rules referenced below here
+        # do not get thrown away.
+        self.rec(rule.expression, expn_state.copy(arg_context={}))
+
         return new_outer_expr
-        # can't possibly be nested, don't recurse
 
 
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
