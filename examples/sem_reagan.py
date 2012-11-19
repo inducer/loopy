@@ -187,6 +187,8 @@ def test_tim3d_slab(ctx_factory):
         #knl = lp.precompute(knl, "us", ["i", "j"], within="... < lapr")
         #knl = lp.precompute(knl, "ut", ["i", "j"], within="... < lapr")
 
+        knl = lp.precompute(knl, "lapt", ["", "j"])
+
         # prefetch the derivative matrix
         knl = lp.add_prefetch(knl, "D[:,:]")
 
