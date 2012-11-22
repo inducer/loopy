@@ -603,7 +603,8 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         except cl.RuntimeError, e:
             if e.code == cl.status_code.IMAGE_FORMAT_NOT_SUPPORTED:
                 continue
-
+            else:
+                raise
 
         if not do_check:
             break
