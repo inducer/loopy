@@ -507,6 +507,43 @@ def _default_check_result(result, ref_result):
 
 
 
+def _enumerate_cl_devices_for_ref_test():
+    noncpu_devs = []
+    cpu_devs = []
+
+    from warnings import warn
+
+    for pf in cl.get_platforms():
+        if pf.name == "Portable OpenCL":
+            # That implementation [1] isn't quite good enough yet.
+            # [1] https://launchpad.net/pocl
+            # FIXME remove when no longer true.
+            warn("Skipping 'Portable OpenCL' for lack of maturity.")
+            continue
+
+        for dev in pf.get_devices():
+            if dev.type == cl.device_type.CPU:
+                cpu_devs.append(dev)
+            else:
+                noncpu_devs.append(dev)
+
+    if not (cpu_devs or noncpu_devs):
+        raise RuntimeError("no CL device found for test")
+
+    if not cpu_devs:
+        warn("No CPU device found for reference test. The reference computation "
+                "will either fail because of a timeout or take a *very* long "
+                "time.")
+
+    for dev in cpu_devs:
+        yield dev
+
+    for dev in noncpu_devs:
+        yield dev
+
+
+
+
 def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
         edit_code=False, dump_binary=False, codegen_kwargs={},
@@ -552,39 +589,13 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         fill_value_ref = -17
         fill_value = fill_value_ref
 
-    # {{{ find candidate devices for reference run
-
-    all_devs = []
-    cpu_devs = []
-
-    for pf in cl.get_platforms():
-        if pf.name == "Portable OpenCL":
-            # That implementation [1] isn't quite good enough yet.
-            # [1] https://launchpad.net/pocl
-            # FIXME remove when no longer true.
-            continue
-
-        for dev in pf.get_devices():
-            all_devs.append(dev)
-            if dev.type == cl.device_type.CPU:
-                cpu_devs.append(dev)
-
-    if not cpu_devs:
-        if not all_devs:
-            raise RuntimeError("no CL device found for test")
-
-        ref_devs = all_devs
-
-        from warnings import warn
-        warn("No CPU device found for reference test.")
-    else:
-        ref_devs = cpu_devs
-
-    # }}}
-
     # {{{ compile and run reference code
 
-    for dev in ref_devs:
+    found_ref_device = False
+
+    ref_errors = []
+
+    for dev in _enumerate_cl_devices_for_ref_test():
         ref_ctx = cl.Context([dev])
         ref_queue = cl.CommandQueue(ref_ctx,
                 properties=cl.command_queue_properties.PROFILING_ENABLE)
@@ -602,9 +613,19 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             ref_args["out_host"] = False
         except cl.RuntimeError, e:
             if e.code == cl.status_code.IMAGE_FORMAT_NOT_SUPPORTED:
+                import traceback
+                ref_errors.append("\n".join([
+                    75*"-",
+                    "On %s:" % dev,
+                    75*"-",
+                    traceback.format_exc(),
+                    75*"-"]))
+
                 continue
             else:
                 raise
+
+        found_ref_device = True
 
         if not do_check:
             break
@@ -635,6 +656,10 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         ref_elapsed = 1e-9*(ref_evt.profile.END-ref_evt.profile.SUBMIT)
 
         break
+
+    if not found_ref_device:
+        raise RuntimeError("could not find a suitable device for the reference computation.\n"
+                "These errors were encountered:\n"+"\n".join(ref_errors))
 
     # }}}
 
