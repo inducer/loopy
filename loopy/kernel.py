@@ -447,30 +447,38 @@ class Instruction(Record):
 # {{{ expand defines
 
 WORD_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
+BRACE_RE = re.compile(r"\$\{([a-zA-Z0-9_]+)\}")
 
 def expand_defines(insn, defines, single_valued=True):
-    words = set(match.group(1) for match in WORD_RE.finditer(insn))
-
     replacements = [()]
-    for word in words:
-        if word not in defines:
-            continue
 
-        value = defines[word]
-        if isinstance(value, list):
-            if single_valued:
-                raise ValueError("multi-valued macro expansion not allowed "
-                        "in this context (when expanding '%s')" % word)
+    for find_regexp, replace_pattern in [
+            (BRACE_RE, r"\$\{%s\}"),
+            (WORD_RE, r"\b%s\b"),
+            ]:
 
-            replacements = [
-                    rep+((r"\b%s\b" % word, subval),)
-                    for rep in replacements
-                    for subval in value
-                    ]
-        else:
-            replacements = [
-                    rep+((r"\b%s\b" % word, value),)
-                    for rep in replacements]
+        for match in find_regexp.finditer(insn):
+            word = match.group(1)
+
+            try:
+                value = defines[word]
+            except KeyError:
+                continue
+
+            if isinstance(value, list):
+                if single_valued:
+                    raise ValueError("multi-valued macro expansion not allowed "
+                            "in this context (when expanding '%s')" % word)
+
+                replacements = [
+                        rep+((replace_pattern % word, subval),)
+                        for rep in replacements
+                        for subval in value
+                        ]
+            else:
+                replacements = [
+                        rep+((replace_pattern % word, value),)
+                        for rep in replacements]
 
     for rep in replacements:
         rep_value = insn
