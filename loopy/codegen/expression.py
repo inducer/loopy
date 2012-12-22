@@ -736,7 +736,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                             self.rec(expr.base, PREC_NONE, type_context, tgt_dtype),
                             self.rec(expr.exponent, PREC_NONE, type_context, tgt_dtype))
 
-        return base_impl(self, expr, enclosing_prec, type_context)
+        return base_impl(expr, enclosing_prec, type_context)
 
     # }}}
 
