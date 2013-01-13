@@ -396,6 +396,8 @@ def test_argmax(ctx_factory):
 
 
 
+# {{{ code generator fuzzing
+
 def make_random_value():
     from random import randrange, uniform
     v = randrange(3)
@@ -499,6 +501,8 @@ def test_fuzz_code_generator(ctx_factory):
             print "---------------------------------------------------------------------"
             1/0
 
+# }}}
+
 
 
 
@@ -560,6 +564,65 @@ def test_nested_dependent_reduction(ctx_factory):
     assert (a == tgt_result).all()
 
 
+
+
+
+def test_multi_nested_dependent_reduction(ctx_factory):
+    dtype = np.dtype(np.int32)
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            [
+                "{[itgt]: 0 <= itgt < ntgts}",
+                "{[isrc_box]: 0 <= isrc_box < nboxes}",
+                "{[isrc]: 0 <= isrc < npart}"
+                ],
+            [
+                "<> npart = nparticles_per_box[isrc_box]",
+                "a[itgt] = sum((isrc_box, isrc), 1)",
+                ],
+            [
+                lp.ValueArg("n", np.int32),
+                lp.GlobalArg("a", dtype, ("n",)),
+                lp.GlobalArg("nparticles_per_box", np.int32, ("nboxes",)),
+                lp.ValueArg("ntgts", np.int32),
+                lp.ValueArg("nboxes", np.int32),
+                ],
+            assumptions="ntgts>=1")
+
+    cknl = lp.CompiledKernel(ctx, knl)
+    print cknl.code
+
+
+
+
+
+def test_recursive_nested_dependent_reduction(ctx_factory):
+    dtype = np.dtype(np.int32)
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            [
+                "{[itgt]: 0 <= itgt < ntgts}",
+                "{[isrc_box]: 0 <= isrc_box < nboxes}",
+                "{[isrc]: 0 <= isrc < npart}"
+                ],
+            [
+                "<> npart = nparticles_per_box[isrc_box]",
+                "<> boxsum = sum(isrc, isrc+isrc_box+itgt)",
+                "a[itgt] = sum(isrc_box, boxsum)",
+                ],
+            [
+                lp.ValueArg("n", np.int32),
+                lp.GlobalArg("a", dtype, ("n",)),
+                lp.GlobalArg("nparticles_per_box", np.int32, ("nboxes",)),
+                lp.ValueArg("ntgts", np.int32),
+                lp.ValueArg("nboxes", np.int32),
+                ],
+            assumptions="ntgts>=1")
+
+    cknl = lp.CompiledKernel(ctx, knl)
+    print cknl.code
 
 
 
