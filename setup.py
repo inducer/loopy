@@ -41,13 +41,6 @@ setup(name="loopy",
         'Topic :: Utilities',
         ],
 
-      dependency_links=[
-          "git://github.com/inducer/pyopencl#egg=pyopencl-2013.1",
-          "git://github.com/inducer/pymbolic#egg=pymbolic-2013.1",
-          "cgen",
-          "islpy>=2013.1"
-          ],
-
       install_requires=[
           "pyopencl>=2013.1",
           "pymbolic>=2013.1",

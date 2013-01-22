@@ -1,0 +1,4 @@
+islpy>=2013.1
+cgen
+git://github.com/inducer/pyopencl
+git://github.com/inducer/pymbolic
