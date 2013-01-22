@@ -592,6 +592,7 @@ def test_multi_nested_dependent_reduction(ctx_factory):
 
     cknl = lp.CompiledKernel(ctx, knl)
     print cknl.code
+    # FIXME: Actually test functionality.
 
 
 
@@ -623,6 +624,7 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
 
     cknl = lp.CompiledKernel(ctx, knl)
     print cknl.code
+    # FIXME: Actually test functionality.
 
 
 
