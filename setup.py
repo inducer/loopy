@@ -42,8 +42,8 @@ setup(name="loopy",
         ],
 
       dependency_links=[
-          "git+git://github.com/inducer/pyopencl#egg=pyopencl-2013.1",
-          "git+git://github.com/inducer/pymbolic#egg=pymbolic-2013.1",
+          "git://github.com/inducer/pyopencl#egg=pyopencl-2013.1",
+          "git://github.com/inducer/pymbolic#egg=pymbolic-2013.1",
           "cgen",
           "islpy>=2013.1"
           ],
