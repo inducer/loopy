@@ -13,3 +13,4 @@ distribute*egg
 distribute*tar.gz
 *.log
 *profiler.conf
+core
