@@ -350,18 +350,14 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
         for idomain in idomains[1:]:
             insn_impl_domain = insn_impl_domain | idomain
         assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
-        assumptions = align_spaces(
-                assumption_non_param,
-                insn_impl_domain, obj_bigger_ok=True)
+        assumptions, insn_impl_domain = align_two(assumption_non_param, insn_impl_domain)
         insn_impl_domain = (
                 (insn_impl_domain & assumptions)
                 .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
 
         insn_inames = kernel.insn_inames(insn)
         insn_domain = kernel.get_inames_domain(insn_inames)
-        assumptions = align_spaces(
-                assumption_non_param, insn_domain,
-                obj_bigger_ok=True)
+        assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
         desired_domain = ((insn_domain & assumptions)
             .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
 
