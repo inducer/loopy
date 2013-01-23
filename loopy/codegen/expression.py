@@ -425,9 +425,7 @@ class LoopyCCodeMapper(RecursiveMapper):
         domain = self.kernel.get_inames_domain(iname_deps)
 
         assumption_non_param = isl.BasicSet.from_params(self.kernel.assumptions)
-        assumptions = isl.align_spaces(
-                assumption_non_param,
-                domain, obj_bigger_ok=True)
+        assumptions, domain = isl.align_two(assumption_non_param, domain)
         domain = domain & assumptions
 
         from loopy.isl_helpers import is_nonnegative
