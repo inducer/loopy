@@ -910,6 +910,38 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
 
 
 
+def test_double_sum(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    n = 20
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n }",
+            ],
+            [
+                "a = sum((i,j), i*j)",
+                "b = sum(i, sum(j, i*j))",
+                ],
+            [
+                lp.GlobalArg("a", dtype, shape=()),
+                lp.GlobalArg("b", dtype, shape=()),
+                lp.ValueArg("n", np.int32, approximately=1000),
+                ],
+            assumptions="n>=1")
+
+    cknl = lp.CompiledKernel(ctx, knl)
+
+    evt, (a, b) = cknl(queue, n=n)
+
+    ref = sum(i*j for i in xrange(n) for j in xrange(n))
+    assert a.get() == ref
+    assert b.get() == ref
+
+
+
+
 # {{{ test race detection
 
 def test_ilp_write_race_detection_global(ctx_factory):
