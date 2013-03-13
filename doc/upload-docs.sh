@@ -9,4 +9,4 @@ AuthType Basic
 require user iliketoast
 EOF
 
-rsync --progress --verbose --archive --delete _build/html/{.*,*} buster:doc/loopy
+rsync --progress --verbose --archive --delete _build/html/{.*,*} doc-upload:doc/loopy
