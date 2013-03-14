@@ -1,3 +1,4 @@
+numpy
 islpy>=2013.1
 cgen
 git+git://github.com/inducer/pyopencl
