@@ -19,8 +19,8 @@ knl = lp.make_kernel(ctx.devices[0],
     "{[i]: 0<=i<n}",   # "loop domain"-- what values does i take?
     "out[i] = 2*a[i]", # "instructions" to be executed across the domain
     [ # argument declarations
-        lp.GlobalArg("out", np.float32, shape=("n",)),
-        lp.GlobalArg("a", np.float32, shape=("n",)),
+        lp.GlobalArg("out", np.float32, shape="n"),
+        lp.GlobalArg("a", np.float32, shape="n"),
         lp.ValueArg("n", np.int32),
         ])
 
