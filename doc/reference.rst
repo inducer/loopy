@@ -220,14 +220,6 @@ Automatic Testing
 Troubleshooting
 ---------------
 
-Special-purpose functionality
------------------------------
-
-Manipulating Reductions
-~~~~~~~~~~~~~~~~~~~~~~~
-
-.. autofunction:: realize_reduction
-
 Printing :class:`LoopKernel` objects
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

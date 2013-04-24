@@ -427,28 +427,27 @@ def get_problems(kernel, parameters):
 
     glens, llens = kernel.get_grid_sizes_as_exprs()
 
+    if (max(len(glens), len(llens))
+            > kernel.device.max_work_item_dimensions):
+        msg(5, "too many work item dimensions")
+
     from pymbolic import evaluate
     from pymbolic.mapper.evaluator import UnknownVariableError
     try:
         glens = evaluate(glens, parameters)
         llens = evaluate(llens, parameters)
     except UnknownVariableError, name:
-        raise RuntimeError("When checking your kernel for problems, "
-                "a value for parameter '%s' was not available. Pass "
-                "it in the 'parameters' kwarg to check_kernels()."
+        msg(1, "could not check axis bounds because no value "
+                "for variable '%s' was passed to check_kernels()"
                 % name)
+    else:
+        for i in range(len(llens)):
+            if llens[i] > kernel.device.max_work_item_sizes[i]:
+                msg(5, "group axis %d too big" % i)
 
-    if (max(len(glens), len(llens))
-            > kernel.device.max_work_item_dimensions):
-        msg(5, "too many work item dimensions")
-
-    for i in range(len(llens)):
-        if llens[i] > kernel.device.max_work_item_sizes[i]:
-            msg(5, "group axis %d too big" % i)
-
-    from pytools import product
-    if product(llens) > kernel.device.max_work_group_size:
-        msg(5, "work group too big")
+        from pytools import product
+        if product(llens) > kernel.device.max_work_group_size:
+            msg(5, "work group too big")
 
     import pyopencl as cl
     from pyopencl.characterize import usable_local_mem_size

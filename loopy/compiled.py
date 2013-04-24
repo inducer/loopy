@@ -32,6 +32,8 @@ import numpy as np
 
 from pytools import Record
 
+AUTO_TEST_SKIP_RUN = False
+
 
 
 
@@ -646,7 +648,10 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
 
         print "using %s for the reference calculation" % dev
 
-        ref_evt, _ = ref_compiled(ref_queue, **ref_args)
+        if not AUTO_TEST_SKIP_RUN:
+            ref_evt, _ = ref_compiled(ref_queue, **ref_args)
+        else:
+            ref_evt = cl.enqueue_marker(ref_queue)
 
         ref_queue.finish()
         ref_stop = time()
@@ -693,9 +698,10 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             print 75*"-"
 
         for i in range(warmup_rounds):
-            evt, _ = compiled(queue, **args)
+            if not AUTO_TEST_SKIP_RUN:
+                compiled(queue, **args)
 
-            if need_check:
+            if need_check and not AUTO_TEST_SKIP_RUN:
                 for arg_desc in arg_descriptors:
                     if arg_desc is None:
                         continue
@@ -731,8 +737,11 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             evt_start = cl.enqueue_marker(queue)
 
             for i in range(timing_rounds):
-                evt, _ = compiled(queue, **args)
-                events.append(evt)
+                if not AUTO_TEST_SKIP_RUN:
+                    evt, _ = compiled(queue, **args)
+                    events.append(evt)
+                else:
+                    events.append(cl.enqueue_marker(queue))
 
             evt_end = cl.enqueue_marker(queue)
 

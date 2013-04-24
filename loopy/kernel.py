@@ -1017,8 +1017,8 @@ class LoopKernel(Record):
 
         processed_args = []
         for arg in args:
-            for name in arg.name.split(","):
-                new_arg = arg.copy(name=name)
+            for arg_name in arg.name.split(","):
+                new_arg = arg.copy(name=arg_name)
                 if isinstance(arg, _ShapedArg):
                     if arg.shape is not None:
                         new_arg = new_arg.copy(shape=expand_defines_in_expr(arg.shape, defines))
