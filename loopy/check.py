@@ -315,6 +315,29 @@ def check_bounds(kernel):
         acm(insn.expression)
         acm(insn.assignee)
 
+def check_write_destinations(kernel):
+    for insn in kernel.instructions:
+        wvar = insn.get_assignee_var_name()
+
+        if wvar in kernel.all_inames():
+            raise RuntimeError("iname '%s' may not be written" % wvar)
+
+        insn_domain = kernel.get_inames_domain(kernel.insn_inames(insn))
+        insn_params = set(insn_domain.get_var_names(dim_type.param))
+
+        if wvar in kernel.all_params():
+            if wvar not in kernel.temporary_variables:
+                raise RuntimeError("domain parameter '%s' may not be written"
+                        "--it is not a temporary variable" % wvar)
+
+            if wvar in insn_params:
+                raise RuntimeError("domain parameter '%s' may not be written "
+                        "inside a domain dependent on it" % wvar)
+
+        if not (wvar in kernel.temporary_variables
+                or wvar in kernel.arg_dict) and wvar not in kernel.all_params():
+            raise RuntimeError
+
 # }}}
 
 def run_automatic_checks(kernel):
@@ -326,6 +349,7 @@ def run_automatic_checks(kernel):
         check_for_write_races(kernel)
         check_for_data_dependent_parallel_bounds(kernel)
         check_bounds(kernel)
+        check_write_destinations(kernel)
     except:
         print 75*"="
         print "failing kernel after processing:"

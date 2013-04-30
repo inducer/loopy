@@ -1007,6 +1007,36 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
 
 
 
+def test_write_parameter(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n }",
+            ],
+            """
+                a = sum((i,j), i*j)
+                b = sum(i, sum(j, i*j))
+                n = 15
+                """,
+            [
+                lp.GlobalArg("a", dtype, shape=()),
+                lp.GlobalArg("b", dtype, shape=()),
+                lp.ValueArg("n", np.int32, approximately=1000),
+                ],
+            assumptions="n>=1")
+
+    try:
+        lp.CompiledKernel(ctx, knl).get_code()
+    except RuntimeError, e:
+        assert "may not be written" in str(e)
+        pass # expected!
+    else:
+        assert False # expecting an error
+
+
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
