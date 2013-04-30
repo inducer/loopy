@@ -72,8 +72,8 @@ class UniqueNameGenerator:
 
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
-def _gather_identifiers(s):
-    return set(_IDENTIFIER_RE.findall(s))
+def _gather_isl_identifiers(s):
+    return set(_IDENTIFIER_RE.findall(s)) - set(["and", "or", "exists"])
 
 class MakeUnique:
     """A tag for a string that identifies a partial identifier that is to
@@ -87,9 +87,33 @@ class MakeUnique:
 
 # {{{ domain parsing
 
-def parse_domains(ctx, args_and_vars, domains, defines):
+EMPTY_SET_DIMS_RE = re.compile(r"^\s*\{\s*\:")
+SET_DIMS_RE = re.compile(r"^\s*\{\s*\[([a-zA-Z0-9_, ]+)\]\s*\:")
+
+def _find_inames_in_set(dom_str):
+    empty_match = EMPTY_SET_DIMS_RE.match(dom_str)
+    if empty_match is not None:
+        return set()
+
+    match = SET_DIMS_RE.match(dom_str)
+    if match is None:
+        raise RuntimeError("invalid syntax for domain '%s'" % dom_str)
+
+    result = set(iname.strip() for iname in match.group(1).split(",")
+            if iname.strip())
+
+    return result
+
+EX_QUANT_RE = re.compile(r"\bexists\s+([a-zA-Z0-9])\s*\:")
+
+def _find_existentially_quantified_inames(dom_str):
+    return set(ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str))
+
+def parse_domains(ctx, domains, defines):
+    if isinstance(domains, str):
+        domains = [domains]
+
     result = []
-    available_parameters = args_and_vars.copy()
     used_inames = set()
 
     for dom in domains:
@@ -98,8 +122,9 @@ def parse_domains(ctx, args_and_vars, domains, defines):
 
             if not dom.lstrip().startswith("["):
                 # i.e. if no parameters are already given
-                ids = _gather_identifiers(dom)
-                parameters = ids & available_parameters
+                parameters = (_gather_isl_identifiers(dom)
+                        - _find_inames_in_set(dom)
+                        - _find_existentially_quantified_inames(dom))
                 dom = "[%s] -> %s" % (",".join(parameters), dom)
 
             try:
@@ -123,7 +148,6 @@ def parse_domains(ctx, args_and_vars, domains, defines):
                         "that is part of a previous domain" % (dom, iname))
 
             used_inames.add(iname)
-            available_parameters.add(iname)
 
         result.append(dom)
 
@@ -585,7 +609,6 @@ def make_kernel(device, domains, instructions, kernel_args=[], *args, **kwargs):
                     % forbidden_kwarg)
 
     defines = kwargs.get("defines", {})
-    temporary_variables = kwargs.get("temporary_variables", {})
 
     # {{{ instruction/subst parsing
 
@@ -608,15 +631,7 @@ def make_kernel(device, domains, instructions, kernel_args=[], *args, **kwargs):
 
     # }}}
 
-    # Ordering dependency:
-    # Domain construction needs to know what temporary variables are
-    # available. That information can only be obtained once instructions
-    # are parsed.
-
-    # {{{ parse domains
-
-    if isinstance(domains, str):
-        domains = [domains]
+    # {{{ find/create isl_context
 
     isl_context = None
     for domain in domains:
@@ -624,20 +639,11 @@ def make_kernel(device, domains, instructions, kernel_args=[], *args, **kwargs):
             isl_context = domain.get_ctx()
     if isl_context is None:
         isl_context = isl.Context()
-
-    from loopy.kernel.data import ValueArg
-    scalar_arg_names = set(arg.name for arg in kernel_args if isinstance(arg, ValueArg))
-    var_names = (
-            set(temporary_variables)
-            | set(insn.get_assignee_var_name()
-                for insn in instructions
-                if insn.temp_var_type is not None))
-    domains = parse_domains(isl_context, scalar_arg_names | var_names, domains,
-            defines)
-
     kwargs["isl_context"] = isl_context
 
     # }}}
+
+    domains = parse_domains(isl_context, domains, defines)
 
     from loopy.kernel import LoopKernel
     knl = LoopKernel(device, domains, instructions, kernel_args, *args, **kwargs)
