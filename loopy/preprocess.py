@@ -87,7 +87,7 @@ def infer_types_of_temporaries(kernel):
 
     # {{{ work on type inference queue
 
-    from loopy.kernel import TemporaryVariable
+    from loopy.kernel.data import TemporaryVariable
 
     debug = 0
 
@@ -137,7 +137,7 @@ def infer_types_of_temporaries(kernel):
 
 def mark_local_temporaries(kernel):
     new_temp_vars = {}
-    from loopy.kernel import LocalIndexTagBase
+    from loopy.kernel.data import LocalIndexTagBase
 
     writers = kernel.writer_map()
 
@@ -246,9 +246,8 @@ def realize_reduction(kernel, insn_id_filter=None):
 
         arg_dtype = type_inf_mapper(expr.expr)
 
-        from loopy.kernel import Instruction
+        from loopy.kernel.data import Instruction, TemporaryVariable
 
-        from loopy.kernel import TemporaryVariable
         new_temporary_variables[target_var_name] = TemporaryVariable(
                 name=target_var_name,
                 shape=(),
@@ -369,7 +368,7 @@ class ExtraInameIndexInserter(IdentityMapper):
 def duplicate_private_temporaries_for_ilp(kernel):
     wmap = kernel.writer_map()
 
-    from loopy.kernel import IlpBaseTag
+    from loopy.kernel.data import IlpBaseTag
     from loopy.symbolic import get_dependencies
 
     var_to_new_ilp_inames = {}
@@ -591,7 +590,7 @@ def limit_boostability(kernel):
 # {{{ rank inames by stride
 
 def get_auto_axis_iname_ranking_by_stride(kernel, insn):
-    from loopy.kernel import ImageArg, ValueArg
+    from loopy.kernel.data import ImageArg, ValueArg
 
     approximate_arg_values = dict(
             (arg.name, arg.approximately)
@@ -629,7 +628,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     # {{{ figure out automatic-axis inames
 
-    from loopy.kernel import AutoLocalIndexTagBase
+    from loopy.kernel.data import AutoLocalIndexTagBase
     auto_axis_inames = set(
             iname
             for iname in kernel.insn_inames(insn)
@@ -690,7 +689,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 # {{{ assign automatic axes
 
 def assign_automatic_axes(kernel, axis=0, local_size=None):
-    from loopy.kernel import (AutoLocalIndexTagBase, LocalIndexTag)
+    from loopy.kernel.data import (AutoLocalIndexTagBase, LocalIndexTag)
 
     # Realize that at this point in time, axis lengths are already
     # fixed. So we compute them once and pass them to our recursive

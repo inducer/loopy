@@ -79,7 +79,7 @@ def split_arg_axis(kernel, args_and_axes, count):
     if len(args_and_axes) != len(arg_to_rest):
         raise RuntimeError("cannot split multiple axes of the same variable")
 
-    from loopy.kernel import GlobalArg
+    from loopy.kernel.data import GlobalArg
     for arg_name in arg_to_rest:
         if not isinstance(kernel.arg_dict[arg_name], GlobalArg):
             raise RuntimeError("only GlobalArg axes may be split")

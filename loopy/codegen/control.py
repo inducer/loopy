@@ -40,7 +40,7 @@ def get_admissible_conditional_inames_for(kernel, sched_index):
     inames if there is a barrier nested somewhere within.
     """
 
-    from loopy.kernel import LocalIndexTag, HardwareParallelTag
+    from loopy.kernel.data import LocalIndexTag, HardwareParallelTag
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
     result = find_active_inames_at(kernel, sched_index)
@@ -69,7 +69,7 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
                 generate_unroll_loop,
                 generate_sequential_loop_dim_code)
 
-        from loopy.kernel import (UnrolledIlpTag, UnrollTag, ForceSequentialTag,
+        from loopy.kernel.data import (UnrolledIlpTag, UnrollTag, ForceSequentialTag,
                 LoopedIlpTag)
         if isinstance(tag, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
@@ -117,7 +117,7 @@ def remove_inames_for_shared_hw_axes(kernel, cond_inames):
 
     tag_key_uses = {}
 
-    from loopy.kernel import HardwareParallelTag
+    from loopy.kernel.data import HardwareParallelTag
 
     for iname in cond_inames:
         tag = kernel.iname_to_tag.get(iname)

@@ -42,7 +42,7 @@ def check_for_unused_hw_axes_in_insns(kernel):
 
     # alternative: just disregard length-1 dimensions?
 
-    from loopy.kernel import LocalIndexTag, AutoLocalIndexTagBase, GroupIndexTag
+    from loopy.kernel.data import LocalIndexTag, AutoLocalIndexTagBase, GroupIndexTag
     for insn in kernel.instructions:
         if insn.boostable:
             continue
@@ -78,7 +78,7 @@ def check_for_unused_hw_axes_in_insns(kernel):
 
 
 def check_for_double_use_of_hw_axes(kernel):
-    from loopy.kernel import UniqueTag
+    from loopy.kernel.data import UniqueTag
 
     for insn in kernel.instructions:
         insn_tag_keys = set()
@@ -117,7 +117,7 @@ class WriteRaceConditionError(RuntimeError):
 
 def check_for_write_races(kernel):
     from loopy.symbolic import DependencyMapper
-    from loopy.kernel import ParallelTag, GroupIndexTag, LocalIndexTagBase
+    from loopy.kernel.data import ParallelTag, GroupIndexTag, LocalIndexTagBase
     depmap = DependencyMapper()
 
     iname_to_tag = kernel.iname_to_tag.get
@@ -186,7 +186,7 @@ def check_for_write_races(kernel):
                     % (insn.id, ",".join(race_inames)))
 
 def check_for_orphaned_user_hardware_axes(kernel):
-    from loopy.kernel import LocalIndexTag
+    from loopy.kernel.data import LocalIndexTag
     for axis in kernel.local_sizes:
         found = False
         for tag in kernel.iname_to_tag.itervalues():
@@ -199,7 +199,7 @@ def check_for_orphaned_user_hardware_axes(kernel):
                     "has no iname mapped to it" % axis)
 
 def check_for_data_dependent_parallel_bounds(kernel):
-    from loopy.kernel import ParallelTag
+    from loopy.kernel.data import ParallelTag
 
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
@@ -482,7 +482,7 @@ def get_problems(kernel, parameters):
             msg(4, "using more local memory than available--"
                     "possibly OK due to cache nature")
 
-    from loopy.kernel import ConstantArg
+    from loopy.kernel.data import ConstantArg
     const_arg_count = sum(
             1 for arg in kernel.args
             if isinstance(arg, ConstantArg))

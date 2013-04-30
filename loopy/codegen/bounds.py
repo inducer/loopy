@@ -75,7 +75,7 @@ def get_bounds_checks(domain, check_inames, implemented_domain,
 
 def get_usable_inames_for_conditional(kernel, sched_index):
     from loopy.schedule import EnterLoop, LeaveLoop
-    from loopy.kernel import ParallelTag, LocalIndexTagBase
+    from loopy.kernel.data import ParallelTag, LocalIndexTagBase
 
     result = set()
 

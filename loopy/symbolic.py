@@ -420,7 +420,7 @@ class ExpandingIdentityMapper(IdentityMapper):
         :returns: (new_substitutions, subst_renames)
         """
 
-        from loopy.kernel import SubstitutionRule
+        from loopy.kernel.data import SubstitutionRule
 
         orig_name_histogram = {}
         for key, (name, orig_name) in self.subst_rule_registry.iteritems():

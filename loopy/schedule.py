@@ -72,7 +72,7 @@ def gather_schedule_subloop(schedule, start_idx):
 
 
 def get_barrier_needing_dependency(kernel, target, source, unordered=False):
-    from loopy.kernel import Instruction
+    from loopy.kernel.data import Instruction
     if not isinstance(source, Instruction):
         source = kernel.id_to_insn[source]
     if not isinstance(target, Instruction):
@@ -194,7 +194,7 @@ def loop_nest_map(kernel):
     iname_to_insns = kernel.iname_to_insns()
 
     # examine pairs of all inames--O(n**2), I know.
-    from loopy.kernel import IlpBaseTag
+    from loopy.kernel.data import IlpBaseTag
     for inner_iname in all_inames:
         result[inner_iname] = set()
         for outer_iname in kernel.all_inames():
@@ -798,7 +798,7 @@ def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
 
     debug = ScheduleDebugger(**debug_args)
 
-    from loopy.kernel import IlpBaseTag, ParallelTag
+    from loopy.kernel.data import IlpBaseTag, ParallelTag
     ilp_inames = set(
             iname
             for iname in kernel.all_inames()

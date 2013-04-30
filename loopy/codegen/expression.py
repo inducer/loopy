@@ -319,8 +319,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                     enclosing_prec, type_context))
         elif expr.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.name]
-            from loopy.kernel import _ShapedArg
-            if isinstance(arg, _ShapedArg) and arg.shape == ():
+            from loopy.kernel.data import ShapedArg
+            if isinstance(arg, ShapedArg) and arg.shape == ():
                 return "*"+expr.name
 
         for mangler in self.kernel.symbol_manglers:
@@ -354,7 +354,7 @@ class LoopyCCodeMapper(RecursiveMapper):
         if expr.aggregate.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.aggregate.name]
 
-            from loopy.kernel import ImageArg
+            from loopy.kernel.data import ImageArg
             if isinstance(arg, ImageArg):
                 assert isinstance(expr.index, tuple)
 
@@ -429,7 +429,7 @@ class LoopyCCodeMapper(RecursiveMapper):
         if expr.aggregate.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.aggregate.name]
 
-            from loopy.kernel import ImageArg
+            from loopy.kernel.data import ImageArg
             if isinstance(arg, ImageArg):
                 raise RuntimeError("linear indexing doesn't work on images: %s"
                         % expr)

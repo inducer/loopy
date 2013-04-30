@@ -674,7 +674,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     c_subst_name = subst_name.replace(".", "_")
 
-    from loopy.kernel import parse_tag
+    from loopy.kernel.data import parse_tag
     default_tag = parse_tag(default_tag)
 
     subst = kernel.substitutions[subst_name]
@@ -786,7 +786,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ find domain to be changed
 
-    from loopy.kernel import DomainChanger
+    from loopy.kernel.tools import DomainChanger
     domch = DomainChanger(kernel, expanding_inames)
 
     if domch.leaf_domain_index is not None:
@@ -836,7 +836,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             )))
         (compute_expr))
 
-    from loopy.kernel import Instruction
+    from loopy.kernel.data import Instruction
     compute_insn = Instruction(
             id=kernel.make_unique_instruction_id(based_on=c_subst_name),
             assignee=assignee,
@@ -864,7 +864,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     else:
         dtype = np.dtype(dtype)
 
-    from loopy.kernel import TemporaryVariable
+    from loopy.kernel.data import TemporaryVariable
 
     new_temporary_variables = kernel.temporary_variables.copy()
     temp_var = TemporaryVariable(

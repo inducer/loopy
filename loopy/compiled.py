@@ -139,7 +139,7 @@ class CompiledKernel:
     def get_kernel(self, dtype_mapping_set):
         kernel = self.kernel
 
-        from loopy.kernel import (
+        from loopy.kernel.tools import (
                 add_argument_dtypes,
                 infer_argument_dtypes,
                 get_arguments_with_incomplete_dtype)
@@ -185,7 +185,7 @@ class CompiledKernel:
             print "[Loopy] ----------------------------------------------------"
             raise
 
-        from loopy.kernel import ValueArg
+        from loopy.kernel.data import ValueArg
 
         arg_types = []
         for arg in kernel.args:
@@ -374,7 +374,7 @@ class TestArgInfo(Record):
 
 def make_ref_args(kernel, queue, parameters,
         fill_value):
-    from loopy.kernel import ValueArg, GlobalArg, ImageArg
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
@@ -468,7 +468,7 @@ def make_ref_args(kernel, queue, parameters,
 
 def make_args(queue, kernel, arg_descriptors, parameters,
         fill_value):
-    from loopy.kernel import ValueArg, GlobalArg, ImageArg
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 

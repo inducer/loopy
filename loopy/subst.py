@@ -147,7 +147,7 @@ def extract_subst(kernel, subst_name, template, parameters):
         new_expr = cbmapper(insn.expression)
         new_insns.append(insn.copy(expression=new_expr))
 
-    from loopy.kernel import SubstitutionRule
+    from loopy.kernel.data import SubstitutionRule
     new_substs = {
             subst_name: SubstitutionRule(
                 name=subst_name,

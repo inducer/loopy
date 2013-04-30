@@ -26,7 +26,6 @@ THE SOFTWARE.
 
 
 from pytools import Record
-import numpy as np
 import islpy as isl
 
 
@@ -175,7 +174,7 @@ def make_initial_assignments(kernel):
 
     global_size, local_size = kernel.get_grid_sizes()
 
-    from loopy.kernel import LocalIndexTag, GroupIndexTag
+    from loopy.kernel.data import LocalIndexTag, GroupIndexTag
     from pymbolic import var
 
     for iname in kernel.all_inames():
@@ -253,7 +252,7 @@ def generate_code(kernel, with_annotation=False,
 
     has_image = False
 
-    from loopy.kernel import GlobalArg, ConstantArg, ImageArg, ValueArg
+    from loopy.kernel.data import GlobalArg, ConstantArg, ImageArg, ValueArg
 
     args = []
     for arg in kernel.args:

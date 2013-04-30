@@ -156,7 +156,7 @@ def intersect_kernel_with_slab(kernel, slab, iname):
 # {{{ hw-parallel loop
 
 def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=None):
-    from loopy.kernel import UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag
+    from loopy.kernel.data import UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag
 
     if hw_inames_left is None:
         hw_inames_left = [iname

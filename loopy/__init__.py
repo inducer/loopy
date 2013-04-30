@@ -49,13 +49,18 @@ class LoopyAdvisory(UserWarning):
 
 # {{{ imported user interface
 
-from loopy.kernel import ValueArg, ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg
+from loopy.kernel.data import (
+        ValueArg, ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg,
 
-from loopy.kernel import (AutoFitLocalIndexTag, get_dot_dependency_graph,
-        LoopKernel, Instruction,
         default_function_mangler, single_arg_function_mangler, opencl_function_mangler,
-        default_preamble_generator)
-from loopy.creation import make_kernel
+
+        default_preamble_generator,
+
+        Instruction)
+
+from loopy.kernel import LoopKernel
+from loopy.kernel.tools import get_dot_dependency_graph
+from loopy.kernel.creation import make_kernel
 from loopy.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
@@ -137,7 +142,7 @@ def split_iname(kernel, split_iname, inner_length,
     """
 
     existing_tag = kernel.iname_to_tag.get(split_iname)
-    from loopy.kernel import ForceSequentialTag
+    from loopy.kernel.data import ForceSequentialTag
     if do_tagged_check and (
             existing_tag is not None
             and not isinstance(existing_tag, ForceSequentialTag)):
@@ -289,7 +294,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     if new_iname is None:
         new_iname = kernel.get_var_name_generator()("_and_".join(inames))
 
-    from loopy.kernel import DomainChanger
+    from loopy.kernel.tools import DomainChanger
     domch = DomainChanger(kernel, frozenset(inames))
     for iname in inames:
         if kernel.get_home_domain_index(iname) != domch.leaf_domain_index:
@@ -389,12 +394,12 @@ join_dimensions = MovedFunctionDeprecationWrapper(join_inames)
 # {{{ tag inames
 
 def tag_inames(kernel, iname_to_tag, force=False):
-    from loopy.kernel import parse_tag
+    from loopy.kernel.data import parse_tag
 
     iname_to_tag = dict((iname, parse_tag(tag))
             for iname, tag in iname_to_tag.iteritems())
 
-    from loopy.kernel import (ParallelTag, AutoLocalIndexTagBase,
+    from loopy.kernel.data import (ParallelTag, AutoLocalIndexTagBase,
             ForceSequentialTag)
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
@@ -517,7 +522,7 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
     # {{{ duplicate the inames
 
     for old_iname, new_iname in zip(inames, new_inames):
-        from loopy.kernel import DomainChanger
+        from loopy.kernel.tools import DomainChanger
         domch = DomainChanger(knl, frozenset([old_iname]))
 
         from loopy.isl_helpers import duplicate_axes
@@ -597,7 +602,7 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
 
     # }}}
 
-    from loopy.kernel import DomainChanger
+    from loopy.kernel.tools import DomainChanger
     domch = DomainChanger(knl, tuple(inames))
 
     # {{{ ensure that projections are identical
@@ -705,7 +710,7 @@ def remove_unused_inames(knl, inames=None):
 
     # {{{ remove them
 
-    from loopy.kernel import DomainChanger
+    from loopy.kernel.tools import DomainChanger
 
     for iname in unused_inames:
         domch = DomainChanger(knl, (iname,))
@@ -727,7 +732,7 @@ def remove_unused_inames(knl, inames=None):
 # {{{ process footprint_subscripts
 
 def _add_kernel_axis(kernel, axis_name, start, stop, base_inames):
-    from loopy.kernel import DomainChanger
+    from loopy.kernel.tools import DomainChanger
     domch = DomainChanger(kernel, base_inames)
 
     domain = domch.domain
