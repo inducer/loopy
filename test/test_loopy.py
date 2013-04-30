@@ -204,7 +204,7 @@ def test_wg_too_small(ctx_factory):
 
     for gen_knl in kernel_gen:
         try:
-            lp.CompiledKernel(ctx, gen_knl)
+            lp.CompiledKernel(ctx, gen_knl).get_code()
         except RuntimeError, e:
             assert "implemented and desired" in str(e)
             pass # expected!
@@ -655,7 +655,7 @@ def test_dependent_loop_bounds(ctx_factory):
 
     cknl = lp.CompiledKernel(ctx, knl)
     print "---------------------------------------------------"
-    cknl.print_code()
+    print cknl.get_highlighted_code()
     print "---------------------------------------------------"
 
 
@@ -689,7 +689,7 @@ def test_dependent_loop_bounds_2(ctx_factory):
             inner_tag="l.0")
     cknl = lp.CompiledKernel(ctx, knl)
     print "---------------------------------------------------"
-    cknl.print_code()
+    print cknl.get_highlighted_code()
     print "---------------------------------------------------"
 
 
@@ -727,7 +727,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
 
     cknl = lp.CompiledKernel(ctx, knl)
     print "---------------------------------------------------"
-    cknl.print_code()
+    print cknl.get_highlighted_code()
     print "---------------------------------------------------"
 
     knl_bad = lp.split_iname(knl, "jj", 128, outer_tag="g.1",

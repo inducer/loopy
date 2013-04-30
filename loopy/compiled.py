@@ -30,7 +30,7 @@ import pyopencl.array as cl_array
 
 import numpy as np
 
-from pytools import Record
+from pytools import Record, memoize_method
 
 AUTO_TEST_SKIP_RUN = False
 
@@ -109,41 +109,13 @@ class CompiledKernel:
 
         # }}}
 
+        self.context = context
         self.kernel = kernel
-        from loopy.codegen import generate_code
-        self.code = generate_code(kernel, **codegen_kwargs)
+        self.edit_code = edit_code
+        self.codegen_kwargs = codegen_kwargs
+        self.options = options
 
-        if edit_code:
-            from pytools import invoke_editor
-            self.code = invoke_editor(self.code, "code.cl")
-
-        try:
-            self.cl_program = cl.Program(context, self.code)
-            self.cl_kernel = getattr(
-                    self.cl_program.build(options=options),
-                    kernel.name)
-        except KeyboardInterrupt:
-            raise
-        except:
-            print "[Loopy] ----------------------------------------------------"
-            print "[Loopy] build failed, here's the source code:"
-            print "[Loopy] ----------------------------------------------------"
-            print self.code
-            print "[Loopy] ----------------------------------------------------"
-            print "[Loopy] end source code"
-            print "[Loopy] ----------------------------------------------------"
-            raise
-
-        from loopy.kernel import ValueArg
-
-        arg_types = []
-        for arg in kernel.args:
-            if isinstance(arg, ValueArg):
-                arg_types.append(arg.dtype)
-            else:
-                arg_types.append(None)
-
-        self.cl_kernel.set_scalar_arg_dtypes(arg_types)
+        # {{{ precompile, store grid size functions
 
         if size_args is None:
             self.size_args = kernel.scalar_loop_args
@@ -161,6 +133,95 @@ class CompiledKernel:
         self.local_size_func = compile(
                 lsize_expr, self.size_args)
 
+        # }}}
+
+    @memoize_method
+    def get_kernel(self, dtype_mapping_set):
+        kernel = self.kernel
+
+        from loopy.kernel import (
+                add_argument_dtypes,
+                infer_argument_dtypes,
+                get_arguments_with_incomplete_dtype)
+
+        if get_arguments_with_incomplete_dtype(kernel):
+            if dtype_mapping_set is not None:
+                kernel = add_argument_dtypes(kernel, dict(dtype_mapping_set))
+
+            kernel = infer_argument_dtypes(kernel)
+
+            incomplete_args = get_arguments_with_incomplete_dtype(kernel)
+            if incomplete_args:
+                raise RuntimeError("not all argument dtypes are specified "
+                        "or could be inferred: " + ", ".join(incomplete_args))
+
+        return kernel
+
+    @memoize_method
+    def get_cl_kernel(self, dtype_mapping_set):
+        kernel = self.get_kernel(dtype_mapping_set)
+
+        from loopy.codegen import generate_code
+        code = generate_code(kernel, **self.codegen_kwargs)
+
+        if self.edit_code:
+            from pytools import invoke_editor
+            code = invoke_editor(code, "code.cl")
+
+        try:
+            cl_program = cl.Program(self.context, code)
+            cl_kernel = getattr(
+                    cl_program.build(options=self.options),
+                    kernel.name)
+        except KeyboardInterrupt:
+            raise
+        except:
+            print "[Loopy] ----------------------------------------------------"
+            print "[Loopy] build failed, here's the source code:"
+            print "[Loopy] ----------------------------------------------------"
+            print code
+            print "[Loopy] ----------------------------------------------------"
+            print "[Loopy] end source code"
+            print "[Loopy] ----------------------------------------------------"
+            raise
+
+        from loopy.kernel import ValueArg
+
+        arg_types = []
+        for arg in kernel.args:
+            if isinstance(arg, ValueArg):
+                arg_types.append(arg.dtype)
+            else:
+                arg_types.append(None)
+
+        cl_kernel.set_scalar_arg_dtypes(arg_types)
+
+        return kernel, cl_kernel
+
+    # {{{ debugging aids
+
+    def get_code(self, dtype_dict=None):
+        if dtype_dict is not None:
+            dtype_dict = frozenset(dtype_dict.items())
+
+        kernel = self.get_kernel(dtype_dict)
+
+        from loopy.codegen import generate_code
+        return generate_code(kernel, **self.codegen_kwargs)
+
+    def get_highlighted_code(self, dtype_dict=None):
+        return get_highlighted_code(self.get_code(dtype_dict))
+
+    @property
+    def code(self):
+        from warnings import warn
+        warn("CompiledKernel.code is deprecated. Use .get_code() instead.",
+                DeprecationWarning, stacklevel=2)
+
+        return self.get_code()
+
+    # }}}
+
     def __call__(self, queue, **kwargs):
         """If all array arguments are :mod:`numpy` arrays, defaults to returning
         numpy arrays as well.
@@ -172,15 +233,28 @@ class CompiledKernel:
         no_run = kwargs.pop("no_run", None)
         warn_numpy = kwargs.pop("warn_numpy", None)
 
+        # {{{ process arg types, get cl kernel
+
+        dtype_dict = {}
+        for arg in self.kernel.args:
+            val = kwargs.get(arg.name)
+            if val is not None:
+                try:
+                    dtype = val.dtype
+                except AttributeError:
+                    pass
+                else:
+                    dtype_dict[arg.name] = dtype
+
+        kernel, cl_kernel = self.get_cl_kernel(frozenset(dtype_dict.iteritems()))
+        del dtype_dict
+
+        # }}}
+
         import loopy as lp
 
-        if self.needs_check:
-            assert len(list(lp.check_kernels([self.kernel], kwargs))) == 1
-
-            self.needs_check = False
-
         domain_parameters = dict((name, int(kwargs[name]))
-                for name in self.kernel.scalar_loop_args)
+                for name in kernel.scalar_loop_args)
 
         args = []
         outputs = []
@@ -188,8 +262,8 @@ class CompiledKernel:
 
         kwargs_copy = kwargs.copy()
 
-        for arg in self.kernel.args:
-            is_written = arg.name in self.kernel.get_written_variables()
+        for arg in kernel.args:
+            is_written = arg.name in kernel.get_written_variables()
 
             val = kwargs_copy.pop(arg.name, None)
 
@@ -247,7 +321,7 @@ class CompiledKernel:
         if no_run:
             evt = cl.enqueue_marker(queue)
         else:
-            evt = self.cl_kernel(queue,
+            evt = cl_kernel(queue,
                     self.global_size_func(**domain_parameters),
                     self.local_size_func(**domain_parameters),
                     *args,
@@ -259,9 +333,6 @@ class CompiledKernel:
             outputs = [o.get() for o in outputs]
 
         return evt, outputs
-
-    def print_code(self):
-        print get_highlighted_code(self.code)
 
 # }}}
 

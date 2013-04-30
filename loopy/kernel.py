@@ -147,7 +147,7 @@ def parse_tag(tag):
 # {{{ arguments
 
 class _ShapedArg(Record):
-    def __init__(self, name, dtype, shape=None, strides=None, order="C",
+    def __init__(self, name, dtype=None, shape=None, strides=None, order="C",
             offset=0):
         """
         All of the following are optional. Specify either strides or shape.
@@ -159,7 +159,8 @@ class _ShapedArg(Record):
         :arg offset: Offset from the beginning of the vector from which
             the strides are counted.
         """
-        dtype = np.dtype(dtype)
+        if dtype is not None:
+            dtype = np.dtype(dtype)
 
         def parse_if_necessary(x):
             if isinstance(x, str):
@@ -227,7 +228,7 @@ class ConstantArg(_ShapedArg):
                 self.name, self.dtype, ",".join(str(i) for i in self.shape))
 
 class ImageArg(Record):
-    def __init__(self, name, dtype, dimensions=None, shape=None):
+    def __init__(self, name, dtype=None, dimensions=None, shape=None):
         dtype = np.dtype(dtype)
         if shape is not None:
             if dimensions is not None and dimensions != len(shape):
@@ -248,17 +249,19 @@ class ImageArg(Record):
     def __repr__(self):
         return "<ImageArg '%s' of type %s>" % (self.name, self.dtype)
 
-
 class ValueArg(Record):
-    def __init__(self, name, dtype, approximately=None):
-        Record.__init__(self, name=name, dtype=np.dtype(dtype),
+    def __init__(self, name, dtype=None, approximately=None):
+        if dtype is not None:
+            dtype = np.dtype(dtype)
+
+        Record.__init__(self, name=name, dtype=dtype,
                 approximately=approximately)
 
     def __repr__(self):
         return "<ValueArg '%s' of type %s>" % (self.name, self.dtype)
 
 class ScalarArg(ValueArg):
-    def __init__(self, name, dtype, approximately=None):
+    def __init__(self, name, dtype=None, approximately=None):
         from warnings import warn
         warn("ScalarArg is a deprecated name of ValueArg",
                 DeprecationWarning, stacklevel=2)
@@ -1352,6 +1355,16 @@ class LoopKernel(Record):
         return frozenset(result)
 
     @memoize_method
+    def all_params(self):
+        all_inames = self.all_inames()
+
+        result = set()
+        for dom in self.domains:
+            result.update(set(dom.get_var_names(dim_type.param)) - all_inames)
+
+        return frozenset(result)
+
+    @memoize_method
     def all_insn_inames(self):
         """Return a mapping from instruction ids to inames inside which
         they should be run.
@@ -1675,6 +1688,78 @@ class LoopKernel(Record):
         return "\n".join(lines)
 
     # }}}
+
+# }}}
+
+# {{{ add and infer argument dtypes
+
+def add_argument_dtypes(knl, dtype_dict):
+    dtype_dict = dtype_dict.copy()
+    new_args = []
+
+    for arg in knl.args:
+        new_dtype = dtype_dict.pop(arg.name, None)
+        if new_dtype is not None:
+            new_dtype = np.dtype(new_dtype)
+            if arg.dtype is not None and arg.dtype != new_dtype:
+                raise RuntimeError(
+                        "argument '%s' already has a different dtype "
+                        "(existing: %s, new: %s)"
+                        % (arg.name, arg.dtype, new_dtype))
+            arg = arg.copy(dtype=new_dtype)
+
+        new_args.append(arg)
+
+    knl = knl.copy(args=new_args)
+
+    if dtype_dict:
+        raise RuntimeError("unused argument dtypes: %s"
+                % ", ".join(dtype_dict))
+
+    return knl.copy(args=new_args)
+
+def infer_argument_dtypes(knl):
+    new_args = []
+
+    writer_map = knl.writer_map()
+
+    from loopy.codegen.expression import (
+            TypeInferenceMapper, TypeInferenceFailure)
+    tim = TypeInferenceMapper(knl)
+
+    for arg in knl.args:
+        if arg.dtype is None:
+            new_dtype = None
+
+            if arg.name in knl.all_params():
+                new_dtype = knl.index_dtype
+            else:
+                try:
+                    for write_insn_id in writer_map.get(arg.name, ()):
+                        write_insn = knl.id_to_insn[write_insn_id]
+                        new_tim_dtype = tim(write_insn.expression)
+                        if new_dtype is None:
+                            new_dtype = new_tim_dtype
+                        elif new_dtype != new_tim_dtype:
+                            # Now we know *nothing*.
+                            new_dtype = None
+                            break
+
+                except TypeInferenceFailure:
+                    # Even one type inference failure is enough to
+                    # make this dtype not safe to guess. Don't.
+                    pass
+
+            if new_dtype is not None:
+                arg = arg.copy(dtype=new_dtype)
+
+        new_args.append(arg)
+
+    return knl.copy(args=new_args)
+
+def get_arguments_with_incomplete_dtype(knl):
+    return [arg.name for arg in knl.args
+            if arg.dtype is None]
 
 # }}}
 

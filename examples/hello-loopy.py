@@ -19,9 +19,9 @@ knl = lp.make_kernel(ctx.devices[0],
     "{[i]: 0<=i<n}",   # "loop domain"-- what values does i take?
     "out[i] = 2*a[i]", # "instructions" to be executed across the domain
     [ # argument declarations
-        lp.GlobalArg("out", np.float32, shape="n"),
-        lp.GlobalArg("a", np.float32, shape="n"),
-        lp.ValueArg("n", np.int32),
+        lp.GlobalArg("out", shape="n"),
+        lp.GlobalArg("a", shape="n"),
+        lp.ValueArg("n"),
         ])
 
 # -----------------------------------------------------------------------------
@@ -35,4 +35,4 @@ knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 cknl = lp.CompiledKernel(ctx, knl)
 evt, (out,) = cknl(queue, a=a, n=n)
 
-cknl.print_code()
+print cknl.get_highlighted_code({"a": np.float32})
