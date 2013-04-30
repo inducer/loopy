@@ -467,7 +467,10 @@ def test_fuzz_code_generator(ctx_factory):
     for expr, var_values in generate_random_fuzz_examples(50):
     #for expr, var_values in get_fuzz_examples():
         from pymbolic import evaluate
-        true_value = evaluate(expr, var_values)
+        try:
+            true_value = evaluate(expr, var_values)
+        except ZeroDivisionError:
+            continue
 
         def get_dtype(x):
             if isinstance(x, (complex, np.complexfloating)):
