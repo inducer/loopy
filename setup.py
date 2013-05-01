@@ -52,7 +52,11 @@ setup(name="loopy",
       url="http://pypi.python.org/pypi/pytools",
       author_email="inform@tiker.net",
       license = "MIT",
-      packages=["loopy", "loopy.codegen"],
+      packages=[
+          "loopy",
+          "loopy.codegen"
+          "loopy.kernel"
+          ],
 
       # 2to3 invocation
       cmdclass={'build_py': build_py})
