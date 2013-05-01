@@ -254,9 +254,16 @@ class SetOperationCacheManager:
         return self.op(set, "dim_max", set.dim_max, args)
 
     def base_index_and_length(self, set, iname, context=None):
-        iname_to_dim = set.space.get_var_dict()
-        lower_bound_pw_aff = self.dim_min(set, iname_to_dim[iname][1])
-        upper_bound_pw_aff = self.dim_max(set, iname_to_dim[iname][1])
+        if not isinstance(iname, int):
+            iname_to_dim = set.space.get_var_dict()
+            idx = iname_to_dim[iname][1]
+        else:
+            idx = iname
+
+        del iname
+
+        lower_bound_pw_aff = self.dim_min(set, idx)
+        upper_bound_pw_aff = self.dim_max(set, idx)
 
         from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
         from loopy.symbolic import pw_aff_to_expr
