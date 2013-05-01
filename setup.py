@@ -54,8 +54,8 @@ setup(name="loopy",
       license = "MIT",
       packages=[
           "loopy",
-          "loopy.codegen"
-          "loopy.kernel"
+          "loopy.codegen",
+          "loopy.kernel",
           ],
 
       # 2to3 invocation
