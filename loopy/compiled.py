@@ -150,11 +150,6 @@ class CompiledKernel:
 
             kernel = infer_argument_dtypes(kernel)
 
-            incomplete_args = get_arguments_with_incomplete_dtype(kernel)
-            if incomplete_args:
-                raise RuntimeError("not all argument dtypes are specified "
-                        "or could be inferred: " + ", ".join(incomplete_args))
-
         return kernel
 
     @memoize_method
