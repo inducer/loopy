@@ -12,15 +12,17 @@ model. Here's a very simple example of how to double the entries of a vector
 using loopy:
 
 .. literalinclude:: ../examples/hello-loopy.py
+   :end-before: ENDEXAMPLE
 
-The following kernel is generated, compiled, and executed behind your back (and
-also printed at the end):
+This example is included in the :mod:`loopy` distribution as
+:download:`examples/hello-loopy.py <../examples/hello-loopy.py>`.
+
+When you run this script, the following kernel is generated, compiled, and executed:
 
 .. literalinclude:: ../examples/hello-loopy.cl
     :language: c
 
-This file is included in the :mod:`loopy` distribution as
-:file:`examples/hello-loopy.py`.
+(See the full example for how to print the generated code.)
 
 .. toctree::
     :maxdepth: 2

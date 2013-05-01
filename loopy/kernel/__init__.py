@@ -844,6 +844,19 @@ class LoopKernel(Record):
 
     # }}}
 
+    # {{{ direct execution
+
+    @memoize_method
+    def get_compiled_kernel(self, ctx):
+        from loopy.compiled import CompiledKernel
+        return CompiledKernel(ctx, self)
+
+    def __call__(self, queue, **kwargs):
+        return self.get_compiled_kernel(queue.context)(
+                queue, **kwargs)
+
+    # }}}
+
 # }}}
 
 # vim: foldmethod=marker
