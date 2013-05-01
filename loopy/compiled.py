@@ -43,17 +43,20 @@ def _arg_matches_spec(arg, val, other_args):
     import loopy as lp
     if isinstance(arg, lp.GlobalArg):
         from pymbolic import evaluate
-        shape = evaluate(arg.shape, other_args)
-        strides = evaluate(arg.numpy_strides, other_args)
 
         if arg.dtype != val.dtype:
             raise TypeError("dtype mismatch on argument '%s' "
                     "(got: %s, expected: %s)"
                     % (arg.name, val.dtype, arg.dtype))
-        if shape != val.shape:
-            raise TypeError("shape mismatch on argument '%s' "
-                    "(got: %s, expected: %s)"
-                    % (arg.name, val.shape, shape))
+
+        if arg.shape is not None:
+            shape = evaluate(arg.shape, other_args)
+            if shape != val.shape:
+                raise TypeError("shape mismatch on argument '%s' "
+                        "(got: %s, expected: %s)"
+                        % (arg.name, val.shape, shape))
+
+        strides = evaluate(arg.numpy_strides, other_args)
         if strides != tuple(val.strides):
             raise ValueError("strides mismatch on argument '%s' "
                     "(got: %s, expected: %s)"
