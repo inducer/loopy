@@ -18,12 +18,7 @@ a = cl.array.arange(queue, n, dtype=np.float32)
 knl = lp.make_kernel(
         ctx.devices[0],
         "{ [i]: 0<=i<n }",
-        "out[i] = 2*a[i]",
-        [ # argument declarations
-            lp.GlobalArg("out"),
-            lp.GlobalArg("a"),
-            lp.ValueArg("n"),
-            ])
+        "out[i] = 2*a[i]")
 
 # -----------------------------------------------------------------------------
 # transformation

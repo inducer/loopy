@@ -1055,6 +1055,22 @@ def test_arg_shape_guessing(ctx_factory):
 
 
 
+def test_arg_guessing(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n }",
+            ],
+            """
+                a = 1.5 + sum((i,j), i*j)
+                b[i, j] = i*j
+                c[i+j, j] = b[j,i]
+                """,
+            assumptions="n>=1")
+
+    print knl
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+
 def test_nonlinear_index(ctx_factory):
     ctx = ctx_factory()
 
