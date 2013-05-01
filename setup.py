@@ -45,7 +45,7 @@ setup(name="loopy",
           "pyopencl>=2013.1",
           "pymbolic>=2013.1",
           "cgen",
-          "islpy>=2013.1"
+          "islpy>=2013.2"
           ],
 
       author="Andreas Kloeckner",

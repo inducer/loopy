@@ -1052,6 +1052,29 @@ def test_arg_shape_guessing(ctx_factory):
     print knl
     print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
+
+
+
+def test_nonlinear_index(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n }",
+            ],
+            """
+                a[i*i] = 17
+                """,
+            [
+                lp.GlobalArg("a", shape="n"),
+                lp.ValueArg("n"),
+                ],
+            assumptions="n>=1")
+
+    print knl
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:

@@ -226,6 +226,8 @@ class _AccessCheckMapper(WalkMapper):
         self.insn_id = insn_id
 
     def map_subscript(self, expr):
+        WalkMapper.map_subscript(self, expr)
+
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)
 
@@ -247,32 +249,36 @@ class _AccessCheckMapper(WalkMapper):
             from loopy.symbolic import get_dependencies, get_access_range
 
             available_vars = set(self.domain.get_var_dict())
-            if (get_dependencies(subscript) <= available_vars
+            if not (get_dependencies(subscript) <= available_vars
                     and get_dependencies(shape) <= available_vars):
+                return
 
-                if len(subscript) != len(shape):
-                    raise RuntimeError("subscript to '%s' in '%s' has the wrong "
-                            "number of indices (got: %d, expected: %d)" % (
-                                expr.aggregate.name, expr,
-                                len(subscript), len(shape)))
+            if len(subscript) != len(shape):
+                raise RuntimeError("subscript to '%s' in '%s' has the wrong "
+                        "number of indices (got: %d, expected: %d)" % (
+                            expr.aggregate.name, expr,
+                            len(subscript), len(shape)))
 
+            try:
                 access_range = get_access_range(self.domain, subscript)
+            except isl.Error:
+                # Likely: index was non-linear, nothing we can do.
+                return
 
-                shape_domain = isl.BasicSet.universe(access_range.get_space())
-                for idim in xrange(len(subscript)):
-                    from loopy.isl_helpers import make_slab
-                    slab = make_slab(
-                            shape_domain.get_space(), (dim_type.in_, idim),
-                            0, shape[idim])
+            shape_domain = isl.BasicSet.universe(access_range.get_space())
+            for idim in xrange(len(subscript)):
+                from loopy.isl_helpers import make_slab
+                slab = make_slab(
+                        shape_domain.get_space(), (dim_type.in_, idim),
+                        0, shape[idim])
 
-                    shape_domain = shape_domain.intersect(slab)
+                shape_domain = shape_domain.intersect(slab)
 
-                if not access_range.is_subset(shape_domain):
-                    raise RuntimeError("'%s' in instruction '%s' "
-                            "accesses out-of-bounds array element"
-                            % (expr, self.insn_id))
+            if not access_range.is_subset(shape_domain):
+                raise RuntimeError("'%s' in instruction '%s' "
+                        "accesses out-of-bounds array element"
+                        % (expr, self.insn_id))
 
-        WalkMapper.map_subscript(self, expr)
 
 def check_bounds(kernel):
     temp_var_names = set(kernel.temporary_variables)
