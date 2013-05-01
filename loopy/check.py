@@ -218,6 +218,7 @@ def check_for_data_dependent_parallel_bounds(kernel):
                         "inames '%s'. This is not allowed (for now)."
                         % (i, par, ", ".join(par_inames)))
 
+
 class _AccessCheckMapper(WalkMapper):
     def __init__(self, kernel, domain, insn_id):
         self.kernel = kernel
@@ -238,56 +239,27 @@ class _AccessCheckMapper(WalkMapper):
             shape = tv.shape
 
         if shape is not None:
-            index = expr.index
+            subscript = expr.index
 
-            if not isinstance(index, tuple):
-                index = (index,)
+            if not isinstance(subscript, tuple):
+                subscript = (subscript,)
 
-            from loopy.symbolic import get_dependencies, aff_from_expr
+            from loopy.symbolic import get_dependencies, get_access_range
+
             available_vars = set(self.domain.get_var_dict())
-            if (get_dependencies(index) <= available_vars
+            if (get_dependencies(subscript) <= available_vars
                     and get_dependencies(shape) <= available_vars):
 
-                dims = len(index)
-
-                # we build access_map as a set because (idiocy!) Affs
-                # cannot live on maps.
-
-                # dims: [domain](dn)[storage]
-                access_map = self.domain
-
-                if isinstance(access_map, isl.BasicSet):
-                    access_map = isl.Set.from_basic_set(access_map)
-
-                dn = access_map.dim(dim_type.set)
-                access_map = access_map.insert_dims(dim_type.set, dn, dims)
-
-                for idim in xrange(dims):
-                    idx_aff = aff_from_expr(access_map.get_space(),
-                            index[idim])
-                    idx_aff = idx_aff.set_coefficient(
-                            dim_type.in_, dn+idim, -1)
-
-                    access_map = access_map.add_constraint(
-                            isl.Constraint.equality_from_aff(idx_aff))
-
-                access_map_as_map = isl.Map.universe(access_map.get_space())
-                access_map_as_map = access_map_as_map.intersect_range(access_map)
-                access_map = access_map_as_map.move_dims(
-                        dim_type.in_, 0,
-                        dim_type.out, 0, dn)
-                del access_map_as_map
-
-                access_range = access_map.range()
-
-                if dims != len(shape):
+                if len(subscript) != len(shape):
                     raise RuntimeError("subscript to '%s' in '%s' has the wrong "
                             "number of indices (got: %d, expected: %d)" % (
                                 expr.aggregate.name, expr,
-                                dims, len(shape)))
+                                len(subscript), len(shape)))
+
+                access_range = get_access_range(self.domain, subscript)
 
                 shape_domain = isl.BasicSet.universe(access_range.get_space())
-                for idim in xrange(dims):
+                for idim in xrange(len(subscript)):
                     from loopy.isl_helpers import make_slab
                     slab = make_slab(
                             shape_domain.get_space(), (dim_type.in_, idim),

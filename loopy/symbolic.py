@@ -915,7 +915,7 @@ class WildcardToUniqueVariableMapper(IdentityMapper):
 
 # }}}
 
-# {{{ prime-adder
+# {{{ prime ("'") adder
 
 class PrimeAdder(IdentityMapper):
     def __init__(self, which_vars):
@@ -934,7 +934,6 @@ class PrimeAdder(IdentityMapper):
         else:
             return expr
 
-
 # }}}
 
 @memoize
@@ -943,6 +942,43 @@ def get_dependencies(expr):
     dep_mapper = DependencyMapper(composite_leaves=False)
 
     return frozenset(dep.name for dep in dep_mapper(expr))
+
+# {{{ get access range
+
+def get_access_range(domain, subscript):
+    dims = len(subscript)
+
+    # we build access_map as a set because (idiocy!) Affs
+    # cannot live on maps.
+
+    # dims: [domain](dn)[storage]
+    access_map = domain
+
+    if isinstance(access_map, isl.BasicSet):
+        access_map = isl.Set.from_basic_set(access_map)
+
+    dn = access_map.dim(dim_type.set)
+    access_map = access_map.insert_dims(dim_type.set, dn, dims)
+
+    for idim in xrange(dims):
+        idx_aff = aff_from_expr(access_map.get_space(),
+                subscript[idim])
+        idx_aff = idx_aff.set_coefficient(
+                dim_type.in_, dn+idim, -1)
+
+        access_map = access_map.add_constraint(
+                isl.Constraint.equality_from_aff(idx_aff))
+
+    access_map_as_map = isl.Map.universe(access_map.get_space())
+    access_map_as_map = access_map_as_map.intersect_range(access_map)
+    access_map = access_map_as_map.move_dims(
+            dim_type.in_, 0,
+            dim_type.out, 0, dn)
+    del access_map_as_map
+
+    return access_map.range()
+
+# }}}
 
 
 
