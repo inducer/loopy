@@ -54,46 +54,28 @@ class CannotBranchDomainTree(RuntimeError):
 # {{{ loop kernel object
 
 class LoopKernel(Record):
-    """
+    """These correspond more or less directly to arguments of
+    :func:`loopy.make_kernel`.
+
     :ivar device: :class:`pyopencl.Device`
-    :ivar domains: :class:`islpy.BasicSet`
+    :ivar domains: a list of :class:`islpy.BasicSet` instances
     :ivar instructions:
     :ivar args:
     :ivar schedule:
     :ivar name:
-    :ivar preambles: a list of (tag, code) tuples that identify preamble snippets.
-        Each tag's snippet is only included once, at its first occurrence.
-        The preambles will be inserted in order of their tags.
-    :ivar preamble_generators: a list of functions of signature
-        (seen_dtypes, seen_functions) where seen_functions is a set of
-        (name, c_name, arg_dtypes), generating extra entries for `preambles`.
-    :ivar assumptions: the initial implemented_domain, captures assumptions
-        on the parameters. (an isl.Set)
-    :ivar local_sizes: A dictionary from integers to integers, mapping
-        workgroup axes to their sizes, e.g. *{0: 16}* forces axis 0 to be
-        length 16.
+    :ivar preambles:
+    :ivar preamble_generators:
+    :ivar assumptions:
+    :ivar local_sizes:
     :ivar temporary_variables:
     :ivar iname_to_tag:
-    :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
-        objects
-    :ivar function_manglers: list of functions of signature (name, arg_dtypes)
-        returning a tuple (result_dtype, c_name)
-        or a tuple (result_dtype, c_name, arg_dtypes),
-        where c_name is the C-level function to be called.
-    :ivar symbol_manglers: list of functions of signature (name) returning
-        a tuple (result_dtype, c_name), where c_name is the C-level symbol to be
-        evaluated.
-    :ivar defines: a dictionary of replacements to be made in instructions given
-        as strings before parsing. A macro instance intended to be replaced should
-        look like "MACRO" in the instruction code. The expansion given in this
-        parameter is allowed to be a list. In this case, instructions are generated
-        for *each* combination of macro values.
-
-        These defines may also be used in the domain and in argument shapes and
-        strides. They are expanded only upon kernel creation.
+    :ivar function_manglers:
+    :ivar symbol_manglers:
 
     The following arguments are not user-facing:
 
+    :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
+        objects
     :ivar iname_slab_increments: a dictionary mapping inames to (lower_incr,
         upper_incr) tuples that will be separated out in the execution to generate
         'bulk' slabs with fewer conditionals.
@@ -121,7 +103,6 @@ class LoopKernel(Record):
                 single_arg_function_mangler,
                 ],
             symbol_manglers=[opencl_symbol_mangler],
-            defines={},
 
             # non-user-facing
             iname_slab_increments={},
@@ -203,25 +184,6 @@ class LoopKernel(Record):
 
         # }}}
 
-        # {{{ expand macros in arg shapes
-
-        from loopy.kernel.data import ShapedArg
-        from loopy.kernel.creation import expand_defines_in_expr
-
-        processed_args = []
-        for arg in args:
-            for arg_name in arg.name.split(","):
-                new_arg = arg.copy(name=arg_name)
-                if isinstance(arg, ShapedArg):
-                    if arg.shape is not None:
-                        new_arg = new_arg.copy(shape=expand_defines_in_expr(arg.shape, defines))
-                    if arg.strides is not None:
-                        new_arg = new_arg.copy(strides=expand_defines_in_expr(arg.strides, defines))
-
-                processed_args.append(new_arg)
-
-        # }}}
-
         index_dtype = np.dtype(index_dtype)
         if index_dtype.kind != 'i':
             raise TypeError("index_dtype must be an integer")
@@ -235,7 +197,7 @@ class LoopKernel(Record):
         Record.__init__(self,
                 device=device, domains=domains,
                 instructions=instructions,
-                args=processed_args,
+                args=args,
                 schedule=schedule,
                 name=name,
                 preambles=preambles,

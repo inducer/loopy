@@ -379,25 +379,21 @@ class LoopyCCodeMapper(RecursiveMapper):
                 if not isinstance(expr.index, tuple):
                     index_expr = (index_expr,)
 
-                if arg.strides is not None:
-                    ary_strides = arg.strides
-                else:
-                    ary_strides = (1,)
+                if arg.strides is None:
+                    raise RuntimeError("index access to '%s' requires known "
+                            "strides" % arg.name)
 
-                if len(ary_strides) != len(index_expr):
+                if len(arg.strides) != len(index_expr):
                     raise RuntimeError("subscript to '%s' in '%s' has the wrong "
                             "number of indices (got: %d, expected: %d)" % (
                                 expr.aggregate.name, expr,
-                                len(index_expr), len(ary_strides)))
-
-                if len(index_expr) == 0:
-                    return "*" + expr.aggregate.name
+                                len(index_expr), len(arg.strides)))
 
                 from pymbolic.primitives import Subscript
                 return base_impl(
                         Subscript(expr.aggregate, arg.offset+sum(
                             stride*expr_i for stride, expr_i in zip(
-                                ary_strides, index_expr))),
+                                arg.strides, index_expr))),
                         enclosing_prec, type_context)
 
 

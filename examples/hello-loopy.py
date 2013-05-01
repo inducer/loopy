@@ -15,14 +15,15 @@ a = cl.array.arange(queue, n, dtype=np.float32)
 # -----------------------------------------------------------------------------
 # generation (loopy bits start here)
 # -----------------------------------------------------------------------------
-knl = lp.make_kernel(ctx.devices[0],
-    "{[i]: 0<=i<n}",   # "loop domain"-- what values does i take?
-    "out[i] = 2*a[i]", # "instructions" to be executed across the domain
-    [ # argument declarations
-        lp.GlobalArg("out", shape="n"),
-        lp.GlobalArg("a", shape="n"),
-        lp.ValueArg("n"),
-        ])
+knl = lp.make_kernel(
+        ctx.devices[0],
+        "{ [i]: 0<=i<n }",
+        "out[i] = 2*a[i]",
+        [ # argument declarations
+            lp.GlobalArg("out"),
+            lp.GlobalArg("a"),
+            lp.ValueArg("n"),
+            ])
 
 # -----------------------------------------------------------------------------
 # transformation

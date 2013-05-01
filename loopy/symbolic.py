@@ -168,15 +168,15 @@ class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
 
 class WalkMapper(WalkMapperBase):
-    def map_reduction(self, expr):
+    def map_reduction(self, expr, *args):
         if not self.visit(expr):
             return
 
-        self.rec(expr.expr)
+        self.rec(expr.expr, *args)
 
     map_tagged_variable = WalkMapperBase.map_variable
 
-    def map_loopy_function_identifier(self, expr):
+    def map_loopy_function_identifier(self, expr, *args):
         self.visit(expr)
 
     map_linear_subscript = WalkMapperBase.map_subscript

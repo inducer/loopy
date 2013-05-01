@@ -136,8 +136,26 @@ def parse_tag(tag):
 
 # {{{ arguments
 
+class auto_shape:
+    pass
+
+class auto_strides:
+    pass
+
+def make_strides(shape, order):
+    from pyopencl.compyte.array import (
+            f_contiguous_strides,
+            c_contiguous_strides)
+
+    if order == "F":
+        return f_contiguous_strides(1, shape)
+    elif order == "C":
+        return c_contiguous_strides(1, shape)
+    else:
+        raise ValueError("invalid order: %s" % order)
+
 class ShapedArg(Record):
-    def __init__(self, name, dtype=None, shape=None, strides=None, order="C",
+    def __init__(self, name, dtype=None, shape=None, strides=None, order=None,
             offset=0):
         """
         All of the following are optional. Specify either strides or shape.
@@ -166,23 +184,26 @@ class ShapedArg(Record):
 
             return tuple(parse_if_necessary(xi) for xi in x)
 
-        if strides is not None:
+        if strides == "auto":
+            strides = auto_strides
+        if shape == "auto":
+            shape = auto_shape
+
+        strides_known = strides is not None and strides is not auto_strides
+        shape_known = shape is not None and shape is not auto_shape
+
+        if strides_known:
             strides = process_tuple(strides)
 
-        if shape is not None:
+        if shape_known:
             shape = process_tuple(shape)
 
-        if strides is None and shape is not None:
-            from pyopencl.compyte.array import (
-                    f_contiguous_strides,
-                    c_contiguous_strides)
-
-            if order == "F":
-                strides = f_contiguous_strides(1, shape)
-            elif order == "C":
-                strides = c_contiguous_strides(1, shape)
-            else:
-                raise ValueError("invalid order: %s" % order)
+        if not strides_known and shape_known:
+            if len(shape) == 1:
+                # don't need order to know that
+                strides = (1,)
+            elif order is not None:
+                strides = make_strides(shape, order)
 
         Record.__init__(self,
                 name=name,

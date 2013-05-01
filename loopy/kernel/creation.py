@@ -28,7 +28,7 @@ THE SOFTWARE.
 
 
 import numpy as np
-from loopy.symbolic import IdentityMapper
+from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import Instruction, SubstitutionRule
 import islpy as isl
 from islpy import dim_type
@@ -82,76 +82,6 @@ class MakeUnique:
 
     def __init__(self, name):
         self.name = name
-
-# }}}
-
-# {{{ domain parsing
-
-EMPTY_SET_DIMS_RE = re.compile(r"^\s*\{\s*\:")
-SET_DIMS_RE = re.compile(r"^\s*\{\s*\[([a-zA-Z0-9_, ]+)\]\s*\:")
-
-def _find_inames_in_set(dom_str):
-    empty_match = EMPTY_SET_DIMS_RE.match(dom_str)
-    if empty_match is not None:
-        return set()
-
-    match = SET_DIMS_RE.match(dom_str)
-    if match is None:
-        raise RuntimeError("invalid syntax for domain '%s'" % dom_str)
-
-    result = set(iname.strip() for iname in match.group(1).split(",")
-            if iname.strip())
-
-    return result
-
-EX_QUANT_RE = re.compile(r"\bexists\s+([a-zA-Z0-9])\s*\:")
-
-def _find_existentially_quantified_inames(dom_str):
-    return set(ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str))
-
-def parse_domains(ctx, domains, defines):
-    if isinstance(domains, str):
-        domains = [domains]
-
-    result = []
-    used_inames = set()
-
-    for dom in domains:
-        if isinstance(dom, str):
-            dom, = expand_defines(dom, defines)
-
-            if not dom.lstrip().startswith("["):
-                # i.e. if no parameters are already given
-                parameters = (_gather_isl_identifiers(dom)
-                        - _find_inames_in_set(dom)
-                        - _find_existentially_quantified_inames(dom))
-                dom = "[%s] -> %s" % (",".join(parameters), dom)
-
-            try:
-                dom = isl.BasicSet.read_from_str(ctx, dom)
-            except:
-                print "failed to parse domain '%s'" % dom
-                raise
-        else:
-            assert isinstance(dom, (isl.Set, isl.BasicSet))
-            # assert dom.get_ctx() == ctx
-
-        for i_iname in xrange(dom.dim(dim_type.set)):
-            iname = dom.get_dim_name(dim_type.set, i_iname)
-
-            if iname is None:
-                raise RuntimeError("domain '%s' provided no iname at index "
-                        "%d (redefined iname?)" % (dom, i_iname))
-
-            if iname in used_inames:
-                raise RuntimeError("domain '%s' redefines iname '%s' "
-                        "that is part of a previous domain" % (dom, iname))
-
-            used_inames.add(iname)
-
-        result.append(dom)
-
-    return result
 
 # }}}
 
@@ -345,6 +275,79 @@ def parse_if_necessary(insn, defines):
             yield parse_insn(sub_insn)
 
 # }}}
+
+# {{{ domain parsing
+
+EMPTY_SET_DIMS_RE = re.compile(r"^\s*\{\s*\:")
+SET_DIMS_RE = re.compile(r"^\s*\{\s*\[([a-zA-Z0-9_, ]+)\]\s*\:")
+
+def _find_inames_in_set(dom_str):
+    empty_match = EMPTY_SET_DIMS_RE.match(dom_str)
+    if empty_match is not None:
+        return set()
+
+    match = SET_DIMS_RE.match(dom_str)
+    if match is None:
+        raise RuntimeError("invalid syntax for domain '%s'" % dom_str)
+
+    result = set(iname.strip() for iname in match.group(1).split(",")
+            if iname.strip())
+
+    return result
+
+EX_QUANT_RE = re.compile(r"\bexists\s+([a-zA-Z0-9])\s*\:")
+
+def _find_existentially_quantified_inames(dom_str):
+    return set(ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str))
+
+def parse_domains(ctx, domains, defines):
+    if isinstance(domains, str):
+        domains = [domains]
+
+    result = []
+    used_inames = set()
+
+    for dom in domains:
+        if isinstance(dom, str):
+            dom, = expand_defines(dom, defines)
+
+            if not dom.lstrip().startswith("["):
+                # i.e. if no parameters are already given
+                parameters = (_gather_isl_identifiers(dom)
+                        - _find_inames_in_set(dom)
+                        - _find_existentially_quantified_inames(dom))
+                dom = "[%s] -> %s" % (",".join(parameters), dom)
+
+            try:
+                dom = isl.BasicSet.read_from_str(ctx, dom)
+            except:
+                print "failed to parse domain '%s'" % dom
+                raise
+        else:
+            assert isinstance(dom, (isl.Set, isl.BasicSet))
+            # assert dom.get_ctx() == ctx
+
+        for i_iname in xrange(dom.dim(dim_type.set)):
+            iname = dom.get_dim_name(dim_type.set, i_iname)
+
+            if iname is None:
+                raise RuntimeError("domain '%s' provided no iname at index "
+                        "%d (redefined iname?)" % (dom, i_iname))
+
+            if iname in used_inames:
+                raise RuntimeError("domain '%s' redefines iname '%s' "
+                        "that is part of a previous domain" % (dom, iname))
+
+            used_inames.add(iname)
+
+        result.append(dom)
+
+    return result
+
+# }}}
+
+def guess_kernel_args_if_requested(domains, instructions, kernel_args):
+    return kernel_args
 
 # {{{ tag reduction inames as sequential
 
@@ -592,23 +595,168 @@ def check_for_reduction_inames_duplication_requests(kernel):
 
 # }}}
 
+# {{{
+
+def apply_default_order_to_args(kernel, default_order):
+    from loopy.kernel.data import ShapedArg
+
+    processed_args = []
+    for arg in kernel.args:
+        if isinstance(arg, ShapedArg):
+            arg = arg.copy(order=default_order)
+        processed_args.append(arg)
+
+    return kernel.copy(args=processed_args)
+
+# }}}
+
+# {{{ duplicate arguments and expand defines in shapes
+
+def dup_args_and_expand_defines_in_shapes(kernel, defines):
+    from loopy.kernel.data import ShapedArg, auto_shape, auto_strides
+    from loopy.kernel.creation import expand_defines_in_expr
+
+    processed_args = []
+    for arg in kernel.args:
+        for arg_name in arg.name.split(","):
+            new_arg = arg.copy(name=arg_name)
+            if isinstance(arg, ShapedArg):
+                if arg.shape is not None and arg.shape is not auto_shape:
+                    new_arg = new_arg.copy(shape=expand_defines_in_expr(arg.shape, defines))
+                if arg.strides is not None and arg.strides is not auto_strides:
+                    new_arg = new_arg.copy(strides=expand_defines_in_expr(arg.strides, defines))
+
+            processed_args.append(new_arg)
+
+    return kernel.copy(args=processed_args)
+
+# }}}
+
+# {{{ guess argument shapes
+
+class _AccessRangeMapper(WalkMapper):
+    def __init__(self, arg_name):
+        self.arg_name = arg_name
+        self.access_range = None
+
+    def map_subscript(self, expr, domain):
+        WalkMapper.map_subscript(self, expr, domain)
+
+        from pymbolic.primitives import Variable
+        assert isinstance(expr.aggregate, Variable)
+
+        if expr.aggregate.name != self.arg_name:
+            return
+
+        subscript = expr.index
+        if not isinstance(subscript, tuple):
+            subscript = (subscript,)
+
+        from loopy.symbolic import get_dependencies, get_access_range
+
+        if not get_dependencies(subscript) <= set(domain.get_var_dict()):
+            raise RuntimeError("cannot determine access range for '%s': "
+                    "undetermined index in '%s'"
+                    % (self.arg_name, ", ".join(str(i) for i in subscript)))
+
+        access_range = get_access_range(domain, subscript)
+
+        if self.access_range is None:
+            self.access_range = access_range
+        else:
+            if (self.access_range.dim(dim_type.set)
+                    != access_range.dim(dim_type.set)):
+                raise RuntimeError(
+                        "error while determining shape of argument '%s': "
+                        "varying number of indices encountered"
+                        % self.arg_name)
+
+            self.access_range = self.access_range | access_range
+
+def guess_arg_shape_if_requested(kernel, default_order):
+    new_args = []
+
+    from loopy.kernel.data import ShapedArg, auto_shape, auto_strides
+
+    for arg in kernel.args:
+        if isinstance(arg, ShapedArg) and (
+                arg.shape is auto_shape or arg.strides is auto_strides):
+            armap = _AccessRangeMapper(arg.name)
+
+            for insn in kernel.instructions:
+                domain = kernel.get_inames_domain(kernel.insn_inames(insn))
+                armap(insn.assignee, domain)
+                armap(insn.expression, domain)
+
+            if armap.access_range is None:
+                # no subscripts found, let's call it a scalar
+                shape = ()
+            else:
+                from loopy.isl_helpers import static_max_of_pw_aff
+                from loopy.symbolic import pw_aff_to_expr
+
+                shape = tuple(
+                        pw_aff_to_expr(static_max_of_pw_aff(
+                            kernel.cache_manager.dim_max(armap.access_range, i) + 1,
+                            constants_only=False))
+                        for i in xrange(armap.access_range.dim(dim_type.set)))
+
+            if arg.shape is auto_shape:
+                arg = arg.copy(shape=shape)
+            if arg.strides is auto_strides:
+                from loopy.kernel.data import make_strides
+                arg = arg.copy(strides=make_strides(shape, default_order))
+
+        new_args.append(arg)
+
+    return kernel.copy(args=new_args)
+
+# }}}
+
 # {{{ kernel creation top-level
 
-def make_kernel(device, domains, instructions, kernel_args=[], *args, **kwargs):
-    """User-facing kernel creation entrypoint."""
+def make_kernel(device, domains, instructions, kernel_args=[], **kwargs):
+    """User-facing kernel creation entrypoint.
 
-    for forbidden_kwarg in [
-            "substitutions",
-            "iname_slab_increments",
-            "applied_iname_rewrites",
-            "cache_manager",
-            "isl_context",
-            ]:
-        if forbidden_kwarg in kwargs:
-            raise RuntimeError("'%s' is not part of user-facing interface"
-                    % forbidden_kwarg)
+    :arg device: :class:`pyopencl.Device`
+    :arg domains: :class:`islpy.BasicSet`
+    :arg instructions:
+    :arg kernel_args:
 
-    defines = kwargs.get("defines", {})
+    The following keyword arguments are recognized:
+
+    :arg preambles: a list of (tag, code) tuples that identify preamble snippets.
+        Each tag's snippet is only included once, at its first occurrence.
+        The preambles will be inserted in order of their tags.
+    :arg preamble_generators: a list of functions of signature
+        (seen_dtypes, seen_functions) where seen_functions is a set of
+        (name, c_name, arg_dtypes), generating extra entries for *preambles*.
+    :arg defines: a dictionary of replacements to be made in instructions given
+        as strings before parsing. A macro instance intended to be replaced should
+        look like "MACRO" in the instruction code. The expansion given in this
+        parameter is allowed to be a list. In this case, instructions are generated
+        for *each* combination of macro values.
+
+        These defines may also be used in the domain and in argument shapes and
+        strides. They are expanded only upon kernel creation.
+    :arg default_order: "C" (default) or "F"
+    :arg function_manglers: list of functions of signature (name, arg_dtypes)
+        returning a tuple (result_dtype, c_name)
+        or a tuple (result_dtype, c_name, arg_dtypes),
+        where c_name is the C-level function to be called.
+    :arg symbol_manglers: list of functions of signature (name) returning
+        a tuple (result_dtype, c_name), where c_name is the C-level symbol to be
+        evaluated.
+    :arg assumptions: the initial implemented_domain, captures assumptions
+        on the parameters. (an isl.Set)
+    :arg local_sizes: A dictionary from integers to integers, mapping
+        workgroup axes to their sizes, e.g. *{0: 16}* forces axis 0 to be
+        length 16.
+    :arg temporary_variables:
+    """
+
+    defines = kwargs.pop("defines", {})
+    default_order = kwargs.pop("default_order", "C")
 
     # {{{ instruction/subst parsing
 
@@ -645,8 +793,10 @@ def make_kernel(device, domains, instructions, kernel_args=[], *args, **kwargs):
 
     domains = parse_domains(isl_context, domains, defines)
 
+    kernel_args = guess_kernel_args_if_requested(domains, instructions, kernel_args)
+
     from loopy.kernel import LoopKernel
-    knl = LoopKernel(device, domains, instructions, kernel_args, *args, **kwargs)
+    knl = LoopKernel(device, domains, instructions, kernel_args, **kwargs)
 
     check_for_nonexistent_iname_deps(knl)
     check_for_reduction_inames_duplication_requests(knl)
@@ -654,6 +804,9 @@ def make_kernel(device, domains, instructions, kernel_args=[], *args, **kwargs):
     knl = tag_reduction_inames_as_sequential(knl)
     knl = create_temporaries(knl)
     knl = expand_cses(knl)
+    knl = dup_args_and_expand_defines_in_shapes(knl, defines)
+    knl = guess_arg_shape_if_requested(knl, default_order)
+    knl = apply_default_order_to_args(knl, default_order)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:

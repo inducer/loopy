@@ -50,6 +50,7 @@ class LoopyAdvisory(UserWarning):
 # {{{ imported user interface
 
 from loopy.kernel.data import (
+        auto_shape, auto_strides,
         ValueArg, ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg,
 
         default_function_mangler, single_arg_function_mangler, opencl_function_mangler,
@@ -72,7 +73,9 @@ from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, auto_test_vs_ref
 from loopy.check import check_kernels
 
-__all__ = ["ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
+__all__ = [
+        "auto_shape", "auto_strides",
+        "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
         "LoopKernel",
         "Instruction",
         "default_function_mangler", "single_arg_function_mangler",

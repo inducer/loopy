@@ -202,14 +202,10 @@ def test_wg_too_small(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen)
 
+    import pytest
     for gen_knl in kernel_gen:
-        try:
+        with pytest.raises(RuntimeError):
             lp.CompiledKernel(ctx, gen_knl).get_code()
-        except RuntimeError, e:
-            assert "implemented and desired" in str(e)
-            pass # expected!
-        else:
-            assert False # expecting an error
 
 
 
@@ -644,14 +640,13 @@ def test_dependent_loop_bounds(ctx_factory):
                 ],
             [
                 "<> row_len = a_rowstarts[i+1] - a_rowstarts[i]",
-                "ax[i] = sum(jj, a_values[a_rowstarts[i]+jj])",
+                "a_sum[i] = sum(jj, a_values[[a_rowstarts[i]+jj]])",
                 ],
             [
-                lp.GlobalArg("a_rowstarts", np.int32),
-                lp.GlobalArg("a_indices", np.int32),
+                lp.GlobalArg("a_rowstarts", np.int32, shape="auto"),
+                lp.GlobalArg("a_indices", np.int32, shape="auto"),
                 lp.GlobalArg("a_values", dtype),
-                lp.GlobalArg("x", dtype),
-                lp.GlobalArg("ax", dtype),
+                lp.GlobalArg("a_sum", dtype, shape="auto"),
                 lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and row_len>=1")
@@ -676,14 +671,13 @@ def test_dependent_loop_bounds_2(ctx_factory):
             [
                 "<> row_start = a_rowstarts[i]",
                 "<> row_len = a_rowstarts[i+1] - row_start",
-                "ax[i] = sum(jj, a_values[row_start+jj])",
+                "ax[i] = sum(jj, a_values[[row_start+jj]])",
                 ],
             [
-                lp.GlobalArg("a_rowstarts", np.int32),
-                lp.GlobalArg("a_indices", np.int32),
+                lp.GlobalArg("a_rowstarts", np.int32, shape="auto"),
+                lp.GlobalArg("a_indices", np.int32, shape="auto"),
                 lp.GlobalArg("a_values", dtype),
-                lp.GlobalArg("x", dtype),
-                lp.GlobalArg("ax", dtype),
+                lp.GlobalArg("ax", dtype, shape="auto"),
                 lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and row_len>=1")
@@ -718,7 +712,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
                 "a[i,jj] = 1",
                 ],
             [
-                lp.GlobalArg("a_row_lengths", np.int32),
+                lp.GlobalArg("a_row_lengths", np.int32, shape="auto"),
                 lp.GlobalArg("a", dtype, shape=("n,n"), order="C"),
                 lp.ValueArg("n", np.int32),
                 ])
@@ -1029,16 +1023,34 @@ def test_write_parameter(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    try:
+    import pytest
+    with pytest.raises(RuntimeError):
         lp.CompiledKernel(ctx, knl).get_code()
-    except RuntimeError, e:
-        assert "may not be written" in str(e)
-        pass # expected!
-    else:
-        assert False # expecting an error
 
 
 
+
+def test_arg_shape_guessing(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n }",
+            ],
+            """
+                a = 1.5 + sum((i,j), i*j)
+                b[i, j] = i*j
+                c[i+j, j] = b[j,i]
+                """,
+            [
+                lp.GlobalArg("a", shape=lp.auto_shape),
+                lp.GlobalArg("b", shape=lp.auto_shape),
+                lp.GlobalArg("c", shape=lp.auto_shape),
+                lp.ValueArg("n"),
+                ],
+            assumptions="n>=1")
+
+    print knl
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
 if __name__ == "__main__":
     import sys
