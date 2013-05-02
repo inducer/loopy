@@ -756,6 +756,9 @@ def dup_args_and_expand_defines_in_shapes(kernel, defines):
     processed_args = []
     for arg in kernel.args:
         for arg_name in arg.name.split(","):
+            if not arg_name.strip():
+                continue
+
             new_arg = arg.copy(name=arg_name)
             if isinstance(arg, ShapedArg):
                 if arg.shape is not None and arg.shape is not auto_shape:
