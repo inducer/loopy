@@ -538,7 +538,7 @@ class InvocationReplacer(ExpandingIdentityMapper):
 
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, new_storage_axis_names=None, storage_axis_to_tag={},
-        default_tag="l.auto", dtype=None):
+        default_tag="l.auto", dtype=None, fetch_bounding_box=False):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -807,8 +807,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                             storage_axis_names, storage_axis_sources,
                             sweep_inames, invocation_descriptors)
 
-    from loopy.isl_helpers import convexify
-    new_domain = convexify(new_domain)
+    from loopy.isl_helpers import convexify, boxify
+    if fetch_bounding_box:
+        new_domain = boxify(kernel.cache_manager, new_domain, storage_axis_names)
+    else:
+        new_domain = convexify(new_domain)
 
     for saxis in storage_axis_names:
         if saxis not in non1_storage_axis_names:

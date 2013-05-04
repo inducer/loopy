@@ -350,5 +350,58 @@ def convexify(domain):
 
 
 
+def boxify(cache_manager, domain, box_inames):
+    var_dict = domain.get_var_dict(dim_type.set)
+    box_iname_indices = [var_dict[iname][1] for iname in box_inames]
+    n_nonbox_inames = min(box_iname_indices)
+
+    assert box_iname_indices == range(
+            n_nonbox_inames, domain.dim(dim_type.set))
+
+    n_old_parameters = domain.dim(dim_type.param)
+    domain = domain.move_dims(
+            dim_type.param, n_old_parameters, dim_type.set, 0, n_nonbox_inames)
+
+    result = domain.universe_like()
+    zero = isl.Aff.zero_on_domain(result.space)
+
+    for i in xrange(len(box_iname_indices)):
+        iname_aff = zero.add_coefficient(dim_type.in_, i, 1)
+
+        def add_in_dims(aff):
+            return aff.add_dims(dim_type.in_, len(box_inames))
+
+        iname_min = add_in_dims(cache_manager.dim_min(domain, i))
+        iname_max = add_in_dims(cache_manager.dim_max(domain, i))
+
+        iname_slab = (iname_min.le_set(iname_aff)
+                .intersect(iname_max.ge_set(iname_aff))).coalesce()
+
+        result = result & iname_slab
+
+    for i, iname in enumerate(box_inames):
+        result = result.set_dim_name(dim_type.set, i, iname)
+
+    result = result.move_dims(
+            dim_type.set, 0, dim_type.param, n_old_parameters, n_nonbox_inames)
+
+    if isinstance(result, isl.BasicSet):
+        return result
+
+    if len(result.get_basic_sets()) > 1:
+        result = result.coalesce()
+
+    res_bsets = result.get_basic_sets()
+    if len(res_bsets) == 1:
+        result, = res_bsets
+        return result
+    else:
+        raise RuntimeError("boxify did not yield convex set")
+
+
+
+
+
+
 
 # vim: foldmethod=marker
