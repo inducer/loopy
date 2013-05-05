@@ -325,13 +325,20 @@ def test_stencil(ctx_factory):
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
         return knl
 
-    for variant in [variant_1]:
+    def variant_2(knl):
+        knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
+        knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
+        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
+                fetch_bounding_box=True)
+        return knl
+
+    for variant in [variant_2]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["i_outer", "i_inner_0", "j_0"])
         kernel_gen = lp.check_kernels(kernel_gen)
 
         lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
-                fills_entire_output=False, print_ref_code=True,
+                fills_entire_output=False, print_ref_code=False,
                 op_count=[n*n], op_label=["cells"])
 
 
@@ -1090,6 +1097,17 @@ def test_nonlinear_index(ctx_factory):
     print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
 
+def test_triangle_domain(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n and i <= j}",
+            ],
+            "a[i,j] = 17",
+            assumptions="n>=1")
+
+    print knl
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
 if __name__ == "__main__":
     import sys
