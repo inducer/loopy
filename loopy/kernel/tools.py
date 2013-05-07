@@ -74,6 +74,11 @@ def _infer_argument_dtypes_inner(knl):
             TypeInferenceMapper, TypeInferenceFailure)
     tim = TypeInferenceMapper(knl)
 
+    from loopy.symbolic import SubstitutionRuleExpander
+
+    submap = SubstitutionRuleExpander(knl.substitutions,
+            knl.get_var_name_generator())
+
     for arg in knl.args:
         if arg.dtype is None:
             new_dtype = None
@@ -84,7 +89,9 @@ def _infer_argument_dtypes_inner(knl):
                 try:
                     for write_insn_id in writer_map.get(arg.name, ()):
                         write_insn = knl.id_to_insn[write_insn_id]
-                        new_tim_dtype = tim(write_insn.expression)
+
+                        new_tim_dtype = tim(
+                                submap(write_insn.expression, write_insn_id))
                         if new_dtype is None:
                             new_dtype = new_tim_dtype
                         elif new_dtype != new_tim_dtype:
