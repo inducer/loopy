@@ -332,7 +332,7 @@ def test_stencil(ctx_factory):
                 fetch_bounding_box=True)
         return knl
 
-    for variant in [variant_2]:
+    for variant in [variant_1, variant_2]:
         kernel_gen = lp.generate_loop_schedules(variant(knl),
                 loop_priority=["i_outer", "i_inner_0", "j_0"])
         kernel_gen = lp.check_kernels(kernel_gen)
@@ -340,6 +340,52 @@ def test_stencil(ctx_factory):
         lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
                 fills_entire_output=False, print_ref_code=False,
                 op_count=[n*n], op_label=["cells"])
+
+
+
+
+def test_stencil_with_overfetch(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i,j]: 0<= i,j < n}",
+            [
+                "a_offset(ii, jj) := a[ii+2, jj+2]",
+                "z[i,j] = -2*a_offset(i,j)"
+                    " + a_offset(i,j-1)"
+                    " + a_offset(i,j+1)"
+                    " + a_offset(i-1,j)"
+                    " + a_offset(i+1,j)"
+
+                    " + a_offset(i,j-2)"
+                    " + a_offset(i,j+2)"
+                    " + a_offset(i-2,j)"
+                    " + a_offset(i+2,j)"
+                ],
+            assumptions="n>=1")
+
+    knl = lp.add_and_infer_argument_dtypes(knl, dict(a=np.float32))
+
+    ref_knl = knl
+
+    def variant_overfetch(knl):
+        knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1",
+                slabs=(1, 1))
+        knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0",
+               slabs=(1, 1))
+        knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
+                fetch_bounding_box=True)
+        return knl
+
+    for variant in [variant_overfetch]:
+        kernel_gen = lp.generate_loop_schedules(variant(knl),
+                loop_priority=["i_outer", "i_inner_0", "j_0"])
+        kernel_gen = lp.check_kernels(kernel_gen)
+
+        n = 200
+        lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+                fills_entire_output=False, print_ref_code=False,
+                op_count=[n*n], parameters=dict(n=n), op_label=["cells"])
 
 
 
