@@ -219,12 +219,22 @@ class ShapedArg(Record):
 
     @property
     def dimensions(self):
-        return len(self.shape)
+        return len(self.strides)
+
+    def __repr__(self):
+        if self.shape is None:
+            shape = "unknown"
+        else:
+            shape = ",".join(str(i) for i in self.shape)
+
+        return "<%s '%s' of type %s and shape (%s)>" % (
+                type(self).__name__, self.name, self.dtype, shape)
 
 class GlobalArg(ShapedArg):
-    def __repr__(self):
-        return "<GlobalArg '%s' of type %s and shape (%s)>" % (
-                self.name, self.dtype, ",".join(str(i) for i in self.shape))
+    pass
+
+class ConstantArg(ShapedArg):
+    pass
 
 class ArrayArg(GlobalArg):
     def __init__(self, *args, **kwargs):
@@ -232,11 +242,6 @@ class ArrayArg(GlobalArg):
         warn("ArrayArg is a deprecated name of GlobalArg", DeprecationWarning,
                 stacklevel=2)
         GlobalArg.__init__(self, *args, **kwargs)
-
-class ConstantArg(ShapedArg):
-    def __repr__(self):
-        return "<ConstantArg '%s' of type %s and shape (%s)>" % (
-                self.name, self.dtype, ",".join(str(i) for i in self.shape))
 
 class ImageArg(Record):
     def __init__(self, name, dtype=None, dimensions=None, shape=None):
