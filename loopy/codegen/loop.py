@@ -96,14 +96,15 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
         slabs = []
 
-        if lower_slab:
-            slabs.append(lower_slab)
         bulk_slab = isl.BasicSet.universe(space)
         if lower_bulk_bound is not None:
             bulk_slab = bulk_slab.add_constraint(lower_bulk_bound)
         if upper_bulk_bound is not None:
             bulk_slab = bulk_slab.add_constraint(upper_bulk_bound)
+
         slabs.append(("bulk", bulk_slab))
+        if lower_slab:
+            slabs.append(lower_slab)
         if upper_slab:
             slabs.append(upper_slab)
 
