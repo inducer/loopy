@@ -488,7 +488,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables, s
             # read-only, no indices
             kernel_args.append(ValueArg(arg_name))
         else:
-            kernel_args.append(GlobalArg(arg_name, strides="auto"))
+            kernel_args.append(GlobalArg(arg_name, shape="auto"))
 
     return kernel_args
 
