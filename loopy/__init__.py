@@ -60,7 +60,9 @@ from loopy.kernel.data import (
         Instruction)
 
 from loopy.kernel import LoopKernel
-from loopy.kernel.tools import get_dot_dependency_graph
+from loopy.kernel.tools import (
+        get_dot_dependency_graph, add_argument_dtypes,
+        infer_argument_dtypes, add_and_infer_argument_dtypes)
 from loopy.kernel.creation import make_kernel
 from loopy.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
@@ -83,7 +85,10 @@ __all__ = [
         "default_preamble_generator",
         "make_kernel",
         "register_reduction_parser",
-        "get_dot_dependency_graph",
+
+        "get_dot_dependency_graph", "add_argument_dtypes",
+        "infer_argument_dtypes", "add_and_infer_argument_dtypes",
+
         "preprocess_kernel", "realize_reduction",
         "generate_loop_schedules",
         "generate_code",

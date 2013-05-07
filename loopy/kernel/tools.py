@@ -28,11 +28,7 @@ THE SOFTWARE.
 
 
 import numpy as np
-from pytools import Record, memoize_method
-import islpy as isl
 from islpy import dim_type
-
-import re
 
 
 
@@ -40,6 +36,11 @@ import re
 # {{{ add and infer argument dtypes
 
 def add_argument_dtypes(knl, dtype_dict):
+    """Specify remaining unspecified argument types.
+
+    :arg dtype_dict: a mapping from argument names to :class:`numpy.dtype`
+        instances
+    """
     dtype_dict = dtype_dict.copy()
     new_args = []
 
@@ -127,6 +128,10 @@ def infer_argument_dtypes(knl):
                         "or could be inferred: " + ", ".join(incomplete_args))
         else:
             return knl
+
+def add_and_infer_argument_dtypes(knl, dtype_dict):
+    knl = add_argument_dtypes(knl, dtype_dict)
+    return infer_argument_dtypes(knl)
 
 # }}}
 

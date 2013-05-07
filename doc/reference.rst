@@ -203,6 +203,15 @@ Manipulating Instructions
 
 .. autofunction:: add_dependency
 
+Argument types
+--------------
+
+.. autofunction:: add_argument_dtypes
+
+.. autofunction:: infer_argument_dtypes
+
+.. autofunction:: add_and_infer_argument_dtypes
+
 Finishing up
 ------------
 
