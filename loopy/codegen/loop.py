@@ -71,11 +71,11 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
             lower_slab = ("initial", isl.BasicSet.universe(space)
                     .add_constraint(
                         isl.Constraint.inequality_from_aff(
-                            iname_rel_aff(kernel.space,
+                            iname_rel_aff(space,
                                 iname, "<", lower_bound_aff+lower_incr))))
             lower_bulk_bound = (
                     isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(kernel.space,
+                        iname_rel_aff(space,
                             iname, ">=", lower_bound_aff+lower_incr)))
         else:
             lower_slab = None
