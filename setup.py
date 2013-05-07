@@ -21,7 +21,7 @@ finally:
 
 exec(compile(version_file_contents, "pyopencl/version.py", 'exec'), ver_dic)
 
-setup(name="loopy",
+setup(name="loo.py",
       version=ver_dic["VERSION_TEXT"],
       description="An automatic loop generator for OpenCL",
       long_description="",
