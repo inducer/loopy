@@ -809,7 +809,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     from loopy.isl_helpers import convexify, boxify
     if fetch_bounding_box:
-        new_domain = boxify(kernel.cache_manager, new_domain, storage_axis_names)
+        new_domain = boxify(kernel.cache_manager, new_domain, storage_axis_names,
+                kernel.assumptions)
     else:
         new_domain = convexify(new_domain)
 
