@@ -266,7 +266,7 @@ class ImageArg(Record):
         return "<ImageArg '%s' of type %s>" % (self.name, self.dtype)
 
 class ValueArg(Record):
-    def __init__(self, name, dtype=None, approximately=None):
+    def __init__(self, name, dtype=None, approximately=1000):
         if dtype is not None:
             dtype = np.dtype(dtype)
 
@@ -277,7 +277,7 @@ class ValueArg(Record):
         return "<ValueArg '%s' of type %s>" % (self.name, self.dtype)
 
 class ScalarArg(ValueArg):
-    def __init__(self, name, dtype=None, approximately=None):
+    def __init__(self, name, dtype=None, approximately=1000):
         from warnings import warn
         warn("ScalarArg is a deprecated name of ValueArg",
                 DeprecationWarning, stacklevel=2)

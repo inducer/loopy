@@ -115,7 +115,7 @@ def infer_types_of_temporaries(kernel):
         if failed:
             if item is first_failure:
                 # this item has failed before, give up.
-                raise RuntimeError("could not determine type of '%s'" % item)
+                raise RuntimeError("could not determine type of '%s'" % item.name)
 
             if first_failure is None:
                 # remember the first failure for this round through the queue
@@ -592,10 +592,14 @@ def limit_boostability(kernel):
 def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     from loopy.kernel.data import ImageArg, ValueArg
 
-    approximate_arg_values = dict(
-            (arg.name, arg.approximately)
-            for arg in kernel.args
-            if isinstance(arg, ValueArg))
+    approximate_arg_values = {}
+    for arg in kernel.args:
+        if isinstance(arg, ValueArg):
+            if arg.approximately is not None:
+                approximate_arg_values[arg.name] = arg.approximately
+            else:
+                raise RuntimeError("No approximate arg value specified for '%s'"
+                        % arg.name)
 
     # {{{ find all array accesses in insn
 
