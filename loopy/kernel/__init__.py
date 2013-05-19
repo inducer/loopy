@@ -791,6 +791,10 @@ class LoopKernel(Record):
 
         sep = 75*"-"
         lines.append(sep)
+        lines.append("ARGUMENTS:")
+        for arg_name in sorted(self.arg_dict):
+            lines.append(str(self.arg_dict[arg_name]))
+        lines.append(sep)
         lines.append("INAME-TO-TAG MAP:")
         for iname in sorted(self.all_inames()):
             line = "%s: %s" % (iname, self.iname_to_tag.get(iname))

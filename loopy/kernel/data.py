@@ -221,14 +221,27 @@ class ShapedArg(Record):
     def dimensions(self):
         return len(self.strides)
 
-    def __repr__(self):
+    def __str__(self):
         if self.shape is None:
             shape = "unknown"
+        elif self.shape is auto_shape:
+            shape = "auto"
         else:
             shape = ",".join(str(i) for i in self.shape)
 
-        return "<%s '%s' of type %s and shape (%s)>" % (
-                type(self).__name__, self.name, self.dtype, shape)
+        if self.strides is None:
+            strides = "unknown"
+        elif self.strides is auto_strides:
+            strides = "auto"
+        else:
+            strides = ",".join(str(i) for i in self.strides)
+
+        return "%s: %s, type: %s, shape: (%s), strides: (%s)" % (
+                self.name, type(self).__name__, self.dtype, shape,
+                strides)
+
+    def __repr__(self):
+        return "<%s>" % self.__str__()
 
 class GlobalArg(ShapedArg):
     pass
@@ -261,9 +274,11 @@ class ImageArg(Record):
                 dtype=dtype,
                 name=name)
 
+    def __str__(self):
+        return "%s: ImageArg, type %s" % (self.name, self.dtype)
 
     def __repr__(self):
-        return "<ImageArg '%s' of type %s>" % (self.name, self.dtype)
+        return "<%s>" % self.__str__()
 
 class ValueArg(Record):
     def __init__(self, name, dtype=None, approximately=1000):
@@ -273,8 +288,11 @@ class ValueArg(Record):
         Record.__init__(self, name=name, dtype=dtype,
                 approximately=approximately)
 
+    def __str__(self):
+        return "%s: ValueArg, type %s" % (self.name, self.dtype)
+
     def __repr__(self):
-        return "<ValueArg '%s' of type %s>" % (self.name, self.dtype)
+        return "<%s>" % self.__str__()
 
 class ScalarArg(ValueArg):
     def __init__(self, name, dtype=None, approximately=1000):
