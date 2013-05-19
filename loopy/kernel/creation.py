@@ -628,7 +628,7 @@ def expand_cses(knl):
         else:
             dtype=np.dtype(dtype)
 
-        from loopy.kernel import TemporaryVariable
+        from loopy.kernel.data import TemporaryVariable
         new_temp_vars[new_var_name] = TemporaryVariable(
                 name=new_var_name,
                 dtype=dtype,
