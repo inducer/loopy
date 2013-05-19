@@ -862,9 +862,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ set up temp variable
 
-    from loopy import infer_type
+    import loopy as lp
     if dtype is None:
-        dtype = infer_type
+        dtype = lp.auto
     else:
         dtype = np.dtype(dtype)
 

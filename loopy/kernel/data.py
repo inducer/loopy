@@ -136,12 +136,6 @@ def parse_tag(tag):
 
 # {{{ arguments
 
-class auto_shape:
-    pass
-
-class auto_strides:
-    pass
-
 def make_strides(shape, order):
     from pyopencl.compyte.array import (
             f_contiguous_strides,
@@ -160,10 +154,29 @@ class ShapedArg(Record):
         """
         All of the following are optional. Specify either strides or shape.
 
-        :arg shape:
-        :arg strides: like numpy strides, but in multiples of
-            data type size
-        :arg order:
+        :arg name: May contain multiple names separated by
+            commas, in which case multiple arguments,
+            each with identical properties are created
+            for each name.
+        :arg shape: like :attr:`numpy.ndarray.shape`.
+            Also allowed to be :class:`loopy.auto`, in
+            which case shape is determined by finding the
+            access footprint.
+
+            This is also allowed to be an expression involving
+            kernel parameters, or a (potentially-comma separated)
+            string that can be parsed to such an expression.
+        :arg strides:  like :attr:`numpy.ndarray.strides`,
+            but in multiples of data type size.
+            Also allowed to be :class:`loopy.auto`, in which
+            case strides are determined from shape and
+            *default_order* of :func:`loopy.make_kernel`.
+
+            This is also allowed to be an expression involving
+            kernel parameters, or a (potentially-comma separated)
+            string that can be parsed to such an expression.
+        :arg order: "F" or "C" for C (row major) or Fortran
+            (column major)
         :arg offset: Offset from the beginning of the vector from which
             the strides are counted.
         """
@@ -178,19 +191,23 @@ class ShapedArg(Record):
                 return x
 
         def process_tuple(x):
+            if x == "auto":
+                from warnings import warn
+                warn("use of 'auto' as a shape or stride won't work "
+                        "any more--use loopy.auto instead",
+                        stacklevel=3)
             x = parse_if_necessary(x)
+            if isinstance(x, lp.auto):
+                return x
             if not isinstance(x, tuple):
+                assert x is not lp.auto
                 x = (x,)
 
             return tuple(parse_if_necessary(xi) for xi in x)
 
-        if strides == "auto":
-            strides = auto_strides
-        if shape == "auto":
-            shape = auto_shape
-
-        strides_known = strides is not None and strides is not auto_strides
-        shape_known = shape is not None and shape is not auto_shape
+        import loopy as lp
+        strides_known = strides is not None and strides is not lp.auto
+        shape_known = shape is not None and shape is not lp.auto
 
         if strides_known:
             strides = process_tuple(strides)
@@ -222,16 +239,18 @@ class ShapedArg(Record):
         return len(self.strides)
 
     def __str__(self):
+        import loopy as lp
+
         if self.shape is None:
             shape = "unknown"
-        elif self.shape is auto_shape:
+        elif self.shape is lp.auto:
             shape = "auto"
         else:
             shape = ",".join(str(i) for i in self.shape)
 
         if self.strides is None:
             strides = "unknown"
-        elif self.strides is auto_strides:
+        elif self.strides is lp.auto:
             strides = "auto"
         else:
             strides = ",".join(str(i) for i in self.strides)

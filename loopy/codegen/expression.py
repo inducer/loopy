@@ -167,8 +167,8 @@ class TypeInferenceMapper(CombineMapper):
             # name is not a temporary variable, ok
             pass
         else:
-            from loopy import infer_type
-            if tv.dtype is infer_type:
+            import loopy as lp
+            if tv.dtype is lp.auto:
                 raise DependencyTypeInferenceFailure("attempted type inference on "
                         "variable requiring type inference")
 

@@ -252,8 +252,8 @@ def parse_insn(insn):
             if groups["temp_var_type"]:
                 temp_var_type = np.dtype(groups["temp_var_type"])
             else:
-                from loopy import infer_type
-                temp_var_type = infer_type
+                import loopy as lp
+                temp_var_type = lp.auto
         else:
             temp_var_type = None
 
@@ -471,6 +471,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables, s
             return single_valued(irf.index_ranks)
 
     from loopy.kernel.data import ValueArg, GlobalArg
+    import loopy as lp
     for arg_name in sorted(new_arg_names):
         if arg_name in all_params:
             kernel_args.append(ValueArg(arg_name))
@@ -480,7 +481,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables, s
             # It's not a temp var, and thereby not a domain parameter--the only
             # other writable type of variable is an argument.
 
-            kernel_args.append(GlobalArg(arg_name, shape="auto"))
+            kernel_args.append(GlobalArg(arg_name, shape=lp.auto))
             continue
 
         irank = find_index_rank(arg_name)
@@ -488,7 +489,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables, s
             # read-only, no indices
             kernel_args.append(ValueArg(arg_name))
         else:
-            kernel_args.append(GlobalArg(arg_name, shape="auto"))
+            kernel_args.append(GlobalArg(arg_name, shape=lp.auto))
 
     return kernel_args
 
@@ -623,8 +624,8 @@ def expand_cses(knl):
         new_var_name = var_name_gen(base_name)
 
         if dtype is None:
-            from loopy import infer_type
-            dtype = infer_type
+            import loopy as lp
+            dtype = lp.auto
         else:
             dtype=np.dtype(dtype)
 
@@ -754,7 +755,8 @@ def apply_default_order_to_args(kernel, default_order):
 # {{{ duplicate arguments and expand defines in shapes
 
 def dup_args_and_expand_defines_in_shapes(kernel, defines):
-    from loopy.kernel.data import ShapedArg, auto_shape, auto_strides
+    import loopy as lp
+    from loopy.kernel.data import ShapedArg
     from loopy.kernel.creation import expand_defines_in_expr
 
     processed_args = []
@@ -765,9 +767,9 @@ def dup_args_and_expand_defines_in_shapes(kernel, defines):
 
             new_arg = arg.copy(name=arg_name)
             if isinstance(arg, ShapedArg):
-                if arg.shape is not None and arg.shape is not auto_shape:
+                if arg.shape is not None and arg.shape is not lp.auto:
                     new_arg = new_arg.copy(shape=expand_defines_in_expr(arg.shape, defines))
-                if arg.strides is not None and arg.strides is not auto_strides:
+                if arg.strides is not None and arg.strides is not lp.auto:
                     new_arg = new_arg.copy(strides=expand_defines_in_expr(arg.strides, defines))
 
             processed_args.append(new_arg)
@@ -781,7 +783,8 @@ def dup_args_and_expand_defines_in_shapes(kernel, defines):
 def guess_arg_shape_if_requested(kernel, default_order):
     new_args = []
 
-    from loopy.kernel.data import ShapedArg, auto_shape, auto_strides
+    import loopy as lp
+    from loopy.kernel.data import ShapedArg
     from loopy.symbolic import SubstitutionRuleExpander
 
     submap = SubstitutionRuleExpander(kernel.substitutions,
@@ -789,14 +792,13 @@ def guess_arg_shape_if_requested(kernel, default_order):
 
     for arg in kernel.args:
         if isinstance(arg, ShapedArg) and (
-                arg.shape is auto_shape or arg.strides is auto_strides):
+                arg.shape is lp.auto or arg.strides is lp.auto):
             armap = AccessRangeMapper(arg.name)
 
             for insn in kernel.instructions:
                 domain = kernel.get_inames_domain(kernel.insn_inames(insn))
                 armap(submap(insn.assignee, insn.id), domain)
                 armap(submap(insn.expression, insn.id), domain)
-
 
             if armap.access_range is None:
                 # no subscripts found, let's call it a scalar
@@ -811,9 +813,9 @@ def guess_arg_shape_if_requested(kernel, default_order):
                             constants_only=False))
                         for i in xrange(armap.access_range.dim(dim_type.set)))
 
-            if arg.shape is auto_shape:
+            if arg.shape is lp.auto:
                 arg = arg.copy(shape=shape)
-            if arg.strides is auto_strides:
+            if arg.strides is lp.auto:
                 from loopy.kernel.data import make_strides
                 arg = arg.copy(strides=make_strides(shape, default_order))
 

@@ -75,9 +75,9 @@ def infer_types_of_temporaries(kernel):
     # queue contains temporary variables
     queue = []
 
-    from loopy import infer_type
+    import loopy as lp
     for tv in kernel.temporary_variables.itervalues():
-        if tv.dtype is infer_type:
+        if tv.dtype is lp.auto:
             queue.append(tv)
 
     # }}}

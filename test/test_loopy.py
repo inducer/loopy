@@ -696,10 +696,10 @@ def test_dependent_loop_bounds(ctx_factory):
                 "a_sum[i] = sum(jj, a_values[[a_rowstarts[i]+jj]])",
                 ],
             [
-                lp.GlobalArg("a_rowstarts", np.int32, shape="auto"),
-                lp.GlobalArg("a_indices", np.int32, shape="auto"),
+                lp.GlobalArg("a_rowstarts", np.int32, shape=lp.auto),
+                lp.GlobalArg("a_indices", np.int32, shape=lp.auto),
                 lp.GlobalArg("a_values", dtype),
-                lp.GlobalArg("a_sum", dtype, shape="auto"),
+                lp.GlobalArg("a_sum", dtype, shape=lp.auto),
                 lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and row_len>=1")
@@ -727,10 +727,10 @@ def test_dependent_loop_bounds_2(ctx_factory):
                 "ax[i] = sum(jj, a_values[[row_start+jj]])",
                 ],
             [
-                lp.GlobalArg("a_rowstarts", np.int32, shape="auto"),
-                lp.GlobalArg("a_indices", np.int32, shape="auto"),
+                lp.GlobalArg("a_rowstarts", np.int32, shape=lp.auto),
+                lp.GlobalArg("a_indices", np.int32, shape=lp.auto),
                 lp.GlobalArg("a_values", dtype),
-                lp.GlobalArg("ax", dtype, shape="auto"),
+                lp.GlobalArg("ax", dtype, shape=lp.auto),
                 lp.ValueArg("n", np.int32),
                 ],
             assumptions="n>=1 and row_len>=1")
@@ -765,7 +765,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
                 "a[i,jj] = 1",
                 ],
             [
-                lp.GlobalArg("a_row_lengths", np.int32, shape="auto"),
+                lp.GlobalArg("a_row_lengths", np.int32, shape=lp.auto),
                 lp.GlobalArg("a", dtype, shape=("n,n"), order="C"),
                 lp.ValueArg("n", np.int32),
                 ])
@@ -1095,9 +1095,9 @@ def test_arg_shape_guessing(ctx_factory):
                 c[i+j, j] = b[j,i]
                 """,
             [
-                lp.GlobalArg("a", shape=lp.auto_shape),
-                lp.GlobalArg("b", shape=lp.auto_shape),
-                lp.GlobalArg("c", shape=lp.auto_shape),
+                lp.GlobalArg("a", shape=lp.auto),
+                lp.GlobalArg("b", shape=lp.auto),
+                lp.GlobalArg("c", shape=lp.auto),
                 lp.ValueArg("n"),
                 ],
             assumptions="n>=1")
