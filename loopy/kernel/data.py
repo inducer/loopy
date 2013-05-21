@@ -148,7 +148,10 @@ def make_strides(shape, order):
     else:
         raise ValueError("invalid order: %s" % order)
 
-class ShapedArg(Record):
+class KernelArgument(Record):
+    pass
+
+class ShapedArg(KernelArgument):
     def __init__(self, name, dtype=None, shape=None, strides=None, order=None,
             offset=0):
         """
@@ -275,7 +278,7 @@ class ArrayArg(GlobalArg):
                 stacklevel=2)
         GlobalArg.__init__(self, *args, **kwargs)
 
-class ImageArg(Record):
+class ImageArg(KernelArgument):
     def __init__(self, name, dtype=None, dimensions=None, shape=None):
         dtype = np.dtype(dtype)
         if shape is not None:
@@ -299,7 +302,7 @@ class ImageArg(Record):
     def __repr__(self):
         return "<%s>" % self.__str__()
 
-class ValueArg(Record):
+class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000):
         if dtype is not None:
             dtype = np.dtype(dtype)
