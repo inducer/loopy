@@ -28,6 +28,7 @@ THE SOFTWARE.
 import numpy as np
 import loopy as lp
 import pyopencl as cl
+import logging
 
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
@@ -1083,6 +1084,8 @@ def test_write_parameter(ctx_factory):
 
 
 
+# {{{ arg guessing
+
 def test_arg_shape_guessing(ctx_factory):
     ctx = ctx_factory()
 
@@ -1124,6 +1127,26 @@ def test_arg_guessing(ctx_factory):
     print knl
     print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
+def test_arg_guessing_with_reduction(ctx_factory):
+    #logging.basicConfig(level=logging.DEBUG)
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n }",
+            ],
+            """
+                a = 1.5 + sum((i,j), i*j)
+                d = 1.5 + sum((i,j), b[i,j])
+                b[i, j] = i*j
+                c[i+j, j] = b[j,i]
+                """,
+            assumptions="n>=1")
+
+    print knl
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+
+# }}}
+
 def test_nonlinear_index(ctx_factory):
     ctx = ctx_factory()
 
@@ -1154,6 +1177,10 @@ def test_triangle_domain(ctx_factory):
 
     print knl
     print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+
+
+
+
 
 if __name__ == "__main__":
     import sys
