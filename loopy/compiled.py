@@ -68,8 +68,29 @@ def _arg_matches_spec(arg, val, other_args):
 
 # {{{ compiled kernel object
 
+def _get_kernel_from_iterable(iterable):
+    kernel_count = 0
+
+    for scheduled_kernel in iterable:
+        kernel_count += 1
+
+        if kernel_count == 1:
+            # use the first schedule
+            result = scheduled_kernel
+
+        if kernel_count == 2:
+            from warnings import warn
+            warn("kernel scheduling was ambiguous--more than one "
+                    "schedule found, ignoring", stacklevel=2)
+            break
+
+    return result
+
+class _KernelInfo(Record):
+    pass
+
 class CompiledKernel:
-    def __init__(self, context, kernel, size_args=None, options=[],
+    def __init__(self, context, kernel, options=[],
              edit_code=False, codegen_kwargs={}):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
@@ -77,38 +98,18 @@ class CompiledKernel:
           has not yet been loop-scheduled, that is done, too, with no specific
           arguments.
         """
+
         import loopy as lp
 
         # {{{ do scheduling, if not yet done
 
-        needs_check = False
+        if not isinstance(kernel, lp.LoopKernel):
+            # someone threw us an iterable of kernels
 
-        if not isinstance(kernel, lp.LoopKernel) or kernel.schedule is None:
-            if isinstance(kernel, lp.LoopKernel):
-                # kernel-iterable, really
-                kernel = lp.generate_loop_schedules(kernel)
-
-            kernel_count = 0
-
-            for scheduled_kernel in kernel:
-                kernel_count += 1
-
-                if kernel_count == 1:
-                    # use the first schedule
-                    kernel = scheduled_kernel
-
-                if kernel_count == 2:
-                    from warnings import warn
-                    warn("kernel scheduling was ambiguous--more than one "
-                            "schedule found, ignoring", stacklevel=2)
-                    break
-
-            needs_check = True
+            kernel = _get_kernel_from_iterable(kernel)
 
         # Whether we need to call check_kernels. Since we don't have parameter
         # values now, we'll do that on first invocation.
-
-        self.needs_check = needs_check
 
         # }}}
 
@@ -118,28 +119,8 @@ class CompiledKernel:
         self.codegen_kwargs = codegen_kwargs
         self.options = options
 
-        # {{{ precompile, store grid size functions
-
-        if size_args is None:
-            self.size_args = kernel.scalar_loop_args
-        else:
-            self.size_args = size_args
-
-        gsize_expr, lsize_expr = kernel.get_grid_sizes_as_exprs()
-
-        if not gsize_expr: gsize_expr = (1,)
-        if not lsize_expr: lsize_expr = (1,)
-
-        from pymbolic import compile
-        self.global_size_func = compile(
-                gsize_expr, self.size_args)
-        self.local_size_func = compile(
-                lsize_expr, self.size_args)
-
-        # }}}
-
     @memoize_method
-    def get_kernel(self, dtype_mapping_set):
+    def get_kernel_info(self, dtype_mapping_set):
         kernel = self.kernel
 
         from loopy.kernel.tools import (
@@ -153,11 +134,31 @@ class CompiledKernel:
 
             kernel = infer_argument_dtypes(kernel)
 
-        return kernel
+        import loopy as lp
+        if kernel.schedule is None:
+            kernel = _get_kernel_from_iterable(
+                    lp.generate_loop_schedules(kernel))
+
+        # {{{ precompile, store grid size functions
+
+        gsize_expr, lsize_expr = kernel.get_grid_sizes_as_exprs()
+
+        if not gsize_expr: gsize_expr = (1,)
+        if not lsize_expr: lsize_expr = (1,)
+
+        # }}}
+
+        from pymbolic import compile
+        return _KernelInfo(
+                kernel=kernel,
+                global_size_func = compile(gsize_expr, kernel.scalar_loop_args),
+                local_size_func=compile(lsize_expr, kernel.scalar_loop_args),
+                )
 
     @memoize_method
     def get_cl_kernel(self, dtype_mapping_set):
-        kernel = self.get_kernel(dtype_mapping_set)
+        kernel_info = self.get_kernel_info(dtype_mapping_set)
+        kernel = kernel_info.kernel
 
         from loopy.codegen import generate_code
         code = generate_code(kernel, **self.codegen_kwargs)
@@ -194,7 +195,7 @@ class CompiledKernel:
 
         cl_kernel.set_scalar_arg_dtypes(arg_types)
 
-        return kernel, cl_kernel
+        return kernel_info, cl_kernel
 
     # {{{ debugging aids
 
@@ -202,10 +203,10 @@ class CompiledKernel:
         if dtype_dict is not None:
             dtype_dict = frozenset(dtype_dict.items())
 
-        kernel = self.get_kernel(dtype_dict)
+        kernel_info = self.get_kernel_info(dtype_dict)
 
         from loopy.codegen import generate_code
-        return generate_code(kernel, **self.codegen_kwargs)
+        return generate_code(kernel_info.kernel, **self.codegen_kwargs)
 
     def get_highlighted_code(self, dtype_dict=None):
         return get_highlighted_code(self.get_code(dtype_dict))
@@ -244,7 +245,8 @@ class CompiledKernel:
                 else:
                     dtype_dict[arg.name] = dtype
 
-        kernel, cl_kernel = self.get_cl_kernel(frozenset(dtype_dict.iteritems()))
+        kernel_info, cl_kernel = self.get_cl_kernel(frozenset(dtype_dict.iteritems()))
+        kernel = kernel_info.kernel
         del dtype_dict
 
         # }}}
@@ -320,8 +322,8 @@ class CompiledKernel:
             evt = cl.enqueue_marker(queue)
         else:
             evt = cl_kernel(queue,
-                    self.global_size_func(**domain_parameters),
-                    self.local_size_func(**domain_parameters),
+                    kernel_info.global_size_func(**domain_parameters),
+                    kernel_info.local_size_func(**domain_parameters),
                     *args,
                     g_times_l=True, wait_for=wait_for)
 
@@ -766,7 +768,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         print "Kernel #%d:" % i
         print 75*"-"
         if print_code:
-            print get_highlighted_code(compiled.code)
+            print compiled.get_highlighted_code()
             print 75*"-"
         if dump_binary:
             print type(compiled.cl_program)
