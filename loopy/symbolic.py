@@ -980,6 +980,54 @@ def get_access_range(domain, subscript):
 
 # }}}
 
+# {{{ access range mapper
+
+class AccessRangeMapper(WalkMapper):
+    def __init__(self, kernel, arg_name):
+        self.kernel = kernel
+        self.arg_name = arg_name
+        self.access_range = None
+
+    def map_subscript(self, expr, inames):
+        domain = self.kernel.get_inames_domain(inames)
+        WalkMapper.map_subscript(self, expr, domain)
+
+        from pymbolic.primitives import Variable
+        assert isinstance(expr.aggregate, Variable)
+
+        if expr.aggregate.name != self.arg_name:
+            return
+
+        subscript = expr.index
+        if not isinstance(subscript, tuple):
+            subscript = (subscript,)
+
+        from loopy.symbolic import get_dependencies, get_access_range
+
+        if not get_dependencies(subscript) <= set(domain.get_var_dict()):
+            raise RuntimeError("cannot determine access range for '%s': "
+                    "undetermined index in '%s'"
+                    % (self.arg_name, ", ".join(str(i) for i in subscript)))
+
+        access_range = get_access_range(domain, subscript)
+
+        if self.access_range is None:
+            self.access_range = access_range
+        else:
+            if (self.access_range.dim(dim_type.set)
+                    != access_range.dim(dim_type.set)):
+                raise RuntimeError(
+                        "error while determining shape of argument '%s': "
+                        "varying number of indices encountered"
+                        % self.arg_name)
+
+            self.access_range = self.access_range | access_range
+
+    def map_reduction(self, expr, inames):
+        return WalkMapper.map_reduction(self, expr, inames | set(expr.inames))
+
+# }}}
+
 
 
 # vim: foldmethod=marker
