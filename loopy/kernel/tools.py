@@ -65,73 +65,15 @@ def add_argument_dtypes(knl, dtype_dict):
 
     return knl.copy(args=new_args)
 
-def _infer_argument_dtypes_inner(knl):
-    new_args = []
-    did_something = False
-
-    writer_map = knl.writer_map()
-
-    from loopy.codegen.expression import (
-            TypeInferenceMapper, TypeInferenceFailure)
-    tim = TypeInferenceMapper(knl)
-
-    from loopy.symbolic import SubstitutionRuleExpander
-
-    submap = SubstitutionRuleExpander(knl.substitutions,
-            knl.get_var_name_generator())
-
-    for arg in knl.args:
-        if arg.dtype is None:
-            new_dtype = None
-
-            if arg.name in knl.all_params():
-                new_dtype = knl.index_dtype
-            else:
-                try:
-                    for write_insn_id in writer_map.get(arg.name, ()):
-                        write_insn = knl.id_to_insn[write_insn_id]
-
-                        new_tim_dtype = tim(
-                                submap(write_insn.expression, write_insn_id))
-                        if new_dtype is None:
-                            new_dtype = new_tim_dtype
-                        elif new_dtype != new_tim_dtype:
-                            # Now we know *nothing*.
-                            new_dtype = None
-                            break
-
-                except TypeInferenceFailure:
-                    # Even one type inference failure is enough to
-                    # make this dtype not safe to guess. Don't.
-                    pass
-
-            if new_dtype is not None:
-                did_something = True
-                arg = arg.copy(dtype=new_dtype)
-
-        new_args.append(arg)
-
-    return knl.copy(args=new_args), did_something
-
 def get_arguments_with_incomplete_dtype(knl):
     return [arg.name for arg in knl.args
             if arg.dtype is None]
 
-def infer_argument_dtypes(knl):
-    while True:
-        knl, did_something = _infer_argument_dtypes_inner(knl)
-        incomplete_args = get_arguments_with_incomplete_dtype(knl)
-
-        if incomplete_args:
-            if not did_something:
-                raise RuntimeError("not all argument dtypes are specified "
-                        "or could be inferred: " + ", ".join(incomplete_args))
-        else:
-            return knl
-
 def add_and_infer_argument_dtypes(knl, dtype_dict):
     knl = add_argument_dtypes(knl, dtype_dict)
-    return infer_argument_dtypes(knl)
+
+    from loopy.preprocess import infer_unknown_types
+    return infer_unknown_types(knl, expect_completion=True)
 
 # }}}
 

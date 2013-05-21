@@ -28,32 +28,36 @@ THE SOFTWARE.
 import pyopencl as cl
 import pyopencl.characterize as cl_char
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 
 # {{{ infer types
 
-def infer_temp_var_type(kernel, tv, type_inf_mapper, debug):
+def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
+    if var_name in kernel.all_params():
+        return kernel.index_dtype
+
     dtypes = []
 
-    writers = kernel.writer_map()[tv.name]
-    exprs = [kernel.id_to_insn[w].expression for w in writers]
-
     from loopy.codegen.expression import DependencyTypeInferenceFailure
-    for expr in exprs:
+    for writer_insn_id in kernel.writer_map()[var_name]:
+        expr = subst_expander(
+                kernel.id_to_insn[writer_insn_id].expression,
+                insn_id=writer_insn_id)
+
         try:
-            if debug:
-                print "             via expr", expr
+            logger.debug("             via expr %s" % expr)
             result = type_inf_mapper(expr)
 
-            if debug:
-                print "             result", result
+            logger.debug("             result: %s" % result)
 
             dtypes.append(result)
 
         except DependencyTypeInferenceFailure:
-            if debug:
-                print "             failed"
+            logger.debug("             failed")
 
     if not dtypes:
         return None
@@ -61,14 +65,34 @@ def infer_temp_var_type(kernel, tv, type_inf_mapper, debug):
     from pytools import is_single_valued
     if not is_single_valued(dtypes):
         raise RuntimeError("ambiguous type inference for '%s'"
-                % tv.name)
+                % var_name)
 
     return dtypes[0]
 
-def infer_types_of_temporaries(kernel):
-    """Infer types on temporaries."""
+class _DictUnionView:
+    def __init__(self, children):
+        self.children = children
+
+    def get(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            return None
+
+    def __getitem__(self, key):
+        for ch in self.children:
+            try:
+                return ch[key]
+            except KeyError:
+                pass
+
+        raise KeyError(key)
+
+def infer_unknown_types(kernel, expect_completion=False):
+    """Infer types on temporaries and argumetns."""
 
     new_temp_vars = kernel.temporary_variables.copy()
+    new_arg_dict = kernel.arg_dict.copy()
 
     # {{{ fill queue
 
@@ -80,56 +104,75 @@ def infer_types_of_temporaries(kernel):
         if tv.dtype is lp.auto:
             queue.append(tv)
 
+    for arg in kernel.args:
+        if arg.dtype is None:
+            queue.append(arg)
+
     # }}}
 
     from loopy.codegen.expression import TypeInferenceMapper
-    type_inf_mapper = TypeInferenceMapper(kernel, new_temp_vars)
+    type_inf_mapper = TypeInferenceMapper(kernel,
+            _DictUnionView([
+                new_temp_vars,
+                new_arg_dict
+                ]))
+
+    from loopy.symbolic import SubstitutionRuleExpander
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions,
+            kernel.get_var_name_generator())
 
     # {{{ work on type inference queue
 
-    from loopy.kernel.data import TemporaryVariable
+    from loopy.kernel.data import TemporaryVariable, KernelArgument
 
-    debug = 0
-
-    first_failure = None
+    failed_names = set()
     while queue:
         item = queue.pop(0)
 
-        if isinstance(item, TemporaryVariable):
-            if debug:
-                print "inferring type for tempvar", item.name
+        logger.debug("inferring type for %s %s" % (type(item).__name__, item.name))
 
-            result = infer_temp_var_type(kernel, item, type_inf_mapper, debug)
+        result = _infer_var_type(kernel, item.name, type_inf_mapper, subst_expander)
 
-            failed = result is None
-            if not failed:
-                if debug:
-                    print "     success", result
+        failed = result is None
+        if not failed:
+            logger.debug("     success: %s" % result)
+            if isinstance(item, TemporaryVariable):
                 new_temp_vars[item.name] = item.copy(dtype=result)
+            elif isinstance(item, KernelArgument):
+                new_arg_dict[item.name] = item.copy(dtype=result)
             else:
-                if debug:
-                    print "     failure", result
+                raise RuntimeError("unexpected item type in type inference")
         else:
-            raise RuntimeError("unexpected item type in type inference")
+            logger.debug("     failure")
 
         if failed:
-            if item is first_failure:
+            if expect_completion and item.name in failed_names:
                 # this item has failed before, give up.
                 raise RuntimeError("could not determine type of '%s'" % item.name)
 
-            if first_failure is None:
-                # remember the first failure for this round through the queue
-                first_failure = item
+            # remember that this item failed
+            failed_names.add(item.name)
+
+            queue_names = set(qi.name for qi in queue)
+
+            if queue_names == failed_names:
+                # We did what we could...
+                print queue_names, failed_names, item.name
+                assert not expect_completion
+                break
 
             # can't infer type yet, put back into queue
             queue.append(item)
         else:
-            # we've made progress, reset failure marker
-            first_failure = None
+            # we've made progress, reset failure markers
+            failed_names = set()
 
     # }}}
 
-    return kernel.copy(temporary_variables=new_temp_vars)
+    return kernel.copy(
+            temporary_variables=new_temp_vars,
+            args=[new_arg_dict[arg.name] for arg in kernel.args],
+            )
 
 # }}}
 
@@ -911,7 +954,7 @@ def preprocess_kernel(kernel):
     # Type inference doesn't handle substitutions. Get them out of the
     # way.
 
-    kernel = infer_types_of_temporaries(kernel)
+    kernel = infer_unknown_types(kernel, expect_completion=False)
 
     # Ordering restriction:
     # realize_reduction must happen after type inference because it needs

@@ -125,14 +125,14 @@ class CompiledKernel:
 
         from loopy.kernel.tools import (
                 add_argument_dtypes,
-                infer_argument_dtypes,
                 get_arguments_with_incomplete_dtype)
 
         if get_arguments_with_incomplete_dtype(kernel):
             if dtype_mapping_set is not None:
                 kernel = add_argument_dtypes(kernel, dict(dtype_mapping_set))
 
-            kernel = infer_argument_dtypes(kernel)
+            from loopy.preprocess import infer_unknown_types
+            kernel = infer_unknown_types(kernel, expect_completion=True)
 
         import loopy as lp
         if kernel.schedule is None:

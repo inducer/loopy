@@ -61,14 +61,14 @@ from loopy.kernel.data import (
 from loopy.kernel import LoopKernel
 from loopy.kernel.tools import (
         get_dot_dependency_graph, add_argument_dtypes,
-        infer_argument_dtypes, add_and_infer_argument_dtypes)
+        add_and_infer_argument_dtypes)
 from loopy.kernel.creation import make_kernel
 from loopy.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
 from loopy.padding import (split_arg_axis, find_padding_multiple,
         add_padding)
-from loopy.preprocess import preprocess_kernel, realize_reduction
+from loopy.preprocess import preprocess_kernel, realize_reduction, infer_unknown_types
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, auto_test_vs_ref
@@ -88,7 +88,7 @@ __all__ = [
         "get_dot_dependency_graph", "add_argument_dtypes",
         "infer_argument_dtypes", "add_and_infer_argument_dtypes",
 
-        "preprocess_kernel", "realize_reduction",
+        "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules",
         "generate_code",
         "CompiledKernel", "auto_test_vs_ref", "check_kernels",
