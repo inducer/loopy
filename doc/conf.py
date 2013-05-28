@@ -240,3 +240,5 @@ intersphinx_mapping = {
     'http://documen.tician.de/islpy': None,
     'http://documen.tician.de/pyopencl': None
     }
+
+autoclass_content = "both"

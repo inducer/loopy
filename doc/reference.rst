@@ -112,6 +112,8 @@ manually.
 Creating Kernels
 ----------------
 
+.. autoclass:: auto
+
 .. _arguments:
 
 Arguments
@@ -145,15 +147,29 @@ String Syntax
 Kernels
 ^^^^^^^
 
-.. autoclass:: LoopKernel
+.. class:: LoopKernel
 
 Do not create :class:`LoopKernel` objects directly. Instead, use the following
 function, which takes the same arguments, but does some extra post-processing.
 
 .. autofunction:: make_kernel
 
+Transforming Kernels
+--------------------
+
+Matching contexts
+^^^^^^^^^^^^^^^^^
+
+.. automodule:: loopy.context_matching
+
+.. autofunction:: parse_id_match
+
+.. autofunction:: parse_stack_match
+
+.. currentmodule:: loopy
+
 Wrangling inames
-----------------
+^^^^^^^^^^^^^^^^
 
 .. autofunction:: split_iname
 
@@ -170,14 +186,14 @@ Wrangling inames
 .. autofunction:: remove_unused_inames
 
 Dealing with Substitution Rules
--------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: extract_subst
 
 .. autofunction:: expand_subst
 
 Caching, Precomputation and Prefetching
----------------------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: precompute
 
@@ -188,7 +204,7 @@ Caching, Precomputation and Prefetching
 .. autofunction:: change_arg_to_image
 
 Padding
--------
+^^^^^^^
 
 .. autofunction:: split_arg_axis
 
@@ -197,14 +213,14 @@ Padding
 .. autofunction:: add_padding
 
 Manipulating Instructions
--------------------------
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: set_instruction_priority
 
 .. autofunction:: add_dependency
 
 Argument types
---------------
+^^^^^^^^^^^^^^
 
 .. autofunction:: add_argument_dtypes
 
@@ -213,7 +229,7 @@ Argument types
 .. autofunction:: add_and_infer_argument_dtypes
 
 Finishing up
-------------
+^^^^^^^^^^^^
 
 .. autofunction:: generate_loop_schedules
 
