@@ -29,7 +29,9 @@ import numpy as np
 import loopy as lp
 import pyopencl as cl
 import pyopencl.clrandom
+
 import logging
+logger = logging.getLogger(__name__)
 
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
@@ -1179,7 +1181,6 @@ def test_triangle_domain(ctx_factory):
 
 
 def test_array_with_offset(ctx_factory):
-    dtype = np.float32
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -1191,7 +1192,8 @@ def test_array_with_offset(ctx_factory):
             """
                 b[i,j] = 2*a[i,j]
                 """,
-            assumptions="n>=1 and m>=1")
+            assumptions="n>=1 and m>=1",
+            default_offset=lp.auto)
 
     cknl = lp.CompiledKernel(ctx, knl)
 

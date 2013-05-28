@@ -101,7 +101,10 @@ __all__ = [
         ]
 
 class auto:
-    pass
+    """A generic placeholder object for something that should be automatically
+    detected.  See, for example, the *shape* or *strides* argument of
+    :class:`GlobalArg`.
+    """
 
 # }}}
 

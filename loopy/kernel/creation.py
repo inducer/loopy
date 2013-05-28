@@ -366,7 +366,8 @@ class IndexRankFinder(WalkMapper):
             else:
                 self.index_ranks.append(len(expr.index))
 
-def guess_kernel_args_if_requested(domains, instructions, temporary_variables, subst_rules, kernel_args):
+def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
+        subst_rules, kernel_args, default_offset):
     if "..." not in kernel_args:
         return kernel_args
 
@@ -439,7 +440,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables, s
             # It's not a temp var, and thereby not a domain parameter--the only
             # other writable type of variable is an argument.
 
-            kernel_args.append(GlobalArg(arg_name, shape=lp.auto, offset=lp.auto))
+            kernel_args.append(GlobalArg(arg_name, shape=lp.auto, offset=default_offset))
             continue
 
         irank = find_index_rank(arg_name)
@@ -447,7 +448,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables, s
             # read-only, no indices
             kernel_args.append(ValueArg(arg_name))
         else:
-            kernel_args.append(GlobalArg(arg_name, shape=lp.auto, offset=lp.auto))
+            kernel_args.append(GlobalArg(arg_name, shape=lp.auto, offset=default_offset))
 
     return kernel_args
 
@@ -810,6 +811,9 @@ def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
         These defines may also be used in the domain and in argument shapes and
         strides. They are expanded only upon kernel creation.
     :arg default_order: "C" (default) or "F"
+    :arg default_offset: 0 or :class:`loopy.auto`. The default value of
+        *offset* in :attr:`loopy.kernel.data.GlobalArg` for guessed arguments.
+        Defaults to 0.
     :arg function_manglers: list of functions of signature (name, arg_dtypes)
         returning a tuple (result_dtype, c_name)
         or a tuple (result_dtype, c_name, arg_dtypes),
@@ -827,6 +831,7 @@ def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
 
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
+    default_offset = kwargs.pop("default_offset", 0)
 
     # {{{ instruction/subst parsing
 
@@ -864,7 +869,8 @@ def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
     domains = parse_domains(isl_context, domains, defines)
 
     kernel_args = guess_kernel_args_if_requested(domains, instructions,
-            kwargs.get("temporary_variables", {}), substitutions, kernel_args)
+            kwargs.get("temporary_variables", {}), substitutions, kernel_args,
+            default_offset)
 
     from loopy.kernel import LoopKernel
     knl = LoopKernel(device, domains, instructions, kernel_args, **kwargs)

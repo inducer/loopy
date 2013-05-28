@@ -429,6 +429,7 @@ class TestArgInfo(Record):
     pass
 
 def make_ref_args(kernel, queue, parameters, fill_value):
+    import loopy as lp
     from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
@@ -468,7 +469,7 @@ def make_ref_args(kernel, queue, parameters, fill_value):
                 alloc_size = None
                 strides = None
             else:
-                assert arg.offset == 0
+                assert arg.offset is lp.auto or arg.offset == 0
 
                 strides = evaluate(arg.strides, parameters)
 
@@ -530,6 +531,7 @@ def make_ref_args(kernel, queue, parameters, fill_value):
 
 def make_args(queue, kernel, arg_descriptors, parameters,
         fill_value):
+    import loopy as lp
     from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
@@ -562,7 +564,7 @@ def make_args(queue, kernel, arg_descriptors, parameters,
                     queue.context, arg_desc.ref_array.get())
 
         elif isinstance(arg, GlobalArg):
-            assert arg.offset == 0
+            assert arg.offset is lp.auto or arg.offset == 0
 
             shape = evaluate(arg.shape, parameters)
             strides = evaluate(arg.strides, parameters)

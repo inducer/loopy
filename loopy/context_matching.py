@@ -64,12 +64,12 @@ class AlternativeMatch(object):
 # {{{ single id match parsing
 
 def parse_id_match(id_matches):
-    """Syntax examples:
+    """Syntax examples::
 
-    my_insn
-    compute_*
-    fetch*$first
-    fetch*$first,store*$first
+        my_insn
+        compute_*
+        fetch*$first
+        fetch*$first,store*$first
 
     Alternatively, a list of *(name_glob, tag_glob)* tuples.
     """
@@ -166,7 +166,7 @@ def parse_stack_match(smatch):
 
         lowest < next < ... < highest
 
-    where `lowest` is necessarily the bottom of the stack.  `...` matches an
+    where `lowest` is necessarily the bottom of the stack.  ``...`` matches an
     arbitrary number of intervening stack levels. There is currently no way to
     match the top of the stack.
 

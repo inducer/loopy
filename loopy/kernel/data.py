@@ -195,8 +195,11 @@ class ShapedArg(KernelArgument):
 
             * 0
             * a string (that is interpreted as an argument name).
-            * :class:`loopy.auto`, in which case this information is added at run time
-              by :class:`loopy.CompiledKernel`.
+            * :class:`loopy.auto`, in which case an offset argument
+              is added automatically, immediately following this argument.
+              :class:`loopy.CompiledKernel` is even smarter in its treatment of
+              this case and will compile custom versions of the kernel based on
+              whether the passed arrays have offsets or not.
         """
         if dtype is not None:
             dtype = np.dtype(dtype)
