@@ -161,6 +161,16 @@ class ShapedArg(KernelArgument):
             commas, in which case multiple arguments,
             each with identical properties are created
             for each name.
+        :arg dtype: the :class:`numpy.dtype` of the array.
+            If this is *None*, :mod:`loopy` will try to continue
+            without knowing the type of this array.
+
+            Note that some operations, such as :func:`loopy.add_padding`
+            require this information to work.
+
+            :class:`loopy.CompiledKernel` will automatically compile a kernel
+            with the right dtype when called with a concrete array on a kernel
+            with argument whose *dtype* is *None*.
         :arg shape: like :attr:`numpy.ndarray.shape`.
             Also allowed to be :class:`loopy.auto`, in
             which case shape is determined by finding the
@@ -180,8 +190,13 @@ class ShapedArg(KernelArgument):
             string that can be parsed to such an expression.
         :arg order: "F" or "C" for C (row major) or Fortran
             (column major)
-        :arg offset: Offset from the beginning of the vector from which
-            the strides are counted.
+        :arg offset: Offset from the beginning of the buffer to the point from
+            which the strides are counted. May be one of
+
+            * 0
+            * a string (that is interpreted as an argument name).
+            * :class:`loopy.auto`, in which case this information is added at run time
+              by :class:`loopy.CompiledKernel`.
         """
         if dtype is not None:
             dtype = np.dtype(dtype)

@@ -62,6 +62,9 @@ def _arg_matches_spec(arg, val, other_args):
                     "(got: %s, expected: %s)"
                     % (arg.name, val.strides, strides))
 
+        if val.offset != 0 and arg.offset == 0:
+            raise ValueError("argument '%s' does not allow offset" % arg.name)
+
     return True
 
 # }}}
@@ -120,19 +123,38 @@ class CompiledKernel:
         self.options = options
 
     @memoize_method
-    def get_kernel_info(self, dtype_mapping_set):
+    def get_kernel_info(self, arg_to_dtype_set, arg_to_has_offset_set):
         kernel = self.kernel
 
+        import loopy as lp
         from loopy.kernel.tools import (
                 add_argument_dtypes,
                 get_arguments_with_incomplete_dtype)
 
-        if get_arguments_with_incomplete_dtype(kernel):
-            if dtype_mapping_set is not None:
-                kernel = add_argument_dtypes(kernel, dict(dtype_mapping_set))
+        if arg_to_dtype_set:
+            kernel = add_argument_dtypes(kernel, dict(arg_to_dtype_set))
 
             from loopy.preprocess import infer_unknown_types
             kernel = infer_unknown_types(kernel, expect_completion=True)
+
+        if arg_to_has_offset_set:
+            arg_to_has_offset = dict(arg_to_has_offset_set)
+
+            vng = kernel.get_var_name_generator()
+
+            new_args = []
+            for arg in kernel.args:
+                if getattr(arg, "offset", None) is lp.auto:
+                    if arg_to_has_offset[arg.name]:
+                        offset_arg_name = vng(arg.name+"_offset")
+                        new_args.append(arg.copy(offset=offset_arg_name))
+                        new_args.append(lp.ValueArg(offset_arg_name, kernel.index_dtype))
+                    else:
+                        new_args.append(arg.copy(offset=0))
+                else:
+                    new_args.append(arg)
+
+            kernel = kernel.copy(args=new_args)
 
         import loopy as lp
         if kernel.schedule is None:
@@ -156,8 +178,8 @@ class CompiledKernel:
                 )
 
     @memoize_method
-    def get_cl_kernel(self, dtype_mapping_set):
-        kernel_info = self.get_kernel_info(dtype_mapping_set)
+    def get_cl_kernel(self, arg_to_dtype_set, arg_to_has_offset_set):
+        kernel_info = self.get_kernel_info(arg_to_dtype_set, arg_to_has_offset_set)
         kernel = kernel_info.kernel
 
         from loopy.codegen import generate_code
@@ -199,17 +221,19 @@ class CompiledKernel:
 
     # {{{ debugging aids
 
-    def get_code(self, dtype_dict=None):
-        if dtype_dict is not None:
-            dtype_dict = frozenset(dtype_dict.items())
+    def get_code(self, arg_to_dtype=None, arg_to_has_offset=None):
+        if arg_to_dtype is not None:
+            arg_to_dtype = frozenset(arg_to_dtype.iteritems())
+        if arg_to_has_offset is not None:
+            arg_to_has_offset = frozenset(arg_to_has_offset.iteritems())
 
-        kernel_info = self.get_kernel_info(dtype_dict)
+        kernel_info = self.get_kernel_info(arg_to_dtype, arg_to_has_offset)
 
         from loopy.codegen import generate_code
         return generate_code(kernel_info.kernel, **self.codegen_kwargs)
 
-    def get_highlighted_code(self, dtype_dict=None):
-        return get_highlighted_code(self.get_code(dtype_dict))
+    def get_highlighted_code(self, arg_to_dtype=None, arg_to_has_offset=None):
+        return get_highlighted_code(self.get_code(arg_to_dtype, arg_to_has_offset))
 
     @property
     def code(self):
@@ -224,6 +248,10 @@ class CompiledKernel:
     def __call__(self, queue, **kwargs):
         """If all array arguments are :mod:`numpy` arrays, defaults to returning
         numpy arrays as well.
+
+        If you want offset arguments (see
+        :attr:`loopy.kernel.data.GlobalArg.offset`) to be set automatically, it
+        must occur *after* the corresponding array argument.
         """
 
         allocator = kwargs.pop("allocator", None)
@@ -234,20 +262,32 @@ class CompiledKernel:
 
         # {{{ process arg types, get cl kernel
 
-        dtype_dict = {}
+        import loopy as lp
+
+        arg_to_dtype = {}
+        arg_to_has_offset = {}
         for arg in self.kernel.args:
             val = kwargs.get(arg.name)
-            if val is not None:
+
+            if arg.dtype is None and val is not None:
                 try:
                     dtype = val.dtype
                 except AttributeError:
                     pass
                 else:
-                    dtype_dict[arg.name] = dtype
+                    arg_to_dtype[arg.name] = dtype
 
-        kernel_info, cl_kernel = self.get_cl_kernel(frozenset(dtype_dict.iteritems()))
+            if getattr(arg, "offset", None) is lp.auto:
+                if val is not None:
+                    has_offset = val.offset != 0
+                else:
+                    has_offset = False
+                arg_to_has_offset[arg.name] = has_offset
+
+        kernel_info, cl_kernel = self.get_cl_kernel(frozenset(arg_to_dtype.iteritems()),
+                frozenset(arg_to_has_offset.iteritems()))
         kernel = kernel_info.kernel
-        del dtype_dict
+        del arg_to_dtype
 
         # }}}
 
@@ -267,8 +307,22 @@ class CompiledKernel:
 
             val = kwargs_copy.pop(arg.name, None)
 
-            # automatically transfer host-side arrays
             if isinstance(arg, lp.GlobalArg):
+                if arg.offset:
+                    # arg.offset must be a string at this point.
+
+                    # /!\ Tacit assumption: If you want the offset argument to
+                    # be set automatically, it must occur *after* the
+                    # corresponding array argument.
+
+                    ofs, remdr =  divmod(val.offset, val.dtype.itemsize)
+                    assert remdr == 0
+                    kwargs_copy.setdefault(arg.offset, ofs)
+                    del ofs
+                    del remdr
+
+                # {{{ automatically transfer host-side arrays, if needed
+
                 if isinstance(val, np.ndarray):
                     # synchronous, so nothing to worry about
                     val = cl_array.to_device(queue, val, allocator=allocator)
@@ -278,6 +332,8 @@ class CompiledKernel:
                         warn("argument '%s' was passed as a numpy array, "
                                 "performing implicit transfer" % arg.name,
                                 stacklevel=2)
+
+                # }}}
 
             if val is None:
                 if not is_written:
@@ -311,7 +367,7 @@ class CompiledKernel:
                 outputs.append(val)
 
             if isinstance(arg, lp.GlobalArg):
-                args.append(val.data)
+                args.append(val.base_data)
             else:
                 args.append(val)
 

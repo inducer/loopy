@@ -407,9 +407,14 @@ class LoopyCCodeMapper(RecursiveMapper):
                                 expr.aggregate.name, expr,
                                 len(index_expr), len(arg.strides)))
 
-                from pymbolic.primitives import Subscript
+                from pymbolic.primitives import Subscript, Variable
+                if arg.offset:
+                    offset = Variable(arg.offset)
+                else:
+                    offset = 0
+
                 return base_impl(
-                        Subscript(expr.aggregate, arg.offset+sum(
+                        Subscript(expr.aggregate, offset+sum(
                             stride*expr_i for stride, expr_i in zip(
                                 arg.strides, index_expr))),
                         enclosing_prec, type_context)
@@ -450,9 +455,14 @@ class LoopyCCodeMapper(RecursiveMapper):
 
             else:
                 # GlobalArg
+                if arg.offset:
+                    offset = Variable(arg.offset)
+                else:
+                    offset = 0
+
                 from pymbolic.primitives import Subscript
                 return base_impl(
-                        Subscript(expr.aggregate, arg.offset+expr.index),
+                        Subscript(expr.aggregate, offset+expr.index),
                         enclosing_prec, type_context)
 
         elif expr.aggregate.name in self.kernel.temporary_variables:

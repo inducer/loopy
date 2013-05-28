@@ -439,7 +439,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables, s
             # It's not a temp var, and thereby not a domain parameter--the only
             # other writable type of variable is an argument.
 
-            kernel_args.append(GlobalArg(arg_name, shape=lp.auto))
+            kernel_args.append(GlobalArg(arg_name, shape=lp.auto, offset=lp.auto))
             continue
 
         irank = find_index_rank(arg_name)
@@ -447,7 +447,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables, s
             # read-only, no indices
             kernel_args.append(ValueArg(arg_name))
         else:
-            kernel_args.append(GlobalArg(arg_name, shape=lp.auto))
+            kernel_args.append(GlobalArg(arg_name, shape=lp.auto, offset=lp.auto))
 
     return kernel_args
 

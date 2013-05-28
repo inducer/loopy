@@ -28,6 +28,7 @@ THE SOFTWARE.
 import numpy as np
 import loopy as lp
 import pyopencl as cl
+import pyopencl.clrandom
 import logging
 
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
@@ -975,11 +976,6 @@ def test_double_sum(ctx_factory):
                 "a = sum((i,j), i*j)",
                 "b = sum(i, sum(j, i*j))",
                 ],
-            [
-                lp.GlobalArg("a", dtype, shape=()),
-                lp.GlobalArg("b", dtype, shape=()),
-                lp.ValueArg("n", np.int32, approximately=1000),
-                ],
             assumptions="n>=1")
 
     cknl = lp.CompiledKernel(ctx, knl)
@@ -1178,6 +1174,35 @@ def test_triangle_domain(ctx_factory):
     print knl
     print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
+
+
+
+
+def test_array_with_offset(ctx_factory):
+    dtype = np.float32
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    n = 5
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i<n and 0<=j<m }",
+            ],
+            """
+                b[i,j] = 2*a[i,j]
+                """,
+            assumptions="n>=1 and m>=1")
+
+    cknl = lp.CompiledKernel(ctx, knl)
+
+    a_full = cl.clrandom.rand(queue, (n, n), np.float64)
+    a = a_full[3:10]
+
+    print cknl.get_highlighted_code({"a": a.dtype}, {"a": True, "b": False})
+    evt, (b,) = cknl(queue, a=a, n=a.shape[0], m=a.shape[1])
+
+    import numpy.linalg as la
+    assert la.norm(b.get() - 2*a.get()) < 1e-13
 
 
 
