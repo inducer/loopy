@@ -93,8 +93,7 @@ class _KernelInfo(Record):
     pass
 
 class CompiledKernel:
-    def __init__(self, context, kernel, options=[],
-             edit_code=False, codegen_kwargs={}):
+    def __init__(self, context, kernel, options=[], codegen_kwargs={}):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
           (a warning will be issued if more than one is returned). If the kernel
@@ -118,7 +117,6 @@ class CompiledKernel:
 
         self.context = context
         self.kernel = kernel
-        self.edit_code = edit_code
         self.codegen_kwargs = codegen_kwargs
         self.options = options
 
@@ -178,14 +176,18 @@ class CompiledKernel:
                 )
 
     @memoize_method
-    def get_cl_kernel(self, arg_to_dtype_set, arg_to_has_offset_set):
+    def get_cl_kernel(self, arg_to_dtype_set, arg_to_has_offset_set, code_op=False):
         kernel_info = self.get_kernel_info(arg_to_dtype_set, arg_to_has_offset_set)
         kernel = kernel_info.kernel
 
         from loopy.codegen import generate_code
         code = generate_code(kernel, **self.codegen_kwargs)
 
-        if self.edit_code:
+        if code_op == "print":
+            print code
+        elif code_op == "print_hl":
+            print get_highlighted_code(code)
+        elif code_op == "edit":
             from pytools import invoke_editor
             code = invoke_editor(code, "code.cl")
 
@@ -258,6 +260,7 @@ class CompiledKernel:
         wait_for = kwargs.pop("wait_for", None)
         out_host = kwargs.pop("out_host", None)
         no_run = kwargs.pop("no_run", None)
+        code_op = kwargs.pop("code_op", None)
         warn_numpy = kwargs.pop("warn_numpy", None)
 
         # {{{ process arg types, get cl kernel
@@ -284,8 +287,10 @@ class CompiledKernel:
                     has_offset = False
                 arg_to_has_offset[arg.name] = has_offset
 
-        kernel_info, cl_kernel = self.get_cl_kernel(frozenset(arg_to_dtype.iteritems()),
-                frozenset(arg_to_has_offset.iteritems()))
+        kernel_info, cl_kernel = self.get_cl_kernel(
+                frozenset(arg_to_dtype.iteritems()),
+                frozenset(arg_to_has_offset.iteritems()),
+                code_op)
         kernel = kernel_info.kernel
         del arg_to_dtype
 
