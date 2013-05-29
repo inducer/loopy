@@ -368,11 +368,12 @@ class IndexRankFinder(WalkMapper):
 
 def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
         subst_rules, kernel_args, default_offset):
-    if "..." not in kernel_args:
+    # Ellipsis is syntactically allowed in Py3.
+    if "..." not in kernel_args and Ellipsis not in kernel_args:
         return kernel_args
 
-    kernel_args = kernel_args[:]
-    kernel_args.remove("...")
+    kernel_args = [arg for arg in kernel_args
+            if arg is not Ellipsis and arg != "..."]
 
     from loopy.symbolic import SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(subst_rules)
