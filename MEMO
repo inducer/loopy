@@ -107,9 +107,6 @@ Future ideas
 
 - Float4 joining on fetch/store?
 
-- How can one automatically generate something like microblocks?
-  -> Some sort of axis-adding transform?
-
 - Better for loop bound generation
   -> Try a triangular loop
 
@@ -133,6 +130,9 @@ Future ideas
 
 Dealt with
 ^^^^^^^^^^
+
+- How can one automatically generate something like microblocks?
+  -> Some sort of axis-adding transform?
 
 - ExpandingIdentityMapper
   extract_subst -> needs WalkMapper [actually fine as is]

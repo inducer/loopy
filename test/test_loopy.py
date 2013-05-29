@@ -1201,7 +1201,7 @@ def test_array_with_offset(ctx_factory):
     a = a_full[3:10]
 
     print cknl.get_highlighted_code({"a": a.dtype}, {"a": True, "b": False})
-    evt, (b,) = cknl(queue, a=a, n=a.shape[0], m=a.shape[1])
+    evt, (b,) = cknl(queue, a=a)
 
     import numpy.linalg as la
     assert la.norm(b.get() - 2*a.get()) < 1e-13

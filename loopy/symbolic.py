@@ -47,6 +47,8 @@ from pymbolic.mapper.stringifier import \
         StringifyMapper as StringifyMapperBase
 from pymbolic.mapper.dependency import \
         DependencyMapper as DependencyMapperBase
+from pymbolic.mapper.coefficient import \
+        CoefficientCollector as CoefficientCollectorBase
 from pymbolic.mapper.unifier import UnidirectionalUnifier \
         as UnidirectionalUnifierBase
 
@@ -666,58 +668,8 @@ def parse(expr_str):
 
 # {{{ coefficient collector
 
-class CoefficientCollector(RecursiveMapper):
-    def map_sum(self, expr):
-        stride_dicts = [self.rec(ch) for ch in expr.children]
-
-        result = {}
-        for stride_dict in stride_dicts:
-            for var, stride in stride_dict.iteritems():
-                if var in result:
-                    result[var] += stride
-                else:
-                    result[var] = stride
-
-        return result
-
-    def map_product(self, expr):
-        result = {}
-
-        children_coeffs = [self.rec(child) for child in expr.children]
-
-        idx_of_child_with_vars = None
-        for i, child_coeffs in enumerate(children_coeffs):
-            for k in child_coeffs:
-                if isinstance(k, str):
-                    if (idx_of_child_with_vars is not None
-                            and idx_of_child_with_vars != i):
-                        raise RuntimeError(
-                                "nonlinear expression")
-                    idx_of_child_with_vars = i
-
-        other_coeffs = 1
-        for i, child_coeffs in enumerate(children_coeffs):
-            if i != idx_of_child_with_vars:
-                assert len(child_coeffs) == 1
-                other_coeffs *= child_coeffs[1]
-
-        if idx_of_child_with_vars is None:
-            return {1: other_coeffs}
-        else:
-            return dict(
-                    (var, other_coeffs*coeff)
-                    for var, coeff in
-                    children_coeffs[idx_of_child_with_vars].iteritems())
-
-        return result
-
-    def map_constant(self, expr):
-        return {1: expr}
-
-    def map_variable(self, expr):
-        return {expr.name: 1}
-
-    map_tagged_variable = map_variable
+class CoefficientCollector(CoefficientCollectorBase):
+    map_tagged_variable = CoefficientCollectorBase.map_variable
 
     def map_subscript(self, expr):
         raise RuntimeError("cannot gather coefficients--indirect addressing in use")

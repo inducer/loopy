@@ -861,6 +861,11 @@ class LoopKernel(Record):
 
     # }}}
 
+    @memoize_method
+    def domain_parameter_finder(self):
+        from loopy.kernel.tools import DomainParameterFinder
+        return DomainParameterFinder(self)
+
 # }}}
 
 # vim: foldmethod=marker

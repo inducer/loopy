@@ -291,4 +291,61 @@ def get_dot_dependency_graph(kernel, iname_cluster=False, iname_edge=True):
 
 # }}}
 
+# {{{ domain parameter finder
+
+class DomainParameterFinder:
+    """Finds parameters from shapes of passed arguments."""
+
+    def __init__(self, kernel):
+        # a mapping from parameter names to a list of tuples
+        # (arg_name, axis_nr, function), where function is a
+        # unary function of kernel.arg_dict[arg_name].shape[axis_nr]
+        # returning the desired parameter.
+        self.param_to_sources = param_to_sources = {}
+
+        param_names = kernel.all_params()
+
+        from loopy.kernel.data import GlobalArg
+        from loopy.symbolic import DependencyMapper
+        from pymbolic import compile
+        dep_map = DependencyMapper()
+
+        from pymbolic import var
+        for arg in kernel.args:
+            if isinstance(arg, GlobalArg):
+                for axis_nr, shape_i in enumerate(arg.shape):
+                    deps = dep_map(shape_i)
+                    if len(deps) == 1:
+                        dep, = deps
+
+                        if dep.name in param_names:
+                            from pymbolic.algorithm import solve_affine_equations_for
+                            try:
+                                # friggin' overkill :)
+                                param_expr = solve_affine_equations_for(
+                                        [dep.name], [(shape_i, var("shape_i"))]) \
+                                                [dep.name]
+                            except:
+                                # went wrong? oh well
+                                pass
+                            else:
+                                param_func = compile(param_expr, ["shape_i"])
+                                param_to_sources.setdefault(dep.name, []).append(
+                                        (arg.name, axis_nr, param_func))
+
+    def __call__(self, kwargs):
+        result = {}
+
+        for param_name, sources in self.param_to_sources.iteritems():
+            if param_name not in kwargs:
+                for arg_name, axis_nr, shape_func in sources:
+                    if arg_name in kwargs:
+                        result[param_name] = shape_func(
+                                kwargs[arg_name].shape[axis_nr])
+                        continue
+
+        return result
+
+# }}}
+
 # vim: foldmethod=marker

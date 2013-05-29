@@ -298,6 +298,9 @@ class CompiledKernel:
 
         import loopy as lp
 
+        kwargs.update(
+                kernel.domain_parameter_finder()(kwargs))
+
         domain_parameters = dict((name, int(kwargs[name]))
                 for name in kernel.scalar_loop_args)
 
