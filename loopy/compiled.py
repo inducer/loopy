@@ -691,7 +691,7 @@ def _enumerate_cl_devices_for_ref_test():
 
 def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
-        edit_code=False, dump_binary=False, codegen_kwargs={},
+        code_op=None, dump_binary=False, codegen_kwargs={},
         options=[],
         fills_entire_output=True, do_check=True, check_result=None
         ):
@@ -826,8 +826,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
                     fill_value=fill_value)
         args["out_host"] = False
 
-        compiled = CompiledKernel(ctx, kernel, edit_code=edit_code,
-                options=options,
+        compiled = CompiledKernel(ctx, kernel, options=options,
                 codegen_kwargs=codegen_kwargs)
 
         print 75*"-"
@@ -843,7 +842,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
 
         for i in range(warmup_rounds):
             if not AUTO_TEST_SKIP_RUN:
-                compiled(queue, **args)
+                compiled(queue, code_op=code_op, **args)
 
             if need_check and not AUTO_TEST_SKIP_RUN:
                 for arg_desc in arg_descriptors:
@@ -882,7 +881,7 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
 
             for i in range(timing_rounds):
                 if not AUTO_TEST_SKIP_RUN:
-                    evt, _ = compiled(queue, **args)
+                    evt, _ = compiled(queue, code_op=code_op, **args)
                     events.append(evt)
                 else:
                     events.append(cl.enqueue_marker(queue))
