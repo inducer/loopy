@@ -386,7 +386,7 @@ class CompiledKernel:
         if out_host is None and encountered_numpy:
             out_host = True
         if out_host:
-            outputs = [o.get() for o in outputs]
+            outputs = [o.get(queue=queue) for o in outputs]
 
         return evt, outputs
 
