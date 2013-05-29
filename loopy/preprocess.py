@@ -43,7 +43,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     dtypes = []
 
     from loopy.codegen.expression import DependencyTypeInferenceFailure
-    for writer_insn_id in kernel.writer_map()[var_name]:
+    for writer_insn_id in kernel.writer_map().get(var_name, []):
         expr = subst_expander(
                 kernel.id_to_insn[writer_insn_id].expression,
                 insn_id=writer_insn_id)
