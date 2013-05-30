@@ -25,8 +25,6 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import Instruction, SubstitutionRule
@@ -45,6 +43,7 @@ def generate_unique_possibilities(prefix):
     while True:
         yield "%s_%d" % (prefix, try_num)
         try_num += 1
+
 
 class UniqueNameGenerator:
     def __init__(self, existing_names):
@@ -72,8 +71,10 @@ class UniqueNameGenerator:
 
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
+
 def _gather_isl_identifiers(s):
     return set(_IDENTIFIER_RE.findall(s)) - set(["and", "or", "exists"])
+
 
 class MakeUnique:
     """A tag for a string that identifies a partial identifier that is to
@@ -90,6 +91,7 @@ class MakeUnique:
 
 WORD_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
 BRACE_RE = re.compile(r"\$\{([a-zA-Z0-9_]+)\}")
+
 
 def expand_defines(insn, defines, single_valued=True):
     replacements = [()]
@@ -109,7 +111,8 @@ def expand_defines(insn, defines, single_valued=True):
 
             if isinstance(value, list):
                 if single_valued:
-                    raise ValueError("multi-valued macro expansion not allowed "
+                    raise ValueError("multi-valued macro expansion "
+                            "not allowed "
                             "in this context (when expanding '%s')" % word)
 
                 replacements = [
@@ -128,6 +131,7 @@ def expand_defines(insn, defines, single_valued=True):
             rep_value = re.sub(pattern, str(val), rep_value)
 
         yield rep_value
+
 
 def expand_defines_in_expr(expr, defines):
     from pymbolic.primitives import Variable
@@ -159,6 +163,7 @@ INSN_RE = re.compile(
 SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$"
         )
+
 
 def parse_insn(insn):
     insn_match = INSN_RE.match(insn)
@@ -244,7 +249,7 @@ def parse_insn(insn):
                 if not isinstance(arg, Variable):
                     raise RuntimeError("Invalid substitution rule "
                                     "left-hand side: %s--arg number %d "
-                                    "is not a variable"% (lhs, i))
+                                    "is not a variable" % (lhs, i))
                 arg_names.append(arg.name)
         else:
             raise RuntimeError("Invalid substitution rule left-hand side")
@@ -253,6 +258,7 @@ def parse_insn(insn):
                 name=subst_name,
                 arguments=tuple(arg_names),
                 expression=rhs)
+
 
 def parse_if_necessary(insn, defines):
     if isinstance(insn, Instruction):
@@ -282,6 +288,7 @@ def parse_if_necessary(insn, defines):
 EMPTY_SET_DIMS_RE = re.compile(r"^\s*\{\s*\:")
 SET_DIMS_RE = re.compile(r"^\s*\{\s*\[([a-zA-Z0-9_, ]+)\]\s*\:")
 
+
 def _find_inames_in_set(dom_str):
     empty_match = EMPTY_SET_DIMS_RE.match(dom_str)
     if empty_match is not None:
@@ -296,10 +303,13 @@ def _find_inames_in_set(dom_str):
 
     return result
 
+
 EX_QUANT_RE = re.compile(r"\bexists\s+([a-zA-Z0-9])\s*\:")
+
 
 def _find_existentially_quantified_inames(dom_str):
     return set(ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str))
+
 
 def parse_domains(ctx, domains, defines):
     if isinstance(domains, str):
@@ -347,6 +357,7 @@ def parse_domains(ctx, domains, defines):
 
 # }}}
 
+
 # {{{ guess kernel args (if requested)
 
 class IndexRankFinder(WalkMapper):
@@ -365,6 +376,7 @@ class IndexRankFinder(WalkMapper):
                 self.index_ranks.append(1)
             else:
                 self.index_ranks.append(len(expr.index))
+
 
 def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
         subst_rules, kernel_args, default_offset):
@@ -441,7 +453,8 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
             # It's not a temp var, and thereby not a domain parameter--the only
             # other writable type of variable is an argument.
 
-            kernel_args.append(GlobalArg(arg_name, shape=lp.auto, offset=default_offset))
+            kernel_args.append(
+                    GlobalArg(arg_name, shape=lp.auto, offset=default_offset))
             continue
 
         irank = find_index_rank(arg_name)
@@ -449,11 +462,13 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
             # read-only, no indices
             kernel_args.append(ValueArg(arg_name))
         else:
-            kernel_args.append(GlobalArg(arg_name, shape=lp.auto, offset=default_offset))
+            kernel_args.append(
+                    GlobalArg(arg_name, shape=lp.auto, offset=default_offset))
 
     return kernel_args
 
 # }}}
+
 
 # {{{ tag reduction inames as sequential
 
@@ -486,6 +501,7 @@ def tag_reduction_inames_as_sequential(knl):
 
 # }}}
 
+
 # {{{ sanity checking
 
 def check_for_duplicate_names(knl):
@@ -507,6 +523,7 @@ def check_for_duplicate_names(knl):
     for name in knl.substitutions:
         add_name(name, "substitution")
 
+
 def check_for_nonexistent_iname_deps(knl):
     for insn in knl.instructions:
         if not set(insn.forced_iname_deps) <= knl.all_inames():
@@ -516,6 +533,7 @@ def check_for_nonexistent_iname_deps(knl):
                         insn.id,
                         ",".join(
                             set(insn.forced_iname_deps)-knl.all_inames())))
+
 
 def check_for_multiple_writes_to_loop_bounds(knl):
     from islpy import dim_type
@@ -531,8 +549,9 @@ def check_for_multiple_writes_to_loop_bounds(knl):
     for tvpar in temp_var_domain_parameters:
         par_writers = wmap[tvpar]
         if len(par_writers) != 1:
-            raise RuntimeError("there must be exactly one write to data-dependent "
-                    "domain parameter '%s' (found %d)" % (tvpar, len(par_writers)))
+            raise RuntimeError("there must be exactly one write "
+                    "to data-dependent domain parameter '%s' (found %d)"
+                    % (tvpar, len(par_writers)))
 
 
 def check_written_variable_names(knl):
@@ -548,6 +567,7 @@ def check_written_variable_names(knl):
                     "allowed for writing" % var_name)
 
 # }}}
+
 
 # {{{ expand common subexpressions into assignments
 
@@ -576,6 +596,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             self.expr_to_var[expr.child] = var
             return var
 
+
 def expand_cses(knl):
     def add_assignment(base_name, expr, dtype):
         if base_name is None:
@@ -587,7 +608,7 @@ def expand_cses(knl):
             import loopy as lp
             dtype = lp.auto
         else:
-            dtype=np.dtype(dtype)
+            dtype = np.dtype(dtype)
 
         from loopy.kernel.data import TemporaryVariable
         new_temp_vars[new_var_name] = TemporaryVariable(
@@ -598,7 +619,8 @@ def expand_cses(knl):
 
         from pymbolic.primitives import Variable
         insn = Instruction(
-                id=knl.make_unique_instruction_id(extra_used_ids=newly_created_insn_ids),
+                id=knl.make_unique_instruction_id(
+                    extra_used_ids=newly_created_insn_ids),
                 assignee=Variable(new_var_name), expression=expr)
         newly_created_insn_ids.add(insn.id)
         new_insns.append(insn)
@@ -622,6 +644,7 @@ def expand_cses(knl):
             temporary_variables=new_temp_vars)
 
 # }}}
+
 
 # {{{ temporary variable creation
 
@@ -673,6 +696,7 @@ def create_temporaries(knl):
 
 # }}}
 
+
 # {{{ check for reduction iname duplication
 
 def check_for_reduction_inames_duplication_requests(kernel):
@@ -682,11 +706,12 @@ def check_for_reduction_inames_duplication_requests(kernel):
     def check_reduction_inames(reduction_expr, rec):
         for iname in reduction_expr.inames:
             if iname.startswith("@"):
-                raise RuntimeError("Reduction iname duplication with '@' is no "
-                        "longer supported. Use loopy.duplicate_inames instead.")
+                raise RuntimeError(
+                        "Reduction iname duplication with '@' is no "
+                        "longer supported. Use loopy.duplicate_inames "
+                        "instead.")
 
     # }}}
-
 
     from loopy.symbolic import ReductionCallbackMapper
     rcm = ReductionCallbackMapper(check_reduction_inames)
@@ -697,6 +722,7 @@ def check_for_reduction_inames_duplication_requests(kernel):
         rcm(sub_rule.expression)
 
 # }}}
+
 
 # {{{ duplicate arguments and expand defines in shapes
 
@@ -714,15 +740,19 @@ def dup_args_and_expand_defines_in_shapes(kernel, defines):
             new_arg = arg.copy(name=arg_name)
             if isinstance(arg, ShapedArg):
                 if arg.shape is not None and arg.shape is not lp.auto:
-                    new_arg = new_arg.copy(shape=expand_defines_in_expr(arg.shape, defines))
+                    new_arg = new_arg.copy(
+                            shape=expand_defines_in_expr(arg.shape, defines))
                 if arg.strides is not None and arg.strides is not lp.auto:
-                    new_arg = new_arg.copy(strides=expand_defines_in_expr(arg.strides, defines))
+                    new_arg = new_arg.copy(
+                            strides=expand_defines_in_expr(
+                                arg.strides, defines))
 
             processed_args.append(new_arg)
 
     return kernel.copy(args=processed_args)
 
 # }}}
+
 
 # {{{ guess argument shapes
 
@@ -742,8 +772,10 @@ def guess_arg_shape_if_requested(kernel, default_order):
             armap = AccessRangeMapper(kernel, arg.name)
 
             for insn in kernel.instructions:
-                armap(submap(insn.assignee, insn.id), kernel.insn_inames(insn))
-                armap(submap(insn.expression, insn.id), kernel.insn_inames(insn))
+                armap(submap(insn.assignee, insn.id),
+                        kernel.insn_inames(insn))
+                armap(submap(insn.expression, insn.id),
+                        kernel.insn_inames(insn))
 
             if armap.access_range is None:
                 # no subscripts found, let's call it a scalar
@@ -752,11 +784,21 @@ def guess_arg_shape_if_requested(kernel, default_order):
                 from loopy.isl_helpers import static_max_of_pw_aff
                 from loopy.symbolic import pw_aff_to_expr
 
-                shape = tuple(
-                        pw_aff_to_expr(static_max_of_pw_aff(
-                            kernel.cache_manager.dim_max(armap.access_range, i) + 1,
-                            constants_only=False))
-                        for i in xrange(armap.access_range.dim(dim_type.set)))
+                shape = []
+                for i in xrange(armap.access_range.dim(dim_type.set)):
+                    try:
+                        shape.append(
+                                pw_aff_to_expr(static_max_of_pw_aff(
+                                    kernel.cache_manager.dim_max(
+                                        armap.access_range, i) + 1,
+                                    constants_only=False)))
+                    except:
+                        print "While trying to find shape axis %d of "\
+                                "argument '%s', the following " \
+                                "exception occurred:" % (i, arg.name)
+                        raise
+
+                shape = tuple(shape)
 
             if arg.shape is lp.auto:
                 arg = arg.copy(shape=shape)
@@ -769,6 +811,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
     return kernel.copy(args=new_args)
 
 # }}}
+
 
 # {{{ apply default_order to args
 
@@ -785,6 +828,7 @@ def apply_default_order_to_args(kernel, default_order):
 
 # }}}
 
+
 # {{{ kernel creation top-level
 
 def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
@@ -797,17 +841,18 @@ def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
 
     The following keyword arguments are recognized:
 
-    :arg preambles: a list of (tag, code) tuples that identify preamble snippets.
+    :arg preambles: a list of (tag, code) tuples that identify preamble
+        snippets.
         Each tag's snippet is only included once, at its first occurrence.
         The preambles will be inserted in order of their tags.
     :arg preamble_generators: a list of functions of signature
         (seen_dtypes, seen_functions) where seen_functions is a set of
         (name, c_name, arg_dtypes), generating extra entries for *preambles*.
     :arg defines: a dictionary of replacements to be made in instructions given
-        as strings before parsing. A macro instance intended to be replaced should
-        look like "MACRO" in the instruction code. The expansion given in this
-        parameter is allowed to be a list. In this case, instructions are generated
-        for *each* combination of macro values.
+        as strings before parsing. A macro instance intended to be replaced
+        should look like "MACRO" in the instruction code. The expansion given
+        in this parameter is allowed to be a list. In this case, instructions
+        are generated for *each* combination of macro values.
 
         These defines may also be used in the domain and in argument shapes and
         strides. They are expanded only upon kernel creation.
@@ -820,8 +865,8 @@ def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
         or a tuple (result_dtype, c_name, arg_dtypes),
         where c_name is the C-level function to be called.
     :arg symbol_manglers: list of functions of signature (name) returning
-        a tuple (result_dtype, c_name), where c_name is the C-level symbol to be
-        evaluated.
+        a tuple (result_dtype, c_name), where c_name is the C-level symbol to
+        be evaluated.
     :arg assumptions: the initial implemented_domain, captures assumptions
         on the parameters. (an isl.Set)
     :arg local_sizes: A dictionary from integers to integers, mapping
