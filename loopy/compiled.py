@@ -23,8 +23,6 @@ THE SOFTWARE.
 """
 
 
-
-
 import pyopencl as cl
 import pyopencl.array as cl_array
 
@@ -33,8 +31,6 @@ import numpy as np
 from pytools import Record, memoize_method
 
 AUTO_TEST_SKIP_RUN = False
-
-
 
 
 # {{{ argument checking
@@ -69,6 +65,7 @@ def _arg_matches_spec(arg, val, other_args):
 
 # }}}
 
+
 # {{{ compiled kernel object
 
 def _get_kernel_from_iterable(iterable):
@@ -89,16 +86,18 @@ def _get_kernel_from_iterable(iterable):
 
     return result
 
+
 class _KernelInfo(Record):
     pass
+
 
 class CompiledKernel:
     def __init__(self, context, kernel, options=[], codegen_kwargs={}):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
-          (a warning will be issued if more than one is returned). If the kernel
-          has not yet been loop-scheduled, that is done, too, with no specific
-          arguments.
+          (a warning will be issued if more than one is returned). If the
+          kernel has not yet been loop-scheduled, that is done, too, with no
+          specific arguments.
         """
 
         import loopy as lp
@@ -125,9 +124,7 @@ class CompiledKernel:
         kernel = self.kernel
 
         import loopy as lp
-        from loopy.kernel.tools import (
-                add_argument_dtypes,
-                get_arguments_with_incomplete_dtype)
+        from loopy.kernel.tools import add_argument_dtypes
 
         if arg_to_dtype_set:
             kernel = add_argument_dtypes(kernel, dict(arg_to_dtype_set))
@@ -146,7 +143,9 @@ class CompiledKernel:
                     if arg_to_has_offset[arg.name]:
                         offset_arg_name = vng(arg.name+"_offset")
                         new_args.append(arg.copy(offset=offset_arg_name))
-                        new_args.append(lp.ValueArg(offset_arg_name, kernel.index_dtype))
+                        new_args.append(
+                                lp.ValueArg(
+                                    offset_arg_name, kernel.index_dtype))
                     else:
                         new_args.append(arg.copy(offset=0))
                 else:
@@ -163,21 +162,25 @@ class CompiledKernel:
 
         gsize_expr, lsize_expr = kernel.get_grid_sizes_as_exprs()
 
-        if not gsize_expr: gsize_expr = (1,)
-        if not lsize_expr: lsize_expr = (1,)
+        if not gsize_expr:
+            gsize_expr = (1,)
+        if not lsize_expr:
+            lsize_expr = (1,)
 
         # }}}
 
         from pymbolic import compile
         return _KernelInfo(
                 kernel=kernel,
-                global_size_func = compile(gsize_expr, kernel.scalar_loop_args),
+                global_size_func=compile(gsize_expr, kernel.scalar_loop_args),
                 local_size_func=compile(lsize_expr, kernel.scalar_loop_args),
                 )
 
     @memoize_method
-    def get_cl_kernel(self, arg_to_dtype_set, arg_to_has_offset_set, code_op=False):
-        kernel_info = self.get_kernel_info(arg_to_dtype_set, arg_to_has_offset_set)
+    def get_cl_kernel(self,
+            arg_to_dtype_set, arg_to_has_offset_set, code_op=False):
+        kernel_info = self.get_kernel_info(
+                arg_to_dtype_set, arg_to_has_offset_set)
         kernel = kernel_info.kernel
 
         from loopy.codegen import generate_code
@@ -199,13 +202,13 @@ class CompiledKernel:
         except KeyboardInterrupt:
             raise
         except:
-            print "[Loopy] ----------------------------------------------------"
+            print "[Loopy] "+70*"-"
             print "[Loopy] build failed, here's the source code:"
-            print "[Loopy] ----------------------------------------------------"
+            print "[Loopy] "+70*"-"
             print code
-            print "[Loopy] ----------------------------------------------------"
+            print "[Loopy] "+70*"-"
             print "[Loopy] end source code"
-            print "[Loopy] ----------------------------------------------------"
+            print "[Loopy] "+70*"-"
             raise
 
         from loopy.kernel.data import ValueArg
@@ -235,7 +238,8 @@ class CompiledKernel:
         return generate_code(kernel_info.kernel, **self.codegen_kwargs)
 
     def get_highlighted_code(self, arg_to_dtype=None, arg_to_has_offset=None):
-        return get_highlighted_code(self.get_code(arg_to_dtype, arg_to_has_offset))
+        return get_highlighted_code(
+                self.get_code(arg_to_dtype, arg_to_has_offset))
 
     @property
     def code(self):
@@ -248,8 +252,8 @@ class CompiledKernel:
     # }}}
 
     def __call__(self, queue, **kwargs):
-        """If all array arguments are :mod:`numpy` arrays, defaults to returning
-        numpy arrays as well.
+        """If all array arguments are :mod:`numpy` arrays, defaults to
+        returning numpy arrays as well.
 
         If you want offset arguments (see
         :attr:`loopy.kernel.data.GlobalArg.offset`) to be set automatically, it
@@ -307,6 +311,7 @@ class CompiledKernel:
         args = []
         outputs = []
         encountered_numpy = False
+        encountered_cl = False
 
         kwargs_copy = kwargs.copy()
 
@@ -323,7 +328,7 @@ class CompiledKernel:
                     # be set automatically, it must occur *after* the
                     # corresponding array argument.
 
-                    ofs, remdr =  divmod(val.offset, val.dtype.itemsize)
+                    ofs, remdr = divmod(val.offset, val.dtype.itemsize)
                     assert remdr == 0
                     kwargs_copy.setdefault(arg.offset, ofs)
                     del ofs
@@ -340,12 +345,15 @@ class CompiledKernel:
                         warn("argument '%s' was passed as a numpy array, "
                                 "performing implicit transfer" % arg.name,
                                 stacklevel=2)
+                else:
+                    encountered_cl = True
 
                 # }}}
 
             if val is None:
                 if not is_written:
-                    raise TypeError("must supply input argument '%s'" % arg.name)
+                    raise TypeError(
+                            "must supply input argument '%s'" % arg.name)
 
                 if isinstance(arg, lp.ImageArg):
                     raise RuntimeError("write-mode image '%s' must "
@@ -362,12 +370,14 @@ class CompiledKernel:
                         + arg.dtype.itemsize)
 
                 if allocator is None:
-                    storage = cl.Buffer(queue.context, cl.mem_flags.READ_WRITE, alloc_size)
+                    storage = cl.Buffer(
+                            queue.context, cl.mem_flags.READ_WRITE, alloc_size)
                 else:
                     storage = allocator(alloc_size)
 
                 val = cl_array.Array(queue, shape, arg.dtype,
-                        strides=numpy_strides, data=storage, allocator=allocator)
+                        strides=numpy_strides, data=storage,
+                        allocator=allocator)
             else:
                 assert _arg_matches_spec(arg, val, kwargs)
 
@@ -391,7 +401,7 @@ class CompiledKernel:
                     *args,
                     g_times_l=True, wait_for=wait_for)
 
-        if out_host is None and encountered_numpy:
+        if out_host is None and (encountered_numpy and not encountered_cl):
             out_host = True
         if out_host:
             outputs = [o.get(queue=queue) for o in outputs]
@@ -399,8 +409,6 @@ class CompiledKernel:
         return evt, outputs
 
 # }}}
-
-
 
 
 def get_highlighted_code(text):
@@ -413,8 +421,6 @@ def get_highlighted_code(text):
         from pygments.formatters import TerminalFormatter
 
         return highlight(text, CLexer(), TerminalFormatter())
-
-
 
 
 # {{{ automatic testing
@@ -430,11 +436,9 @@ def fill_rand(ary):
         fill_rand(ary, luxury=0)
 
 
-
-
-
 class TestArgInfo(Record):
     pass
+
 
 def make_ref_args(kernel, queue, parameters, fill_value):
     import loopy as lp
@@ -472,7 +476,8 @@ def make_ref_args(kernel, queue, parameters, fill_value):
             is_image = isinstance(arg, ImageArg)
 
             if is_image:
-                storage_array = ary = cl_array.empty(queue, shape, arg.dtype, order="C")
+                storage_array = ary = cl_array.empty(
+                        queue, shape, arg.dtype, order="C")
                 numpy_strides = None
                 alloc_size = None
                 strides = None
@@ -489,7 +494,8 @@ def make_ref_args(kernel, queue, parameters, fill_value):
                 dtype = arg.dtype
                 if dtype is None:
                     raise RuntimeError("dtype for argument '%s' is not yet "
-                            "known. Perhaps you want to use loopy.add_argument_dtypes "
+                            "known. Perhaps you want to use "
+                            "loopy.add_argument_dtypes "
                             "or loopy.infer_argument_dtypes?"
                             % arg.name)
 
@@ -515,7 +521,8 @@ def make_ref_args(kernel, queue, parameters, fill_value):
                 fill_rand(storage_array)
                 if isinstance(arg, ImageArg):
                     # must be contiguous
-                    ref_args[arg.name] = cl.image_from_array(queue.context, ary.get())
+                    ref_args[arg.name] = cl.image_from_array(
+                            queue.context, ary.get())
                 else:
                     ref_args[arg.name] = ary
 
@@ -533,8 +540,6 @@ def make_ref_args(kernel, queue, parameters, fill_value):
             raise RuntimeError("arg type not understood")
 
     return ref_args, arg_descriptors
-
-
 
 
 def make_args(queue, kernel, arg_descriptors, parameters,
@@ -610,12 +615,16 @@ def make_args(queue, kernel, arg_descriptors, parameters,
                 # create host array with test shape (but not strides)
                 host_contig_array = np.empty(shape, dtype=arg.dtype)
 
-                common_len = min(len(host_ref_flat_array), len(host_contig_array.ravel()))
-                host_contig_array.ravel()[:common_len] = host_ref_flat_array[:common_len]
+                common_len = min(
+                        len(host_ref_flat_array),
+                        len(host_contig_array.ravel()))
+                host_contig_array.ravel()[:common_len] = \
+                        host_ref_flat_array[:common_len]
 
                 # create host array with test shape and storage layout
                 host_storage_array = np.empty(alloc_size, arg.dtype)
-                host_array = as_strided(host_storage_array, shape, numpy_strides)
+                host_array = as_strided(
+                        host_storage_array, shape, numpy_strides)
                 host_array[:] = host_contig_array
 
                 host_contig_array = arg_desc.ref_storage_array.get()
@@ -637,19 +646,21 @@ def make_args(queue, kernel, arg_descriptors, parameters,
     return args
 
 
-
-
 def _default_check_result(result, ref_result):
     if not np.allclose(ref_result, result, rtol=1e-3, atol=1e-3):
-        l2_err = np.sum(np.abs(ref_result-result)**2)/np.sum(np.abs(ref_result)**2)
-        linf_err = np.max(np.abs(ref_result-result))/np.max(np.abs(ref_result-result))
+        l2_err = (
+                np.sum(np.abs(ref_result-result)**2)
+                /
+                np.sum(np.abs(ref_result)**2))
+        linf_err = (
+                np.max(np.abs(ref_result-result))
+                /
+                np.max(np.abs(ref_result-result)))
         return (False,
                 "results do not match(rel) l_2 err: %g, l_inf err: %g"
                 % (l2_err, linf_err))
     else:
         return True, None
-
-
 
 
 def _enumerate_cl_devices_for_ref_test():
@@ -676,9 +687,9 @@ def _enumerate_cl_devices_for_ref_test():
         raise RuntimeError("no CL device found for test")
 
     if not cpu_devs:
-        warn("No CPU device found for reference test. The reference computation "
-                "will either fail because of a timeout or take a *very* long "
-                "time.")
+        warn("No CPU device found for reference test. The reference "
+                "computation will either fail because of a timeout "
+                "or take a *very* long time.")
 
     for dev in cpu_devs:
         yield dev
@@ -687,9 +698,8 @@ def _enumerate_cl_devices_for_ref_test():
         yield dev
 
 
-
-
-def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], parameters={},
+def auto_test_vs_ref(
+        ref_knl, ctx, kernel_gen, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
         code_op=None, dump_binary=False, codegen_kwargs={},
         options=[],
@@ -699,8 +709,8 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
     `kernel_gen`.
 
     :arg check_result: a callable with :class:`numpy.ndarray` arguments
-        *(result, reference_result)* returning a a tuple (class:`bool`, message)
-        indicating correctness/acceptability of the result
+        *(result, reference_result)* returning a a tuple (class:`bool`,
+        message) indicating correctness/acceptability of the result
     """
 
     if isinstance(op_count, (int, float)):
@@ -786,7 +796,6 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             print get_highlighted_code(ref_compiled.code)
             print 75*"-"
 
-
         ref_queue.finish()
         ref_start = time()
 
@@ -807,7 +816,8 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         break
 
     if not found_ref_device:
-        raise RuntimeError("could not find a suitable device for the reference computation.\n"
+        raise RuntimeError("could not find a suitable device for the "
+                "reference computation.\n"
                 "These errors were encountered:\n"+"\n".join(ref_errors))
 
     # }}}
@@ -896,11 +906,13 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
             evt_start.wait()
             evt_end.wait()
 
-            elapsed = (1e-9*events[-1].profile.END-1e-9*events[0].profile.SUBMIT) \
+            elapsed = (1e-9*events[-1].profile.END
+                    - 1e-9*events[0].profile.SUBMIT) \
                     / timing_rounds
             try:
                 elapsed_evt_2 = "%g" % \
-                        ((1e-9*evt_end.profile.START-1e-9*evt_start.profile.START) \
+                        ((1e-9*evt_end.profile.START
+                            - 1e-9*evt_start.profile.START)
                         / timing_rounds)
             except cl.RuntimeError:
                 elapsed_evt_2 = "<unavailable>"
@@ -916,8 +928,9 @@ def auto_test_vs_ref(ref_knl, ctx, kernel_gen, op_count=[], op_label=[], paramet
         for cnt, lbl in zip(op_count, op_label):
             rates += " %g %s/s" % (cnt/elapsed_wall, lbl)
 
-        print "elapsed: %g s event, %s s marker-event %g s wall (%d rounds)%s" % (
-                elapsed, elapsed_evt_2, elapsed_wall, timing_rounds, rates)
+        print("elapsed: %g s event, %s s marker-event %g s wall "
+                "(%d rounds)%s" % (
+                elapsed, elapsed_evt_2, elapsed_wall, timing_rounds, rates))
 
         if do_check:
             ref_rates = ""
