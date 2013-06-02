@@ -59,7 +59,9 @@ def _arg_matches_spec(arg, val, other_args):
                     % (arg.name, val.strides, strides))
 
         if val.offset != 0 and arg.offset == 0:
-            raise ValueError("argument '%s' does not allow offset" % arg.name)
+            raise ValueError("Argument '%s' does not allow arrays "
+                    "with offsets. Try passing default_offset=loopy.auto "
+                    "to make_kernel()." % arg.name)
 
     return True
 
@@ -285,7 +287,7 @@ class CompiledKernel:
                     arg_to_dtype[arg.name] = dtype
 
             if getattr(arg, "offset", None) is lp.auto:
-                if val is not None:
+                if val is not None and isinstance(val, cl_array.Array):
                     has_offset = val.offset != 0
                 else:
                     has_offset = False
