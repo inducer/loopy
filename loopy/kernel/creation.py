@@ -36,39 +36,6 @@ import re
 
 # {{{ tool: unique name generation
 
-def generate_unique_possibilities(prefix):
-    yield prefix
-
-    try_num = 0
-    while True:
-        yield "%s_%d" % (prefix, try_num)
-        try_num += 1
-
-
-class UniqueNameGenerator:
-    def __init__(self, existing_names):
-        self.existing_names = existing_names.copy()
-
-    def is_name_conflicting(self, name):
-        return name in self.existing_names
-
-    def add_name(self, name):
-        if self.is_name_conflicting(name):
-            raise ValueError("name '%s' conflicts with existing names")
-        self.existing_names.add(name)
-
-    def add_names(self, names):
-        for name in names:
-            self.add_name(name)
-
-    def __call__(self, based_on="var"):
-        for var_name in generate_unique_possibilities(based_on):
-            if not self.is_name_conflicting(var_name):
-                break
-
-        self.existing_names.add(var_name)
-        return var_name
-
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
 

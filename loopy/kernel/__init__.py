@@ -25,15 +25,12 @@ THE SOFTWARE.
 """
 
 
-
-
-
 import numpy as np
 from pytools import Record, memoize_method
 import islpy as isl
 from islpy import dim_type
 
-from loopy.kernel.creation import UniqueNameGenerator, generate_unique_possibilities
+from pytools import UniqueNameGenerator, generate_unique_possibilities
 
 from loopy.kernel.data import (
         default_function_mangler,
@@ -46,10 +43,9 @@ from loopy.kernel.data import (
         )
 
 
-
-
 class CannotBranchDomainTree(RuntimeError):
     pass
+
 
 # {{{ loop kernel object
 
@@ -74,8 +70,8 @@ class LoopKernel(Record):
 
     The following arguments are not user-facing:
 
-    :ivar substitutions: a mapping from substitution names to :class:`SubstitutionRule`
-        objects
+    :ivar substitutions: a mapping from substitution names to
+        :class:`SubstitutionRule` objects
     :ivar iname_slab_increments: a dictionary mapping inames to (lower_incr,
         upper_incr) tuples that will be separated out in the execution to generate
         'bulk' slabs with fewer conditionals.
@@ -116,8 +112,8 @@ class LoopKernel(Record):
             # a way to forward sub-kernel grid size requests.
             get_grid_sizes=None):
         """
-        :arg domain: a :class:`islpy.BasicSet`, or a string parseable to a basic set by the isl.
-            Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
+        :arg domain: a :class:`islpy.BasicSet`, or a string parseable to
+            a basic set by the isl.  Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
         """
 
         if cache_manager is None:
@@ -162,7 +158,8 @@ class LoopKernel(Record):
                     dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
             for i in xrange(dom0_space.dim(dim_type.param)):
                 assumptions_space = assumptions_space.set_dim_name(
-                        dim_type.param, i, dom0_space.get_dim_name(dim_type.param, i))
+                        dim_type.param, i,
+                        dom0_space.get_dim_name(dim_type.param, i))
             assumptions = isl.BasicSet.universe(assumptions_space)
 
         elif isinstance(assumptions, str):
@@ -251,7 +248,8 @@ class LoopKernel(Record):
     def get_var_name_generator(self):
         return UniqueNameGenerator(self.all_variable_names())
 
-    def make_unique_instruction_id(self, insns=None, based_on="insn", extra_used_ids=set()):
+    def make_unique_instruction_id(self, insns=None, based_on="insn",
+            extra_used_ids=set()):
         if insns is None:
             insns = self.instructions
 
@@ -410,7 +408,7 @@ class LoopKernel(Record):
             domains (those which get most say on the actual dim_type of an iname)
             must be later in the order.
         """
-        assert isinstance(domains, tuple) # for caching
+        assert isinstance(domains, tuple)  # for caching
 
         if not domains:
             return isl.BasicSet.universe(isl.Space.set_alloc(
@@ -555,7 +553,8 @@ class LoopKernel(Record):
     @memoize_method
     def reader_map(self):
         """
-        :return: a dict that maps variable names to ids of insns that read that variable.
+        :return: a dict that maps variable names to ids of insns that read that
+          variable.
         """
         result = {}
 
@@ -570,7 +569,8 @@ class LoopKernel(Record):
     @memoize_method
     def writer_map(self):
         """
-        :return: a dict that maps variable names to ids of insns that write to that variable.
+        :return: a dict that maps variable names to ids of insns that write
+            to that variable.
         """
         result = {}
 
@@ -699,8 +699,8 @@ class LoopKernel(Record):
             elif isinstance(tag, LocalIndexTag):
                 tgt_dict = local_sizes
             elif isinstance(tag, AutoLocalIndexTagBase) and not ignore_auto:
-                raise RuntimeError("cannot find grid sizes if automatic local index tags are "
-                        "present")
+                raise RuntimeError("cannot find grid sizes if automatic "
+                        "local index tags are present")
             else:
                 tgt_dict = None
 
@@ -737,8 +737,7 @@ class LoopKernel(Record):
                     cur_axis = None
 
                 if len(size_list) in forced_sizes:
-                    size_list.append(
-                           forced_sizes.pop(len(size_list)))
+                    size_list.append(forced_sizes.pop(len(size_list)))
                     continue
 
                 assert cur_axis is not None
