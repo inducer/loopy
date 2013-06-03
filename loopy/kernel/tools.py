@@ -296,7 +296,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=False, iname_edge=True):
 
 # {{{ domain parameter finder
 
-class DomainParameterFinder:
+class DomainParameterFinder(object):
     """Finds parameters from shapes of passed arguments."""
 
     def __init__(self, kernel):
@@ -343,8 +343,15 @@ class DomainParameterFinder:
             if param_name not in kwargs:
                 for arg_name, axis_nr, shape_func in sources:
                     if arg_name in kwargs:
-                        result[param_name] = shape_func(
-                                kwargs[arg_name].shape[axis_nr])
+                        try:
+                            shape_axis = kwargs[arg_name].shape[axis_nr]
+                        except IndexError:
+                            raise RuntimeError("Argument '%s' has unexpected shape. "
+                                    "Tried to access axis %d (0-based), only %d "
+                                    "axes present." %
+                                    (arg_name, axis_nr, len(kwargs[arg_name].shape)))
+
+                        result[param_name] = shape_func(shape_axis)
                         continue
 
         return result
