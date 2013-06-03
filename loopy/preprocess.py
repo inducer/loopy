@@ -23,15 +23,11 @@ THE SOFTWARE.
 """
 
 
-
-
 import pyopencl as cl
 import pyopencl.characterize as cl_char
 
 import logging
 logger = logging.getLogger(__name__)
-
-
 
 
 # {{{ infer types
@@ -69,6 +65,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
     return dtypes[0]
 
+
 class _DictUnionView:
     def __init__(self, children):
         self.children = children
@@ -87,6 +84,7 @@ class _DictUnionView:
                 pass
 
         raise KeyError(key)
+
 
 def infer_unknown_types(kernel, expect_completion=False):
     """Infer types on temporaries and argumetns."""
@@ -176,6 +174,7 @@ def infer_unknown_types(kernel, expect_completion=False):
 
 # }}}
 
+
 # {{{ decide which temporaries are local
 
 def mark_local_temporaries(kernel):
@@ -228,7 +227,8 @@ def mark_local_temporaries(kernel):
                         "a write race across the iname(s) '%s' would emerge. "
                         "(Do you need to add an extra iname to your prefetch?)"
                         % (insn_id, temp_var.name, ", ".join(
-                            locparallel_compute_inames - locparallel_assignee_inames)))
+                            locparallel_compute_inames
+                            - locparallel_assignee_inames)))
 
             wants_to_be_local_per_insn.append(
                     locparallel_assignee_inames == locparallel_compute_inames
@@ -245,7 +245,7 @@ def mark_local_temporaries(kernel):
 
         is_local = wants_to_be_local_per_insn[0]
         from pytools import all
-        if not all(wtbl==is_local for wtbl in wants_to_be_local_per_insn):
+        if not all(wtbl == is_local for wtbl in wants_to_be_local_per_insn):
             raise RuntimeError("not all instructions agree on whether "
                     "temporary '%s' should be in local memory" % temp_var.name)
 
@@ -255,11 +255,13 @@ def mark_local_temporaries(kernel):
 
 # }}}
 
+
 # {{{ rewrite reduction to imperative form
 
 def realize_reduction(kernel, insn_id_filter=None):
-    """Rewrites reductions into their imperative form. With *insn_id_filter* specified,
-    operate only on the instruction with an instruction id matching insn_id_filter.
+    """Rewrites reductions into their imperative form. With *insn_id_filter*
+    specified, operate only on the instruction with an instruction id matching
+    *insn_id_filter*.
 
     If *insn_id_filter* is given, only the outermost level of reductions will be
     expanded, inner reductions will be left alone (because they end up in a new
@@ -268,7 +270,6 @@ def realize_reduction(kernel, insn_id_filter=None):
     If *insn_id_filter* is not given, all reductions in all instructions will
     be realized.
     """
-
 
     new_insns = []
 
@@ -322,7 +323,8 @@ def realize_reduction(kernel, insn_id_filter=None):
         reduction_insn = Instruction(
                 id=new_id,
                 assignee=target_var,
-                expression=expr.operation(arg_dtype, target_var, expr.expr, expr.inames),
+                expression=expr.operation(
+                    arg_dtype, target_var, expr.expr, expr.inames),
                 insn_deps=set([init_insn.id]) | insn.insn_deps,
                 forced_iname_deps=temp_kernel.insn_inames(insn) | set(expr.inames))
 
@@ -379,9 +381,11 @@ def realize_reduction(kernel, insn_id_filter=None):
 
 # }}}
 
+
 # {{{ duplicate private vars for ilp
 
 from loopy.symbolic import IdentityMapper
+
 
 class ExtraInameIndexInserter(IdentityMapper):
     def __init__(self, var_to_new_inames):
@@ -407,6 +411,7 @@ class ExtraInameIndexInserter(IdentityMapper):
             return expr
         else:
             return expr[new_idx]
+
 
 def duplicate_private_temporaries_for_ilp(kernel):
     wmap = kernel.writer_map()
@@ -484,7 +489,6 @@ def duplicate_private_temporaries_for_ilp(kernel):
             dict((var_name, tuple(var(iname) for iname in inames))
                 for var_name, inames in var_to_new_ilp_inames.iteritems()))
 
-
     new_insns = [
             insn.copy(
                 assignee=eiii(insn.assignee),
@@ -496,6 +500,7 @@ def duplicate_private_temporaries_for_ilp(kernel):
         instructions=new_insns)
 
 # }}}
+
 
 # {{{ automatic dependencies, find boostability of instructions
 
@@ -551,7 +556,8 @@ def add_boostability_and_automatic_dependencies(kernel):
 
             for writer_insn_id in last_all_my_var_writers:
                 for var in dep_map[writer_insn_id]:
-                    all_my_var_writers = all_my_var_writers | writer_map.get(var, set())
+                    all_my_var_writers = \
+                            all_my_var_writers | writer_map.get(var, set())
 
             if last_all_my_var_writers == all_my_var_writers:
                 break
@@ -584,6 +590,7 @@ def add_boostability_and_automatic_dependencies(kernel):
     return kernel.copy(instructions=new2_insns)
 
 # }}}
+
 
 # {{{ limit boostability
 
@@ -629,6 +636,7 @@ def limit_boostability(kernel):
     return kernel.copy(instructions=new_insns)
 
 # }}}
+
 
 # {{{ rank inames by stride
 
@@ -709,7 +717,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
         for iexpr_i, stride in zip(index_expr, ary_strides):
             coeffs = CoefficientCollector()(iexpr_i)
             for var_name, coeff in coeffs.iteritems():
-                if var_name in auto_axis_inames: # excludes '1', i.e.  the constant
+                if var_name in auto_axis_inames:  # excludes '1', i.e.  the constant
                     new_stride = coeff*stride
                     old_stride = iname_to_stride_expr.get(var_name, None)
                     if old_stride is None or new_stride < old_stride:
@@ -724,7 +732,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     if aggregate_strides:
         import sys
-        return  sorted((iname for iname in kernel.insn_inames(insn)),
+        return sorted((iname for iname in kernel.insn_inames(insn)),
                 key=lambda iname: aggregate_strides.get(iname, sys.maxint))
     else:
         return None
@@ -732,6 +740,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     # }}}
 
 # }}}
+
 
 # {{{ assign automatic axes
 
@@ -870,6 +879,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
 # }}}
 
+
 # {{{ temp storage adjust for bank conflict
 
 def adjust_local_temp_var_storage(kernel):
@@ -878,10 +888,13 @@ def adjust_local_temp_var_storage(kernel):
     lmem_size = cl_char.usable_local_mem_size(kernel.device)
     for temp_var in kernel.temporary_variables.itervalues():
         if not temp_var.is_local:
-            new_temp_vars[temp_var.name] = temp_var.copy(storage_shape=temp_var.shape)
+            new_temp_vars[temp_var.name] = \
+                    temp_var.copy(storage_shape=temp_var.shape)
             continue
 
-        other_loctemp_nbytes = [tv.nbytes for tv in kernel.temporary_variables.itervalues()
+        other_loctemp_nbytes = [
+                tv.nbytes
+                for tv in kernel.temporary_variables.itervalues()
                 if tv.is_local and tv.name != temp_var.name]
 
         storage_shape = temp_var.storage_shape
@@ -943,6 +956,7 @@ def adjust_local_temp_var_storage(kernel):
 
 # }}}
 
+
 # {{{ add automatic offset arguments
 
 def add_auto_offset_args(kernel):
@@ -962,8 +976,6 @@ def add_auto_offset_args(kernel):
     return kernel.copy(args=new_args)
 
 # }}}
-
-
 
 
 def preprocess_kernel(kernel):

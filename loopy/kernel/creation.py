@@ -34,7 +34,7 @@ from islpy import dim_type
 import re
 
 
-# {{{ tool: unique name generation
+# {{{ identifier wrangling
 
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
