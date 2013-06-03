@@ -25,12 +25,8 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
 from islpy import dim_type
-
-
 
 
 # {{{ add and infer argument dtypes
@@ -65,9 +61,11 @@ def add_argument_dtypes(knl, dtype_dict):
 
     return knl.copy(args=new_args)
 
+
 def get_arguments_with_incomplete_dtype(knl):
     return [arg.name for arg in knl.args
             if arg.dtype is None]
+
 
 def add_and_infer_argument_dtypes(knl, dtype_dict):
     knl = add_argument_dtypes(knl, dtype_dict)
@@ -76,6 +74,7 @@ def add_and_infer_argument_dtypes(knl, dtype_dict):
     return infer_unknown_types(knl, expect_completion=True)
 
 # }}}
+
 
 # {{{ find_all_insn_inames fixed point iteration
 
@@ -181,6 +180,7 @@ def find_all_insn_inames(kernel):
 
 # }}}
 
+
 # {{{ set operation cache
 
 class SetOperationCacheManager:
@@ -192,7 +192,7 @@ class SetOperationCacheManager:
         hashval = hash(set)
         bucket = self.cache.setdefault(hashval, [])
 
-        for bkt_set, bkt_op, bkt_args, result  in bucket:
+        for bkt_set, bkt_op, bkt_args, result in bucket:
             if set.plain_is_equal(bkt_set) and op == bkt_op and args == bkt_args:
                 return result
 
@@ -233,6 +233,7 @@ class SetOperationCacheManager:
 
 # }}}
 
+
 # {{{ domain change helper
 
 class DomainChanger:
@@ -268,6 +269,7 @@ class DomainChanger:
 
 # }}}
 
+
 # {{{ graphviz / dot export
 
 def get_dot_dependency_graph(kernel, iname_cluster=False, iname_edge=True):
@@ -290,6 +292,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=False, iname_edge=True):
     return "digraph loopy_deps {\n%s\n}" % "\n".join(lines)
 
 # }}}
+
 
 # {{{ domain parameter finder
 
@@ -323,8 +326,8 @@ class DomainParameterFinder:
                             try:
                                 # friggin' overkill :)
                                 param_expr = solve_affine_equations_for(
-                                        [dep.name], [(shape_i, var("shape_i"))]) \
-                                                [dep.name]
+                                        [dep.name], [(shape_i, var("shape_i"))]
+                                        )[dep.name]
                             except:
                                 # went wrong? oh well
                                 pass
