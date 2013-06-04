@@ -23,9 +23,6 @@ THE SOFTWARE.
 """
 
 
-
-
-
 def register_mpz_with_pymbolic():
     from pymbolic.primitives import register_constant_class
     import gmpy
@@ -42,8 +39,6 @@ from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import ExpandingIdentityMapper, ExpandingSubstitutionMapper
 
 
-
-
 class LoopyAdvisory(UserWarning):
     pass
 
@@ -52,7 +47,8 @@ class LoopyAdvisory(UserWarning):
 from loopy.kernel.data import (
         ValueArg, ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg,
 
-        default_function_mangler, single_arg_function_mangler, opencl_function_mangler,
+        default_function_mangler, single_arg_function_mangler,
+        opencl_function_mangler,
 
         default_preamble_generator,
 
@@ -68,7 +64,8 @@ from loopy.subst import extract_subst, expand_subst
 from loopy.cse import precompute
 from loopy.padding import (split_arg_axis, find_padding_multiple,
         add_padding)
-from loopy.preprocess import preprocess_kernel, realize_reduction, infer_unknown_types
+from loopy.preprocess import (preprocess_kernel, realize_reduction,
+        infer_unknown_types)
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel, auto_test_vs_ref
@@ -100,6 +97,7 @@ __all__ = [
         "split_arg_axis", "find_padding_multiple", "add_padding"
         ]
 
+
 class auto:
     """A generic placeholder object for something that should be automatically
     detected.  See, for example, the *shape* or *strides* argument of
@@ -107,6 +105,7 @@ class auto:
     """
 
 # }}}
+
 
 # {{{ split inames
 
@@ -142,13 +141,15 @@ class _InameSplitter(ExpandingIdentityMapper):
         else:
             return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
 
+
 def split_iname(kernel, split_iname, inner_length,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True,
         within=None):
     """
-    :arg within: a stack match as understood by :func:`loopy.context_matching.parse_stack_match`.
+    :arg within: a stack match as understood by
+        :func:`loopy.context_matching.parse_stack_match`.
     """
 
     existing_tag = kernel.iname_to_tag.get(split_iname)
@@ -192,7 +193,10 @@ def split_iname(kernel, split_iname, inner_length,
                 make_slab(space, inner_iname, 0, inner_length)
                 # name = inner + length*outer
                 .add_constraint(isl.Constraint.eq_from_names(
-                    space, {split_iname:1, inner_iname: -1, outer_iname:-inner_length})))
+                    space, {
+                        split_iname: 1,
+                        inner_iname: -1,
+                        outer_iname: -inner_length})))
 
         name_dim_type, name_idx = space.get_var_dict()[split_iname]
         s = s.intersect(inner_constraint_set)
@@ -238,8 +242,7 @@ def split_iname(kernel, split_iname, inner_length,
             .copy(domains=new_domains,
                 iname_slab_increments=iname_slab_increments,
                 instructions=new_insns,
-                applied_iname_rewrites=applied_iname_rewrites,
-                ))
+                applied_iname_rewrites=applied_iname_rewrites))
 
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
@@ -258,6 +261,7 @@ def split_iname(kernel, split_iname, inner_length,
 split_dimension = MovedFunctionDeprecationWrapper(split_iname)
 
 # }}}
+
 
 # {{{ join inames
 
@@ -292,10 +296,12 @@ class _InameJoiner(ExpandingSubstitutionMapper):
         else:
             return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
 
+
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     """
     :arg inames: fastest varying last
-    :arg within: a stack match as understood by :func:`loopy.context_matching.parse_stack_match`.
+    :arg within: a stack match as understood by
+        :func:`loopy.context_matching.parse_stack_match`.
     """
 
     # now fastest varying first
@@ -401,6 +407,7 @@ join_dimensions = MovedFunctionDeprecationWrapper(join_inames)
 
 # }}}
 
+
 # {{{ tag inames
 
 def tag_inames(kernel, iname_to_tag, force=False):
@@ -430,17 +437,20 @@ def tag_inames(kernel, iname_to_tag, force=False):
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
 
-        if isinstance(new_tag, ParallelTag) and isinstance(old_tag, ForceSequentialTag):
+        if isinstance(new_tag, ParallelTag) \
+                and isinstance(old_tag, ForceSequentialTag):
             raise ValueError("cannot tag '%s' as parallel--"
                     "iname requires sequential execution" % iname)
 
-        if isinstance(new_tag, ForceSequentialTag) and isinstance(old_tag, ParallelTag):
+        if isinstance(new_tag, ForceSequentialTag) \
+                and isinstance(old_tag, ParallelTag):
             raise ValueError("'%s' is already tagged as parallel, "
                     "but is now prohibited from being parallel "
                     "(likely because of participation in a precompute or "
                     "a reduction)" % iname)
 
-        if (not retag_ok) and (not force) and old_tag is not None and (old_tag != new_tag):
+        if (not retag_ok) and (not force) \
+                and old_tag is not None and (old_tag != new_tag):
             raise RuntimeError("'%s' is already tagged '%s'--cannot retag"
                     % (iname, old_tag))
 
@@ -451,6 +461,7 @@ def tag_inames(kernel, iname_to_tag, force=False):
 tag_dimensions = MovedFunctionDeprecationWrapper(tag_inames)
 
 # }}}
+
 
 # {{{ duplicate inames
 
@@ -485,10 +496,12 @@ class _InameDuplicator(ExpandingIdentityMapper):
             from pymbolic import var
             return var(new_name)
 
+
 def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
         tags={}):
     """
-    :arg within: a stack match as understood by :func:`loopy.context_matching.parse_stack_match`.
+    :arg within: a stack match as understood by
+        :func:`loopy.context_matching.parse_stack_match`.
     """
 
     # {{{ normalize arguments, find unique new_inames
@@ -565,9 +578,10 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 
 # }}}
 
+
 def rename_iname(knl, old_iname, new_iname, within):
     """
-    :arg within: a stack match as understood by 
+    :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
     """
 
@@ -581,6 +595,7 @@ def rename_iname(knl, old_iname, new_iname, within):
     knl = remove_unused_inames(knl, [old_iname])
 
     return knl
+
 
 # {{{ link inames
 
@@ -638,7 +653,8 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
                     dim_type.param, domain.dim(dim_type.param)-1, 1)
 
     projections = [
-            domch.domain.project_out_except(unrelated_dom_inames + [iname], [dim_type.set])
+            domch.domain.project_out_except(
+                unrelated_dom_inames + [iname], [dim_type.set])
             for iname in inames]
 
     all_equal = True
@@ -652,7 +668,7 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
         raise RuntimeError("Inames cannot be linked because their domain "
                 "constraints are not the same.")
 
-    del domain # messed up for testing, do not use
+    del domain  # messed up for testing, do not use
 
     # }}}
 
@@ -686,6 +702,7 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
     return knl
 
 # }}}
+
 
 # {{{ remove unused inames
 
@@ -737,6 +754,7 @@ def remove_unused_inames(knl, inames=None):
 
 # }}}
 
+
 # {{{ convenience: add_prefetch
 
 # {{{ process footprint_subscripts
@@ -757,6 +775,7 @@ def _add_kernel_axis(kernel, axis_name, start, stop, base_inames):
     domain = domain & slab
 
     return kernel.copy(domains=domch.get_domains_with(domain))
+
 
 def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
         footprint_subscripts, arg):
@@ -825,6 +844,7 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
     return kernel, subst_use, sweep_inames, inames_to_be_removed
 
 # }}}
+
 
 def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         default_tag="l.auto", rule_name=None, footprint_subscripts=None,
@@ -945,12 +965,14 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
 # }}}
 
+
 # {{{ instruction processing
 
 def find_instructions(kernel, insn_match):
     from loopy.context_matching import parse_id_match
     match = parse_id_match(insn_match)
     return [insn for insn in kernel.instructions if match(insn.id, None)]
+
 
 def map_instructions(kernel, insn_match, f):
     from loopy.context_matching import parse_id_match
@@ -966,6 +988,7 @@ def map_instructions(kernel, insn_match, f):
 
     return kernel.copy(instructions=new_insns)
 
+
 def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
@@ -973,8 +996,11 @@ def set_instruction_priority(kernel, insn_match, priority):
     :func:`loopy.context_matching.parse_id_match`.
     """
 
-    def set_prio(insn): return insn.copy(priority=priority)
+    def set_prio(insn):
+        return insn.copy(priority=priority)
+
     return map_instructions(kernel, insn_match, set_prio)
+
 
 def add_dependency(kernel, insn_match, dependency):
     """Add the instruction dependency *dependency* to the instructions matched
@@ -984,10 +1010,13 @@ def add_dependency(kernel, insn_match, dependency):
     :func:`loopy.context_matching.parse_id_match`.
     """
 
-    def add_dep(insn): return insn.copy(insn_deps=insn.insn_deps + [dependency])
+    def add_dep(insn):
+        return insn.copy(insn_deps=insn.insn_deps + [dependency])
+
     return map_instructions(kernel, insn_match, add_dep)
 
 # }}}
+
 
 # {{{ change variable kinds
 
