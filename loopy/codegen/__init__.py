@@ -23,12 +23,8 @@ THE SOFTWARE.
 """
 
 
-
-
 from pytools import Record
 import islpy as isl
-
-
 
 
 # {{{ support code for AST wrapper objects
@@ -43,6 +39,7 @@ class GeneratedInstruction(Record):
     """
     __slots__ = ["insn_id", "implemented_domain", "ast"]
 
+
 class GeneratedCode(Record):
     """Objects of this type are wrapped around ASTs upon
     return from generation calls to collect information about them.
@@ -52,6 +49,7 @@ class GeneratedCode(Record):
         each instruction's exact iteration space has been covered.
     """
     __slots__ = ["ast", "implemented_domains"]
+
 
 def gen_code_block(elements):
     from cgen import Block, Comment, Line, Initializer
@@ -96,6 +94,7 @@ def gen_code_block(elements):
 
     return GeneratedCode(ast=ast, implemented_domains=implemented_domains)
 
+
 def wrap_in(cls, *args):
     inner = args[-1]
     args = args[:-1]
@@ -109,6 +108,7 @@ def wrap_in(cls, *args):
     return GeneratedCode(ast=cls(*args),
             implemented_domains=inner.implemented_domains)
 
+
 def wrap_in_if(condition_codelets, inner):
     from cgen import If
 
@@ -118,6 +118,7 @@ def wrap_in_if(condition_codelets, inner):
                 inner)
 
     return inner
+
 
 def add_comment(cmt, code):
     if cmt is None:
@@ -131,6 +132,7 @@ def add_comment(cmt, code):
             implemented_domains=code.implemented_domains)
 
 # }}}
+
 
 # {{{ code generation state
 
@@ -167,6 +169,7 @@ class CodeGenerationState(object):
 
 # }}}
 
+
 # {{{ initial assignments
 
 def make_initial_assignments(kernel):
@@ -182,11 +185,9 @@ def make_initial_assignments(kernel):
 
         if isinstance(tag, LocalIndexTag):
             hw_axis_expr = var("lid")(tag.axis)
-            hw_axis_size = local_size[tag.axis]
 
         elif isinstance(tag, GroupIndexTag):
             hw_axis_expr = var("gid")(tag.axis)
-            hw_axis_size = global_size[tag.axis]
 
         else:
             continue
@@ -200,9 +201,11 @@ def make_initial_assignments(kernel):
 
 # }}}
 
+
 # {{{ cgen overrides
 
 from cgen import POD as PODBase
+
 
 class POD(PODBase):
     def get_decl_pair(self):
@@ -210,6 +213,7 @@ class POD(PODBase):
         return [dtype_to_ctype(self.dtype)], self.name
 
 # }}}
+
 
 # {{{ main code generation entrypoint
 
@@ -317,7 +321,8 @@ def generate_code(kernel, with_annotation=False,
     # }}}
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
-    codegen_state = CodeGenerationState(initial_implemented_domain, c_code_mapper=ccm)
+    codegen_state = CodeGenerationState(
+            initial_implemented_domain, c_code_mapper=ccm)
 
     from loopy.codegen.loop import set_up_hw_parallel_loops
     gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)
@@ -359,7 +364,7 @@ def generate_code(kernel, with_annotation=False,
         dedup_preambles.append(preamble)
 
     mod = ([LiteralLines(lines) for lines in dedup_preambles]
-            +[Line()] + mod)
+            + [Line()] + mod)
 
     # }}}
 
@@ -370,7 +375,6 @@ def generate_code(kernel, with_annotation=False,
             result)
 
     return result
-
 
 # }}}
 
