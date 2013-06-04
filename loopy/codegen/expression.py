@@ -23,8 +23,6 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
 
 from pymbolic.mapper import RecursiveMapper
@@ -33,15 +31,18 @@ from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
 from pymbolic.mapper import CombineMapper
 import islpy as isl
 import pyopencl as cl
-import pyopencl.array
+import pyopencl.array  # noqa
+
 
 # {{{ type inference
 
 class TypeInferenceFailure(RuntimeError):
     pass
 
+
 class DependencyTypeInferenceFailure(TypeInferenceFailure):
     pass
+
 
 class TypeInferenceMapper(CombineMapper):
     def __init__(self, kernel, new_assignments=None):
@@ -58,7 +59,7 @@ class TypeInferenceMapper(CombineMapper):
         self.new_assignments = new_assignments
 
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
-    # are Python-equal.
+    # are Python-equal (for many common constants such as integers).
 
     def combine(self, dtypes):
         dtypes = list(dtypes)
@@ -77,7 +78,8 @@ class TypeInferenceMapper(CombineMapper):
                 pass
             else:
                 if not result is other:
-                    raise TypeInferenceFailure("nothing known about result of operation on "
+                    raise TypeInferenceFailure(
+                            "nothing known about result of operation on "
                             "'%s' and '%s'" % (result, other))
 
         return result
@@ -215,6 +217,7 @@ class TypeInferenceMapper(CombineMapper):
         return expr.operation.result_dtype(self.rec(expr.expr), expr.inames)
 
 # }}}
+
 
 # {{{ C code mapper
 
@@ -354,7 +357,8 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     def map_lookup(self, expr, enclosing_prec, type_context):
         return self.parenthesize_if_needed(
-                "%s.%s" %(self.rec(expr.aggregate, PREC_CALL, type_context), expr.name),
+                "%s.%s" % (
+                    self.rec(expr.aggregate, PREC_CALL, type_context), expr.name),
                 enclosing_prec, PREC_CALL)
 
     def map_subscript(self, expr, enclosing_prec, type_context):
@@ -419,7 +423,6 @@ class LoopyCCodeMapper(RecursiveMapper):
                                 arg.strides, index_expr))),
                         enclosing_prec, type_context)
 
-
         elif expr.aggregate.name in self.kernel.temporary_variables:
             temp_var = self.kernel.temporary_variables[expr.aggregate.name]
             if isinstance(expr.index, tuple):
@@ -431,7 +434,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                 for idx in index))
 
         else:
-            raise RuntimeError("nothing known about variable '%s'" % expr.aggregate.name)
+            raise RuntimeError(
+                    "nothing known about variable '%s'" % expr.aggregate.name)
 
     def map_linear_subscript(self, expr, enclosing_prec, type_context):
         def base_impl(expr, enclosing_prec, type_context):
@@ -470,7 +474,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                     % expr)
 
         else:
-            raise RuntimeError("nothing known about variable '%s'" % expr.aggregate.name)
+            raise RuntimeError(
+                    "nothing known about variable '%s'" % expr.aggregate.name)
 
     def map_floor_div(self, expr, enclosing_prec, type_context):
         from loopy.symbolic import get_dependencies
@@ -648,7 +653,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                     if 'c' == self.infer_type(child).kind]
 
             real_sum = self.join_rec(" + ", reals, PREC_SUM, type_context)
-            complex_sum = self.join_rec(" + ", complexes, PREC_SUM, type_context, tgt_dtype)
+            complex_sum = self.join_rec(
+                    " + ", complexes, PREC_SUM, type_context, tgt_dtype)
 
             if real_sum:
                 result = "%s_fromreal(%s) + %s" % (tgt_name, real_sum, complex_sum)
@@ -763,7 +769,8 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         return "(%s %% %s)" % (
                     self.rec(expr.numerator, PREC_PRODUCT, type_context),
-                    self.rec(expr.denominator, PREC_POWER, type_context)) # analogous to ^{-1}
+                    # PREC_POWER analogous to ^{-1}
+                    self.rec(expr.denominator, PREC_POWER, type_context))
 
     def map_power(self, expr, enclosing_prec, type_context):
         def base_impl(expr, enclosing_prec, type_context):
@@ -775,7 +782,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                 elif is_zero(expr.exponent - 1):
                     return self.rec(expr.base, enclosing_prec, type_context)
                 elif is_zero(expr.exponent - 2):
-                    return self.rec(expr.base*expr.base, enclosing_prec, type_context)
+                    return self.rec(
+                            expr.base*expr.base, enclosing_prec, type_context)
 
             return "pow(%s, %s)" % (
                     self.rec(expr.base, PREC_NONE, type_context),
@@ -804,7 +812,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                     return "%s_pow(%s, %s)" % (
                             self.complex_type_name(tgt_dtype),
                             self.rec(expr.base, PREC_NONE, type_context, tgt_dtype),
-                            self.rec(expr.exponent, PREC_NONE, type_context, tgt_dtype))
+                            self.rec(expr.exponent, PREC_NONE,
+                                type_context, tgt_dtype))
 
         return base_impl(expr, enclosing_prec, type_context)
 
