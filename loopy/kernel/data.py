@@ -29,9 +29,7 @@ import numpy as np
 from pytools import Record, memoize_method
 
 
-
-
-# {{{ index tags
+# {{{ iname tags
 
 class IndexTag(Record):
     __slots__ = []
@@ -40,18 +38,19 @@ class IndexTag(Record):
         raise RuntimeError("use .key to hash index tags")
 
 
-
-
 class ParallelTag(IndexTag):
     pass
 
+
 class HardwareParallelTag(ParallelTag):
     pass
+
 
 class UniqueTag(IndexTag):
     @property
     def key(self):
         return type(self)
+
 
 class AxisTag(UniqueTag):
     __slots__ = ["axis"]
@@ -68,40 +67,51 @@ class AxisTag(UniqueTag):
         return "%s.%d" % (
                 self.print_name, self.axis)
 
+
 class GroupIndexTag(HardwareParallelTag, AxisTag):
     print_name = "g"
+
 
 class LocalIndexTagBase(HardwareParallelTag):
     pass
 
+
 class LocalIndexTag(LocalIndexTagBase, AxisTag):
     print_name = "l"
 
+
 class AutoLocalIndexTagBase(LocalIndexTagBase):
     pass
+
 
 class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
     def __str__(self):
         return "l.auto"
 
+
 class IlpBaseTag(ParallelTag):
     pass
+
 
 class UnrolledIlpTag(IlpBaseTag):
     def __str__(self):
         return "ilp.unr"
 
+
 class LoopedIlpTag(IlpBaseTag):
     def __str__(self):
         return "ilp.seq"
+
 
 class UnrollTag(IndexTag):
     def __str__(self):
         return "unr"
 
+
 class ForceSequentialTag(IndexTag):
     def __str__(self):
         return "forceseq"
+
 
 def parse_tag(tag):
     if tag is None:
@@ -134,6 +144,7 @@ def parse_tag(tag):
 
 # }}}
 
+
 # {{{ arguments
 
 def make_strides(shape, order):
@@ -148,8 +159,10 @@ def make_strides(shape, order):
     else:
         raise ValueError("invalid order: %s" % order)
 
+
 class KernelArgument(Record):
     pass
+
 
 class ShapedArg(KernelArgument):
     def __init__(self, name, dtype=None, shape=None, strides=None, order=None,
@@ -283,18 +296,14 @@ class ShapedArg(KernelArgument):
     def __repr__(self):
         return "<%s>" % self.__str__()
 
+
 class GlobalArg(ShapedArg):
     pass
+
 
 class ConstantArg(ShapedArg):
     pass
 
-class ArrayArg(GlobalArg):
-    def __init__(self, *args, **kwargs):
-        from warnings import warn
-        warn("ArrayArg is a deprecated name of GlobalArg", DeprecationWarning,
-                stacklevel=2)
-        GlobalArg.__init__(self, *args, **kwargs)
 
 class ImageArg(KernelArgument):
     def __init__(self, name, dtype=None, dimensions=None, shape=None):
@@ -320,6 +329,7 @@ class ImageArg(KernelArgument):
     def __repr__(self):
         return "<%s>" % self.__str__()
 
+
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000):
         if dtype is not None:
@@ -334,15 +344,8 @@ class ValueArg(KernelArgument):
     def __repr__(self):
         return "<%s>" % self.__str__()
 
-class ScalarArg(ValueArg):
-    def __init__(self, name, dtype=None, approximately=1000):
-        from warnings import warn
-        warn("ScalarArg is a deprecated name of ValueArg",
-                DeprecationWarning, stacklevel=2)
-
-        ValueArg.__init__(self, name, dtype, approximately)
-
 # }}}
+
 
 # {{{ temporary variable
 
@@ -375,6 +378,7 @@ class TemporaryVariable(Record):
 
 # }}}
 
+
 # {{{ subsitution rule
 
 class SubstitutionRule(Record):
@@ -396,32 +400,52 @@ class SubstitutionRule(Record):
 
 # }}}
 
+
 # {{{ instruction
 
 class Instruction(Record):
     """
-    :ivar id: An (otherwise meaningless) identifier that is unique within
+    .. attribute:: id
+
+        An (otherwise meaningless) identifier that is unique within
         a :class:`LoopKernel`.
-    :ivar assignee:
-    :ivar expression:
-    :ivar forced_iname_deps: a set of inames that are added to the list of iname
+
+    .. attribute:: assignee
+
+    .. attribute:: expression
+
+    .. attribute:: forced_iname_deps
+
+        a set of inames that are added to the list of iname
         dependencies
-    :ivar insn_deps: a list of ids of :class:`Instruction` instances that
+
+    .. attribute:: insn_deps
+
+        a list of ids of :class:`Instruction` instances that
         *must* be executed before this one. Note that loop scheduling augments this
         by adding dependencies on any writes to temporaries read by this instruction.
-    :ivar boostable: Whether the instruction may safely be executed
-        inside more loops than advertised without changing the meaning
-        of the program. Allowed values are *None* (for unknown), *True*, and *False*.
-    :ivar boostable_into: a set of inames into which the instruction
+    .. attribute:: boostable
+
+        Whether the instruction may safely be executed inside more loops than
+        advertised without changing the meaning of the program. Allowed values
+        are *None* (for unknown), *True*, and *False*.
+
+    .. attribute:: boostable_into
+
+        a set of inames into which the instruction
         may need to be boosted, as a heuristic help for the scheduler.
-    :ivar priority: scheduling priority
 
-    The following two instance variables are only used until :func:`loopy.make_kernel` is
-    finished:
+    .. attribute:: priority: scheduling priority
 
-    :ivar temp_var_type: if not None, a type that will be assigned to the new temporary variable
+    The following instance variables are only used until
+    :func:`loopy.make_kernel` is finished:
+
+    .. attribute:: temp_var_type
+
+        if not *None*, a type that will be assigned to the new temporary variable
         created from the assignee
     """
+
     def __init__(self,
             id, assignee, expression,
             forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
@@ -464,12 +488,12 @@ class Instruction(Record):
         result = "%s: %s <- %s" % (self.id,
                 self.assignee, self.expression)
 
-        if self.boostable == True:
+        if self.boostable is True:
             if self.boostable_into:
                 result += " (boostable into '%s')" % ",".join(self.boostable_into)
             else:
                 result += " (boostable)"
-        elif self.boostable == False:
+        elif self.boostable is False:
             result += " (not boostable)"
         elif self.boostable is None:
             pass
@@ -521,6 +545,7 @@ class Instruction(Record):
 
 # }}}
 
+
 # {{{ function manglers / dtype getters
 
 def default_function_mangler(name, arg_dtypes):
@@ -533,6 +558,7 @@ def default_function_mangler(name, arg_dtypes):
             return result
 
     return None
+
 
 def opencl_function_mangler(name, arg_dtypes):
     if name == "atan2" and len(arg_dtypes) == 2:
@@ -563,12 +589,14 @@ def opencl_function_mangler(name, arg_dtypes):
 
     return None
 
+
 def single_arg_function_mangler(name, arg_dtypes):
     if len(arg_dtypes) == 1:
         dtype, = arg_dtypes
         return dtype, name
 
     return None
+
 
 def opencl_symbol_mangler(name):
     # FIXME: should be more picky about exact names
@@ -585,6 +613,7 @@ def opencl_symbol_mangler(name):
         return None
 
 # }}}
+
 
 # {{{ preamble generators
 
