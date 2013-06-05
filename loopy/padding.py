@@ -23,11 +23,7 @@ THE SOFTWARE.
 """
 
 
-
-
 from loopy.symbolic import ExpandingIdentityMapper
-
-
 
 
 class ArgAxisSplitHelper(ExpandingIdentityMapper):
@@ -41,9 +37,6 @@ class ArgAxisSplitHelper(ExpandingIdentityMapper):
             return self.handler(expr)
         else:
             return ExpandingIdentityMapper.map_subscript(self, expr, expn_state)
-
-
-
 
 
 def split_arg_axis(kernel, args_and_axes, count):
@@ -191,8 +184,6 @@ def split_arg_axis(kernel, args_and_axes, count):
     return kernel
 
 
-
-
 def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1):
     arg = kernel.arg_dict[variable]
 
@@ -212,8 +203,6 @@ def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1
             return multiple
 
         multiple += 1
-
-
 
 
 def add_padding(kernel, variable, axis, align_bytes):
