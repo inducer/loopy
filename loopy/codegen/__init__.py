@@ -221,6 +221,10 @@ class CLArgumentInfo(Record):
     .. attribute:: base_name
     .. attribute:: dtype
     .. attribute:: shape
+    .. attribute:: strides
+
+        Strides in multiples of ``dtype.itemsize``.
+
     .. attribute:: offset_for_name
     """
 
