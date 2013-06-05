@@ -23,20 +23,12 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
-import numpy.linalg as la
 import pyopencl as cl
-import pyopencl.array as cl_array
-import pyopencl.clrandom as cl_random
 import loopy as lp
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
-
-
-
+from pyopencl.tools import (  # noqa
+        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
 def test_dg_volume(ctx_factory):
@@ -71,7 +63,8 @@ def test_dg_volume(ctx_factory):
                 lp.GlobalArg("u,v,w,p,rhsu,rhsv,rhsw,rhsp",
                     dtype, shape="K, Np", order="C"),
                 lp.GlobalArg("DrDsDt", dtype4, shape="Np, Np", order="C"),
-                lp.GlobalArg("drst_dx,drst_dy,drst_dz", dtype4, shape="K", order=order),
+                lp.GlobalArg("drst_dx,drst_dy,drst_dz", dtype4, shape="K",
+                    order=order),
                 lp.ValueArg("K", np.int32, approximately=1000),
                 ],
             name="dg_volume", assumptions="K>=1",
@@ -161,7 +154,8 @@ def test_dg_volume(ctx_factory):
         kernel_gen = lp.generate_loop_schedules(variant(knl))
         kernel_gen = lp.check_kernels(kernel_gen, parameters_dict)
 
-        lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen, parameters=parameters_dict,
+        lp.auto_test_vs_ref(
+                seq_knl, ctx, kernel_gen, parameters=parameters_dict,
                 #codegen_kwargs=dict(with_annotation=True)
                 )
 
@@ -181,7 +175,8 @@ def no_test_dg_surface(ctx_factory):
     K = 10000
 
     knl = lp.make_kernel(ctx.devices[0],
-            ["{[m,n,k]: 0<= m < NfpNfaces and 0<= n < Np and 0<= k < K }"
+            [
+                "{[m,n,k]: 0<= m < NfpNfaces and 0<= n < Np and 0<= k < K }"
                 ],
             """
                 <> idP = vmapP[m,k]
@@ -234,8 +229,6 @@ def no_test_dg_surface(ctx_factory):
         kernel_gen = lp.check_kernels(kernel_gen, parameters_dict)
 
         lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen, parameters=parameters_dict)
-
-
 
 
 if __name__ == "__main__":
