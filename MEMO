@@ -53,12 +53,8 @@ To-do
 - rename IndexTag -> InameTag
 
 - Data implementation tags
-  TODO initial bringup:
-  - Adapt padding
-  - Adapt automatic padding of temp variables
-  - turn base_indices into offset
-
   TODO further:
+  - turn base_indices into offset
   - vectorization
   - automatic copies
   - write_image()

@@ -710,14 +710,24 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
         ary_name = aae.aggregate.name
         arg = kernel.arg_dict.get(ary_name)
 
-        ary_strides = arg.strides
-        if ary_strides is None and len(index_expr) == 1:
-            ary_strides = (1,)
+        if arg.dim_tags is None:
+            from warnings import warn
+            warn("Strides for '%s' are not known. Local axis assignment "
+                    "is likely suboptimal." % arg.name)
+            ary_strides = [1] * len(index_expr)
+        else:
+            ary_strides = []
+            from loopy.kernel.array import FixedStrideArrayDimTag
+            for dim_tag in arg.dim_tags:
+                if isinstance(dim_tag, FixedStrideArrayDimTag):
+                    ary_strides.append(dim_tag.stride)
 
         # {{{ construct iname_to_stride_expr
 
         iname_to_stride_expr = {}
         for iexpr_i, stride in zip(index_expr, ary_strides):
+            if stride is None:
+                continue
             coeffs = CoefficientCollector()(iexpr_i)
             for var_name, coeff in coeffs.iteritems():
                 if var_name in auto_axis_inames:  # excludes '1', i.e.  the constant

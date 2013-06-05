@@ -864,7 +864,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             name=target_var_name,
             dtype=dtype,
             base_indices=(0,)*len(non1_storage_shape),
-            shape=non1_storage_shape,
+            shape=tuple(non1_storage_shape),
             is_local=None)
 
     new_temporary_variables[target_var_name] = temp_var

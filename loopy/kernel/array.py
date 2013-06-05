@@ -285,6 +285,7 @@ def _parse_shape_or_strides(x):
     x = _pymbolic_parse_if_necessary(x)
     if isinstance(x, lp.auto):
         return x
+    assert not isinstance(x, list)
     if not isinstance(x, tuple):
         assert x is not lp.auto
         x = (x,)

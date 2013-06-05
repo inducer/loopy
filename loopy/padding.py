@@ -108,24 +108,34 @@ def split_arg_axis(kernel, args_and_axes, count):
 
         # }}}
 
-        # {{{ adjust strides
+        # {{{ adjust dim tags
 
-        new_strides = list(arg.strides)
-        old_stride = new_strides[axis]
+        if arg.dim_tags is None:
+            raise RuntimeError("dim_tags of '%s' are not known" % arg.name)
+        new_dim_tags = list(arg.dim_tags)
+
+        old_dim_tag = arg.dim_tags[axis]
+
+        from loopy.kernel.array import FixedStrideArrayDimTag
+        if not isinstance(old_dim_tag, FixedStrideArrayDimTag):
+            raise RuntimeError("axis %d of '%s' is not tagged fixed-stride"
+                    % (axis, arg.name))
+
+        old_stride = old_dim_tag.stride
         outer_stride = count*old_stride
 
         if order == "F":
-            new_strides.insert(axis+1, outer_stride)
+            new_dim_tags.insert(axis+1, FixedStrideArrayDimTag(outer_stride))
         elif order == "C":
-            new_strides.insert(axis, outer_stride)
+            new_dim_tags.insert(axis, FixedStrideArrayDimTag(outer_stride))
         else:
             raise RuntimeError("order '%s' not understood" % order)
 
-        new_strides = tuple(new_strides)
+        new_dim_tags = tuple(new_dim_tags)
 
         # }}}
 
-        new_args[arg_idx] = arg.copy(shape=new_shape, strides=new_strides)
+        new_args[arg_idx] = arg.copy(shape=new_shape, dim_tags=new_dim_tags)
 
     # }}}
 
@@ -187,9 +197,22 @@ def split_arg_axis(kernel, args_and_axes, count):
 def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1):
     arg = kernel.arg_dict[variable]
 
-    stride = arg.strides[axis]
+    if arg.dim_tags is None:
+        raise RuntimeError("cannot find padding multiple--dim_tags of '%s' "
+                "are not known" % variable)
+
+    dim_tag = arg.dim_tags[axis]
+
+    from loopy.kernel.array import FixedStrideArrayDimTag
+    if not isinstance(dim_tag, FixedStrideArrayDimTag):
+        raise RuntimeError("cannot find padding multiple--"
+                "axis %d of '%s' is not tagged fixed-stride"
+                % (axis, variable))
+
+    stride = dim_tag.stride
+
     if not isinstance(stride, int):
-        raise RuntimeError("cannot find padding multi--stride is not a "
+        raise RuntimeError("cannot find padding multiple--stride is not a "
                 "known integer")
 
     from pytools import div_ceil
@@ -212,21 +235,31 @@ def add_padding(kernel, variable, axis, align_bytes):
     new_args = kernel.args[:]
     arg = new_args[arg_idx]
 
-    new_strides = list(arg.strides)
-    stride = new_strides[axis]
+    if arg.dim_tags is None:
+        raise RuntimeError("cannot add padding--dim_tags of '%s' "
+                "are not known" % variable)
+
+    new_dim_tags = list(arg.dim_tags)
+    dim_tag = new_dim_tags[axis]
+
+    from loopy.kernel.array import FixedStrideArrayDimTag
+    if not isinstance(dim_tag, FixedStrideArrayDimTag):
+        raise RuntimeError("cannot find padding multiple--"
+                "axis %d of '%s' is not tagged fixed-stride"
+                % (axis, variable))
+
+    stride = dim_tag.stride
     if not isinstance(stride, int):
         raise RuntimeError("cannot find split granularity--stride is not a "
                 "known integer")
-    from pytools import div_ceil
-    new_strides[axis] = div_ceil(stride, align_bytes) * align_bytes
 
-    new_args[arg_idx] = arg.copy(strides=tuple(new_strides))
+    from pytools import div_ceil
+    new_dim_tags[axis] = FixedStrideArrayDimTag(
+            div_ceil(stride, align_bytes) * align_bytes)
+
+    new_args[arg_idx] = arg.copy(dim_tags=tuple(new_dim_tags))
 
     return kernel.copy(args=new_args)
-
-
-
-
 
 
 # vim: foldmethod=marker

@@ -262,8 +262,9 @@ class TemporaryVariable(ArrayBase):
         # FIXME take into account storage_shape, or something like it
         storage_shape = self.shape
 
-        for l in storage_shape:
-            temp_var_decl = ArrayOf(temp_var_decl, l)
+        if storage_shape:
+            temp_var_decl = ArrayOf(temp_var_decl,
+                    " * ".join(str(s) for s in storage_shape))
 
         if self.is_local:
             temp_var_decl = CLLocal(temp_var_decl)
