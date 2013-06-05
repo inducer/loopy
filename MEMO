@@ -50,19 +50,27 @@ To-do
 
 - when are link_inames, duplicate_inames safe?
 
+- rename IndexTag -> InameTag
+
 - Data implementation tags
   TODO initial bringup:
   - implemented_arg_info
   - Arg declaration
   - Temp var declaration
   - Adapt padding
+  - Adapt automatic padding of temp variables
   - loopy.compiled
+  - turn base_indices into offset
 
   TODO further:
   - vectorization
   - automatic copies
   - write_image()
   - change_arg_to_image (test!)
+
+  - automatic copies from an array with one set of tags
+    to the same array with another set.
+
 
 - Make tests run on GPUs
 

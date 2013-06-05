@@ -215,16 +215,25 @@ class POD(PODBase):
 # }}}
 
 
+class CLArgumentInfo(Record):
+    """
+    .. attribute:: name
+    .. attribute:: base_name
+    .. attribute:: dtype
+    .. attribute:: shape
+    .. attribute:: offset_for_name
+    """
+
+
 # {{{ main code generation entrypoint
 
 def generate_code(kernel, with_annotation=False,
         allow_complex=None):
     from cgen import (FunctionBody, FunctionDeclaration,
-            Value, ArrayOf, Module, Block,
+            Value, Module, Block,
             Line, Const, LiteralLines, Initializer)
 
-    from cgen.opencl import (CLKernel, CLGlobal, CLRequiredWorkGroupSize,
-            CLLocal, CLImage, CLConstant)
+    from cgen.opencl import (CLKernel, CLRequiredWorkGroupSize)
 
     allow_complex = False
     for var in kernel.args + list(kernel.temporary_variables.itervalues()):
@@ -246,46 +255,32 @@ def generate_code(kernel, with_annotation=False,
 
     # {{{ examine arg list
 
-    def restrict_ptr_if_not_nvidia(arg):
-        from cgen import Pointer, RestrictPointer
+    from loopy.kernel.data import ImageArg, ValueArg
+    from loopy.kernel.array import ArrayBase
 
-        if "nvidia" in kernel.device.platform.name.lower():
-            return Pointer(arg)
-        else:
-            return RestrictPointer(arg)
+    arg_decls = []
+    cl_arg_info = []
 
-    has_image = False
-
-    from loopy.kernel.data import GlobalArg, ConstantArg, ImageArg, ValueArg
-
-    args = []
     for arg in kernel.args:
-        if isinstance(arg, (ConstantArg, GlobalArg)):
-            arg_decl = restrict_ptr_if_not_nvidia(
-                    POD(arg.dtype, arg.name))
-            if arg_decl.name not in kernel.get_written_variables():
-                arg_decl = Const(arg_decl)
-            if isinstance(arg, ConstantArg):
-                arg_decl = CLConstant(arg_decl)
-            else:
-                arg_decl = CLGlobal(arg_decl)
-        elif isinstance(arg, ImageArg):
-            if arg.name in kernel.get_written_variables():
-                mode = "w"
-            else:
-                mode = "r"
+        if isinstance(arg, ArrayBase):
+            for cdecl, clai in arg.decl_info(
+                    is_written=arg.name in kernel.get_written_variables(),
+                    index_dtype=kernel.index_dtype):
+                arg_decls.append(cdecl)
+                cl_arg_info.append(clai)
 
-            arg_decl = CLImage(arg.dimensions, mode, arg.name)
-
-            has_image = True
         elif isinstance(arg, ValueArg):
-            arg_decl = Const(POD(arg.dtype, arg.name))
+            arg_decls.append(Const(POD(arg.dtype, arg.name)))
+            cl_arg_info.append(CLArgumentInfo(
+                name=arg.name,
+                base_name=arg.name,
+                dtype=arg.dtype,
+                shape=None))
+
         else:
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
-        args.append(arg_decl)
-
-    if has_image:
+    if any(isinstance(arg, ImageArg) for arg in kernel.args):
         body.append(Initializer(Const(Value("sampler_t", "loopy_sampler")),
             "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
                 "| CLK_FILTER_NEAREST"))
@@ -303,20 +298,9 @@ def generate_code(kernel, with_annotation=False,
     # {{{ build lmem array declarators for temporary variables
 
     for tv in kernel.temporary_variables.itervalues():
-        temp_var_decl = POD(tv.dtype, tv.name)
-
-        try:
-            storage_shape = tv.storage_shape
-        except AttributeError:
-            storage_shape = tv.shape
-
-        for l in storage_shape:
-            temp_var_decl = ArrayOf(temp_var_decl, l)
-
-        if tv.is_local:
-            temp_var_decl = CLLocal(temp_var_decl)
-
-        body.append(temp_var_decl)
+        for cdecl, clai in tv.decl_info(
+                is_written=True, index_dtype=kernel.index_dtype):
+            body.append(cdecl)
 
     # }}}
 
@@ -339,7 +323,7 @@ def generate_code(kernel, with_annotation=False,
             CLRequiredWorkGroupSize(
                 kernel.get_grid_sizes_as_exprs()[1],
                 CLKernel(FunctionDeclaration(
-                    Value("void", kernel.name), args))),
+                    Value("void", kernel.name), arg_decls))),
             body))
 
     # {{{ handle preambles
@@ -374,7 +358,7 @@ def generate_code(kernel, with_annotation=False,
     assert check_implemented_domains(kernel, gen_code.implemented_domains,
             result)
 
-    return result
+    return result, cl_arg_info
 
 # }}}
 

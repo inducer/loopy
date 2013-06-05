@@ -694,8 +694,7 @@ def check_for_reduction_inames_duplication_requests(kernel):
 # {{{ duplicate arguments and expand defines in shapes
 
 def dup_args_and_expand_defines_in_shapes(kernel, defines):
-    import loopy as lp
-    from loopy.kernel.data import ShapedArg
+    from loopy.kernel.array import ArrayBase
     from loopy.kernel.creation import expand_defines_in_expr
 
     processed_args = []
@@ -705,14 +704,9 @@ def dup_args_and_expand_defines_in_shapes(kernel, defines):
                 continue
 
             new_arg = arg.copy(name=arg_name)
-            if isinstance(arg, ShapedArg):
-                if arg.shape is not None and arg.shape is not lp.auto:
-                    new_arg = new_arg.copy(
-                            shape=expand_defines_in_expr(arg.shape, defines))
-                if arg.strides is not None and arg.strides is not lp.auto:
-                    new_arg = new_arg.copy(
-                            strides=expand_defines_in_expr(
-                                arg.strides, defines))
+            if isinstance(arg, ArrayBase):
+                new_arg = arg.map_exprs(
+                        lambda expr: expand_defines_in_expr(expr, defines))
 
             processed_args.append(new_arg)
 
@@ -727,15 +721,14 @@ def guess_arg_shape_if_requested(kernel, default_order):
     new_args = []
 
     import loopy as lp
-    from loopy.kernel.data import ShapedArg
+    from loopy.kernel.array import ArrayBase
     from loopy.symbolic import SubstitutionRuleExpander, AccessRangeMapper
 
     submap = SubstitutionRuleExpander(kernel.substitutions,
             kernel.get_var_name_generator())
 
     for arg in kernel.args:
-        if isinstance(arg, ShapedArg) and (
-                arg.shape is lp.auto or arg.strides is lp.auto):
+        if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
             armap = AccessRangeMapper(kernel, arg.name)
 
             for insn in kernel.instructions:
@@ -783,11 +776,11 @@ def guess_arg_shape_if_requested(kernel, default_order):
 # {{{ apply default_order to args
 
 def apply_default_order_to_args(kernel, default_order):
-    from loopy.kernel.data import ShapedArg
+    from loopy.kernel.array import ArrayBase
 
     processed_args = []
     for arg in kernel.args:
-        if isinstance(arg, ShapedArg):
+        if isinstance(arg, ArrayBase):
             arg = arg.copy(order=default_order)
         processed_args.append(arg)
 

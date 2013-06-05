@@ -480,7 +480,10 @@ def duplicate_private_temporaries_for_ilp(kernel):
         if shape is None:
             shape = ()
 
-        new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape)
+        new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,
+                # Forget what you knew about data layout,
+                # create from scratch.
+                dim_tags=None)
 
     # }}}
 
@@ -957,27 +960,6 @@ def adjust_local_temp_var_storage(kernel):
 # }}}
 
 
-# {{{ add automatic offset arguments
-
-def add_auto_offset_args(kernel):
-    import loopy as lp
-
-    vng = kernel.get_var_name_generator()
-
-    new_args = []
-    for arg in kernel.args:
-        if getattr(arg, "offset", None) is lp.auto:
-            offset_arg_name = vng(arg.name+"_offset")
-            new_args.append(arg.copy(offset=offset_arg_name))
-            new_args.append(lp.ValueArg(offset_arg_name, kernel.index_dtype))
-        else:
-            new_args.append(arg)
-
-    return kernel.copy(args=new_args)
-
-# }}}
-
-
 def preprocess_kernel(kernel):
     from loopy.subst import expand_subst
     kernel = expand_subst(kernel)
@@ -1005,7 +987,6 @@ def preprocess_kernel(kernel):
     kernel = add_boostability_and_automatic_dependencies(kernel)
     kernel = limit_boostability(kernel)
     kernel = adjust_local_temp_var_storage(kernel)
-    kernel = add_auto_offset_args(kernel)
 
     return kernel
 

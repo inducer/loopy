@@ -45,7 +45,7 @@ class LoopyAdvisory(UserWarning):
 # {{{ imported user interface
 
 from loopy.kernel.data import (
-        ValueArg, ScalarArg, GlobalArg, ArrayArg, ConstantArg, ImageArg,
+        ValueArg, GlobalArg, ConstantArg, ImageArg,
 
         default_function_mangler, single_arg_function_mangler,
         opencl_function_mangler,
@@ -802,7 +802,7 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
         if not isinstance(fsub, tuple):
             fsub = (fsub,)
 
-        if len(fsub) != arg.dimensions:
+        if len(fsub) != arg.num_user_axes():
             raise ValueError("sweep index '%s' has the wrong number of dimensions")
 
         for subst_map in kernel.applied_iname_rewrites:
@@ -911,7 +911,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # {{{ make parameter names and unification template
 
     parameters = []
-    for i in range(arg.dimensions):
+    for i in range(arg.num_user_axes()):
         based_on = "%s_dim_%d" % (c_name, i)
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]

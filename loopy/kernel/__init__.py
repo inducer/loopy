@@ -29,6 +29,7 @@ import numpy as np
 from pytools import Record, memoize_method
 import islpy as isl
 from islpy import dim_type
+import re
 
 from pytools import UniqueNameGenerator, generate_unique_possibilities
 
@@ -45,6 +46,39 @@ from loopy.kernel.data import (
 
 class CannotBranchDomainTree(RuntimeError):
     pass
+
+
+# {{{ unique var names
+
+def _is_var_name_conflicting_with_longer(name_a, name_b):
+    # Array dimensions implemented as separate arrays generate
+    # names by appending '_s<NUMBER>'. Make sure that no
+    # conflicts can arise from these names.
+
+    # Only deal with the case of b longer than a.
+    if not name_b.startswith(name_a):
+        return False
+
+    return re.match("^%s_s[0-9]+" % re.escape(name_b), name_a) is not None
+
+
+def _is_var_name_conflicting(name_a, name_b):
+    if name_a == name_b:
+        return True
+
+    return (
+            _is_var_name_conflicting_with_longer(name_a, name_b)
+            or _is_var_name_conflicting_with_longer(name_b, name_a))
+
+
+class _UniqueVarNameGenerator(UniqueNameGenerator):
+    def is_name_conflicting(self, name):
+        from pytools import any
+        return any(
+                _is_var_name_conflicting(name, other_name)
+                for other_name in self.existing_names)
+
+# }}}
 
 
 # {{{ loop kernel object
@@ -246,7 +280,7 @@ class LoopKernel(Record):
                 | set(self.all_inames()))
 
     def get_var_name_generator(self):
-        return UniqueNameGenerator(self.all_variable_names())
+        return _UniqueVarNameGenerator(self.all_variable_names())
 
     def make_unique_instruction_id(self, insns=None, based_on="insn",
             extra_used_ids=set()):

@@ -27,6 +27,7 @@ THE SOFTWARE.
 
 import numpy as np
 from pytools import Record, memoize_method
+from loopy.kernel.array import ArrayBase
 
 
 # {{{ iname tags
@@ -147,187 +148,61 @@ def parse_tag(tag):
 
 # {{{ arguments
 
-def make_strides(shape, order):
-    from pyopencl.compyte.array import (
-            f_contiguous_strides,
-            c_contiguous_strides)
-
-    if order == "F":
-        return f_contiguous_strides(1, shape)
-    elif order == "C":
-        return c_contiguous_strides(1, shape)
-    else:
-        raise ValueError("invalid order: %s" % order)
-
 
 class KernelArgument(Record):
     pass
 
 
-class ShapedArg(KernelArgument):
-    def __init__(self, name, dtype=None, shape=None, strides=None, order=None,
-            offset=0):
-        """
-        All of the following are optional. Specify either strides or shape.
+class GlobalArg(ArrayBase, KernelArgument):
+    min_target_axes = 0
+    max_target_axes = 1
 
-        :arg name: May contain multiple names separated by
-            commas, in which case multiple arguments,
-            each with identical properties are created
-            for each name.
-        :arg dtype: the :class:`numpy.dtype` of the array.
-            If this is *None*, :mod:`loopy` will try to continue
-            without knowing the type of this array.
+    def get_arg_decl(self, name_suffix, shape, dtype, is_written):
+        from cgen import RestrictPointer, POD, Const
+        from cgen.opencl import CLGlobal
 
-            Note that some operations, such as :func:`loopy.add_padding`
-            require this information to work.
+        arg_decl = RestrictPointer(
+                POD(dtype, self.name + name_suffix))
 
-            :class:`loopy.CompiledKernel` will automatically compile a kernel
-            with the right dtype when called with a concrete array on a kernel
-            with argument whose *dtype* is *None*.
-        :arg shape: like :attr:`numpy.ndarray.shape`.
-            Also allowed to be :class:`loopy.auto`, in
-            which case shape is determined by finding the
-            access footprint.
+        if not is_written:
+            arg_decl = Const(arg_decl)
 
-            This is also allowed to be an expression involving
-            kernel parameters, or a (potentially-comma separated)
-            string that can be parsed to such an expression.
-        :arg strides:  like :attr:`numpy.ndarray.strides`,
-            but in multiples of data type size.
-            Also allowed to be :class:`loopy.auto`, in which
-            case strides are determined from shape and
-            *default_order* of :func:`loopy.make_kernel`.
+        return CLGlobal(arg_decl)
 
-            This is also allowed to be an expression involving
-            kernel parameters, or a (potentially-comma separated)
-            string that can be parsed to such an expression.
-        :arg order: "F" or "C" for C (row major) or Fortran
-            (column major)
-        :arg offset: Offset from the beginning of the buffer to the point from
-            which the strides are counted. May be one of
 
-            * 0
-            * a string (that is interpreted as an argument name).
-            * :class:`loopy.auto`, in which case an offset argument
-              is added automatically, immediately following this argument.
-              :class:`loopy.CompiledKernel` is even smarter in its treatment of
-              this case and will compile custom versions of the kernel based on
-              whether the passed arrays have offsets or not.
-        """
-        if dtype is not None:
-            dtype = np.dtype(dtype)
+class ConstantArg(ArrayBase, KernelArgument):
+    min_target_axes = 0
+    max_target_axes = 1
 
-        def parse_if_necessary(x):
-            if isinstance(x, str):
-                from pymbolic import parse
-                return parse(x)
-            else:
-                return x
+    def get_arg_decl(self, name_suffix, shape, dtype, is_written):
+        if is_written:
+            mode = "w"
+        else:
+            mode = "r"
 
-        def process_tuple(x):
-            if x == "auto":
-                from warnings import warn
-                warn("use of 'auto' as a shape or stride won't work "
-                        "any more--use loopy.auto instead",
-                        stacklevel=3)
-            x = parse_if_necessary(x)
-            if isinstance(x, lp.auto):
-                return x
-            if not isinstance(x, tuple):
-                assert x is not lp.auto
-                x = (x,)
+        from cgen.opencl import CLImage
+        return CLImage(self.num_target_axes(), mode, self.name+name_suffix)
 
-            return tuple(parse_if_necessary(xi) for xi in x)
 
-        import loopy as lp
-        strides_known = strides is not None and strides is not lp.auto
-        shape_known = shape is not None and shape is not lp.auto
-
-        if strides_known:
-            strides = process_tuple(strides)
-
-        if shape_known:
-            shape = process_tuple(shape)
-
-        if not strides_known and shape_known:
-            if len(shape) == 1:
-                # don't need order to know that
-                strides = (1,)
-            elif order is not None:
-                strides = make_strides(shape, order)
-
-        Record.__init__(self,
-                name=name,
-                dtype=dtype,
-                strides=strides,
-                offset=offset,
-                shape=shape)
-
-    @property
-    @memoize_method
-    def numpy_strides(self):
-        return tuple(self.dtype.itemsize*s for s in self.strides)
+class ImageArg(ArrayBase, KernelArgument):
+    min_target_axes = 1
+    max_target_axes = 3
 
     @property
     def dimensions(self):
-        return len(self.strides)
+        return len(self.dim_tags)
 
-    def __str__(self):
-        import loopy as lp
+    def get_arg_decl(self, name_suffix, shape, dtype, is_written):
+        from cgen import RestrictPointer, POD, Const
+        from cgen.opencl import CLConstant
 
-        if self.shape is None:
-            shape = "unknown"
-        elif self.shape is lp.auto:
-            shape = "auto"
-        else:
-            shape = ",".join(str(i) for i in self.shape)
+        arg_decl = RestrictPointer(
+                POD(dtype, self.name + name_suffix))
 
-        if self.strides is None:
-            strides = "unknown"
-        elif self.strides is lp.auto:
-            strides = "auto"
-        else:
-            strides = ",".join(str(i) for i in self.strides)
+        if not is_written:
+            arg_decl = Const(arg_decl)
 
-        return "%s: %s, type: %s, shape: (%s), strides: (%s)" % (
-                self.name, type(self).__name__, self.dtype, shape,
-                strides)
-
-    def __repr__(self):
-        return "<%s>" % self.__str__()
-
-
-class GlobalArg(ShapedArg):
-    pass
-
-
-class ConstantArg(ShapedArg):
-    pass
-
-
-class ImageArg(KernelArgument):
-    def __init__(self, name, dtype=None, dimensions=None, shape=None):
-        dtype = np.dtype(dtype)
-        if shape is not None:
-            if dimensions is not None and dimensions != len(shape):
-                raise RuntimeError("cannot specify both shape and "
-                        "disagreeing dimensions in ImageArg")
-            dimensions = len(shape)
-        else:
-            if not isinstance(dimensions, int):
-                raise RuntimeError("ImageArg: dimensions must be an integer")
-
-        Record.__init__(self,
-                dimensions=dimensions,
-                shape=shape,
-                dtype=dtype,
-                name=name)
-
-    def __str__(self):
-        return "%s: ImageArg, type %s" % (self.name, self.dtype)
-
-    def __repr__(self):
-        return "<%s>" % self.__str__()
+        return CLConstant(arg_decl)
 
 
 class ValueArg(KernelArgument):
@@ -349,32 +224,48 @@ class ValueArg(KernelArgument):
 
 # {{{ temporary variable
 
-class TemporaryVariable(Record):
-    """
-    :ivar name:
-    :ivar dtype:
-    :ivar shape:
-    :ivar storage_shape:
-    :ivar base_indices:
-    :ivar is_local:
+class TemporaryVariable(ArrayBase):
+    __doc__ = ArrayBase.__doc__ + """
+    .. attribute:: storage_shape
+    .. attribute:: base_indices
+    .. attribute:: is_local
     """
 
-    def __init__(self, name, dtype, shape, is_local, base_indices=None,
-            storage_shape=None):
+    min_target_axes = 0
+    max_target_axes = 1
+
+    def __init__(self, name, dtype, shape, is_local,
+            dim_tags=None, offset=0, strides=None, order=None,
+            base_indices=None, storage_shape=None):
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
-        if shape is not None and not isinstance(shape, tuple):
-            shape = tuple(shape)
-
-        Record.__init__(self, name=name, dtype=dtype, shape=shape, is_local=is_local,
-                base_indices=base_indices,
+        ArrayBase.__init__(self, name=name, dtype=dtype, shape=shape,
+                dim_tags=dim_tags, order="C",
+                base_indices=base_indices, is_local=is_local,
                 storage_shape=storage_shape)
 
     @property
     def nbytes(self):
         from pytools import product
         return product(si for si in self.shape)*self.dtype.itemsize
+
+    def get_arg_decl(self, name_suffix, shape, dtype, is_written):
+        from cgen import ArrayOf, POD
+        from cgen.opencl import CLLocal
+
+        temp_var_decl = POD(self.dtype, self.name)
+
+        # FIXME take into account storage_shape, or something like it
+        storage_shape = self.shape
+
+        for l in storage_shape:
+            temp_var_decl = ArrayOf(temp_var_decl, l)
+
+        if self.is_local:
+            temp_var_decl = CLLocal(temp_var_decl)
+
+        return temp_var_decl
 
 # }}}
 

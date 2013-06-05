@@ -122,7 +122,7 @@ class CompiledKernel:
         self.options = options
 
     @memoize_method
-    def get_kernel_info(self, arg_to_dtype_set, arg_to_has_offset_set):
+    def get_kernel_info(self, arg_to_dtype_set):
         kernel = self.kernel
 
         import loopy as lp
@@ -134,28 +134,6 @@ class CompiledKernel:
             from loopy.preprocess import infer_unknown_types
             kernel = infer_unknown_types(kernel, expect_completion=True)
 
-        if arg_to_has_offset_set:
-            arg_to_has_offset = dict(arg_to_has_offset_set)
-
-            vng = kernel.get_var_name_generator()
-
-            new_args = []
-            for arg in kernel.args:
-                if getattr(arg, "offset", None) is lp.auto:
-                    if arg_to_has_offset[arg.name]:
-                        offset_arg_name = vng(arg.name+"_offset")
-                        new_args.append(arg.copy(offset=offset_arg_name))
-                        new_args.append(
-                                lp.ValueArg(
-                                    offset_arg_name, kernel.index_dtype))
-                    else:
-                        new_args.append(arg.copy(offset=0))
-                else:
-                    new_args.append(arg)
-
-            kernel = kernel.copy(args=new_args)
-
-        import loopy as lp
         if kernel.schedule is None:
             kernel = _get_kernel_from_iterable(
                     lp.generate_loop_schedules(kernel))
@@ -179,14 +157,13 @@ class CompiledKernel:
                 )
 
     @memoize_method
-    def get_cl_kernel(self,
-            arg_to_dtype_set, arg_to_has_offset_set, code_op=False):
-        kernel_info = self.get_kernel_info(
-                arg_to_dtype_set, arg_to_has_offset_set)
+    def get_cl_kernel_info(self,
+            arg_to_dtype_set, code_op=False):
+        kernel_info = self.get_kernel_info(arg_to_dtype_set)
         kernel = kernel_info.kernel
 
         from loopy.codegen import generate_code
-        code = generate_code(kernel, **self.codegen_kwargs)
+        code, cl_arg_info = generate_code(kernel, **self.codegen_kwargs)
 
         if code_op == "print":
             print code
@@ -213,35 +190,34 @@ class CompiledKernel:
             print "[Loopy] "+70*"-"
             raise
 
-        from loopy.kernel.data import ValueArg
-
         arg_types = []
-        for arg in kernel.args:
-            if isinstance(arg, ValueArg):
-                arg_types.append(arg.dtype)
+        for arg_info in cl_arg_info:
+            if arg_info.shape is None:
+                arg_types.append(arg_info.dtype)
             else:
                 arg_types.append(None)
 
         cl_kernel.set_scalar_arg_dtypes(arg_types)
 
-        return kernel_info, cl_kernel
+        return kernel_info.copy(
+                cl_kernel=cl_kernel,
+                cl_arg_info=cl_arg_info)
 
     # {{{ debugging aids
 
-    def get_code(self, arg_to_dtype=None, arg_to_has_offset=None):
+    def get_code(self, arg_to_dtype=None):
         if arg_to_dtype is not None:
             arg_to_dtype = frozenset(arg_to_dtype.iteritems())
-        if arg_to_has_offset is not None:
-            arg_to_has_offset = frozenset(arg_to_has_offset.iteritems())
 
-        kernel_info = self.get_kernel_info(arg_to_dtype, arg_to_has_offset)
+        kernel_info = self.get_kernel_info(arg_to_dtype)
 
         from loopy.codegen import generate_code
-        return generate_code(kernel_info.kernel, **self.codegen_kwargs)
+        code, arg_info = generate_code(kernel_info.kernel, **self.codegen_kwargs)
+        return code
 
-    def get_highlighted_code(self, arg_to_dtype=None, arg_to_has_offset=None):
+    def get_highlighted_code(self, arg_to_dtype=None):
         return get_highlighted_code(
-                self.get_code(arg_to_dtype, arg_to_has_offset))
+                self.get_code(arg_to_dtype))
 
     @property
     def code(self):
@@ -274,7 +250,6 @@ class CompiledKernel:
         import loopy as lp
 
         arg_to_dtype = {}
-        arg_to_has_offset = {}
         for arg in self.kernel.args:
             val = kwargs.get(arg.name)
 
@@ -286,23 +261,14 @@ class CompiledKernel:
                 else:
                     arg_to_dtype[arg.name] = dtype
 
-            if getattr(arg, "offset", None) is lp.auto:
-                if val is not None and isinstance(val, cl_array.Array):
-                    has_offset = val.offset != 0
-                else:
-                    has_offset = False
-                arg_to_has_offset[arg.name] = has_offset
-
-        kernel_info, cl_kernel = self.get_cl_kernel(
+        kernel_info = self.get_cl_kernel_info(
                 frozenset(arg_to_dtype.iteritems()),
-                frozenset(arg_to_has_offset.iteritems()),
                 code_op)
         kernel = kernel_info.kernel
+        cl_kernel = kernel_info.cl_kernel
         del arg_to_dtype
 
         # }}}
-
-        import loopy as lp
 
         kwargs.update(
                 kernel.domain_parameter_finder()(kwargs))

@@ -242,6 +242,19 @@ def dtype_to_type_context(dtype):
     return None
 
 
+VEC_AXES = "xyzw"
+
+
+def get_opencl_vec_member(idx):
+    if idx is None:
+        return idx
+
+    if idx < len(VEC_AXES):
+        return VEC_AXES[idx]
+    else:
+        return "s%d" % idx
+
+
 class LoopyCCodeMapper(RecursiveMapper):
     def __init__(self, kernel, seen_dtypes, seen_functions, var_subst_map={},
             with_annotation=False, allow_complex=False):
@@ -340,9 +353,17 @@ class LoopyCCodeMapper(RecursiveMapper):
                     enclosing_prec, type_context))
         elif expr.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.name]
-            from loopy.kernel.data import ShapedArg
-            if isinstance(arg, ShapedArg) and arg.shape == ():
-                return "*"+expr.name
+            from loopy.kernel.array import ArrayBase
+            if isinstance(arg, ArrayBase):
+                if arg.shape == ():
+                    if arg.offset:
+                        # FIXME
+                        raise NotImplementedError("in-memory scalar with offset")
+                    else:
+                        return "*"+expr.name
+                else:
+                    raise RuntimeError("unsubscripted reference to array '%s'"
+                            % expr.name)
 
         for mangler in self.kernel.symbol_manglers:
             result = mangler(expr.name)
@@ -374,87 +395,92 @@ class LoopyCCodeMapper(RecursiveMapper):
             return base_impl(expr, enclosing_prec, type_context)
 
         if expr.aggregate.name in self.kernel.arg_dict:
-            arg = self.kernel.arg_dict[expr.aggregate.name]
-
-            from loopy.kernel.data import ImageArg
-            if isinstance(arg, ImageArg):
-                assert isinstance(expr.index, tuple)
-
-                base_access = ("read_imagef(%s, loopy_sampler, (float%d)(%s))"
-                        % (arg.name, arg.dimensions,
-                            ", ".join(self.rec(idx, PREC_NONE, 'i')
-                                for idx in expr.index[::-1])))
-
-                if arg.dtype == np.float32:
-                    return base_access+".x"
-                if arg.dtype in cl.array.vec.type_to_scalar_and_count:
-                    return base_access
-                elif arg.dtype == np.float64:
-                    return "as_double(%s.xy)" % base_access
-                else:
-                    raise NotImplementedError(
-                            "non-floating-point images not supported for now")
-
-            else:
-                # GlobalArg
-                index_expr = expr.index
-                if not isinstance(expr.index, tuple):
-                    index_expr = (index_expr,)
-
-                if arg.strides is None:
-                    raise RuntimeError("index access to '%s' requires known "
-                            "strides" % arg.name)
-
-                if len(arg.strides) != len(index_expr):
-                    raise RuntimeError("subscript to '%s' in '%s' has the wrong "
-                            "number of indices (got: %d, expected: %d)" % (
-                                expr.aggregate.name, expr,
-                                len(index_expr), len(arg.strides)))
-
-                from pymbolic.primitives import Subscript, Variable
-                if arg.offset:
-                    offset = Variable(arg.offset)
-                else:
-                    offset = 0
-
-                return base_impl(
-                        Subscript(expr.aggregate, offset+sum(
-                            stride*expr_i for stride, expr_i in zip(
-                                arg.strides, index_expr))),
-                        enclosing_prec, type_context)
-
+            ary = self.kernel.arg_dict[expr.aggregate.name]
         elif expr.aggregate.name in self.kernel.temporary_variables:
-            temp_var = self.kernel.temporary_variables[expr.aggregate.name]
-            if isinstance(expr.index, tuple):
-                index = expr.index
-            else:
-                index = (expr.index,)
+            ary = self.kernel.temporary_variables[expr.aggregate.name]
+        else:
+            raise RuntimeError("nothing known about subscripted variable '%s'"
+                    % expr.aggregate.name)
 
-            return (temp_var.name + "".join("[%s]" % self.rec(idx, PREC_NONE, 'i')
-                for idx in index))
+        from loopy.kernel.array import ArrayBase
+        if not isinstance(ary, ArrayBase):
+            raise RuntimeError("subscripted variable '%s' is not an array"
+                    % expr.aggregate.name)
+
+        from loopy.kernel.array import get_access_info
+        from pymbolic import evaluate
+
+        access_info = get_access_info(ary, expr.index,
+                lambda expr: evaluate(expr, self.var_subst_map))
+
+        vec_member = get_opencl_vec_member(access_info.vector_index)
+
+        from loopy.kernel.data import ImageArg, GlobalArg, TemporaryVariable
+
+        if isinstance(ary, ImageArg):
+            base_access = ("read_imagef(%s, loopy_sampler, (float%d)(%s))"
+                    % (ary.name, ary.dimensions,
+                        ", ".join(self.rec(idx, PREC_NONE, 'i')
+                            for idx in expr.index[::-1])))
+
+            if ary.dtype == np.float32:
+                return base_access+".x"
+            if ary.dtype in cl.array.vec.type_to_scalar_and_count:
+                return base_access
+            elif ary.dtype == np.float64:
+                return "as_double(%s.xy)" % base_access
+            else:
+                raise NotImplementedError(
+                        "non-floating-point images not supported for now")
+
+        elif isinstance(ary, (GlobalArg, TemporaryVariable)):
+            if len(access_info.subscripts) == 0:
+                if isinstance(ary, GlobalArg):
+                    # unsubscripted global args are pointers
+                    if vec_member is not None:
+                        return "%s%s->%s" % (
+                                expr.aggregate.name, access_info.array_suffix,
+                                vec_member)
+                    else:
+                        return "*" + expr.aggregate.name+access_info.array_suffix
+
+                else:
+                    # unsubscripted temp vars are scalars
+                    if vec_member is not None:
+                        return "%s%s.%s" % (
+                                expr.aggregate.name, access_info.array_suffix,
+                                vec_member)
+                    else:
+                        return expr.aggregate.name+access_info.array_suffix
+
+            else:
+                subscript, = access_info.subscripts
+                result = self.parenthesize_if_needed(
+                        "%s[%s]" % (
+                            expr.aggregate.name+access_info.array_suffix,
+                            self.rec(subscript, PREC_NONE, 'i')),
+                        enclosing_prec, PREC_CALL)
+
+                if vec_member:
+                    result += "."+vec_member
+
+                return result
 
         else:
-            raise RuntimeError(
-                    "nothing known about variable '%s'" % expr.aggregate.name)
+            assert False
 
     def map_linear_subscript(self, expr, enclosing_prec, type_context):
-        def base_impl(expr, enclosing_prec, type_context):
-            return self.parenthesize_if_needed(
-                    "%s[%s]" % (
-                        self.rec(expr.aggregate, PREC_CALL, type_context),
-                        self.rec(expr.index, PREC_NONE, 'i')),
-                    enclosing_prec, PREC_CALL)
-
         from pymbolic.primitives import Variable
         if not isinstance(expr.aggregate, Variable):
-            return base_impl(expr, enclosing_prec, type_context)
+                raise RuntimeError("linear indexing on non-variable: %s"
+                        % expr)
 
         if expr.aggregate.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.aggregate.name]
 
             from loopy.kernel.data import ImageArg
             if isinstance(arg, ImageArg):
-                raise RuntimeError("linear indexing doesn't work on images: %s"
+                raise RuntimeError("linear indexing is not supported on images: %s"
                         % expr)
 
             else:
@@ -464,13 +490,14 @@ class LoopyCCodeMapper(RecursiveMapper):
                 else:
                     offset = 0
 
-                from pymbolic.primitives import Subscript
-                return base_impl(
-                        Subscript(expr.aggregate, offset+expr.index),
-                        enclosing_prec, type_context)
+                return self.parenthesize_if_needed(
+                        "%s[%s]" % (
+                            expr.aggregate.name,
+                            self.rec(offset + expr.index, PREC_NONE, 'i')),
+                        enclosing_prec, PREC_CALL)
 
         elif expr.aggregate.name in self.kernel.temporary_variables:
-            raise RuntimeError("linear indexing doesn't work on temporaries: %s"
+            raise RuntimeError("linear indexing is not supported on temporaries: %s"
                     % expr)
 
         else:

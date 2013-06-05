@@ -681,7 +681,7 @@ def test_dependent_loop_bounds_2(ctx_factory):
             [
                 lp.GlobalArg("a_rowstarts", np.int32, shape=lp.auto),
                 lp.GlobalArg("a_indices", np.int32, shape=lp.auto),
-                lp.GlobalArg("a_values", dtype),
+                lp.GlobalArg("a_values", dtype, strides=(1,)),
                 lp.GlobalArg("ax", dtype, shape=lp.auto),
                 lp.ValueArg("n", np.int32),
                 ],
@@ -1117,7 +1117,7 @@ def test_array_with_offset(ctx_factory):
     a_full = cl.clrandom.rand(queue, (n, n), np.float64)
     a = a_full[3:10]
 
-    print cknl.get_highlighted_code({"a": a.dtype}, {"a": True, "b": False})
+    print cknl.get_highlighted_code({"a": a.dtype})
     evt, (b,) = cknl(queue, a=a)
 
     import numpy.linalg as la
