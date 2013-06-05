@@ -1035,7 +1035,40 @@ def change_arg_to_image(knl, name):
 # }}}
 
 
+# {{{ tag data axis
 
+def tag_data_axis(knl, ary_name, axis, tag):
+    if ary_name in knl.temporary_variables:
+        ary = knl.temporary_variables[ary_name]
+    elif ary_name in knl.arg_dict:
+        ary = knl.arg_dict[ary_name]
+    else:
+        raise NameError("array '%s' was not found" % ary_name)
 
+    new_dim_tags = list(ary.dim_tags)
+    from loopy.kernel.array import parse_array_dim_tag
+    new_dim_tags[axis] = parse_array_dim_tag(tag)
+
+    ary = ary.copy(dim_tags=tuple(new_dim_tags))
+
+    if ary_name in knl.temporary_variables:
+        new_tv = knl.temporary_variables.copy()
+        new_tv[ary_name] = ary
+        return knl.copy(temporary_variables=new_tv)
+
+    elif ary_name in knl.arg_dict:
+        new_args = []
+        for arg in knl.args:
+            if arg.name == ary_name:
+                new_args.append(ary)
+            else:
+                new_args.append(arg)
+
+        return knl.copy(args=new_args)
+
+    else:
+        raise NameError("array '%s' was not found" % ary_name)
+
+# }}}
 
 # vim: foldmethod=marker

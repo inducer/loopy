@@ -201,7 +201,12 @@ Caching, Precomputation and Prefetching
 
     Uses :func:`extract_subst` and :func:`precompute`.
 
+Influencing data access
+^^^^^^^^^^^^^^^^^^^^^^^
+
 .. autofunction:: change_arg_to_image
+
+.. autofunction:: tag_data_axis
 
 Padding
 ^^^^^^^

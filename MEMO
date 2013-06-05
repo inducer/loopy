@@ -53,7 +53,7 @@ To-do
 - rename IndexTag -> InameTag
 
 - Data implementation tags
-  TODO further:
+  - retag semantics once strides have been computed
   - turn base_indices into offset
   - vectorization
   - automatic copies

@@ -475,7 +475,7 @@ def test_image_matrix_mul(ctx_factory):
 
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
-            parameters={})
+            parameters={}, print_ref_code=True)
 
 
 def test_image_matrix_mul_ilp(ctx_factory):

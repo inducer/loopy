@@ -500,7 +500,7 @@ def make_ref_args(kernel, cl_arg_info, queue, parameters, fill_value):
                 ref_args[arg.name] = ary
             else:
                 fill_rand(storage_array)
-                if isinstance(arg, ImageArg):
+                if arg.arg_class is ImageArg:
                     # must be contiguous
                     ref_args[arg.name] = cl.image_from_array(
                             queue.context, ary.get())

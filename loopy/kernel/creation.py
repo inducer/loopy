@@ -705,7 +705,7 @@ def dup_args_and_expand_defines_in_shapes(kernel, defines):
 
             new_arg = arg.copy(name=arg_name)
             if isinstance(arg, ArrayBase):
-                new_arg = arg.map_exprs(
+                new_arg = new_arg.map_exprs(
                         lambda expr: expand_defines_in_expr(expr, defines))
 
             processed_args.append(new_arg)

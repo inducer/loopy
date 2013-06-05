@@ -122,7 +122,7 @@ PADDED_STRIDE_TAG = re.compile(r"^([a-zA-Z]+)\(pad=(.*)\)$")
 TARGET_AXIS_RE = re.compile(r"->([0-9])$")
 
 
-def parse_array_dim_tag(tag):
+def parse_array_dim_tag(tag, default_target_axis=0):
     if isinstance(tag, ArrayDimImplementationTag):
         return tag
 
@@ -144,7 +144,7 @@ def parse_array_dim_tag(tag):
         target_axis = int(target_axis_match.group(1))
         tag = tag[:target_axis_match.start()]
     else:
-        target_axis = 0
+        target_axis = default_target_axis
 
     if tag in ["c", "C", "f", "F"]:
         return ComputedStrideArrayDimTag(tag, target_axis=target_axis)
@@ -162,16 +162,19 @@ def parse_array_dim_tag(tag):
         return ComputedStrideArrayDimTag(order, pad, target_axis=target_axis)
 
 
-def parse_array_dim_tags(dim_tags):
+def parse_array_dim_tags(dim_tags, use_increasing_target_axes=False):
     if isinstance(dim_tags, str):
         dim_tags = dim_tags.split(",")
 
-    def parse_dim_tag_if_necessary(dt):
-        if isinstance(dt, str):
-            dt = parse_array_dim_tag(dt)
-        return dt
+    default_target_axis = 0
 
-    return [parse_dim_tag_if_necessary(dt) for dt in dim_tags]
+    result = []
+    for dt in dim_tags:
+        result.append(parse_array_dim_tag(dt, default_target_axis))
+        if use_increasing_target_axes:
+            default_target_axis += 1
+
+    return result
 
 
 def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
@@ -239,12 +242,13 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
         if fixed_stride_dim_tags[target_axis]:
             for i in fixed_stride_dim_tags[target_axis]:
-                dt = dim_tags[i]
-                new_dim_tags[i] = dt
+                dim_tag = dim_tags[i]
+                new_dim_tags[i] = dim_tag
         else:
             for i in computed_stride_dim_tags[target_axis]:
-                dt = dim_tags[i]
-                new_dim_tags[i] = FixedStrideArrayDimTag(stride_so_far)
+                dim_tag = dim_tags[i]
+                new_dim_tags[i] = FixedStrideArrayDimTag(stride_so_far,
+                        target_axis=dim_tag.target_axis)
 
                 if shape is None:
                     # unable to normalize without known shape
@@ -252,10 +256,10 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
                 stride_so_far *= shape[i]
 
-                if dt.pad_to is not None:
+                if dim_tag.pad_to is not None:
                     from pytools import div_ceil
                     stride_so_far = (
-                            div_ceil(stride_so_far, dt.pad_to)
+                            div_ceil(stride_so_far, dim_tag.pad_to)
                             * stride_so_far)
 
     # }}}
@@ -429,6 +433,11 @@ class ArrayBase(Record):
 
         # {{{ convert order to dim_tags
 
+        if order is None and self.max_target_axes > 1:
+            # FIXME: Hackety hack. ImageArgs need to generate dim_tags even
+            # if no order is specified. Plus they don't care that much.
+            order = "C"
+
         if dim_tags is None and num_user_axes is not None and order is not None:
             dim_tags = num_user_axes*[order]
             order = None
@@ -436,7 +445,8 @@ class ArrayBase(Record):
         # }}}
 
         if dim_tags is not None:
-            dim_tags = parse_array_dim_tags(dim_tags)
+            dim_tags = parse_array_dim_tags(dim_tags,
+                    use_increasing_target_axes=self.max_target_axes > 1)
 
             # {{{ find number of target axes
 
