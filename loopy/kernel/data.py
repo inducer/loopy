@@ -158,7 +158,8 @@ class GlobalArg(ArrayBase, KernelArgument):
     max_target_axes = 1
 
     def get_arg_decl(self, name_suffix, shape, dtype, is_written):
-        from cgen import RestrictPointer, POD, Const
+        from loopy.codegen import POD  # uses the correct complex type
+        from cgen import RestrictPointer, Const
         from cgen.opencl import CLGlobal
 
         arg_decl = RestrictPointer(
@@ -175,13 +176,17 @@ class ConstantArg(ArrayBase, KernelArgument):
     max_target_axes = 1
 
     def get_arg_decl(self, name_suffix, shape, dtype, is_written):
-        if is_written:
-            mode = "w"
-        else:
-            mode = "r"
+        from loopy.codegen import POD  # uses the correct complex type
+        from cgen import RestrictPointer, Const
+        from cgen.opencl import CLConstant
 
-        from cgen.opencl import CLImage
-        return CLImage(self.num_target_axes(), mode, self.name+name_suffix)
+        arg_decl = RestrictPointer(
+                POD(dtype, self.name + name_suffix))
+
+        if not is_written:
+            arg_decl = Const(arg_decl)
+
+        return CLConstant(arg_decl)
 
 
 class ImageArg(ArrayBase, KernelArgument):
@@ -193,16 +198,13 @@ class ImageArg(ArrayBase, KernelArgument):
         return len(self.dim_tags)
 
     def get_arg_decl(self, name_suffix, shape, dtype, is_written):
-        from cgen import RestrictPointer, POD, Const
-        from cgen.opencl import CLConstant
+        if is_written:
+            mode = "w"
+        else:
+            mode = "r"
 
-        arg_decl = RestrictPointer(
-                POD(dtype, self.name + name_suffix))
-
-        if not is_written:
-            arg_decl = Const(arg_decl)
-
-        return CLConstant(arg_decl)
+        from cgen.opencl import CLImage
+        return CLImage(self.num_target_axes(), mode, self.name+name_suffix)
 
 
 class ValueArg(KernelArgument):
@@ -251,7 +253,8 @@ class TemporaryVariable(ArrayBase):
         return product(si for si in self.shape)*self.dtype.itemsize
 
     def get_arg_decl(self, name_suffix, shape, dtype, is_written):
-        from cgen import ArrayOf, POD
+        from cgen import ArrayOf
+        from loopy.codegen import POD  # uses the correct complex type
         from cgen.opencl import CLLocal
 
         temp_var_decl = POD(self.dtype, self.name)

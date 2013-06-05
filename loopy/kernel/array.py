@@ -472,6 +472,13 @@ class ArrayBase(Record):
             dim_tags = tuple(dim_tags)
             order = None
 
+        if strides is not None:
+            # Preserve strides if we weren't able to process them yet.
+            # That only happens if they're set to loopy.auto (and 'guessed'
+            # in loopy.kernel.creation).
+
+            kwargs["strides"] = strides
+
         Record.__init__(self,
                 name=name,
                 dtype=dtype,
@@ -479,7 +486,6 @@ class ArrayBase(Record):
                 dim_tags=dim_tags,
                 offset=offset,
                 order=order,
-                strides=strides,
                 **kwargs)
 
     def __str__(self):
@@ -555,13 +561,16 @@ class ArrayBase(Record):
         Note: For 3-vectors, this will be 4.
         """
 
+        if self.dim_tags is None:
+            return 1
+
         for i, dim_tag in enumerate(self.dim_tags):
             if isinstance(dim_tag, VectorArrayDimTag):
                 shape_i = self.shape[i]
                 if not isinstance(shape_i, int):
-                    raise RuntimeError("shape of '%s' has non-constant "
-                            "integer axis %d (0-based)" % (
-                                self.name, user_axis))
+                    raise RuntimeError("shape of '%s' has non-constant-integer "
+                            "length for vector axis %d (0-based)" % (
+                                self.name, i))
 
                 vec_dtype = cl.array.vec.types[self.dtype, shape_i]
 
@@ -598,7 +607,8 @@ class ArrayBase(Record):
                             dtype=dtype,
                             shape=shape,
                             strides=strides,
-                            offset_for_name=None))
+                            offset_for_name=None,
+                            arg_class=type(self)))
 
                 if self.offset:
                     from cgen import Const, POD
@@ -610,7 +620,8 @@ class ArrayBase(Record):
                                 dtype=index_dtype,
                                 shape=None,
                                 strides=None,
-                                offset_for_name=full_name))
+                                offset_for_name=full_name,
+                                arg_class=None))
 
                 return
 

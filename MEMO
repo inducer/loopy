@@ -54,12 +54,8 @@ To-do
 
 - Data implementation tags
   TODO initial bringup:
-  - implemented_arg_info
-  - Arg declaration
-  - Temp var declaration
   - Adapt padding
   - Adapt automatic padding of temp variables
-  - loopy.compiled
   - turn base_indices into offset
 
   TODO further:

@@ -157,7 +157,7 @@ class CompiledKernel:
                 )
 
     @memoize_method
-    def get_cl_kernel_info(self,
+    def cl_kernel_info(self,
             arg_to_dtype_set, code_op=False):
         kernel_info = self.get_kernel_info(arg_to_dtype_set)
         kernel = kernel_info.kernel
@@ -261,7 +261,7 @@ class CompiledKernel:
                 else:
                     arg_to_dtype[arg.name] = dtype
 
-        kernel_info = self.get_cl_kernel_info(
+        kernel_info = self.cl_kernel_info(
                 frozenset(arg_to_dtype.iteritems()),
                 code_op)
         kernel = kernel_info.kernel
@@ -283,25 +283,37 @@ class CompiledKernel:
 
         kwargs_copy = kwargs.copy()
 
-        for arg in kernel.args:
-            is_written = arg.name in kernel.get_written_variables()
+        for arg in kernel_info.cl_arg_info:
+            is_written = arg.base_name in kernel.get_written_variables()
 
             val = kwargs_copy.pop(arg.name, None)
 
-            if isinstance(arg, lp.GlobalArg):
-                if arg.offset:
-                    # arg.offset must be a string at this point.
+            # {{{ if this argument is an offset for another, try to determine it
 
-                    # /!\ Tacit assumption: If you want the offset argument to
-                    # be set automatically, it must occur *after* the
-                    # corresponding array argument.
+            if arg.offset_for_name is not None and val is None:
+                try:
+                    array_arg_val = kwargs[arg.offset_for_name]
+                except KeyError:
+                    # Output variable, we'll be allocating it, with zero offset.
+                    offset = 0
+                else:
+                    try:
+                        offset = array_arg_val.offset
+                    except AttributeError:
+                        offset = 0
 
-                    ofs, remdr = divmod(val.offset, val.dtype.itemsize)
+                if offset:
+                    val, remdr = divmod(offset, array_arg_val.dtype.itemsize)
                     assert remdr == 0
-                    kwargs_copy.setdefault(arg.offset, ofs)
-                    del ofs
                     del remdr
+                else:
+                    val = 0
 
+                del offset
+
+            # }}}
+
+            if arg.shape is not None:
                 # {{{ automatically transfer host-side arrays, if needed
 
                 if isinstance(val, np.ndarray):
@@ -323,19 +335,21 @@ class CompiledKernel:
                     raise TypeError(
                             "must supply input argument '%s'" % arg.name)
 
-                if isinstance(arg, lp.ImageArg):
+                if arg.arg_class is lp.ImageArg:
                     raise RuntimeError("write-mode image '%s' must "
                             "be explicitly supplied" % arg.name)
 
                 from pymbolic import evaluate
                 shape = evaluate(arg.shape, kwargs)
-                numpy_strides = evaluate(arg.numpy_strides, kwargs)
+                itemsize = arg.dtype.itemsize
+                numpy_strides = tuple(
+                        i*itemsize for i in evaluate(arg.strides, kwargs))
 
                 from pytools import all
                 assert all(s > 0 for s in numpy_strides)
                 alloc_size = (sum(astrd*(alen-1)
                         for alen, astrd in zip(shape, numpy_strides))
-                        + arg.dtype.itemsize)
+                        + itemsize)
 
                 if allocator is None:
                     storage = cl.Buffer(
@@ -352,7 +366,7 @@ class CompiledKernel:
             if is_written:
                 outputs.append(val)
 
-            if isinstance(arg, lp.GlobalArg):
+            if arg.arg_class in [lp.GlobalArg, lp.ConstantArg]:
                 args.append(val.base_data)
             else:
                 args.append(val)
@@ -408,17 +422,19 @@ class TestArgInfo(Record):
     pass
 
 
-def make_ref_args(kernel, queue, parameters, fill_value):
-    import loopy as lp
+def make_ref_args(kernel, cl_arg_info, queue, parameters, fill_value):
     from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
     ref_args = {}
-    arg_descriptors = []
+    ref_arg_data = []
 
-    for arg in kernel.args:
-        if isinstance(arg, ValueArg):
+    for arg in cl_arg_info:
+        if arg.arg_class is ValueArg:
+            if arg.offset_for_name:
+                continue
+
             arg_value = parameters[arg.name]
 
             try:
@@ -431,27 +447,24 @@ def make_ref_args(kernel, queue, parameters, fill_value):
 
             ref_args[arg.name] = arg_value
 
-            arg_descriptors.append(None)
+            ref_arg_data.append(None)
 
-        elif isinstance(arg, (GlobalArg, ImageArg)):
+        elif arg.arg_class is GlobalArg or arg.arg_class is ImageArg:
             if arg.shape is None:
                 raise ValueError("arrays need known shape to use automatic "
                         "testing")
 
             shape = evaluate(arg.shape, parameters)
 
-            is_output = arg.name in kernel.get_written_variables()
-            is_image = isinstance(arg, ImageArg)
+            is_output = arg.base_name in kernel.get_written_variables()
 
-            if is_image:
+            if arg.arg_class is ImageArg:
                 storage_array = ary = cl_array.empty(
                         queue, shape, arg.dtype, order="C")
                 numpy_strides = None
                 alloc_size = None
                 strides = None
             else:
-                assert arg.offset is lp.auto or arg.offset == 0
-
                 strides = evaluate(arg.strides, parameters)
 
                 from pytools import all
@@ -474,7 +487,7 @@ def make_ref_args(kernel, queue, parameters, fill_value):
                 ary = cl_array.as_strided(storage_array, shape, numpy_strides)
 
             if is_output:
-                if is_image:
+                if arg.arg_class is ImageArg:
                     raise RuntimeError("write-mode images not supported in "
                             "automatic testing")
 
@@ -494,7 +507,7 @@ def make_ref_args(kernel, queue, parameters, fill_value):
                 else:
                     ref_args[arg.name] = ary
 
-            arg_descriptors.append(
+            ref_arg_data.append(
                     TestArgInfo(
                         name=arg.name,
                         ref_array=ary,
@@ -507,19 +520,18 @@ def make_ref_args(kernel, queue, parameters, fill_value):
         else:
             raise RuntimeError("arg type not understood")
 
-    return ref_args, arg_descriptors
+    return ref_args, ref_arg_data
 
 
-def make_args(queue, kernel, arg_descriptors, parameters,
+def make_args(kernel, cl_arg_info, queue, ref_arg_data, parameters,
         fill_value):
-    import loopy as lp
     from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
     args = {}
-    for arg, arg_desc in zip(kernel.args, arg_descriptors):
-        if isinstance(arg, ValueArg):
+    for arg, arg_desc in zip(cl_arg_info, ref_arg_data):
+        if arg.arg_class is ValueArg:
             arg_value = parameters[arg.name]
 
             try:
@@ -532,7 +544,7 @@ def make_args(queue, kernel, arg_descriptors, parameters,
 
             args[arg.name] = arg_value
 
-        elif isinstance(arg, ImageArg):
+        elif arg.arg_class is ImageArg:
             if arg.name in kernel.get_written_variables():
                 raise NotImplementedError("write-mode images not supported in "
                         "automatic testing")
@@ -544,9 +556,7 @@ def make_args(queue, kernel, arg_descriptors, parameters,
             args[arg.name] = cl.image_from_array(
                     queue.context, arg_desc.ref_array.get())
 
-        elif isinstance(arg, GlobalArg):
-            assert arg.offset is lp.auto or arg.offset == 0
-
+        elif arg.arg_class is GlobalArg:
             shape = evaluate(arg.shape, parameters)
             strides = evaluate(arg.strides, parameters)
 
@@ -557,7 +567,7 @@ def make_args(queue, kernel, arg_descriptors, parameters,
             alloc_size = sum(astrd*(alen-1)
                     for alen, astrd in zip(shape, strides)) + 1
 
-            if arg.name in kernel.get_written_variables():
+            if arg.base_name in kernel.get_written_variables():
                 storage_array = cl_array.empty(queue, alloc_size, arg.dtype)
                 ary = cl_array.as_strided(storage_array, shape, numpy_strides)
 
@@ -730,9 +740,21 @@ def auto_test_vs_ref(
             ref_sched_kernel = knl
             break
 
+        ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel,
+                options=options, codegen_kwargs=codegen_kwargs)
+        if print_ref_code:
+            print 75*"-"
+            print "Reference Code:"
+            print 75*"-"
+            print get_highlighted_code(ref_compiled.code)
+            print 75*"-"
+
+        ref_cl_kernel_info = ref_compiled.cl_kernel_info(frozenset())
+
         try:
-            ref_args, arg_descriptors = \
-                    make_ref_args(ref_sched_kernel, ref_queue, parameters,
+            ref_args, ref_arg_data = \
+                    make_ref_args(ref_sched_kernel, ref_cl_kernel_info.cl_arg_info,
+                            ref_queue, parameters,
                             fill_value=fill_value_ref)
             ref_args["out_host"] = False
         except cl.RuntimeError, e:
@@ -753,16 +775,6 @@ def auto_test_vs_ref(
 
         if not do_check:
             break
-
-        ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel,
-                options=options,
-                codegen_kwargs=codegen_kwargs)
-        if print_ref_code:
-            print 75*"-"
-            print "Reference Code:"
-            print 75*"-"
-            print get_highlighted_code(ref_compiled.code)
-            print 75*"-"
 
         ref_queue.finish()
         ref_start = time()
@@ -799,13 +811,15 @@ def auto_test_vs_ref(
 
     args = None
     for i, kernel in enumerate(kernel_gen):
-        if args is None:
-            args = make_args(queue, kernel, arg_descriptors, parameters,
-                    fill_value=fill_value)
-        args["out_host"] = False
-
         compiled = CompiledKernel(ctx, kernel, options=options,
                 codegen_kwargs=codegen_kwargs)
+
+        if args is None:
+            cl_kernel_info = compiled.cl_kernel_info(frozenset())
+
+            args = make_args(kernel, cl_kernel_info.cl_arg_info,
+                    queue, ref_arg_data, parameters, fill_value=fill_value)
+        args["out_host"] = False
 
         print 75*"-"
         print "Kernel #%d:" % i
@@ -823,7 +837,7 @@ def auto_test_vs_ref(
                 compiled(queue, code_op=code_op, **args)
 
             if need_check and not AUTO_TEST_SKIP_RUN:
-                for arg_desc in arg_descriptors:
+                for arg_desc in ref_arg_data:
                     if arg_desc is None:
                         continue
                     if not arg_desc.needs_checking:
