@@ -23,39 +23,15 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
-import numpy.linalg as la
 import pyopencl as cl
 import pyopencl.array as cl_array
 import loopy as lp
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
+from pyopencl.tools import (  # noqa
+        pytest_generate_tests_for_pyopencl
+        as pytest_generate_tests)
 
-
-
-
-def make_well_conditioned_dev_matrix(queue, shape, dtype=np.float32, 
-        order="C", ran_factor=1, id_factor=5, inc_factor=0, od=0):
-    if isinstance(shape, int):
-        shape = (shape, shape)
-    l = max(shape)
-    eye_ish = id_factor*np.eye(l, k=od)
-    if inc_factor:
-        eye_ish[np.arange(l), np.arange(l)] = inc_factor*np.arange(l)
-    ary = np.asarray(
-        ran_factor*np.random.randn(*shape)
-        + eye_ish[:shape[0], :shape[1]],
-        dtype=dtype, order=order)
-
-    return cl_array.to_device(queue, ary)
-
-
-
-
-DO_CHECK = True
 
 DEBUG_PREAMBLE = r"""
     #pragma OPENCL EXTENSION cl_amd_printf: enable
@@ -64,41 +40,8 @@ DEBUG_PREAMBLE = r"""
     #define IFDIAG if (MY_I == MY_J)
     #define TST(S) if (MY_J == 144 && MY_I == 16-48) \
             for (int aa = 0; aa < 16: ++ab) \
-                for (int bb = 0; bb < 16: ++bb) 
+                for (int bb = 0; bb < 16: ++bb)
     """
-
-
-
-
-def check_error(refsol, sol):
-    if not DO_CHECK:
-        return
-
-    if sol.shape == 2:
-        norm_order = "fro"
-    else:
-        norm_order = 2
-
-    rel_err = la.norm(refsol-sol, norm_order)/la.norm(refsol, norm_order)
-    if rel_err > 1e-5 or np.isinf(rel_err) or np.isnan(rel_err):
-        if 1:
-            import matplotlib.pyplot as pt
-            pt.imshow(refsol-sol, interpolation="nearest")
-            pt.colorbar()
-            pt.show()
-        elif 0:
-            print "---------------------------"
-            print "ACTUAL"
-            print "---------------------------"
-            np.set_printoptions(threshold=1000000, linewidth=200)
-            print sol[:16,:16]
-            print "---------------------------"
-            print "CORRECT"
-            print "---------------------------"
-            print refsol[:16,:16]
-        raise RuntimeError("check failed, rel err=%g" % rel_err)
-
-
 
 
 def get_suitable_size(ctx):
@@ -109,11 +52,11 @@ def get_suitable_size(ctx):
         return 1600
 
 
-
-
 def check_float4(result, ref_result):
     for comp in ["x", "y", "z", "w"]:
-        return np.allclose(ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
+        return np.allclose(
+                ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
+
 
 def test_axpy(ctx_factory):
     ctx = ctx_factory()
@@ -155,8 +98,10 @@ def test_axpy(ctx_factory):
         def variant_gpu(knl):
             unroll = 4
             block_size = 256
-            knl = lp.split_iname(knl, "i", unroll*block_size, outer_tag="g.0", slabs=(0, 1))
-            knl = lp.split_iname(knl, "i_inner", block_size, outer_tag="unr", inner_tag="l.0")
+            knl = lp.split_iname(knl, "i", unroll*block_size,
+                    outer_tag="g.0", slabs=(0, 1))
+            knl = lp.split_iname(knl, "i_inner", block_size,
+                    outer_tag="unr", inner_tag="l.0")
             return knl
 
         for variant in [variant_cpu, variant_gpu]:
@@ -168,9 +113,6 @@ def test_axpy(ctx_factory):
                     op_count=[np.dtype(dtype).itemsize*n*3/1e9],
                     op_label=["GBytes"],
                     parameters={"a": a, "b": b, "n": n}, check_result=check)
-
-
-
 
 
 def test_transpose(ctx_factory):
@@ -205,8 +147,6 @@ def test_transpose(ctx_factory):
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=[dtype.itemsize*n**2*2/1e9], op_label=["GByte"],
             parameters={})
-
-
 
 
 def test_plain_matrix_mul(ctx_factory):
@@ -249,9 +189,6 @@ def test_plain_matrix_mul(ctx_factory):
                 parameters={"n": n}, check_result=check)
 
 
-
-
-
 def test_variable_size_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
@@ -289,9 +226,6 @@ def test_variable_size_matrix_mul(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={"n": n})
-
-
-
 
 
 def test_rank_one(ctx_factory):
@@ -374,8 +308,6 @@ def test_rank_one(ctx_factory):
                 parameters={"n": n})
 
 
-
-
 def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
@@ -416,8 +348,6 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
             parameters={})
 
 
-
-
 def test_intel_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
@@ -455,7 +385,8 @@ def test_intel_matrix_mul(ctx_factory):
 
     # FIXME: Grouped prefetch
     #knl = lp.add_prefetch(knl, 'a', ["k_inner", ("i_inner_inner", "i_inner_outer")])
-    #knl = lp.add_prefetch(knl, 'b', ["k_inner", ("j_inner_inner", "j_inner_outer"),])
+    #knl = lp.add_prefetch(knl, 'b',
+    # ["k_inner", ("j_inner_inner", "j_inner_outer"),])
 
     kernel_gen = lp.generate_loop_schedules(knl)
     #hints=["k_outer", "k_inner_outer", "k_inner_inner"]
@@ -464,9 +395,6 @@ def test_intel_matrix_mul(ctx_factory):
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
-
-
-
 
 
 def test_magma_fermi_matrix_mul(ctx_factory):
@@ -495,7 +423,6 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     i_chunks = 16
     j_chunks = 16
 
-
     knl = lp.split_iname(knl, "i", i_reg*i_chunks, outer_tag="g.0")
     knl = lp.split_iname(knl, "i_inner", i_reg, outer_tag="l.0", inner_tag="ilp")
     knl = lp.split_iname(knl, "j", j_reg*j_chunks, outer_tag="g.1")
@@ -504,7 +431,8 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "k_inner", 8, outer_tag="unr")
     # FIXME
     #knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"])
-    #knl = lp.add_prefetch(knl, 'b', ["k_inner", ("j_inner_inner", "j_inner_outer"),])
+    #knl = lp.add_prefetch(knl, 'b',
+    #    ["k_inner", ("j_inner_inner", "j_inner_outer"),])
 
     kernel_gen = lp.generate_loop_schedules(knl)
     kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
@@ -512,9 +440,6 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
-
-
-
 
 
 def test_image_matrix_mul(ctx_factory):
@@ -553,7 +478,6 @@ def test_image_matrix_mul(ctx_factory):
             parameters={})
 
 
-
 def test_image_matrix_mul_ilp(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
@@ -579,7 +503,8 @@ def test_image_matrix_mul_ilp(ctx_factory):
     knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.1")
     j_inner_split = 4
     knl = lp.split_iname(knl, "j", ilp*j_inner_split, outer_tag="g.1")
-    knl = lp.split_iname(knl, "j_inner", j_inner_split, outer_tag="ilp", inner_tag="l.0")
+    knl = lp.split_iname(knl, "j_inner", j_inner_split,
+            outer_tag="ilp", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 2)
     # conflict-free?
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
@@ -591,7 +516,6 @@ def test_image_matrix_mul_ilp(ctx_factory):
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
-
 
 
 def test_ilp_race_matmul(ctx_factory):
@@ -623,9 +547,6 @@ def test_ilp_race_matmul(ctx_factory):
         list(lp.generate_loop_schedules(knl))
 
 
-
-
-
 def test_fancy_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
@@ -650,7 +571,7 @@ def test_fancy_matrix_mul(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_iname(knl, "k", 16, slabs=(0,1))
+    knl = lp.split_iname(knl, "k", 16, slabs=(0, 1))
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
 
@@ -660,9 +581,6 @@ def test_fancy_matrix_mul(ctx_factory):
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters=dict(n=n))
-
-
-
 
 
 def test_small_batched_matvec(ctx_factory):
@@ -700,8 +618,6 @@ def test_small_batched_matvec(ctx_factory):
     lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
             op_count=[K*2*Np**2/1e9], op_label=["GFlops"],
             parameters=dict(K=K))
-
-
 
 
 if __name__ == "__main__":
