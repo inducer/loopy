@@ -658,7 +658,7 @@ class ArrayBase(Record):
 
                 for i in xrange(shape_i):
                     for res in gen_decls(name_suffix + "_s%d" % i,
-                            shape, dtype,
+                            shape, strides, dtype,
                             user_index + (i,)):
                         yield res
 

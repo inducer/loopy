@@ -30,7 +30,70 @@ import numpy as np
 
 from pytools import Record, memoize_method
 
-AUTO_TEST_SKIP_RUN = False
+
+# {{{ domain parameter finder
+
+class DomainParameterFinder(object):
+    """Finds parameters from shapes of passed arguments."""
+
+    def __init__(self, kernel, cl_arg_info):
+        # a mapping from parameter names to a list of tuples
+        # (arg_name, axis_nr, function), where function is a
+        # unary function of kernel.arg_dict[arg_name].shape[axis_nr]
+        # returning the desired parameter.
+        self.param_to_sources = param_to_sources = {}
+
+        param_names = kernel.all_params()
+
+        from loopy.kernel.data import GlobalArg
+        from loopy.symbolic import DependencyMapper
+        from pymbolic import compile
+        dep_map = DependencyMapper()
+
+        from pymbolic import var
+        for arg in cl_arg_info:
+            if arg.arg_class is GlobalArg:
+                for axis_nr, shape_i in enumerate(arg.shape):
+                    deps = dep_map(shape_i)
+                    if len(deps) == 1:
+                        dep, = deps
+
+                        if dep.name in param_names:
+                            from pymbolic.algorithm import solve_affine_equations_for
+                            try:
+                                # friggin' overkill :)
+                                param_expr = solve_affine_equations_for(
+                                        [dep.name], [(shape_i, var("shape_i"))]
+                                        )[dep.name]
+                            except:
+                                # went wrong? oh well
+                                pass
+                            else:
+                                param_func = compile(param_expr, ["shape_i"])
+                                param_to_sources.setdefault(dep.name, []).append(
+                                        (arg.name, axis_nr, param_func))
+
+    def __call__(self, kwargs):
+        result = {}
+
+        for param_name, sources in self.param_to_sources.iteritems():
+            if param_name not in kwargs:
+                for arg_name, axis_nr, shape_func in sources:
+                    if arg_name in kwargs:
+                        try:
+                            shape_axis = kwargs[arg_name].shape[axis_nr]
+                        except IndexError:
+                            raise RuntimeError("Argument '%s' has unexpected shape. "
+                                    "Tried to access axis %d (0-based), only %d "
+                                    "axes present." %
+                                    (arg_name, axis_nr, len(kwargs[arg_name].shape)))
+
+                        result[param_name] = shape_func(shape_axis)
+                        continue
+
+        return result
+
+# }}}
 
 
 # {{{ argument checking
@@ -201,7 +264,8 @@ class CompiledKernel:
 
         return kernel_info.copy(
                 cl_kernel=cl_kernel,
-                cl_arg_info=cl_arg_info)
+                cl_arg_info=cl_arg_info,
+                domain_parameter_finder=DomainParameterFinder(kernel, cl_arg_info))
 
     # {{{ debugging aids
 
@@ -271,7 +335,7 @@ class CompiledKernel:
         # }}}
 
         kwargs.update(
-                kernel.domain_parameter_finder()(kwargs))
+                kernel_info.domain_parameter_finder(kwargs))
 
         domain_parameters = dict((name, int(kwargs[name]))
                 for name in kernel.scalar_loop_args)
@@ -404,529 +468,5 @@ def get_highlighted_code(text):
 
         return highlight(text, CLexer(), TerminalFormatter())
 
-
-# {{{ automatic testing
-
-def fill_rand(ary):
-    from pyopencl.clrandom import fill_rand
-    if ary.dtype.kind == "c":
-        real_dtype = ary.dtype.type(0).real.dtype
-        real_ary = ary.view(real_dtype)
-
-        fill_rand(real_ary, luxury=0)
-    else:
-        fill_rand(ary, luxury=0)
-
-
-class TestArgInfo(Record):
-    pass
-
-
-def make_ref_args(kernel, cl_arg_info, queue, parameters, fill_value):
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
-
-    from pymbolic import evaluate
-
-    ref_args = {}
-    ref_arg_data = []
-
-    for arg in cl_arg_info:
-        if arg.arg_class is ValueArg:
-            if arg.offset_for_name:
-                continue
-
-            arg_value = parameters[arg.name]
-
-            try:
-                argv_dtype = arg_value.dtype
-            except AttributeError:
-                argv_dtype = None
-
-            if argv_dtype != arg.dtype:
-                arg_value = arg.dtype.type(arg_value)
-
-            ref_args[arg.name] = arg_value
-
-            ref_arg_data.append(None)
-
-        elif arg.arg_class is GlobalArg or arg.arg_class is ImageArg:
-            if arg.shape is None:
-                raise ValueError("arrays need known shape to use automatic "
-                        "testing")
-
-            shape = evaluate(arg.shape, parameters)
-
-            is_output = arg.base_name in kernel.get_written_variables()
-
-            if arg.arg_class is ImageArg:
-                storage_array = ary = cl_array.empty(
-                        queue, shape, arg.dtype, order="C")
-                numpy_strides = None
-                alloc_size = None
-                strides = None
-            else:
-                strides = evaluate(arg.strides, parameters)
-
-                from pytools import all
-                assert all(s > 0 for s in strides)
-                alloc_size = sum(astrd*(alen-1)
-                        for alen, astrd in zip(shape, strides)) + 1
-
-                dtype = arg.dtype
-                if dtype is None:
-                    raise RuntimeError("dtype for argument '%s' is not yet "
-                            "known. Perhaps you want to use "
-                            "loopy.add_argument_dtypes "
-                            "or loopy.infer_argument_dtypes?"
-                            % arg.name)
-
-                itemsize = dtype.itemsize
-                numpy_strides = [itemsize*s for s in strides]
-
-                storage_array = cl_array.empty(queue, alloc_size, dtype)
-                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
-
-            if is_output:
-                if arg.arg_class is ImageArg:
-                    raise RuntimeError("write-mode images not supported in "
-                            "automatic testing")
-
-                if dtype.isbuiltin:
-                    storage_array.fill(fill_value)
-                else:
-                    from warnings import warn
-                    warn("Cannot pre-fill array of dtype '%s'" % dtype)
-
-                ref_args[arg.name] = ary
-            else:
-                fill_rand(storage_array)
-                if arg.arg_class is ImageArg:
-                    # must be contiguous
-                    ref_args[arg.name] = cl.image_from_array(
-                            queue.context, ary.get())
-                else:
-                    ref_args[arg.name] = ary
-
-            ref_arg_data.append(
-                    TestArgInfo(
-                        name=arg.name,
-                        ref_array=ary,
-                        ref_storage_array=storage_array,
-                        ref_shape=shape,
-                        ref_strides=strides,
-                        ref_alloc_size=alloc_size,
-                        ref_numpy_strides=numpy_strides,
-                        needs_checking=is_output))
-        else:
-            raise RuntimeError("arg type not understood")
-
-    return ref_args, ref_arg_data
-
-
-def make_args(kernel, cl_arg_info, queue, ref_arg_data, parameters,
-        fill_value):
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
-
-    from pymbolic import evaluate
-
-    args = {}
-    for arg, arg_desc in zip(cl_arg_info, ref_arg_data):
-        if arg.arg_class is ValueArg:
-            arg_value = parameters[arg.name]
-
-            try:
-                argv_dtype = arg_value.dtype
-            except AttributeError:
-                argv_dtype = None
-
-            if argv_dtype != arg.dtype:
-                arg_value = arg.dtype.type(arg_value)
-
-            args[arg.name] = arg_value
-
-        elif arg.arg_class is ImageArg:
-            if arg.name in kernel.get_written_variables():
-                raise NotImplementedError("write-mode images not supported in "
-                        "automatic testing")
-
-            shape = evaluate(arg.shape, parameters)
-            assert shape == arg_desc.ref_shape
-
-            # must be contiguous
-            args[arg.name] = cl.image_from_array(
-                    queue.context, arg_desc.ref_array.get())
-
-        elif arg.arg_class is GlobalArg:
-            shape = evaluate(arg.shape, parameters)
-            strides = evaluate(arg.strides, parameters)
-
-            itemsize = arg.dtype.itemsize
-            numpy_strides = [itemsize*s for s in strides]
-
-            assert all(s > 0 for s in strides)
-            alloc_size = sum(astrd*(alen-1)
-                    for alen, astrd in zip(shape, strides)) + 1
-
-            if arg.base_name in kernel.get_written_variables():
-                storage_array = cl_array.empty(queue, alloc_size, arg.dtype)
-                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
-
-                if arg.dtype.isbuiltin:
-                    storage_array.fill(fill_value)
-                else:
-                    from warnings import warn
-                    warn("Cannot pre-fill array of dtype '%s'" % arg.dtype)
-
-                args[arg.name] = ary
-            else:
-                # use contiguous array to transfer to host
-                host_ref_contig_array = arg_desc.ref_storage_array.get()
-
-                # use device shape/strides
-                from pyopencl.compyte.array import as_strided
-                host_ref_array = as_strided(host_ref_contig_array,
-                        arg_desc.ref_shape, arg_desc.ref_numpy_strides)
-
-                # flatten the thing
-                host_ref_flat_array = host_ref_array.flatten()
-
-                # create host array with test shape (but not strides)
-                host_contig_array = np.empty(shape, dtype=arg.dtype)
-
-                common_len = min(
-                        len(host_ref_flat_array),
-                        len(host_contig_array.ravel()))
-                host_contig_array.ravel()[:common_len] = \
-                        host_ref_flat_array[:common_len]
-
-                # create host array with test shape and storage layout
-                host_storage_array = np.empty(alloc_size, arg.dtype)
-                host_array = as_strided(
-                        host_storage_array, shape, numpy_strides)
-                host_array[:] = host_contig_array
-
-                host_contig_array = arg_desc.ref_storage_array.get()
-                storage_array = cl_array.to_device(queue, host_storage_array)
-                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
-
-                args[arg.name] = ary
-
-            arg_desc.test_storage_array = storage_array
-            arg_desc.test_array = ary
-            arg_desc.test_shape = shape
-            arg_desc.test_strides = strides
-            arg_desc.test_numpy_strides = numpy_strides
-            arg_desc.test_alloc_size = alloc_size
-
-        else:
-            raise RuntimeError("arg type not understood")
-
-    return args
-
-
-def _default_check_result(result, ref_result):
-    if not np.allclose(ref_result, result, rtol=1e-3, atol=1e-3):
-        l2_err = (
-                np.sum(np.abs(ref_result-result)**2)
-                /
-                np.sum(np.abs(ref_result)**2))
-        linf_err = (
-                np.max(np.abs(ref_result-result))
-                /
-                np.max(np.abs(ref_result-result)))
-        return (False,
-                "results do not match(rel) l_2 err: %g, l_inf err: %g"
-                % (l2_err, linf_err))
-    else:
-        return True, None
-
-
-def _enumerate_cl_devices_for_ref_test():
-    noncpu_devs = []
-    cpu_devs = []
-
-    from warnings import warn
-
-    for pf in cl.get_platforms():
-        if pf.name == "Portable OpenCL":
-            # That implementation [1] isn't quite good enough yet.
-            # [1] https://launchpad.net/pocl
-            # FIXME remove when no longer true.
-            warn("Skipping 'Portable OpenCL' for lack of maturity.")
-            continue
-
-        for dev in pf.get_devices():
-            if dev.type == cl.device_type.CPU:
-                cpu_devs.append(dev)
-            else:
-                noncpu_devs.append(dev)
-
-    if not (cpu_devs or noncpu_devs):
-        raise RuntimeError("no CL device found for test")
-
-    if not cpu_devs:
-        warn("No CPU device found for reference test. The reference "
-                "computation will either fail because of a timeout "
-                "or take a *very* long time.")
-
-    for dev in cpu_devs:
-        yield dev
-
-    for dev in noncpu_devs:
-        yield dev
-
-
-def auto_test_vs_ref(
-        ref_knl, ctx, kernel_gen, op_count=[], op_label=[], parameters={},
-        print_ref_code=False, print_code=True, warmup_rounds=2,
-        code_op=None, dump_binary=False, codegen_kwargs={},
-        options=[],
-        fills_entire_output=True, do_check=True, check_result=None
-        ):
-    """Compare results of `ref_knl` to the kernels generated by the generator
-    `kernel_gen`.
-
-    :arg check_result: a callable with :class:`numpy.ndarray` arguments
-        *(result, reference_result)* returning a a tuple (class:`bool`,
-        message) indicating correctness/acceptability of the result
-    """
-
-    if isinstance(op_count, (int, float)):
-        from warnings import warn
-        warn("op_count should be a list", stacklevel=2)
-        op_count = [op_count]
-    if isinstance(op_label, str):
-        from warnings import warn
-        warn("op_label should be a list", stacklevel=2)
-        op_label = [op_label]
-
-    read_and_written_args = (
-            ref_knl.get_read_variables()
-            & ref_knl.get_written_variables()
-            & set(ref_knl.arg_dict))
-
-    if read_and_written_args:
-        # FIXME: In principle, that's possible to test
-        raise RuntimeError("kernel reads *and* writes argument(s) '%s' "
-                "and therefore cannot be automatically tested"
-                % ", ".join(read_and_written_args))
-
-    from time import time
-
-    if check_result is None:
-        check_result = _default_check_result
-
-    if fills_entire_output:
-        fill_value_ref = -17
-        fill_value = -18
-    else:
-        fill_value_ref = -17
-        fill_value = fill_value_ref
-
-    # {{{ compile and run reference code
-
-    found_ref_device = False
-
-    ref_errors = []
-
-    for dev in _enumerate_cl_devices_for_ref_test():
-        ref_ctx = cl.Context([dev])
-        ref_queue = cl.CommandQueue(ref_ctx,
-                properties=cl.command_queue_properties.PROFILING_ENABLE)
-
-        import loopy as lp
-        ref_kernel_gen = lp.generate_loop_schedules(ref_knl)
-        for knl in lp.check_kernels(ref_kernel_gen, parameters):
-            ref_sched_kernel = knl
-            break
-
-        ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel,
-                options=options, codegen_kwargs=codegen_kwargs)
-        if print_ref_code:
-            print 75*"-"
-            print "Reference Code:"
-            print 75*"-"
-            print get_highlighted_code(ref_compiled.code)
-            print 75*"-"
-
-        ref_cl_kernel_info = ref_compiled.cl_kernel_info(frozenset())
-
-        try:
-            ref_args, ref_arg_data = \
-                    make_ref_args(ref_sched_kernel, ref_cl_kernel_info.cl_arg_info,
-                            ref_queue, parameters,
-                            fill_value=fill_value_ref)
-            ref_args["out_host"] = False
-        except cl.RuntimeError, e:
-            if e.code == cl.status_code.IMAGE_FORMAT_NOT_SUPPORTED:
-                import traceback
-                ref_errors.append("\n".join([
-                    75*"-",
-                    "On %s:" % dev,
-                    75*"-",
-                    traceback.format_exc(),
-                    75*"-"]))
-
-                continue
-            else:
-                raise
-
-        found_ref_device = True
-
-        if not do_check:
-            break
-
-        ref_queue.finish()
-        ref_start = time()
-
-        print "using %s for the reference calculation" % dev
-
-        if not AUTO_TEST_SKIP_RUN:
-            ref_evt, _ = ref_compiled(ref_queue, **ref_args)
-        else:
-            ref_evt = cl.enqueue_marker(ref_queue)
-
-        ref_queue.finish()
-        ref_stop = time()
-        ref_elapsed_wall = ref_stop-ref_start
-
-        ref_evt.wait()
-        ref_elapsed = 1e-9*(ref_evt.profile.END-ref_evt.profile.SUBMIT)
-
-        break
-
-    if not found_ref_device:
-        raise RuntimeError("could not find a suitable device for the "
-                "reference computation.\n"
-                "These errors were encountered:\n"+"\n".join(ref_errors))
-
-    # }}}
-
-    # {{{ compile and run parallel code
-
-    need_check = do_check
-
-    queue = cl.CommandQueue(ctx,
-            properties=cl.command_queue_properties.PROFILING_ENABLE)
-
-    args = None
-    for i, kernel in enumerate(kernel_gen):
-        compiled = CompiledKernel(ctx, kernel, options=options,
-                codegen_kwargs=codegen_kwargs)
-
-        if args is None:
-            cl_kernel_info = compiled.cl_kernel_info(frozenset())
-
-            args = make_args(kernel, cl_kernel_info.cl_arg_info,
-                    queue, ref_arg_data, parameters, fill_value=fill_value)
-        args["out_host"] = False
-
-        print 75*"-"
-        print "Kernel #%d:" % i
-        print 75*"-"
-        if print_code:
-            print compiled.get_highlighted_code()
-            print 75*"-"
-        if dump_binary:
-            print type(compiled.cl_program)
-            print compiled.cl_program.binaries[0]
-            print 75*"-"
-
-        for i in range(warmup_rounds):
-            if not AUTO_TEST_SKIP_RUN:
-                compiled(queue, code_op=code_op, **args)
-
-            if need_check and not AUTO_TEST_SKIP_RUN:
-                for arg_desc in ref_arg_data:
-                    if arg_desc is None:
-                        continue
-                    if not arg_desc.needs_checking:
-                        continue
-
-                    from pyopencl.compyte.array import as_strided
-                    ref_ary = as_strided(
-                            arg_desc.ref_storage_array.get(),
-                            shape=arg_desc.ref_shape,
-                            strides=arg_desc.ref_numpy_strides).flatten()
-                    test_ary = as_strided(
-                            arg_desc.test_storage_array.get(),
-                            shape=arg_desc.test_shape,
-                            strides=arg_desc.test_numpy_strides).flatten()
-                    common_len = min(len(ref_ary), len(test_ary))
-                    ref_ary = ref_ary[:common_len]
-                    test_ary = test_ary[:common_len]
-
-                    error_is_small, error = check_result(test_ary, ref_ary)
-                    assert error_is_small, error
-                    need_check = False
-
-        events = []
-        queue.finish()
-
-        timing_rounds = warmup_rounds
-
-        while True:
-            from time import time
-            start_time = time()
-
-            evt_start = cl.enqueue_marker(queue)
-
-            for i in range(timing_rounds):
-                if not AUTO_TEST_SKIP_RUN:
-                    evt, _ = compiled(queue, code_op=code_op, **args)
-                    events.append(evt)
-                else:
-                    events.append(cl.enqueue_marker(queue))
-
-            evt_end = cl.enqueue_marker(queue)
-
-            queue.finish()
-            stop_time = time()
-
-            for evt in events:
-                evt.wait()
-            evt_start.wait()
-            evt_end.wait()
-
-            elapsed = (1e-9*events[-1].profile.END
-                    - 1e-9*events[0].profile.SUBMIT) \
-                    / timing_rounds
-            try:
-                elapsed_evt_2 = "%g" % \
-                        ((1e-9*evt_end.profile.START
-                            - 1e-9*evt_start.profile.START)
-                        / timing_rounds)
-            except cl.RuntimeError:
-                elapsed_evt_2 = "<unavailable>"
-
-            elapsed_wall = (stop_time-start_time)/timing_rounds
-
-            if elapsed_wall * timing_rounds < 0.3:
-                timing_rounds *= 4
-            else:
-                break
-
-        rates = ""
-        for cnt, lbl in zip(op_count, op_label):
-            rates += " %g %s/s" % (cnt/elapsed_wall, lbl)
-
-        print("elapsed: %g s event, %s s marker-event %g s wall "
-                "(%d rounds)%s" % (
-                elapsed, elapsed_evt_2, elapsed_wall, timing_rounds, rates))
-
-        if do_check:
-            ref_rates = ""
-            for cnt, lbl in zip(op_count, op_label):
-                ref_rates += " %g %s/s" % (cnt/ref_elapsed, lbl)
-            print "ref: elapsed: %g s event, %g s wall%s" % (
-                    ref_elapsed, ref_elapsed_wall, ref_rates)
-
-    # }}}
-
-from pytools import MovedFunctionDeprecationWrapper
-
-auto_test_vs_seq = MovedFunctionDeprecationWrapper(auto_test_vs_ref)
-
-# }}}
 
 # vim: foldmethod=marker
