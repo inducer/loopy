@@ -23,13 +23,9 @@ THE SOFTWARE.
 """
 
 
-
-
 from pytools import Record
 import sys
 import islpy as isl
-
-
 
 
 # {{{ schedule items
@@ -37,16 +33,20 @@ import islpy as isl
 class EnterLoop(Record):
     __slots__ = ["iname"]
 
+
 class LeaveLoop(Record):
     __slots__ = ["iname"]
 
+
 class RunInstruction(Record):
     __slots__ = ["insn_id"]
+
 
 class Barrier(Record):
     __slots__ = ["comment"]
 
 # }}}
+
 
 # {{{ schedule utilities
 
@@ -67,8 +67,6 @@ def gather_schedule_subloop(schedule, start_idx):
         i += 1
 
     assert False
-
-
 
 
 def get_barrier_needing_dependency(kernel, target, source, unordered=False):
@@ -106,10 +104,6 @@ def get_barrier_needing_dependency(kernel, target, source, unordered=False):
     return None
 
 
-
-
-
-
 def get_barrier_dependent_in_schedule(kernel, source, schedule,
         unordered):
     """
@@ -126,8 +120,6 @@ def get_barrier_dependent_in_schedule(kernel, source, schedule,
             return
 
 
-
-
 def find_active_inames_at(kernel, sched_index):
     active_inames = []
 
@@ -139,8 +131,6 @@ def find_active_inames_at(kernel, sched_index):
             active_inames.pop()
 
     return set(active_inames)
-
-
 
 
 def has_barrier_within(kernel, sched_index):
@@ -156,8 +146,6 @@ def has_barrier_within(kernel, sched_index):
         return True
     else:
         return False
-
-
 
 
 def find_used_inames_within(kernel, sched_index):
@@ -179,8 +167,6 @@ def find_used_inames_within(kernel, sched_index):
         result.update(kernel.insn_inames(sched_item.insn_id))
 
     return result
-
-
 
 
 def loop_nest_map(kernel):
@@ -223,6 +209,7 @@ def loop_nest_map(kernel):
 
 # }}}
 
+
 # {{{ debug help
 
 def dump_schedule(schedule):
@@ -241,6 +228,7 @@ def dump_schedule(schedule):
 
     return " ".join(entries)
 
+
 class ScheduleDebugger:
     def __init__(self, debug_length=None, interactive=True):
         self.longest_rejected_schedule = []
@@ -256,7 +244,8 @@ class ScheduleDebugger:
         self.update()
 
     def update(self):
-        if ((self.success_counter + self.dead_end_counter) % 50 == 0
+        if (
+                (self.success_counter + self.dead_end_counter) % 50 == 0
                 and self.elapsed_time() > 10
                 ):
             sys.stdout.write("\rscheduling... %d successes, "
@@ -299,10 +288,12 @@ class ScheduleDebugger:
         self.start_time = time()
 # }}}
 
+
 # {{{ scheduling algorithm
 
 class SchedulerState(Record):
     pass
+
 
 def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         allow_boost=False, allow_insn=False, debug=None):
@@ -340,7 +331,6 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         last_entered_loop = None
     active_inames_set = set(active_inames)
 
-
     # }}}
 
     # {{{ decide about debug mode
@@ -361,7 +351,8 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         print 75*"="
         print "CURRENT SCHEDULE:"
         print "%s (length: %d)" % (dump_schedule(schedule), len(schedule))
-        print "(LEGEND: entry: <iname>, exit: </iname>, instructions w/ no delimiters)"
+        print("(LEGEND: entry: <iname>, exit: </iname>, instructions "
+                "w/ no delimiters)")
         #print "boost allowed:", allow_boost
         print 75*"="
         print "LOOP NEST MAP:"
@@ -447,7 +438,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
     # {{{ see if we're ready to leave the innermost loop
 
-    if  last_entered_loop is not None:
+    if last_entered_loop is not None:
         can_leave = True
 
         if last_entered_loop not in sched_state.breakable_inames:
@@ -475,7 +466,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
                 if isinstance(sched_item, RunInstruction):
                     seen_an_insn = True
                 elif isinstance(sched_item, LeaveLoop):
-                    ignore_count +=1
+                    ignore_count += 1
                 elif isinstance(sched_item, EnterLoop):
                     if ignore_count:
                         ignore_count -= 1
@@ -527,7 +518,8 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
             # {{{ check if scheduling this iname now is allowed/plausible
 
-            currently_accessible_inames = active_inames_set | sched_state.parallel_inames
+            currently_accessible_inames = (
+                    active_inames_set | sched_state.parallel_inames)
             if not sched_state.loop_nest_map[iname] <= currently_accessible_inames:
                 if debug_mode:
                     print "scheduling %s prohibited by loop nest map" % iname
@@ -535,7 +527,8 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
             from islpy import dim_type
-            iname_home_domain_params = set(iname_home_domain.get_var_names(dim_type.param))
+            iname_home_domain_params = set(
+                    iname_home_domain.get_var_names(dim_type.param))
 
             # The previous check should have ensured this is true, because
             # the loop_nest_map takes the domain dependency graph into
@@ -563,7 +556,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
             # {{{ determine if that gets us closer to being able to schedule an insn
 
-            usefulness = None # highest insn priority enabled by iname
+            usefulness = None  # highest insn priority enabled by iname
 
             hypothetically_active_loops = active_inames_set | set([iname])
             for insn_id in reachable_insn_ids:
@@ -671,6 +664,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
                 debug.log_dead_end(schedule)
 
 # }}}
+
 
 # {{{ barrier insertion
 
@@ -785,6 +779,7 @@ def insert_barriers(kernel, schedule, level=0):
 
 # }}}
 
+
 # {{{ main scheduling entrypoint
 
 def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
@@ -829,7 +824,8 @@ def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
                 warn("Barrier insertion finished without inserting barriers for "
                         "local memory writes in these instructions: '%s'. "
                         "This often means that local memory was "
-                        "written, but never read." % ",".join(owed_barriers), LoopyAdvisory)
+                        "written, but never read."
+                        % ",".join(owed_barriers), LoopyAdvisory)
 
             debug.stop()
             yield kernel.copy(schedule=gen_sched)
