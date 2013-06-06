@@ -23,13 +23,9 @@ THE SOFTWARE.
 """
 
 
-
-
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
-
-
 
 
 # {{{ sanity checks run during scheduling
@@ -74,9 +70,6 @@ def check_for_unused_hw_axes_in_insns(kernel):
                         ",".join(str(i) for i in local_axes_used)))
 
 
-
-
-
 def check_for_double_use_of_hw_axes(kernel):
     from loopy.kernel.data import UniqueTag
 
@@ -91,8 +84,6 @@ def check_for_double_use_of_hw_axes(kernel):
                             "inames tagged '%s'" % (insn.id, tag))
 
                 insn_tag_keys.add(key)
-
-
 
 
 def check_for_inactive_iname_access(kernel):
@@ -110,10 +101,9 @@ def check_for_inactive_iname_access(kernel):
                     % insn.id)
 
 
-
-
 class WriteRaceConditionError(RuntimeError):
     pass
+
 
 def check_for_write_races(kernel):
     from loopy.symbolic import DependencyMapper
@@ -150,14 +140,14 @@ def check_for_write_races(kernel):
 
         elif assignee_name in kernel.temporary_variables:
             temp_var = kernel.temporary_variables[assignee_name]
-            if temp_var.is_local == True:
+            if temp_var.is_local is True:
                 raceable_parallel_insn_inames = set(
                         iname
                         for iname in kernel.insn_inames(insn)
                         if isinstance(iname_to_tag(iname), ParallelTag)
                         and not isinstance(iname_to_tag(iname), GroupIndexTag))
 
-            elif temp_var.is_local == False:
+            elif temp_var.is_local is False:
                 raceable_parallel_insn_inames = set(
                         iname
                         for iname in kernel.insn_inames(insn)
@@ -185,6 +175,7 @@ def check_for_write_races(kernel):
                     "is/are not referenced in the lhs index"
                     % (insn.id, ",".join(race_inames)))
 
+
 def check_for_orphaned_user_hardware_axes(kernel):
     from loopy.kernel.data import LocalIndexTag
     for axis in kernel.local_sizes:
@@ -197,6 +188,7 @@ def check_for_orphaned_user_hardware_axes(kernel):
         if not found:
             raise RuntimeError("user-requested local hardware axis %d "
                     "has no iname mapped to it" % axis)
+
 
 def check_for_data_dependent_parallel_bounds(kernel):
     from loopy.kernel.data import ParallelTag
@@ -293,6 +285,7 @@ def check_bounds(kernel):
         acm(insn.expression)
         acm(insn.assignee)
 
+
 def check_write_destinations(kernel):
     for insn in kernel.instructions:
         wvar = insn.get_assignee_var_name()
@@ -318,6 +311,7 @@ def check_write_destinations(kernel):
 
 # }}}
 
+
 def run_automatic_checks(kernel):
     try:
         check_for_orphaned_user_hardware_axes(kernel)
@@ -336,12 +330,13 @@ def run_automatic_checks(kernel):
         print 75*"="
         raise
 
+
 # {{{ sanity-check for implemented domains of each instruction
 
 def check_implemented_domains(kernel, implemented_domains, code=None):
     from islpy import dim_type
 
-    from islpy import align_spaces, align_two
+    from islpy import align_two
 
     for insn_id, idomains in implemented_domains.iteritems():
         insn = kernel.id_to_insn[insn_id]
@@ -352,7 +347,8 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
         for idomain in idomains[1:]:
             insn_impl_domain = insn_impl_domain | idomain
         assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
-        assumptions, insn_impl_domain = align_two(assumption_non_param, insn_impl_domain)
+        assumptions, insn_impl_domain = align_two(
+                assumption_non_param, insn_impl_domain)
         insn_impl_domain = (
                 (insn_impl_domain & assumptions)
                 .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
@@ -415,12 +411,13 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
 
 # }}}
 
+
 # {{{ user-invoked checks
 
 def get_problems(kernel, parameters):
     """
-    :return: *(max_severity, list of (severity, msg))*, where *severity* ranges from 1-5.
-        '5' means 'will certainly not run'.
+    :return: *(max_severity, list of (severity, msg))*, where *severity*
+        ranges from 1-5.  '5' means 'will certainly not run'.
     """
     msgs = []
 
@@ -472,8 +469,6 @@ def get_problems(kernel, parameters):
     for sev, msg in msgs:
         max_severity = max(sev, max_severity)
     return max_severity, msgs
-
-
 
 
 def check_kernels(kernel_gen, parameters={}, kill_level_min=5,
