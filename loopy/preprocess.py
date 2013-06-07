@@ -52,8 +52,8 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
             dtypes.append(result)
 
-        except DependencyTypeInferenceFailure:
-            logger.debug("             failed")
+        except DependencyTypeInferenceFailure, e:
+            logger.debug("             failed: %s" % e)
 
     if not dtypes:
         return None
@@ -971,32 +971,49 @@ def adjust_local_temp_var_storage(kernel):
 
 
 def preprocess_kernel(kernel):
+    logger.info("preprocess %s: start" % kernel.name)
+
     from loopy.subst import expand_subst
+    logger.debug("preprocess %s: expand subst" % kernel.name)
     kernel = expand_subst(kernel)
 
     # Ordering restriction:
     # Type inference doesn't handle substitutions. Get them out of the
     # way.
 
+    logger.debug("preprocess %s: infer types" % kernel.name)
     kernel = infer_unknown_types(kernel, expect_completion=False)
 
     # Ordering restriction:
     # realize_reduction must happen after type inference because it needs
     # to be able to determine the types of the reduced expressions.
 
+    logger.debug("preprocess %s: realize reduction" % kernel.name)
     kernel = realize_reduction(kernel)
 
     # Ordering restriction:
     # duplicate_private_temporaries_for_ilp because reduction accumulators
     # need to be duplicated by this.
 
+    logger.debug("preprocess %s: duplicate temporaries for ilp" % kernel.name)
     kernel = duplicate_private_temporaries_for_ilp(kernel)
 
+    logger.debug("preprocess %s: mark local temporaries" % kernel.name)
     kernel = mark_local_temporaries(kernel)
+
+    logger.debug("preprocess %s: assign automatic axes" % kernel.name)
     kernel = assign_automatic_axes(kernel)
+
+    logger.debug("preprocess %s: automatic deps, boostability" % kernel.name)
     kernel = add_boostability_and_automatic_dependencies(kernel)
+
+    logger.debug("preprocess %s: limit boostability" % kernel.name)
     kernel = limit_boostability(kernel)
+
+    logger.debug("preprocess %s: adjust temp var storage" % kernel.name)
     kernel = adjust_local_temp_var_storage(kernel)
+
+    logger.info("preprocess %s: done" % kernel.name)
 
     return kernel
 

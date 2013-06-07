@@ -27,6 +27,9 @@ from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # {{{ sanity checks run during scheduling
 
@@ -314,6 +317,8 @@ def check_write_destinations(kernel):
 
 def run_automatic_checks(kernel):
     try:
+        logger.info("sanity-check %s: start" % kernel.name)
+
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
         check_for_unused_hw_axes_in_insns(kernel)
@@ -322,6 +327,8 @@ def run_automatic_checks(kernel):
         check_for_data_dependent_parallel_bounds(kernel)
         check_bounds(kernel)
         check_write_destinations(kernel)
+
+        logger.info("sanity-check %s: done" % kernel.name)
     except:
         print 75*"="
         print "failing kernel after processing:"

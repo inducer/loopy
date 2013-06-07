@@ -27,6 +27,9 @@ from pytools import Record
 import sys
 import islpy as isl
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # {{{ schedule items
 
@@ -789,6 +792,8 @@ def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
     from loopy.check import run_automatic_checks
     run_automatic_checks(kernel)
 
+    logger.info("schedule %s: start" % kernel.name)
+
     schedule_count = 0
 
     debug = ScheduleDebugger(**debug_args)
@@ -863,6 +868,8 @@ def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
                 pass
 
         raise RuntimeError("no valid schedules found")
+
+    logger.info("schedule %s: done" % kernel.name)
 
 # }}}
 
