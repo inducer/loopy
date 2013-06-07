@@ -236,6 +236,12 @@ class TemporaryVariable(ArrayBase):
     min_target_axes = 0
     max_target_axes = 1
 
+    allowed_extra_kwargs = [
+            "storage_shape",
+            "base_indices",
+            "is_local"
+            ]
+
     def __init__(self, name, dtype, shape, is_local,
             dim_tags=None, offset=0, strides=None, order=None,
             base_indices=None, storage_shape=None):

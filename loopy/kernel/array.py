@@ -184,6 +184,7 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
     #
     # - target axes are implementation facing. Normal in-memory arrays have one.
     #   3D images have three.
+    import loopy as lp
 
     # {{{ pick apart arg dim tags into computed, fixed and vec
 
@@ -248,7 +249,7 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
                 new_dim_tags[i] = FixedStrideArrayDimTag(stride_so_far,
                         target_axis=dim_tag.target_axis)
 
-                if shape is None:
+                if shape is None or shape is lp.auto:
                     # unable to normalize without known shape
                     return None
 
@@ -315,6 +316,8 @@ class ArrayBase(Record):
 
     # Note that order may also wind up in attributes, if the
     # number of dimensions has not yet been determined.
+
+    allowed_extra_kwargs = []
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             strides=None, order=None, **kwargs):
@@ -384,6 +387,10 @@ class ArrayBase(Record):
               this case and will compile custom versions of the kernel based on
               whether the passed arrays have offsets or not.
         """
+
+        for kwarg_name in kwargs:
+            if kwarg_name not in self.allowed_extra_kwargs:
+                raise TypeError("invalid kwarg: %s" % kwarg_name)
 
         import loopy as lp
 
