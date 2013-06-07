@@ -42,8 +42,8 @@ setup(name="loo.py",
           ],
 
       install_requires=[
-          "pyopencl>=2013.2",
-          "pymbolic>=2013.1",
+          "pyopencl>=2013.1",
+          "pymbolic>=2013.2",
           "cgen",
           "islpy>=2013.2"
           ],
