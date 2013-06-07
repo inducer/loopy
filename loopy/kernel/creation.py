@@ -63,16 +63,28 @@ BRACE_RE = re.compile(r"\$\{([a-zA-Z0-9_]+)\}")
 def expand_defines(insn, defines, single_valued=True):
     replacements = [()]
 
+    processed_defines = set()
+
     for find_regexp, replace_pattern in [
             (BRACE_RE, r"\$\{%s\}"),
             (WORD_RE, r"\b%s\b"),
             ]:
 
         for match in find_regexp.finditer(insn):
-            word = match.group(1)
+            define_name = match.group(1)
+
+            # {{{ don't process the same define multiple times
+
+            if define_name in processed_defines:
+                # already dealt with
+                continue
+
+            processed_defines.add(define_name)
+
+            # }}}
 
             try:
-                value = defines[word]
+                value = defines[define_name]
             except KeyError:
                 continue
 
@@ -80,16 +92,16 @@ def expand_defines(insn, defines, single_valued=True):
                 if single_valued:
                     raise ValueError("multi-valued macro expansion "
                             "not allowed "
-                            "in this context (when expanding '%s')" % word)
+                            "in this context (when expanding '%s')" % define_name)
 
                 replacements = [
-                        rep+((replace_pattern % word, subval),)
+                        rep+((replace_pattern % define_name, subval),)
                         for rep in replacements
                         for subval in value
                         ]
             else:
                 replacements = [
-                        rep+((replace_pattern % word, value),)
+                        rep+((replace_pattern % define_name, value),)
                         for rep in replacements]
 
     for rep in replacements:
