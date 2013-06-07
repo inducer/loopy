@@ -144,9 +144,14 @@ def infer_unknown_types(kernel, expect_completion=False):
             logger.debug("     failure")
 
         if failed:
-            if expect_completion and item.name in failed_names:
+            if item.name in failed_names:
                 # this item has failed before, give up.
-                raise RuntimeError("could not determine type of '%s'" % item.name)
+                if expect_completion:
+                    raise RuntimeError(
+                            "could not determine type of '%s'" % item.name)
+                else:
+                    # We're done here.
+                    break
 
             # remember that this item failed
             failed_names.add(item.name)
