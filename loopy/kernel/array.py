@@ -97,9 +97,7 @@ class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
             return "%s(pad=%s)" % (self.order, self.pad_to)
 
     def map_expr(self, mapper):
-        raise TypeError("ComputedStrideArrayDimTag is a transient type only used "
-                "for construction of arrays. It should never have to map its "
-                "expressions.")
+        return self
 
 
 class SeparateArrayArrayDimTag(ArrayDimImplementationTag):
