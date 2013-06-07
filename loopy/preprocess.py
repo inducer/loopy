@@ -339,16 +339,11 @@ def realize_reduction(kernel, insn_id_filter=None):
 
     insn_queue = kernel.instructions[:]
 
+    temp_kernel = kernel
+
     while insn_queue:
         new_insn_insn_deps = set()
         generated_insns = []
-
-        # The reduction expander needs an up-to-date kernel
-        # object to find dependencies. Create one.
-
-        temp_kernel = kernel.copy(
-                instructions=new_insns + insn_queue,
-                temporary_variables=new_temporary_variables)
 
         insn = insn_queue.pop(0)
 
@@ -359,20 +354,29 @@ def realize_reduction(kernel, insn_id_filter=None):
         # Run reduction expansion.
         new_expression = cb_mapper(insn.expression)
 
-        insn = insn.copy(
-                    expression=new_expression,
-                    insn_deps=insn.insn_deps
-                        | new_insn_insn_deps,
-                    forced_iname_deps=temp_kernel.insn_inames(insn))
-
         if generated_insns:
             # An expansion happened, so insert the generated stuff plus
             # ourselves back into the queue.
 
+            insn = insn.copy(
+                        expression=new_expression,
+                        insn_deps=insn.insn_deps
+                            | new_insn_insn_deps,
+                        forced_iname_deps=temp_kernel.insn_inames(insn))
+
             insn_queue = generated_insns + [insn] + insn_queue
+
+            # The reduction expander needs an up-to-date kernel
+            # object to find dependencies. Keep temp_kernel up-to-date.
+
+            temp_kernel = kernel.copy(
+                    instructions=new_insns + insn_queue,
+                    temporary_variables=new_temporary_variables)
 
         else:
             # nothing happened, we're done with insn
+            assert not new_insn_insn_deps
+
             new_insns.append(insn)
 
     return kernel.copy(
