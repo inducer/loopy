@@ -226,6 +226,7 @@ class CLArgumentInfo(Record):
         Strides in multiples of ``dtype.itemsize``.
 
     .. attribute:: offset_for_name
+    .. attribute:: allows_offset
     .. attribute:: arg_class
     """
 
@@ -283,6 +284,7 @@ def generate_code(kernel, with_annotation=False,
                 shape=None,
                 strides=None,
                 offset_for_name=None,
+                allows_offset=None,
                 arg_class=ValueArg))
 
         else:

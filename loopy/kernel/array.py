@@ -629,6 +629,7 @@ class ArrayBase(Record):
                             shape=shape,
                             strides=strides,
                             offset_for_name=None,
+                            allows_offset=bool(self.offset),
                             arg_class=type(self)))
 
                 if self.offset:
@@ -642,6 +643,7 @@ class ArrayBase(Record):
                                 shape=None,
                                 strides=None,
                                 offset_for_name=full_name,
+                                allows_offset=None,
                                 arg_class=None))
 
                 return

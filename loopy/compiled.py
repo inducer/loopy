@@ -162,7 +162,7 @@ class DomainParameterFinder(object):
 
 def _arg_matches_spec(arg, val, other_args):
     import loopy as lp
-    if isinstance(arg, lp.GlobalArg):
+    if arg.shape is not None and arg.arg_class is not lp.ImageArg:
         from pymbolic import evaluate
 
         if arg.dtype != val.dtype:
@@ -177,13 +177,14 @@ def _arg_matches_spec(arg, val, other_args):
                         "(got: %s, expected: %s)"
                         % (arg.name, val.shape, shape))
 
-        strides = evaluate(arg.numpy_strides, other_args)
+        itemsize = arg.dtype.itemsize
+        strides = tuple(itemsize*i for i in evaluate(arg.strides, other_args))
         if strides != tuple(val.strides):
             raise ValueError("strides mismatch on argument '%s' "
                     "(got: %s, expected: %s)"
                     % (arg.name, val.strides, strides))
 
-        if val.offset != 0 and arg.offset == 0:
+        if val.offset != 0 and not arg.allows_offset:
             raise ValueError("Argument '%s' does not allow arrays "
                     "with offsets. Try passing default_offset=loopy.auto "
                     "to make_kernel()." % arg.name)
