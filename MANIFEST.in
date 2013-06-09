@@ -8,7 +8,7 @@ include doc/images/*.png
 include doc/_static/*.css
 include doc/_templates/*.html
 
-include distribute_setup.py
+include ez_setup.py
 include configure.py
 include Makefile.in
 include README.rst
