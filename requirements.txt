@@ -1,5 +1,5 @@
 numpy
-islpy>=2013.1
+git+git://github.com/inducer/islpy
 cgen
 git+git://github.com/inducer/pyopencl
 git+git://github.com/inducer/pymbolic
