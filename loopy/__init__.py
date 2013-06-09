@@ -1037,9 +1037,9 @@ def change_arg_to_image(knl, name):
 # }}}
 
 
-# {{{ tag data axis
+# {{{ tag data axes
 
-def tag_data_axis(knl, ary_name, axis, tag):
+def tag_data_axes(knl, ary_name, dim_tags):
     if ary_name in knl.temporary_variables:
         ary = knl.temporary_variables[ary_name]
     elif ary_name in knl.arg_dict:
@@ -1047,9 +1047,9 @@ def tag_data_axis(knl, ary_name, axis, tag):
     else:
         raise NameError("array '%s' was not found" % ary_name)
 
-    new_dim_tags = list(ary.dim_tags)
-    from loopy.kernel.array import parse_array_dim_tag
-    new_dim_tags[axis] = parse_array_dim_tag(tag)
+    from loopy.kernel.array import parse_array_dim_tags
+    new_dim_tags = parse_array_dim_tags(dim_tags,
+            use_increasing_target_axes=ary.max_target_axes > 1)
 
     ary = ary.copy(dim_tags=tuple(new_dim_tags))
 

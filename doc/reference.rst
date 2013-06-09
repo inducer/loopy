@@ -206,7 +206,7 @@ Influencing data access
 
 .. autofunction:: change_arg_to_image
 
-.. autofunction:: tag_data_axis
+.. autofunction:: tag_data_axes
 
 Padding
 ^^^^^^^
