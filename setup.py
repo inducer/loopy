@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: latin1 -*-
 
-import ez_setup
-ez_setup.use_setuptools()
-
 from setuptools import setup
 
 try:
