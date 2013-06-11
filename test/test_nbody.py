@@ -23,15 +23,11 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
-import pyopencl as cl
 import loopy as lp
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
-
+from pyopencl.tools import (  # noqa
+        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
 def test_nbody(ctx_factory):
@@ -46,52 +42,48 @@ def test_nbody(ctx_factory):
             "pot[i] = sum_float32(j, if(i != j, invdist, 0))",
             ],
             [
-            lp.GlobalArg("x", dtype, shape="N,3", order="C"),
-            lp.GlobalArg("pot", dtype, shape="N", order="C"),
-            lp.ValueArg("N", np.int32),
-            ],
-             name="nbody", assumptions="N>=1")
+                lp.GlobalArg("x", dtype, shape="N,3", order="C"),
+                lp.GlobalArg("pot", dtype, shape="N", order="C"),
+                lp.ValueArg("N", np.int32),
+                ],
+            name="nbody", assumptions="N>=1")
 
     seq_knl = knl
 
     def variant_1(knl):
         knl = lp.split_iname(knl, "i", 256,
                 outer_tag="g.0", inner_tag="l.0",
-                slabs=(0,1))
-        knl = lp.split_iname(knl, "j", 256, slabs=(0,1))
-        return knl, []
+                slabs=(0, 1))
+        knl = lp.split_iname(knl, "j", 256, slabs=(0, 1))
+        return knl
 
     def variant_cpu(knl):
         knl = lp.expand_subst(knl)
         knl = lp.split_iname(knl, "i", 1024,
-                outer_tag="g.0", slabs=(0,1))
+                outer_tag="g.0", slabs=(0, 1))
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
-        return knl, []
+        return knl
 
     def variant_gpu(knl):
         knl = lp.expand_subst(knl)
         knl = lp.split_iname(knl, "i", 256,
-                outer_tag="g.0", inner_tag="l.0", slabs=(0,1))
-        knl = lp.split_iname(knl, "j", 256, slabs=(0,1))
+                outer_tag="g.0", inner_tag="l.0", slabs=(0, 1))
+        knl = lp.split_iname(knl, "j", 256, slabs=(0, 1))
         knl = lp.add_prefetch(knl, "x[j,k]", ["j_inner", "k"],
                 ["x_fetch_j", "x_fetch_k"])
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
         knl = lp.tag_inames(knl, dict(x_fetch_k="unr"))
-        return knl, ["j_outer", "j_inner"]
+        knl = lp.set_loop_priority(knl, ["j_outer", "j_inner"])
+        return knl
 
     n = 3000
 
     for variant in [variant_1, variant_cpu, variant_gpu]:
-        variant_knl, loop_prio = variant(knl)
-        kernel_gen = lp.generate_loop_schedules(variant_knl,
-                loop_priority=loop_prio)
-        kernel_gen = lp.check_kernels(kernel_gen, dict(N=n))
+        variant_knl = variant(knl)
 
-        lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+        lp.auto_test_vs_ref(seq_knl, ctx, variant_knl,
                 op_count=[n**2*1e-6], op_label=["M particle pairs"],
                 parameters={"N": n})
-
-
 
 
 if __name__ == "__main__":

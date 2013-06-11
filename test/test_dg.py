@@ -151,11 +151,8 @@ def test_dg_volume(ctx_factory):
             variant_simple_padding,
             variant_fancy_padding
             ]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl))
-        kernel_gen = lp.check_kernels(kernel_gen, parameters_dict)
-
         lp.auto_test_vs_ref(
-                seq_knl, ctx, kernel_gen, parameters=parameters_dict,
+                seq_knl, ctx, variant(knl), parameters=parameters_dict,
                 #codegen_kwargs=dict(with_annotation=True)
                 )
 
@@ -225,10 +222,8 @@ def no_test_dg_surface(ctx_factory):
     for variant in [
             variant_basic,
             ]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl))
-        kernel_gen = lp.check_kernels(kernel_gen, parameters_dict)
 
-        lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen, parameters=parameters_dict)
+        lp.auto_test_vs_ref(seq_knl, ctx, variant(knl), parameters=parameters_dict)
 
 
 if __name__ == "__main__":

@@ -70,7 +70,6 @@ from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel
 from loopy.auto_test import auto_test_vs_ref
-from loopy.check import check_kernels
 
 __all__ = [
         "auto",
@@ -89,7 +88,7 @@ __all__ = [
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules",
         "generate_code",
-        "CompiledKernel", "auto_test_vs_ref", "check_kernels",
+        "CompiledKernel", "auto_test_vs_ref",
 
         "make_kernel",
         "split_iname", "join_inames", "tag_inames", "duplicate_inames",
@@ -753,6 +752,14 @@ def remove_unused_inames(knl, inames=None):
     # }}}
 
     return knl
+
+# }}}
+
+
+# {{{ set loop priority
+
+def set_loop_priority(kernel, loop_priority):
+    return kernel.copy(loop_priority=loop_priority)
 
 # }}}
 

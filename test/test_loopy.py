@@ -114,8 +114,7 @@ def test_sized_and_complex_literals(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    lp.auto_test_vs_ref(knl, ctx, lp.generate_loop_schedules(knl),
-            parameters=dict(n=5))
+    lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
 
 
 def test_simple_side_effect(ctx_factory):
@@ -130,7 +129,6 @@ def test_simple_side_effect(ctx_factory):
             )
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen)
 
     for gen_knl in kernel_gen:
         print gen_knl
@@ -168,7 +166,6 @@ def test_owed_barriers(ctx_factory):
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen)
 
     for gen_knl in kernel_gen:
         compiled = lp.CompiledKernel(ctx, gen_knl)
@@ -189,7 +186,6 @@ def test_wg_too_small(ctx_factory):
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen)
 
     import pytest
     for gen_knl in kernel_gen:
@@ -216,10 +212,7 @@ def test_join_inames(ctx_factory):
     knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"])
     knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen)
-
-    lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen)
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
 def test_divisibility_assumption(ctx_factory):
@@ -245,10 +238,7 @@ def test_divisibility_assumption(ctx_factory):
         code = lp.generate_code(k)
         assert "if" not in code
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen)
-
-    lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
             parameters={"n": 16**3})
 
 
@@ -267,7 +257,6 @@ def test_multi_cse(ctx_factory):
     knl = lp.add_prefetch(knl, "a", [])
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen)
 
     for gen_knl in kernel_gen:
         compiled = lp.CompiledKernel(ctx, gen_knl)
@@ -302,6 +291,7 @@ def test_stencil(ctx_factory):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
+        knl = lp.set_loop_priority(knl, ["i_outer", "i_inner_0", "j_0"])
         return knl
 
     def variant_2(knl):
@@ -309,14 +299,11 @@ def test_stencil(ctx_factory):
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True)
+        knl = lp.set_loop_priority(knl, ["i_outer", "i_inner_0", "j_0"])
         return knl
 
     for variant in [variant_1, variant_2]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl),
-                loop_priority=["i_outer", "i_inner_0", "j_0"])
-        kernel_gen = lp.check_kernels(kernel_gen)
-
-        lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+        lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
                 fills_entire_output=False, print_ref_code=False,
                 op_count=[n*n], op_label=["cells"])
 
@@ -352,15 +339,12 @@ def test_stencil_with_overfetch(ctx_factory):
                slabs=(1, 1))
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True)
+        knl = lp.set_loop_priority(knl, ["i_outer", "i_inner_0", "j_0"])
         return knl
 
     for variant in [variant_overfetch]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl),
-                loop_priority=["i_outer", "i_inner_0", "j_0"])
-        kernel_gen = lp.check_kernels(kernel_gen)
-
         n = 200
-        lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+        lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
                 fills_entire_output=False, print_ref_code=False,
                 op_count=[n*n], parameters=dict(n=n), op_label=["cells"])
 
@@ -382,7 +366,6 @@ def test_eq_constraint(ctx_factory):
     knl = lp.split_iname(knl, "i_inner", 16, outer_tag=None, inner_tag="l.0")
 
     kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen)
 
     for knl in kernel_gen:
         print lp.generate_code(knl)
@@ -828,10 +811,7 @@ def test_equality_constraints(ctx_factory):
     #print knl
     #print knl.domains[0].detect_equalities()
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             parameters=dict(n=n), print_ref_code=True)
 
 
@@ -857,10 +837,7 @@ def test_stride(ctx_factory):
 
     seq_knl = knl
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             parameters=dict(n=n), fills_entire_output=False)
 
 
@@ -888,10 +865,7 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
 
     seq_knl = knl
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             parameters=dict(n=n), )
 
 

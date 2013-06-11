@@ -106,10 +106,7 @@ def test_axpy(ctx_factory):
 
         for variant in [variant_cpu, variant_gpu]:
         #for variant in [ variant_gpu]:
-            kernel_gen = lp.generate_loop_schedules(variant(knl))
-            kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-            lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+            lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                     op_count=[np.dtype(dtype).itemsize*n*3/1e9],
                     op_label=["GBytes"],
                     parameters={"a": a, "b": b, "n": n}, check_result=check)
@@ -141,10 +138,7 @@ def test_transpose(ctx_factory):
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "j_inner"])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, {})
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[dtype.itemsize*n**2*2/1e9], op_label=["GByte"],
             parameters={})
 
@@ -181,10 +175,7 @@ def test_plain_matrix_mul(ctx_factory):
         knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
         knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner", ])
 
-        kernel_gen = lp.generate_loop_schedules(knl)
-        kernel_gen = lp.check_kernels(kernel_gen, {})
-
-        lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+        lp.auto_test_vs_ref(ref_knl, ctx, knl,
                 op_count=[vec_size*2*n**3/1e9], op_label=["GFlops"],
                 parameters={"n": n}, check_result=check)
 
@@ -220,10 +211,7 @@ def test_variable_size_matrix_mul(ctx_factory):
     knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(ref_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={"n": n})
 
@@ -253,6 +241,7 @@ def test_rank_one(ctx_factory):
     def variant_1(knl):
         knl = lp.add_prefetch(knl, "a")
         knl = lp.add_prefetch(knl, "b")
+        knl = knl.set_loop_priority(knl, ["i", "j"])
         return knl
 
     def variant_2(knl):
@@ -261,6 +250,7 @@ def test_rank_one(ctx_factory):
         knl = lp.split_iname(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
+        knl = knl.set_loop_priority(knl, ["i", "j"])
         knl = lp.add_prefetch(knl, "a")
         knl = lp.add_prefetch(knl, "b")
         return knl
@@ -299,11 +289,7 @@ def test_rank_one(ctx_factory):
 
     #for variant in [variant_1, variant_2, variant_3, variant_4]:
     for variant in [variant_4]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl),
-                loop_priority=["i", "j"])
-        kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-        lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+        lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
                 parameters={"n": n})
 
@@ -340,10 +326,7 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
     knl = lp.split_iname(knl, "k", 16)
     knl = lp.add_prefetch(knl, 'a', ["k_inner", "i_inner_inner", "i_inner_outer"])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
 
@@ -388,11 +371,9 @@ def test_intel_matrix_mul(ctx_factory):
     #knl = lp.add_prefetch(knl, 'b',
     # ["k_inner", ("j_inner_inner", "j_inner_outer"),])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
     #hints=["k_outer", "k_inner_outer", "k_inner_inner"]
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
 
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
 
@@ -434,10 +415,7 @@ def test_magma_fermi_matrix_mul(ctx_factory):
     #knl = lp.add_prefetch(knl, 'b',
     #    ["k_inner", ("j_inner_inner", "j_inner_outer"),])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
 
@@ -470,10 +448,7 @@ def test_image_matrix_mul(ctx_factory):
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner", "k_inner"])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={}, print_ref_code=True)
 
@@ -510,10 +485,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["j_inner_outer", "j_inner_inner", "k_inner"])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={})
 
@@ -575,10 +547,7 @@ def test_fancy_matrix_mul(ctx_factory):
     knl = lp.add_prefetch(knl, 'a', ["i_inner", "k_inner"])
     knl = lp.add_prefetch(knl, 'b', ["k_inner", "j_inner"])
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(n=n))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters=dict(n=n))
 
@@ -612,10 +581,7 @@ def test_small_batched_matvec(ctx_factory):
     knl = lp.split_arg_axis(knl, ("f", 0), pad_mult)
     knl = lp.add_padding(knl, "f", 0, align_bytes)
 
-    kernel_gen = lp.generate_loop_schedules(knl)
-    kernel_gen = lp.check_kernels(kernel_gen, dict(K=K))
-
-    lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+    lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[K*2*Np**2/1e9], op_label=["GFlops"],
             parameters=dict(K=K))
 

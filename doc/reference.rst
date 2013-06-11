@@ -185,6 +185,8 @@ Wrangling inames
 
 .. autofunction:: remove_unused_inames
 
+.. autofunction:: set_loop_priority
+
 Dealing with Substitution Rules
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -237,8 +239,6 @@ Finishing up
 ^^^^^^^^^^^^
 
 .. autofunction:: generate_loop_schedules
-
-.. autofunction:: check_kernels
 
 .. autofunction:: generate_code
 

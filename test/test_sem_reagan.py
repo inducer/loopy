@@ -23,16 +23,11 @@ THE SOFTWARE.
 """
 
 
-
-
 import numpy as np
-import pyopencl as cl
 import loopy as lp
 
-from pyopencl.tools import pytest_generate_tests_for_pyopencl \
-        as pytest_generate_tests
-
-
+from pyopencl.tools import (  # noqa
+        pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
 def test_tim2d(ctx_factory):
@@ -64,14 +59,14 @@ def test_tim2d(ctx_factory):
 
             ],
             [
-            lp.GlobalArg("u", dtype, shape=field_shape, order=order),
-            lp.GlobalArg("lap", dtype, shape=field_shape, order=order),
-            lp.GlobalArg("G", dtype, shape=(3,)+field_shape, order=order),
-            # lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
-            lp.GlobalArg("D", dtype, shape=(n, n), order=order),
-            # lp.ImageArg("D", dtype, shape=(n, n)),
-            lp.ValueArg("K", np.int32, approximately=1000),
-            ],
+                lp.GlobalArg("u", dtype, shape=field_shape, order=order),
+                lp.GlobalArg("lap", dtype, shape=field_shape, order=order),
+                lp.GlobalArg("G", dtype, shape=(3,)+field_shape, order=order),
+                # lp.ConstantArrayArg("D", dtype, shape=(n, n), order=order),
+                lp.GlobalArg("D", dtype, shape=(n, n), order=order),
+                # lp.ImageArg("D", dtype, shape=(n, n)),
+                lp.ValueArg("K", np.int32, approximately=1000),
+                ],
             name="semlap2D", assumptions="K>=1")
 
     knl = lp.duplicate_inames(knl, "o", within="ur")
@@ -103,16 +98,11 @@ def test_tim2d(ctx_factory):
         return knl
 
     for variant in [variant_orig]:
-        kernel_gen = lp.generate_loop_schedules(variant(knl))
-        kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
-
         K = 1000
-        lp.auto_test_vs_ref(seq_knl, ctx, kernel_gen,
+        lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[K*(n*n*n*2*2 + n*n*2*3 + n**3 * 2*2)/1e9],
                 op_label=["GFlops"],
                 parameters={"K": K})
-
-
 
 
 if __name__ == "__main__":

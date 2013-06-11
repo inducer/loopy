@@ -33,19 +33,23 @@ logger = logging.getLogger(__name__)
 
 # {{{ schedule items
 
-class EnterLoop(Record):
+class ScheduleItem(Record):
+    __slots__ = []
+
+
+class EnterLoop(ScheduleItem):
     __slots__ = ["iname"]
 
 
-class LeaveLoop(Record):
+class LeaveLoop(ScheduleItem):
     __slots__ = ["iname"]
 
 
-class RunInstruction(Record):
+class RunInstruction(ScheduleItem):
     __slots__ = ["insn_id"]
 
 
-class Barrier(Record):
+class Barrier(ScheduleItem):
     __slots__ = ["comment"]
 
 # }}}
@@ -785,7 +789,9 @@ def insert_barriers(kernel, schedule, level=0):
 
 # {{{ main scheduling entrypoint
 
-def generate_loop_schedules(kernel, loop_priority=[], debug_args={}):
+def generate_loop_schedules(kernel, debug_args={}):
+    loop_priority = kernel.loop_priority
+
     from loopy.preprocess import preprocess_kernel
     kernel = preprocess_kernel(kernel)
 

@@ -266,20 +266,6 @@ class CompiledKernel:
           specific arguments.
         """
 
-        import loopy as lp
-
-        # {{{ do scheduling, if not yet done
-
-        if not isinstance(kernel, lp.LoopKernel):
-            # someone threw us an iterable of kernels
-
-            kernel = _get_kernel_from_iterable(kernel)
-
-        # Whether we need to call check_kernels. Since we don't have parameter
-        # values now, we'll do that on first invocation.
-
-        # }}}
-
         self.context = context
         self.kernel = kernel
         self.codegen_kwargs = codegen_kwargs

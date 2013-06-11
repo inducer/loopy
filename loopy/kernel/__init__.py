@@ -87,33 +87,55 @@ class LoopKernel(Record):
     """These correspond more or less directly to arguments of
     :func:`loopy.make_kernel`.
 
-    :ivar device: :class:`pyopencl.Device`
-    :ivar domains: a list of :class:`islpy.BasicSet` instances
-    :ivar instructions:
-    :ivar args:
-    :ivar schedule:
-    :ivar name:
-    :ivar preambles:
-    :ivar preamble_generators:
-    :ivar assumptions:
-    :ivar local_sizes:
-    :ivar temporary_variables:
-    :ivar iname_to_tag:
-    :ivar function_manglers:
-    :ivar symbol_manglers:
+    .. attribute:: device
 
-    The following arguments are not user-facing:
+        :class:`pyopencl.Device`
 
-    :ivar substitutions: a mapping from substitution names to
+    .. attribute:: domains
+
+        a list of :class:`islpy.BasicSet` instances
+
+    .. attribute:: instructions
+    .. attribute:: args
+    .. attribute:: schedule
+
+        *None* or a list of :class:`loopy.schedule.ScheduleItem`
+
+    .. attribute:: name
+    .. attribute:: preambles
+    .. attribute:: preamble_generators
+    .. attribute:: assumptions
+    .. attribute:: local_sizes
+    .. attribute:: temporary_variables
+    .. attribute:: iname_to_tag
+    .. attribute:: function_manglers
+    .. attribute:: symbol_manglers
+
+    .. attribute:: substitutions
+
+        a mapping from substitution names to
         :class:`SubstitutionRule` objects
-    :ivar iname_slab_increments: a dictionary mapping inames to (lower_incr,
+
+    .. attribute:: iname_slab_increments
+
+        a dictionary mapping inames to (lower_incr,
         upper_incr) tuples that will be separated out in the execution to generate
         'bulk' slabs with fewer conditionals.
-    :ivar applied_iname_rewrites: A list of past substitution dictionaries that
+
+    .. attribute:: loop_priority
+
+        A list of inames. The earlier in the list the iname occurs, the earlier
+        it will be scheduled. (This applies to inames with non-parallel
+        implementation tags.)
+
+    .. attribute:: applied_iname_rewrites
+
+        A list of past substitution dictionaries that
         were applied to the kernel. These are stored so that they may be repeated
         on expressions the user specifies later.
-    :ivar cache_manager:
-    :ivar isl_context:
+
+    .. attribute:: cache_manager
+    .. attribute:: isl_context
     """
 
     # {{{ constructor
@@ -134,8 +156,8 @@ class LoopKernel(Record):
                 ],
             symbol_manglers=[opencl_symbol_mangler],
 
-            # non-user-facing
             iname_slab_increments={},
+            loop_priority=[],
             applied_iname_rewrites=[],
             cache_manager=None,
             index_dtype=np.int32,
@@ -145,10 +167,6 @@ class LoopKernel(Record):
             # their grid sizes shouldn't change. This provides
             # a way to forward sub-kernel grid size requests.
             get_grid_sizes=None):
-        """
-        :arg domain: a :class:`islpy.BasicSet`, or a string parseable to
-            a basic set by the isl.  Example: "{[i,j]: 0<=i < 10 and 0<= j < 9}"
-        """
 
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
@@ -235,6 +253,7 @@ class LoopKernel(Record):
                 preamble_generators=preamble_generators,
                 assumptions=assumptions,
                 iname_slab_increments=iname_slab_increments,
+                loop_priority=loop_priority,
                 temporary_variables=temporary_variables,
                 local_sizes=local_sizes,
                 iname_to_tag=iname_to_tag,
