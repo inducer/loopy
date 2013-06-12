@@ -478,10 +478,11 @@ def opencl_function_mangler(name, arg_dtypes):
 
             if name in ["sqrt", "exp", "log",
                     "sin", "cos", "tan",
-                    "sinh", "cosh", "tanh"]:
+                    "sinh", "cosh", "tanh",
+                    "conj"]:
                 return arg_dtype, "%s_%s" % (tpname, name)
 
-            if name in ["real", "imag"]:
+            if name in ["real", "imag", "abs"]:
                 return np.dtype(arg_dtype.type(0).real), "%s_%s" % (tpname, name)
 
     if name == "dot":
