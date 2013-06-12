@@ -300,7 +300,7 @@ def _enumerate_cl_devices_for_ref_test():
             continue
 
         for dev in pf.get_devices():
-            if dev.type == cl.device_type.CPU:
+            if dev.type & cl.device_type.CPU:
                 cpu_devs.append(dev)
             else:
                 noncpu_devs.append(dev)

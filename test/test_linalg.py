@@ -46,7 +46,7 @@ DEBUG_PREAMBLE = r"""
 
 def get_suitable_size(ctx):
     dev, = ctx.devices
-    if dev.type == cl.device_type.CPU:
+    if dev.type & cl.device_type.CPU:
         return 160
     else:
         return 1600
