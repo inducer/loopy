@@ -128,6 +128,8 @@ def parse_array_dim_tag(tag, default_target_axis=0):
         raise TypeError("arg dimension implementation tag must be "
                 "string or tag object")
 
+    tag = tag.strip()
+
     if tag.startswith("stride:"):
         from loopy.symbolic import parse
         return FixedStrideArrayDimTag(parse(tag[7:]))
