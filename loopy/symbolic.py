@@ -971,7 +971,7 @@ class AccessRangeMapper(WalkMapper):
 
     def map_subscript(self, expr, inames):
         domain = self.kernel.get_inames_domain(inames)
-        WalkMapper.map_subscript(self, expr, domain)
+        WalkMapper.map_subscript(self, expr, inames)
 
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)
