@@ -643,7 +643,6 @@ TRAILING_FLOAT_TAG_RE = re.compile("^(.*?)([a-zA-Z]*)$")
 class LoopyParser(ParserBase):
     lex_table = [
             (_open_dbl_bracket, pytools.lex.RE(r"\[\[")),
-            (_close_dbl_bracket, pytools.lex.RE(r"\]\]")),
             ] + ParserBase.lex_table
 
     def parse_float(self, s):
@@ -663,13 +662,13 @@ class LoopyParser(ParserBase):
             return float(val)  # generic float
 
     def parse_postfix(self, pstate, min_precedence, left_exp):
-        from pymbolic.parser import _PREC_CALL
+        from pymbolic.parser import _PREC_CALL, _closebracket
         if pstate.next_tag() is _open_dbl_bracket and _PREC_CALL > min_precedence:
             pstate.advance()
             pstate.expect_not_end()
             left_exp = LinearSubscript(left_exp, self.parse_expression(pstate))
-            pstate.expect(_close_dbl_bracket)
-            pstate.advance()
+            pstate.expect(_closebracket)
+            pstate.expect(_closebracket)
             return left_exp, True
 
         return ParserBase.parse_postfix(self, pstate, min_precedence, left_exp)
