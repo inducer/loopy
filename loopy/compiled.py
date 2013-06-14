@@ -143,8 +143,6 @@ class DomainParameterFinder(object):
         # returning the desired parameter.
         self.param_to_sources = param_to_sources = {}
 
-        param_names = kernel.all_params()
-
         from loopy.kernel.data import GlobalArg
         from loopy.symbolic import DependencyMapper
         from pymbolic import compile
@@ -158,7 +156,7 @@ class DomainParameterFinder(object):
                     if len(deps) == 1:
                         dep, = deps
 
-                        if dep.name in param_names:
+                        if kernel.arg_dict[dep.name].dtype.kind == "i":
                             from pymbolic.algorithm import solve_affine_equations_for
                             try:
                                 # friggin' overkill :)
