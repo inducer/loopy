@@ -73,7 +73,7 @@ class SeparateArrayPackingController(object):
             for shape_i, dim_tag in zip(arg.shape, arg.dim_tags):
                 if isinstance(dim_tag, SeparateArrayArrayDimTag):
                     if not isinstance(shape_i, int):
-                        raise TypeError("argument '%s' has non-integer "
+                        raise TypeError("argument '%s' has non-fixed-size "
                                 "separate-array axis" % arg.name)
 
                     sep_shape.append(shape_i)
