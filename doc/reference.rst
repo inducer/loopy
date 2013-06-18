@@ -242,6 +242,13 @@ Finishing up
 
 .. autofunction:: generate_code
 
+Running
+-------
+
+.. autoclass:: InvocationFlags
+
+.. autoclass:: CompiledKernel
+
 Automatic Testing
 -----------------
 

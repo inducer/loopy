@@ -68,7 +68,7 @@ from loopy.preprocess import (preprocess_kernel, realize_reduction,
         infer_unknown_types)
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
-from loopy.compiled import CompiledKernel
+from loopy.compiled import InvocationFlags, CompiledKernel
 from loopy.auto_test import auto_test_vs_ref
 
 __all__ = [
@@ -88,7 +88,10 @@ __all__ = [
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules",
         "generate_code",
-        "CompiledKernel", "auto_test_vs_ref",
+
+        "InvocationFlags", "CompiledKernel",
+
+        "auto_test_vs_ref",
 
         "make_kernel",
         "split_iname", "join_inames", "tag_inames", "duplicate_inames",
