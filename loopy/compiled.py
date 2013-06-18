@@ -343,22 +343,61 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 # }}}
 
 
-# {{{ arg setup
+# {{{ value arg setup
 
-def generate_arg_setup(gen, kernel, impl_arg_info, flags):
+def generate_value_arg_setup(gen, kernel, impl_arg_info, flags):
+    import loopy as lp
+    from loopy.kernel.array import ArrayBase
+
+    for arg_idx, arg in enumerate(impl_arg_info):
+        if arg.arg_class is not lp.ValueArg:
+            assert issubclass(arg.arg_class, ArrayBase)
+            continue
+
+        gen("# {{{ process %s" % arg.name)
+        gen("")
+
+        if flags.paranoid:
+            gen("if %s is None:" % arg.name)
+            with Indentation(gen):
+                gen("raise RuntimeError(\"input argument '%s' must "
+                        "be supplied\")" % arg.name)
+                gen("")
+
+        if arg.dtype.kind == "i":
+            gen("# cast to int to avoid numpy scalar trouble with Boost.Python")
+            gen("%s = int(%s)" % (arg.name, arg.name))
+            gen("")
+
+        if arg.dtype.char == "V":
+            gen("cl_kernel.set_arg(%d, %s)" % (arg_idx, arg.name))
+        else:
+            gen("cl_kernel.set_arg(%d, _lpy_pack(\"%s\", %s))"
+                    % (arg_idx, arg.dtype.char, arg.name))
+        gen("")
+
+        gen("# }}}")
+        gen("")
+
+# }}}
+
+
+# {{{ array arg setup
+
+def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
     import loopy as lp
 
-    gen("# {{{ set up arguments")
+    from loopy.kernel.array import ArrayBase
+    from loopy.symbolic import StringifyMapper
+    from pymbolic import var
+
+    gen("# {{{ set up array arguments")
     gen("")
 
     if flags.allow_numpy:
         gen("_lpy_encountered_numpy = False")
         gen("_lpy_encountered_dev = False")
         gen("")
-
-    from loopy.kernel.array import ArrayBase
-    from loopy.symbolic import StringifyMapper
-    from pymbolic import var
 
     strify = StringifyMapper()
 
@@ -369,113 +408,102 @@ def generate_arg_setup(gen, kernel, impl_arg_info, flags):
         gen("# {{{ process %s" % arg.name)
         gen("")
 
-        if issubclass(arg.arg_class, ArrayBase):
-            if flags.allow_numpy:
-                gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
-                with Indentation(gen):
-                    gen("# synchronous, nothing to worry about")
-                    gen("%s = _lpy_cl_array.to_device("
-                            "queue, %s, allocator=allocator)"
-                            % (arg.name, arg.name))
-                    gen("_lpy_encountered_numpy = True")
-                gen("else:")
-                with Indentation(gen):
-                    gen("_lpy_encountered_dev = True")
+        if not issubclass(arg.arg_class, ArrayBase):
+            continue
 
+        if flags.allow_numpy:
+            gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
+            with Indentation(gen):
+                gen("# synchronous, nothing to worry about")
+                gen("%s = _lpy_cl_array.to_device("
+                        "queue, %s, allocator=allocator)"
+                        % (arg.name, arg.name))
+                gen("_lpy_encountered_numpy = True")
+            gen("else:")
+            with Indentation(gen):
+                gen("_lpy_encountered_dev = True")
+
+            gen("")
+
+        if flags.paranoid and not is_written:
+            gen("if %s is None:" % arg.name)
+            with Indentation(gen):
+                gen("raise RuntimeError(\"input argument '%s' must "
+                        "be supplied\")" % arg.name)
                 gen("")
 
-        if arg.arg_class is lp.ValueArg:
-            if flags.paranoid:
-                gen("if %s is None:" % arg.name)
-                with Indentation(gen):
-                    gen("raise RuntimeError(\"input argument '%s' must "
-                            "be supplied\")" % arg.name)
-                    gen("")
-            if arg.dtype.kind == "i":
-                gen("# cast to int to avoid numpy scalar trouble with Boost.Python")
-                gen("%s = int(%s)" % (arg.name, arg.name))
+        if is_written and arg.arg_class is lp.ImageArg and flags.paranoid:
+            gen("if %s is None:" % arg.name)
+            with Indentation(gen):
+                gen("raise RuntimeError(\"written image '%s' must "
+                        "be supplied\")" % arg.name)
                 gen("")
 
-        else:
-            if flags.paranoid and not is_written:
-                gen("if %s is None:" % arg.name)
-                with Indentation(gen):
-                    gen("raise RuntimeError(\"input argument '%s' must "
-                            "be supplied\")" % arg.name)
-                    gen("")
-
-            if is_written and arg.arg_class is lp.ImageArg and flags.paranoid:
-                gen("if %s is None:" % arg.name)
-                with Indentation(gen):
-                    gen("raise RuntimeError(\"written image '%s' must "
-                            "be supplied\")" % arg.name)
-                    gen("")
-
-            if is_written and arg.shape is None and flags.paranoid:
-                gen("if %s is None:" % arg.name)
-                with Indentation(gen):
-                    gen("raise RuntimeError(\"written argument '%s' has "
-                            "unknown shape and must be supplied\")" % arg.name)
-                    gen("")
-
-            possibly_made_by_loopy = False
-
-            # {{{ allocate written arrays, if needed
-
-            if is_written and arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
-                    and arg.shape is not None:
-
-                possibly_made_by_loopy = True
-                gen("_lpy_made_by_loopy = False")
+        if is_written and arg.shape is None and flags.paranoid:
+            gen("if %s is None:" % arg.name)
+            with Indentation(gen):
+                gen("raise RuntimeError(\"written argument '%s' has "
+                        "unknown shape and must be supplied\")" % arg.name)
                 gen("")
 
-                gen("if %s is None:" % arg.name)
-                with Indentation(gen):
-                    num_axes = len(arg.strides)
+        possibly_made_by_loopy = False
+
+        # {{{ allocate written arrays, if needed
+
+        if is_written and arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
+                and arg.shape is not None:
+
+            possibly_made_by_loopy = True
+            gen("_lpy_made_by_loopy = False")
+            gen("")
+
+            gen("if %s is None:" % arg.name)
+            with Indentation(gen):
+                num_axes = len(arg.strides)
+                for i in xrange(num_axes):
+                    gen("_lpy_shape_%d = %s" % (i, strify(arg.shape[i])))
+
+                itemsize = kernel_arg.dtype.itemsize
+                for i in xrange(num_axes):
+                    gen("_lpy_strides_%d = %s" % (i, strify(
+                        itemsize*arg.strides[i])))
+
+                if flags.paranoid:
                     for i in xrange(num_axes):
-                        gen("_lpy_shape_%d = %s" % (i, strify(arg.shape[i])))
+                        gen("assert _lpy_strides_%d > 0, "
+                                "\"'%s' has negative stride in axis %d\""
+                                % (i, arg.name, i))
 
-                    itemsize = kernel_arg.dtype.itemsize
+                sym_strides = tuple(
+                        var("_lpy_strides_%d" % i)
+                        for i in xrange(num_axes))
+                sym_shape = tuple(
+                        var("_lpy_shape_%d" % i)
+                        for i in xrange(num_axes))
+
+                alloc_size_expr = (sum(astrd*(alen-1)
+                    for alen, astrd in zip(sym_shape, sym_strides))
+                    + itemsize)
+
+                gen("_lpy_alloc_size = %s" % strify(alloc_size_expr))
+                gen("%(name)s = _lpy_cl_array.Array(queue, %(shape)s, "
+                        "%(dtype)s, strides=%(strides)s, "
+                        "data=allocator(_lpy_alloc_size), allocator=allocator)"
+                        % dict(
+                            name=arg.name,
+                            shape=strify(sym_shape),
+                            strides=strify(sym_strides),
+                            dtype=python_dtype_str(arg.dtype)))
+
+                if flags.paranoid:
                     for i in xrange(num_axes):
-                        gen("_lpy_strides_%d = %s" % (i, strify(
-                            itemsize*arg.strides[i])))
-
-                    if flags.paranoid:
-                        for i in xrange(num_axes):
-                            gen("assert _lpy_strides_%d > 0, "
-                                    "\"'%s' has negative stride in axis %d\""
-                                    % (i, arg.name, i))
-
-                    sym_strides = tuple(
-                            var("_lpy_strides_%d" % i)
-                            for i in xrange(num_axes))
-                    sym_shape = tuple(
-                            var("_lpy_shape_%d" % i)
-                            for i in xrange(num_axes))
-
-                    alloc_size_expr = (sum(astrd*(alen-1)
-                        for alen, astrd in zip(sym_shape, sym_strides))
-                        + itemsize)
-
-                    gen("_lpy_alloc_size = %s" % strify(alloc_size_expr))
-                    gen("%(name)s = _lpy_cl_array.Array(queue, %(shape)s, "
-                            "%(dtype)s, strides=%(strides)s, "
-                            "data=allocator(_lpy_alloc_size), allocator=allocator)"
-                            % dict(
-                                name=arg.name,
-                                shape=strify(sym_shape),
-                                strides=strify(sym_strides),
-                                dtype=python_dtype_str(arg.dtype)))
-
-                    if flags.paranoid:
-                        for i in xrange(num_axes):
-                            gen("del _lpy_shape_%d" % i)
-                            gen("del _lpy_strides_%d" % i)
-                        gen("del _lpy_alloc_size")
-                        gen("")
-
-                    gen("_lpy_made_by_loopy = True")
+                        gen("del _lpy_shape_%d" % i)
+                        gen("del _lpy_strides_%d" % i)
+                    gen("del _lpy_alloc_size")
                     gen("")
+
+                gen("_lpy_made_by_loopy = True")
+                gen("")
 
             # }}}
 
@@ -533,12 +561,6 @@ def generate_arg_setup(gen, kernel, impl_arg_info, flags):
 
         if arg.arg_class in [lp.GlobalArg, lp.ConstantArg]:
             gen("cl_kernel.set_arg(%d, %s.base_data)" % (arg_idx, arg.name))
-        elif arg.arg_class is lp.ValueArg:
-            if arg.dtype.char == "V":
-                gen("cl_kernel.set_arg(%d, %s)" % (arg_idx, arg.name))
-            else:
-                gen("cl_kernel.set_arg(%d, _lpy_pack(\"%s\", %s))"
-                        % (arg_idx, arg.dtype.char, arg.name))
         else:
             gen("cl_kernel.set_arg(%d, %s)" % (arg_idx, arg.name))
         gen("")
@@ -596,7 +618,8 @@ def generate_invoker(kernel, impl_arg_info, flags):
     generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
     generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 
-    generate_arg_setup(gen, kernel, impl_arg_info, flags)
+    generate_value_arg_setup(gen, kernel, impl_arg_info, flags)
+    generate_array_arg_setup(gen, kernel, impl_arg_info, flags)
 
     # {{{ generate invocation
 
@@ -694,7 +717,7 @@ class CompiledKernel:
             (a warning will be issued if more than one is returned). If the
             kernel has not yet been loop-scheduled, that is done, too, with no
             specific arguments.
-        :arg iflags: A :class:`InvocationFlags` instance, or a dictionary
+        :arg iflags: An :class:`InvocationFlags` instance, or a dictionary
             of arguments with which a :class:`InvocationFlags` instance
             can be initialized.
         """
