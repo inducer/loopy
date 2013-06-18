@@ -29,6 +29,10 @@ import numpy as np
 from pytools import Record, memoize_method
 
 
+class ParameterFinderWarning(UserWarning):
+    pass
+
+
 # {{{ object array argument packing
 
 class _PackingInfo(Record):
@@ -222,9 +226,13 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, flags):
                                     [integer_arg_var.name],
                                     [(shape_i, sym_shape[axis_nr])]
                                     )[integer_arg_var]
-                        except:
+                        except Exception, e:
                             # went wrong? oh well
-                            pass
+                            from warnings import warn
+                            warn("Unable to generate code to automatically "
+                                    "find '%s' from the shape of '%s':\n%s"
+                                    % (integer_arg_var.name, arg.name, str(e)),
+                                    ParameterFinderWarning)
                         else:
                             iarg_to_sources.setdefault(integer_arg_var.name, []) \
                                     .append((arg.name, iarg_expr))
