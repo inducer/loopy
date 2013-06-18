@@ -1071,11 +1071,11 @@ def test_triangle_domain(ctx_factory):
     print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
 
-def test_array_with_offset(ctx_factory):
+def test_offsets_and_slicing(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    n = 5
+    n = 20
 
     knl = lp.make_kernel(ctx.devices[0], [
             "{[i,j]: 0<=i<n and 0<=j<m }",
@@ -1086,16 +1086,28 @@ def test_array_with_offset(ctx_factory):
             assumptions="n>=1 and m>=1",
             default_offset=lp.auto)
 
+    knl = lp.tag_data_axes(knl, "a,b", "stride:auto,stride:1")
+
     cknl = lp.CompiledKernel(ctx, knl)
 
     a_full = cl.clrandom.rand(queue, (n, n), np.float64)
-    a = a_full[3:10]
+    a_full_h = a_full.get()
+    b_full = cl.clrandom.rand(queue, (n, n), np.float64)
+    b_full_h = b_full.get()
+
+    a_sub = (slice(3, 10), slice(5, 10))
+    a = a_full[a_sub]
+
+    b_sub = (slice(3+3, 10+3), slice(5+4, 10+4))
+    b = b_full[b_sub]
+
+    b_full_h[b_sub] = 2*a_full_h[a_sub]
 
     print cknl.get_highlighted_code({"a": a.dtype})
-    evt, (b,) = cknl(queue, a=a)
+    cknl(queue, a=a, b=b)
 
     import numpy.linalg as la
-    assert la.norm(b.get() - 2*a.get()) < 1e-13
+    assert la.norm(b_full.get() - b_full_h) < 1e-13
 
 
 if __name__ == "__main__":
