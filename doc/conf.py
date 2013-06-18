@@ -196,8 +196,8 @@ htmlhelp_basename = 'loopydoc'
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-  ('index', 'loopy.tex', u'loopy Documentation',
-   u'Andreas Kloeckner', 'manual'),
+        ('index', 'loopy.tex', u'loopy Documentation',
+            u'Andreas Kloeckner', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -238,7 +238,8 @@ man_pages = [
 intersphinx_mapping = {
     'http://docs.python.org/': None,
     'http://documen.tician.de/islpy': None,
-    'http://documen.tician.de/pyopencl': None
+    'http://documen.tician.de/pyopencl': None,
+    'http://documen.tician.de/cgen': None,
     }
 
 autoclass_content = "both"
