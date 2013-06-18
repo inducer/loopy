@@ -650,8 +650,10 @@ def generate_invoker(kernel, impl_arg_info, flags):
 
     # }}}
 
-    if flags.print_wrapper:
+    if flags.print_wrapper == "hl":
         print get_highlighted_python_code(gen.get())
+    elif flags.print_wrapper:
+        print gen.get()
 
     return gen.get_function()
 
