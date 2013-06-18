@@ -710,6 +710,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     aggregate_strides = {}
 
     from loopy.symbolic import CoefficientCollector
+    from pymbolic.primitives import Variable
 
     for aae in global_ary_acc_exprs:
         index_expr = aae.index
@@ -738,12 +739,13 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
             if stride is None:
                 continue
             coeffs = CoefficientCollector()(iexpr_i)
-            for var_name, coeff in coeffs.iteritems():
-                if var_name in auto_axis_inames:  # excludes '1', i.e.  the constant
+            for var, coeff in coeffs.iteritems():
+                assert isinstance(var, Variable)
+                if var.name in auto_axis_inames:  # excludes '1', i.e.  the constant
                     new_stride = coeff*stride
-                    old_stride = iname_to_stride_expr.get(var_name, None)
+                    old_stride = iname_to_stride_expr.get(var.name, None)
                     if old_stride is None or new_stride < old_stride:
-                        iname_to_stride_expr[var_name] = new_stride
+                        iname_to_stride_expr[var.name] = new_stride
 
         # }}}
 
