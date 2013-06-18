@@ -682,7 +682,9 @@ class LoopyParser(ParserBase):
             pstate.expect_not_end()
             left_exp = LinearSubscript(left_exp, self.parse_expression(pstate))
             pstate.expect(_closebracket)
+            pstate.advance()
             pstate.expect(_closebracket)
+            pstate.advance()
             return left_exp, True
 
         return ParserBase.parse_postfix(self, pstate, min_precedence, left_exp)
