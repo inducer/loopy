@@ -49,6 +49,17 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
 
     The stride is given in units of :attr:`ArrayBase.dtype`.
 
+    .. attribute :: stride
+
+        May be one of the following:
+
+        - A :class:`pymbolic.primitives.Expression`, including an
+          integer, indicating the stride in units of the underlying
+          array's :attr:`ArrayBase.dtype`.
+
+        - :class:`loopy.auto`, indicating that a new kernel argument
+          for this stride should automatically be created.
+
     .. attribute :: target_axis
 
         For objects (such as images) with more than one axis, *target_axis*
@@ -130,10 +141,7 @@ def parse_array_dim_tag(tag, default_target_axis=0):
 
     tag = tag.strip()
 
-    if tag.startswith("stride:"):
-        from loopy.symbolic import parse
-        return FixedStrideArrayDimTag(parse(tag[7:]))
-    elif tag == "sep":
+    if tag == "sep":
         return SeparateArrayArrayDimTag()
     elif tag == "vec":
         return VectorArrayDimTag()
@@ -146,7 +154,16 @@ def parse_array_dim_tag(tag, default_target_axis=0):
     else:
         target_axis = default_target_axis
 
-    if tag in ["c", "C", "f", "F"]:
+    if tag.startswith("stride:"):
+        fixed_stride_descr = tag[7:]
+        if fixed_stride_descr.strip() == "auto":
+            import loopy as lp
+            return FixedStrideArrayDimTag(lp.auto, target_axis)
+        else:
+            from loopy.symbolic import parse
+            return FixedStrideArrayDimTag(parse(fixed_stride_descr), target_axis)
+
+    elif tag in ["c", "C", "f", "F"]:
         return ComputedStrideArrayDimTag(tag, target_axis=target_axis)
     else:
         padded_stride_match = PADDED_STRIDE_TAG.match(tag)
@@ -606,16 +623,26 @@ class ArrayBase(Record):
         return 1
 
     def decl_info(self, is_written, index_dtype):
-        """Return a list of tuples ``(cgen_decl, arg_info)``, where
-        *cgen_decl* is a :mod:`cgen` argument declarations, *arg_info*
-        is a :class:`CLArgumentInfo` instance.
+        """Return a list of :class:`loopy.codegen.ImplementedDataInfo`
+        instances corresponding to the argume
         """
 
-        from loopy.codegen import CLArgumentInfo
+        from loopy.codegen import ImplementedDataInfo
+        from loopy.kernel.data import ValueArg
 
         vector_size = self.vector_size()
 
-        def gen_decls(name_suffix, shape, strides, dtype, user_index):
+        def gen_decls(name_suffix, shape, strides, stride_arg_axes,
+                dtype, user_index):
+            """
+            :arg stride_arg_axes: a tuple *(user_axis, impl_axis)*
+            :arg user_index: A tuple representing a (user-facing)
+                multi-dimensional subscript. This is filled in with
+                concrete integers when known (such as for separate-array
+                dim tags), and with *None* where the index won't be
+                known until run time.
+            """
+
             if dtype is None:
                 dtype = self.dtype
 
@@ -624,33 +651,59 @@ class ArrayBase(Record):
             num_user_axes = self.num_user_axes(require_answer=False)
 
             if num_user_axes is None or user_axis >= num_user_axes:
-                # implemented by various argument types
+                # {{{ recursion base case
+
                 full_name = self.name + name_suffix
 
-                yield (self.get_arg_decl(name_suffix, shape, dtype, is_written),
-                        CLArgumentInfo(
+                stride_args = []
+                strides = list(strides)
+
+                # generate stride arguments, yielded later to keep array first
+                for stride_user_axis, stride_impl_axis in stride_arg_axes:
+                    from cgen import Const, POD
+                    stride_name = full_name+"_stride%d" % stride_user_axis
+
+                    from pymbolic import var
+                    strides[stride_impl_axis] = var(stride_name)
+
+                    stride_args.append(
+                            ImplementedDataInfo(
+                                name=stride_name,
+                                dtype=index_dtype,
+                                cgen_declarator=Const(POD(index_dtype, stride_name)),
+                                arg_class=ValueArg,
+                                stride_for_name_and_axis=(
+                                    full_name, stride_impl_axis)))
+
+                yield ImplementedDataInfo(
                             name=full_name,
                             base_name=self.name,
+
+                            # implemented by various argument types
+                            cgen_declarator=self.get_arg_decl(
+                                name_suffix, shape, dtype, is_written),
+
+                            arg_class=type(self),
                             dtype=dtype,
                             shape=shape,
-                            strides=strides,
-                            offset_for_name=None,
+                            strides=tuple(strides),
                             allows_offset=bool(self.offset),
-                            arg_class=type(self)))
+                            )
 
                 if self.offset:
                     from cgen import Const, POD
                     offset_name = full_name+"_offset"
-                    yield (Const(POD(index_dtype, offset_name)),
-                            CLArgumentInfo(
+                    yield ImplementedDataInfo(
                                 name=offset_name,
-                                base_name=None,
                                 dtype=index_dtype,
-                                shape=None,
-                                strides=None,
-                                offset_for_name=full_name,
-                                allows_offset=None,
-                                arg_class=None))
+                                cgen_declarator=Const(POD(index_dtype, offset_name)),
+                                arg_class=ValueArg,
+                                offset_for_name=full_name)
+
+                for sa in stride_args:
+                    yield sa
+
+                # }}}
 
                 return
 
@@ -662,8 +715,20 @@ class ArrayBase(Record):
                 else:
                     new_shape = shape + (self.shape[user_axis],)
 
+                import loopy as lp
+                if dim_tag.stride is lp.auto:
+                    new_stride_arg_axes = stride_arg_axes \
+                            + ((user_axis, len(strides)),)
+
+                    # fixed above when final array name is known
+                    new_strides = strides + (None,)
+                else:
+                    new_stride_arg_axes = stride_arg_axes
+                    new_strides = strides + (dim_tag.stride // vector_size,)
+
                 for res in gen_decls(name_suffix, new_shape,
-                        strides + (dim_tag.stride // vector_size,),
+                        new_strides,
+                        new_stride_arg_axes,
                         dtype, user_index + (None,)):
                     yield res
 
@@ -676,7 +741,7 @@ class ArrayBase(Record):
 
                 for i in xrange(shape_i):
                     for res in gen_decls(name_suffix + "_s%d" % i,
-                            shape, strides, dtype,
+                            shape, strides, stride_arg_axes, dtype,
                             user_index + (i,)):
                         yield res
 
@@ -688,6 +753,7 @@ class ArrayBase(Record):
                                 self.name, user_axis))
 
                 for res in gen_decls(name_suffix, shape, strides,
+                        stride_arg_axes,
                         cl.array.vec.types[dtype, shape_i],
                         user_index + (None,)):
                     yield res
@@ -696,8 +762,35 @@ class ArrayBase(Record):
                 raise RuntimeError("unsupported array dim implementation tag '%s' "
                         "in array '%s'" % (dim_tag, self.name))
 
-        for res in gen_decls("", (), (), self.dtype, ()):
+        for res in gen_decls(name_suffix="", shape=(), strides=(),
+                stride_arg_axes=(),
+                dtype=self.dtype, user_index=()):
             yield res
+
+    @memoize_method
+    def sep_shape(self):
+        sep_shape = []
+        for shape_i, dim_tag in zip(self.shape, self.dim_tags):
+            if isinstance(dim_tag, SeparateArrayArrayDimTag):
+                if not isinstance(shape_i, int):
+                    raise TypeError("array '%s' has non-fixed-size "
+                            "separate-array axis" % self.name)
+
+                sep_shape.append(shape_i)
+
+        return tuple(sep_shape)
+
+    @memoize_method
+    def subscripts_and_names(self):
+        sep_shape = self.sep_shape()
+
+        if not sep_shape:
+            return None
+
+        from pytools import indices_in_shape
+        return [
+                (i, self.name + "".join("_s%d" % sub_i for sub_i in i))
+                for i in indices_in_shape(sep_shape)]
 
 # }}}
 
@@ -730,29 +823,47 @@ def get_access_info(ary, index, eval_expr):
 
     num_target_axes = ary.num_target_axes()
 
-    array_suffix = ""
+    array_name = ary.name
     vector_index = None
     subscripts = [0] * num_target_axes
 
     vector_size = ary.vector_size()
 
+    # {{{ process separate-array dim tags first, to find array name
+
     for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
-        if isinstance(dim_tag, FixedStrideArrayDimTag):
-            if isinstance(dim_tag.stride, int):
-                if not dim_tag.stride % vector_size == 0:
-                    raise RuntimeError("stride of axis %d of array '%s' "
-                            "is not a multiple of the vector axis"
-                            % (i, ary.name))
-
-            subscripts[dim_tag.target_axis] += (dim_tag.stride // vector_size)*idx
-
-        elif isinstance(dim_tag, SeparateArrayArrayDimTag):
+        if isinstance(dim_tag, SeparateArrayArrayDimTag):
             idx = eval_expr(idx)
             if not isinstance(idx, int):
                 raise RuntimeError("subscript '%s[%s]' has non-constant "
                         "index for separate-array axis %d (0-based)" % (
                             ary.name, index, i))
-            array_suffix += "_s%d" % idx
+            array_name += "_s%d" % idx
+
+    # }}}
+
+    # {{{ process remaining dim tags
+
+    for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
+        if isinstance(dim_tag, FixedStrideArrayDimTag):
+            import loopy as lp
+
+            stride = dim_tag.stride
+
+            if isinstance(stride, int):
+                if not dim_tag.stride % vector_size == 0:
+                    raise RuntimeError("stride of axis %d of array '%s' "
+                            "is not a multiple of the vector axis"
+                            % (i, ary.name))
+
+            elif stride is lp.auto:
+                from pymbolic import var
+                stride = var(array_name + "_stride%d" % i)
+
+            subscripts[dim_tag.target_axis] += (stride // vector_size)*idx
+
+        elif isinstance(dim_tag, SeparateArrayArrayDimTag):
+            pass
 
         elif isinstance(dim_tag, VectorArrayDimTag):
             idx = eval_expr(idx)
@@ -776,12 +887,12 @@ def get_access_info(ary, index, eval_expr):
 
         offset_name = ary.offset
         if offset_name is lp.auto:
-            offset_name = ary.name+array_suffix+"_offset"
+            offset_name = array_name+"_offset"
 
         subscripts[0] = var(offset_name) + subscripts[0]
 
     return AccessInfo(
-            array_suffix=array_suffix,
+            array_name=array_name,
             vector_index=vector_index,
             subscripts=subscripts)
 

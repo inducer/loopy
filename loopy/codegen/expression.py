@@ -438,26 +438,26 @@ class LoopyCCodeMapper(RecursiveMapper):
                 if isinstance(ary, GlobalArg):
                     # unsubscripted global args are pointers
                     if vec_member is not None:
-                        return "%s%s->%s" % (
-                                expr.aggregate.name, access_info.array_suffix,
+                        return "%s->%s" % (
+                                access_info.array_name,
                                 vec_member)
                     else:
-                        return "*" + expr.aggregate.name+access_info.array_suffix
+                        return "*" + access_info.array_name
 
                 else:
                     # unsubscripted temp vars are scalars
                     if vec_member is not None:
-                        return "%s%s.%s" % (
-                                expr.aggregate.name, access_info.array_suffix,
+                        return "%s.%s" % (
+                                access_info.array_name,
                                 vec_member)
                     else:
-                        return expr.aggregate.name+access_info.array_suffix
+                        return access_info.array_name
 
             else:
                 subscript, = access_info.subscripts
                 result = self.parenthesize_if_needed(
                         "%s[%s]" % (
-                            expr.aggregate.name+access_info.array_suffix,
+                            access_info.array_name,
                             self.rec(subscript, PREC_NONE, 'i')),
                         enclosing_prec, PREC_CALL)
 

@@ -52,7 +52,7 @@ class TestArgInfo(Record):
 
 # {{{ "reference" arguments
 
-def make_ref_args(kernel, cl_arg_info, queue, parameters, fill_value):
+def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
     from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
@@ -60,7 +60,7 @@ def make_ref_args(kernel, cl_arg_info, queue, parameters, fill_value):
     ref_args = {}
     ref_arg_data = []
 
-    for arg in cl_arg_info:
+    for arg in impl_arg_info:
         if arg.arg_class is ValueArg:
             if arg.offset_for_name:
                 continue
@@ -157,14 +157,14 @@ def make_ref_args(kernel, cl_arg_info, queue, parameters, fill_value):
 
 # {{{ "full-scale" arguments
 
-def make_args(kernel, cl_arg_info, queue, ref_arg_data, parameters,
+def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
         fill_value):
     from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
 
     args = {}
-    for arg, arg_desc in zip(cl_arg_info, ref_arg_data):
+    for arg, arg_desc in zip(impl_arg_info, ref_arg_data):
         if arg.arg_class is ValueArg:
             arg_value = parameters[arg.name]
 
@@ -339,7 +339,7 @@ def auto_test_vs_ref(
         message) indicating correctness/acceptability of the result
     """
 
-    from loopy.compiled import CompiledKernel, get_highlighted_code
+    from loopy.compiled import CompiledKernel, get_highlighted_cl_code
 
     if isinstance(op_count, (int, float)):
         from warnings import warn
@@ -395,14 +395,14 @@ def auto_test_vs_ref(
             print 75*"-"
             print "Reference Code:"
             print 75*"-"
-            print get_highlighted_code(ref_compiled.code)
+            print get_highlighted_cl_code(ref_compiled.code)
             print 75*"-"
 
         ref_cl_kernel_info = ref_compiled.cl_kernel_info(frozenset())
 
         try:
             ref_args, ref_arg_data = \
-                    make_ref_args(ref_sched_kernel, ref_cl_kernel_info.cl_arg_info,
+                    make_ref_args(ref_sched_kernel, ref_cl_kernel_info.impl_arg_info,
                             ref_queue, parameters,
                             fill_value=fill_value_ref)
             ref_args["out_host"] = False
@@ -481,7 +481,7 @@ def auto_test_vs_ref(
         if args is None:
             cl_kernel_info = compiled.cl_kernel_info(frozenset())
 
-            args = make_args(kernel, cl_kernel_info.cl_arg_info,
+            args = make_args(kernel, cl_kernel_info.impl_arg_info,
                     queue, ref_arg_data, parameters, fill_value=fill_value)
         args["out_host"] = False
 

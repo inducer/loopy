@@ -26,6 +26,8 @@ THE SOFTWARE.
 from pytools import Record
 import islpy as isl
 
+import numpy as np
+
 
 # {{{ support code for AST wrapper objects
 
@@ -215,20 +217,57 @@ class POD(PODBase):
 # }}}
 
 
-class CLArgumentInfo(Record):
+class ImplementedDataInfo(Record):
     """
     .. attribute:: name
-    .. attribute:: base_name
+
+        The expanded name of the array. Note that, for example
+        in the case of separate-array-tagged axes, multiple
+        implemented arrays may correspond to one user-facing
+        array.
+
     .. attribute:: dtype
+    .. attribute:: cgen_declarator
+
+        Declarator syntax tree as a :mod:`cgen` object.
+
+    .. attribute:: arg_class
+
+    .. attribute:: base_name
+
+        The user-facing name of the underlying array.
+        May be *None* for non-array arguments.
+
     .. attribute:: shape
     .. attribute:: strides
 
         Strides in multiples of ``dtype.itemsize``.
 
     .. attribute:: offset_for_name
+    .. attribute:: stride_for_name_and_axis
+
+        A tuple *(name, axis)* indicating the (implementation-facing)
+        name of the array and axis number for which this argument provides
+        the strides.
+
     .. attribute:: allows_offset
-    .. attribute:: arg_class
     """
+
+    def __init__(self, name, dtype, cgen_declarator, arg_class,
+            base_name=None, shape=None, strides=None,
+            offset_for_name=None, stride_for_name_and_axis=None,
+            allows_offset=None):
+        Record.__init__(self,
+                name=name,
+                dtype=np.dtype(dtype),
+                cgen_declarator=cgen_declarator,
+                arg_class=arg_class,
+                base_name=base_name,
+                shape=shape,
+                strides=strides,
+                offset_for_name=offset_for_name,
+                stride_for_name_and_axis=stride_for_name_and_axis,
+                allows_offset=allows_offset)
 
 
 # {{{ main code generation entrypoint
@@ -264,27 +303,20 @@ def generate_code(kernel, with_annotation=False,
     from loopy.kernel.data import ImageArg, ValueArg
     from loopy.kernel.array import ArrayBase
 
-    arg_decls = []
-    cl_arg_info = []
+    impl_arg_info = []
 
     for arg in kernel.args:
         if isinstance(arg, ArrayBase):
-            for cdecl, clai in arg.decl_info(
-                    is_written=arg.name in kernel.get_written_variables(),
-                    index_dtype=kernel.index_dtype):
-                arg_decls.append(cdecl)
-                cl_arg_info.append(clai)
+            impl_arg_info.extend(
+                    arg.decl_info(
+                        is_written=arg.name in kernel.get_written_variables(),
+                        index_dtype=kernel.index_dtype))
 
         elif isinstance(arg, ValueArg):
-            arg_decls.append(Const(POD(arg.dtype, arg.name)))
-            cl_arg_info.append(CLArgumentInfo(
+            impl_arg_info.append(ImplementedDataInfo(
                 name=arg.name,
-                base_name=arg.name,
                 dtype=arg.dtype,
-                shape=None,
-                strides=None,
-                offset_for_name=None,
-                allows_offset=None,
+                cgen_declarator=Const(POD(arg.dtype, arg.name)),
                 arg_class=ValueArg))
 
         else:
@@ -307,10 +339,11 @@ def generate_code(kernel, with_annotation=False,
 
     # {{{ build lmem array declarators for temporary variables
 
-    for tv in kernel.temporary_variables.itervalues():
-        for cdecl, clai in tv.decl_info(
-                is_written=True, index_dtype=kernel.index_dtype):
-            body.append(cdecl)
+    body.extend(
+            idi.cgen_declarator
+            for tv in kernel.temporary_variables.itervalues()
+            for idi in tv.decl_info(
+                is_written=True, index_dtype=kernel.index_dtype))
 
     # }}}
 
@@ -333,7 +366,8 @@ def generate_code(kernel, with_annotation=False,
             CLRequiredWorkGroupSize(
                 kernel.get_grid_sizes_as_exprs()[1],
                 CLKernel(FunctionDeclaration(
-                    Value("void", kernel.name), arg_decls))),
+                    Value("void", kernel.name),
+                    [iai.cgen_declarator for iai in impl_arg_info]))),
             body))
 
     # {{{ handle preambles
@@ -368,12 +402,9 @@ def generate_code(kernel, with_annotation=False,
     assert check_implemented_domains(kernel, gen_code.implemented_domains,
             result)
 
-    return result, cl_arg_info
+    return result, impl_arg_info
 
 # }}}
-
-
-
 
 
 # vim: foldmethod=marker
