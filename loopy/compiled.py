@@ -765,7 +765,7 @@ class CompiledKernel:
                 cl_kernel=cl_kernel,
                 impl_arg_info=impl_arg_info,
                 invoker=generate_invoker(
-                    kernel, impl_arg_info, InvocationFlags()))
+                    kernel, impl_arg_info, self.iflags))
 
     # {{{ debugging aids
 
