@@ -23,14 +23,10 @@ THE SOFTWARE.
 """
 
 
-
-
 from pymbolic import var
 import numpy as np
 
 from loopy.symbolic import FunctionIdentifier
-
-
 
 
 class ReductionOperation(object):
@@ -42,6 +38,7 @@ class ReductionOperation(object):
 
     def __call__(self, dtype, operand1, operand2, inames):
         raise NotImplementedError
+
 
 class ScalarReductionOperation(ReductionOperation):
     def __init__(self, forced_result_dtype=None):
@@ -64,6 +61,7 @@ class ScalarReductionOperation(ReductionOperation):
 
         return result
 
+
 class SumReductionOperation(ScalarReductionOperation):
     def neutral_element(self, dtype, inames):
         return 0
@@ -71,12 +69,14 @@ class SumReductionOperation(ScalarReductionOperation):
     def __call__(self, dtype, operand1, operand2, inames):
         return operand1 + operand2
 
+
 class ProductReductionOperation(ScalarReductionOperation):
     def neutral_element(self, dtype, inames):
         return 1
 
     def __call__(self, dtype, operand1, operand2, inames):
         return operand1 * operand2
+
 
 def get_le_neutral(dtype):
     """Return a number y that satisfies (x <= y) for all y."""
@@ -87,12 +87,14 @@ def get_le_neutral(dtype):
     else:
         raise NotImplementedError("less")
 
+
 class MaxReductionOperation(ScalarReductionOperation):
     def neutral_element(self, dtype, inames):
         return -get_le_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2, inames):
         return var("max")(operand1, operand2)
+
 
 class MinReductionOperation(ScalarReductionOperation):
     @property
@@ -103,11 +105,10 @@ class MinReductionOperation(ScalarReductionOperation):
         return var("min")(operand1, operand2)
 
 
-
-
 # {{{ argmin/argmax
 
 ARGEXT_STRUCT_DTYPES = {}
+
 
 class _ArgExtremumReductionOperation(ReductionOperation):
     def prefix(self, dtype):
@@ -133,15 +134,18 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         return ArgExtFunction(self, dtype, "update", inames)(
                 operand1, operand2, var(iname))
 
+
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
     which = "max"
     update_comparison = ">="
     neutral_sign = -1
 
+
 class ArgMinReductionOperation(_ArgExtremumReductionOperation):
     which = "min"
     update_comparison = "<="
     neutral_sign = +1
+
 
 class ArgExtFunction(FunctionIdentifier):
     def __init__(self, reduction_op, scalar_dtype, name, inames):
@@ -149,6 +153,7 @@ class ArgExtFunction(FunctionIdentifier):
         self.scalar_dtype = scalar_dtype
         self.name = name
         self.inames = inames
+
 
 def get_argext_preamble(func_id):
     op = func_id.reduction_op
@@ -194,9 +199,7 @@ def get_argext_preamble(func_id):
             comp=op.update_comparison,
             ))
 
-# }}
-
-
+# }}}
 
 
 # {{{ reduction op registry
@@ -221,6 +224,7 @@ def register_reduction_parser(parser):
         a subclass of ReductionOperation.
     """
     _REDUCTION_OP_PARSERS.append(parser)
+
 
 def parse_reduction_op(name):
     import re
@@ -258,8 +262,6 @@ def parse_reduction_op(name):
 # }}}
 
 
-
-
 def reduction_function_mangler(func_id, arg_dtypes):
     if isinstance(func_id, ArgExtFunction):
         op = func_id.reduction_op
@@ -267,6 +269,7 @@ def reduction_function_mangler(func_id, arg_dtypes):
                 "%s_%s" % (op.prefix(func_id.scalar_dtype), func_id.name))
 
     return None
+
 
 def reduction_preamble_generator(seen_dtypes, seen_functions):
     for func_id, c_name, arg_dtypes in seen_functions:

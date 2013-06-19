@@ -343,6 +343,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
         length = int(pw_aff_to_expr(
             static_max_of_pw_aff(bounds.size, constants_only=True)))
+
         try:
             lower_bound_aff = static_value_of_pw_aff(
                     bounds.lower_bound_pw_aff.coalesce(),
