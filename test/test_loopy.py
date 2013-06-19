@@ -1117,7 +1117,7 @@ def test_vector_ilp_with_prefetch(ctx_factory):
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
             [
-                # Tests that comma-d arguments interoperate with
+                # Tests that comma'd arguments interoperate with
                 # argument guessing.
                 lp.GlobalArg("out,a", np.float32, shape=lp.auto),
                 "..."
@@ -1133,6 +1133,36 @@ def test_vector_ilp_with_prefetch(ctx_factory):
     import re
     code = cknl.get_code()
     assert len(list(re.finditer("barrier", code))) == 1
+
+
+def test_convolution_like(ctx_factory):
+    ctx = ctx_factory()
+
+    dtype = np.float64
+
+    knl = lp.make_kernel(ctx.devices[0],
+        "{ [im_x, im_y, f_x, f_y]: -f_w <= f_x,f_y <= f_w \
+            and f_w <= im_x < im_w-f_w and f_w <= im_y < im_h-f_w }",
+        """
+        out[im_x-f_w, im_y-f_w] = sum((f_x, f_y), \
+            img[im_x-f_x, im_y-f_y] * f[f_w+f_x, f_w+f_y])
+        """,
+        [
+            lp.GlobalArg("f", dtype, shape=lp.auto),
+            lp.GlobalArg("img", dtype, shape=lp.auto),
+            lp.GlobalArg("out", dtype, shape=lp.auto),
+            "..."
+            ],
+        assumptions="f_w>=1 and im_w, im_h >= 1")
+
+    ref_knl = knl
+
+    def variant(knl):
+        knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        return knl
+
+    lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
+            parameters={"im_w": 1024, "im_h": 1024, "f_w": 7})
 
 
 if __name__ == "__main__":
