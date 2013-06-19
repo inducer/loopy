@@ -30,6 +30,8 @@ from loopy.symbolic import WalkMapper
 import logging
 logger = logging.getLogger(__name__)
 
+from loopy.diagnostic import WriteRaceConditionError
+
 
 # {{{ sanity checks run during scheduling
 
@@ -150,10 +152,6 @@ def check_for_inactive_iname_access(kernel):
                     "instructiosn '%s' references "
                     "inames that the instruction does not depend on"
                     % insn.id)
-
-
-class WriteRaceConditionError(RuntimeError):
-    pass
 
 
 def check_for_write_races(kernel):

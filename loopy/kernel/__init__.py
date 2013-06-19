@@ -41,9 +41,7 @@ from loopy.library.function import (
 from loopy.library.symbol import opencl_symbol_mangler
 from loopy.library.preamble import default_preamble_generator
 
-
-class CannotBranchDomainTree(RuntimeError):
-    pass
+from loopy.diagnostic import CannotBranchDomainTree
 
 
 # {{{ unique var names

@@ -38,9 +38,29 @@ class ParameterFinderWarning(LoopyWarningBase):
 
 # }}}
 
+
 # {{{ errors
 
-# FIXME
+class LoopyError(RuntimeError):
+    pass
+
+
+class CannotBranchDomainTree(LoopyError):
+    pass
+
+
+class WriteRaceConditionError(LoopyError):
+    pass
+
+
+class TypeInferenceFailure(LoopyError):
+    pass
+
+
+class DependencyTypeInferenceFailure(TypeInferenceFailure):
+    pass
+
+
 
 # }}}
 

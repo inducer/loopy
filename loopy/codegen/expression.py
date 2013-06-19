@@ -33,16 +33,10 @@ import islpy as isl
 import pyopencl as cl
 import pyopencl.array  # noqa
 
+from loopy.diagnostic import TypeInferenceFailure, DependencyTypeInferenceFailure
+
 
 # {{{ type inference
-
-class TypeInferenceFailure(RuntimeError):
-    pass
-
-
-class DependencyTypeInferenceFailure(TypeInferenceFailure):
-    pass
-
 
 class TypeInferenceMapper(CombineMapper):
     def __init__(self, kernel, new_assignments=None):
