@@ -25,9 +25,8 @@ THE SOFTWARE.
 """
 
 
-
-
 from pymbolic.maxima import MaximaStringifyMapper as MaximaStringifyMapperBase
+
 
 class MaximaStringifyMapper(MaximaStringifyMapperBase):
     def map_subscript(self, expr, enclosing_prec):
@@ -40,6 +39,7 @@ class MaximaStringifyMapper(MaximaStringifyMapperBase):
                 res += "_%d" % i
 
         return res
+
 
 def get_loopy_instructions_as_maxima(kernel, prefix):
     """Sample use for code comparison::
