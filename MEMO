@@ -39,8 +39,6 @@ Things to consider
 
 - Loopy is semi-interactive.
 
-- Limitation: base index for parallel axes is 0.
-
 - Dependency on order of operations is ill-formed
 
 - Dependency on non-local global writes is ill-formed

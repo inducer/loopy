@@ -393,8 +393,8 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
                         insn.id, ",".join(set(insn.insn_deps) - scheduled_insn_ids))
             continue
 
-        want = kernel.insn_inames(insn) - sched_state.parallel_inames
-        have = active_inames_set - sched_state.parallel_inames
+        want = kernel.insn_inames(insn)
+        have = active_inames_set
 
         # If insn is boostable, it may be placed inside a more deeply
         # nested loop without harm.
@@ -503,9 +503,6 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         needed_inames.update(kernel.insn_inames(insn_id))
 
     needed_inames = (needed_inames
-            # There's no notion of 'entering' a parallel loop
-            - sched_state.parallel_inames
-
             # Don't reenter a loop we're already in.
             - active_inames_set)
 
@@ -524,9 +521,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
             # {{{ check if scheduling this iname now is allowed/plausible
 
-            currently_accessible_inames = (
-                    active_inames_set | sched_state.parallel_inames)
-            if not sched_state.loop_nest_map[iname] <= currently_accessible_inames:
+            if not sched_state.loop_nest_map[iname] <= active_inames_set:
                 if debug_mode:
                     print "scheduling %s prohibited by loop nest map" % iname
                 continue
@@ -540,7 +535,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
             # the loop_nest_map takes the domain dependency graph into
             # consideration.
             assert (iname_home_domain_params & kernel.all_inames()
-                    <= currently_accessible_inames)
+                    <= active_inames_set)
 
             # Check if any parameters are temporary variables, and if so, if their
             # writes have already been scheduled.
@@ -815,10 +810,8 @@ def generate_loop_schedules(kernel, debug_args={}):
     sched_state = SchedulerState(
             kernel=kernel,
             loop_nest_map=loop_nest_map(kernel),
-            breakable_inames=ilp_inames,
-            lowest_priority_inames=ilp_inames,
-            # ILP is not parallel for the purposes of the scheduler
-            parallel_inames=parallel_inames - ilp_inames)
+            breakable_inames=parallel_inames,
+            lowest_priority_inames=ilp_inames)
 
     generators = [
             generate_loop_schedules_internal(sched_state, loop_priority,

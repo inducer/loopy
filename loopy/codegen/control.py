@@ -59,14 +59,18 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
 
         from loopy.codegen.loop import (
                 generate_unroll_loop,
-                generate_sequential_loop_dim_code)
+                generate_sequential_loop_dim_code,
+                set_up_hw_parallel_loop
+                )
 
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag, ForceSequentialTag,
-                LoopedIlpTag)
+                LoopedIlpTag, HardwareParallelTag)
         if isinstance(tag, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
         elif tag is None or isinstance(tag, (LoopedIlpTag, ForceSequentialTag)):
             func = generate_sequential_loop_dim_code
+        elif isinstance(tag, HardwareParallelTag):
+            func = set_up_hw_parallel_loop
         else:
             raise RuntimeError("encountered (invalid) EnterLoop "
                     "for '%s', tagged '%s'" % (sched_item.iname, tag))

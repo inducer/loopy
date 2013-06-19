@@ -29,6 +29,66 @@ from islpy import dim_type
 from loopy.codegen.control import build_loop_nest
 
 
+# {{{ find bounds and implemented slab
+
+def find_bounds_and_impl_slab(
+        dom_and_slab, loop_iname, usable_inames, cache_manager):
+    # {{{ find bounds
+
+    # move inames that are usable into parameters
+    moved_inames = []
+    for iname in dom_and_slab.get_var_names(dim_type.set):
+        if iname in usable_inames:
+            moved_inames.append(iname)
+            dt, idx = dom_and_slab.get_var_dict()[iname]
+            dom_and_slab = dom_and_slab.move_dims(
+                    dim_type.param, dom_and_slab.dim(dim_type.param),
+                    dt, idx, 1)
+
+    _, loop_iname_idx = dom_and_slab.get_var_dict()[loop_iname]
+    lbound = cache_manager.dim_min(
+            dom_and_slab, loop_iname_idx).coalesce()
+    ubound = cache_manager.dim_max(
+            dom_and_slab, loop_iname_idx).coalesce()
+
+    from loopy.isl_helpers import (
+            static_min_of_pw_aff,
+            static_max_of_pw_aff)
+
+    lbound = static_min_of_pw_aff(lbound,
+            constants_only=False)
+    ubound = static_max_of_pw_aff(ubound,
+            constants_only=False)
+
+    # }}}
+
+    # {{{ find implemented slab
+
+    from loopy.isl_helpers import iname_rel_aff
+    impl_slab = (
+            isl.BasicSet.universe(dom_and_slab.space)
+            .add_constraint(
+                isl.Constraint.inequality_from_aff(
+                    iname_rel_aff(dom_and_slab.space,
+                        loop_iname, ">=", lbound)))
+            .add_constraint(
+                isl.Constraint.inequality_from_aff(
+                    iname_rel_aff(dom_and_slab.space,
+                        loop_iname, "<=", ubound))))
+
+    for iname in moved_inames:
+        dt, idx = impl_slab.get_var_dict()[iname]
+        impl_slab = impl_slab.move_dims(
+                dim_type.set, impl_slab.dim(dim_type.set),
+                dt, idx, 1)
+
+    # }}}
+
+    return lbound, ubound, impl_slab
+
+# }}}
+
+
 # {{{ conditional-minimizing slab decomposition
 
 def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
@@ -153,26 +213,14 @@ def intersect_kernel_with_slab(kernel, slab, iname):
 
 # {{{ hw-parallel loop
 
-def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
-        hw_inames_left=None):
-    from loopy.kernel.data import (
-            UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag)
-
-    if hw_inames_left is None:
-        hw_inames_left = [iname
-                for iname in kernel.all_inames()
-                if isinstance(kernel.iname_to_tag.get(iname), HardwareParallelTag)]
-
-    if not hw_inames_left:
-        return build_loop_nest(kernel, sched_index, codegen_state)
+def set_up_hw_parallel_loop(kernel, sched_index, codegen_state):
+    from loopy.kernel.data import (UniqueTag, LocalIndexTag, GroupIndexTag)
 
     global_size, local_size = kernel.get_grid_sizes()
 
-    hw_inames_left = hw_inames_left[:]
-    iname = hw_inames_left.pop()
+    iname = kernel.schedule[sched_index].iname
 
     tag = kernel.iname_to_tag.get(iname)
-
     assert isinstance(tag, UniqueTag)
 
     other_inames_with_same_tag = [
@@ -228,8 +276,14 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
         # slabbing conditionals.
         slabbed_kernel = intersect_kernel_with_slab(kernel, slab, iname)
 
-        inner = set_up_hw_parallel_loops(
-                slabbed_kernel, sched_index, codegen_state, hw_inames_left)
+        new_codegen_state = codegen_state.copy(
+                c_code_mapper=codegen_state.copy_and_assign(
+                    iname,
+
+                    ))
+
+
+        inner = build_loop_nest(slabbed_kernel, sched_index+1, new_codegen_state)
         result.append(add_comment(cmt, inner))
 
     from loopy.codegen import gen_code_block
@@ -260,65 +314,15 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
         if len(slabs) == 1:
             cmt = None
 
-        # {{{ find bounds
-
         domain = isl.align_spaces(domain, slab, across_dim_types=True,
                 obj_bigger_ok=True)
         dom_and_slab = domain & slab
 
-        # move inames that are usable into parameters
-        moved_inames = []
-        for iname in dom_and_slab.get_var_names(dim_type.set):
-            if iname in usable_inames:
-                moved_inames.append(iname)
-                dt, idx = dom_and_slab.get_var_dict()[iname]
-                dom_and_slab = dom_and_slab.move_dims(
-                        dim_type.param, dom_and_slab.dim(dim_type.param),
-                        dt, idx, 1)
-
-        _, loop_iname_idx = dom_and_slab.get_var_dict()[loop_iname]
-        lbound = kernel.cache_manager.dim_min(
-                dom_and_slab, loop_iname_idx).coalesce()
-        ubound = kernel.cache_manager.dim_max(
-                dom_and_slab, loop_iname_idx).coalesce()
-
-        from loopy.isl_helpers import (
-                static_min_of_pw_aff,
-                static_max_of_pw_aff)
-
-        lbound = static_min_of_pw_aff(lbound,
-                constants_only=False)
-        ubound = static_max_of_pw_aff(ubound,
-                constants_only=False)
-
-        # }}}
-
-        # {{{ find implemented slab, build inner code
-
-        from loopy.isl_helpers import iname_rel_aff
-        impl_slab = (
-                isl.BasicSet.universe(dom_and_slab.space)
-                .add_constraint(
-                    isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(dom_and_slab.space,
-                            loop_iname, ">=", lbound)))
-                .add_constraint(
-                    isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(dom_and_slab.space,
-                            loop_iname, "<=", ubound))))
-
-        for iname in moved_inames:
-            dt, idx = impl_slab.get_var_dict()[iname]
-            impl_slab = impl_slab.move_dims(
-                    dim_type.set, impl_slab.dim(dim_type.set),
-                    dt, idx, 1)
-
-        new_codegen_state = codegen_state.intersect(impl_slab)
+        lbound, ubound, impl_slab = find_bounds_and_impl_slab(
+                dom_and_slab, loop_iname, usable_inames, kernel.cache_manager)
 
         inner = build_loop_nest(kernel, sched_index+1,
-                new_codegen_state)
-
-        # }}}
+                codegen_state.intersect(impl_slab))
 
         if cmt is not None:
             from cgen import Comment
