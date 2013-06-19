@@ -694,25 +694,6 @@ def generate_invoker(kernel, impl_arg_info, flags):
 
 # {{{ compiled kernel object
 
-def _get_kernel_from_iterable(iterable):
-    kernel_count = 0
-
-    for scheduled_kernel in iterable:
-        kernel_count += 1
-
-        if kernel_count == 1:
-            # use the first schedule
-            result = scheduled_kernel
-
-        if kernel_count == 2:
-            from warnings import warn
-            warn("kernel scheduling was ambiguous--more than one "
-                    "schedule found, ignoring", stacklevel=2)
-            break
-
-    return result
-
-
 class _CLKernelInfo(Record):
     pass
 
@@ -748,7 +729,6 @@ class CompiledKernel:
     def get_kernel(self, arg_to_dtype_set):
         kernel = self.kernel
 
-        import loopy as lp
         from loopy.kernel.tools import add_argument_dtypes
 
         if arg_to_dtype_set:
@@ -762,8 +742,8 @@ class CompiledKernel:
             kernel = infer_unknown_types(kernel, expect_completion=True)
 
         if kernel.schedule is None:
-            kernel = _get_kernel_from_iterable(
-                    lp.generate_loop_schedules(kernel))
+            from loopy.schedule import get_one_scheduled_kernel
+            kernel = get_one_scheduled_kernel(kernel)
 
         return kernel
 

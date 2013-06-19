@@ -324,8 +324,7 @@ def _enumerate_cl_devices_for_ref_test():
 
 # {{{ main automatic testing entrypoint
 
-def _complain_about_deferred_types(knl):
-    print "COMPL"
+def _check_for_deferred_types(knl):
     for arg in knl.args:
         if arg.dtype is None:
             raise RuntimeError("Automatic testing requires that all "
@@ -384,7 +383,7 @@ def auto_test_vs_ref(
 
     # {{{ compile and run reference code
 
-    _complain_about_deferred_types(ref_knl)
+    _check_for_deferred_types(ref_knl)
 
     found_ref_device = False
 
@@ -486,7 +485,7 @@ def auto_test_vs_ref(
             test_kernels = [test_knl]
 
     for i, kernel in enumerate(test_kernels):
-        _complain_about_deferred_types(kernel)
+        _check_for_deferred_types(kernel)
         compiled = CompiledKernel(ctx, kernel, options=options,
                 codegen_kwargs=codegen_kwargs)
 

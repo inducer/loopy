@@ -879,4 +879,24 @@ def generate_loop_schedules(kernel, debug_args={}):
 
 # }}}
 
+
+def get_one_scheduled_kernel(kernel):
+    kernel_count = 0
+
+    for scheduled_kernel in generate_loop_schedules(kernel):
+        kernel_count += 1
+
+        if kernel_count == 1:
+            # use the first schedule
+            result = scheduled_kernel
+
+        if kernel_count == 2:
+            from warnings import warn
+            warn("kernel scheduling was ambiguous--more than one "
+                    "schedule found, ignoring", stacklevel=2)
+            break
+
+    return result
+
+
 # vim: foldmethod=marker

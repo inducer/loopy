@@ -1110,6 +1110,28 @@ def test_offsets_and_slicing(ctx_factory):
     assert la.norm(b_full.get() - b_full_h) < 1e-13
 
 
+def test_vector_ilp_with_prefetch(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{ [i]: 0<=i<n }",
+            "out[i] = 2*a[i]",
+            [
+                # Tests that comma-d arguments interoperate with
+                # argument guessing.
+                lp.GlobalArg("out,a", np.float32, shape=lp.auto),
+                "..."
+                ])
+
+    knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
+    knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+
+    code, info = lp.generate_code(knl)
+    import re
+    assert len(list(re.finditer("barrier", code))) == 1
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
