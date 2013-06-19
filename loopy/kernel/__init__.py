@@ -33,15 +33,13 @@ import re
 
 from pytools import UniqueNameGenerator, generate_unique_possibilities
 
-from loopy.kernel.data import (
+from loopy.library.function import (
         default_function_mangler,
         opencl_function_mangler,
-        single_arg_function_mangler,
+        single_arg_function_mangler)
 
-        opencl_symbol_mangler,
-
-        default_preamble_generator,
-        )
+from loopy.library.symbol import opencl_symbol_mangler
+from loopy.library.preamble import default_preamble_generator
 
 
 class CannotBranchDomainTree(RuntimeError):

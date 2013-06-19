@@ -103,7 +103,7 @@ class Reduction(AlgebraicLeaf):
         assert isinstance(inames, tuple)
 
         if isinstance(operation, str):
-            from loopy.reduction import parse_reduction_op
+            from loopy.library.reduction import parse_reduction_op
             operation = parse_reduction_op(operation)
 
         self.operation = operation
@@ -613,7 +613,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         else:
             # see if 'name' is an existing reduction op
 
-            from loopy.reduction import parse_reduction_op
+            from loopy.library.reduction import parse_reduction_op
             if parse_reduction_op(name):
                 if len(expr.parameters) != 2:
                     raise RuntimeError("invalid invocation of "

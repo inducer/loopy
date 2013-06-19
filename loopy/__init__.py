@@ -41,14 +41,16 @@ from loopy.symbolic import ExpandingIdentityMapper, ExpandingSubstitutionMapper
 
 # {{{ imported user interface
 
+from loopy.library.function import (
+        default_function_mangler, single_arg_function_mangler,
+        opencl_function_mangler)
+
+from loopy.library.preamble import default_preamble_generator
+
+from loopy.library.symbol import opencl_symbol_mangler
+
 from loopy.kernel.data import (
         ValueArg, GlobalArg, ConstantArg, ImageArg,
-
-        default_function_mangler, single_arg_function_mangler,
-        opencl_function_mangler,
-
-        default_preamble_generator,
-
         Instruction)
 
 from loopy.kernel import LoopKernel
@@ -56,7 +58,7 @@ from loopy.kernel.tools import (
         get_dot_dependency_graph, add_argument_dtypes,
         add_and_infer_argument_dtypes)
 from loopy.kernel.creation import make_kernel
-from loopy.reduction import register_reduction_parser
+from loopy.library.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
 from loopy.precompute import precompute
 from loopy.padding import (split_arg_axis, find_padding_multiple,

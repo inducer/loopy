@@ -53,6 +53,7 @@ setup(name="loo.py",
           "loopy",
           "loopy.codegen",
           "loopy.kernel",
+          "loopy.library",
           ],
 
       # 2to3 invocation
