@@ -174,6 +174,11 @@ def iname_rel_aff(space, iname, rel, aff):
 
 
 def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):
+    if context is not None:
+        context = isl.align_spaces(context, pw_aff.get_domain_space(),
+                obj_bigger_ok=True)
+        pw_aff = pw_aff.gist(context)
+
     pieces = pw_aff.get_pieces()
     if len(pieces) == 1:
         (_, result), = pieces
@@ -188,18 +193,13 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
             + [(set, aff) for set, aff in pieces if not aff.is_cst()])
 
     reference = pw_aff.get_aggregate_domain()
-
     if context is not None:
-        context = isl.align_spaces(context, pw_aff.get_domain_space())
         reference = reference.intersect(context)
 
     for set, candidate_aff in pieces:
         for use_gist in [False, True]:
             if use_gist:
-                if context is not None:
-                    candidate_aff = pw_aff.gist(set & context)
-                else:
-                    candidate_aff = pw_aff.gist(set)
+                candidate_aff = candidate_aff.gist(set)
 
             if constants_only and not candidate_aff.is_cst():
                 continue
