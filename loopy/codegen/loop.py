@@ -174,6 +174,14 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
     tag = kernel.iname_to_tag.get(iname)
 
     assert isinstance(tag, UniqueTag)
+    from pymbolic import var
+
+    if isinstance(tag, LocalIndexTag):
+        hw_axis_expr = var("lid")(tag.axis)
+    elif isinstance(tag, GroupIndexTag):
+        hw_axis_expr = var("gid")(tag.axis)
+    else:
+        raise RuntimeError("unexpected hw tag type")
 
     other_inames_with_same_tag = [
             other_iname for other_iname in kernel.all_inames()
@@ -195,16 +203,21 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
     bounds = kernel.get_iname_bounds(iname)
     domain = kernel.get_inames_domain(iname)
 
-    from loopy.isl_helpers import make_slab
-    from loopy.isl_helpers import static_value_of_pw_aff
-    lower_bound = static_value_of_pw_aff(bounds.lower_bound_pw_aff,
+    # It's ok to find a bound that's too low. The conditional
+    # generators will mop up after us.
+    from loopy.isl_helpers import static_min_of_pw_aff
+    lower_bound = static_min_of_pw_aff(bounds.lower_bound_pw_aff,
             constants_only=False)
 
     # These bounds are 'implemented' by the hardware. Make sure
     # that the downstream conditional generators realize that.
+    from loopy.isl_helpers import make_slab
     slab = make_slab(domain.get_space(), iname,
             lower_bound, lower_bound+hw_axis_size)
     codegen_state = codegen_state.intersect(slab)
+
+    from loopy.symbolic import pw_aff_to_expr
+    hw_axis_expr = hw_axis_expr + pw_aff_to_expr(lower_bound)
 
     # }}}
 
@@ -227,9 +240,14 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
         # Have the conditional infrastructure generate the
         # slabbing conditionals.
         slabbed_kernel = intersect_kernel_with_slab(kernel, slab, iname)
+        new_codegen_state = codegen_state.copy(
+                c_code_mapper=codegen_state.c_code_mapper.copy_and_assign(
+                    iname, hw_axis_expr))
 
         inner = set_up_hw_parallel_loops(
-                slabbed_kernel, sched_index, codegen_state, hw_inames_left)
+                slabbed_kernel, sched_index,
+                new_codegen_state, hw_inames_left)
+
         result.append(add_comment(cmt, inner))
 
     from loopy.codegen import gen_code_block

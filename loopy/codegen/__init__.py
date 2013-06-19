@@ -177,38 +177,6 @@ class CodeGenerationState(object):
 # }}}
 
 
-# {{{ initial assignments
-
-def make_initial_assignments(kernel):
-    assignments = {}
-
-    global_size, local_size = kernel.get_grid_sizes()
-
-    from loopy.kernel.data import LocalIndexTag, GroupIndexTag
-    from pymbolic import var
-
-    for iname in kernel.all_inames():
-        tag = kernel.iname_to_tag.get(iname)
-
-        if isinstance(tag, LocalIndexTag):
-            hw_axis_expr = var("lid")(tag.axis)
-
-        elif isinstance(tag, GroupIndexTag):
-            hw_axis_expr = var("gid")(tag.axis)
-
-        else:
-            continue
-
-        bounds = kernel.get_iname_bounds(iname)
-
-        from loopy.symbolic import pw_aff_to_expr
-        assignments[iname] = pw_aff_to_expr(bounds.lower_bound_pw_aff) + hw_axis_expr
-
-    return assignments
-
-# }}}
-
-
 # {{{ cgen overrides
 
 from cgen import POD as PODBase
@@ -314,8 +282,7 @@ def generate_code(kernel, with_annotation=False,
     from loopy.codegen.expression import LoopyCCodeMapper
     ccm = (LoopyCCodeMapper(kernel, seen_dtypes, seen_functions,
         with_annotation=with_annotation,
-        allow_complex=allow_complex)
-        .copy_and_assign_many(make_initial_assignments(kernel)))
+        allow_complex=allow_complex))
 
     mod = []
 
