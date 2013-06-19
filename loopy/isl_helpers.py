@@ -25,13 +25,8 @@ THE SOFTWARE.
 """
 
 
-
-
 import islpy as isl
 from islpy import dim_type
-
-
-
 
 
 def block_shift_constraint(cns, type, pos, multiple, as_equality=None):
@@ -49,9 +44,6 @@ def block_shift_constraint(cns, type, pos, multiple, as_equality=None):
     return cns
 
 
-
-
-
 def negate_constraint(cns):
     assert not cns.is_equality()
     # FIXME hackety hack
@@ -60,13 +52,13 @@ def negate_constraint(cns):
     my_set = my_set.complement()
 
     results = []
+
     def examine_basic_set(s):
         s.foreach_constraint(results.append)
+
     my_set.foreach_basic_set(examine_basic_set)
     result, = results
     return result
-
-
 
 
 def make_index_map(set, index_expr):
@@ -93,9 +85,6 @@ def make_index_map(set, index_expr):
     return amap
 
 
-
-
-
 def pw_aff_to_aff(pw_aff):
     if isinstance(pw_aff, isl.Aff):
         return pw_aff
@@ -118,13 +107,9 @@ def pw_aff_to_aff(pw_aff):
     return pieces[0][1]
 
 
-
-
 def dump_space(ls):
     return " ".join("%s: %d" % (dt, ls.dim(getattr(dim_type, dt)))
             for dt in dim_type.names)
-
-
 
 
 def make_slab(space, iname, start, stop):
@@ -144,8 +129,10 @@ def make_slab(space, iname, start, stop):
     if isinstance(stop, Expression):
         stop = aff_from_expr(space, stop)
 
-    if isinstance(start, int): start = zero + start
-    if isinstance(stop, int): stop = zero + stop
+    if isinstance(start, int):
+        start = zero + start
+    if isinstance(stop, int):
+        stop = zero + stop
 
     if isinstance(iname, str):
         iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
@@ -163,8 +150,6 @@ def make_slab(space, iname, start, stop):
                 stop-1 - iname_aff)))
 
     return result
-
-
 
 
 def iname_rel_aff(space, iname, rel, aff):
@@ -186,8 +171,6 @@ def iname_rel_aff(space, iname, rel, aff):
         return (aff+1).neg().add_coefficient(isl.dim_type.in_, pos, 1)
     else:
         raise ValueError("unknown value of 'rel': %s" % rel)
-
-
 
 
 def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):
@@ -228,21 +211,19 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
             % (what, pw_aff))
 
 
-
-
 def static_min_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.ge_set,
             "minimum", context)
+
 
 def static_max_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.le_set,
             "maximum", context)
 
+
 def static_value_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.eq_set,
             "value", context)
-
-
 
 
 def duplicate_axes(isl_obj, duplicate_inames, new_inames):
@@ -293,9 +274,6 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
     return moved_dims.intersect(more_dims)
 
 
-
-
-
 def is_nonnegative(expr, over_set):
     space = over_set.get_space()
     from loopy.symbolic import aff_from_expr
@@ -307,8 +285,6 @@ def is_nonnegative(expr, over_set):
             isl.Constraint.inequality_from_aff(aff))
 
     return over_set.intersect(expr_neg_set).is_empty()
-
-
 
 
 def convexify(domain):
@@ -346,8 +322,6 @@ def convexify(domain):
     for dbs in dom_bsets:
         print "  %s" % (isl.Set.from_basic_set(dbs).gist(domain))
     raise NotImplementedError("Could not find convex representation of set")
-
-
 
 
 def boxify(cache_manager, domain, box_inames, context):
