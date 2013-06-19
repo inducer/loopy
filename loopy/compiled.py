@@ -27,10 +27,7 @@ import pyopencl as cl
 import pyopencl.tools  # noqa
 import numpy as np
 from pytools import Record, memoize_method
-
-
-class ParameterFinderWarning(UserWarning):
-    pass
+from loopy.diagnostic import ParameterFinderWarning
 
 
 # {{{ object array argument packing

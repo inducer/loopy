@@ -214,8 +214,6 @@ class SetOperationCacheManager:
         else:
             idx = iname
 
-        del iname
-
         lower_bound_pw_aff = self.dim_min(set, idx)
         upper_bound_pw_aff = self.dim_max(set, idx)
 
@@ -225,9 +223,12 @@ class SetOperationCacheManager:
         size = pw_aff_to_expr(static_max_of_pw_aff(
                 upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True,
                 context=context))
-        base_index = pw_aff_to_expr(
-            static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
-                context=context))
+        try:
+            base_index = pw_aff_to_expr(
+                    static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
+                        context=context))
+        except Exception, e:
+            raise type(e)("while finding lower bound of '%s': " % iname)
 
         return base_index, size
 

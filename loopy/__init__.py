@@ -39,9 +39,6 @@ from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import ExpandingIdentityMapper, ExpandingSubstitutionMapper
 
 
-class LoopyAdvisory(UserWarning):
-    pass
-
 # {{{ imported user interface
 
 from loopy.kernel.data import (
@@ -346,9 +343,12 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
         length = int(pw_aff_to_expr(
             static_max_of_pw_aff(bounds.size, constants_only=True)))
-        lower_bound_aff = static_value_of_pw_aff(
-                bounds.lower_bound_pw_aff.coalesce(),
-                constants_only=False)
+        try:
+            lower_bound_aff = static_value_of_pw_aff(
+                    bounds.lower_bound_pw_aff.coalesce(),
+                    constants_only=False)
+        except Exception, e:
+            raise type(e)("while finding lower bound of '%s': " % iname)
 
         my_val = var(new_iname) // base_divisor
         if i+1 < len(inames):

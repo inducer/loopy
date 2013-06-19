@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def check_sizes(kernel):
     import loopy as lp
 
-    from loopy import LoopyAdvisory
+    from loopy.diagnostic import LoopyAdvisory
 
     parameters = {}
     for arg in kernel.args:

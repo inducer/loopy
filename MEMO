@@ -70,6 +70,10 @@ To-do
 
 - Test array access with modulo
 
+- Derive all errors from central hierarchy
+
+- Provide context for more errors?
+
 Fixes:
 
 - applied_iname_rewrites tracking for prefetch footprints isn't bulletproof

@@ -830,7 +830,7 @@ def generate_loop_schedules(kernel, debug_args={}):
             gen_sched, owed_barriers = insert_barriers(kernel, gen_sched)
             if owed_barriers:
                 from warnings import warn
-                from loopy import LoopyAdvisory
+                from loopy.diagnostic import LoopyAdvisory
                 warn("Barrier insertion finished without inserting barriers for "
                         "local memory writes in these instructions: '%s'. "
                         "This often means that local memory was "

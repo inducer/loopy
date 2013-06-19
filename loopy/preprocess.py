@@ -244,7 +244,7 @@ def mark_local_temporaries(kernel):
 
         if not wants_to_be_local_per_insn:
             from warnings import warn
-            from loopy import LoopyAdvisory
+            from loopy.diagnostic import LoopyAdvisory
             warn("temporary variable '%s' never written, eliminating"
                     % temp_var.name, LoopyAdvisory)
 
@@ -962,7 +962,7 @@ def adjust_local_temp_var_storage(kernel):
 
             if min_mult != 1:
                 from warnings import warn
-                from loopy import LoopyAdvisory
+                from loopy.diagnostic import LoopyAdvisory
                 warn("could not find a conflict-free mem layout "
                         "for local variable '%s' "
                         "(currently: %dx conflict, increment: %s, reason: %s)"
