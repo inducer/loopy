@@ -150,6 +150,11 @@ class CodeGenerationState(object):
 
         self.c_code_mapper = c_code_mapper
 
+    def copy(self, implemented_domain=None, c_code_mapper=None):
+        return CodeGenerationState(
+                implemented_domain=implemented_domain or self.implemented_domain,
+                c_code_mapper=c_code_mapper or self.c_code_mapper)
+
     def intersect(self, other):
         new_impl, new_other = isl.align_two(self.implemented_domain, other)
         return CodeGenerationState(
@@ -217,6 +222,8 @@ class POD(PODBase):
 # }}}
 
 
+# {{{ implemented data info
+
 class ImplementedDataInfo(Record):
     """
     .. attribute:: name
@@ -268,6 +275,8 @@ class ImplementedDataInfo(Record):
                 offset_for_name=offset_for_name,
                 stride_for_name_and_axis=stride_for_name_and_axis,
                 allows_offset=allows_offset)
+
+# }}}
 
 
 # {{{ main code generation entrypoint

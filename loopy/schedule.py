@@ -196,7 +196,6 @@ def loop_nest_map(kernel):
                 # ILP tags are special because they are parallel tags
                 # and therefore 'in principle' nest around everything.
                 # But they're realized by the scheduler as a loop
-                # (and the scheduler is the only custom
                 # at the innermost level, so we'll cut them some
                 # slack here.
                 continue

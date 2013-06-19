@@ -199,6 +199,9 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
     from loopy.isl_helpers import static_value_of_pw_aff
     lower_bound = static_value_of_pw_aff(bounds.lower_bound_pw_aff,
             constants_only=False)
+
+    # These bounds are 'implemented' by the hardware. Make sure
+    # that the downstream conditional generators realize that.
     slab = make_slab(domain.get_space(), iname,
             lower_bound, lower_bound+hw_axis_size)
     codegen_state = codegen_state.intersect(slab)

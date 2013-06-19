@@ -748,7 +748,7 @@ class CompiledKernel:
         return kernel
 
     @memoize_method
-    def cl_kernel_info(self, arg_to_dtype_set, code_op=None):
+    def cl_kernel_info(self, arg_to_dtype_set=frozenset(), code_op=None):
         kernel = self.get_kernel(arg_to_dtype_set)
 
         from loopy.codegen import generate_code

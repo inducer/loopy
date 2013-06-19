@@ -54,7 +54,7 @@ def get_bounds_checks(domain, check_inames, implemented_domain,
     else:
         result = result.compute_divs()
 
-    result = isl.align_spaces(result, implemented_domain)
+    result, implemented_domain = isl.align_two(result, implemented_domain)
     result = result.gist(implemented_domain)
 
     if overapproximate:

@@ -1127,8 +1127,11 @@ def test_vector_ilp_with_prefetch(ctx_factory):
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
 
-    code, info = lp.generate_code(knl)
+    cknl = lp.CompiledKernel(ctx, knl)
+    cknl.cl_kernel_info()
+
     import re
+    code = cknl.get_code()
     assert len(list(re.finditer("barrier", code))) == 1
 
 

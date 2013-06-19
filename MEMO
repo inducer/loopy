@@ -16,12 +16,16 @@ Things to consider
 - Every loop in loopy is opened at most once.
   Too restrictive?
 
-- Why do CSEs necessarily have to duplicate the inames?
+- Why do precomputes necessarily have to duplicate the inames?
   -> because that would be necessary for a sequential prefetch
 
 - Cannot do slab decomposition on inames that share a tag with
   other inames
   -> Is that reasonable?
+
+- Entering a loop means:
+  - setting up conditionals related to it (slabs/bounds)
+  - allowing loops nested inside to depend on loop state
 
 - Not using all hw loop dimensions causes an error, as
   is the case for variant 3 in the rank_one test.
@@ -53,7 +57,6 @@ To-do
 - rename IndexTag -> InameTag
 
 - Data implementation tags
-  - retag semantics once strides have been computed
   - turn base_indices into offset
   - vectorization
   - automatic copies
@@ -62,7 +65,6 @@ To-do
 
   - automatic copies from an array with one set of tags
     to the same array with another set.
-
 
 - Make tests run on GPUs
 
