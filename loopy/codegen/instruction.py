@@ -24,11 +24,7 @@ THE SOFTWARE.
 """
 
 
-
-
 import islpy as isl
-
-
 
 
 def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
@@ -37,7 +33,8 @@ def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
             domain, check_inames,
             implemented_domain, overapproximate=False)
 
-    bounds_check_set = isl.Set.universe(domain.get_space()).add_constraints(bounds_checks)
+    bounds_check_set = isl.Set.universe(domain.get_space()) \
+            .add_constraints(bounds_checks)
     bounds_check_set, new_implemented_domain = isl.align_two(
             bounds_check_set, implemented_domain)
     new_implemented_domain = new_implemented_domain & bounds_check_set
@@ -49,8 +46,6 @@ def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
         stmt = If("\n&& ".join(condition_codelets), stmt)
 
     return stmt, new_implemented_domain
-
-
 
 
 def generate_instruction_code(kernel, insn, codegen_state):
@@ -91,15 +86,14 @@ def generate_instruction_code(kernel, insn, codegen_state):
                     ast=S(r'printf("write %s[%s]\n", %s);'
                         % (insn.get_assignee_var_name(),
                             ",".join(len(idx) * ["%d"]),
-                            ",".join(ccm(i, prec=None, type_context="i") for i in idx))),
+                            ",".join(
+                                ccm(i, prec=None, type_context="i")
+                                for i in idx))),
                     implemented_domain=None),
                 result
                 ])
 
     return result
-
-
-
 
 
 # vim: foldmethod=marker

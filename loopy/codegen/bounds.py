@@ -23,12 +23,8 @@ THE SOFTWARE.
 """
 
 
-
-
 import islpy as isl
 from islpy import dim_type
-
-
 
 
 def constraint_to_code(ccm, cns):
@@ -39,6 +35,7 @@ def constraint_to_code(ccm, cns):
 
     from loopy.symbolic import constraint_to_expr
     return "%s %s 0" % (ccm(constraint_to_expr(cns), 'i'), comp_op)
+
 
 # {{{ bounds check generator
 
@@ -71,6 +68,7 @@ def get_bounds_checks(domain, check_inames, implemented_domain,
 
 # }}}
 
+
 # {{{ on which inames may a conditional depend?
 
 def get_usable_inames_for_conditional(kernel, sched_index):
@@ -100,9 +98,6 @@ def get_usable_inames_for_conditional(kernel, sched_index):
     return frozenset(result)
 
 # }}}
-
-
-
 
 
 # vim: foldmethod=marker

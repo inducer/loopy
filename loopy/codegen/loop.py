@@ -23,15 +23,10 @@ THE SOFTWARE.
 """
 
 
-
-
 from loopy.codegen import gen_code_block
 import islpy as isl
 from islpy import dim_type
 from loopy.codegen.control import build_loop_nest
-
-
-
 
 
 # {{{ conditional-minimizing slab decomposition
@@ -115,6 +110,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
 # }}}
 
+
 # {{{ unrolled loops
 
 def generate_unroll_loop(kernel, sched_index, codegen_state):
@@ -144,6 +140,7 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
 
 # }}}
 
+
 def intersect_kernel_with_slab(kernel, slab, iname):
     hdi = kernel.get_home_domain_index(iname)
     home_domain = kernel.domains[hdi]
@@ -156,8 +153,10 @@ def intersect_kernel_with_slab(kernel, slab, iname):
 
 # {{{ hw-parallel loop
 
-def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=None):
-    from loopy.kernel.data import UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag
+def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
+        hw_inames_left=None):
+    from loopy.kernel.data import (
+            UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag)
 
     if hw_inames_left is None:
         hw_inames_left = [iname
@@ -234,6 +233,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state, hw_inames_left=
     return gen_code_block(result)
 
 # }}}
+
 
 # {{{ sequential loop
 
