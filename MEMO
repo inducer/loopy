@@ -68,6 +68,8 @@ To-do
 
 - Make tests run on GPUs
 
+- Test array access with modulo
+
 Fixes:
 
 - applied_iname_rewrites tracking for prefetch footprints isn't bulletproof
@@ -84,6 +86,8 @@ Fixes:
 
 Future ideas
 ^^^^^^^^^^^^
+
+- subtract_domain_lower_bound
 
 - Storage sharing for temporaries?
 
