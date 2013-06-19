@@ -249,21 +249,14 @@ class ImplementedDataInfo(Record):
 
 # {{{ main code generation entrypoint
 
-def _check_for_deferred_types(knl):
-    for arg in knl.args:
-        if arg.dtype is None:
-            raise RuntimeError("Code generation requires that all "
-                    "argument types are known.  Argument '%s' has "
-                    "an unknown/deferred type." % arg.name)
-
-
 def generate_code(kernel, with_annotation=False,
         allow_complex=None):
     if kernel.schedule is None:
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel)
 
-    _check_for_deferred_types(kernel)
+    from loopy.preprocess import infer_unknown_types
+    kernel = infer_unknown_types(kernel, expect_completion=True)
 
     from cgen import (FunctionBody, FunctionDeclaration,
             Value, Module, Block,

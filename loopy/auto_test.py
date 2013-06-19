@@ -324,14 +324,6 @@ def _enumerate_cl_devices_for_ref_test():
 
 # {{{ main automatic testing entrypoint
 
-def _check_for_deferred_types(knl):
-    for arg in knl.args:
-        if arg.dtype is None:
-            raise RuntimeError("Automatic testing requires that all "
-                    "argument types are known.  Argument '%s' has "
-                    "an unknown/deferred type." % arg.name)
-
-
 def auto_test_vs_ref(
         ref_knl, ctx, test_knl, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
@@ -383,7 +375,8 @@ def auto_test_vs_ref(
 
     # {{{ compile and run reference code
 
-    _check_for_deferred_types(ref_knl)
+    from loopy.preprocess import infer_unknown_types
+    ref_knl = infer_unknown_types(ref_knl, expect_completion=True)
 
     found_ref_device = False
 
@@ -485,7 +478,9 @@ def auto_test_vs_ref(
             test_kernels = [test_knl]
 
     for i, kernel in enumerate(test_kernels):
-        _check_for_deferred_types(kernel)
+        from loopy.preprocess import infer_unknown_types
+        kernel = infer_unknown_types(kernel, expect_completion=True)
+
         compiled = CompiledKernel(ctx, kernel, options=options,
                 codegen_kwargs=codegen_kwargs)
 

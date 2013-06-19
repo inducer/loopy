@@ -60,8 +60,6 @@ class TypeInferenceFailure(LoopyError):
 class DependencyTypeInferenceFailure(TypeInferenceFailure):
     pass
 
-
-
 # }}}
 
 # vim: foldmethod=marker
