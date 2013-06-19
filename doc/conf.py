@@ -240,6 +240,7 @@ intersphinx_mapping = {
     'http://documen.tician.de/islpy': None,
     'http://documen.tician.de/pyopencl': None,
     'http://documen.tician.de/cgen': None,
+    'http://docs.scipy.org/doc/numpy/': None,
     }
 
 autoclass_content = "both"
