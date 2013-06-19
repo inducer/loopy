@@ -61,7 +61,7 @@ from loopy.kernel.tools import (
 from loopy.kernel.creation import make_kernel
 from loopy.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
-from loopy.cse import precompute
+from loopy.precompute import precompute
 from loopy.padding import (split_arg_axis, find_padding_multiple,
         add_padding)
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
