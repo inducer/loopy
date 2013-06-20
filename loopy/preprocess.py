@@ -216,8 +216,8 @@ def mark_local_temporaries(kernel):
                     if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase))
 
             locparallel_assignee_inames = set(iname
-                    for iname in
-                        get_dependencies(insn.get_assignee_indices())
+                    for _, assignee_indices in insn.assignees_and_indices()
+                    for iname in get_dependencies(assignee_indices)
                         & kernel.all_inames()
                     if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase))
 
@@ -295,7 +295,7 @@ def realize_reduction(kernel, insn_id_filter=None):
 
         arg_dtype = type_inf_mapper(expr.expr)
 
-        from loopy.kernel.data import Instruction, TemporaryVariable
+        from loopy.kernel.data import ExpressionInstruction, TemporaryVariable
 
         new_temporary_variables[target_var_name] = TemporaryVariable(
                 name=target_var_name,
@@ -313,7 +313,7 @@ def realize_reduction(kernel, insn_id_filter=None):
                 based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
                 extra_used_ids=set(i.id for i in generated_insns))
 
-        init_insn = Instruction(
+        init_insn = ExpressionInstruction(
                 id=new_id,
                 assignee=target_var,
                 forced_iname_deps=outer_insn_inames - set(expr.inames),
@@ -325,7 +325,7 @@ def realize_reduction(kernel, insn_id_filter=None):
                 based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)),
                 extra_used_ids=set(i.id for i in generated_insns))
 
-        reduction_insn = Instruction(
+        reduction_insn = ExpressionInstruction(
                 id=new_id,
                 assignee=target_var,
                 expression=expr.operation(
@@ -523,14 +523,9 @@ def add_boostability_and_automatic_dependencies(kernel):
 
     var_names = arg_names | set(kernel.temporary_variables.iterkeys())
 
-    from loopy.symbolic import DependencyMapper
-    dm = DependencyMapper(composite_leaves=False)
-    dep_map = {}
-
-    for insn in kernel.instructions:
-        dep_map[insn.id] = (
-                set(var.name for var in dm(insn.expression))
-                & var_names)
+    dep_map = dict(
+            (insn.id, insn.read_dependency_names() & var_names)
+            for insn in kernel.instructions)
 
     non_boostable_vars = set()
 
@@ -579,7 +574,8 @@ def add_boostability_and_automatic_dependencies(kernel):
         boostable = insn.id not in all_my_var_writers
 
         if not boostable:
-            non_boostable_vars.add(insn.get_assignee_var_name())
+            non_boostable_vars.update(
+                    var_name for var_name, _ in insn.assignees_and_indices())
 
         new_insns.append(
                 insn.copy(
@@ -590,10 +586,7 @@ def add_boostability_and_automatic_dependencies(kernel):
 
     new2_insns = []
     for insn in new_insns:
-        accessed_vars = (
-                set([insn.get_assignee_var_name()])
-                | insn.get_read_var_names())
-
+        accessed_vars = insn.dependency_names()
         boostable = insn.boostable and not bool(non_boostable_vars & accessed_vars)
         new2_insns.append(insn.copy(boostable=boostable))
 

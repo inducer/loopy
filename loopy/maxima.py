@@ -58,7 +58,10 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
     kernel = add_boostability_and_automatic_dependencies(kernel)
 
     my_variable_names = (
-            insn.get_assignee_var_name() for insn in kernel.instructions)
+            avn
+            for insn in kernel.instructions
+            for avn, _ in insn.assignees_and_indices()
+            )
 
     from pymbolic import var
     subst_dict = dict(
@@ -73,18 +76,22 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
 
     written_insn_ids = set()
 
-    from loopy.kernel import Instruction
+    from loopy.kernel import InstructionBase, ExpressionInstruction
 
     def write_insn(insn):
-        if not isinstance(insn, Instruction):
+        if not isinstance(insn, InstructionBase):
             insn = kernel.id_to_insn[insn]
+        if not isinstance(insn, ExpressionInstruction):
+            raise RuntimeError("non-expression instructions not supported "
+                    "in maxima export")
 
         for dep in insn.insn_deps:
             if dep not in written_insn_ids:
                 write_insn(dep)
 
+        (aname, _), = insn.assignees_and_indices()
         result.append("%s%s : %s;" % (
-            prefix, insn.get_assignee_var_name(),
+            prefix, aname,
             mstr(substitute(insn.expression))))
 
         written_insn_ids.add(insn.id)

@@ -579,8 +579,8 @@ class LoopKernel(Record):
         return result
 
     def insn_inames(self, insn):
-        from loopy.kernel.data import Instruction
-        if isinstance(insn, Instruction):
+        from loopy.kernel.data import InstructionBase
+        if isinstance(insn, InstructionBase):
             return self.all_insn_inames()[insn.id]
         else:
             return self.all_insn_inames()[insn]
@@ -612,7 +612,7 @@ class LoopKernel(Record):
                 | set(self.temporary_variables.iterkeys()))
 
         for insn in self.instructions:
-            for var_name in insn.get_read_var_names() & admissible_vars:
+            for var_name in insn.read_dependency_names() & admissible_vars:
                 result.setdefault(var_name, set()).add(insn.id)
 
     @memoize_method
@@ -624,10 +624,7 @@ class LoopKernel(Record):
         result = {}
 
         for insn in self.instructions:
-            var_name = insn.get_assignee_var_name()
-            var_names = [var_name]
-
-            for var_name in var_names:
+            for var_name, _ in insn.assignees_and_indices():
                 result.setdefault(var_name, set()).add(insn.id)
 
         return result
@@ -636,14 +633,15 @@ class LoopKernel(Record):
     def get_read_variables(self):
         result = set()
         for insn in self.instructions:
-            result.update(insn.get_read_var_names())
+            result.update(insn.read_dependency_names())
         return result
 
     @memoize_method
     def get_written_variables(self):
         return frozenset(
-            insn.get_assignee_var_name()
-            for insn in self.instructions)
+                var_name
+                for insn in self.instructions
+                for var_name, _ in insn.assignees_and_indices())
 
     # }}}
 

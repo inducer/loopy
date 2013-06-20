@@ -77,19 +77,19 @@ def gather_schedule_subloop(schedule, start_idx):
 
 
 def get_barrier_needing_dependency(kernel, target, source, unordered=False):
-    from loopy.kernel.data import Instruction
-    if not isinstance(source, Instruction):
+    from loopy.kernel.data import InstructionBase
+    if not isinstance(source, InstructionBase):
         source = kernel.id_to_insn[source]
-    if not isinstance(target, Instruction):
+    if not isinstance(target, InstructionBase):
         target = kernel.id_to_insn[target]
 
     local_vars = kernel.local_var_names()
 
-    tgt_write = set([target.get_assignee_var_name()]) & local_vars
-    tgt_read = target.get_read_var_names() & local_vars
+    tgt_write = set(target.assignee_var_names()) & local_vars
+    tgt_read = target.read_dependency_names() & local_vars
 
-    src_write = set([source.get_assignee_var_name()]) & local_vars
-    src_read = source.get_read_var_names() & local_vars
+    src_write = set(source.assignee_var_names()) & local_vars
+    src_read = source.read_dependency_names() & local_vars
 
     waw = tgt_write & src_write
     raw = tgt_read & src_write
@@ -764,19 +764,19 @@ def insert_barriers(kernel, schedule, level=0):
 
             # }}}
 
-            assignee_temp_var = kernel.temporary_variables.get(
-                    insn.get_assignee_var_name())
-            if assignee_temp_var is not None and assignee_temp_var.is_local:
-                dep = get_barrier_dependent_in_schedule(kernel, insn.id, schedule,
-                        unordered=True)
+            for assignee_name in insn.assignee_var_names():
+                assignee_temp_var = kernel.temporary_variables.get(
+                        assignee_name)
+                if assignee_temp_var is not None and assignee_temp_var.is_local:
+                    dep = get_barrier_dependent_in_schedule(
+                            kernel, insn.id, schedule,
+                            unordered=True)
 
-                if dep:
-                    issue_barrier(is_pre_barrier=True, dep=dep)
+                    if dep:
+                        issue_barrier(is_pre_barrier=True, dep=dep)
 
-                result.append(sched_item)
-                owed_barriers.add(insn.id)
-            else:
-                result.append(sched_item)
+                    owed_barriers.add(insn.id)
+            result.append(sched_item)
 
         else:
             assert False

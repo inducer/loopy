@@ -304,27 +304,29 @@ class SubstitutionRule(Record):
 
 # {{{ instruction
 
-class Instruction(Record):
+class InstructionBase(Record):
     """
     .. attribute:: id
 
         An (otherwise meaningless) identifier that is unique within
-        a :class:`LoopKernel`.
-
-    .. attribute:: assignee
-
-    .. attribute:: expression
-
-    .. attribute:: forced_iname_deps
-
-        a set of inames that are added to the list of iname
-        dependencies
+        a :class:`loopy.kernel.LoopKernel`.
 
     .. attribute:: insn_deps
 
         a list of ids of :class:`Instruction` instances that
         *must* be executed before this one. Note that loop scheduling augments this
         by adding dependencies on any writes to temporaries read by this instruction.
+
+    .. attribute:: forced_iname_deps
+
+        A :class:`frozenset` of inames that are added to the list of iname
+        dependencies.
+
+    .. attribute:: priority
+
+        Scheduling priority, an integer. Higher means 'execute sooner'.
+        Default 0.
+
     .. attribute:: boostable
 
         Whether the instruction may safely be executed inside more loops than
@@ -333,10 +335,72 @@ class Instruction(Record):
 
     .. attribute:: boostable_into
 
-        a set of inames into which the instruction
+        A :class:`set` of inames into which the instruction
         may need to be boosted, as a heuristic help for the scheduler.
+        Also allowed to be *None*.
+    """
 
-    .. attribute:: priority: scheduling priority
+    fields = set("id insn_deps forced_iname_deps "
+            "priority boostable boostable_into".split())
+
+    def __init__(self, id, insn_deps, forced_iname_deps, priority,
+            boostable, boostable_into):
+
+        assert isinstance(forced_iname_deps, frozenset)
+        assert isinstance(insn_deps, set)
+
+        Record.__init__(self,
+                id=id,
+                insn_deps=insn_deps,
+                forced_iname_deps=forced_iname_deps,
+                priority=priority,
+                boostable=boostable,
+                boostable_into=boostable_into)
+
+    # {{{ abstract interface
+
+    def read_dependency_names(self):
+        raise NotImplementedError
+
+    def reduction_inames(self):
+        raise NotImplementedError
+
+    def assignees_and_indices(self):
+        """Return a list of tuples *(assignee_var_name, subscript)*
+        where assignee_var_name is a string representing an assigned
+        variable name and subscript is a :class:`tuple`.
+        """
+        raise NotImplementedError
+
+    # }}}
+
+    @memoize_method
+    def write_dependency_names(self):
+        """Return a set of dependencies of the left hand side of the
+        assignments performed by this instruction, including written variables
+        and indices.
+        """
+
+        result = set()
+        for assignee, indices in self.assignees_and_indices():
+            result.add(assignee)
+            from loopy.symbolic import get_dependencies
+            result.update(get_dependencies(indices))
+
+        return result
+
+    def dependency_names(self):
+        return self.read_dependency_names() | self.write_dependency_names()
+
+    def assignee_var_names(self):
+        return (var_name for var_name, _ in self.assignees_and_indices())
+
+
+class ExpressionInstruction(InstructionBase):
+    """
+    .. attribute:: assignee
+
+    .. attribute:: expression
 
     The following instance variables are only used until
     :func:`loopy.make_kernel` is finished:
@@ -347,11 +411,21 @@ class Instruction(Record):
         created from the assignee
     """
 
+    fields = InstructionBase.fields | \
+            set("assignee expression temp_var_type".split())
+
     def __init__(self,
             id, assignee, expression,
             forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
             boostable_into=None,
             temp_var_type=None, priority=0):
+
+        InstructionBase.__init__(self,
+                id=id,
+                forced_iname_deps=forced_iname_deps,
+                insn_deps=insn_deps, boostable=boostable,
+                boostable_into=boostable_into,
+                priority=priority)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -359,16 +433,16 @@ class Instruction(Record):
         if isinstance(expression, str):
             assignee = parse(expression)
 
-        assert isinstance(forced_iname_deps, frozenset)
-        assert isinstance(insn_deps, set)
+        self.assignee = assignee
+        self.expression = expression
+        self.temp_var_type = temp_var_type
 
-        Record.__init__(self,
-                id=id, assignee=assignee, expression=expression,
-                forced_iname_deps=forced_iname_deps,
-                insn_deps=insn_deps, boostable=boostable,
-                boostable_into=boostable_into,
-                temp_var_type=temp_var_type,
-                priority=priority)
+    # {{{ implement InstructionBase interface
+
+    @memoize_method
+    def read_dependency_names(self):
+        from loopy.symbolic import get_dependencies
+        return get_dependencies(self.expression)
 
     @memoize_method
     def reduction_inames(self):
@@ -384,6 +458,29 @@ class Instruction(Record):
         cb_mapper(self.expression)
 
         return result
+
+    @memoize_method
+    def assignees_and_indices(self):
+        from pymbolic.primitives import Variable, Subscript
+
+        if isinstance(self.assignee, Variable):
+            return [(self.assignee.name, ())]
+        elif isinstance(self.assignee, Subscript):
+            agg = self.assignee.aggregate
+            assert isinstance(agg, Variable)
+            var_name = agg.name
+
+            idx = self.assignee.index
+            if not isinstance(idx, tuple):
+                idx = (idx,)
+
+            return [(agg.name, idx)]
+        else:
+            raise RuntimeError("invalid lvalue '%s'" % self.assignee)
+
+        return var_name
+
+    # }}}
 
     def __str__(self):
         result = "%s: %s <- %s" % (self.id,
@@ -410,39 +507,9 @@ class Instruction(Record):
 
         return result
 
-    @memoize_method
-    def get_assignee_var_name(self):
-        from pymbolic.primitives import Variable, Subscript
 
-        if isinstance(self.assignee, Variable):
-            var_name = self.assignee.name
-        elif isinstance(self.assignee, Subscript):
-            agg = self.assignee.aggregate
-            assert isinstance(agg, Variable)
-            var_name = agg.name
-        else:
-            raise RuntimeError("invalid lvalue '%s'" % self.assignee)
-
-        return var_name
-
-    @memoize_method
-    def get_assignee_indices(self):
-        from pymbolic.primitives import Variable, Subscript
-
-        if isinstance(self.assignee, Variable):
-            return ()
-        elif isinstance(self.assignee, Subscript):
-            result = self.assignee.index
-            if not isinstance(result, tuple):
-                result = (result,)
-            return result
-        else:
-            raise RuntimeError("invalid lvalue '%s'" % self.assignee)
-
-    @memoize_method
-    def get_read_var_names(self):
-        from loopy.symbolic import get_dependencies
-        return get_dependencies(self.expression)
+class CInstruction(InstructionBase):
+    pass
 
 # }}}
 

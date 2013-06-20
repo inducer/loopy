@@ -481,7 +481,7 @@ def test_fuzz_code_generator(ctx_factory):
                 return np.float64
 
         knl = lp.make_kernel(ctx.devices[0], "{ : }",
-                [lp.Instruction(None, "value", expr)],
+                [lp.ExpressionInstruction(None, "value", expr)],
                 [lp.GlobalArg("value", np.complex128, shape=())]
                 + [
                     lp.ValueArg(name, get_dtype(val))
@@ -615,7 +615,7 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
             assumptions="ntgts>=1")
 
     cknl = lp.CompiledKernel(ctx, knl)
-    print cknl.code
+    print cknl.get_code()
     # FIXME: Actually test functionality.
 
 

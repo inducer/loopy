@@ -49,13 +49,25 @@ def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
 
 
 def generate_instruction_code(kernel, insn, codegen_state):
+    from loopy.kernel.data import ExpressionInstruction, CInstruction
+
+    if isinstance(insn, ExpressionInstruction):
+        return generate_expr_instruction_code(kernel, insn, codegen_state)
+    elif isinstance(insn, CInstruction):
+        return generate_c_instruction_code(kernel, insn, codegen_state)
+    else:
+        raise RuntimeError("unexpected instruction type")
+
+
+def generate_expr_instruction_code(kernel, insn, codegen_state):
     from loopy.codegen import GeneratedInstruction
 
     ccm = codegen_state.c_code_mapper
 
     expr = insn.expression
 
-    target_dtype = kernel.get_var_descriptor(insn.get_assignee_var_name()).dtype
+    (assignee_var_name, assignee_indices), = insn.assignees_and_indices()
+    target_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
     from cgen import Assign
     from loopy.codegen.expression import dtype_to_type_context
@@ -78,22 +90,24 @@ def generate_instruction_code(kernel, insn, codegen_state):
     if 0:
         from loopy.codegen import gen_code_block
         from cgen import Statement as S
-        idx = insn.get_assignee_indices()
 
-        if idx:
+        if assignee_indices:
             result = gen_code_block([
                 GeneratedInstruction(
                     ast=S(r'printf("write %s[%s]\n", %s);'
-                        % (insn.get_assignee_var_name(),
-                            ",".join(len(idx) * ["%d"]),
+                        % (assignee_var_name,
+                            ",".join(len(assignee_indices) * ["%d"]),
                             ",".join(
                                 ccm(i, prec=None, type_context="i")
-                                for i in idx))),
+                                for i in assignee_indices))),
                     implemented_domain=None),
                 result
                 ])
 
     return result
 
+
+def generate_c_instruction_code(kernel, insn, codegen_state):
+    raise NotImplementedError
 
 # vim: foldmethod=marker

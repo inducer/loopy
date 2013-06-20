@@ -51,7 +51,7 @@ from loopy.library.symbol import opencl_symbol_mangler
 
 from loopy.kernel.data import (
         ValueArg, GlobalArg, ConstantArg, ImageArg,
-        Instruction)
+        ExpressionInstruction, CInstruction)
 
 from loopy.kernel import LoopKernel
 from loopy.kernel.tools import (
@@ -72,9 +72,12 @@ from loopy.auto_test import auto_test_vs_ref
 
 __all__ = [
         "auto",
-        "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
+
         "LoopKernel",
-        "Instruction",
+
+        "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
+        "ExpressionInstruction", "CInstruction",
+
         "default_function_mangler", "single_arg_function_mangler",
         "opencl_function_mangler", "opencl_symbol_mangler",
         "default_preamble_generator",

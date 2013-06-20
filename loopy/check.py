@@ -161,68 +161,68 @@ def check_for_write_races(kernel):
 
     iname_to_tag = kernel.iname_to_tag.get
     for insn in kernel.instructions:
-        assignee_name = insn.get_assignee_var_name()
-        assignee_indices = depmap(insn.get_assignee_indices())
+        for assignee_name, assignee_indices in insn.assignees_and_indices():
+            assignee_indices = depmap(assignee_indices)
 
-        def strip_var(expr):
-            from pymbolic.primitives import Variable
-            assert isinstance(expr, Variable)
-            return expr.name
+            def strip_var(expr):
+                from pymbolic.primitives import Variable
+                assert isinstance(expr, Variable)
+                return expr.name
 
-        assignee_indices = set(strip_var(index) for index in assignee_indices)
+            assignee_indices = set(strip_var(index) for index in assignee_indices)
 
-        assignee_inames = assignee_indices & kernel.all_inames()
-        if not assignee_inames <= kernel.insn_inames(insn):
-            raise RuntimeError(
-                    "assignee of instructiosn '%s' references "
-                    "iname that the instruction does not depend on"
-                    % insn.id)
+            assignee_inames = assignee_indices & kernel.all_inames()
+            if not assignee_inames <= kernel.insn_inames(insn):
+                raise RuntimeError(
+                        "assignee of instructiosn '%s' references "
+                        "iname that the instruction does not depend on"
+                        % insn.id)
 
-        if assignee_name in kernel.arg_dict:
-            # Any parallel tags that are not depended upon by the assignee
-            # will cause write races.
+            if assignee_name in kernel.arg_dict:
+                # Any parallel tags that are not depended upon by the assignee
+                # will cause write races.
 
-            raceable_parallel_insn_inames = set(
-                    iname
-                    for iname in kernel.insn_inames(insn)
-                    if isinstance(iname_to_tag(iname), ParallelTag))
-
-        elif assignee_name in kernel.temporary_variables:
-            temp_var = kernel.temporary_variables[assignee_name]
-            if temp_var.is_local is True:
                 raceable_parallel_insn_inames = set(
                         iname
                         for iname in kernel.insn_inames(insn)
-                        if isinstance(iname_to_tag(iname), ParallelTag)
-                        and not isinstance(iname_to_tag(iname), GroupIndexTag))
+                        if isinstance(iname_to_tag(iname), ParallelTag))
 
-            elif temp_var.is_local is False:
-                raceable_parallel_insn_inames = set(
-                        iname
-                        for iname in kernel.insn_inames(insn)
-                        if isinstance(iname_to_tag(iname), ParallelTag)
-                        and not isinstance(iname_to_tag(iname),
-                            GroupIndexTag)
-                        and not isinstance(iname_to_tag(iname),
-                            LocalIndexTagBase))
+            elif assignee_name in kernel.temporary_variables:
+                temp_var = kernel.temporary_variables[assignee_name]
+                if temp_var.is_local is True:
+                    raceable_parallel_insn_inames = set(
+                            iname
+                            for iname in kernel.insn_inames(insn)
+                            if isinstance(iname_to_tag(iname), ParallelTag)
+                            and not isinstance(iname_to_tag(iname), GroupIndexTag))
+
+                elif temp_var.is_local is False:
+                    raceable_parallel_insn_inames = set(
+                            iname
+                            for iname in kernel.insn_inames(insn)
+                            if isinstance(iname_to_tag(iname), ParallelTag)
+                            and not isinstance(iname_to_tag(iname),
+                                GroupIndexTag)
+                            and not isinstance(iname_to_tag(iname),
+                                LocalIndexTagBase))
+
+                else:
+                    raise RuntimeError("temp var '%s' hasn't decided on "
+                            "whether it is local" % temp_var.name)
 
             else:
-                raise RuntimeError("temp var '%s' hasn't decided on "
-                        "whether it is local" % temp_var.name)
+                raise RuntimeError("invalid assignee name in instruction '%s'"
+                        % insn.id)
 
-        else:
-            raise RuntimeError("invalid assignee name in instruction '%s'"
-                    % insn.id)
+            race_inames = \
+                    raceable_parallel_insn_inames - assignee_inames
 
-        race_inames = \
-                raceable_parallel_insn_inames - assignee_inames
-
-        if race_inames:
-            raise WriteRaceConditionError(
-                    "instruction '%s' contains a write race: "
-                    "instruction will be run across parallel iname(s) '%s', which "
-                    "is/are not referenced in the lhs index"
-                    % (insn.id, ",".join(race_inames)))
+            if race_inames:
+                raise WriteRaceConditionError(
+                        "instruction '%s' contains a write race: "
+                        "instruction will be run across parallel iname(s) "
+                        "'%s', which is/are not referenced in the lhs index"
+                        % (insn.id, ",".join(race_inames)))
 
 
 def check_for_orphaned_user_hardware_axes(kernel):
@@ -337,26 +337,25 @@ def check_bounds(kernel):
 
 def check_write_destinations(kernel):
     for insn in kernel.instructions:
-        wvar = insn.get_assignee_var_name()
+        for wvar, _ in insn.assignees_and_indices():
+            if wvar in kernel.all_inames():
+                raise RuntimeError("iname '%s' may not be written" % wvar)
 
-        if wvar in kernel.all_inames():
-            raise RuntimeError("iname '%s' may not be written" % wvar)
+            insn_domain = kernel.get_inames_domain(kernel.insn_inames(insn))
+            insn_params = set(insn_domain.get_var_names(dim_type.param))
 
-        insn_domain = kernel.get_inames_domain(kernel.insn_inames(insn))
-        insn_params = set(insn_domain.get_var_names(dim_type.param))
+            if wvar in kernel.all_params():
+                if wvar not in kernel.temporary_variables:
+                    raise RuntimeError("domain parameter '%s' may not be written"
+                            "--it is not a temporary variable" % wvar)
 
-        if wvar in kernel.all_params():
-            if wvar not in kernel.temporary_variables:
-                raise RuntimeError("domain parameter '%s' may not be written"
-                        "--it is not a temporary variable" % wvar)
+                if wvar in insn_params:
+                    raise RuntimeError("domain parameter '%s' may not be written "
+                            "inside a domain dependent on it" % wvar)
 
-            if wvar in insn_params:
-                raise RuntimeError("domain parameter '%s' may not be written "
-                        "inside a domain dependent on it" % wvar)
-
-        if not (wvar in kernel.temporary_variables
-                or wvar in kernel.arg_dict) and wvar not in kernel.all_params():
-            raise RuntimeError
+            if not (wvar in kernel.temporary_variables
+                    or wvar in kernel.arg_dict) and wvar not in kernel.all_params():
+                raise RuntimeError
 
 # }}}
 

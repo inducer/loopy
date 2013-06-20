@@ -27,7 +27,8 @@ THE SOFTWARE.
 
 import numpy as np
 from loopy.symbolic import IdentityMapper, WalkMapper
-from loopy.kernel.data import Instruction, SubstitutionRule
+from loopy.kernel.data import (
+        InstructionBase, ExpressionInstruction, SubstitutionRule)
 import islpy as isl
 from islpy import dim_type
 
@@ -204,7 +205,7 @@ def parse_insn(insn):
             raise RuntimeError("left hand side of assignment '%s' must "
                     "be variable or subscript" % lhs)
 
-        return Instruction(
+        return ExpressionInstruction(
                     id=insn_id,
                     insn_deps=insn_deps,
                     forced_iname_deps=frozenset(),
@@ -240,7 +241,7 @@ def parse_insn(insn):
 
 
 def parse_if_necessary(insn, defines):
-    if isinstance(insn, Instruction):
+    if isinstance(insn, InstructionBase):
         yield insn
         return
     elif not isinstance(insn, str):
@@ -398,7 +399,8 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
 
     for insn in instructions:
         if insn.temp_var_type is not None:
-            temp_var_names.add(insn.get_assignee_var_name())
+            (assignee_var_name, _), = insn.assignees_and_indices()
+            temp_var_names.add(assignee_var_name)
 
     # }}}
 
@@ -414,9 +416,11 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
     all_written_names = set()
     from loopy.symbolic import get_dependencies
     for insn in instructions:
-        all_written_names.add(insn.get_assignee_var_name())
-        all_names.update(get_dependencies(submap(insn.assignee, insn.id)))
-        all_names.update(get_dependencies(submap(insn.expression, insn.id)))
+        if isinstance(insn, ExpressionInstruction):
+            (assignee_var_name, _), = insn.assignees_and_indices()
+            all_written_names.add(assignee_var_name)
+            all_names.update(get_dependencies(submap(insn.assignee, insn.id)))
+            all_names.update(get_dependencies(submap(insn.expression, insn.id)))
 
     all_params = set()
     for dom in domains:
@@ -558,11 +562,10 @@ def check_written_variable_names(knl):
             | set(knl.temporary_variables.iterkeys()))
 
     for insn in knl.instructions:
-        var_name = insn.get_assignee_var_name()
-
-        if var_name not in admissible_vars:
-            raise RuntimeError("variable '%s' not declared or not "
-                    "allowed for writing" % var_name)
+        for var_name, _ in insn.assignees_and_indices():
+            if var_name not in admissible_vars:
+                raise RuntimeError("variable '%s' not declared or not "
+                        "allowed for writing" % var_name)
 
 # }}}
 
@@ -616,7 +619,7 @@ def expand_cses(knl):
                 shape=())
 
         from pymbolic.primitives import Variable
-        insn = Instruction(
+        insn = ExpressionInstruction(
                 id=knl.make_unique_instruction_id(
                     extra_used_ids=newly_created_insn_ids),
                 assignee=Variable(new_var_name), expression=expr)
@@ -635,7 +638,10 @@ def expand_cses(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
     for insn in knl.instructions:
-        new_insns.append(insn.copy(expression=cseam(insn.expression)))
+        if isinstance(insn, ExpressionInstruction):
+            new_insns.append(insn.copy(expression=cseam(insn.expression)))
+        else:
+            new_insns.append(insn)
 
     return knl.copy(
             instructions=new_insns,
@@ -653,10 +659,13 @@ def create_temporaries(knl):
     from loopy.symbolic import AccessRangeMapper
 
     for insn in knl.instructions:
+        if not isinstance(insn, ExpressionInstruction):
+            continue
+
         from loopy.kernel.data import TemporaryVariable
 
         if insn.temp_var_type is not None:
-            assignee_name = insn.get_assignee_var_name()
+            (assignee_name, _), = insn.assignees_and_indices()
 
             armap = AccessRangeMapper(knl, assignee_name)
             armap(insn.assignee, knl.insn_inames(insn))
@@ -880,7 +889,7 @@ def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
         instructions = [instructions]
     for insn in instructions:
         for new_insn in parse_if_necessary(insn, defines):
-            if isinstance(new_insn, Instruction):
+            if isinstance(new_insn, InstructionBase):
                 parsed_instructions.append(new_insn)
             elif isinstance(new_insn, SubstitutionRule):
                 substitutions[new_insn.name] = new_insn

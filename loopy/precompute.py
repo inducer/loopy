@@ -829,8 +829,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             )))
         (compute_expr))
 
-    from loopy.kernel.data import Instruction
-    compute_insn = Instruction(
+    from loopy.kernel.data import ExpressionInstruction
+    compute_insn = ExpressionInstruction(
             id=kernel.make_unique_instruction_id(based_on=c_subst_name),
             assignee=assignee,
             expression=compute_expr)

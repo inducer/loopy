@@ -79,8 +79,6 @@ def add_and_infer_argument_dtypes(knl, dtype_dict):
 # {{{ find_all_insn_inames fixed point iteration
 
 def find_all_insn_inames(kernel):
-    from loopy.symbolic import get_dependencies
-
     writer_map = kernel.writer_map()
 
     insn_id_to_inames = {}
@@ -93,8 +91,8 @@ def find_all_insn_inames(kernel):
     kernel = expand_subst(kernel)
 
     for insn in kernel.instructions:
-        all_read_deps[insn.id] = read_deps = get_dependencies(insn.expression)
-        all_write_deps[insn.id] = write_deps = get_dependencies(insn.assignee)
+        all_read_deps[insn.id] = read_deps = insn.read_dependency_names()
+        all_write_deps[insn.id] = write_deps = insn.write_dependency_names()
         deps = read_deps | write_deps
 
         iname_deps = (
