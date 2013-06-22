@@ -794,10 +794,10 @@ def generate_loop_schedules(kernel, debug_args={}):
     from loopy.preprocess import preprocess_kernel
     kernel = preprocess_kernel(kernel)
 
-    from loopy.check import run_automatic_checks
-    run_automatic_checks(kernel)
+    from loopy.check import pre_schedule_checks
+    pre_schedule_checks(kernel)
 
-    logger.info("schedule %s: start" % kernel.name)
+    logger.info("%s: schedule start" % kernel.name)
 
     schedule_count = 0
 
@@ -874,7 +874,7 @@ def generate_loop_schedules(kernel, debug_args={}):
 
         raise RuntimeError("no valid schedules found")
 
-    logger.info("schedule %s: done" % kernel.name)
+    logger.info("%s: schedule done" % kernel.name)
 
 # }}}
 

@@ -135,14 +135,28 @@ Arguments
     :members:
     :undoc-members:
 
-.. _syntax:
+Temporary Variables
+^^^^^^^^^^^^^^^^^^^
 
-String Syntax
-^^^^^^^^^^^^^
+.. autoclass:: TemporaryVariable
+    :members:
+    :undoc-members:
 
-* Substitution rules
+Substitution rules
+^^^^^^^^^^^^^^^^^^
 
-* Instructions
+.. autoclass:: SubstitutionRule
+
+String sytnax: FIXME
+
+Instructions
+^^^^^^^^^^^^
+
+.. autoclass:: ExpressionInstruction
+
+.. autoclass:: CInstruction
+
+String sytnax: FIXME
 
 Kernels
 ^^^^^^^

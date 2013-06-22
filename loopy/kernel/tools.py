@@ -99,6 +99,10 @@ def find_all_insn_inames(kernel):
                 deps & kernel.all_inames()
                 | insn.forced_iname_deps)
 
+        assert isinstance(read_deps, frozenset), type(insn)
+        assert isinstance(write_deps, frozenset), type(insn)
+        assert isinstance(iname_deps, frozenset), type(insn)
+
         insn_id_to_inames[insn.id] = iname_deps
         insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
 
@@ -173,6 +177,9 @@ def find_all_insn_inames(kernel):
 
         if not did_something:
             break
+
+    for v in insn_id_to_inames.itervalues():
+        assert isinstance(v, frozenset)
 
     return insn_id_to_inames
 

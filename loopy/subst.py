@@ -30,6 +30,10 @@ from pytools import Record
 from pymbolic import var
 
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 class ExprDescriptor(Record):
     __slots__ = ["insn", "expr", "unif_var_dict"]
 
@@ -184,12 +188,18 @@ def extract_subst(kernel, subst_name, template, parameters):
 
 
 def expand_subst(kernel, ctx_match=None):
+    logger.debug("%s: expand subst" % kernel.name)
+
     from loopy.symbolic import SubstitutionRuleExpander
     from loopy.context_matching import parse_stack_match
     submap = SubstitutionRuleExpander(kernel.substitutions,
             kernel.get_var_name_generator(),
             parse_stack_match(ctx_match))
 
-    return submap.map_kernel(kernel)
+    kernel = submap.map_kernel(kernel)
+    if ctx_match is None:
+        return kernel.copy(substitutions={})
+    else:
+        return kernel
 
 # vim: foldmethod=marker

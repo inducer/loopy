@@ -50,8 +50,10 @@ from loopy.library.preamble import default_preamble_generator
 from loopy.library.symbol import opencl_symbol_mangler
 
 from loopy.kernel.data import (
+        auto,
         ValueArg, GlobalArg, ConstantArg, ImageArg,
-        ExpressionInstruction, CInstruction)
+        ExpressionInstruction, CInstruction,
+        TemporaryVariable)
 
 from loopy.kernel import LoopKernel
 from loopy.kernel.tools import (
@@ -76,6 +78,8 @@ __all__ = [
         "LoopKernel",
 
         "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
+        "TemporaryVariable",
+
         "ExpressionInstruction", "CInstruction",
 
         "default_function_mangler", "single_arg_function_mangler",
@@ -103,12 +107,6 @@ __all__ = [
         "split_arg_axis", "find_padding_multiple", "add_padding"
         ]
 
-
-class auto:
-    """A generic placeholder object for something that should be automatically
-    detected.  See, for example, the *shape* or *strides* argument of
-    :class:`GlobalArg`.
-    """
 
 # }}}
 

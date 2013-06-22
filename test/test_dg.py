@@ -27,11 +27,15 @@ import numpy as np
 import pyopencl as cl
 import loopy as lp
 
+import logging  # noqa
+
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
 def test_dg_volume(ctx_factory):
+    #logging.basicConfig(level=logging.DEBUG)
+
     dtype = np.float32
     dtype4 = cl.array.vec.float4
     ctx = ctx_factory()

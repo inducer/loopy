@@ -481,7 +481,7 @@ def test_fuzz_code_generator(ctx_factory):
                 return np.float64
 
         knl = lp.make_kernel(ctx.devices[0], "{ : }",
-                [lp.ExpressionInstruction(None, "value", expr)],
+                [lp.ExpressionInstruction("value", expr)],
                 [lp.GlobalArg("value", np.complex128, shape=())]
                 + [
                     lp.ValueArg(name, get_dtype(val))
@@ -1163,6 +1163,32 @@ def test_convolution_like(ctx_factory):
 
     lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
             parameters={"im_w": 1024, "im_h": 1024, "f_w": 7})
+
+
+def test_c_instruction(ctx_factory):
+    logging.basicConfig(level=logging.DEBUG)
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n }",
+            ],
+            [
+                lp.CInstruction("i", """
+                    x = sin((float) i);
+                    """, assignees="x"),
+                "a[i*i] = x",
+                ],
+            [
+                lp.GlobalArg("a", shape="n"),
+                lp.ValueArg("n"),
+                lp.TemporaryVariable("x", np.float32),
+                ],
+            assumptions="n>=1")
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    print knl
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
 
 if __name__ == "__main__":

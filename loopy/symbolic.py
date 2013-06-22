@@ -330,8 +330,9 @@ class SubstitutionRuleRenamer(IdentityMapper):
 
 def rename_subst_rules_in_instructions(insns, renames):
     subst_renamer = SubstitutionRuleRenamer(renames)
+
     return [
-            insn.copy(expression=subst_renamer(insn.expression))
+            insn.with_transformed_expressions(subst_renamer)
             for insn in insns]
 
 
@@ -486,14 +487,11 @@ class ExpandingIdentityMapper(IdentityMapper):
 
     def map_kernel(self, kernel):
         new_insns = [
-                insn.copy(
-                    # While subst rules are not allowed in assignees, the mapper
-                    # may perform tasks entirely unrelated to subst rules, so
-                    # we must map assignees, too.
-                    assignee=self(insn.assignee, insn.id),
+                # While subst rules are not allowed in assignees, the mapper
+                # may perform tasks entirely unrelated to subst rules, so
+                # we must map assignees, too.
 
-                    expression=self(insn.expression, insn.id))
-
+                insn.with_transformed_expressions(self, insn.id)
                 for insn in kernel.instructions]
 
         new_substs, renames = self._get_new_substitutions_and_renames()

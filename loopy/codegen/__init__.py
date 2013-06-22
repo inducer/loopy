@@ -258,6 +258,9 @@ def generate_code(kernel, with_annotation=False,
     from loopy.preprocess import infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
 
+    from loopy.check import pre_codegen_checks
+    pre_codegen_checks(kernel)
+
     from cgen import (FunctionBody, FunctionDeclaration,
             Value, Module, Block,
             Line, Const, LiteralLines, Initializer)

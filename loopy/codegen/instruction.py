@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 
 import islpy as isl
+from loopy.codegen import GeneratedInstruction
 
 
 def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
@@ -60,7 +61,6 @@ def generate_instruction_code(kernel, insn, codegen_state):
 
 
 def generate_expr_instruction_code(kernel, insn, codegen_state):
-    from loopy.codegen import GeneratedInstruction
 
     ccm = codegen_state.c_code_mapper
 
@@ -108,6 +108,41 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
 
 
 def generate_c_instruction_code(kernel, insn, codegen_state):
-    raise NotImplementedError
+    ccm = codegen_state.c_code_mapper
+
+    body = []
+
+    from loopy.codegen import POD
+    from cgen import Initializer, Block, Line
+
+    from pymbolic.primitives import Variable
+    for name, iname_expr in insn.iname_exprs:
+        if (isinstance(iname_expr, Variable)
+                and name not in ccm.var_subst_map):
+            # No need, the bare symbol will work
+            continue
+
+        body.append(
+                Initializer(
+                    POD(kernel.index_dtype, name),
+                    codegen_state.c_code_mapper(
+                        iname_expr, prec=None, type_context="i")))
+
+    if body:
+        body.append(Line())
+
+    body.extend(Line(l) for l in insn.code.split("\n"))
+
+    insn_inames = kernel.insn_inames(insn)
+    insn_code, impl_domain = wrap_in_bounds_checks(
+            ccm, kernel.get_inames_domain(insn_inames), insn_inames,
+            codegen_state.implemented_domain,
+            Block(body))
+
+    return GeneratedInstruction(
+        insn_id=insn.id,
+        implemented_domain=impl_domain,
+        ast=insn_code)
+
 
 # vim: foldmethod=marker

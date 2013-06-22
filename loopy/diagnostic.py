@@ -29,6 +29,10 @@ class LoopyWarningBase(UserWarning):
     pass
 
 
+class LoopyWarning(LoopyWarningBase):
+    pass
+
+
 class LoopyAdvisory(LoopyWarningBase):
     pass
 

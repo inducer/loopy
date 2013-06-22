@@ -860,7 +860,22 @@ class LoopKernel(Record):
         lines.append(sep)
         lines.append("INSTRUCTIONS:")
         loop_list_width = 35
+
+        import loopy as lp
         for insn in self.instructions:
+            if isinstance(insn, lp.ExpressionInstruction):
+                lhs = str(insn.assignee)
+                rhs = str(insn.expression)
+                trailing = []
+            elif isinstance(insn, lp.CInstruction):
+                lhs = ", ".join(str(a) for a in insn.assignees)
+                rhs = "CODE(%s|%s)" % (
+                        ", ".join(str(x) for x in insn.read_variables),
+                        ", ".join("%s=%s" % (name, expr)
+                            for name, expr in insn.iname_exprs))
+
+                trailing = ["    "+l for l in insn.code.split("\n")]
+
             loop_list = ",".join(sorted(self.insn_inames(insn)))
 
             options = [insn.id]
@@ -870,12 +885,14 @@ class LoopKernel(Record):
             if len(loop_list) > loop_list_width:
                 lines.append("[%s]" % loop_list)
                 lines.append("%s%s <- %s   # %s" % (
-                    (loop_list_width+2)*" ", insn.assignee,
-                    insn.expression, ", ".join(options)))
+                    (loop_list_width+2)*" ", lhs,
+                    rhs, ", ".join(options)))
             else:
                 lines.append("[%s]%s%s <- %s   # %s" % (
                     loop_list, " "*(loop_list_width-len(loop_list)),
-                    insn.assignee, insn.expression, ", ".join(options)))
+                    lhs, rhs, ", ".join(options)))
+
+            lines.extend(trailing)
 
         lines.append(sep)
         lines.append("DEPENDENCIES:")

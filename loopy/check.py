@@ -26,6 +26,7 @@ THE SOFTWARE.
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
+from loopy.diagnostic import LoopyError, LoopyWarning
 
 import logging
 logger = logging.getLogger(__name__)
@@ -34,54 +35,6 @@ from loopy.diagnostic import WriteRaceConditionError
 
 
 # {{{ sanity checks run during scheduling
-
-def check_sizes(kernel):
-    import loopy as lp
-
-    from loopy.diagnostic import LoopyAdvisory
-
-    parameters = {}
-    for arg in kernel.args:
-        if isinstance(arg, lp.ValueArg) and arg.approximately is not None:
-            parameters[arg.name] = arg.approximately
-
-    glens, llens = kernel.get_grid_sizes_as_exprs()
-
-    if (max(len(glens), len(llens))
-            > kernel.device.max_work_item_dimensions):
-        raise RuntimeError("too many work item dimensions")
-
-    from pymbolic import evaluate
-    from pymbolic.mapper.evaluator import UnknownVariableError
-    try:
-        glens = evaluate(glens, parameters)
-        llens = evaluate(llens, parameters)
-    except UnknownVariableError, name:
-        from warnings import warn
-        warn("could not check axis bounds because no value "
-                "for variable '%s' was passed to check_kernels()"
-                % name, LoopyAdvisory)
-    else:
-        for i in range(len(llens)):
-            if llens[i] > kernel.device.max_work_item_sizes[i]:
-                raise RuntimeError("group axis %d too big" % i)
-
-        from pytools import product
-        if product(llens) > kernel.device.max_work_group_size:
-            raise RuntimeError("work group too big")
-
-    from pyopencl.characterize import usable_local_mem_size
-    if kernel.local_mem_use() > usable_local_mem_size(kernel.device):
-        raise RuntimeError(5, "using too much local memory")
-
-    from loopy.kernel.data import ConstantArg
-    const_arg_count = sum(
-            1 for arg in kernel.args
-            if isinstance(arg, ConstantArg))
-
-    if const_arg_count > kernel.device.max_constant_args:
-        raise RuntimeError("too many constant arguments")
-
 
 def check_for_unused_hw_axes_in_insns(kernel):
     group_size, local_size = kernel.get_grid_sizes_as_exprs()
@@ -107,16 +60,16 @@ def check_for_unused_hw_axes_in_insns(kernel):
             elif isinstance(tag, GroupIndexTag):
                 group_axes_used.add(tag.axis)
             elif isinstance(tag, AutoLocalIndexTagBase):
-                raise RuntimeError("auto local tag encountered")
+                raise LoopyError("auto local tag encountered")
 
         if group_axes != group_axes_used:
-            raise RuntimeError("instruction '%s' does not use all group hw axes "
+            raise LoopyError("instruction '%s' does not use all group hw axes "
                     "(available: %s used:%s)"
                     % (insn.id,
                         ",".join(str(i) for i in group_axes),
                         ",".join(str(i) for i in group_axes_used)))
         if local_axes != local_axes_used:
-            raise RuntimeError("instruction '%s' does not use all local hw axes"
+            raise LoopyError("instruction '%s' does not use all local hw axes"
                     "(available: %s used:%s)"
                     % (insn.id,
                         ",".join(str(i) for i in local_axes),
@@ -133,22 +86,18 @@ def check_for_double_use_of_hw_axes(kernel):
             if isinstance(tag, UniqueTag):
                 key = tag.key
                 if key in insn_tag_keys:
-                    raise RuntimeError("instruction '%s' has multiple "
+                    raise LoopyError("instruction '%s' has multiple "
                             "inames tagged '%s'" % (insn.id, tag))
 
                 insn_tag_keys.add(key)
 
 
 def check_for_inactive_iname_access(kernel):
-    from loopy.symbolic import DependencyMapper
-    depmap = DependencyMapper()
-
     for insn in kernel.instructions:
-        expression_indices = depmap(insn.expression)
-        expression_inames = expression_indices & kernel.all_inames()
+        expression_inames = insn.read_dependency_names() & kernel.all_inames()
 
         if not expression_inames <= kernel.insn_inames(insn):
-            raise RuntimeError(
+            raise LoopyError(
                     "instructiosn '%s' references "
                     "inames that the instruction does not depend on"
                     % insn.id)
@@ -173,7 +122,7 @@ def check_for_write_races(kernel):
 
             assignee_inames = assignee_indices & kernel.all_inames()
             if not assignee_inames <= kernel.insn_inames(insn):
-                raise RuntimeError(
+                raise LoopyError(
                         "assignee of instructiosn '%s' references "
                         "iname that the instruction does not depend on"
                         % insn.id)
@@ -207,11 +156,11 @@ def check_for_write_races(kernel):
                                 LocalIndexTagBase))
 
                 else:
-                    raise RuntimeError("temp var '%s' hasn't decided on "
+                    raise LoopyError("temp var '%s' hasn't decided on "
                             "whether it is local" % temp_var.name)
 
             else:
-                raise RuntimeError("invalid assignee name in instruction '%s'"
+                raise LoopyError("invalid assignee name in instruction '%s'"
                         % insn.id)
 
             race_inames = \
@@ -235,7 +184,7 @@ def check_for_orphaned_user_hardware_axes(kernel):
                 break
 
         if not found:
-            raise RuntimeError("user-requested local hardware axis %d "
+            raise LoopyError("user-requested local hardware axis %d "
                     "has no iname mapped to it" % axis)
 
 
@@ -254,7 +203,7 @@ def check_for_data_dependent_parallel_bounds(kernel):
         parameters = set(dom.get_var_names(dim_type.param))
         for par in parameters:
             if par in kernel.temporary_variables:
-                raise RuntimeError("Domain number %d has a data-dependent "
+                raise LoopyError("Domain number %d has a data-dependent "
                         "parameter '%s' and contains parallel "
                         "inames '%s'. This is not allowed (for now)."
                         % (i, par, ", ".join(par_inames)))
@@ -295,7 +244,7 @@ class _AccessCheckMapper(WalkMapper):
                 return
 
             if len(subscript) != len(shape):
-                raise RuntimeError("subscript to '%s' in '%s' has the wrong "
+                raise LoopyError("subscript to '%s' in '%s' has the wrong "
                         "number of indices (got: %d, expected: %d)" % (
                             expr.aggregate.name, expr,
                             len(subscript), len(shape)))
@@ -316,7 +265,7 @@ class _AccessCheckMapper(WalkMapper):
                 shape_domain = shape_domain.intersect(slab)
 
             if not access_range.is_subset(shape_domain):
-                raise RuntimeError("'%s' in instruction '%s' "
+                raise LoopyError("'%s' in instruction '%s' "
                         "accesses out-of-bounds array element"
                         % (expr, self.insn_id))
 
@@ -331,40 +280,38 @@ def check_bounds(kernel):
             continue
 
         acm = _AccessCheckMapper(kernel, domain, insn.id)
-        acm(insn.expression)
-        acm(insn.assignee)
+        insn.with_transformed_expressions(acm)
 
 
 def check_write_destinations(kernel):
     for insn in kernel.instructions:
         for wvar, _ in insn.assignees_and_indices():
             if wvar in kernel.all_inames():
-                raise RuntimeError("iname '%s' may not be written" % wvar)
+                raise LoopyError("iname '%s' may not be written" % wvar)
 
             insn_domain = kernel.get_inames_domain(kernel.insn_inames(insn))
             insn_params = set(insn_domain.get_var_names(dim_type.param))
 
             if wvar in kernel.all_params():
                 if wvar not in kernel.temporary_variables:
-                    raise RuntimeError("domain parameter '%s' may not be written"
+                    raise LoopyError("domain parameter '%s' may not be written"
                             "--it is not a temporary variable" % wvar)
 
                 if wvar in insn_params:
-                    raise RuntimeError("domain parameter '%s' may not be written "
+                    raise LoopyError("domain parameter '%s' may not be written "
                             "inside a domain dependent on it" % wvar)
 
             if not (wvar in kernel.temporary_variables
                     or wvar in kernel.arg_dict) and wvar not in kernel.all_params():
-                raise RuntimeError
+                raise LoopyError
 
 # }}}
 
 
-def run_automatic_checks(kernel):
+def pre_schedule_checks(kernel):
     try:
-        logger.info("sanity-check %s: start" % kernel.name)
+        logger.info("pre-schedule check %s: start" % kernel.name)
 
-        check_sizes(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
         check_for_unused_hw_axes_in_insns(kernel)
@@ -374,14 +321,82 @@ def run_automatic_checks(kernel):
         check_bounds(kernel)
         check_write_destinations(kernel)
 
-        logger.info("sanity-check %s: done" % kernel.name)
+        logger.info("pre-schedule check %s: done" % kernel.name)
     except:
         print 75*"="
-        print "failing kernel after processing:"
+        print "failing kernel during pre-schedule check:"
         print 75*"="
         print kernel
         print 75*"="
         raise
+
+
+# {{{ pre-code-generation checks
+
+def check_sizes(kernel):
+    import loopy as lp
+
+    from loopy.diagnostic import LoopyAdvisory
+
+    parameters = {}
+    for arg in kernel.args:
+        if isinstance(arg, lp.ValueArg) and arg.approximately is not None:
+            parameters[arg.name] = arg.approximately
+
+    glens, llens = kernel.get_grid_sizes_as_exprs()
+
+    if (max(len(glens), len(llens))
+            > kernel.device.max_work_item_dimensions):
+        raise LoopyError("too many work item dimensions")
+
+    from pymbolic import evaluate
+    from pymbolic.mapper.evaluator import UnknownVariableError
+    try:
+        glens = evaluate(glens, parameters)
+        llens = evaluate(llens, parameters)
+    except UnknownVariableError, name:
+        from warnings import warn
+        warn("could not check axis bounds because no value "
+                "for variable '%s' was passed to check_kernels()"
+                % name, LoopyAdvisory)
+    else:
+        for i in range(len(llens)):
+            if llens[i] > kernel.device.max_work_item_sizes[i]:
+                raise LoopyError("group axis %d too big" % i)
+
+        from pytools import product
+        if product(llens) > kernel.device.max_work_group_size:
+            raise LoopyError("work group too big")
+
+    from pyopencl.characterize import usable_local_mem_size
+    if kernel.local_mem_use() > usable_local_mem_size(kernel.device):
+        raise LoopyError(5, "using too much local memory")
+
+    from loopy.kernel.data import ConstantArg
+    const_arg_count = sum(
+            1 for arg in kernel.args
+            if isinstance(arg, ConstantArg))
+
+    if const_arg_count > kernel.device.max_constant_args:
+        raise LoopyError("too many constant arguments")
+
+
+def pre_codegen_checks(kernel):
+    try:
+        logger.info("pre-codegen check %s: start" % kernel.name)
+
+        check_sizes(kernel)
+
+        logger.info("pre-codegen check %s: done" % kernel.name)
+    except:
+        print 75*"="
+        print "failing kernel during pre-schedule check:"
+        print 75*"="
+        print kernel
+        print 75*"="
+        raise
+
+# }}}
 
 
 # {{{ sanity-check for implemented domains of each instruction
@@ -453,7 +468,7 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 print get_highlighted_cl_code(code)
                 print 79*"-"
 
-            raise RuntimeError("sanity check failed--implemented and desired "
+            raise LoopyError("sanity check failed--implemented and desired "
                     "domain for instruction '%s' do not match\n\n"
                     "implemented: %s\n\n"
                     "desired:%s\n\n%s"

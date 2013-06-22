@@ -672,8 +672,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     invg = InvocationGatherer(kernel, subst_name, subst_tag, within)
 
+    import loopy as lp
     for insn in kernel.instructions:
-        invg(insn.expression, insn.id)
+        if isinstance(insn, lp.ExpressionInstruction):
+            invg(insn.expression, insn.id)
 
     for invdesc in invg.invocation_descriptors:
         invocation_descriptors.append(
@@ -857,15 +859,15 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     else:
         dtype = np.dtype(dtype)
 
-    from loopy.kernel.data import TemporaryVariable
+    import loopy as lp
 
     new_temporary_variables = kernel.temporary_variables.copy()
-    temp_var = TemporaryVariable(
+    temp_var = lp.TemporaryVariable(
             name=target_var_name,
             dtype=dtype,
             base_indices=(0,)*len(non1_storage_shape),
             shape=tuple(non1_storage_shape),
-            is_local=None)
+            is_local=lp.auto)
 
     new_temporary_variables[target_var_name] = temp_var
 

@@ -30,6 +30,13 @@ from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
 
 
+class auto:
+    """A generic placeholder object for something that should be automatically
+    detected.  See, for example, the *shape* or *strides* argument of
+    :class:`GlobalArg`.
+    """
+
+
 # {{{ iname tags
 
 class IndexTag(Record):
@@ -231,6 +238,10 @@ class TemporaryVariable(ArrayBase):
     .. attribute:: storage_shape
     .. attribute:: base_indices
     .. attribute:: is_local
+
+        Whether this is temporary lives in ``local`` memory.
+        May be *True*, *False*, or :class:`loopy.auto` if this is
+        to be automatically determined.
     """
 
     min_target_axes = 0
@@ -242,9 +253,19 @@ class TemporaryVariable(ArrayBase):
             "is_local"
             ]
 
-    def __init__(self, name, dtype, shape, is_local,
+    def __init__(self, name, dtype, shape=(), is_local=auto,
             dim_tags=None, offset=0, strides=None, order=None,
             base_indices=None, storage_shape=None):
+        """
+        :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
+        :arg shape: :class:`loopy.auto` or a shape tuple
+        :arg base_indices: :class:`loopy.auto` or a tuple of base indices
+        """
+
+        if is_local is None:
+            raise ValueError("is_local is None is no longer supported. "
+                    "Use loopy.auto.")
+
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
@@ -372,6 +393,13 @@ class InstructionBase(Record):
         """
         raise NotImplementedError
 
+    def with_transformed_expressions(self, f, *args):
+        """Return a new copy of *self* where *f* has been applied to every
+        expression occurring in *self*. *args* will be passed as extra
+        arguments (in addition to the expression) to *f*.
+        """
+        raise NotImplementedError
+
     # }}}
 
     @memoize_method
@@ -387,13 +415,52 @@ class InstructionBase(Record):
             from loopy.symbolic import get_dependencies
             result.update(get_dependencies(indices))
 
-        return result
+        return frozenset(result)
 
     def dependency_names(self):
         return self.read_dependency_names() | self.write_dependency_names()
 
     def assignee_var_names(self):
         return (var_name for var_name, _ in self.assignees_and_indices())
+
+    def get_str_options(self):
+        result = []
+
+        if self.boostable is True:
+            if self.boostable_into:
+                result.append("boostable into '%s'" % ",".join(self.boostable_into))
+            else:
+                result.append("boostable")
+        elif self.boostable is False:
+            result.append("not boostable")
+        elif self.boostable is None:
+            pass
+        else:
+            raise RuntimeError("unexpected value for Instruction.boostable")
+
+        if self.insn_deps:
+            result.append("deps="+":".join(self.insn_deps))
+        if self.priority:
+            result.append("priority=%d" % self.priority)
+
+        return result
+
+
+def _get_assignee_and_index(expr):
+    from pymbolic.primitives import Variable, Subscript
+    if isinstance(expr, Variable):
+        return (expr.name, ())
+    elif isinstance(expr, Subscript):
+        agg = expr.aggregate
+        assert isinstance(agg, Variable)
+
+        idx = expr.index
+        if not isinstance(idx, tuple):
+            idx = (idx,)
+
+        return (agg.name, idx)
+    else:
+        raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
 class ExpressionInstruction(InstructionBase):
@@ -402,7 +469,7 @@ class ExpressionInstruction(InstructionBase):
 
     .. attribute:: expression
 
-    The following instance variables are only used until
+    The following attributes are only used until
     :func:`loopy.make_kernel` is finished:
 
     .. attribute:: temp_var_type
@@ -415,8 +482,8 @@ class ExpressionInstruction(InstructionBase):
             set("assignee expression temp_var_type".split())
 
     def __init__(self,
-            id, assignee, expression,
-            forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
+            assignee, expression,
+            id=None, forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
             boostable_into=None,
             temp_var_type=None, priority=0):
 
@@ -461,24 +528,12 @@ class ExpressionInstruction(InstructionBase):
 
     @memoize_method
     def assignees_and_indices(self):
-        from pymbolic.primitives import Variable, Subscript
+        return [_get_assignee_and_index(self.assignee)]
 
-        if isinstance(self.assignee, Variable):
-            return [(self.assignee.name, ())]
-        elif isinstance(self.assignee, Subscript):
-            agg = self.assignee.aggregate
-            assert isinstance(agg, Variable)
-            var_name = agg.name
-
-            idx = self.assignee.index
-            if not isinstance(idx, tuple):
-                idx = (idx,)
-
-            return [(agg.name, idx)]
-        else:
-            raise RuntimeError("invalid lvalue '%s'" % self.assignee)
-
-        return var_name
+    def with_transformed_expressions(self, f, *args):
+        return self.copy(
+                assignee=f(self.assignee, *args),
+                expression=f(self.expression, *args))
 
     # }}}
 
@@ -486,30 +541,177 @@ class ExpressionInstruction(InstructionBase):
         result = "%s: %s <- %s" % (self.id,
                 self.assignee, self.expression)
 
-        if self.boostable is True:
-            if self.boostable_into:
-                result += " (boostable into '%s')" % ",".join(self.boostable_into)
-            else:
-                result += " (boostable)"
-        elif self.boostable is False:
-            result += " (not boostable)"
-        elif self.boostable is None:
-            pass
-        else:
-            raise RuntimeError("unexpected value for Instruction.boostable")
-
-        options = []
-
-        if self.insn_deps:
-            options.append("deps="+":".join(self.insn_deps))
-        if self.priority:
-            options.append("priority=%d" % self.priority)
+        options = self.get_str_options()
+        if options:
+            result += " (%s)" % (": ".join(options))
 
         return result
 
 
+def _remove_common_indentation(code):
+    if not "\n" in code:
+        return code
+
+    # accommodate pyopencl-ish syntax highlighting
+    code = code.lstrip("//CL//")
+
+    if not code.startswith("\n"):
+        raise ValueError("expected newline as first character "
+                "in literal lines")
+
+    lines = code.split("\n")
+    while lines[0].strip() == "":
+        lines.pop(0)
+    while lines[-1].strip() == "":
+        lines.pop(-1)
+
+    if lines:
+        base_indent = 0
+        while lines[0][base_indent] in " \t":
+            base_indent += 1
+
+        for line in lines[1:]:
+            if line[:base_indent].strip():
+                raise ValueError("inconsistent indentation")
+
+    return "\n".join(line[base_indent:] for line in lines)
+
+
 class CInstruction(InstructionBase):
-    pass
+    """
+    .. atttribute:: iname_exprs
+
+        A list of tuples *(name, expr)* of inames or expressions based on them
+        that the instruction needs access to.
+
+    .. attribute:: code
+
+        The C code to be executed.
+
+        The code should obey the following rules:
+
+        * It should only write to temporary variables, specifically the
+          temporary variables
+
+        .. note::
+
+            Of course, nothing in :mod:`loopy` will prevent you from doing
+            'forbidden' things in your C code. If you ignore the rules and
+            something breaks, you get to keep both pieces.
+
+    .. attribute:: read_variables
+
+        A :class:`frozenset` of variable names that :attr:`code` reads. This is
+        optional and only used for figuring out dependencies.
+
+    .. attribute:: assignees
+
+        A sequence of variable references (with or without subscript) as
+        :class:`pymbolic.primitives.Expression` instances that :attr:`code`
+        writes to. This is optional and only used for figuring out dependencies.
+    """
+
+    fields = InstructionBase.fields | \
+            set("iname_exprs code read_variables assignees".split())
+
+    def __init__(self,
+            iname_exprs, code,
+            read_variables=frozenset(), assignees=frozenset(),
+            id=None, insn_deps=set(), forced_iname_deps=frozenset(), priority=0,
+            boostable=None, boostable_into=None):
+        """
+        :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
+            simple strings pepresenting inames are also allowed. A single
+            string is also allowed, which should consists of comma-separated
+            inames.
+        :arg assignees: Like :attr:`assignees`, but may also be a
+            semicolon-separated string of such expressions or a
+            sequence of strings parseable into the desired format.
+        """
+
+        InstructionBase.__init__(self,
+                id=id,
+                forced_iname_deps=forced_iname_deps,
+                insn_deps=insn_deps, boostable=boostable,
+                boostable_into=boostable_into,
+                priority=priority)
+
+        # {{{ normalize iname_exprs
+
+        if isinstance(iname_exprs, str):
+            iname_exprs = [i.strip() for i in iname_exprs.split(",")]
+            iname_exprs = [i for i in iname_exprs if i]
+
+        from pymbolic import var
+        new_iname_exprs = []
+        for i in iname_exprs:
+            if isinstance(i, str):
+                new_iname_exprs.append((i, var(i)))
+            else:
+                new_iname_exprs.append(i)
+
+        # }}}
+
+        # {{{ normalize assignees
+
+        if isinstance(assignees, str):
+            assignees = [i.strip() for i in assignees.split(";")]
+            assignees = [i for i in assignees if i]
+
+        new_assignees = []
+        from loopy.symbolic import parse
+        for i in assignees:
+            if isinstance(i, str):
+                new_assignees.append(parse(i))
+            else:
+                new_assignees.append(i)
+        # }}}
+
+        self.iname_exprs = new_iname_exprs
+        self.code = _remove_common_indentation(code)
+        self.read_variables = read_variables
+        self.assignees = new_assignees
+
+    # {{{ abstract interface
+
+    def read_dependency_names(self):
+        result = set(self.read_variables)
+
+        from loopy.symbolic import get_dependencies
+        for name, iname_expr in self.iname_exprs:
+            result.update(get_dependencies(iname_expr))
+
+        return frozenset(result)
+
+    def reduction_inames(self):
+        return set()
+
+    def assignees_and_indices(self):
+        return [_get_assignee_and_index(expr)
+                for expr in self.assignees]
+
+    def with_transformed_expressions(self, f, *args):
+        return self.copy(
+                iname_exprs=[
+                    (name, f(expr, *args))
+                    for name, expr in self.iname_exprs],
+                assignees=[f(a, *args) for a in self.assignees])
+
+    # }}}
+
+    def __str__(self):
+        first_line = "%s: %s <- CODE(%s|%s)" % (self.id,
+                ", ".join(str(a) for a in self.assignees),
+                ", ".join(str(x) for x in self.read_variables),
+                ", ".join("%s=%s" % (name, expr)
+                    for name, expr in self.iname_exprs))
+
+        options = self.get_str_options()
+        if options:
+            first_line += " (%s)" % (": ".join(options))
+
+        return first_line + "\n    " + "\n    ".join(
+                self.code.split("\n"))
 
 # }}}
 

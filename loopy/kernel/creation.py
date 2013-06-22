@@ -34,6 +34,9 @@ from islpy import dim_type
 
 import re
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # {{{ identifier wrangling
 
@@ -477,13 +480,8 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
 def tag_reduction_inames_as_sequential(knl):
     result = set()
 
-    def map_reduction(red_expr, rec):
-        rec(red_expr.expr)
-        result.update(red_expr.inames)
-
-    from loopy.symbolic import ReductionCallbackMapper
     for insn in knl.instructions:
-        ReductionCallbackMapper(map_reduction)(insn.expression)
+        result.update(insn.reduction_inames())
 
     from loopy.kernel.data import ParallelTag, ForceSequentialTag
 
@@ -615,7 +613,7 @@ def expand_cses(knl):
         new_temp_vars[new_var_name] = TemporaryVariable(
                 name=new_var_name,
                 dtype=dtype,
-                is_local=None,
+                is_local=lp.auto,
                 shape=())
 
         from pymbolic.primitives import Variable
@@ -656,28 +654,12 @@ def create_temporaries(knl):
     new_insns = []
     new_temp_vars = knl.temporary_variables.copy()
 
-    from loopy.symbolic import AccessRangeMapper
+    import loopy as lp
 
     for insn in knl.instructions:
-        if not isinstance(insn, ExpressionInstruction):
-            continue
-
-        from loopy.kernel.data import TemporaryVariable
-
-        if insn.temp_var_type is not None:
+        if isinstance(insn, ExpressionInstruction) \
+                and insn.temp_var_type is not None:
             (assignee_name, _), = insn.assignees_and_indices()
-
-            armap = AccessRangeMapper(knl, assignee_name)
-            armap(insn.assignee, knl.insn_inames(insn))
-
-            if armap.access_range is not None:
-                base_indices, shape = zip(*[
-                        knl.cache_manager.base_index_and_length(
-                            armap.access_range, i)
-                        for i in xrange(armap.access_range.dim(dim_type.set))])
-            else:
-                base_indices = ()
-                shape = ()
 
             if assignee_name in new_temp_vars:
                 raise RuntimeError("cannot create temporary variable '%s'--"
@@ -686,12 +668,15 @@ def create_temporaries(knl):
                 raise RuntimeError("cannot create temporary variable '%s'--"
                         "already exists as argument" % assignee_name)
 
-            new_temp_vars[assignee_name] = TemporaryVariable(
+            logger.debug("%s: creating temporary %s"
+                    % (knl.name, assignee_name))
+
+            new_temp_vars[assignee_name] = lp.TemporaryVariable(
                     name=assignee_name,
                     dtype=insn.temp_var_type,
-                    is_local=None,
-                    base_indices=base_indices,
-                    shape=shape)
+                    is_local=lp.auto,
+                    base_indices=lp.auto,
+                    shape=lp.auto)
 
             insn = insn.copy(temp_var_type=None)
 
@@ -704,29 +689,43 @@ def create_temporaries(knl):
 # }}}
 
 
-# {{{ check for reduction iname duplication
+# {{{ determine shapes of temporaries
 
-def check_for_reduction_inames_duplication_requests(kernel):
+def determine_shapes_of_temporaries(knl):
+    new_temp_vars = knl.temporary_variables.copy()
 
-    # {{{ helper function
+    from loopy.symbolic import AccessRangeMapper
+    from pymbolic import var
+    import loopy as lp
 
-    def check_reduction_inames(reduction_expr, rec):
-        for iname in reduction_expr.inames:
-            if iname.startswith("@"):
-                raise RuntimeError(
-                        "Reduction iname duplication with '@' is no "
-                        "longer supported. Use loopy.duplicate_inames "
-                        "instead.")
+    new_temp_vars = {}
+    for tv in knl.temporary_variables.itervalues():
+        if tv.shape is lp.auto or tv.base_indices is lp.auto:
+            armap = AccessRangeMapper(knl, tv.name)
+            for insn in knl.instructions:
+                for assignee_name, assignee_index in insn.assignees_and_indices():
+                    if assignee_index:
+                        armap(var(assignee_name)[assignee_index],
+                                knl.insn_inames(insn))
 
-    # }}}
+            if armap.access_range is not None:
+                base_indices, shape = zip(*[
+                        knl.cache_manager.base_index_and_length(
+                            armap.access_range, i)
+                        for i in xrange(armap.access_range.dim(dim_type.set))])
+            else:
+                base_indices = ()
+                shape = ()
 
-    from loopy.symbolic import ReductionCallbackMapper
-    rcm = ReductionCallbackMapper(check_reduction_inames)
-    for insn in kernel.instructions:
-        rcm(insn.expression)
+            if tv.base_indices is lp.auto:
+                tv = tv.copy(base_indices=base_indices)
+            if tv.shape is lp.auto:
+                tv = tv.copy(shape=shape)
 
-    for sub_name, sub_rule in kernel.substitutions.iteritems():
-        rcm(sub_rule.expression)
+        new_temp_vars[tv.name] = tv
+
+    return knl.copy(
+            temporary_variables=new_temp_vars)
 
 # }}}
 
@@ -767,10 +766,11 @@ def guess_arg_shape_if_requested(kernel, default_order):
             armap = AccessRangeMapper(kernel, arg.name)
 
             for insn in kernel.instructions:
-                armap(submap(insn.assignee, insn.id),
-                        kernel.insn_inames(insn))
-                armap(submap(insn.expression, insn.id),
-                        kernel.insn_inames(insn))
+                if isinstance(insn, lp.ExpressionInstruction):
+                    armap(submap(insn.assignee, insn.id),
+                            kernel.insn_inames(insn))
+                    armap(submap(insn.expression, insn.id),
+                            kernel.insn_inames(insn))
 
             if armap.access_range is None:
                 # no subscripts found, let's call it a scalar
@@ -832,13 +832,20 @@ def apply_default_order_to_args(kernel, default_order):
 
 # {{{ kernel creation top-level
 
-def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
+def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     """User-facing kernel creation entrypoint.
 
     :arg device: :class:`pyopencl.Device`
     :arg domains: :class:`islpy.BasicSet`
     :arg instructions:
-    :arg kernel_args:
+    :arg kernel_data:
+
+        A list of :class:`ValueArg`, :class:`GlobalArg`, ... (etc.) instances.
+        The order of these arguments determines the order of the arguments
+        to the generated kernel.
+
+        May also contain :class:`TemporaryVariable` instances(which do not
+        give rise to kernel-level arguments).
 
     The following keyword arguments are recognized:
 
@@ -873,12 +880,27 @@ def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
     :arg local_sizes: A dictionary from integers to integers, mapping
         workgroup axes to their sizes, e.g. *{0: 16}* forces axis 0 to be
         length 16.
-    :arg temporary_variables:
     """
 
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
     default_offset = kwargs.pop("default_offset", 0)
+
+    # {{{ separate temporary variables and arguments
+
+    from loopy.kernel.data import TemporaryVariable
+
+    kernel_args = []
+    temporary_variables = {}
+    for dat in kernel_data:
+        if isinstance(dat, TemporaryVariable):
+            temporary_variables[dat.name] = dat
+        else:
+            kernel_args.append(dat)
+
+    del kernel_data
+
+    # }}}
 
     # {{{ instruction/subst parsing
 
@@ -916,18 +938,19 @@ def make_kernel(device, domains, instructions, kernel_args=["..."], **kwargs):
     domains = parse_domains(isl_context, domains, defines)
 
     kernel_args = guess_kernel_args_if_requested(domains, instructions,
-            kwargs.get("temporary_variables", {}), substitutions,
+            temporary_variables, substitutions,
             duplicate_args_with_commas(kernel_args),
             default_offset)
 
     from loopy.kernel import LoopKernel
-    knl = LoopKernel(device, domains, instructions, kernel_args, **kwargs)
+    knl = LoopKernel(device, domains, instructions, kernel_args,
+            temporary_variables=temporary_variables, **kwargs)
 
     check_for_nonexistent_iname_deps(knl)
-    check_for_reduction_inames_duplication_requests(knl)
 
     knl = tag_reduction_inames_as_sequential(knl)
     knl = create_temporaries(knl)
+    knl = determine_shapes_of_temporaries(knl)
     knl = expand_cses(knl)
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
