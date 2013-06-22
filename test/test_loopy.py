@@ -1166,7 +1166,7 @@ def test_convolution_like(ctx_factory):
 
 
 def test_c_instruction(ctx_factory):
-    logging.basicConfig(level=logging.DEBUG)
+    #logging.basicConfig(level=logging.DEBUG)
     ctx = ctx_factory()
 
     knl = lp.make_kernel(ctx.devices[0], [
