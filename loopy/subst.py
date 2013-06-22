@@ -7,14 +7,8 @@ from pytools import Record
 from pymbolic import var
 
 
-
-
-
 class ExprDescriptor(Record):
     __slots__ = ["insn", "expr", "unif_var_dict"]
-
-
-
 
 
 def extract_subst(kernel, subst_name, template, parameters):
@@ -96,7 +90,7 @@ def extract_subst(kernel, subst_name, template, parameters):
                     ExprDescriptor(
                         insn=insn,
                         expr=expr,
-                        unif_var_dict = dict((lhs.name, rhs)
+                        unif_var_dict=dict((lhs.name, rhs)
                             for lhs, rhs in urec.equations)))
         else:
             mapper.fallback_mapper(expr)
@@ -164,8 +158,6 @@ def extract_subst(kernel, subst_name, template, parameters):
     return kernel.copy(
             instructions=new_insns,
             substitutions=new_substs)
-
-
 
 
 def expand_subst(kernel, ctx_match=None):
