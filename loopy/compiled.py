@@ -28,6 +28,8 @@ import pyopencl.tools  # noqa
 import numpy as np
 from pytools import Record, memoize_method
 from loopy.diagnostic import ParameterFinderWarning
+from pytools.py_codegen import (
+        Indentation, PythonCodeGenerator, PythonFunctionGenerator)
 
 
 # {{{ object array argument packing
@@ -108,72 +110,6 @@ class SeparateArrayPackingController(object):
                 result[index] = outputs.pop(unpacked_name)
 
         return outputs
-
-# }}}
-
-
-# {{{ python code generation helpers
-
-class Indentation(object):
-    def __init__(self, generator):
-        self.generator = generator
-
-    def __enter__(self):
-        self.generator.indent()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.generator.dedent()
-
-
-class PythonCodeGenerator(object):
-    def __init__(self):
-        self.preamble = []
-        self.code = []
-        self.level = 0
-
-    def extend(self, sub_generator):
-        self.code.extend(sub_generator.code)
-
-    def extend_indent(self, sub_generator):
-        with Indentation(self):
-            for line in sub_generator.code:
-                self.write(line)
-
-    def get(self):
-        result = "\n".join(self.code)
-        if self.preamble:
-            result = "\n".join(self.preamble) + "\n" + result
-        return result
-
-    def add_to_preamble(self, s):
-        self.preamble.append(s)
-
-    def __call__(self, string):
-        self.code.append(" "*(4*self.level) + string)
-
-    def indent(self):
-        self.level += 1
-
-    def dedent(self):
-        if self.level == 0:
-            raise RuntimeError("internal error in python code generator")
-        self.level -= 1
-
-
-class PythonFunctionGenerator(PythonCodeGenerator):
-    def __init__(self, name, args):
-        PythonCodeGenerator.__init__(self)
-        self.name = name
-
-        self("def %s(%s):" % (name, ", ".join(args)))
-        self.indent()
-
-    def get_function(self):
-        result_dict = {}
-        exec(compile(self.get(), "<generated function %s>" % self.name, "exec"),
-                result_dict)
-        return result_dict[self.name]
-
 
 # }}}
 

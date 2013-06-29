@@ -39,6 +39,7 @@ setup(name="loo.py",
           ],
 
       install_requires=[
+          "pytools>=2013.5.2",
           "pyopencl>=2013.1",
           "pymbolic>=2013.2",
           "cgen",
