@@ -124,6 +124,8 @@ class LoopKernel(Record):
         it will be scheduled. (This applies to inames with non-parallel
         implementation tags.)
 
+    .. attribute:: silenced_warnings
+
     .. attribute:: applied_iname_rewrites
 
         A list of past substitution dictionaries that
@@ -154,6 +156,8 @@ class LoopKernel(Record):
 
             iname_slab_increments={},
             loop_priority=[],
+            silenced_warnings=[],
+
             applied_iname_rewrites=[],
             cache_manager=None,
             index_dtype=np.int32,
@@ -250,6 +254,7 @@ class LoopKernel(Record):
                 assumptions=assumptions,
                 iname_slab_increments=iname_slab_increments,
                 loop_priority=loop_priority,
+                silenced_warnings=silenced_warnings,
                 temporary_variables=temporary_variables,
                 local_sizes=local_sizes,
                 iname_to_tag=iname_to_tag,

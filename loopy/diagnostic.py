@@ -40,7 +40,22 @@ class LoopyAdvisory(LoopyWarningBase):
 class ParameterFinderWarning(LoopyWarningBase):
     pass
 
+
+class WriteRaceConditionWarning(LoopyWarningBase):
+    pass
+
 # }}}
+
+
+def warn(kernel, id, text, type=LoopyWarning):
+    if id in kernel.silenced_warnings:
+        return
+
+    text += (" (add '%s' to silenced_warnings kernel argument to disable)"
+            % id)
+
+    from warnings import warn
+    warn(text, type)
 
 
 # {{{ errors
@@ -53,10 +68,6 @@ class CannotBranchDomainTree(LoopyError):
     pass
 
 
-class WriteRaceConditionError(LoopyError):
-    pass
-
-
 class TypeInferenceFailure(LoopyError):
     pass
 
@@ -65,5 +76,8 @@ class DependencyTypeInferenceFailure(TypeInferenceFailure):
     pass
 
 # }}}
+
+
+
 
 # vim: foldmethod=marker

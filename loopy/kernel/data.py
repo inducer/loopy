@@ -556,8 +556,7 @@ def _remove_common_indentation(code):
     code = code.lstrip("//CL//")
 
     if not code.startswith("\n"):
-        raise ValueError("expected newline as first character "
-                "in literal lines")
+        return code
 
     lines = code.split("\n")
     while lines[0].strip() == "":

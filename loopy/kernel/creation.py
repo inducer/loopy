@@ -401,9 +401,10 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
     temp_var_names = set(temporary_variables.iterkeys())
 
     for insn in instructions:
-        if insn.temp_var_type is not None:
-            (assignee_var_name, _), = insn.assignees_and_indices()
-            temp_var_names.add(assignee_var_name)
+        if isinstance(insn, ExpressionInstruction):
+            if insn.temp_var_type is not None:
+                (assignee_var_name, _), = insn.assignees_and_indices()
+                temp_var_names.add(assignee_var_name)
 
     # }}}
 
@@ -430,7 +431,7 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
         all_params.update(dom.get_var_names(dim_type.param))
     all_params = all_params - all_inames
 
-    new_arg_names = (all_names - not_new_arg_names) | all_params
+    new_arg_names = (all_names | all_params) - not_new_arg_names
 
     # }}}
 
@@ -438,8 +439,8 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
         irf = IndexRankFinder(name)
 
         for insn in instructions:
-            irf(submap(insn.expression, insn.id))
-            irf(submap(insn.assignee, insn.id))
+            insn.with_transformed_expressions(
+                    lambda expr: irf(submap(expr, insn.id)))
 
         if not irf.index_ranks:
             return 0
@@ -880,11 +881,17 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     :arg local_sizes: A dictionary from integers to integers, mapping
         workgroup axes to their sizes, e.g. *{0: 16}* forces axis 0 to be
         length 16.
+    :arg silenced_warnings: a list (or semicolon-separated string) or warnings
+        to silence
     """
 
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
     default_offset = kwargs.pop("default_offset", 0)
+    silenced_warnings = kwargs.pop("silenced_warnings", [])
+
+    if isinstance(silenced_warnings, str):
+        silenced_warnings = silenced_warnings.split(";")
 
     # {{{ separate temporary variables and arguments
 

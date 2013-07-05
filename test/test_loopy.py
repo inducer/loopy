@@ -23,10 +23,12 @@ THE SOFTWARE.
 """
 
 
+import sys
 import numpy as np
 import loopy as lp
 import pyopencl as cl
 import pyopencl.clrandom  # noqa
+import pytest
 
 import logging
 logger = logging.getLogger(__name__)
@@ -895,6 +897,7 @@ def test_double_sum(ctx_factory):
 
 # {{{ test race detection
 
+@pytest.mark.skipif("sys.version_info < (2,6)")
 def test_ilp_write_race_detection_global(ctx_factory):
     ctx = ctx_factory()
 
@@ -912,10 +915,13 @@ def test_ilp_write_race_detection_global(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
-    from loopy.check import WriteRaceConditionError
-    import pytest
-    with pytest.raises(WriteRaceConditionError):
+    from loopy.diagnostic import WriteRaceConditionWarning
+    from warnings import catch_warnings
+    with catch_warnings(record=True) as warn_list:
         list(lp.generate_loop_schedules(knl))
+
+        assert any(isinstance(w.message, WriteRaceConditionWarning)
+                for w in warn_list)
 
 
 def test_ilp_write_race_avoidance_local(ctx_factory):
@@ -1192,7 +1198,6 @@ def test_c_instruction(ctx_factory):
 
 
 if __name__ == "__main__":
-    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

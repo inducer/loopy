@@ -23,6 +23,8 @@ THE SOFTWARE.
 """
 
 
+import pytest
+import sys
 import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
@@ -490,6 +492,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
             parameters={})
 
 
+@pytest.mark.skipif("sys.version_info < (2,6)")
 def test_ilp_race_matmul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
@@ -513,10 +516,13 @@ def test_ilp_race_matmul(ctx_factory):
     knl = lp.split_iname(knl, "k", 2)
     knl = lp.add_prefetch(knl, 'b', ["k_inner"])
 
-    from loopy.check import WriteRaceConditionError
-    import pytest
-    with pytest.raises(WriteRaceConditionError):
+    from loopy.diagnostic import WriteRaceConditionWarning
+    from warnings import catch_warnings
+    with catch_warnings(record=True) as warn_list:
         list(lp.generate_loop_schedules(knl))
+
+        assert any(isinstance(w.message, WriteRaceConditionWarning)
+                for w in warn_list)
 
 
 def test_fancy_matrix_mul(ctx_factory):
@@ -587,7 +593,6 @@ def test_small_batched_matvec(ctx_factory):
 
 
 if __name__ == "__main__":
-    import sys
     if len(sys.argv) > 1:
         exec(sys.argv[1])
     else:

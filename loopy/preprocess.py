@@ -25,7 +25,9 @@ THE SOFTWARE.
 
 import pyopencl as cl
 import pyopencl.characterize as cl_char
-from loopy.diagnostic import LoopyError, LoopyWarning
+from loopy.diagnostic import (
+        LoopyError, LoopyWarning, WriteRaceConditionWarning, warn,
+        LoopyAdvisory)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -250,15 +252,16 @@ def mark_local_temporaries(kernel):
 
             if (locparallel_assignee_inames != locparallel_compute_inames
                     and bool(locparallel_assignee_inames)):
-                from loopy.check import WriteRaceConditionError
-                raise WriteRaceConditionError("instruction '%s' looks invalid: "
+                warn(kernel, "write_race_local(%s)" % insn_id,
+                        "instruction '%s' looks invalid: "
                         "it assigns to indices based on local IDs, but "
                         "its temporary '%s' cannot be made local because "
                         "a write race across the iname(s) '%s' would emerge. "
                         "(Do you need to add an extra iname to your prefetch?)"
                         % (insn_id, temp_var.name, ", ".join(
                             locparallel_compute_inames
-                            - locparallel_assignee_inames)))
+                            - locparallel_assignee_inames)),
+                        WriteRaceConditionWarning)
 
             wants_to_be_local_per_insn.append(
                     locparallel_assignee_inames == locparallel_compute_inames
@@ -268,9 +271,8 @@ def mark_local_temporaries(kernel):
                     and bool(locparallel_compute_inames))
 
         if not wants_to_be_local_per_insn:
-            from warnings import warn
-            from loopy.diagnostic import LoopyAdvisory
-            warn("temporary variable '%s' never written, eliminating"
+            warn(kernel, "temp_to_write(%s)" % temp_var.name,
+                    "temporary variable '%s' never written, eliminating"
                     % temp_var.name, LoopyAdvisory)
 
         is_local = wants_to_be_local_per_insn[0]

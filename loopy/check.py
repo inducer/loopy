@@ -26,12 +26,10 @@ THE SOFTWARE.
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
-from loopy.diagnostic import LoopyError, LoopyWarning
+from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn
 
 import logging
 logger = logging.getLogger(__name__)
-
-from loopy.diagnostic import WriteRaceConditionError
 
 
 # {{{ sanity checks run during scheduling
@@ -167,11 +165,12 @@ def check_for_write_races(kernel):
                     raceable_parallel_insn_inames - assignee_inames
 
             if race_inames:
-                raise WriteRaceConditionError(
+                warn(kernel, "write_race(%s)" % insn.id,
                         "instruction '%s' contains a write race: "
                         "instruction will be run across parallel iname(s) "
                         "'%s', which is/are not referenced in the lhs index"
-                        % (insn.id, ",".join(race_inames)))
+                        % (insn.id, ",".join(race_inames)),
+                        WriteRaceConditionWarning)
 
 
 def check_for_orphaned_user_hardware_axes(kernel):
