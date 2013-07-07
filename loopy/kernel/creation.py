@@ -951,7 +951,9 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
 
     from loopy.kernel import LoopKernel
     knl = LoopKernel(device, domains, instructions, kernel_args,
-            temporary_variables=temporary_variables, **kwargs)
+            temporary_variables=temporary_variables,
+            silenced_warnings=silenced_warnings,
+            **kwargs)
 
     check_for_nonexistent_iname_deps(knl)
 
