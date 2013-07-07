@@ -810,7 +810,7 @@ class LoopKernel(Record):
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
     def get_grid_sizes_as_exprs(self, ignore_auto=False):
-        grid_size, group_size = self.get_grid_sizes(ignore_auto=ignore_auto)
+        grid_size, group_size = self.get_grid_sizes(ignore_auto)
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
