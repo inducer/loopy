@@ -901,11 +901,14 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
 
     # {{{ separate temporary variables and arguments
 
-    from loopy.kernel.data import TemporaryVariable
+    from loopy.kernel.data import TemporaryVariable, ArrayBase
 
     kernel_args = []
     temporary_variables = {}
     for dat in kernel_data:
+        if isinstance(dat, ArrayBase) and isinstance(dat.shape, tuple):
+            dat = dat.copy(shape=expand_defines_in_expr(dat.shape, defines))
+
         if isinstance(dat, TemporaryVariable):
             temporary_variables[dat.name] = dat
         else:
