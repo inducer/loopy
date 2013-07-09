@@ -141,7 +141,7 @@ def expand_defines_in_expr(expr, defines):
 INSN_RE = re.compile(
         "\s*(?:\<(?P<temp_var_type>.*?)\>)?"
         "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
-        "\s*?(?:\{(?P<options>[\s\w=,:]+)\}\s*)?$"
+        "\s*?(?:\{(?P<options>[\s\w_=,:]+)\}\s*)?$"
         )
 SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$"
@@ -186,6 +186,8 @@ def parse_insn(insn):
 
                 if opt_key == "id":
                     insn_id = opt_value
+                elif opt_key == "id_prefix":
+                    insn_id = MakeUnique(opt_value)
                 elif opt_key == "priority":
                     priority = int(opt_value)
                 elif opt_key == "dep":
