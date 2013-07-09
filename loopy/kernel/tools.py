@@ -156,9 +156,6 @@ def find_all_insn_inames(kernel):
 
             # {{{ domain-based propagation
 
-            # Add all inames occurring in parameters of domains that my current
-            # inames refer to.
-
             inames_old = insn_id_to_inames[insn.id]
             inames_new = set(insn_id_to_inames[insn.id])
 
@@ -166,8 +163,19 @@ def find_all_insn_inames(kernel):
                 home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
 
                 for par in home_domain.get_var_names(dim_type.param):
+                    # Add all inames occurring in parameters of domains that my
+                    # current inames refer to.
+
                     if par in kernel.all_inames():
                         inames_new.add(par)
+
+                    # If something writes the bounds of a loop in which I'm
+                    # sitting, I had better be in the inames that the writer is
+                    # in.
+
+                    if par in kernel.temporary_variables:
+                        for writer_id in writer_map.get(par, []):
+                            inames_new.update(insn_id_to_inames[writer_id])
 
             if inames_new != inames_old:
                 did_something = True

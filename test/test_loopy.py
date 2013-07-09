@@ -1197,6 +1197,36 @@ def test_c_instruction(ctx_factory):
     print lp.CompiledKernel(ctx, knl).get_highlighted_code()
 
 
+def test_dependent_domain_insn_iname_finding(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[isrc_box]: 0<=isrc_box<nsrc_boxes}",
+            "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
+            ],
+            """
+                <> src_ibox = source_boxes[isrc_box]
+                <> isrc_start = box_source_starts[src_ibox]
+                <> isrc_end = isrc_start+box_source_counts_nonchild[src_ibox]
+                <> strength = strengths[isrc] {id=set_strength}
+                """,
+            [
+                lp.GlobalArg("box_source_starts,box_source_counts_nonchild",
+                    None, shape=None),
+                "..."])
+
+    print knl
+    assert "isrc_box" in knl.insn_inames("set_strength")
+
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code(
+            dict(
+                source_boxes=np.int32,
+                box_source_starts=np.int32,
+                box_source_counts_nonchild=np.int32,
+                strengths=np.float64,
+                ))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
