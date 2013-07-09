@@ -48,8 +48,10 @@ class WriteRaceConditionWarning(LoopyWarningBase):
 
 
 def warn(kernel, id, text, type=LoopyWarning):
-    if id in kernel.silenced_warnings:
-        return
+    from fnmatch import fnmatchcase
+    for sw in kernel.silenced_warnings:
+        if fnmatchcase(id, sw):
+            return
 
     text += (" (add '%s' to silenced_warnings kernel argument to disable)"
             % id)
