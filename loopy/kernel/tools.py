@@ -82,7 +82,7 @@ def add_and_infer_argument_dtypes(knl, dtype_dict):
 # {{{ find_all_insn_inames fixed point iteration
 
 def find_all_insn_inames(kernel):
-    logger.info("find_all_insn_inames: start")
+    logger.debug("find_all_insn_inames: start")
 
     writer_map = kernel.writer_map()
 
@@ -196,7 +196,7 @@ def find_all_insn_inames(kernel):
         if not did_something:
             break
 
-    logger.info("find_all_insn_inames: done")
+    logger.debug("find_all_insn_inames: done")
 
     for v in insn_id_to_inames.itervalues():
         assert isinstance(v, frozenset)
