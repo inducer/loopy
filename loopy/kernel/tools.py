@@ -28,6 +28,9 @@ THE SOFTWARE.
 import numpy as np
 from islpy import dim_type
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # {{{ add and infer argument dtypes
 
@@ -79,6 +82,8 @@ def add_and_infer_argument_dtypes(knl, dtype_dict):
 # {{{ find_all_insn_inames fixed point iteration
 
 def find_all_insn_inames(kernel):
+    logger.info("find_all_insn_inames: start")
+
     writer_map = kernel.writer_map()
 
     insn_id_to_inames = {}
@@ -102,6 +107,9 @@ def find_all_insn_inames(kernel):
         assert isinstance(read_deps, frozenset), type(insn)
         assert isinstance(write_deps, frozenset), type(insn)
         assert isinstance(iname_deps, frozenset), type(insn)
+
+        logger.debug("find_all_insn_inames: %s (init): %s" % (
+            insn.id, ", ".join(sorted(iname_deps))))
 
         insn_id_to_inames[insn.id] = iname_deps
         insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
@@ -180,11 +188,15 @@ def find_all_insn_inames(kernel):
             if inames_new != inames_old:
                 did_something = True
                 insn_id_to_inames[insn.id] = frozenset(inames_new)
+                logger.debug("find_all_insn_inames: %s -> %s" % (
+                    insn.id, ", ".join(sorted(inames_new))))
 
             # }}}
 
         if not did_something:
             break
+
+    logger.info("find_all_insn_inames: done")
 
     for v in insn_id_to_inames.itervalues():
         assert isinstance(v, frozenset)
