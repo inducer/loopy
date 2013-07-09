@@ -426,6 +426,12 @@ def guess_kernel_args_if_requested(domains, instructions, temporary_variables,
             all_names.update(get_dependencies(submap(insn.assignee, insn.id)))
             all_names.update(get_dependencies(submap(insn.expression, insn.id)))
 
+    from loopy.kernel.data import ArrayBase
+    for arg in kernel_args:
+        if isinstance(arg, ArrayBase):
+            if isinstance(arg.shape, tuple):
+                all_names.update(get_dependencies(arg.shape))
+
     all_params = set()
     for dom in domains:
         all_params.update(dom.get_var_names(dim_type.param))
