@@ -29,7 +29,7 @@ import numpy as np
 from pytools import Record, memoize_method
 from loopy.diagnostic import ParameterFinderWarning
 from pytools.py_codegen import (
-        Indentation, PythonCodeGenerator, PythonFunctionGenerator)
+        Indentation, PythonFunctionGenerator)
 
 
 # {{{ object array argument packing

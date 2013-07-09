@@ -369,7 +369,7 @@ def check_sizes(kernel):
 
     from pyopencl.characterize import usable_local_mem_size
     if kernel.local_mem_use() > usable_local_mem_size(kernel.device):
-        raise LoopyError(5, "using too much local memory")
+        raise LoopyError("using too much local memory")
 
     from loopy.kernel.data import ConstantArg
     const_arg_count = sum(
@@ -380,11 +380,47 @@ def check_sizes(kernel):
         raise LoopyError("too many constant arguments")
 
 
+def check_that_shapes_and_strides_are_arguments(kernel):
+    from loopy.kernel.data import ValueArg
+    from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
+    from loopy.symbolic import get_dependencies
+    import loopy as lp
+
+    integer_arg_names = set(
+            arg.name
+            for arg in kernel.args
+            if isinstance(arg, ValueArg)
+            and arg.dtype.kind == "i")
+
+    for arg in kernel.args:
+        if isinstance(arg, ArrayBase):
+            if isinstance(arg.shape, tuple):
+                deps = get_dependencies(arg.shape)
+                if not deps <= integer_arg_names:
+                    raise LoopyError("'%s' has a shape that depends on "
+                            "non-argument(s): %s" % (
+                                arg.name, ", ".join(deps-integer_arg_names)))
+
+            if arg.dim_tags is None:
+                continue
+
+            for dim_tag in arg.dim_tags:
+                if isinstance(dim_tag, FixedStrideArrayDimTag):
+                    assert dim_tag.stride is not lp.auto
+
+                    deps = get_dependencies(dim_tag.stride)
+                    if not deps <= integer_arg_names:
+                        raise LoopyError("'%s' has a stride that depends on "
+                                "non-argument(s): %s" % (
+                                    arg.name, ", ".join(deps-integer_arg_names)))
+
+
 def pre_codegen_checks(kernel):
     try:
         logger.info("pre-codegen check %s: start" % kernel.name)
 
         check_sizes(kernel)
+        check_that_shapes_and_strides_are_arguments(kernel)
 
         logger.info("pre-codegen check %s: done" % kernel.name)
     except:
