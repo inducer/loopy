@@ -162,16 +162,28 @@ class CodeGenerationState(object):
                 self.c_code_mapper)
 
     def fix(self, iname, aff):
+        new_impl_domain = self.implemented_domain
+
+        impl_space = self.implemented_domain.get_space()
+        if iname not in impl_space.get_var_dict():
+            new_impl_domain = (new_impl_domain
+                    .add_dims(isl.dim_type.set, 1)
+                    .set_dim_name(
+                        isl.dim_type.set,
+                        new_impl_domain.dim(isl.dim_type.set),
+                        iname))
+            impl_space = new_impl_domain.get_space()
+
         from loopy.isl_helpers import iname_rel_aff
-        iname_plus_lb_aff = iname_rel_aff(
-                self.implemented_domain.get_space(), iname, "==", aff)
+        iname_plus_lb_aff = iname_rel_aff(impl_space, iname, "==", aff)
 
         from loopy.symbolic import pw_aff_to_expr
         cns = isl.Constraint.equality_from_aff(iname_plus_lb_aff)
         expr = pw_aff_to_expr(aff)
 
+        new_impl_domain = new_impl_domain.add_constraint(cns)
         return CodeGenerationState(
-                self.implemented_domain.add_constraint(cns),
+                new_impl_domain,
                 self.c_code_mapper.copy_and_assign(iname, expr))
 
 # }}}
