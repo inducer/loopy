@@ -1227,6 +1227,26 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
                 ))
 
 
+def test_inames_deps_from_write_subscript(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i,j<n}",
+            ],
+            """
+                <> src_ibox = source_boxes[i]
+                <int32> something = 5
+                a[src_ibox] = sum(j, something) {id=myred}
+                """,
+            [
+                lp.GlobalArg("box_source_starts,box_source_counts_nonchild,a",
+                    None, shape=None),
+                "..."])
+
+    print knl
+    assert "i" in knl.insn_inames("myred")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

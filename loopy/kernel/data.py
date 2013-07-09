@@ -509,7 +509,10 @@ class ExpressionInstruction(InstructionBase):
     @memoize_method
     def read_dependency_names(self):
         from loopy.symbolic import get_dependencies
-        return get_dependencies(self.expression)
+        result = get_dependencies(self.expression)
+        for _, subscript in self.assignees_and_indices():
+            result = result | get_dependencies(subscript)
+        return result
 
     @memoize_method
     def reduction_inames(self):
@@ -679,6 +682,9 @@ class CInstruction(InstructionBase):
         from loopy.symbolic import get_dependencies
         for name, iname_expr in self.iname_exprs:
             result.update(get_dependencies(iname_expr))
+
+        for _, subscript in self.assignees_and_indices():
+            result.update(get_dependencies(subscript))
 
         return frozenset(result)
 
