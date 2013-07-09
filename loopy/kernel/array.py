@@ -817,7 +817,7 @@ def get_access_info(ary, index, eval_expr):
     array_name = ary.name
 
     if ary.shape is None:
-        return AccessInfo(array_name=array_name, subscripts=index, vector_index=0)
+        return AccessInfo(array_name=array_name, subscripts=index, vector_index=None)
 
     if len(ary.shape) != len(index):
         raise RuntimeError("subscript to '%s[%s]' has the wrong "
