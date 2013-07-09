@@ -799,9 +799,10 @@ class ArrayBase(Record):
 
 class AccessInfo(Record):
     """
-    :ivar array_suffix:
-    :ivar vector_index:
-    :ivar subscripts: List of expressions, one for each target axis
+    .. attribute:: array_name
+    .. attribute:: vector_index
+    .. attribute:: subscripts
+        List of expressions, one for each target axis
     """
 
 
@@ -813,8 +814,10 @@ def get_access_info(ary, index, eval_expr):
     if not isinstance(index, tuple):
         index = (index,)
 
+    array_name = ary.name
+
     if ary.shape is None:
-        return AccessInfo(subscripts=index, vector_index=0)
+        return AccessInfo(array_name=array_name, subscripts=index, vector_index=0)
 
     if len(ary.shape) != len(index):
         raise RuntimeError("subscript to '%s[%s]' has the wrong "
@@ -823,7 +826,6 @@ def get_access_info(ary, index, eval_expr):
 
     num_target_axes = ary.num_target_axes()
 
-    array_name = ary.name
     vector_index = None
     subscripts = [0] * num_target_axes
 
@@ -878,6 +880,8 @@ def get_access_info(ary, index, eval_expr):
         else:
             raise RuntimeError("unsupported array dim implementation tag '%s' "
                     "in array '%s'" % (dim_tag, ary.name))
+
+    # }}}
 
     from pymbolic import var
     import loopy as lp
