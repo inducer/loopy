@@ -327,7 +327,7 @@ def _enumerate_cl_devices_for_ref_test():
 def auto_test_vs_ref(
         ref_knl, ctx, test_knl, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
-        code_op=None, dump_binary=False, codegen_kwargs={},
+        iflags=None, dump_binary=False, codegen_kwargs={},
         options=[],
         fills_entire_output=True, do_check=True, check_result=None
         ):
@@ -482,7 +482,7 @@ def auto_test_vs_ref(
         kernel = infer_unknown_types(kernel, expect_completion=True)
 
         compiled = CompiledKernel(ctx, kernel, options=options,
-                codegen_kwargs=codegen_kwargs)
+                codegen_kwargs=codegen_kwargs, iflags=iflags)
 
         if args is None:
             cl_kernel_info = compiled.cl_kernel_info(frozenset())
@@ -504,7 +504,7 @@ def auto_test_vs_ref(
 
         for i in range(warmup_rounds):
             if not AUTO_TEST_SKIP_RUN:
-                compiled(queue, code_op=code_op, **args)
+                compiled(queue, **args)
 
             if need_check and not AUTO_TEST_SKIP_RUN:
                 for arg_desc in ref_arg_data:
@@ -543,7 +543,7 @@ def auto_test_vs_ref(
 
             for i in range(timing_rounds):
                 if not AUTO_TEST_SKIP_RUN:
-                    evt, _ = compiled(queue, code_op=code_op, **args)
+                    evt, _ = compiled(queue, **args)
                     events.append(evt)
                 else:
                     events.append(cl.enqueue_marker(queue))

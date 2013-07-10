@@ -949,12 +949,17 @@ class LoopKernel(Record):
     # {{{ direct execution
 
     @memoize_method
-    def get_compiled_kernel(self, ctx):
+    def get_compiled_kernel(self, ctx, options, iflags):
         from loopy.compiled import CompiledKernel
-        return CompiledKernel(ctx, self)
+        return CompiledKernel(ctx, self, options=options, iflags=iflags)
 
     def __call__(self, queue, **kwargs):
-        return self.get_compiled_kernel(queue.context)(
+        iflags = kwargs.pop("iflags", None)
+        options = kwargs.pop("options", ())
+
+        assert isinstance(options, tuple)
+
+        return self.get_compiled_kernel(queue.context, options, iflags)(
                 queue, **kwargs)
 
     # }}}

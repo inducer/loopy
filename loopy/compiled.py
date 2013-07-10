@@ -211,7 +211,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
                     gen("%s = 0" % arg.name)
                 gen("else:")
                 with Indentation(gen):
-                    if flags.allow_numpy:
+                    if not flags.no_numpy:
                         gen("_lpy_offset = getattr(%s, \"offset\", 0)"
                                 % impl_array_name)
                     else:
@@ -335,7 +335,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
     gen("# {{{ set up array arguments")
     gen("")
 
-    if flags.allow_numpy:
+    if not flags.no_numpy:
         gen("_lpy_encountered_numpy = False")
         gen("_lpy_encountered_dev = False")
         gen("")
@@ -352,7 +352,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
         if not issubclass(arg.arg_class, ArrayBase):
             continue
 
-        if flags.allow_numpy:
+        if not flags.no_numpy:
             gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
             with Indentation(gen):
                 gen("# synchronous, nothing to worry about")
@@ -518,22 +518,34 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 class InvocationFlags(Record):
     """
     .. attribute:: paranoid
-    .. attribute:: allow_numpy
+    .. attribute:: no_numpy
     .. attribute:: return_dict
     .. attribute:: print_wrapper
     .. attribute:: print_hl_wrapper
+    .. attribute:: print_cl
+    .. attribute:: print_hl_cl
+    .. attribute:: edit_cl
     """
 
-    def __init__(self, paranoid=True, allow_numpy=True, return_dict=False,
-            print_wrapper=False):
-        Record.__init__(self, paranoid=paranoid, allow_numpy=allow_numpy,
-                return_dict=return_dict, print_wrapper=print_wrapper)
+    def __init__(
+            self, paranoid=True, no_numpy=False, return_dict=False,
+            print_wrapper=False, print_hl_wrapper=False,
+            print_cl=False, print_hl_cl=False,
+            edit_cl=False
+            ):
+        Record.__init__(
+                self, paranoid=paranoid, no_numpy=no_numpy,
+                return_dict=return_dict,
+                print_wrapper=print_wrapper, print_hl_wrapper=print_hl_wrapper,
+                print_cl=print_cl, print_hl_cl=print_hl_cl,
+                edit_cl=edit_cl,
+                )
 
 
 def generate_invoker(kernel, impl_arg_info, flags):
     system_args = [
             "cl_kernel", "queue", "allocator=None", "wait_for=None",
-            # ignored if not flags.allow_numpy
+            # ignored if flags.no_numpy
             "out_host=None"
             ]
 
@@ -585,7 +597,7 @@ def generate_invoker(kernel, impl_arg_info, flags):
 
     # {{{ output
 
-    if flags.allow_numpy:
+    if not flags.no_numpy:
         gen("if out_host is None and (_lpy_encountered_numpy "
                 "and not _lpy_encountered_dev):")
         with Indentation(gen):
@@ -633,7 +645,7 @@ class _CLKernelInfo(Record):
 
 class CompiledKernel:
     def __init__(self, context, kernel, options=[], codegen_kwargs={},
-            iflags=InvocationFlags()):
+            iflags=None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -647,10 +659,18 @@ class CompiledKernel:
         self.context = context
         self.kernel = kernel
         self.codegen_kwargs = codegen_kwargs
-        self.options = options
+        self.options = list(options)
 
-        if not isinstance(iflags, InvocationFlags):
+        if iflags is None:
+            iflags = InvocationFlags()
+        elif isinstance(iflags, str):
+            iflags_args = {}
+            for name in iflags.split(","):
+                iflags_args[name] = True
+            iflags = InvocationFlags(**iflags_args)
+        elif not isinstance(iflags, InvocationFlags):
             iflags = InvocationFlags(**iflags)
+
         self.iflags = iflags
 
         self.packing_controller = SeparateArrayPackingController(kernel)
@@ -681,21 +701,17 @@ class CompiledKernel:
         return kernel
 
     @memoize_method
-    def cl_kernel_info(self, arg_to_dtype_set=frozenset(), code_op=None):
+    def cl_kernel_info(self, arg_to_dtype_set=frozenset()):
         kernel = self.get_kernel(arg_to_dtype_set)
 
         from loopy.codegen import generate_code
         code, impl_arg_info = generate_code(kernel, **self.codegen_kwargs)
 
-        if code_op is None:
-            code_op = ""
-
-        code_op = code_op.split(",")
-        if "print" in code_op:
+        if self.iflags.print_cl:
             print code
-        elif "print_hl" in code_op:
+        if self.iflags.print_hl_cl:
             print get_highlighted_cl_code(code)
-        elif "edit" in code_op:
+        if self.iflags.edit_cl:
             from pytools import invoke_editor
             code = invoke_editor(code, "code.cl")
 
@@ -744,13 +760,11 @@ class CompiledKernel:
         :arg allocator:
         :arg wait_for:
         :arg out_host:
-        :arg code_op:
         """
 
         allocator = kwargs.pop("allocator", None)
         wait_for = kwargs.pop("wait_for", None)
         out_host = kwargs.pop("out_host", None)
-        code_op = kwargs.pop("code_op", None)
 
         kwargs = self.packing_controller.unpack(kwargs)
 
@@ -772,8 +786,7 @@ class CompiledKernel:
                     arg_to_dtype[arg_name] = dtype
 
         kernel_info = self.cl_kernel_info(
-                frozenset(arg_to_dtype.iteritems()),
-                code_op)
+                frozenset(arg_to_dtype.iteritems()))
 
         return kernel_info.invoker(
                 kernel_info.cl_kernel, queue, allocator, wait_for,
