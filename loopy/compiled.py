@@ -668,7 +668,6 @@ class CompiledKernel:
             for name in iflags.split(","):
                 iflags_args[name] = True
             iflags = InvocationFlags(**iflags_args)
-            print iflags_args
         elif not isinstance(iflags, InvocationFlags):
             iflags = InvocationFlags(**iflags)
 
