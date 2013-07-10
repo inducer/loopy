@@ -406,7 +406,8 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 
             for dim_tag in arg.dim_tags:
                 if isinstance(dim_tag, FixedStrideArrayDimTag):
-                    assert dim_tag.stride is not lp.auto
+                    if dim_tag.stride is lp.auto:
+                        continue
 
                     deps = get_dependencies(dim_tag.stride)
                     if not deps <= integer_arg_names:

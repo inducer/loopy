@@ -1213,6 +1213,8 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
             [
                 lp.GlobalArg("box_source_starts,box_source_counts_nonchild",
                     None, shape=None),
+                lp.GlobalArg("strengths",
+                    None, shape="nsources"),
                 "..."])
 
     print knl
@@ -1224,6 +1226,7 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
                 box_source_starts=np.int32,
                 box_source_counts_nonchild=np.int32,
                 strengths=np.float64,
+                nsources=np.int32,
                 ))
 
 
