@@ -219,7 +219,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
 
                     base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
-                    if flags.paranoid:
+                    if not flags.skip_checks:
                         gen("%s, _lpy_remdr = divmod(_lpy_offset, %d)"
                                 % (arg.name, base_arg.dtype.itemsize))
 
@@ -231,7 +231,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
                         gen("%s = _lpy_offset // %d)"
                                 % (arg.name, base_arg.dtype.itemsize))
 
-                    if flags.paranoid:
+                    if not flags.skip_checks:
                         gen("del _lpy_offset")
 
     gen("# }}}")
@@ -252,7 +252,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
-                if flags.paranoid:
+                if not flags.skip_checks:
                     gen("if %s is None:" % impl_array_name)
                     with Indentation(gen):
                         gen("raise RuntimeError(\"required stride '%s' for "
@@ -262,7 +262,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 
                     base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
-                    if flags.paranoid:
+                    if not flags.skip_checks:
                         gen("%s, _lpy_remdr = divmod(%s.strides[%d], %d)"
                                 % (arg.name, impl_array_name, stride_impl_axis,
                                     base_arg.dtype.itemsize))
@@ -298,7 +298,7 @@ def generate_value_arg_setup(gen, kernel, impl_arg_info, flags):
         gen("# {{{ process %s" % arg.name)
         gen("")
 
-        if flags.paranoid:
+        if not flags.skip_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"input argument '%s' must "
@@ -366,21 +366,21 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
             gen("")
 
-        if flags.paranoid and not is_written:
+        if not flags.skip_checks and not is_written:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"input argument '%s' must "
                         "be supplied\")" % arg.name)
                 gen("")
 
-        if is_written and arg.arg_class is lp.ImageArg and flags.paranoid:
+        if is_written and arg.arg_class is lp.ImageArg and not flags.skip_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"written image '%s' must "
                         "be supplied\")" % arg.name)
                 gen("")
 
-        if is_written and arg.shape is None and flags.paranoid:
+        if is_written and arg.shape is None and not flags.skip_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"written argument '%s' has "
@@ -409,7 +409,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                     gen("_lpy_strides_%d = %s" % (i, strify(
                         itemsize*arg.strides[i])))
 
-                if flags.paranoid:
+                if not flags.skip_checks:
                     for i in xrange(num_axes):
                         gen("assert _lpy_strides_%d > 0, "
                                 "\"'%s' has negative stride in axis %d\""
@@ -436,7 +436,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                             strides=strify(sym_strides),
                             dtype=python_dtype_str(arg.dtype)))
 
-                if flags.paranoid:
+                if not flags.skip_checks:
                     for i in xrange(num_axes):
                         gen("del _lpy_shape_%d" % i)
                         gen("del _lpy_strides_%d" % i)
@@ -451,7 +451,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
             # {{{ argument checking
 
             if arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
-                    and flags.paranoid:
+                    and not flags.skip_checks:
                 if possibly_made_by_loopy:
                     gen("if not _lpy_made_by_loopy:")
                 else:
@@ -496,7 +496,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
             # }}}
 
-            if possibly_made_by_loopy and flags.paranoid:
+            if possibly_made_by_loopy and not flags.skip_checks:
                 gen("del _lpy_made_by_loopy")
                 gen("")
 
@@ -517,7 +517,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
 class InvocationFlags(Record):
     """
-    .. attribute:: paranoid
+    .. attribute:: skip_checks
     .. attribute:: no_numpy
     .. attribute:: return_dict
     .. attribute:: print_wrapper
@@ -528,13 +528,16 @@ class InvocationFlags(Record):
     """
 
     def __init__(
-            self, paranoid=True, no_numpy=False, return_dict=False,
+            # All of these should default to False for the string-based
+            # interface to make sense.
+
+            self, skip_checks=False, no_numpy=False, return_dict=False,
             print_wrapper=False, print_hl_wrapper=False,
             print_cl=False, print_hl_cl=False,
             edit_cl=False
             ):
         Record.__init__(
-                self, paranoid=paranoid, no_numpy=no_numpy,
+                self, skip_checks=skip_checks, no_numpy=no_numpy,
                 return_dict=return_dict,
                 print_wrapper=print_wrapper, print_hl_wrapper=print_hl_wrapper,
                 print_cl=print_cl, print_hl_cl=print_hl_cl,
