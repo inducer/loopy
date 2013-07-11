@@ -37,6 +37,7 @@ from islpy import dim_type
 from pytools import MovedFunctionDeprecationWrapper
 
 from loopy.symbolic import ExpandingIdentityMapper, ExpandingSubstitutionMapper
+from loopy.diagnostic import LoopyError
 
 
 # {{{ imported user interface
@@ -766,6 +767,13 @@ def remove_unused_inames(knl, inames=None):
 # {{{ set loop priority
 
 def set_loop_priority(kernel, loop_priority):
+    if isinstance(loop_priority, str):
+        loop_priority = loop_priority.split(",")
+
+    for iname in loop_priority:
+        if not iname in kernel.all_inames():
+            raise LoopyError("iname '%s' not known" % iname)
+
     return kernel.copy(loop_priority=loop_priority)
 
 # }}}
