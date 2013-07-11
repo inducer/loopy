@@ -253,6 +253,9 @@ class _AccessCheckMapper(WalkMapper):
             except isl.Error:
                 # Likely: index was non-linear, nothing we can do.
                 return
+            except TypeError:
+                # Likely: index was non-linear, nothing we can do.
+                return
 
             shape_domain = isl.BasicSet.universe(access_range.get_space())
             for idim in xrange(len(subscript)):

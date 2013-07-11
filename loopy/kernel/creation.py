@@ -784,7 +784,10 @@ def guess_arg_shape_if_requested(kernel, default_order):
             except TypeError, e:
                 from loopy.diagnostic import LoopyError
                 raise LoopyError(
-                        "failed to find access range for argument '%s': %s"
+                        "Failed to (automatically, as requested) find "
+                        "shape/strides for argument '%s'. "
+                        "Specifying the shape manually should get rid of this. "
+                        "The following error occurred: %s"
                         % (arg.name, str(e)))
 
             if armap.access_range is None:

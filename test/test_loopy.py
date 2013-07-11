@@ -1282,8 +1282,29 @@ def test_split_reduction(ctx_factory):
                 "..."])
 
     knl = lp.split_reduction_outward(knl, "j,k")
-    print knl
     # FIXME: finish test
+
+
+def test_modulo_indexing(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j]: 0<=i<n and 0<=j<5}",
+            ],
+            """
+                b[i] = sum(j, a[(i+j)%n])
+                """,
+            [
+                lp.GlobalArg("a", None, shape="n"),
+                "..."
+                ]
+            )
+
+    print knl
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code(
+            dict(
+                a=np.float32,
+                ))
 
 
 if __name__ == "__main__":
