@@ -201,6 +201,8 @@ Wrangling inames
 
 .. autofunction:: set_loop_priority
 
+.. autofunction:: split_reduction
+
 Dealing with Substitution Rules
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

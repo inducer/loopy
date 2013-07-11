@@ -1091,4 +1091,52 @@ def tag_data_axes(knl, ary_names, dim_tags):
 
 # }}}
 
+
+# {{{ split_reduction
+
+class _ReductionSplitter(ExpandingIdentityMapper):
+    def __init__(self, kernel, within, inames, direction):
+        ExpandingIdentityMapper.__init__(self,
+                kernel.substitutions, kernel.get_var_name_generator())
+
+        self.within = within
+        self.inames = inames
+        self.direction = direction
+
+    def map_reduction(self, expr, expn_state):
+        if self.inames <= set(expr.inames) and self.within(expn_state.stack):
+            leftover_inames = set(expr.inames) - self.inames
+
+            from loopy.symbolic import Reduction
+            if self.direction == "in":
+                return Reduction(expr.operation, tuple(leftover_inames),
+                        Reduction(expr.operation, tuple(self.inames),
+                            self.rec(expr.expr, expn_state)))
+            elif self.direction == "out":
+                return Reduction(expr.operation, tuple(self.inames),
+                        Reduction(expr.operation, tuple(leftover_inames),
+                            self.rec(expr.expr, expn_state)))
+            else:
+                assert False
+        else:
+            return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
+
+
+def split_reduction(kernel, inames, direction, within=None):
+    # FIXME document me
+    if direction not in ["in", "out"]:
+        raise ValueError("invalid value for 'direction': %s" % direction)
+
+    if isinstance(inames, str):
+        inames = inames.split(",")
+    inames = set(inames)
+
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
+
+    rsplit = _ReductionSplitter(kernel, within, inames, direction)
+    return rsplit.map_kernel(kernel)
+
+# }}}
+
 # vim: foldmethod=marker

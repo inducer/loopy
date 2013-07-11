@@ -1250,6 +1250,25 @@ def test_inames_deps_from_write_subscript(ctx_factory):
     assert "i" in knl.insn_inames("myred")
 
 
+def test_split_reduction(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0], [
+            "{[i,j,k]: 0<=i,j,k<n}",
+            ],
+            """
+                b = sum((i,j,k), a[i,j,k])
+                """,
+            [
+                lp.GlobalArg("box_source_starts,box_source_counts_nonchild,a",
+                    None, shape=None),
+                "..."])
+
+    knl = lp.split_reduction(knl, "j,k", "out")
+    print knl
+    # FIXME: finish test
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
