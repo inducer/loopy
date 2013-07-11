@@ -1141,17 +1141,21 @@ def test_vector_ilp_with_prefetch(ctx_factory):
     assert len(list(re.finditer("barrier", code))) == 1
 
 
-def test_convolution_like(ctx_factory):
+def test_convolution(ctx_factory):
     ctx = ctx_factory()
 
     dtype = np.float64
 
     knl = lp.make_kernel(ctx.devices[0],
-        "{ [im_x, im_y, f_x, f_y]: -f_w <= f_x,f_y <= f_w \
-            and f_w <= im_x < im_w-f_w and f_w <= im_y < im_h-f_w }",
+        "{ [iimg, ifeat, icolor, im_x, im_y, f_x, f_y]: \
+                -f_w <= f_x,f_y <= f_w \
+                and f_w <= im_x < im_w-f_w and f_w <= im_y < im_h-f_w \
+                and 0<=iimg<=nimgs and 0<=ifeat<nfeats and 0<=icolor<ncolors \
+                }",
         """
-        out[im_x-f_w, im_y-f_w] = sum((f_x, f_y), \
-            img[im_x-f_x, im_y-f_y] * f[f_w+f_x, f_w+f_y])
+        out[iimg, ifeat, im_x-f_w, im_y-f_w] = sum((f_x, f_y, icolor), \
+            img[iimg, im_x-f_x, im_y-f_y, icolor] \
+            * f[ifeat, f_w+f_x, f_w+f_y, icolor])
         """,
         [
             lp.GlobalArg("f", dtype, shape=lp.auto),
@@ -1159,16 +1163,29 @@ def test_convolution_like(ctx_factory):
             lp.GlobalArg("out", dtype, shape=lp.auto),
             "..."
             ],
-        assumptions="f_w>=1 and im_w, im_h >= 1")
+        assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1",
+        defines=dict(ncolors=3))
 
     ref_knl = knl
 
-    def variant(knl):
+    def variant_0(knl):
+        #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        knl = lp.set_loop_priority(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
+        return knl
+
+    def variant_1(knl):
         knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
         return knl
 
-    lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
-            parameters={"im_w": 1024, "im_h": 1024, "f_w": 7})
+    for variant in [
+            variant_0,
+            #variant_1
+            ]:
+        lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
+                parameters=dict(
+                    im_w=128, im_h=128, f_w=7,
+                    nfeats=12, nimgs=17
+                    ))
 
 
 def test_c_instruction(ctx_factory):
