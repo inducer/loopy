@@ -774,12 +774,18 @@ def guess_arg_shape_if_requested(kernel, default_order):
         if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
             armap = AccessRangeMapper(kernel, arg.name)
 
-            for insn in kernel.instructions:
-                if isinstance(insn, lp.ExpressionInstruction):
-                    armap(submap(insn.assignee, insn.id),
-                            kernel.insn_inames(insn))
-                    armap(submap(insn.expression, insn.id),
-                            kernel.insn_inames(insn))
+            try:
+                for insn in kernel.instructions:
+                    if isinstance(insn, lp.ExpressionInstruction):
+                        armap(submap(insn.assignee, insn.id),
+                                kernel.insn_inames(insn))
+                        armap(submap(insn.expression, insn.id),
+                                kernel.insn_inames(insn))
+            except TypeError, e:
+                from loopy.diagnostic import LoopyError
+                raise LoopyError(
+                        "failed to find access range for argument '%s': %s"
+                        % (arg.name, str(e)))
 
             if armap.access_range is None:
                 # no subscripts found, let's call it a scalar
