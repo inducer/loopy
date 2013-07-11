@@ -1122,8 +1122,7 @@ class _ReductionSplitter(ExpandingIdentityMapper):
             return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
 
 
-def split_reduction(kernel, inames, direction, within=None):
-    # FIXME document me
+def _split_reduction(kernel, inames, direction, within=None):
     if direction not in ["in", "out"]:
         raise ValueError("invalid value for 'direction': %s" % direction)
 
@@ -1136,6 +1135,16 @@ def split_reduction(kernel, inames, direction, within=None):
 
     rsplit = _ReductionSplitter(kernel, within, inames, direction)
     return rsplit.map_kernel(kernel)
+
+
+def split_reduction_inward(kernel, inames, within=None):
+    # FIXME document me
+    _split_reduction(kernel, inames, "in", within)
+
+
+def split_reduction_outward(kernel, inames, within=None):
+    # FIXME document me
+    _split_reduction(kernel, inames, "out", within)
 
 # }}}
 

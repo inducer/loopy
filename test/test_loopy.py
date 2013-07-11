@@ -1264,7 +1264,7 @@ def test_split_reduction(ctx_factory):
                     None, shape=None),
                 "..."])
 
-    knl = lp.split_reduction(knl, "j,k", "out")
+    knl = lp.split_reduction_outward(knl, "j,k")
     print knl
     # FIXME: finish test
 
