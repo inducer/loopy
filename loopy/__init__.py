@@ -768,7 +768,7 @@ def remove_unused_inames(knl, inames=None):
 
 def set_loop_priority(kernel, loop_priority):
     if isinstance(loop_priority, str):
-        loop_priority = loop_priority.split(",")
+        loop_priority = [s.strip() for s in loop_priority.split(",")]
 
     for iname in loop_priority:
         if not iname in kernel.all_inames():
