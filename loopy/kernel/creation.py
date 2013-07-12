@@ -180,6 +180,7 @@ def parse_insn(insn):
         insn_deps = set()
         insn_id = None
         priority = 0
+        forced_iname_deps = frozenset()
 
         if groups["options"] is not None:
             for option in groups["options"].split(","):
@@ -203,6 +204,8 @@ def parse_insn(insn):
                     priority = int(opt_value)
                 elif opt_key == "dep":
                     insn_deps = set(opt_value.split(":"))
+                elif opt_key == "inames":
+                    forced_iname_deps = frozenset(opt_value.split(":"))
                 else:
                     raise ValueError("unrecognized instruction option '%s'"
                             % opt_key)
@@ -224,7 +227,7 @@ def parse_insn(insn):
         return ExpressionInstruction(
                     id=insn_id,
                     insn_deps=insn_deps,
-                    forced_iname_deps=frozenset(),
+                    forced_iname_deps=forced_iname_deps,
                     assignee=lhs, expression=rhs,
                     temp_var_type=temp_var_type,
                     priority=priority)
