@@ -162,8 +162,19 @@ def parse_insn(insn):
         raise RuntimeError("insn parse error")
 
     from loopy.symbolic import parse
-    lhs = parse(groups["lhs"])
-    rhs = parse(groups["rhs"])
+    try:
+        lhs = parse(groups["lhs"])
+    except:
+        print("While parsing left hand side '%s', "
+                "the following error occurred:" % groups["lhs"])
+        raise
+
+    try:
+        rhs = parse(groups["rhs"])
+    except:
+        print("While parsing right hand side '%s', "
+                "the following error occurred:" % groups["rhs"])
+        raise
 
     if insn_match is not None:
         insn_deps = set()
