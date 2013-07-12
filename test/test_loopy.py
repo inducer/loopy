@@ -293,7 +293,7 @@ def test_stencil(ctx_factory):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
-        knl = lp.set_loop_priority(knl, ["i_outer", "i_inner_0", "j_0"])
+        knl = lp.set_loop_priority(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
     def variant_2(knl):
@@ -301,7 +301,7 @@ def test_stencil(ctx_factory):
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True)
-        knl = lp.set_loop_priority(knl, ["i_outer", "i_inner_0", "j_0"])
+        knl = lp.set_loop_priority(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
     for variant in [variant_1, variant_2]:
@@ -341,7 +341,7 @@ def test_stencil_with_overfetch(ctx_factory):
                slabs=(1, 1))
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True)
-        knl = lp.set_loop_priority(knl, ["i_outer", "i_inner_0", "j_0"])
+        knl = lp.set_loop_priority(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
     for variant in [variant_overfetch]:
