@@ -1307,6 +1307,48 @@ def test_modulo_indexing(ctx_factory):
                 ))
 
 
+def test_rob_stroud_bernstein(ctx_factory):
+    ctx = ctx_factory()
+
+    # NOTE: tmp would have to be zero-filled beforehand
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[i2, alpha1,alpha2]: \
+                    0 <= i2 < nqp1d and \
+                    0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 }",
+            """
+                <> xi = qpts[1, i2]
+                <> s = 1-xi
+                <> r = xi/s
+                <> aind = 0 {id=aind_init}
+
+                <> w = s**(deg-alpha1+1) {id=init_w}
+
+                tmp[0,alpha1,i2] = tmp[0,alpha1,i2] + w * coeffs[aind] \
+                        {id=write_tmp,inames=alpha2}
+                w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
+                        {id=update_w,dep=init_w:write_tmp}
+                aind = aind + 1 \
+                        {id=aind_incr,\
+                        dep=aind_init:write_tmp:update_w, \
+                        inames=i2:alpha1:alpha2}
+                """,
+            [
+                lp.GlobalArg("coeffs", None, shape=None),
+                "..."
+                ],
+            assumptions="deg>=0"
+            )
+
+    print knl
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code(
+            dict(
+                qpts=np.float32,
+                coeffs=np.float32,
+                tmp=np.float32,
+                ))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
