@@ -34,6 +34,23 @@ logger = logging.getLogger(__name__)
 
 # {{{ sanity checks run during scheduling
 
+def check_insn_attributes(kernel):
+    all_insn_ids = set(insn.id for insn in kernel.instructions)
+
+    for insn in kernel.instructions:
+        if not insn.forced_iname_deps <= kernel.all_inames():
+            raise LoopyError("insn '%s' has unknown forced iname "
+                    "dependencies: %s"
+                    % (insn.id, ", ".join(
+                        insn.forced_iname_deps - kernel.all_inames())))
+
+        if not insn.insn_deps <= all_insn_ids:
+            raise LoopyError("insn '%s' has unknown instruction "
+                    "dependencies: %s"
+                    % (insn.id, ", ".join(
+                        insn.insn_deps - all_insn_ids)))
+
+
 def check_loop_priority_inames_known(kernel):
     for iname in kernel.loop_priority:
         if not iname in kernel.all_inames():
@@ -322,6 +339,7 @@ def pre_schedule_checks(kernel):
 
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
+        check_insn_attributes(kernel)
         check_loop_priority_inames_known(kernel)
         check_for_unused_hw_axes_in_insns(kernel)
         check_for_inactive_iname_access(kernel)
