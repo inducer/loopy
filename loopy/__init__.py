@@ -162,7 +162,7 @@ def split_iname(kernel, split_iname, inner_length,
     if do_tagged_check and (
             existing_tag is not None
             and not isinstance(existing_tag, ForceSequentialTag)):
-        raise RuntimeError("cannot split already tagged iname '%s'" % split_iname)
+        raise LoopyError("cannot split already tagged iname '%s'" % split_iname)
 
     if split_iname not in kernel.all_inames():
         raise ValueError("cannot split loop for unknown variable '%s'" % split_iname)
@@ -284,7 +284,7 @@ class _InameJoiner(ExpandingSubstitutionMapper):
         overlap = self.join_inames & expr_inames
         if overlap and self.within(expn_state.stack):
             if overlap != expr_inames:
-                raise RuntimeError(
+                raise LoopyError(
                         "Cannot join inames '%s' if there is a reduction "
                         "that does not use all of the inames being joined. "
                         "(Found one with just '%s'.)"
@@ -319,7 +319,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     domch = DomainChanger(kernel, frozenset(inames))
     for iname in inames:
         if kernel.get_home_domain_index(iname) != domch.leaf_domain_index:
-            raise RuntimeError("iname '%s' is not 'at home' in the "
+            raise LoopyError("iname '%s' is not 'at home' in the "
                     "join's leaf domain" % iname)
 
     new_domain = domch.domain
@@ -431,7 +431,7 @@ def tag_inames(kernel, iname_to_tag, force=False):
     new_iname_to_tag = kernel.iname_to_tag.copy()
     for iname, new_tag in iname_to_tag.iteritems():
         if iname not in kernel.all_inames():
-            raise RuntimeError("iname '%s' does not exist" % iname)
+            raise LoopyError("iname '%s' does not exist" % iname)
 
         old_tag = kernel.iname_to_tag.get(iname)
 
@@ -460,7 +460,7 @@ def tag_inames(kernel, iname_to_tag, force=False):
 
         if (not retag_ok) and (not force) \
                 and old_tag is not None and (old_tag != new_tag):
-            raise RuntimeError("'%s' is already tagged '%s'--cannot retag"
+            raise LoopyError("'%s' is already tagged '%s'--cannot retag"
                     % (iname, old_tag))
 
         new_iname_to_tag[iname] = new_tag
@@ -629,7 +629,7 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
             insn_inames = knl.insn_inames(insn.id) | insn.reduction_inames()
 
             if len(insn_inames & inames_set) > 1:
-                raise RuntimeError("To-be-linked inames '%s' are used in "
+                raise LoopyError("To-be-linked inames '%s' are used in "
                         "instruction '%s'. No more than one such iname can "
                         "be used in one instruction."
                         % (", ".join(insn_inames & inames_set), insn.id))
@@ -674,7 +674,7 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
         all_equal = all_equal and (proj <= first_proj and first_proj <= proj)
 
     if not all_equal:
-        raise RuntimeError("Inames cannot be linked because their domain "
+        raise LoopyError("Inames cannot be linked because their domain "
                 "constraints are not the same.")
 
     del domain  # messed up for testing, do not use
