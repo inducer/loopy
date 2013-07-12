@@ -141,7 +141,7 @@ def expand_defines_in_expr(expr, defines):
 INSN_RE = re.compile(
         "\s*(?:\<(?P<temp_var_type>.*?)\>)?"
         "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
-        "\s*?(?:\{(?P<options>[\s\w_=,:]+)\}\s*)?$"
+        "\s*?(?:\{(?P<options>.+)\}\s*)?$"
         )
 SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$"
