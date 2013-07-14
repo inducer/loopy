@@ -75,8 +75,14 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
         self.stride = stride
         self.target_axis = target_axis
 
+    def stringify(self, include_target_axis):
+        result = "stride:%s" % self.stride
+        if include_target_axis:
+            result += "->%d" % self.target_axis
+        return result
+
     def __str__(self):
-        return "stride:%s->%d" % (self.stride, self.target_axis)
+        return self.stringify(True)
 
     def map_expr(self, mapper):
         return self.copy(stride=mapper(self.stride))
@@ -101,27 +107,42 @@ class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
         _StrideArrayDimTagBase.__init__(self, order=order, pad_to=pad_to,
                 target_axis=target_axis)
 
-    def __str__(self):
+    def stringify(self, include_target_axis):
+        result = "stride:%s" % self.stride
         if self.pad_to is None:
-            return self.order
+            result = self.order
         else:
-            return "%s(pad=%s)" % (self.order, self.pad_to)
+            result = "%s(pad=%s)" % (self.order, self.pad_to)
+
+        if include_target_axis:
+            result += "->%d" % self.target_axis
+
+        return result
+
+    def __str__(self):
+        return self.stringify(True)
 
     def map_expr(self, mapper):
         return self
 
 
 class SeparateArrayArrayDimTag(ArrayDimImplementationTag):
-    def __str__(self):
+    def stringify(self, include_target_axis):
         return "sep"
+
+    def __str__(self):
+        return self.stringify(True)
 
     def map_expr(self, mapper):
         return self
 
 
 class VectorArrayDimTag(ArrayDimImplementationTag):
-    def __str__(self):
+    def stringify(self, include_target_axis):
         return "vec"
+
+    def __str__(self):
+        return self.stringify(True)
 
     def map_expr(self, mapper):
         return self
@@ -531,27 +552,44 @@ class ArrayBase(Record):
                 order=order,
                 **kwargs)
 
-    def __str__(self):
+    def stringify(self, include_typename):
         import loopy as lp
 
-        info_entries = [type(self).__name__, str(self.dtype)]
+        info_entries = []
+        if include_typename:
+            info_entries.append(type(self).__name__)
+
+        if self.dtype is lp.auto:
+            type_str = "<auto>"
+        elif self.dtype is None:
+            type_str = "<runtime>"
+        else:
+            type_str = str(self.dtype)
+
+        info_entries.append("type: %s" % type_str)
 
         if self.shape is None:
             pass
         elif self.shape is lp.auto:
             info_entries.append("shape: auto")
+        elif self.shape == ():
+            pass
         else:
             info_entries.append("shape: (%s)"
-                    % ",".join(str(i) for i in self.shape))
+                    % ", ".join(str(i) for i in self.shape))
 
-        if self.dim_tags is not None:
+        if self.dim_tags is not None and self.dim_tags != ():
             info_entries.append("dim_tags: (%s)"
-                    % ",".join(str(i) for i in self.dim_tags))
+                    % ", ".join(i.stringify(self.max_target_axes > 1)
+                        for i in self.dim_tags))
 
         if self.offset:
             info_entries.append("offset: %s" % self.offset)
 
         return "%s: %s" % (self.name, ", ".join(info_entries))
+
+    def __str__(self):
+        return self.stringify(include_typename=True)
 
     def __repr__(self):
         return "<%s>" % self.__str__()

@@ -223,7 +223,15 @@ class ValueArg(KernelArgument):
                 approximately=approximately)
 
     def __str__(self):
-        return "%s: ValueArg, type %s" % (self.name, self.dtype)
+        import loopy as lp
+        if self.dtype is lp.auto:
+            type_str = "<auto>"
+        elif self.dtype is None:
+            type_str = "<runtime>"
+        else:
+            type_str = str(self.dtype)
+
+        return "%s: ValueArg, type: %s" % (self.name, type_str)
 
     def __repr__(self):
         return "<%s>" % self.__str__()
@@ -297,6 +305,9 @@ class TemporaryVariable(ArrayBase):
             temp_var_decl = CLLocal(temp_var_decl)
 
         return temp_var_decl
+
+    def __str__(self):
+        return self.stringify(include_typename=False)
 
 # }}}
 

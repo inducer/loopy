@@ -846,21 +846,28 @@ class LoopKernel(Record):
         for arg_name in sorted(self.arg_dict):
             lines.append(str(self.arg_dict[arg_name]))
         lines.append(sep)
+        lines.append("DOMAINS:")
+        for dom, parents in zip(self.domains, self.all_parents_per_domain()):
+            lines.append(len(parents)*"  " + str(dom))
+
+        lines.append(sep)
         lines.append("INAME-TO-TAG MAP:")
         for iname in sorted(self.all_inames()):
             line = "%s: %s" % (iname, self.iname_to_tag.get(iname))
             lines.append(line)
-
-        lines.append(sep)
-        lines.append("DOMAINS:")
-        for dom, parents in zip(self.domains, self.all_parents_per_domain()):
-            lines.append(len(parents)*"  " + str(dom))
 
         if self.substitutions:
             lines.append(sep)
             lines.append("SUBSTIUTION RULES:")
             for rule_name in sorted(self.substitutions.iterkeys()):
                 lines.append(str(self.substitutions[rule_name]))
+
+        if self.temporary_variables:
+            lines.append(sep)
+            lines.append("TEMPORARIES:")
+            for tv in sorted(self.temporary_variables.itervalues(),
+                    key=lambda tv: tv.name):
+                lines.append(str(tv))
 
         lines.append(sep)
         lines.append("INSTRUCTIONS:")
@@ -899,11 +906,15 @@ class LoopKernel(Record):
 
             lines.extend(trailing)
 
-        lines.append(sep)
-        lines.append("DEPENDENCIES:")
+        dep_lines = []
         for insn in self.instructions:
             if insn.insn_deps:
-                lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
+                dep_lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
+        if dep_lines:
+            lines.append(sep)
+            lines.append("DEPENDENCIES:")
+            lines.extend(dep_lines)
+
         lines.append(sep)
 
         if self.schedule is not None:
