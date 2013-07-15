@@ -44,18 +44,23 @@ def split_arg_axis(kernel, args_and_axes, count):
     :arg args_and_axes: a list of tuples *(arg, axis_nr)* indicating
         that the index in *axis_nr* should be split. The tuples may
         also be *(arg, axis_nr, "F")*, indicating that the index will
-        be split as it would according to Fortran order.
+        be split as it would be according to Fortran order.
 
         If *args_and_axes* is a :class:`tuple`, it is automatically
         wrapped in a list, to make single splits easier.
 
     Note that splits on the corresponding inames are carried out implicitly.
-    The inames may *not* be split beforehand.
+    The inames may *not* be split beforehand. (There's no *really* good reason
+    for this--this routine is just not smart enough to deal with this.)
     """
 
     if count == 1:
         return kernel
 
+    # {{{ process input into arg_to_rest
+
+    # where "rest" is the non-argument-name part of the input tuples
+    # in args_and_axes
     def normalize_rest(rest):
         if len(rest) == 1:
             return (rest[0], "C")
@@ -71,6 +76,10 @@ def split_arg_axis(kernel, args_and_axes, count):
 
     if len(args_and_axes) != len(arg_to_rest):
         raise RuntimeError("cannot split multiple axes of the same variable")
+
+    del args_and_axes
+
+    # }}}
 
     from loopy.kernel.data import GlobalArg
     for arg_name in arg_to_rest:
