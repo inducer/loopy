@@ -105,8 +105,8 @@ def infer_unknown_types(kernel, expect_completion=False):
         logger.debug("%s: %s" % (kernel.name, s))
 
     if kernel.substitutions:
-        from warnings import warn
-        warn("type inference called when substitution "
+        from warnings import warn as py_warn
+        py_warn("type inference called when substitution "
                 "rules are still unexpanded, expanding",
                 LoopyWarning, stacklevel=2)
 

@@ -1367,8 +1367,9 @@ def test_vector_types(ctx_factory, vec_len):
                 lp.GlobalArg("a", np.float32, shape=lp.auto),
                 lp.GlobalArg("out", np.float32, shape=lp.auto),
                 "..."
-                ],
-            defines=dict(vec_len=vec_len))
+                ])
+
+    knl = lp.fix_parameter(knl, "vec_len", vec_len)
 
     ref_knl = knl
 

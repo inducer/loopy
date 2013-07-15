@@ -193,7 +193,7 @@ Wrangling inames
 
 .. autofunction:: duplicate_inames
 
-.. autofunction:: link_inames
+.. undocumented .. autofunction:: link_inames
 
 .. autofunction:: rename_iname
 
@@ -204,6 +204,11 @@ Wrangling inames
 .. autofunction:: split_reduction_inward
 
 .. autofunction:: split_reduction_outward
+
+Dealing with Parameters
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: fix_parameter
 
 Dealing with Substitution Rules
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

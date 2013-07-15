@@ -1152,4 +1152,68 @@ def split_reduction_outward(kernel, inames, within=None):
 
 # }}}
 
+
+# {{{ fix_parameter
+
+def fix_parameter(kernel, name, value):
+    def process_set(s):
+        var_dict = s.get_var_dict()
+
+        try:
+            dt, idx = var_dict[name]
+        except KeyError:
+            return s
+
+        value_aff = isl.Aff.zero_on_domain(s.space) + value
+
+        from loopy.isl_helpers import iname_rel_aff
+        name_equal_value_aff = iname_rel_aff(s.space, name, "==", value_aff)
+
+        s = (s
+                .add_constraint(
+                    isl.Constraint.equality_from_aff(name_equal_value_aff))
+                .project_out(dt, idx, 1))
+
+        return s
+
+    new_domains = [process_set(dom) for dom in kernel.domains]
+
+    from pymbolic.mapper.substitutor import make_subst_func
+    subst_func = make_subst_func({name: value})
+
+    from loopy.symbolic import SubstitutionMapper
+    subst_map = SubstitutionMapper(subst_func)
+
+    from loopy.kernel.array import ArrayBase
+    new_args = []
+    for arg in kernel.args:
+        if arg.name == name:
+            # remove from argument list
+            continue
+
+        if not isinstance(arg, ArrayBase):
+            new_args.append(arg)
+        else:
+            new_args.append(arg.map_exprs(subst_map))
+
+    new_temp_vars = {}
+    for tv in kernel.temporary_variables.itervalues():
+        new_temp_vars[tv.name] = tv.map_exprs(subst_map)
+
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(None)
+
+    from loopy.symbolic import ExpandingSubstitutionMapper
+    esubst_map = ExpandingSubstitutionMapper(
+            kernel.substitutions, kernel.get_var_name_generator(),
+            subst_func, within=within)
+    return (esubst_map.map_kernel(kernel)
+            .copy(
+                domains=new_domains,
+                args=new_args,
+                assumptions=process_set(kernel.assumptions),
+                ))
+
+# }}}
+
 # vim: foldmethod=marker

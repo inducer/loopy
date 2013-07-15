@@ -156,19 +156,21 @@ def iname_rel_aff(space, iname, rel, aff):
     """*aff*'s domain space is allowed to not match *space*."""
 
     dt, pos = space.get_var_dict()[iname]
-    assert dt == isl.dim_type.set
+    assert dt in [isl.dim_type.set, isl.dim_type.param]
+    if dt == isl.dim_type.set:
+        dt = isl.dim_type.in_
 
     from islpy import align_spaces
     aff = align_spaces(aff, isl.Aff.zero_on_domain(space))
 
     if rel in ["==", "<="]:
-        return aff.add_coefficient(isl.dim_type.in_, pos, -1)
+        return aff.add_coefficient(dt, pos, -1)
     elif rel == ">=":
-        return aff.neg().add_coefficient(isl.dim_type.in_, pos, 1)
+        return aff.neg().add_coefficient(dt, pos, 1)
     elif rel == "<":
-        return (aff-1).add_coefficient(isl.dim_type.in_, pos, -1)
+        return (aff-1).add_coefficient(dt, pos, -1)
     elif rel == ">":
-        return (aff+1).neg().add_coefficient(isl.dim_type.in_, pos, 1)
+        return (aff+1).neg().add_coefficient(dt, pos, 1)
     else:
         raise ValueError("unknown value of 'rel': %s" % rel)
 
