@@ -622,10 +622,14 @@ def generate_invoker(kernel, impl_arg_info, flags):
                     for arg in impl_arg_info
                     if arg.base_name in kernel.get_written_variables()))
     else:
-        gen("return _lpy_evt, (%s,)"
-                % ", ".join(arg.name
-                    for arg in impl_arg_info
-                    if arg.base_name in kernel.get_written_variables()))
+        out_args = [arg
+                for arg in impl_arg_info
+                if arg.base_name in kernel.get_written_variables()]
+        if not out_args:
+            gen("return _lpy_evt, (%s)"
+                    % ", ".join(arg.name for arg in out_args))
+        else:
+            gen("return _lpy_evt, ()")
 
     # }}}
 
