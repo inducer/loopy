@@ -277,7 +277,22 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
 
             raise ValueError(error_msg)
 
-        stride_so_far = 1
+        if vector_dim is None:
+            stride_so_far = 1
+        else:
+            if shape is None or shape is lp.auto:
+                # unable to normalize without known shape
+                return None
+
+            if not isinstance(shape[i], int):
+                raise TypeError("shape along vector axis %d of array '%s' "
+                        "must be an integer, not an expression"
+                        % (i, name))
+
+            stride_so_far = shape[i]
+            # FIXME: OpenCL-specific
+            if stride_so_far == 3:
+                stride_so_far = 4
 
         if fixed_stride_dim_tags[target_axis]:
             for i in fixed_stride_dim_tags[target_axis]:
@@ -668,12 +683,19 @@ class ArrayBase(Record):
         from loopy.codegen import ImplementedDataInfo
         from loopy.kernel.data import ValueArg
 
-        vector_size = self.vector_size()
-
-        def gen_decls(name_suffix, shape, strides, stride_arg_axes,
+        def gen_decls(name_suffix,
+                shape, strides,
+                unvec_shape, unvec_strides,
+                stride_arg_axes,
                 dtype, user_index):
             """
-            :arg stride_arg_axes: a tuple *(user_axis, impl_axis)*
+            :arg unvec_shape: shape tuple
+                that accounts for :class:`loopy.kernel.array.VectorArrayDimTag`
+                in a scalar manner
+            :arg unvec_strides: strides tuple
+                that accounts for :class:`loopy.kernel.array.VectorArrayDimTag`
+                in a scalar manner
+            :arg stride_arg_axes: a tuple *(user_axis, impl_axis, unvec_impl_axis)*
             :arg user_index: A tuple representing a (user-facing)
                 multi-dimensional subscript. This is filled in with
                 concrete integers when known (such as for separate-array
@@ -695,14 +717,18 @@ class ArrayBase(Record):
 
                 stride_args = []
                 strides = list(strides)
+                unvec_strides = list(unvec_strides)
 
                 # generate stride arguments, yielded later to keep array first
-                for stride_user_axis, stride_impl_axis in stride_arg_axes:
+                for stride_user_axis, stride_impl_axis, stride_unvec_impl_axis \
+                        in stride_arg_axes:
                     from cgen import Const, POD
                     stride_name = full_name+"_stride%d" % stride_user_axis
 
                     from pymbolic import var
-                    strides[stride_impl_axis] = var(stride_name)
+                    strides[stride_impl_axis] = \
+                            unvec_strides[stride_unvec_impl_axis] = \
+                            var(stride_name)
 
                     stride_args.append(
                             ImplementedDataInfo(
@@ -725,6 +751,8 @@ class ArrayBase(Record):
                             dtype=dtype,
                             shape=shape,
                             strides=tuple(strides),
+                            unvec_shape=unvec_shape,
+                            unvec_strides=tuple(unvec_strides),
                             allows_offset=bool(self.offset),
                             )
 
@@ -749,23 +777,26 @@ class ArrayBase(Record):
 
             if isinstance(dim_tag, FixedStrideArrayDimTag):
                 if self.shape is None:
-                    new_shape = shape + (None,)
+                    new_shape_axis = None
                 else:
-                    new_shape = shape + (self.shape[user_axis],)
+                    new_shape_axis = self.shape[user_axis]
 
                 import loopy as lp
                 if dim_tag.stride is lp.auto:
                     new_stride_arg_axes = stride_arg_axes \
-                            + ((user_axis, len(strides)),)
+                            + ((user_axis, len(strides), len(unvec_strides)),)
 
-                    # fixed above when final array name is known
-                    new_strides = strides + (None,)
+                    # repaired above when final array name is known
+                    # (and stride argument is created)
+                    new_stride_axis = None
                 else:
                     new_stride_arg_axes = stride_arg_axes
-                    new_strides = strides + (dim_tag.stride // vector_size,)
+                    new_stride_axis = dim_tag.stride
 
-                for res in gen_decls(name_suffix, new_shape,
-                        new_strides,
+                for res in gen_decls(name_suffix,
+                        shape + (new_shape_axis,), strides + (new_stride_axis,),
+                        unvec_shape + (new_shape_axis,),
+                        unvec_strides + (new_stride_axis,),
                         new_stride_arg_axes,
                         dtype, user_index + (None,)):
                     yield res
@@ -779,7 +810,8 @@ class ArrayBase(Record):
 
                 for i in xrange(shape_i):
                     for res in gen_decls(name_suffix + "_s%d" % i,
-                            shape, strides, stride_arg_axes, dtype,
+                            shape, strides, unvec_shape, unvec_strides,
+                            stride_arg_axes, dtype,
                             user_index + (i,)):
                         yield res
 
@@ -790,7 +822,11 @@ class ArrayBase(Record):
                             "integer axis %d (0-based)" % (
                                 self.name, user_axis))
 
-                for res in gen_decls(name_suffix, shape, strides,
+                for res in gen_decls(name_suffix,
+                        shape, strides,
+                        unvec_shape + (shape_i,),
+                        # vectors always have stride 1
+                        unvec_strides + (1,),
                         stride_arg_axes,
                         cl.array.vec.types[dtype, shape_i],
                         user_index + (None,)):
@@ -800,7 +836,9 @@ class ArrayBase(Record):
                 raise RuntimeError("unsupported array dim implementation tag '%s' "
                         "in array '%s'" % (dim_tag, self.name))
 
-        for res in gen_decls(name_suffix="", shape=(), strides=(),
+        for res in gen_decls(name_suffix="",
+                shape=(), strides=(),
+                unvec_shape=(), unvec_strides=(),
                 stride_arg_axes=(),
                 dtype=self.dtype, user_index=()):
             yield res
@@ -892,9 +930,10 @@ def get_access_info(ary, index, eval_expr):
 
             if isinstance(stride, int):
                 if not dim_tag.stride % vector_size == 0:
-                    raise RuntimeError("stride of axis %d of array '%s' "
-                            "is not a multiple of the vector axis"
-                            % (i, ary.name))
+                    raise RuntimeError("array '%s' has axis %d stride of "
+                            "%d, which is not divisible by the size of the "
+                            "vector (%d)"
+                            % (ary.name, i, dim_tag.stride, vector_size))
 
             elif stride is lp.auto:
                 from pymbolic import var

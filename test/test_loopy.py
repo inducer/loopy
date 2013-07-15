@@ -33,6 +33,13 @@ import pytest
 import logging
 logger = logging.getLogger(__name__)
 
+try:
+    import faulthandler
+except ImportError:
+    pass
+else:
+    faulthandler.enable()
+
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
 
@@ -1347,6 +1354,34 @@ def test_rob_stroud_bernstein(ctx_factory):
                 coeffs=np.float32,
                 tmp=np.float32,
                 ))
+
+
+@pytest.mark.parametrize("vec_len", [2, 3, 4, 8])
+def test_vector_types(ctx_factory, vec_len):
+    ctx = cl.create_some_context()
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{ [i,j]: 0<=i<n and 0<=j<vec_len }",
+            "out[i,j] = 2*a[i,j]",
+            [
+                lp.GlobalArg("a", np.float32, shape=lp.auto),
+                lp.GlobalArg("out", np.float32, shape=lp.auto),
+                "..."
+                ],
+            defines=dict(vec_len=vec_len))
+
+    ref_knl = knl
+
+    knl = lp.tag_data_axes(knl, "out", "c,vec")
+    knl = lp.tag_inames(knl, dict(j="unr"))
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            parameters=dict(
+                n=20000
+                ),
+            fills_entire_output=False)
 
 
 if __name__ == "__main__":

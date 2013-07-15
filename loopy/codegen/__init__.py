@@ -230,6 +230,14 @@ class ImplementedDataInfo(Record):
 
         Strides in multiples of ``dtype.itemsize``.
 
+    .. attribute:: unvec_shape
+    .. attribute:: unvec_strides
+
+        Strides in multiples of ``dtype.itemsize`` that accounts for
+        :class:`loopy.kernel.array.VectorArrayDimTag` in a scalar
+        manner
+
+
     .. attribute:: offset_for_name
     .. attribute:: stride_for_name_and_axis
 
@@ -241,7 +249,9 @@ class ImplementedDataInfo(Record):
     """
 
     def __init__(self, name, dtype, cgen_declarator, arg_class,
-            base_name=None, shape=None, strides=None,
+            base_name=None,
+            shape=None, strides=None,
+            unvec_shape=None, unvec_strides=None,
             offset_for_name=None, stride_for_name_and_axis=None,
             allows_offset=None):
         Record.__init__(self,
@@ -252,6 +262,8 @@ class ImplementedDataInfo(Record):
                 base_name=base_name,
                 shape=shape,
                 strides=strides,
+                unvec_shape=unvec_shape,
+                unvec_strides=unvec_strides,
                 offset_for_name=offset_for_name,
                 stride_for_name_and_axis=stride_for_name_and_axis,
                 allows_offset=allows_offset)

@@ -402,12 +402,12 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
             with Indentation(gen):
                 num_axes = len(arg.strides)
                 for i in xrange(num_axes):
-                    gen("_lpy_shape_%d = %s" % (i, strify(arg.shape[i])))
+                    gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
 
                 itemsize = kernel_arg.dtype.itemsize
                 for i in xrange(num_axes):
                     gen("_lpy_strides_%d = %s" % (i, strify(
-                        itemsize*arg.strides[i])))
+                        itemsize*arg.unvec_strides[i])))
 
                 if not flags.skip_checks:
                     for i in xrange(num_axes):
@@ -459,7 +459,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
                 with Indentation(gen):
                     gen("if %s.dtype != %s:"
-                            % (arg.name, python_dtype_str(arg.dtype)))
+                            % (arg.name, python_dtype_str(kernel_arg.dtype)))
                     with Indentation(gen):
                         gen("raise TypeError(\"dtype mismatch on argument '%s' "
                                 "(got: %%s, expected: %s)\" %% %s.dtype)"
@@ -467,16 +467,17 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
                     if arg.shape is not None:
                         gen("if %s.shape != %s:"
-                                % (arg.name, strify(arg.shape)))
+                                % (arg.name, strify(arg.unvec_shape)))
                         with Indentation(gen):
                             gen("raise TypeError(\"shape mismatch on argument '%s' "
                                     "(got: %%s, expected: %%s)\" "
                                     "%% (%s.shape, %s))"
-                                    % (arg.name, arg.name, strify(arg.shape)))
+                                    % (arg.name, arg.name, strify(arg.unvec_shape)))
 
                     if arg.strides is not None:
                         itemsize = kernel_arg.dtype.itemsize
-                        sym_strides = tuple(itemsize*s_i for s_i in arg.strides)
+                        sym_strides = tuple(
+                                itemsize*s_i for s_i in arg.unvec_strides)
                         gen("if %s.strides != %s:"
                                 % (arg.name, strify(sym_strides)))
                         with Indentation(gen):

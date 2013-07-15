@@ -61,6 +61,8 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
     ref_arg_data = []
 
     for arg in impl_arg_info:
+        kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
+
         if arg.arg_class is ValueArg:
             if arg.offset_for_name:
                 continue
@@ -84,25 +86,25 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
                 raise ValueError("arrays need known shape to use automatic "
                         "testing")
 
-            shape = evaluate(arg.shape, parameters)
+            shape = evaluate(arg.unvec_shape, parameters)
+            dtype = kernel_arg.dtype
 
             is_output = arg.base_name in kernel.get_written_variables()
 
             if arg.arg_class is ImageArg:
                 storage_array = ary = cl_array.empty(
-                        queue, shape, arg.dtype, order="C")
+                        queue, shape, dtype, order="C")
                 numpy_strides = None
                 alloc_size = None
                 strides = None
             else:
-                strides = evaluate(arg.strides, parameters)
+                strides = evaluate(arg.unvec_strides, parameters)
 
                 from pytools import all
                 assert all(s > 0 for s in strides)
                 alloc_size = sum(astrd*(alen-1)
                         for alen, astrd in zip(shape, strides)) + 1
 
-                dtype = arg.dtype
                 if dtype is None:
                     raise RuntimeError("dtype for argument '%s' is not yet "
                             "known. Perhaps you want to use "
@@ -125,7 +127,9 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
                     storage_array.fill(fill_value)
                 else:
                     from warnings import warn
-                    warn("Cannot pre-fill array of dtype '%s'" % dtype)
+                    warn("Cannot pre-fill array of dtype '%s' with set "
+                            "value--zeroing instead" % dtype)
+                    storage_array.view(np.uint8).fill(0)
 
                 ref_args[arg.name] = ary
             else:
@@ -165,6 +169,8 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
 
     args = {}
     for arg, arg_desc in zip(impl_arg_info, ref_arg_data):
+        kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
+
         if arg.arg_class is ValueArg:
             arg_value = parameters[arg.name]
 
@@ -183,7 +189,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
                 raise NotImplementedError("write-mode images not supported in "
                         "automatic testing")
 
-            shape = evaluate(arg.shape, parameters)
+            shape = evaluate(arg.unvec_shape, parameters)
             assert shape == arg_desc.ref_shape
 
             # must be contiguous
@@ -191,10 +197,11 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
                     queue.context, arg_desc.ref_array.get())
 
         elif arg.arg_class is GlobalArg:
-            shape = evaluate(arg.shape, parameters)
-            strides = evaluate(arg.strides, parameters)
+            shape = evaluate(arg.unvec_shape, parameters)
+            strides = evaluate(arg.unvec_strides, parameters)
 
-            itemsize = arg.dtype.itemsize
+            dtype = kernel_arg.dtype
+            itemsize = dtype.itemsize
             numpy_strides = [itemsize*s for s in strides]
 
             assert all(s > 0 for s in strides)
@@ -202,14 +209,15 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
                     for alen, astrd in zip(shape, strides)) + 1
 
             if arg.base_name in kernel.get_written_variables():
-                storage_array = cl_array.empty(queue, alloc_size, arg.dtype)
+                storage_array = cl_array.empty(queue, alloc_size, dtype)
                 ary = cl_array.as_strided(storage_array, shape, numpy_strides)
 
-                if arg.dtype.isbuiltin:
+                if dtype.isbuiltin:
                     storage_array.fill(fill_value)
                 else:
                     from warnings import warn
-                    warn("Cannot pre-fill array of dtype '%s'" % arg.dtype)
+                    warn("Cannot pre-fill array of dtype '%s'" % dtype)
+                    storage_array.view(np.uint8).fill(0)
 
                 args[arg.name] = ary
             else:
@@ -225,7 +233,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
                 host_ref_flat_array = host_ref_array.flatten()
 
                 # create host array with test shape (but not strides)
-                host_contig_array = np.empty(shape, dtype=arg.dtype)
+                host_contig_array = np.empty(shape, dtype=dtype)
 
                 common_len = min(
                         len(host_ref_flat_array),
@@ -234,7 +242,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
                         host_ref_flat_array[:common_len]
 
                 # create host array with test shape and storage layout
-                host_storage_array = np.empty(alloc_size, arg.dtype)
+                host_storage_array = np.empty(alloc_size, dtype)
                 host_array = as_strided(
                         host_storage_array, shape, numpy_strides)
                 host_array[:] = host_contig_array
@@ -265,6 +273,9 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
 # {{{ default array comparison
 
 def _default_check_result(result, ref_result):
+    if not result.dtype.isbuiltin and not (result == ref_result).all():
+        return (False, "results do not match exactly")
+
     if not np.allclose(ref_result, result, rtol=1e-3, atol=1e-3):
         l2_err = (
                 np.sum(np.abs(ref_result-result)**2)
@@ -275,7 +286,7 @@ def _default_check_result(result, ref_result):
                 /
                 np.max(np.abs(ref_result-result)))
         return (False,
-                "results do not match(rel) l_2 err: %g, l_inf err: %g"
+                "results do not match -- (rel) l_2 err: %g, l_inf err: %g"
                 % (l2_err, linf_err))
     else:
         return True, None
@@ -292,13 +303,6 @@ def _enumerate_cl_devices_for_ref_test():
     from warnings import warn
 
     for pf in cl.get_platforms():
-        if pf.name == "Portable OpenCL":
-            # That implementation [1] isn't quite good enough yet.
-            # [1] https://launchpad.net/pocl
-            # FIXME remove when no longer true.
-            warn("Skipping 'Portable OpenCL' for lack of maturity.")
-            continue
-
         for dev in pf.get_devices():
             if dev.type & cl.device_type.CPU:
                 cpu_devs.append(dev)
