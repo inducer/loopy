@@ -32,6 +32,8 @@ import pyopencl.array  # noqa
 
 import numpy as np
 
+from loopy.diagnostic import LoopyError
+
 
 # {{{ array dimension tags
 
@@ -628,7 +630,7 @@ class ArrayBase(Record):
         if self.dim_tags is not None:
             return len(self.dim_tags)
         if require_answer:
-            raise RuntimeError("number of user axes of array '%s' cannot be found"
+            raise LoopyError("number of user axes of array '%s' cannot be found"
                     % self.name)
         else:
             return None
@@ -665,7 +667,7 @@ class ArrayBase(Record):
             if isinstance(dim_tag, VectorArrayDimTag):
                 shape_i = self.shape[i]
                 if not isinstance(shape_i, int):
-                    raise RuntimeError("shape of '%s' has non-constant-integer "
+                    raise LoopyError("shape of '%s' has non-constant-integer "
                             "length for vector axis %d (0-based)" % (
                                 self.name, i))
 
@@ -804,7 +806,7 @@ class ArrayBase(Record):
             elif isinstance(dim_tag, SeparateArrayArrayDimTag):
                 shape_i = self.shape[user_axis]
                 if not isinstance(shape_i, int):
-                    raise RuntimeError("shape of '%s' has non-constant "
+                    raise LoopyError("shape of '%s' has non-constant "
                             "integer axis %d (0-based)" % (
                                 self.name, user_axis))
 
@@ -818,7 +820,7 @@ class ArrayBase(Record):
             elif isinstance(dim_tag, VectorArrayDimTag):
                 shape_i = self.shape[user_axis]
                 if not isinstance(shape_i, int):
-                    raise RuntimeError("shape of '%s' has non-constant "
+                    raise LoopyError("shape of '%s' has non-constant "
                             "integer axis %d (0-based)" % (
                                 self.name, user_axis))
 
@@ -833,7 +835,7 @@ class ArrayBase(Record):
                     yield res
 
             else:
-                raise RuntimeError("unsupported array dim implementation tag '%s' "
+                raise LoopyError("unsupported array dim implementation tag '%s' "
                         "in array '%s'" % (dim_tag, self.name))
 
         for res in gen_decls(name_suffix="",
@@ -887,6 +889,18 @@ def get_access_info(ary, index, eval_expr):
     :arg ary: an object of type :class:`ArrayBase`
     :arg index: a tuple of indices representing a subscript into ary
     """
+
+    def eval_expr_wrapper(i, expr):
+        from pymbolic.mapper.evaluator import UnknownVariableError
+        try:
+            return eval_expr(expr)
+        except UnknownVariableError, e:
+            raise LoopyError("When trying to index the array '%s' along axis "
+                    "%d (tagged '%s'), the index was not a compile-time "
+                    "constant (but it has to be in order for code to be "
+                    "generated). You likely want to unroll the iname(s) '%s'."
+                    % (ary.name, i, ary.dim_tags[i], str(e)))
+
     if not isinstance(index, tuple):
         index = (index,)
 
@@ -896,7 +910,7 @@ def get_access_info(ary, index, eval_expr):
         return AccessInfo(array_name=array_name, subscripts=index, vector_index=None)
 
     if len(ary.shape) != len(index):
-        raise RuntimeError("subscript to '%s[%s]' has the wrong "
+        raise LoopyError("subscript to '%s[%s]' has the wrong "
                 "number of indices (got: %d, expected: %d)" % (
                     ary.name, index, len(index), len(ary.shape)))
 
@@ -911,9 +925,9 @@ def get_access_info(ary, index, eval_expr):
 
     for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
         if isinstance(dim_tag, SeparateArrayArrayDimTag):
-            idx = eval_expr(idx)
+            idx = eval_expr_wrapper(i, idx)
             if not isinstance(idx, int):
-                raise RuntimeError("subscript '%s[%s]' has non-constant "
+                raise LoopyError("subscript '%s[%s]' has non-constant "
                         "index for separate-array axis %d (0-based)" % (
                             ary.name, index, i))
             array_name += "_s%d" % idx
@@ -930,7 +944,7 @@ def get_access_info(ary, index, eval_expr):
 
             if isinstance(stride, int):
                 if not dim_tag.stride % vector_size == 0:
-                    raise RuntimeError("array '%s' has axis %d stride of "
+                    raise LoopyError("array '%s' has axis %d stride of "
                             "%d, which is not divisible by the size of the "
                             "vector (%d)"
                             % (ary.name, i, dim_tag.stride, vector_size))
@@ -945,17 +959,17 @@ def get_access_info(ary, index, eval_expr):
             pass
 
         elif isinstance(dim_tag, VectorArrayDimTag):
-            idx = eval_expr(idx)
+            idx = eval_expr_wrapper(i, idx)
 
             if not isinstance(idx, int):
-                raise RuntimeError("subscript '%s[%s]' has non-constant "
+                raise LoopyError("subscript '%s[%s]' has non-constant "
                         "index for separate-array axis %d (0-based)" % (
                             ary.name, index, i))
             assert vector_index is None
             vector_index = idx
 
         else:
-            raise RuntimeError("unsupported array dim implementation tag '%s' "
+            raise LoopyError("unsupported array dim implementation tag '%s' "
                     "in array '%s'" % (dim_tag, ary.name))
 
     # }}}
