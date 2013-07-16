@@ -272,8 +272,8 @@ def reduction_function_mangler(func_id, arg_dtypes):
 
 
 def reduction_preamble_generator(seen_dtypes, seen_functions):
-    for func_id, c_name, arg_dtypes in seen_functions:
-        if isinstance(func_id, ArgExtFunction):
-            yield get_argext_preamble(func_id)
+    for func in seen_functions:
+        if isinstance(func.name, ArgExtFunction):
+            yield get_argext_preamble(func.name)
 
 # vim: fdm=marker

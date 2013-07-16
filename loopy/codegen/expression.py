@@ -32,6 +32,7 @@ from pymbolic.mapper import CombineMapper
 import islpy as isl
 import pyopencl as cl
 import pyopencl.array  # noqa
+from pytools import Record
 
 from loopy.diagnostic import TypeInferenceFailure, DependencyTypeInferenceFailure
 
@@ -247,6 +248,26 @@ def get_opencl_vec_member(idx):
         return VEC_AXES[idx]
     else:
         return "s%d" % idx
+
+
+class SeenFunction(Record):
+    """
+    .. attribute:: name
+    .. attribute:: c_name
+    .. attribute:: arg_dtypes
+
+        a tuple of arg dtypes
+    """
+
+    def __init__(self, name, c_name, arg_dtypes):
+        Record.__init__(self,
+                name=name,
+                c_name=c_name,
+                arg_dtypes=arg_dtypes)
+
+    def __hash__(self):
+        return hash((type(self),)
+                + tuple((f, getattr(self, f)) for f in type(self).fields))
 
 
 class LoopyCCodeMapper(RecursiveMapper):
@@ -511,7 +532,7 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         def seen_func(name):
             idt = self.kernel.index_dtype
-            self.seen_functions.add((name, name, (idt, idt)))
+            self.seen_functions.add(SeenFunction(name, name, (idt, idt)))
 
         if den_nonneg:
             if num_nonneg:
@@ -622,7 +643,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                         "for function '%s' not understood"
                         % identifier)
 
-        self.seen_functions.add((identifier, c_name, par_dtypes))
+        self.seen_functions.add(SeenFunction(identifier, c_name, par_dtypes))
         if str_parameters is None:
             # /!\ FIXME For some functions (e.g. 'sin'), it makes sense to
             # propagate the type context here. But for many others, it does
