@@ -203,7 +203,7 @@ C Block Instructions
 Substitution Rules
 ^^^^^^^^^^^^^^^^^^
 
-Syntax of an substitution rule::
+Syntax of a substitution rule::
 
     rule_name(arg1, arg2) := EXPRESSION
 
