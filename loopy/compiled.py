@@ -465,7 +465,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                             "(got: %%s, expected: %s)\" %% %s.dtype)"
                             % (arg.name, arg.dtype, arg.name))
 
-                if arg.shape is not None:
+                if kernel_arg.shape is not None:
                     gen("if %s.shape != %s:"
                             % (arg.name, strify(arg.unvec_shape)))
                     with Indentation(gen):
@@ -474,7 +474,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                                 "%% (%s.shape, %s))"
                                 % (arg.name, arg.name, strify(arg.unvec_shape)))
 
-                if arg.strides is not None:
+                if arg.unvec_strides and kernel_arg.dim_tags:
                     itemsize = kernel_arg.dtype.itemsize
                     sym_strides = tuple(
                             itemsize*s_i for s_i in arg.unvec_strides)
