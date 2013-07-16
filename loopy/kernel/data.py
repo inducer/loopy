@@ -592,7 +592,7 @@ def _remove_common_indentation(code):
 
 class CInstruction(InstructionBase):
     """
-    .. atttribute:: iname_exprs
+    .. attribute:: iname_exprs
 
         A list of tuples *(name, expr)* of inames or expressions based on them
         that the instruction needs access to.

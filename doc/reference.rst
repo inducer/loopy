@@ -8,6 +8,8 @@ This guide defines all functionality exposed by loopy. If you would like
 a more gentle introduction, you may consider reading the example-based
 guide :ref:`guide` instead.
 
+.. _inames:
+
 Inames
 ------
 
@@ -28,39 +30,18 @@ Expressions
 * complex-valued arithmetic
 * tagging of array access and substitution rule use ("$")
 
-Assignments and Substitution Rules
-----------------------------------
+.. _types:
 
-Syntax of an instruction::
+Specifying Types
+----------------
 
-    label: [i,j|k,l] <float32> lhs[i,j,k] = EXPRESSION : dep_label, dep_label_2
+:mod:`loopy` uses the same type system as :mod:`numpy`. (See
+:class:`numpy.dtype`) It also uses :mod:`pyopencl` for a registry of
+user-defined types and their C equivalents. See :func:`pyopencl.get_or_register_dtype`
+and related functions.
 
-The above example illustrates all the parts that are allowed in loo.py's
-instruction syntax. All of these except for `lhs` and `EXPRESSION` are
-optional.
-
-* `label` is a unique identifier for this instruction, enabling you to
-  refer back to the instruction uniquely during further transformation
-  as well as specifying ordering dependencies.
-
-* `dep_label,dep_label_2` are dependencies of the current instruction.
-  Loo.py will enforce that the instructions marked with these labels
-  are scheduled before this instruction.
-
-* `<float32>` declares `lhs` as a temporary variable, with shape given
-  by the ranges of the `lhs` subscripts. (Note that in this case, the
-  `lhs` subscripts must be pure inames, not expressions, for now.)
-  Instead of a concrete type, an empty set of angle brackets `<>` may be
-  given to indicate that type inference should figure out the type of the
-  temporary.
-
-* `[i,j|k,l]` specifies the inames within which this instruction is run.
-  Independent copies of the inames `k` and `l` will be made for this
-  instruction.
-
-Syntax of an substitution rule::
-
-    rule_name(arg1, arg2) := EXPRESSION
+For a string representation of types, all numpy types (e.g. ``float32`` etc.)
+are accepted, in addition to what is registered in :mod:`pyopencl`.
 
 .. _tags:
 
@@ -135,28 +116,96 @@ Arguments
     :members:
     :undoc-members:
 
+.. _temporaries:
+
 Temporary Variables
 ^^^^^^^^^^^^^^^^^^^
+
+Temporary variables model OpenCL's ``private`` and ``local`` address spaces. Both
+have the lifetime of a kernel invocation.
 
 .. autoclass:: TemporaryVariable
     :members:
     :undoc-members:
 
-Substitution rules
-^^^^^^^^^^^^^^^^^^
-
-.. autoclass:: SubstitutionRule
-
-String sytnax: FIXME
-
 Instructions
 ^^^^^^^^^^^^
 
+.. _assignments:
+
+Assignments
+~~~~~~~~~~~
+
+The general syntax of an instruction is a simple assignment::
+
+    LHS[i,j,k] = EXPRESSION
+
+Several extensions of this syntax are defined, as discussed below.  They
+may be combined freely.
+
+You can also use an instruction to declare a new temporary variable. (See
+:ref:`temporaries`.) See :ref:`types` for what types are acceptable. If the
+``LHS`` has a subscript, bounds on the indices are inferred (which must be
+constants at the time of kernel creation) and the declared temporary is
+created as an array. Instructions declaring temporaries have the following
+form::
+
+    <temp_var_type> LHS[i,j,k] = EXPRESSION
+
+You can also create a temporary and ask loopy to determine its type
+automatically. This uses the following syntax::
+
+    <> LHS[i,j,k] = EXPRESSION
+
+Lastly, each instruction may optionally have a number of attributes
+specified, using the following format::
+
+    LHS[i,j,k] = EXPRESSION {attr1,attr2=value1:value2}
+
+These are usually key-value pairs. The following attributes are recognized:
+
+* ``id=value`` sets the instruction's identifier to ``value``. ``value``
+  must be unique within the kernel. This identifier is used to refer to the
+  instruction after it has been created, such as from ``dep`` attributes
+  (see below) or from :mod:`context matches <loopy.context_matching>`.
+
+* ``id_prefix=value`` also sets the instruction's identifier, however
+  uniqueness is ensured by loopy itself, by appending further components
+  (often numbers) to the given ``id_prefix``.
+
+* ``inames=i:j:k`` forces the instruction to reside within the loops over
+  :ref:`inames` ``i``, ``j`` and ``k``.
+
+* ``dep=id1:id2`` creates a dependency of this instruction on the
+  instructions with identifiers ``id1`` and ``id2``. This requires that the
+  code generated for this instruction appears textually after both of these
+  instructions' generated code.
+
+  .. note::
+
+      Loopy will automatically add a depdencies of reading instructions
+      on writing instructions *if and only if* there is exactly one writing
+      instruction for the written variable (temporary or argument).
+
+* ``priority=integer`` sets the instructions priority to the value
+  ``integer``. Instructions with higher priority will be scheduled sooner,
+  if possible. Note that the scheduler may still schedule a lower-priority
+  instruction ahead of a higher-priority one if loop orders or dependencies
+  require it.
+
 .. autoclass:: ExpressionInstruction
+
+C Block Instructions
+~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: CInstruction
 
-String sytnax: FIXME
+Substitution Rules
+^^^^^^^^^^^^^^^^^^
+
+Syntax of an substitution rule::
+
+    rule_name(arg1, arg2) := EXPRESSION
 
 Kernels
 ^^^^^^^
@@ -164,7 +213,7 @@ Kernels
 .. class:: LoopKernel
 
 Do not create :class:`LoopKernel` objects directly. Instead, use the following
-function, which takes the same arguments, but does some extra post-processing.
+function, which is responsible for creating kernels:
 
 .. autofunction:: make_kernel
 
@@ -294,3 +343,5 @@ following always works::
 .. autofunction:: preprocess_kernel
 
 .. autofunction:: get_dot_dependency_graph
+
+.. vim: tw=75
