@@ -446,60 +446,60 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                 gen("_lpy_made_by_loopy = True")
                 gen("")
 
-            # }}}
+        # }}}
 
-            # {{{ argument checking
+        # {{{ argument checking
 
-            if arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
-                    and not flags.skip_arg_checks:
-                if possibly_made_by_loopy:
-                    gen("if not _lpy_made_by_loopy:")
-                else:
-                    gen("if True:")
+        if arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
+                and not flags.skip_arg_checks:
+            if possibly_made_by_loopy:
+                gen("if not _lpy_made_by_loopy:")
+            else:
+                gen("if True:")
 
+            with Indentation(gen):
+                gen("if %s.dtype != %s:"
+                        % (arg.name, python_dtype_str(kernel_arg.dtype)))
                 with Indentation(gen):
-                    gen("if %s.dtype != %s:"
-                            % (arg.name, python_dtype_str(kernel_arg.dtype)))
+                    gen("raise TypeError(\"dtype mismatch on argument '%s' "
+                            "(got: %%s, expected: %s)\" %% %s.dtype)"
+                            % (arg.name, arg.dtype, arg.name))
+
+                if arg.shape is not None:
+                    gen("if %s.shape != %s:"
+                            % (arg.name, strify(arg.unvec_shape)))
                     with Indentation(gen):
-                        gen("raise TypeError(\"dtype mismatch on argument '%s' "
-                                "(got: %%s, expected: %s)\" %% %s.dtype)"
-                                % (arg.name, arg.dtype, arg.name))
+                        gen("raise TypeError(\"shape mismatch on argument '%s' "
+                                "(got: %%s, expected: %%s)\" "
+                                "%% (%s.shape, %s))"
+                                % (arg.name, arg.name, strify(arg.unvec_shape)))
 
-                    if arg.shape is not None:
-                        gen("if %s.shape != %s:"
-                                % (arg.name, strify(arg.unvec_shape)))
-                        with Indentation(gen):
-                            gen("raise TypeError(\"shape mismatch on argument '%s' "
-                                    "(got: %%s, expected: %%s)\" "
-                                    "%% (%s.shape, %s))"
-                                    % (arg.name, arg.name, strify(arg.unvec_shape)))
+                if arg.strides is not None:
+                    itemsize = kernel_arg.dtype.itemsize
+                    sym_strides = tuple(
+                            itemsize*s_i for s_i in arg.unvec_strides)
+                    gen("if %s.strides != %s:"
+                            % (arg.name, strify(sym_strides)))
+                    with Indentation(gen):
+                        gen("raise TypeError(\"strides mismatch on "
+                                "argument '%s' (got: %%s, expected: %%s)\" "
+                                "%% (%s.strides, %s))"
+                                % (arg.name, arg.name, strify(sym_strides)))
 
-                    if arg.strides is not None:
-                        itemsize = kernel_arg.dtype.itemsize
-                        sym_strides = tuple(
-                                itemsize*s_i for s_i in arg.unvec_strides)
-                        gen("if %s.strides != %s:"
-                                % (arg.name, strify(sym_strides)))
-                        with Indentation(gen):
-                            gen("raise TypeError(\"strides mismatch on "
-                                    "argument '%s' (got: %%s, expected: %%s)\" "
-                                    "%% (%s.strides, %s))"
-                                    % (arg.name, arg.name, strify(sym_strides)))
+                if not arg.allows_offset:
+                    gen("if %s.offset:" % arg.name)
+                    with Indentation(gen):
+                        gen("raise ValueError(\"Argument '%s' does not "
+                                "allow arrays with offsets. Try passing "
+                                "default_offset=loopy.auto to make_kernel()."
+                                "\")" % arg.name)
+                        gen("")
 
-                    if not arg.allows_offset:
-                        gen("if %s.offset:" % arg.name)
-                        with Indentation(gen):
-                            gen("raise ValueError(\"Argument '%s' does not "
-                                    "allow arrays with offsets. Try passing "
-                                    "default_offset=loopy.auto to make_kernel()."
-                                    "\")" % arg.name)
-                            gen("")
+        # }}}
 
-            # }}}
-
-            if possibly_made_by_loopy and not flags.skip_arg_checks:
-                gen("del _lpy_made_by_loopy")
-                gen("")
+        if possibly_made_by_loopy and not flags.skip_arg_checks:
+            gen("del _lpy_made_by_loopy")
+            gen("")
 
         if arg.arg_class in [lp.GlobalArg, lp.ConstantArg]:
             gen("cl_kernel.set_arg(%d, %s.base_data)" % (arg_idx, arg.name))
