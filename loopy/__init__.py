@@ -259,11 +259,20 @@ def split_iname(kernel, split_iname, inner_length,
     iname_slab_increments = kernel.iname_slab_increments.copy()
     iname_slab_increments[outer_iname] = slabs
 
-    kernel = (kernel
-            .copy(domains=new_domains,
-                iname_slab_increments=iname_slab_increments,
-                instructions=new_insns,
-                applied_iname_rewrites=applied_iname_rewrites))
+    new_loop_priority = []
+    for prio_iname in kernel.loop_priority:
+        if prio_iname == split_iname:
+            new_loop_priority.append(outer_iname)
+            new_loop_priority.append(inner_iname)
+        else:
+            new_loop_priority.append(prio_iname)
+
+    kernel = kernel.copy(
+            domains=new_domains,
+            iname_slab_increments=iname_slab_increments,
+            instructions=new_insns,
+            applied_iname_rewrites=applied_iname_rewrites,
+            loop_priority=new_loop_priority)
 
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
