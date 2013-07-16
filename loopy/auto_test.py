@@ -317,7 +317,7 @@ def _enumerate_cl_devices_for_ref_test():
         raise RuntimeError("no CL device found for test")
 
     if not cpu_devs:
-        warn("No CPU device found for reference test. The reference "
+        warn("No CPU device found for running reference kernel. The reference "
                 "computation will either fail because of a timeout "
                 "or take a *very* long time.")
 
