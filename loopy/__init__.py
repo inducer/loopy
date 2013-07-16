@@ -842,7 +842,8 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
             fsub = (fsub,)
 
         if len(fsub) != arg.num_user_axes():
-            raise ValueError("sweep index '%s' has the wrong number of dimensions")
+            raise ValueError("sweep index '%s' has the wrong number of dimensions"
+                    % str(fsub))
 
         for subst_map in kernel.applied_iname_rewrites:
             from loopy.symbolic import SubstitutionMapper
@@ -968,6 +969,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # }}}
 
     kernel = extract_subst(kernel, rule_name, uni_template, parameters)
+
+    if isinstance(sweep_inames, str):
+        sweep_inames = [s.strip() for s in sweep_inames.split(",")]
 
     kernel, subst_use, sweep_inames, inames_to_be_removed = \
             _process_footprint_subscripts(

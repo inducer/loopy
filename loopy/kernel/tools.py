@@ -253,7 +253,7 @@ class SetOperationCacheManager:
                     static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
                         context=context))
         except Exception, e:
-            raise type(e)("while finding lower bound of '%s': " % iname)
+            raise type(e)("while finding lower bound of '%s': %s" % (iname, str(e)))
 
         return base_index, size
 
