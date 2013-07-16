@@ -386,15 +386,16 @@ class ArrayBase(Record):
             each with identical properties, are created
             for each name.
         :arg dtype: the :class:`numpy.dtype` of the array.
-            If this is *None*, :mod:`loopy` will try to continue
-            without knowing the type of this array.
+            If this is *None*, :mod:`loopy` will try to continue without
+            knowing the type of this array, where the idea is that precise
+            knowledge of the type will become available at invocation time.
+            :class:`loopy.CompiledKernel` (and thereby
+            :meth:`loopy.LoopKernel.__call__`) automatically add this type
+            information based on invocation arguments.
 
-            Note that some operations, such as :func:`loopy.add_padding`
-            will not work without the *dtype*.
+            Note that some transformations, such as :func:`loopy.add_padding`
+            cannot be performed without knowledge of the exact *dtype*.
 
-            :class:`loopy.CompiledKernel` will automatically compile a kernel
-            with the right dtype when called with a concrete array on a kernel
-            with argument whose *dtype* is *None*.
         :arg shape: May be one of the following:
 
             * *None*. In this case, no shape is intended to be specified,

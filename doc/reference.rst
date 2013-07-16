@@ -183,7 +183,7 @@ These are usually key-value pairs. The following attributes are recognized:
 
   .. note::
 
-      Loopy will automatically add a depdencies of reading instructions
+      Loopy will automatically add depdencies of reading instructions
       on writing instructions *if and only if* there is exactly one writing
       instruction for the written variable (temporary or argument).
 
