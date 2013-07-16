@@ -34,8 +34,6 @@ register_mpz_with_pymbolic()
 import islpy as isl
 from islpy import dim_type
 
-from pytools import MovedFunctionDeprecationWrapper
-
 from loopy.symbolic import ExpandingIdentityMapper, ExpandingSubstitutionMapper
 from loopy.diagnostic import LoopyError
 
@@ -58,7 +56,7 @@ from loopy.kernel.data import (
 
 from loopy.kernel import LoopKernel
 from loopy.kernel.tools import (
-        get_dot_dependency_graph, add_argument_dtypes,
+        add_argument_dtypes,
         add_and_infer_argument_dtypes)
 from loopy.kernel.creation import make_kernel
 from loopy.library.reduction import register_reduction_parser
@@ -92,7 +90,7 @@ __all__ = [
 
         "extract_subst", "expand_subst",
         "precompute",
-        "split_arg_axis", "find_padding_multiple", "add_padding"
+        "split_arg_axis", "find_padding_multiple", "add_padding",
 
         "get_dot_dependency_graph", "add_argument_dtypes",
         "infer_argument_dtypes", "add_and_infer_argument_dtypes",
