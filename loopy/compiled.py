@@ -635,7 +635,6 @@ class CompiledKernel:
         """
 
         self.context = context
-        self.kernel = kernel
         self.codegen_kwargs = codegen_kwargs
         self.options = list(options)
 
@@ -654,6 +653,8 @@ class CompiledKernel:
         my_flags.update(make_flags(flags))
 
         self.flags = my_flags
+
+        self.kernel = kernel.copy(flags=my_flags)
 
         self.packing_controller = SeparateArrayPackingController(kernel)
 
