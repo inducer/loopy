@@ -37,7 +37,7 @@ Specifying Types
 
 :mod:`loopy` uses the same type system as :mod:`numpy`. (See
 :class:`numpy.dtype`) It also uses :mod:`pyopencl` for a registry of
-user-defined types and their C equivalents. See :func:`pyopencl.get_or_register_dtype`
+user-defined types and their C equivalents. See :func:`pyopencl.tools.get_or_register_dtype`
 and related functions.
 
 For a string representation of types, all numpy types (e.g. ``float32`` etc.)
