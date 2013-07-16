@@ -298,6 +298,17 @@ Manipulating Instructions
 
 .. autofunction:: add_dependency
 
+Library interface
+^^^^^^^^^^^^^^^^^
+
+.. autofunction:: register_reduction_parser
+
+.. autofunction:: register_preamble_generators
+
+.. autofunction:: register_symbol_manglers
+
+.. autofunction:: register_function_manglers
+
 Argument types
 ^^^^^^^^^^^^^^
 

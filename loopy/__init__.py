@@ -90,6 +90,10 @@ __all__ = [
         "make_kernel",
         "register_reduction_parser",
 
+        "extract_subst", "expand_subst",
+        "precompute",
+        "split_arg_axis", "find_padding_multiple", "add_padding"
+
         "get_dot_dependency_graph", "add_argument_dtypes",
         "infer_argument_dtypes", "add_and_infer_argument_dtypes",
 
@@ -104,11 +108,22 @@ __all__ = [
         "LoopyFlags",
 
         "make_kernel",
+
+        # {{{ from this file
+
         "split_iname", "join_inames", "tag_inames", "duplicate_inames",
-        "split_dimension", "join_dimensions", "tag_dimensions",
-        "extract_subst", "expand_subst",
-        "precompute", "add_prefetch",
-        "split_arg_axis", "find_padding_multiple", "add_padding"
+        "rename_iname", "link_inames", "remove_unused_inames",
+        "set_loop_priority", "add_prefetch"
+        "find_instructions", "map_instructions",
+        "set_instruction_priority", "add_dependency",
+        "change_arg_to_image", "tag_data_axes",
+        "split_reduction_inward", "split_reduction_outward",
+        "fix_parameters",
+        "register_preamble_generators",
+        "register_symbol_manglers",
+        "register_function_manglers",
+
+        # }}}
         ]
 
 
@@ -1218,5 +1233,37 @@ def fix_parameter(kernel, name, value):
                 ))
 
 # }}}
+
+
+# {{{ library registration
+
+def register_preamble_generators(kernel, preamble_generators):
+    new_pgens = kernel.preamble_generators[:]
+    for pgen in preamble_generators:
+        if pgen not in new_pgens:
+            new_pgens.append(pgen)
+
+    return kernel.copy(preamble_generators=new_pgens)
+
+
+def register_symbol_manglers(kernel, manglers):
+    new_manglers = kernel.symbol_manglers[:]
+    for m in manglers:
+        if m not in manglers:
+            new_manglers.append(m)
+
+    return kernel.copy(symbol_manglers=new_manglers)
+
+
+def register_function_manglers(kernel, manglers):
+    new_manglers = kernel.function_manglers[:]
+    for m in manglers:
+        if m not in manglers:
+            new_manglers.append(m)
+
+    return kernel.copy(function_manglers=new_manglers)
+
+# }}}
+
 
 # vim: foldmethod=marker

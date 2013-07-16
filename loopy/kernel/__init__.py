@@ -275,10 +275,6 @@ class LoopKernel(Record):
 
     # {{{ function mangling
 
-    def register_function_mangler(self, mangler):
-        return self.copy(
-                function_manglers=[mangler]+self.function_manglers)
-
     def mangle_function(self, identifier, arg_dtypes):
         for mangler in self.function_manglers:
             mangle_result = mangler(identifier, arg_dtypes)
