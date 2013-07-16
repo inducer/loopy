@@ -219,7 +219,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
 
                     base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
-                    if not flags.skip_checks:
+                    if not flags.skip_arg_checks:
                         gen("%s, _lpy_remdr = divmod(_lpy_offset, %d)"
                                 % (arg.name, base_arg.dtype.itemsize))
 
@@ -231,7 +231,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
                         gen("%s = _lpy_offset // %d)"
                                 % (arg.name, base_arg.dtype.itemsize))
 
-                    if not flags.skip_checks:
+                    if not flags.skip_arg_checks:
                         gen("del _lpy_offset")
 
     gen("# }}}")
@@ -252,7 +252,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
-                if not flags.skip_checks:
+                if not flags.skip_arg_checks:
                     gen("if %s is None:" % impl_array_name)
                     with Indentation(gen):
                         gen("raise RuntimeError(\"required stride '%s' for "
@@ -262,7 +262,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 
                     base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
-                    if not flags.skip_checks:
+                    if not flags.skip_arg_checks:
                         gen("%s, _lpy_remdr = divmod(%s.strides[%d], %d)"
                                 % (arg.name, impl_array_name, stride_impl_axis,
                                     base_arg.dtype.itemsize))
@@ -298,7 +298,7 @@ def generate_value_arg_setup(gen, kernel, impl_arg_info, flags):
         gen("# {{{ process %s" % arg.name)
         gen("")
 
-        if not flags.skip_checks:
+        if not flags.skip_arg_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"input argument '%s' must "
@@ -366,21 +366,21 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
             gen("")
 
-        if not flags.skip_checks and not is_written:
+        if not flags.skip_arg_checks and not is_written:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"input argument '%s' must "
                         "be supplied\")" % arg.name)
                 gen("")
 
-        if is_written and arg.arg_class is lp.ImageArg and not flags.skip_checks:
+        if is_written and arg.arg_class is lp.ImageArg and not flags.skip_arg_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"written image '%s' must "
                         "be supplied\")" % arg.name)
                 gen("")
 
-        if is_written and arg.shape is None and not flags.skip_checks:
+        if is_written and arg.shape is None and not flags.skip_arg_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"written argument '%s' has "
@@ -409,7 +409,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                     gen("_lpy_strides_%d = %s" % (i, strify(
                         itemsize*arg.unvec_strides[i])))
 
-                if not flags.skip_checks:
+                if not flags.skip_arg_checks:
                     for i in xrange(num_axes):
                         gen("assert _lpy_strides_%d > 0, "
                                 "\"'%s' has negative stride in axis %d\""
@@ -436,7 +436,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                             strides=strify(sym_strides),
                             dtype=python_dtype_str(arg.dtype)))
 
-                if not flags.skip_checks:
+                if not flags.skip_arg_checks:
                     for i in xrange(num_axes):
                         gen("del _lpy_shape_%d" % i)
                         gen("del _lpy_strides_%d" % i)
@@ -451,7 +451,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
             # {{{ argument checking
 
             if arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
-                    and not flags.skip_checks:
+                    and not flags.skip_arg_checks:
                 if possibly_made_by_loopy:
                     gen("if not _lpy_made_by_loopy:")
                 else:
@@ -497,7 +497,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
             # }}}
 
-            if possibly_made_by_loopy and not flags.skip_checks:
+            if possibly_made_by_loopy and not flags.skip_arg_checks:
                 gen("del _lpy_made_by_loopy")
                 gen("")
 
@@ -514,36 +514,6 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
     gen("")
 
 # }}}
-
-
-class InvocationFlags(Record):
-    """
-    .. attribute:: skip_checks
-    .. attribute:: no_numpy
-    .. attribute:: return_dict
-    .. attribute:: print_wrapper
-    .. attribute:: print_hl_wrapper
-    .. attribute:: print_cl
-    .. attribute:: print_hl_cl
-    .. attribute:: edit_cl
-    """
-
-    def __init__(
-            # All of these should default to False for the string-based
-            # interface to make sense.
-
-            self, skip_checks=False, no_numpy=False, return_dict=False,
-            print_wrapper=False, print_hl_wrapper=False,
-            print_cl=False, print_hl_cl=False,
-            edit_cl=False
-            ):
-        Record.__init__(
-                self, skip_checks=skip_checks, no_numpy=no_numpy,
-                return_dict=return_dict,
-                print_wrapper=print_wrapper, print_hl_wrapper=print_hl_wrapper,
-                print_cl=print_cl, print_hl_cl=print_hl_cl,
-                edit_cl=edit_cl,
-                )
 
 
 def generate_invoker(kernel, impl_arg_info, flags):
@@ -653,14 +623,14 @@ class _CLKernelInfo(Record):
 
 class CompiledKernel:
     def __init__(self, context, kernel, options=[], codegen_kwargs={},
-            iflags=None):
+            flags=None, iflags=None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
             kernel has not yet been loop-scheduled, that is done, too, with no
             specific arguments.
-        :arg iflags: An :class:`InvocationFlags` instance, or a dictionary
-            of arguments with which a :class:`InvocationFlags` instance
+        :arg iflags: An :class:`loopy.Flags` instance, or a dictionary
+            of arguments with which a :class:`loopy.Flags` instance
             can be initialized.
         """
 
@@ -669,17 +639,21 @@ class CompiledKernel:
         self.codegen_kwargs = codegen_kwargs
         self.options = list(options)
 
-        if iflags is None:
-            iflags = InvocationFlags()
-        elif isinstance(iflags, str):
-            iflags_args = {}
-            for name in iflags.split(","):
-                iflags_args[name] = True
-            iflags = InvocationFlags(**iflags_args)
-        elif not isinstance(iflags, InvocationFlags):
-            iflags = InvocationFlags(**iflags)
+        if flags is not None and iflags is not None:
+            raise TypeError("cannot specify flags and iflags at the same time")
 
-        self.iflags = iflags
+        if iflags is not None:
+            from warnings import warn
+            warn("The 'iflags' argument is deprecated", DeprecationWarning,
+                    stacklevel=2)
+
+            flags = iflags
+
+        from loopy.flags import make_flags
+        my_flags = kernel.flags.copy()
+        my_flags.update(make_flags(flags))
+
+        self.flags = my_flags
 
         self.packing_controller = SeparateArrayPackingController(kernel)
 
@@ -715,11 +689,11 @@ class CompiledKernel:
         from loopy.codegen import generate_code
         code, impl_arg_info = generate_code(kernel, **self.codegen_kwargs)
 
-        if self.iflags.print_cl:
+        if self.flags.print_cl:
             print code
-        if self.iflags.print_hl_cl:
+        if self.flags.print_hl_cl:
             print get_highlighted_cl_code(code)
-        if self.iflags.edit_cl:
+        if self.flags.edit_cl:
             from pytools import invoke_editor
             code = invoke_editor(code, "code.cl")
 
@@ -733,7 +707,7 @@ class CompiledKernel:
                 cl_kernel=cl_kernel,
                 impl_arg_info=impl_arg_info,
                 invoker=generate_invoker(
-                    kernel, impl_arg_info, self.iflags))
+                    kernel, impl_arg_info, self.flags))
 
     # {{{ debugging aids
 

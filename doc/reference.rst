@@ -317,8 +317,6 @@ Finishing up
 Running
 -------
 
-.. autoclass:: InvocationFlags
-
 .. autoclass:: CompiledKernel
 
 Automatic Testing
@@ -343,5 +341,10 @@ following always works::
 .. autofunction:: preprocess_kernel
 
 .. autofunction:: get_dot_dependency_graph
+
+Flags
+-----
+
+.. autoclass:: LoopyFlags
 
 .. vim: tw=75

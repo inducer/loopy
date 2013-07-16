@@ -331,7 +331,7 @@ def _enumerate_cl_devices_for_ref_test():
 def auto_test_vs_ref(
         ref_knl, ctx, test_knl, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
-        iflags=None, dump_binary=False, codegen_kwargs={},
+        iflags=None, dump_binary=False,
         options=[],
         fills_entire_output=True, do_check=True, check_result=None
         ):
@@ -396,8 +396,7 @@ def auto_test_vs_ref(
             ref_sched_kernel = knl
             break
 
-        ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel,
-                options=options, codegen_kwargs=codegen_kwargs)
+        ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel, options=options)
         if print_ref_code:
             print 75*"-"
             print "Reference Code:"
@@ -486,7 +485,7 @@ def auto_test_vs_ref(
         kernel = infer_unknown_types(kernel, expect_completion=True)
 
         compiled = CompiledKernel(ctx, kernel, options=options,
-                codegen_kwargs=codegen_kwargs, iflags=iflags)
+                iflags=iflags)
 
         if args is None:
             cl_kernel_info = compiled.cl_kernel_info(frozenset())

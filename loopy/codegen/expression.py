@@ -251,7 +251,7 @@ def get_opencl_vec_member(idx):
 
 class LoopyCCodeMapper(RecursiveMapper):
     def __init__(self, kernel, seen_dtypes, seen_functions, var_subst_map={},
-            with_annotation=False, allow_complex=False):
+            allow_complex=False):
         """
         :arg seen_dtypes: set of dtypes that were encountered
         :arg seen_functions: set of tuples (name, c_name, arg_types) indicating
@@ -265,7 +265,6 @@ class LoopyCCodeMapper(RecursiveMapper):
         self.type_inf_mapper = TypeInferenceMapper(kernel)
         self.allow_complex = allow_complex
 
-        self.with_annotation = with_annotation
         self.var_subst_map = var_subst_map.copy()
 
     # {{{ copy helpers
@@ -275,7 +274,6 @@ class LoopyCCodeMapper(RecursiveMapper):
             var_subst_map = self.var_subst_map
         return LoopyCCodeMapper(self.kernel, self.seen_dtypes, self.seen_functions,
                 var_subst_map=var_subst_map,
-                with_annotation=self.with_annotation,
                 allow_complex=self.allow_complex)
 
     def copy_and_assign(self, name, value):
@@ -337,7 +335,7 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     def map_variable(self, expr, enclosing_prec, type_context):
         if expr.name in self.var_subst_map:
-            if self.with_annotation:
+            if self.kernel.flags.annotate_inames:
                 return " /* %s */ %s" % (
                         expr.name,
                         self.rec(self.var_subst_map[expr.name],

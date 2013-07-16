@@ -273,8 +273,7 @@ class ImplementedDataInfo(Record):
 
 # {{{ main code generation entrypoint
 
-def generate_code(kernel, with_annotation=False,
-        allow_complex=None):
+def generate_code(kernel):
     if kernel.schedule is None:
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel)
@@ -301,7 +300,6 @@ def generate_code(kernel, with_annotation=False,
 
     from loopy.codegen.expression import LoopyCCodeMapper
     ccm = (LoopyCCodeMapper(kernel, seen_dtypes, seen_functions,
-        with_annotation=with_annotation,
         allow_complex=allow_complex))
 
     mod = []

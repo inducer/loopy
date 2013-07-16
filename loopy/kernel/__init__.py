@@ -134,6 +134,9 @@ class LoopKernel(Record):
 
     .. attribute:: cache_manager
     .. attribute:: isl_context
+    .. attribute:: flags
+
+        An instance of :class:`loopy.LoopyFlags`
     """
 
     # {{{ constructor
@@ -162,6 +165,7 @@ class LoopKernel(Record):
             cache_manager=None,
             index_dtype=np.int32,
             isl_context=None,
+            flags=None,
 
             # When kernels get intersected in slab decomposition,
             # their grid sizes shouldn't change. This provides
@@ -264,7 +268,8 @@ class LoopKernel(Record):
                 function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
-                isl_context=isl_context)
+                isl_context=isl_context,
+                flags=flags)
 
     # }}}
 

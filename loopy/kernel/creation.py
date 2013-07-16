@@ -914,12 +914,18 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
         length 16.
     :arg silenced_warnings: a list (or semicolon-separated string) or warnings
         to silence
+    :arg flags: an instance of :class:`loopy.LoopyFlags` or an equivalent
+        string representation
     """
 
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
     default_offset = kwargs.pop("default_offset", 0)
     silenced_warnings = kwargs.pop("silenced_warnings", [])
+    flags = kwargs.pop("flags", None)
+
+    from loopy.flags import make_flags
+    flags = make_flags(flags)
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")
@@ -987,6 +993,7 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     knl = LoopKernel(device, domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
             silenced_warnings=silenced_warnings,
+            flags=flags,
             **kwargs)
 
     check_for_nonexistent_iname_deps(knl)
