@@ -1173,7 +1173,7 @@ def split_reduction_outward(kernel, inames, within=None):
 
 # {{{ fix_parameter
 
-def fix_parameter(kernel, name, value):
+def _fix_parameter(kernel, name, value):
     def process_set(s):
         var_dict = s.get_var_dict()
 
@@ -1231,6 +1231,13 @@ def fix_parameter(kernel, name, value):
                 args=new_args,
                 assumptions=process_set(kernel.assumptions),
                 ))
+
+
+def fix_parameters(kernel, **value_dict):
+    for name, value in value_dict.iteritems():
+        kernel = _fix_parameter(kernel, name, value)
+
+    return kernel
 
 # }}}
 

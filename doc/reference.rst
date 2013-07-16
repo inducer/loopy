@@ -257,7 +257,7 @@ Wrangling inames
 Dealing with Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autofunction:: fix_parameter
+.. autofunction:: fix_parameters
 
 Dealing with Substitution Rules
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

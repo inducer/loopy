@@ -1351,8 +1351,7 @@ def test_rob_stroud_bernstein(ctx_factory):
             assumptions="deg>=0 and nels>=1"
             )
 
-    knl = lp.fix_parameter(knl, "nqp1d", 7)
-    knl = lp.fix_parameter(knl, "deg", 4)
+    knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
     knl = lp.split_iname(knl, "el", 16, inner_tag="l.0")
     knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0", inner_tag="ilp",
             slabs=(0, 1))
@@ -1380,7 +1379,7 @@ def test_vector_types(ctx_factory, vec_len):
                 "..."
                 ])
 
-    knl = lp.fix_parameter(knl, "vec_len", vec_len)
+    knl = lp.fix_parameters(knl, vec_len=vec_len)
 
     ref_knl = knl
 
