@@ -281,8 +281,6 @@ def split_iname(kernel, split_iname, inner_length,
 
     return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
 
-split_dimension = MovedFunctionDeprecationWrapper(split_iname)
-
 # }}}
 
 
@@ -430,8 +428,6 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
     return kernel
 
-join_dimensions = MovedFunctionDeprecationWrapper(join_inames)
-
 # }}}
 
 
@@ -484,8 +480,6 @@ def tag_inames(kernel, iname_to_tag, force=False):
         new_iname_to_tag[iname] = new_tag
 
     return kernel.copy(iname_to_tag=new_iname_to_tag)
-
-tag_dimensions = MovedFunctionDeprecationWrapper(tag_inames)
 
 # }}}
 
