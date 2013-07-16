@@ -1320,32 +1320,43 @@ def test_rob_stroud_bernstein(ctx_factory):
     # NOTE: tmp would have to be zero-filled beforehand
 
     knl = lp.make_kernel(ctx.devices[0],
-            "{[i2, alpha1,alpha2]: \
+            "{[el, i2, alpha1,alpha2]: \
+                    0 <= el < nels and \
                     0 <= i2 < nqp1d and \
                     0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 }",
             """
-                <> xi = qpts[1, i2]
+                <> xi = qpts[el, i2]
                 <> s = 1-xi
                 <> r = xi/s
-                <> aind = 0 {id=aind_init}
+                <> aind = 0 {id=aind_init,inames=i2:el}
 
-                <> w = s**(deg-alpha1+1) {id=init_w}
+                <> w = s**(deg-alpha1) {id=init_w}
 
-                tmp[0,alpha1,i2] = tmp[0,alpha1,i2] + w * coeffs[aind] \
+                tmp[el,alpha1,i2] = tmp[el,alpha1,i2] + w * coeffs[aind] \
                         {id=write_tmp,inames=alpha2}
                 w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
                         {id=update_w,dep=init_w:write_tmp}
                 aind = aind + 1 \
                         {id=aind_incr,\
                         dep=aind_init:write_tmp:update_w, \
-                        inames=i2:alpha1:alpha2}
+                        inames=el:i2:alpha1:alpha2}
                 """,
             [
+                # Must declare coeffs to have "no" shape, to keep loopy
+                # from trying to figure it out the shape automatically.
+
                 lp.GlobalArg("coeffs", None, shape=None),
                 "..."
                 ],
-            assumptions="deg>=0"
+            assumptions="deg>=0 and nels>=1"
             )
+
+    knl = lp.fix_parameter(knl, "nqp1d", 7)
+    knl = lp.fix_parameter(knl, "deg", 4)
+    knl = lp.split_iname(knl, "el", 16, inner_tag="l.0")
+    knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0", inner_tag="ilp",
+            slabs=(0, 1))
+    knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
 
     print knl
     print lp.CompiledKernel(ctx, knl).get_highlighted_code(
