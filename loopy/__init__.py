@@ -1153,12 +1153,12 @@ def _split_reduction(kernel, inames, direction, within=None):
 
 def split_reduction_inward(kernel, inames, within=None):
     # FIXME document me
-    _split_reduction(kernel, inames, "in", within)
+    return _split_reduction(kernel, inames, "in", within)
 
 
 def split_reduction_outward(kernel, inames, within=None):
     # FIXME document me
-    _split_reduction(kernel, inames, "out", within)
+    return _split_reduction(kernel, inames, "out", within)
 
 # }}}
 
