@@ -73,8 +73,9 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
 
     from cgen import Assign
     from loopy.codegen.expression import dtype_to_type_context
+    lhs_code = ccm(insn.assignee, prec=None, type_context=None)
     insn_code = Assign(
-            ccm(insn.assignee, prec=None, type_context=None),
+            lhs_code,
             ccm(expr, prec=None, type_context=dtype_to_type_context(target_dtype),
                 needed_dtype=target_dtype))
 
@@ -92,22 +93,53 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
         implemented_domain=impl_domain,
         ast=insn_code)
 
-    if 0:
+    if kernel.flags.trace_assignments or kernel.flags.trace_assignment_values:
         from loopy.codegen import gen_code_block
         from cgen import Statement as S
 
+        gs, ls = kernel.get_grid_sizes()
+
+        printf_format = "%s.%s[%s][%s]: %s" % (
+                kernel.name,
+                insn.id,
+                ", ".join("gid%d=%%d" % i for i in range(len(gs))),
+                ", ".join("lid%d=%%d" % i for i in range(len(ls))),
+                assignee_var_name)
+
+        printf_args = (
+                ["gid(%d)" % i for i in range(len(gs))]
+                +
+                ["lid(%d)" % i for i in range(len(ls))]
+                )
+
         if assignee_indices:
-            result = gen_code_block([
-                GeneratedInstruction(
-                    ast=S(r'printf("write %s[%s]\n", %s);'
-                        % (assignee_var_name,
-                            ",".join(len(assignee_indices) * ["%d"]),
-                            ",".join(
-                                ccm(i, prec=None, type_context="i")
-                                for i in assignee_indices))),
-                    implemented_domain=None),
-                result
-                ])
+            printf_format += "[%s]" % ",".join(len(assignee_indices) * ["%d"])
+            printf_args.extend(
+                    ccm(i, prec=None, type_context="i")
+                    for i in assignee_indices)
+
+        if kernel.flags.trace_assignment_values:
+            if target_dtype.kind == "f":
+                printf_format += " = %g"
+                printf_args.append(lhs_code)
+            elif target_dtype.kind == "c":
+                printf_format += " = %g + %gj"
+                printf_args.extend([
+                    "(%s).x" % lhs_code,
+                    "(%s).y" % lhs_code])
+
+        printf_insn = GeneratedInstruction(
+                ast=S("printf(\"%s\\n\", %s)" % (
+                    printf_format, ", ".join(printf_args))),
+                implemented_domain=None)
+
+        if kernel.flags.trace_assignment_values:
+            code_block = [result, printf_insn]
+        else:
+            # print first, execute later -> helps find segfaults
+            code_block = [printf_insn, result]
+
+        result = gen_code_block(code_block)
 
     return result
 

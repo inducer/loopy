@@ -32,6 +32,7 @@ class LoopyFlags(Record):
 
     .. attribute:: annotate_inames
     .. attribute:: trace_assignments
+    .. attribute:: trace_assignment_values
 
     .. rubric:: Invocation-related flags
 
@@ -53,6 +54,7 @@ class LoopyFlags(Record):
 
             annotate_inames=False,
             trace_assignments=False,
+            trace_assignment_values=False,
 
             skip_arg_checks=False, no_numpy=False, return_dict=False,
             print_wrapper=False, print_hl_wrapper=False,
@@ -64,6 +66,7 @@ class LoopyFlags(Record):
 
                 annotate_inames=annotate_inames,
                 trace_assignments=trace_assignments,
+                trace_assignment_values=trace_assignment_values,
 
                 skip_arg_checks=skip_arg_checks, no_numpy=no_numpy,
                 return_dict=return_dict,
