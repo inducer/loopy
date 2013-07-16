@@ -40,6 +40,9 @@ def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
             bounds_check_set, implemented_domain)
     new_implemented_domain = new_implemented_domain & bounds_check_set
 
+    if bounds_check_set.is_empty():
+        return None, None
+
     condition_codelets = [constraint_to_code(ccm, cns) for cns in bounds_checks]
 
     if condition_codelets:
@@ -61,7 +64,6 @@ def generate_instruction_code(kernel, insn, codegen_state):
 
 
 def generate_expr_instruction_code(kernel, insn, codegen_state):
-
     ccm = codegen_state.c_code_mapper
 
     expr = insn.expression
@@ -81,6 +83,9 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
             ccm, kernel.get_inames_domain(insn_inames), insn_inames,
             codegen_state.implemented_domain,
             insn_code)
+
+    if insn_code is None:
+        return None
 
     result = GeneratedInstruction(
         insn_id=insn.id,
@@ -138,6 +143,9 @@ def generate_c_instruction_code(kernel, insn, codegen_state):
             ccm, kernel.get_inames_domain(insn_inames), insn_inames,
             codegen_state.implemented_domain,
             Block(body))
+
+    if insn_code is None:
+        return None
 
     return GeneratedInstruction(
         insn_id=insn.id,

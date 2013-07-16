@@ -63,8 +63,8 @@ def get_bounds_checks(domain, check_inames, implemented_domain,
         result = result.compute_divs()
 
     from loopy.isl_helpers import convexify
-    result = convexify(result).get_constraints()
-    return result
+    result = convexify(result)
+    return result.get_constraints()
 
 # }}}
 

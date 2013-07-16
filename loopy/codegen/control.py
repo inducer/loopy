@@ -246,7 +246,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
             bounds_checks = bounds_check_cache(only_unshared_inames)
 
-            if bounds_checks or candidate_group_length == 1:
+            if bounds_checks or bounds_checks is None or candidate_group_length == 1:
                 # length-1 must always be an option to reach the recursion base
                 # case below
                 found_hoists.append((candidate_group_length, bounds_checks))
@@ -271,27 +271,35 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
         if check_set is None:
             new_codegen_state = codegen_state
+            is_empty = False
         else:
+            is_empty = check_set.is_empty()
             new_codegen_state = codegen_state.intersect(check_set)
 
-        if group_length == 1:
-            # group only contains starting schedule item
-            result = [generate_code_for_sched_index(
-                kernel, sched_index, new_codegen_state)]
+        if is_empty:
+            result = []
         else:
-            # recurse with a bigger done_group_lengths
-            result = build_insn_group(
-                    sched_indices_and_cond_inames[0:group_length],
-                    new_codegen_state,
-                    done_group_lengths=done_group_lengths | set([group_length]))
+            if group_length == 1:
+                # group only contains starting schedule item
+                result = [generate_code_for_sched_index(
+                    kernel, sched_index, new_codegen_state)]
+                if result == [None]:
+                    result = []
+            else:
+                # recurse with a bigger done_group_lengths
+                result = build_insn_group(
+                        sched_indices_and_cond_inames[0:group_length],
+                        new_codegen_state,
+                        done_group_lengths=done_group_lengths | set([group_length]))
 
-        if bounds_checks:
-            from loopy.codegen import wrap_in_if
-            from loopy.codegen.bounds import constraint_to_code
-            result = [wrap_in_if(
-                    [constraint_to_code(codegen_state.c_code_mapper, cns)
-                        for cns in bounds_checks],
-                    gen_code_block(result))]
+            if bounds_checks:
+                from loopy.codegen import wrap_in_if
+                from loopy.codegen.bounds import constraint_to_code
+                result = [
+                        wrap_in_if(
+                            [constraint_to_code(codegen_state.c_code_mapper, cns)
+                                for cns in bounds_checks],
+                            gen_code_block(result))]
 
         return result + build_insn_group(
                 sched_indices_and_cond_inames[group_length:], codegen_state)
