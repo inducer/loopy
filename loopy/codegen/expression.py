@@ -237,17 +237,11 @@ def dtype_to_type_context(dtype):
     return None
 
 
-VEC_AXES = "xyzw"
-
-
 def get_opencl_vec_member(idx):
     if idx is None:
         return idx
 
-    if idx < len(VEC_AXES):
-        return VEC_AXES[idx]
-    else:
-        return "s%d" % idx
+    return "s%s" % hex(idx)[2:]
 
 
 class SeenFunction(Record):

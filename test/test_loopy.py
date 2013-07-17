@@ -1439,7 +1439,7 @@ def test_rob_stroud_bernstein(ctx_factory):
                 ))
 
 
-@pytest.mark.parametrize("vec_len", [2, 3, 4, 8])
+@pytest.mark.parametrize("vec_len", [2, 3, 4, 8, 16])
 def test_vector_types(ctx_factory, vec_len):
     ctx = cl.create_some_context()
 
