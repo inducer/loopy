@@ -1148,10 +1148,78 @@ def test_vector_ilp_with_prefetch(ctx_factory):
     assert len(list(re.finditer("barrier", code))) == 1
 
 
+# {{{ convolutions
+
 def test_convolution(ctx_factory):
     ctx = ctx_factory()
 
-    dtype = np.float64
+    dtype = np.float32
+
+    knl = lp.make_kernel(ctx.devices[0],
+        "{ [iimg, ifeat, icolor, im_x, im_y, f_x, f_y]: \
+                -f_w <= f_x,f_y <= f_w \
+                and 0 <= im_x < im_w and 0 <= im_y < im_h \
+                and 0<=iimg<=nimgs and 0<=ifeat<nfeats and 0<=icolor<ncolors \
+                }",
+        """
+        out[iimg, ifeat, im_x, im_y] = sum((f_x, f_y, icolor), \
+            img[iimg, f_w+im_x-f_x, f_w+im_y-f_y, icolor] \
+            * f[ifeat, f_w+f_x, f_w+f_y, icolor])
+        """,
+        [
+            lp.GlobalArg("f", dtype, shape=lp.auto),
+            lp.GlobalArg("img", dtype, shape=lp.auto),
+            lp.GlobalArg("out", dtype, shape=lp.auto),
+            "..."
+            ],
+        assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1 and nimgs>=0",
+        flags="annotate_inames",
+        defines=dict(ncolors=3))
+
+    ref_knl = knl
+
+    f_w = 3
+
+    def variant_0(knl):
+        #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        knl = lp.set_loop_priority(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
+        return knl
+
+    def variant_1(knl):
+        knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        return knl
+
+    def variant_2(knl):
+        knl = lp.split_iname(knl, "im_x", 16, outer_tag="g.0", inner_tag="l.0")
+        knl = lp.split_iname(knl, "im_y", 16, outer_tag="g.1", inner_tag="l.1")
+        knl = lp.fix_parameters(knl, f_w=f_w)
+        knl = lp.tag_inames(knl, dict(ifeat="g.2"))
+        knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]")
+        knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y")
+        return knl
+
+    for variant in [
+            #variant_0,
+            #variant_1,
+            variant_2
+            ]:
+        lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
+                parameters=dict(
+                    im_w=128, im_h=128, f_w=f_w,
+                    nfeats=12, nimgs=17
+                    ))
+
+
+def test_convolution_with_nonzero_base(ctx_factory):
+    # This is kept alive as a test for domains that don't start at zero.
+    # These are a bad idea for split_iname, which places its origin at zero
+    # and therefore produces a first block that is odd-sized.
+    #
+    # Therefore, for real tests, check test_convolution further up.
+
+    ctx = ctx_factory()
+
+    dtype = np.float32
 
     knl = lp.make_kernel(ctx.devices[0],
         "{ [iimg, ifeat, icolor, im_x, im_y, f_x, f_y]: \
@@ -1170,10 +1238,13 @@ def test_convolution(ctx_factory):
             lp.GlobalArg("out", dtype, shape=lp.auto),
             "..."
             ],
-        assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1",
+        assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1 and nimgs>=0",
+        flags="annotate_inames",
         defines=dict(ncolors=3))
 
     ref_knl = knl
+
+    f_w = 3
 
     def variant_0(knl):
         #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
@@ -1186,13 +1257,15 @@ def test_convolution(ctx_factory):
 
     for variant in [
             variant_0,
-            #variant_1
+            variant_1,
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
                 parameters=dict(
-                    im_w=128, im_h=128, f_w=7,
+                    im_w=128, im_h=128, f_w=f_w,
                     nfeats=12, nimgs=17
                     ))
+
+# }}}
 
 
 def test_c_instruction(ctx_factory):
