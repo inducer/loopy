@@ -1398,7 +1398,7 @@ def test_rob_stroud_bernstein(ctx_factory):
                     0 <= i2 < nqp1d and \
                     0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 }",
             """
-                <> xi = qpts[el, i2]
+                <> xi = qpts[1, i2] {inames=el}
                 <> s = 1-xi
                 <> r = xi/s
                 <> aind = 0 {id=aind_init,inames=i2:el}
@@ -1430,7 +1430,6 @@ def test_rob_stroud_bernstein(ctx_factory):
             slabs=(0, 1))
     knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
 
-    print knl
     print lp.CompiledKernel(ctx, knl).get_highlighted_code(
             dict(
                 qpts=np.float32,
