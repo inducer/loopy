@@ -1199,8 +1199,8 @@ def test_convolution(ctx_factory):
         return knl
 
     for variant in [
-            #variant_0,
-            #variant_1,
+            variant_0,
+            variant_1,
             variant_2
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
