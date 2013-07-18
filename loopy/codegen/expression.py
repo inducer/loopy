@@ -641,10 +641,11 @@ class LoopyCCodeMapper(RecursiveMapper):
         if str_parameters is None:
             # /!\ FIXME For some functions (e.g. 'sin'), it makes sense to
             # propagate the type context here. But for many others, it does
-            # not.
+            # not. Using the inferred type as a stopgap for now.
             str_parameters = [
-                    self.rec(par, PREC_NONE, type_context=None)
-                    for par in expr.parameters]
+                    self.rec(par, PREC_NONE,
+                        type_context=dtype_to_type_context(par_dtype))
+                    for par, par_dtype in zip(expr.parameters, par_dtypes)]
 
         if c_name is None:
             raise RuntimeError("unable to find C name for function identifier '%s'"
