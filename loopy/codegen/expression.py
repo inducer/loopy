@@ -128,6 +128,12 @@ class TypeInferenceMapper(CombineMapper):
             # deduce the smaller type by default
             return np.dtype(np.float32)
         elif dt.kind == "c":
+            if np.complex64(expr) == np.complex128(expr):
+                # (COMPLEX_GUESS_LOGIC)
+                # No precision is lost by 'guessing' single precision, use that.
+                # This at least covers simple cases like '1j'.
+                return np.dtype(np.complex64)
+
             # Codegen for complex types depends on exactly correct types.
             # Refuse temptation to guess.
             raise TypeInferenceFailure("Complex constant '%s' needs to "
@@ -582,13 +588,22 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     def map_constant(self, expr, enclosing_prec, type_context):
         if isinstance(expr, (complex, np.complexfloating)):
-            if expr.dtype == np.complex128:
-                cast_type = "cdouble_t"
-            elif expr.dtype == np.complex64:
+            try:
+                dtype = expr.dtype
+            except AttributeError:
+                # (COMPLEX_GUESS_LOGIC)
+                # This made it through type 'guessing' above, and it
+                # was concluded above (search for COMPLEX_GUESS_LOGIC),
+                # that nothing was lost by using single precision.
                 cast_type = "cfloat_t"
             else:
-                raise RuntimeError("unsupported complex type in expression "
-                        "generation: %s" % type(expr))
+                if dtype == np.complex128:
+                    cast_type = "cdouble_t"
+                elif dtype == np.complex64:
+                    cast_type = "cfloat_t"
+                else:
+                    raise RuntimeError("unsupported complex type in expression "
+                            "generation: %s" % type(expr))
 
             return "(%s) (%s, %s)" % (cast_type, repr(expr.real), repr(expr.imag))
         else:
