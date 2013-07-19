@@ -357,25 +357,6 @@ def parse_domains(ctx, domains, defines):
 # }}}
 
 
-# {{{ duplicate arguments with commas in name
-
-def duplicate_args_with_commas(kernel_args):
-    processed_args = []
-    for arg in kernel_args:
-        if arg is Ellipsis or isinstance(arg, str):
-            processed_args.append(arg)
-        else:
-            for arg_name in arg.name.split(","):
-                if not arg_name.strip():
-                    continue
-
-                processed_args.append(arg.copy(name=arg_name))
-
-    return processed_args
-
-# }}}
-
-
 # {{{ guess kernel args (if requested)
 
 class IndexRankFinder(WalkMapper):
@@ -930,20 +911,30 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")
 
-    # {{{ separate temporary variables and arguments
+    # {{{ separate temporary variables and arguments, take care of names with commas
 
     from loopy.kernel.data import TemporaryVariable, ArrayBase
 
     kernel_args = []
     temporary_variables = {}
     for dat in kernel_data:
+        if dat is Ellipsis or isinstance(dat, str):
+            kernel_args.append(dat)
+            continue
+
         if isinstance(dat, ArrayBase) and isinstance(dat.shape, tuple):
             dat = dat.copy(shape=expand_defines_in_expr(dat.shape, defines))
 
-        if isinstance(dat, TemporaryVariable):
-            temporary_variables[dat.name] = dat
-        else:
-            kernel_args.append(dat)
+        for arg_name in dat.name.split(","):
+            arg_name = arg_name.strip()
+            if not arg_name:
+                continue
+
+            my_dat = dat.copy(name=arg_name)
+            if isinstance(dat, TemporaryVariable):
+                temporary_variables[my_dat.name] = dat
+            else:
+                kernel_args.append(my_dat)
 
     del kernel_data
 
@@ -985,8 +976,7 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     domains = parse_domains(isl_context, domains, defines)
 
     kernel_args = guess_kernel_args_if_requested(domains, instructions,
-            temporary_variables, substitutions,
-            duplicate_args_with_commas(kernel_args),
+            temporary_variables, substitutions, kernel_args,
             default_offset)
 
     from loopy.kernel import LoopKernel
