@@ -114,7 +114,7 @@ def find_all_insn_inames(kernel):
         insn_id_to_inames[insn.id] = iname_deps
         insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
 
-    temp_var_names = set(kernel.temporary_variables.iterkeys())
+    written_vars = kernel.get_written_variables()
 
     # fixed point iteration until all iname dep sets have converged
 
@@ -139,7 +139,7 @@ def find_all_insn_inames(kernel):
             # of iname deps of all writers, and add those to insn's
             # dependencies.
 
-            for tv_name in (all_read_deps[insn.id] & temp_var_names):
+            for tv_name in (all_read_deps[insn.id] & written_vars):
                 implicit_inames = None
 
                 for writer_id in writer_map[tv_name]:
