@@ -1187,6 +1187,7 @@ def test_convolution(ctx_factory):
 
     def variant_1(knl):
         knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        knl = lp.set_loop_priority(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
         return knl
 
     def variant_2(knl):
@@ -1206,7 +1207,7 @@ def test_convolution(ctx_factory):
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
                 parameters=dict(
                     im_w=128, im_h=128, f_w=f_w,
-                    nfeats=12, nimgs=17
+                    nfeats=3, nimgs=3
                     ))
 
 
@@ -1253,6 +1254,7 @@ def test_convolution_with_nonzero_base(ctx_factory):
 
     def variant_1(knl):
         knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
+        knl = lp.set_loop_priority(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
         return knl
 
     for variant in [
