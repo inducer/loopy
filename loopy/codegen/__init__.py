@@ -28,6 +28,9 @@ import islpy as isl
 
 import numpy as np
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # {{{ support code for AST wrapper objects
 
@@ -288,6 +291,8 @@ def generate_code(kernel):
             Value, Module, Block,
             Line, Const, LiteralLines, Initializer)
 
+    logger.info("%s: generate code: start" % kernel.name)
+
     from cgen.opencl import (CLKernel, CLRequiredWorkGroupSize)
 
     allow_complex = False
@@ -409,6 +414,8 @@ def generate_code(kernel):
     from loopy.check import check_implemented_domains
     assert check_implemented_domains(kernel, gen_code.implemented_domains,
             result)
+
+    logger.info("%s: generate code: done" % kernel.name)
 
     return result, impl_arg_info
 
