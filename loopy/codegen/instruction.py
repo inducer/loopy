@@ -119,7 +119,10 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
                     for i in assignee_indices)
 
         if kernel.flags.trace_assignment_values:
-            if target_dtype.kind == "f":
+            if target_dtype.kind == "i":
+                printf_format += " = %d"
+                printf_args.append(lhs_code)
+            elif target_dtype.kind == "f":
                 printf_format += " = %g"
                 printf_args.append(lhs_code)
             elif target_dtype.kind == "c":
@@ -128,9 +131,14 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
                     "(%s).x" % lhs_code,
                     "(%s).y" % lhs_code])
 
+        if printf_args:
+            printf_args_str = ", " + ", ".join(printf_args)
+        else:
+            printf_args_str = ""
+
         printf_insn = GeneratedInstruction(
-                ast=S("printf(\"%s\\n\", %s)" % (
-                    printf_format, ", ".join(printf_args))),
+                ast=S("printf(\"%s\\n\"%s)" % (
+                    printf_format, printf_args_str)),
                 implemented_domain=None)
 
         if kernel.flags.trace_assignment_values:
