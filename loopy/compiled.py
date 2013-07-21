@@ -146,6 +146,9 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, flags):
         if arg.arg_class is GlobalArg:
             sym_shape = var(arg.name).attr("shape")
             for axis_nr, shape_i in enumerate(arg.shape):
+                if shape_i is None:
+                    continue
+
                 deps = dep_map(shape_i)
 
                 if len(deps) == 1:
