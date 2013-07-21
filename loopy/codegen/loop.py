@@ -207,7 +207,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
     bounds = kernel.get_iname_bounds(iname)
     domain = kernel.get_inames_domain(iname)
 
-    # It's ok to find a bound that's too low. The conditional
+    # It's ok to find a bound that's too "loose". The conditional
     # generators will mop up after us.
     from loopy.isl_helpers import static_min_of_pw_aff
     lower_bound = static_min_of_pw_aff(bounds.lower_bound_pw_aff,
@@ -215,6 +215,9 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
 
     # These bounds are 'implemented' by the hardware. Make sure
     # that the downstream conditional generators realize that.
+    if not isinstance(hw_axis_size, int):
+        hw_axis_size, lower_bound = isl.align_two(hw_axis_size, lower_bound)
+
     from loopy.isl_helpers import make_slab
     slab = make_slab(domain.get_space(), iname,
             lower_bound, lower_bound+hw_axis_size)

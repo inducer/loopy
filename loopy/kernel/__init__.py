@@ -680,9 +680,12 @@ class LoopKernel(Record):
         domain = self.get_inames_domain(frozenset([iname]))
         d_var_dict = domain.get_var_dict()
 
-        assumptions, domain = isl.align_two(self.assumptions, domain)
+        assumptions = self.assumptions.project_out_except(
+                set(domain.get_var_dict(dim_type.param)), [dim_type.param])
 
-        dom_intersect_assumptions = assumptions & domain
+        aligned_assumptions, domain = isl.align_two(assumptions, domain)
+
+        dom_intersect_assumptions = aligned_assumptions & domain
 
         lower_bound_pw_aff = (
                 self.cache_manager.dim_min(
@@ -699,7 +702,7 @@ class LoopKernel(Record):
             pass
 
         size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
-        size = size.gist(self.assumptions)
+        size = size.gist(assumptions)
 
         return BoundsRecord(
                 lower_bound_pw_aff=lower_bound_pw_aff,
