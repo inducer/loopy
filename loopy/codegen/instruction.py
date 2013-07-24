@@ -28,22 +28,26 @@ import islpy as isl
 from loopy.codegen import GeneratedInstruction
 
 
-def wrap_in_bounds_checks(ccm, domain, check_inames, implemented_domain, stmt):
+def wrap_in_conditionals(codegen_state, domain, check_inames, required_preds, stmt):
     from loopy.codegen.bounds import get_bounds_checks, constraint_to_code
     bounds_checks = get_bounds_checks(
             domain, check_inames,
-            implemented_domain, overapproximate=False)
+            codegen_state.implemented_domain, overapproximate=False)
 
     bounds_check_set = isl.Set.universe(domain.get_space()) \
             .add_constraints(bounds_checks)
     bounds_check_set, new_implemented_domain = isl.align_two(
-            bounds_check_set, implemented_domain)
+            bounds_check_set, codegen_state.implemented_domain)
     new_implemented_domain = new_implemented_domain & bounds_check_set
 
     if bounds_check_set.is_empty():
         return None, None
 
-    condition_codelets = [constraint_to_code(ccm, cns) for cns in bounds_checks]
+    condition_codelets = [constraint_to_code(codegen_state.c_code_mapper, cns)
+            for cns in bounds_checks]
+
+    condition_codelets.extend(
+            required_preds - codegen_state.implemented_predicates)
 
     if condition_codelets:
         from cgen import If
@@ -63,10 +67,10 @@ def generate_instruction_code(kernel, insn, codegen_state):
         raise RuntimeError("unexpected instruction type")
 
     insn_inames = kernel.insn_inames(insn)
-    insn_code, impl_domain = wrap_in_bounds_checks(
-            codegen_state.c_code_mapper,
+    insn_code, impl_domain = wrap_in_conditionals(
+            codegen_state,
             kernel.get_inames_domain(insn_inames), insn_inames,
-            codegen_state.implemented_domain,
+            insn.predicates,
             result)
 
     if insn_code is None:
@@ -95,7 +99,6 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
                 needed_dtype=target_dtype))
 
     if kernel.flags.trace_assignments or kernel.flags.trace_assignment_values:
-        from loopy.codegen import gen_code_block
         from cgen import Statement as S
 
         gs, ls = kernel.get_grid_sizes()

@@ -76,6 +76,30 @@ def gather_schedule_subloop(schedule, start_idx):
     assert False
 
 
+def generate_sub_sched_items(schedule, start_idx):
+    if not isinstance(schedule[start_idx], EnterLoop):
+        yield start_idx, schedule[start_idx]
+
+    level = 0
+    i = start_idx
+    while i < len(schedule):
+        sched_item = schedule[i]
+        if isinstance(sched_item, EnterLoop):
+            level += 1
+        elif isinstance(sched_item, LeaveLoop):
+            level -= 1
+
+        else:
+            yield i, sched_item
+
+        if level == 0:
+            return
+
+        i += 1
+
+    assert False
+
+
 def get_barrier_needing_dependency(kernel, target, source, unordered=False):
     from loopy.kernel.data import InstructionBase
     if not isinstance(source, InstructionBase):

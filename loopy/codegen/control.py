@@ -25,8 +25,10 @@ THE SOFTWARE.
 """
 
 
-from loopy.codegen import CodeGenerationState, gen_code_block
+from loopy.codegen import gen_code_block
 import islpy as isl
+from loopy.schedule import (EnterLoop, LeaveLoop, RunInstruction, Barrier,
+        gather_schedule_subloop, generate_sub_sched_items)
 
 
 def get_admissible_conditional_inames_for(kernel, sched_index):
@@ -50,8 +52,6 @@ def get_admissible_conditional_inames_for(kernel, sched_index):
 
 
 def generate_code_for_sched_index(kernel, sched_index, codegen_state):
-    from loopy.schedule import (EnterLoop, RunInstruction, Barrier)
-
     sched_item = kernel.schedule[sched_index]
 
     if isinstance(sched_item, EnterLoop):
@@ -128,14 +128,28 @@ def remove_inames_for_shared_hw_axes(kernel, cond_inames):
     return frozenset(cond_inames - multi_use_inames)
 
 
+def get_required_predicates(kernel, sched_index):
+    result = None
+    for _, sched_item in generate_sub_sched_items(kernel.schedule, sched_index):
+        if isinstance(sched_item, Barrier):
+            my_preds = frozenset()
+        elif isinstance(sched_item, RunInstruction):
+            my_preds = kernel.id_to_insn[sched_item.insn_id].predicates
+        else:
+            raise RuntimeError("unexpected schedule item type: %s"
+                    % type(sched_item))
+
+        if result is None:
+            result = my_preds
+        else:
+            result = result & my_preds
+
+    return result
+
+
 def build_loop_nest(kernel, sched_index, codegen_state):
     # Most of the complexity of this function goes towards finding groups of
     # instructions that can be nested inside a shared conditional.
-
-    assert isinstance(codegen_state, CodeGenerationState)
-
-    from loopy.schedule import (EnterLoop, LeaveLoop, RunInstruction, Barrier,
-            gather_schedule_subloop)
 
     # {{{ pass 1: pre-scan schedule for my schedule item's siblings' indices
 
@@ -167,9 +181,23 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     # {{{ pass 2: find admissible conditional inames for each sibling schedule item
 
-    admissible_cond_inames = [
-            get_admissible_conditional_inames_for(kernel, i)
-            for i in my_sched_indices]
+    from pytools import Record
+
+    class ScheduleIndexInfo(Record):
+        """
+        .. attribute:: schedule_index
+        .. attribute:: admissible_cond_inames
+        .. attribute:: required_predicates
+        """
+
+    sched_index_info_entries = [
+            ScheduleIndexInfo(
+                schedule_index=i,
+                admissible_cond_inames=
+                get_admissible_conditional_inames_for(kernel, i),
+                required_predicates=get_required_predicates(kernel, i)
+                )
+        for i in my_sched_indices]
 
     # }}}
 
@@ -198,15 +226,37 @@ def build_loop_nest(kernel, sched_index, codegen_state):
                     # so we can safely overapproximate here.
                     overapproximate=True)
 
-    def build_insn_group(sched_indices_and_cond_inames, codegen_state,
+    def build_insn_group(sched_index_info_entries, codegen_state,
             done_group_lengths=set()):
-        # done_group_lengths serves to prevent infinite recursion by imposing a
-        # bigger and bigger minimum size on the group of shared inames found.
+        """
+        :arg done_group_lengths: A set of group lengths (integers) that grows from
+            empty to include 1 and upwards with every recursive call.
+            It serves to prevent infinite recursion by preventing recursive
+            calls from doing anything about groups that are too small.
+        """
 
-        if not sched_indices_and_cond_inames:
+        # The rough plan here is that build_insn_group starts out with the
+        # entirety of the current schedule item's downward siblings (i.e. all
+        # the ones up to the next LeaveLoop). It will then iterate upward to
+        # find the largest usable conditional hoist group.
+        #
+        # It will then call itself recursively, telling its recursive instances
+        # to ignore the hoist group it just found by adding that group length
+        # to done_group_length. (It'll also chop the set of schedule indices
+        # considered down so that a callee cannot find a *longer* hoist group.)
+        #
+        # Upon return the hoist is wrapped around the returned code and
+        # build_insn_group calls itself for the remainder of schedule indices
+        # that were not in the hoist group.
+
+        if not sched_index_info_entries:
             return []
 
-        sched_index, cond_inames = sched_indices_and_cond_inames[0]
+        si_entry = sched_index_info_entries[0]
+        sched_index = si_entry.schedule_index
+        current_iname_set = si_entry.admissible_cond_inames
+        current_pred_set = (si_entry.required_predicates
+                - codegen_state.implemented_predicates)
 
         # {{{ grow schedule item group
 
@@ -216,28 +266,32 @@ def build_loop_nest(kernel, sched_index, codegen_state):
         bounds_check_cache = BoundsCheckCache(
                 kernel, codegen_state.implemented_domain)
 
-        current_iname_set = cond_inames
-
         found_hoists = []
 
         candidate_group_length = 1
-        while candidate_group_length <= len(sched_indices_and_cond_inames):
+        while candidate_group_length <= len(sched_index_info_entries):
             if candidate_group_length in done_group_lengths:
                 candidate_group_length += 1
                 continue
 
-            other_sched_index, other_cond_inames = \
-                    sched_indices_and_cond_inames[candidate_group_length-1]
-            current_iname_set = current_iname_set & other_cond_inames
+            current_iname_set = (
+                    current_iname_set
+                    & sched_index_info_entries[candidate_group_length-1]
+                        .admissible_cond_inames)
+            current_pred_set = (
+                    current_pred_set
+                    & sched_index_info_entries[candidate_group_length-1]
+                        .required_predicates)
 
             # {{{ see which inames are actually used in group
 
             # And only generate conditionals for those.
             from loopy.schedule import find_used_inames_within
             used_inames = set()
-            for subsched_index, _ in \
-                    sched_indices_and_cond_inames[0:candidate_group_length]:
-                used_inames |= find_used_inames_within(kernel, subsched_index)
+            for sched_index_info_entry in \
+                    sched_index_info_entries[0:candidate_group_length]:
+                used_inames |= find_used_inames_within(kernel,
+                        sched_index_info_entry.schedule_index)
 
             # }}}
 
@@ -246,17 +300,21 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
             bounds_checks = bounds_check_cache(only_unshared_inames)
 
-            if bounds_checks or bounds_checks is None or candidate_group_length == 1:
+            if (bounds_checks  # found a bounds check
+                    or bounds_checks is None  # found impossible bounds check
+                    or current_pred_set
+                    or candidate_group_length == 1):
                 # length-1 must always be an option to reach the recursion base
                 # case below
-                found_hoists.append((candidate_group_length, bounds_checks))
+                found_hoists.append((candidate_group_length,
+                    bounds_checks, current_pred_set))
 
             candidate_group_length += 1
 
         # }}}
 
         # pick largest such group
-        group_length, bounds_checks = max(found_hoists)
+        group_length, bounds_checks, pred_checks = max(found_hoists)
 
         check_set = None
         for cns in bounds_checks:
@@ -276,6 +334,11 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             is_empty = check_set.is_empty()
             new_codegen_state = codegen_state.intersect(check_set)
 
+        if pred_checks:
+            new_codegen_state = new_codegen_state.copy(
+                    implemented_predicates=new_codegen_state.implemented_predicates
+                    | pred_checks)
+
         if is_empty:
             result = []
         else:
@@ -288,27 +351,27 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             else:
                 # recurse with a bigger done_group_lengths
                 result = build_insn_group(
-                        sched_indices_and_cond_inames[0:group_length],
+                        sched_index_info_entries[0:group_length],
                         new_codegen_state,
                         done_group_lengths=done_group_lengths | set([group_length]))
 
-            if bounds_checks:
+            if bounds_checks or pred_checks:
                 from loopy.codegen import wrap_in_if
                 from loopy.codegen.bounds import constraint_to_code
-                result = [
-                        wrap_in_if(
-                            [constraint_to_code(codegen_state.c_code_mapper, cns)
-                                for cns in bounds_checks],
-                            gen_code_block(result))]
+
+                conditionals = [
+                        constraint_to_code(codegen_state.c_code_mapper, cns)
+                        for cns in bounds_checks] + list(pred_checks)
+
+                result = [wrap_in_if(conditionals, gen_code_block(result))]
 
         return result + build_insn_group(
-                sched_indices_and_cond_inames[group_length:], codegen_state)
+                sched_index_info_entries[group_length:], codegen_state)
 
     # }}}
 
     return gen_code_block(
-            build_insn_group(zip(
-                my_sched_indices, admissible_cond_inames), codegen_state))
+            build_insn_group(sched_index_info_entries, codegen_state))
 
 
 

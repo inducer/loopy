@@ -108,8 +108,11 @@ def find_all_insn_inames(kernel):
         assert isinstance(write_deps, frozenset), type(insn)
         assert isinstance(iname_deps, frozenset), type(insn)
 
-        logger.debug("%s: find_all_insn_inames: %s (init): %s" % (
-            kernel.name, insn.id, ", ".join(sorted(iname_deps))))
+        logger.debug("%s: find_all_insn_inames: %s (init): %s - "
+                "read deps: %s - write deps: %s" % (
+                    kernel.name, insn.id, ", ".join(sorted(iname_deps)),
+                    ", ".join(sorted(read_deps)), ", ".join(sorted(write_deps)),
+                    ))
 
         insn_id_to_inames[insn.id] = iname_deps
         insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()

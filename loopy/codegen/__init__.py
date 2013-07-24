@@ -142,27 +142,38 @@ def add_comment(cmt, code):
 # {{{ code generation state
 
 class CodeGenerationState(object):
-    def __init__(self, implemented_domain, c_code_mapper):
-        """
-        :param implemented_domain: The entire implemented domain,
-            i.e. all constraints that have been enforced so far.
-        :param c_code_mapper: A C code mapper that does not take per-ILP
-            assignments into account.
-        """
-        self.implemented_domain = implemented_domain
+    """
+    .. attribute:: implemented_domain
 
+        The entire implemented domain (as an :class:`islpy.Set`)
+        i.e. all constraints that have been enforced so far.
+
+    .. attribute:: implemented_predicates
+
+        A :class:`frozenset` of predicates for which checks have been
+        implemented.
+
+    .. attribute:: c_code_mapper
+
+        A :class:`loopy.codegen.expression.CCodeMapper` that does not take
+        per-ILP assignments into account.
+    """
+    def __init__(self, implemented_domain, implemented_predicates, c_code_mapper):
+        self.implemented_domain = implemented_domain
+        self.implemented_predicates = implemented_predicates
         self.c_code_mapper = c_code_mapper
 
-    def copy(self, implemented_domain=None, c_code_mapper=None):
+    def copy(self, implemented_domain=None, implemented_predicates=frozenset(),
+            c_code_mapper=None):
         return CodeGenerationState(
                 implemented_domain=implemented_domain or self.implemented_domain,
+                implemented_predicates=
+                implemented_predicates or self.implemented_predicates,
                 c_code_mapper=c_code_mapper or self.c_code_mapper)
 
     def intersect(self, other):
         new_impl, new_other = isl.align_two(self.implemented_domain, other)
-        return CodeGenerationState(
-                new_impl & new_other,
-                self.c_code_mapper)
+        return self.copy(implemented_domain=new_impl & new_other)
 
     def fix(self, iname, aff):
         new_impl_domain = self.implemented_domain
@@ -185,9 +196,9 @@ class CodeGenerationState(object):
         expr = pw_aff_to_expr(aff)
 
         new_impl_domain = new_impl_domain.add_constraint(cns)
-        return CodeGenerationState(
-                new_impl_domain,
-                self.c_code_mapper.copy_and_assign(iname, expr))
+        return self.copy(
+                implemented_domain=new_impl_domain,
+                c_code_mapper=self.c_code_mapper.copy_and_assign(iname, expr))
 
 # }}}
 
@@ -362,7 +373,9 @@ def generate_code(kernel):
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(
-            initial_implemented_domain, c_code_mapper=ccm)
+            implemented_domain=initial_implemented_domain,
+            implemented_predicates=frozenset(),
+            c_code_mapper=ccm)
 
     from loopy.codegen.loop import set_up_hw_parallel_loops
     gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)

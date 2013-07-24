@@ -181,6 +181,7 @@ def parse_insn(insn):
         insn_id = None
         priority = 0
         forced_iname_deps = frozenset()
+        predicates = frozenset()
 
         if groups["options"] is not None:
             for option in groups["options"].split(","):
@@ -206,6 +207,8 @@ def parse_insn(insn):
                     insn_deps = set(opt_value.split(":"))
                 elif opt_key == "inames":
                     forced_iname_deps = frozenset(opt_value.split(":"))
+                elif opt_key == "if":
+                    predicates = frozenset(opt_value.split(":"))
                 else:
                     raise ValueError("unrecognized instruction option '%s'"
                             % opt_key)
@@ -230,7 +233,8 @@ def parse_insn(insn):
                     forced_iname_deps=forced_iname_deps,
                     assignee=lhs, expression=rhs,
                     temp_var_type=temp_var_type,
-                    priority=priority)
+                    priority=priority,
+                    predicates=predicates)
 
     elif subst_match is not None:
         from pymbolic.primitives import Variable, Call

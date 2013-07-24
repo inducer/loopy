@@ -349,6 +349,11 @@ class InstructionBase(Record):
         *must* be executed before this one. Note that loop scheduling augments this
         by adding dependencies on any writes to temporaries read by this instruction.
 
+    .. attribute:: predicates
+
+        a :class:`frozenset` of variable names whose truth values (as defined
+        by C) determine whether this instruction should be run
+
     .. attribute:: forced_iname_deps
 
         A :class:`frozenset` of inames that are added to the list of iname
@@ -372,11 +377,11 @@ class InstructionBase(Record):
         Also allowed to be *None*.
     """
 
-    fields = set("id insn_deps forced_iname_deps "
+    fields = set("id insn_deps predicates forced_iname_deps "
             "priority boostable boostable_into".split())
 
     def __init__(self, id, insn_deps, forced_iname_deps, priority,
-            boostable, boostable_into):
+            boostable, boostable_into, predicates):
 
         assert isinstance(forced_iname_deps, frozenset)
         assert isinstance(insn_deps, set)
@@ -387,7 +392,8 @@ class InstructionBase(Record):
                 forced_iname_deps=forced_iname_deps,
                 priority=priority,
                 boostable=boostable,
-                boostable_into=boostable_into)
+                boostable_into=boostable_into,
+                predicates=predicates)
 
     # {{{ abstract interface
 
@@ -496,14 +502,15 @@ class ExpressionInstruction(InstructionBase):
             assignee, expression,
             id=None, forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
             boostable_into=None,
-            temp_var_type=None, priority=0):
+            temp_var_type=None, priority=0, predicates=frozenset()):
 
         InstructionBase.__init__(self,
                 id=id,
                 forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps, boostable=boostable,
                 boostable_into=boostable_into,
-                priority=priority)
+                priority=priority,
+                predicates=predicates)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -523,6 +530,9 @@ class ExpressionInstruction(InstructionBase):
         result = get_dependencies(self.expression)
         for _, subscript in self.assignees_and_indices():
             result = result | get_dependencies(subscript)
+
+        result = result | self.predicates
+
         return result
 
     @memoize_method
@@ -631,7 +641,7 @@ class CInstruction(InstructionBase):
             iname_exprs, code,
             read_variables=frozenset(), assignees=frozenset(),
             id=None, insn_deps=set(), forced_iname_deps=frozenset(), priority=0,
-            boostable=None, boostable_into=None):
+            boostable=None, boostable_into=None, predicates=frozenset()):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -647,7 +657,7 @@ class CInstruction(InstructionBase):
                 forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps, boostable=boostable,
                 boostable_into=boostable_into,
-                priority=priority)
+                priority=priority, predicates=predicates)
 
         # {{{ normalize iname_exprs
 
@@ -697,7 +707,7 @@ class CInstruction(InstructionBase):
         for _, subscript in self.assignees_and_indices():
             result.update(get_dependencies(subscript))
 
-        return frozenset(result)
+        return frozenset(result) | self.predicates
 
     def reduction_inames(self):
         return set()

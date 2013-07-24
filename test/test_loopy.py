@@ -1469,6 +1469,34 @@ def test_vector_types(ctx_factory, vec_len):
             fills_entire_output=False)
 
 
+def test_conditional(ctx_factory):
+    #logging.basicConfig(level=logging.DEBUG)
+    ctx = cl.create_some_context()
+
+    knl = lp.make_kernel(
+            ctx.devices[0],
+            "{ [i,j]: 0<=i,j<n }",
+            """
+                <> my_a = a[i,j] {id=read_a}
+                <> a_less_than_zero = my_a < 0 {dep=read_a,inames=i:j}
+                my_a = 2*my_a {id=twice_a,dep=read_a,if=a_less_than_zero}
+                my_a = my_a+1 {id=aplus,dep=twice_a,if=a_less_than_zero}
+                out[i,j] = 2*my_a {dep=aplus}
+                """,
+            [
+                lp.GlobalArg("a", np.float32, shape=lp.auto),
+                lp.GlobalArg("out", np.float32, shape=lp.auto),
+                "..."
+                ])
+
+    ref_knl = knl
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            parameters=dict(
+                n=200
+                ))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
