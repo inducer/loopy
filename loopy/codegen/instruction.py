@@ -56,11 +56,26 @@ def generate_instruction_code(kernel, insn, codegen_state):
     from loopy.kernel.data import ExpressionInstruction, CInstruction
 
     if isinstance(insn, ExpressionInstruction):
-        return generate_expr_instruction_code(kernel, insn, codegen_state)
+        result = generate_expr_instruction_code(kernel, insn, codegen_state)
     elif isinstance(insn, CInstruction):
-        return generate_c_instruction_code(kernel, insn, codegen_state)
+        result = generate_c_instruction_code(kernel, insn, codegen_state)
     else:
         raise RuntimeError("unexpected instruction type")
+
+    insn_inames = kernel.insn_inames(insn)
+    insn_code, impl_domain = wrap_in_bounds_checks(
+            codegen_state.c_code_mapper,
+            kernel.get_inames_domain(insn_inames), insn_inames,
+            codegen_state.implemented_domain,
+            result)
+
+    if insn_code is None:
+        return None
+
+    return GeneratedInstruction(
+        insn_id=insn.id,
+        implemented_domain=impl_domain,
+        ast=insn_code)
 
 
 def generate_expr_instruction_code(kernel, insn, codegen_state):
@@ -74,24 +89,10 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     from cgen import Assign
     from loopy.codegen.expression import dtype_to_type_context
     lhs_code = ccm(insn.assignee, prec=None, type_context=None)
-    insn_code = Assign(
+    result = Assign(
             lhs_code,
             ccm(expr, prec=None, type_context=dtype_to_type_context(target_dtype),
                 needed_dtype=target_dtype))
-
-    insn_inames = kernel.insn_inames(insn)
-    insn_code, impl_domain = wrap_in_bounds_checks(
-            ccm, kernel.get_inames_domain(insn_inames), insn_inames,
-            codegen_state.implemented_domain,
-            insn_code)
-
-    if insn_code is None:
-        return None
-
-    result = GeneratedInstruction(
-        insn_id=insn.id,
-        implemented_domain=impl_domain,
-        ast=insn_code)
 
     if kernel.flags.trace_assignments or kernel.flags.trace_assignment_values:
         from loopy.codegen import gen_code_block
@@ -141,13 +142,12 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
                     printf_format, printf_args_str)),
                 implemented_domain=None)
 
+        from cgen import Block
         if kernel.flags.trace_assignment_values:
-            code_block = [result, printf_insn]
+            result = Block([result, printf_insn])
         else:
             # print first, execute later -> helps find segfaults
-            code_block = [printf_insn, result]
-
-        result = gen_code_block(code_block)
+            result = Block([printf_insn, result])
 
     return result
 
@@ -178,19 +178,8 @@ def generate_c_instruction_code(kernel, insn, codegen_state):
 
     body.extend(Line(l) for l in insn.code.split("\n"))
 
-    insn_inames = kernel.insn_inames(insn)
-    insn_code, impl_domain = wrap_in_bounds_checks(
-            ccm, kernel.get_inames_domain(insn_inames), insn_inames,
-            codegen_state.implemented_domain,
-            Block(body))
+    return Block(body)
 
-    if insn_code is None:
-        return None
-
-    return GeneratedInstruction(
-        insn_id=insn.id,
-        implemented_domain=impl_domain,
-        ast=insn_code)
 
 
 # vim: foldmethod=marker
