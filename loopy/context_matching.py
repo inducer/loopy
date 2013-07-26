@@ -83,7 +83,8 @@ def parse_id_match(id_matches):
         id_matches = id_matches.split(",")
 
     if len(id_matches) > 1:
-        return AlternativeMatch(parse_id_match(im) for im in id_matches)
+        return AlternativeMatch([
+            parse_id_match(im) for im in id_matches])
 
     if len(id_matches) == 0:
         return AllMatch()
