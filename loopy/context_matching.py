@@ -79,6 +79,7 @@ def parse_id_match(id_matches):
         return AllMatch()
 
     if isinstance(id_matches, str):
+        id_matches = id_matches.strip()
         id_matches = id_matches.split(",")
 
     if len(id_matches) > 1:
