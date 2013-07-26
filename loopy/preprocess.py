@@ -573,12 +573,12 @@ def add_boostability_and_automatic_dependencies(kernel):
             all_my_var_writers |= var_writers
 
             if not var_writers and var not in arg_names:
-                from warnings import warn
-                warn("'%s' is read, but never written." % var)
+                warn(kernel, "read_no_write(%s)" % var,
+                        "temporary variable '%s' is read, but never written." % var)
 
             if len(var_writers) > 1 and not var_writers & set(insn.insn_deps):
-                from warnings import warn
-                warn("'%s' is written from more than one place, "
+                warn(kernel, "read_without_dep(%s,%s)" % (var, insn.id),
+                        "'%s' is written from more than one place, "
                         "but instruction '%s' (which reads this variable) "
                         "does not specify a dependency on any of the writers."
                         % (var, insn.id))
