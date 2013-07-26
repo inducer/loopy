@@ -866,9 +866,19 @@ class ArrayBase(Record):
         if not sep_shape:
             return None
 
+        def unwrap_1d_indices(idx):
+            # This allows these indices to work on Python sequences, too, not
+            # just numpy arrays.
+
+            if len(idx) == 1:
+                return idx[0]
+            else:
+                return idx
+
         from pytools import indices_in_shape
         return [
-                (i, self.name + "".join("_s%d" % sub_i for sub_i in i))
+                (unwrap_1d_indices(i),
+                    self.name + "".join("_s%d" % sub_i for sub_i in i))
                 for i in indices_in_shape(sep_shape)]
 
 # }}}
