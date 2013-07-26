@@ -26,13 +26,12 @@ THE SOFTWARE.
 """
 
 
-
-
 # {{{ id match objects
 
 class AllMatch(object):
     def __call__(self, identifier, tag):
         return True
+
 
 class RegexIdentifierMatch(object):
     def __init__(self, id_re, tag_re=None):
@@ -50,6 +49,7 @@ class RegexIdentifierMatch(object):
                     self.id_re.match(identifier) is not None
                     and self.tag_re.match(tag) is not None)
 
+
 class AlternativeMatch(object):
     def __init__(self, matches):
         self.matches = matches
@@ -60,6 +60,7 @@ class AlternativeMatch(object):
                 mtch(identifier, tag) for mtch in self.matches)
 
 # }}}
+
 
 # {{{ single id match parsing
 
@@ -109,6 +110,7 @@ def parse_id_match(id_matches):
 
 # }}}
 
+
 # {{{ stack match objects
 
 # these match from the tail of the stack
@@ -116,9 +118,11 @@ def parse_id_match(id_matches):
 class StackMatchBase(object):
     pass
 
+
 class AllStackMatch(StackMatchBase):
     def __call__(self, stack):
         return True
+
 
 class StackIdMatch(StackMatchBase):
     def __init__(self, id_match, up_match):
@@ -137,6 +141,7 @@ class StackIdMatch(StackMatchBase):
             return True
         else:
             return self.up_match(stack[:-1])
+
 
 class StackWildcardMatch(StackMatchBase):
     def __init__(self, up_match):
@@ -159,6 +164,7 @@ class StackWildcardMatch(StackMatchBase):
 
 # }}}
 
+
 # {{{ stack match parsing
 
 def parse_stack_match(smatch):
@@ -170,7 +176,8 @@ def parse_stack_match(smatch):
     arbitrary number of intervening stack levels. There is currently no way to
     match the top of the stack.
 
-    Each of the entries is an identifier match as understood by :func:`parse_id_match`.
+    Each of the entries is an identifier match as understood by
+    :func:`parse_id_match`.
     """
 
     if isinstance(smatch, StackMatchBase):
