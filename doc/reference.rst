@@ -183,15 +183,20 @@ These are usually key-value pairs. The following attributes are recognized:
 
   .. note::
 
-      Loopy will automatically add depdencies of reading instructions
-      on writing instructions *if and only if* there is exactly one writing
-      instruction for the written variable (temporary or argument).
+      If this is not specified, :mod:`loopy` will automatically add
+      depdencies of reading instructions on writing instructions *if and
+      only if* there is exactly one writing instruction for the written
+      variable (temporary or argument).
 
 * ``priority=integer`` sets the instructions priority to the value
   ``integer``. Instructions with higher priority will be scheduled sooner,
   if possible. Note that the scheduler may still schedule a lower-priority
   instruction ahead of a higher-priority one if loop orders or dependencies
   require it.
+
+* ``if=variable1:variable2`` Only execute this instruction if all condition
+  variables (which must be scalar variables) evaluate to ``true`` (as
+  defined by C).
 
 .. autoclass:: ExpressionInstruction
 

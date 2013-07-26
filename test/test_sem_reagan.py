@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 
 import numpy as np
+import pyopencl as cl  # noqa
 import loopy as lp
 
 from pyopencl.tools import (  # noqa

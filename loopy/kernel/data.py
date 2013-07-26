@@ -349,6 +349,8 @@ class InstructionBase(Record):
         *must* be executed before this one. Note that loop scheduling augments this
         by adding dependencies on any writes to temporaries read by this instruction.
 
+        May be *None* to invoke the default.
+
     .. attribute:: predicates
 
         a :class:`frozenset` of variable names whose truth values (as defined
@@ -384,7 +386,7 @@ class InstructionBase(Record):
             boostable, boostable_into, predicates):
 
         assert isinstance(forced_iname_deps, frozenset)
-        assert isinstance(insn_deps, set)
+        assert isinstance(insn_deps, frozenset) or insn_deps is None
 
         Record.__init__(self,
                 id=id,
@@ -500,8 +502,8 @@ class ExpressionInstruction(InstructionBase):
 
     def __init__(self,
             assignee, expression,
-            id=None, forced_iname_deps=frozenset(), insn_deps=set(), boostable=None,
-            boostable_into=None,
+            id=None, forced_iname_deps=frozenset(), insn_deps=None,
+            boostable=None, boostable_into=None,
             temp_var_type=None, priority=0, predicates=frozenset()):
 
         InstructionBase.__init__(self,
@@ -640,7 +642,7 @@ class CInstruction(InstructionBase):
     def __init__(self,
             iname_exprs, code,
             read_variables=frozenset(), assignees=frozenset(),
-            id=None, insn_deps=set(), forced_iname_deps=frozenset(), priority=0,
+            id=None, insn_deps=None, forced_iname_deps=frozenset(), priority=0,
             boostable=None, boostable_into=None, predicates=frozenset()):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,

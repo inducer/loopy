@@ -44,7 +44,7 @@ def check_insn_attributes(kernel):
                     % (insn.id, ", ".join(
                         insn.forced_iname_deps - kernel.all_inames())))
 
-        if not insn.insn_deps <= all_insn_ids:
+        if insn.insn_deps is not None and not insn.insn_deps <= all_insn_ids:
             raise LoopyError("insn '%s' has unknown instruction "
                     "dependencies: %s"
                     % (insn.id, ", ".join(

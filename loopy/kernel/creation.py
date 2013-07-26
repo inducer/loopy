@@ -177,7 +177,7 @@ def parse_insn(insn):
         raise
 
     if insn_match is not None:
-        insn_deps = set()
+        insn_deps = None
         insn_id = None
         priority = 0
         forced_iname_deps = frozenset()
@@ -204,7 +204,8 @@ def parse_insn(insn):
                 elif opt_key == "priority":
                     priority = int(opt_value)
                 elif opt_key == "dep":
-                    insn_deps = set(opt_value.split(":"))
+                    insn_deps = frozenset(dep.strip() for dep in opt_value.split(":")
+                            if dep.strip())
                 elif opt_key == "inames":
                     forced_iname_deps = frozenset(opt_value.split(":"))
                 elif opt_key == "if":

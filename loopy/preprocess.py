@@ -288,6 +288,52 @@ def mark_local_temporaries(kernel):
 # }}}
 
 
+# {{{ default dependencies
+
+def add_default_dependencies(kernel):
+    logger.debug("%s: default deps" % kernel.name)
+
+    writer_map = kernel.writer_map()
+
+    arg_names = set(arg.name for arg in kernel.args)
+
+    var_names = arg_names | set(kernel.temporary_variables.iterkeys())
+
+    dep_map = dict(
+            (insn.id, insn.read_dependency_names() & var_names)
+            for insn in kernel.instructions)
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if insn.insn_deps is None:
+            auto_deps = set()
+
+            # {{{ add automatic dependencies
+
+            all_my_var_writers = set()
+            for var in dep_map[insn.id]:
+                var_writers = writer_map.get(var, set())
+                all_my_var_writers |= var_writers
+
+                if not var_writers and var not in arg_names:
+                    warn(kernel, "read_no_write(%s)" % var,
+                            "temporary variable '%s' is read, but never written."
+                            % var)
+
+                if len(var_writers) == 1:
+                    auto_deps.update(var_writers - set([insn.id]))
+
+            # }}}
+
+            insn = insn.copy(insn_deps=frozenset(auto_deps))
+
+        new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ rewrite reduction to imperative form
 
 def realize_reduction(kernel, insn_id_filter=None):
@@ -333,33 +379,34 @@ def realize_reduction(kernel, insn_id_filter=None):
                 is_local=False)
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
-        bad_inames = set(expr.inames) & outer_insn_inames
+        bad_inames = frozenset(expr.inames) & outer_insn_inames
         if bad_inames:
             raise LoopyError("reduction used within loop(s) that it was "
                     "supposed to reduce over: " + ", ".join(bad_inames))
 
-        new_id = temp_kernel.make_unique_instruction_id(
+        init_id = temp_kernel.make_unique_instruction_id(
                 based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
                 extra_used_ids=set(i.id for i in generated_insns))
 
         init_insn = ExpressionInstruction(
-                id=new_id,
+                id=init_id,
                 assignee=target_var,
-                forced_iname_deps=outer_insn_inames - set(expr.inames),
+                forced_iname_deps=outer_insn_inames - frozenset(expr.inames),
+                insn_deps=frozenset(),
                 expression=expr.operation.neutral_element(arg_dtype, expr.inames))
 
         generated_insns.append(init_insn)
 
-        new_id = temp_kernel.make_unique_instruction_id(
+        update_id = temp_kernel.make_unique_instruction_id(
                 based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)),
                 extra_used_ids=set(i.id for i in generated_insns))
 
         reduction_insn = ExpressionInstruction(
-                id=new_id,
+                id=update_id,
                 assignee=target_var,
                 expression=expr.operation(
                     arg_dtype, target_var, expr.expr, expr.inames),
-                insn_deps=set([init_insn.id]) | insn.insn_deps,
+                insn_deps=frozenset([init_insn.id]) | insn.insn_deps,
                 forced_iname_deps=temp_kernel.insn_inames(insn) | set(expr.inames))
 
         generated_insns.append(reduction_insn)
@@ -397,7 +444,7 @@ def realize_reduction(kernel, insn_id_filter=None):
             insn = insn.copy(
                         expression=new_expression,
                         insn_deps=insn.insn_deps
-                            | new_insn_insn_deps,
+                            | frozenset(new_insn_insn_deps),
                         forced_iname_deps=temp_kernel.insn_inames(insn))
 
             insn_queue = generated_insns + [insn] + insn_queue
@@ -544,10 +591,10 @@ def duplicate_private_temporaries_for_ilp(kernel):
 # }}}
 
 
-# {{{ automatic dependencies, find boostability of instructions
+# {{{ find boostability of instructions
 
-def add_boostability_and_automatic_dependencies(kernel):
-    logger.debug("%s: automatic deps, boostability" % kernel.name)
+def find_boostability(kernel):
+    logger.debug("%s: boostability" % kernel.name)
 
     writer_map = kernel.writer_map()
 
@@ -563,30 +610,10 @@ def add_boostability_and_automatic_dependencies(kernel):
 
     new_insns = []
     for insn in kernel.instructions:
-        auto_deps = set()
-
-        # {{{ add automatic dependencies
-
         all_my_var_writers = set()
         for var in dep_map[insn.id]:
             var_writers = writer_map.get(var, set())
             all_my_var_writers |= var_writers
-
-            if not var_writers and var not in arg_names:
-                warn(kernel, "read_no_write(%s)" % var,
-                        "temporary variable '%s' is read, but never written." % var)
-
-            if len(var_writers) > 1 and not var_writers & set(insn.insn_deps):
-                warn(kernel, "read_without_dep(%s,%s)" % (var, insn.id),
-                        "'%s' is written from more than one place, "
-                        "but instruction '%s' (which reads this variable) "
-                        "does not specify a dependency on any of the writers."
-                        % (var, insn.id))
-
-            if len(var_writers) == 1:
-                auto_deps.update(var_writers - set([insn.id]))
-
-        # }}}
 
         # {{{ find dependency loops, flag boostability
 
@@ -609,10 +636,9 @@ def add_boostability_and_automatic_dependencies(kernel):
             non_boostable_vars.update(
                     var_name for var_name, _ in insn.assignees_and_indices())
 
-        new_insns.append(
-                insn.copy(
-                    insn_deps=insn.insn_deps | auto_deps,
-                    boostable=boostable))
+        insn = insn.copy(boostable=boostable)
+
+        new_insns.append(insn)
 
     # {{{ remove boostability from isns that access non-boostable vars
 
@@ -1029,9 +1055,16 @@ def preprocess_kernel(kernel):
 
     kernel = infer_unknown_types(kernel, expect_completion=False)
 
-    # Ordering restriction:
-    # realize_reduction must happen after type inference because it needs
-    # to be able to determine the types of the reduced expressions.
+    kernel = add_default_dependencies(kernel)
+
+    # Ordering restrictions:
+    #
+    # - realize_reduction must happen after type inference because it needs
+    #   to be able to determine the types of the reduced expressions.
+    #
+    # - realize_reduction must happen after default dependencies are added
+    #   because it manipulates the insn_deps field, which could prevent
+    #   defaults from being applied.
 
     kernel = realize_reduction(kernel)
 
@@ -1042,7 +1075,7 @@ def preprocess_kernel(kernel):
     kernel = duplicate_private_temporaries_for_ilp(kernel)
     kernel = mark_local_temporaries(kernel)
     kernel = assign_automatic_axes(kernel)
-    kernel = add_boostability_and_automatic_dependencies(kernel)
+    kernel = find_boostability(kernel)
     kernel = limit_boostability(kernel)
     kernel = adjust_local_temp_var_storage(kernel)
 
