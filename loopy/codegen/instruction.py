@@ -140,10 +140,8 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
         else:
             printf_args_str = ""
 
-        printf_insn = GeneratedInstruction(
-                ast=S("printf(\"%s\\n\"%s)" % (
-                    printf_format, printf_args_str)),
-                implemented_domain=None)
+        printf_insn = S("printf(\"%s\\n\"%s)" % (
+                    printf_format, printf_args_str))
 
         from cgen import Block
         if kernel.flags.trace_assignment_values:
