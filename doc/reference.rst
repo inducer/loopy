@@ -183,6 +183,9 @@ These are usually key-value pairs. The following attributes are recognized:
   code generated for this instruction appears textually after both of these
   instructions' generated code.
 
+  Identifiers here are allowed to be wildcards as defined by
+  :mod:`fnmatchcase`.
+
   .. note::
 
       If this is not specified, :mod:`loopy` will automatically add

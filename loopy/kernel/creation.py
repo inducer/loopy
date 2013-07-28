@@ -849,6 +849,35 @@ def apply_default_order_to_args(kernel, default_order):
 # }}}
 
 
+# {{{ resolve wildcard insn dependencies
+
+def resolve_wildcard_deps(knl):
+    new_insns = []
+
+    from fnmatch import fnmatchcase
+    for insn in knl.instructions:
+        if insn.insn_deps is not None:
+            new_deps = set()
+            for dep in insn.insn_deps:
+                match_count = 0
+                for other_insn in knl.instructions:
+                    if fnmatchcase(other_insn.id, dep):
+                        new_deps.add(other_insn.id)
+                        match_count += 1
+
+                if match_count == 0:
+                    # Uh, best we can do
+                    new_deps.append(dep)
+
+            insn = insn.copy(insn_deps=frozenset(new_deps))
+
+        new_insns.append(insn)
+
+    return knl.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ kernel creation top-level
 
 def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
@@ -1001,6 +1030,7 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
+    knl = resolve_wildcard_deps(knl)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:
