@@ -1442,7 +1442,7 @@ def test_rob_stroud_bernstein(ctx_factory):
 
 @pytest.mark.parametrize("vec_len", [2, 3, 4, 8, 16])
 def test_vector_types(ctx_factory, vec_len):
-    ctx = cl.create_some_context()
+    ctx = ctx_factory()
 
     knl = lp.make_kernel(ctx.devices[0],
             "{ [i,j]: 0<=i<n and 0<=j<vec_len }",
@@ -1471,7 +1471,7 @@ def test_vector_types(ctx_factory, vec_len):
 
 def test_conditional(ctx_factory):
     #logging.basicConfig(level=logging.DEBUG)
-    ctx = cl.create_some_context()
+    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             ctx.devices[0],
