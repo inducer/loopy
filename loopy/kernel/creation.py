@@ -626,12 +626,13 @@ def expand_cses(knl):
                 shape=())
 
         from pymbolic.primitives import Variable
-        insn = ExpressionInstruction(
+        new_insn = ExpressionInstruction(
                 id=knl.make_unique_instruction_id(
                     extra_used_ids=newly_created_insn_ids),
-                assignee=Variable(new_var_name), expression=expr)
-        newly_created_insn_ids.add(insn.id)
-        new_insns.append(insn)
+                assignee=Variable(new_var_name), expression=expr,
+                predicates=insn.predicates)
+        newly_created_insn_ids.add(new_insn.id)
+        new_insns.append(new_insn)
 
         return new_var_name
 
