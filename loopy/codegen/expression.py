@@ -214,6 +214,15 @@ class TypeInferenceMapper(CombineMapper):
         dtype, offset = agg_result.fields[expr.name]
         return dtype
 
+    def map_comparison(self, expr):
+        # "bool" is unusable because OpenCL's bool has indeterminate memory
+        # format.
+        return np.dtype(np.int32)
+
+    map_logical_not = map_comparison
+    map_logical_and = map_comparison
+    map_logical_or = map_comparison
+
     def map_reduction(self, expr):
         return expr.operation.result_dtype(self.rec(expr.expr), expr.inames)
 
