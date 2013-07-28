@@ -47,7 +47,7 @@ def _gather_isl_identifiers(s):
     return set(_IDENTIFIER_RE.findall(s)) - set(["and", "or", "exists"])
 
 
-class MakeUnique:
+class UniqueName:
     """A tag for a string that identifies a partial identifier that is to
     be made unique by the UI.
     """
@@ -200,7 +200,7 @@ def parse_insn(insn):
                 if opt_key == "id":
                     insn_id = opt_value
                 elif opt_key == "id_prefix":
-                    insn_id = MakeUnique(opt_value)
+                    insn_id = UniqueName(opt_value)
                 elif opt_key == "priority":
                     priority = int(opt_value)
                 elif opt_key == "dep":

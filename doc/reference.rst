@@ -133,6 +133,8 @@ Instructions
 
 .. _assignments:
 
+.. autoclass:: UniqueName
+
 Assignments
 ~~~~~~~~~~~
 

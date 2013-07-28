@@ -59,7 +59,7 @@ from loopy.kernel.tools import (
         get_dot_dependency_graph,
         add_argument_dtypes,
         add_and_infer_argument_dtypes)
-from loopy.kernel.creation import make_kernel
+from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
 from loopy.precompute import precompute
@@ -86,7 +86,9 @@ __all__ = [
         "default_function_mangler", "single_arg_function_mangler",
         "opencl_function_mangler", "opencl_symbol_mangler",
         "default_preamble_generator",
-        "make_kernel",
+
+        "make_kernel", "UniqueName",
+
         "register_reduction_parser",
 
         "extract_subst", "expand_subst",

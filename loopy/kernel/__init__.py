@@ -178,11 +178,11 @@ class LoopKernel(Record):
 
         # {{{ make instruction ids unique
 
-        from loopy.kernel.creation import MakeUnique
+        from loopy.kernel.creation import UniqueName
 
         insn_ids = set()
         for insn in instructions:
-            if insn.id is not None and not isinstance(insn.id, MakeUnique):
+            if insn.id is not None and not isinstance(insn.id, UniqueName):
                 if insn.id in insn_ids:
                     raise RuntimeError("duplicate instruction id: %s" % insn.id)
                 insn_ids.add(insn.id)
@@ -195,7 +195,7 @@ class LoopKernel(Record):
             if insn.id is None:
                 new_instructions.append(
                         insn.copy(id=insn_id_gen("insn")))
-            elif isinstance(insn.id, MakeUnique):
+            elif isinstance(insn.id, UniqueName):
                 new_instructions.append(
                         insn.copy(id=insn_id_gen(insn.id.name)))
             else:
