@@ -695,7 +695,13 @@ class LoopyCCodeMapper(RecursiveMapper):
                     self.join_rec(" + ", expr.children, PREC_SUM, type_context),
                     enclosing_prec, PREC_SUM)
 
-        if not self.allow_complex:
+        # I've added 'type_context == "i"' because of the following
+        # idiotic corner case: Code generation for subscripts comes
+        # through here, and it may involve variables that we know
+        # nothing about (offsets and such). If we fall into the allow_complex
+        # branch, we'll try to do type inference on these variables,
+        # and stuff breaks. This band-aid works around that. -AK
+        if not self.allow_complex or type_context == "i":
             return base_impl(expr, enclosing_prec, type_context)
 
         tgt_dtype = self.infer_type(expr)
@@ -730,7 +736,13 @@ class LoopyCCodeMapper(RecursiveMapper):
                     self.join_rec(" * ", expr.children, PREC_PRODUCT, type_context),
                     enclosing_prec, PREC_PRODUCT)
 
-        if not self.allow_complex:
+        # I've added 'type_context == "i"' because of the following
+        # idiotic corner case: Code generation for subscripts comes
+        # through here, and it may involve variables that we know
+        # nothing about (offsets and such). If we fall into the allow_complex
+        # branch, we'll try to do type inference on these variables,
+        # and stuff breaks. This band-aid works around that. -AK
+        if not self.allow_complex or type_context == "i":
             return base_impl(expr, enclosing_prec, type_context)
 
         tgt_dtype = self.infer_type(expr)
