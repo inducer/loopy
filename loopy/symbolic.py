@@ -38,6 +38,8 @@ from pymbolic.mapper import (
         WalkMapper as WalkMapperBase,
         CallbackMapper as CallbackMapperBase,
         )
+from pymbolic.mapper.evaluator import \
+        EvaluationMapper as EvaluationMapperBase
 from pymbolic.mapper.substitutor import \
         SubstitutionMapper as SubstitutionMapperBase
 from pymbolic.mapper.stringifier import \
@@ -168,6 +170,11 @@ class IdentityMapperMixin(object):
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
+
+
+class PartialEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
+    def map_variable(self, expr):
+        return expr
 
 
 class WalkMapper(WalkMapperBase):

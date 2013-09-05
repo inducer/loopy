@@ -1207,8 +1207,12 @@ def _fix_parameter(kernel, name, value):
     from pymbolic.mapper.substitutor import make_subst_func
     subst_func = make_subst_func({name: value})
 
-    from loopy.symbolic import SubstitutionMapper
+    from loopy.symbolic import SubstitutionMapper, PartialEvaluationMapper
     subst_map = SubstitutionMapper(subst_func)
+    ev_map = PartialEvaluationMapper()
+
+    def map_expr(expr):
+        return ev_map(subst_map(expr))
 
     from loopy.kernel.array import ArrayBase
     new_args = []
@@ -1220,11 +1224,11 @@ def _fix_parameter(kernel, name, value):
         if not isinstance(arg, ArrayBase):
             new_args.append(arg)
         else:
-            new_args.append(arg.map_exprs(subst_map))
+            new_args.append(arg.map_exprs(map_expr))
 
     new_temp_vars = {}
     for tv in kernel.temporary_variables.itervalues():
-        new_temp_vars[tv.name] = tv.map_exprs(subst_map)
+        new_temp_vars[tv.name] = tv.map_exprs(map_expr)
 
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(None)

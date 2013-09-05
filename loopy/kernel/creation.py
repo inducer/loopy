@@ -131,8 +131,9 @@ def expand_defines_in_expr(expr, defines):
         else:
             return None
 
-    from loopy.symbolic import SubstitutionMapper
-    return SubstitutionMapper(subst_func)(expr)
+    from loopy.symbolic import SubstitutionMapper, PartialEvaluationMapper
+    return PartialEvaluationMapper()(
+            SubstitutionMapper(subst_func)(expr))
 
 # }}}
 
@@ -746,15 +747,24 @@ def expand_defines_in_shapes(kernel, defines):
     from loopy.kernel.array import ArrayBase
     from loopy.kernel.creation import expand_defines_in_expr
 
+    def expr_map(expr):
+        return expand_defines_in_expr(expr, defines)
+
     processed_args = []
     for arg in kernel.args:
         if isinstance(arg, ArrayBase):
-            arg = arg.map_exprs(
-                    lambda expr: expand_defines_in_expr(expr, defines))
+            arg = arg.map_exprs(expr_map)
 
         processed_args.append(arg)
 
-    return kernel.copy(args=processed_args)
+    processed_temp_vars = {}
+    for tv in kernel.temporary_variables.itervalues():
+        processed_temp_vars[tv.name] = tv.map_exprs(expr_map)
+
+    return kernel.copy(
+            args=processed_args,
+            temporary_variables=processed_temp_vars,
+            )
 
 # }}}
 
@@ -867,7 +877,7 @@ def resolve_wildcard_deps(knl):
 
                 if match_count == 0:
                     # Uh, best we can do
-                    new_deps.append(dep)
+                    new_deps.add(dep)
 
             insn = insn.copy(insn_deps=frozenset(new_deps))
 
