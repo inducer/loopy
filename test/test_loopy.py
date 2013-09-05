@@ -337,7 +337,7 @@ def test_stencil_with_overfetch(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    knl = lp.add_and_infer_argument_dtypes(knl, dict(a=np.float32))
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
 
     ref_knl = knl
 

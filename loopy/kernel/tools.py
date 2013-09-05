@@ -34,10 +34,10 @@ logger = logging.getLogger(__name__)
 
 # {{{ add and infer argument dtypes
 
-def add_argument_dtypes(knl, dtype_dict):
-    """Specify remaining unspecified argument types.
+def add_dtypes(knl, dtype_dict):
+    """Specify remaining unspecified argument/temporary variable types.
 
-    :arg dtype_dict: a mapping from argument names to :class:`numpy.dtype`
+    :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
     dtype_dict = dtype_dict.copy()
@@ -56,13 +56,28 @@ def add_argument_dtypes(knl, dtype_dict):
 
         new_args.append(arg)
 
-    knl = knl.copy(args=new_args)
+    new_temp_vars = knl.temporary_variables.copy()
+
+    import loopy as lp
+    for tv_name in knl.temporary_variables:
+        new_dtype = dtype_dict.pop(tv_name, None)
+        if new_dtype is not None:
+            new_dtype = np.dtype(new_dtype)
+            tv = new_temp_vars[tv_name]
+            if (tv.dtype is not None and tv.dtype is not lp.auto) \
+                    and tv.dtype != new_dtype:
+                raise RuntimeError(
+                        "temporary variable '%s' already has a different dtype "
+                        "(existing: %s, new: %s)"
+                        % (tv_name, tv.dtype, new_dtype))
+
+            new_temp_vars[tv_name] = tv.copy(dtype=new_dtype)
 
     if dtype_dict:
         raise RuntimeError("unused argument dtypes: %s"
                 % ", ".join(dtype_dict))
 
-    return knl.copy(args=new_args)
+    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
 
 
 def get_arguments_with_incomplete_dtype(knl):
@@ -70,8 +85,8 @@ def get_arguments_with_incomplete_dtype(knl):
             if arg.dtype is None]
 
 
-def add_and_infer_argument_dtypes(knl, dtype_dict):
-    knl = add_argument_dtypes(knl, dtype_dict)
+def add_and_infer_dtypes(knl, dtype_dict):
+    knl = add_dtypes(knl, dtype_dict)
 
     from loopy.preprocess import infer_unknown_types
     return infer_unknown_types(knl, expect_completion=True)

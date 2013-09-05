@@ -57,8 +57,8 @@ from loopy.kernel.data import (
 from loopy.kernel import LoopKernel
 from loopy.kernel.tools import (
         get_dot_dependency_graph,
-        add_argument_dtypes,
-        add_and_infer_argument_dtypes)
+        add_dtypes,
+        add_and_infer_dtypes)
 from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst
@@ -95,8 +95,8 @@ __all__ = [
         "precompute",
         "split_arg_axis", "find_padding_multiple", "add_padding",
 
-        "get_dot_dependency_graph", "add_argument_dtypes",
-        "infer_argument_dtypes", "add_and_infer_argument_dtypes",
+        "get_dot_dependency_graph", "add_dtypes",
+        "infer_argument_dtypes", "add_and_infer_dtypes",
 
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules",

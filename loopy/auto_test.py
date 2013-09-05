@@ -108,7 +108,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
                 if dtype is None:
                     raise RuntimeError("dtype for argument '%s' is not yet "
                             "known. Perhaps you want to use "
-                            "loopy.add_argument_dtypes "
+                            "loopy.add_dtypes "
                             "or loopy.infer_argument_dtypes?"
                             % arg.name)
 

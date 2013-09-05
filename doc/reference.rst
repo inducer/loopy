@@ -322,11 +322,11 @@ Library interface
 Argument types
 ^^^^^^^^^^^^^^
 
-.. autofunction:: add_argument_dtypes
+.. autofunction:: add_dtypes
 
 .. autofunction:: infer_unknown_types
 
-.. autofunction:: add_and_infer_argument_dtypes
+.. autofunction:: add_and_infer_dtypes
 
 Finishing up
 ^^^^^^^^^^^^

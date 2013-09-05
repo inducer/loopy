@@ -30,6 +30,7 @@ from pytools import Record, memoize_method
 from loopy.diagnostic import ParameterFinderWarning
 from pytools.py_codegen import (
         Indentation, PythonFunctionGenerator)
+from loopy.diagnostic import LoopyError
 
 
 # {{{ object array argument packing
@@ -665,17 +666,27 @@ class CompiledKernel:
                 if arg.name in self.kernel.get_written_variables())
 
     @memoize_method
-    def get_kernel(self, arg_to_dtype_set):
+    def get_kernel(self, var_to_dtype_set):
         kernel = self.kernel
 
-        from loopy.kernel.tools import add_argument_dtypes
+        from loopy.kernel.tools import add_dtypes
 
-        if arg_to_dtype_set:
-            arg_to_dtype = {}
-            for arg, dtype in arg_to_dtype_set:
-                arg_to_dtype[kernel.impl_arg_to_arg[arg].name] = dtype
+        if var_to_dtype_set:
+            var_to_dtype = {}
+            for var, dtype in var_to_dtype_set:
+                try:
+                    dest_name = kernel.impl_arg_to_arg[var].name
+                except KeyError:
+                    dest_name = var
 
-            kernel = add_argument_dtypes(kernel, arg_to_dtype)
+                try:
+                    var_to_dtype[dest_name] = dtype
+                except KeyError:
+                    raise LoopyError("cannot set type for '%s': "
+                            "no known variable/argument with that name"
+                            % var)
+
+            kernel = add_dtypes(kernel, var_to_dtype)
 
             from loopy.preprocess import infer_unknown_types
             kernel = infer_unknown_types(kernel, expect_completion=True)
