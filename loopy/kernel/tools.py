@@ -115,9 +115,12 @@ def find_all_insn_inames(kernel):
         all_write_deps[insn.id] = write_deps = insn.write_dependency_names()
         deps = read_deps | write_deps
 
-        iname_deps = (
-                deps & kernel.all_inames()
-                | insn.forced_iname_deps)
+        if insn.forced_iname_deps_is_final:
+            iname_deps = insn.forced_iname_deps
+        else:
+            iname_deps = (
+                    deps & kernel.all_inames()
+                    | insn.forced_iname_deps)
 
         assert isinstance(read_deps, frozenset), type(insn)
         assert isinstance(write_deps, frozenset), type(insn)
@@ -150,6 +153,9 @@ def find_all_insn_inames(kernel):
     while True:
         did_something = False
         for insn in kernel.instructions:
+
+            if insn.forced_iname_deps_is_final:
+                continue
 
             # {{{ depdency-based propagation
 

@@ -1400,21 +1400,21 @@ def test_rob_stroud_bernstein(ctx_factory):
                     0 <= i2 < nqp1d and \
                     0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 }",
             """
-                <> xi = qpts[1, i2] {inames=el}
+                <> xi = qpts[1, i2] {inames=+el}
                 <> s = 1-xi
                 <> r = xi/s
-                <> aind = 0 {id=aind_init,inames=i2:el}
+                <> aind = 0 {id=aind_init,inames=+i2:el}
 
                 <> w = s**(deg-alpha1) {id=init_w}
 
                 tmp[el,alpha1,i2] = tmp[el,alpha1,i2] + w * coeffs[aind] \
-                        {id=write_tmp,inames=alpha2}
+                        {id=write_tmp,inames=+alpha2}
                 w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
                         {id=update_w,dep=init_w:write_tmp}
                 aind = aind + 1 \
                         {id=aind_incr,\
                         dep=aind_init:write_tmp:update_w, \
-                        inames=el:i2:alpha1:alpha2}
+                        inames=+el:i2:alpha1:alpha2}
                 """,
             [
                 # Must declare coeffs to have "no" shape, to keep loopy

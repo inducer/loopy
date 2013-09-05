@@ -137,6 +137,7 @@ def expand_defines_in_expr(expr, defines):
 
 # }}}
 
+
 # {{{ parse instructions
 
 INSN_RE = re.compile(
@@ -181,6 +182,7 @@ def parse_insn(insn):
         insn_deps = None
         insn_id = None
         priority = 0
+        forced_iname_deps_is_final = False
         forced_iname_deps = frozenset()
         predicates = frozenset()
 
@@ -208,6 +210,12 @@ def parse_insn(insn):
                     insn_deps = frozenset(dep.strip() for dep in opt_value.split(":")
                             if dep.strip())
                 elif opt_key == "inames":
+                    if opt_value.startswith("+"):
+                        forced_iname_deps_is_final = False
+                        opt_value = (opt_value[1:]).strip()
+                    else:
+                        forced_iname_deps_is_final = True
+
                     forced_iname_deps = frozenset(opt_value.split(":"))
                 elif opt_key == "if":
                     predicates = frozenset(opt_value.split(":"))
@@ -232,6 +240,7 @@ def parse_insn(insn):
         return ExpressionInstruction(
                     id=insn_id,
                     insn_deps=insn_deps,
+                    forced_iname_deps_is_final=forced_iname_deps_is_final,
                     forced_iname_deps=forced_iname_deps,
                     assignee=lhs, expression=rhs,
                     temp_var_type=temp_var_type,
@@ -287,6 +296,7 @@ def parse_if_necessary(insn, defines):
             yield parse_insn(sub_insn)
 
 # }}}
+
 
 # {{{ domain parsing
 

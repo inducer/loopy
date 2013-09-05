@@ -176,7 +176,18 @@ These are usually key-value pairs. The following attributes are recognized:
   (often numbers) to the given ``id_prefix``.
 
 * ``inames=i:j:k`` forces the instruction to reside within the loops over
-  :ref:`inames` ``i``, ``j`` and ``k``.
+  :ref:`inames` ``i``, ``j`` and ``k`` (and only those).
+
+  .. note::
+
+      The default for the inames that the instruction depends on is
+      the inames used in the instruction itself plus the common
+      subset of inames shared by writers of all variables read by the
+      instruction.
+
+      You can add a plus sign ("``+``") to the front of this option
+      value to indicate that you would like the inames you specify here
+      to be in addition to the ones found by the heuristic described above.
 
 * ``dep=id1:id2`` creates a dependency of this instruction on the
   instructions with identifiers ``id1`` and ``id2``. This requires that the
@@ -184,7 +195,7 @@ These are usually key-value pairs. The following attributes are recognized:
   instructions' generated code.
 
   Identifiers here are allowed to be wildcards as defined by
-  :mod:`fnmatchcase`.
+  the Python module :mod:`fnmatchcase`.
 
   .. note::
 

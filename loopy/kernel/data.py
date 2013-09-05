@@ -356,10 +356,16 @@ class InstructionBase(Record):
         a :class:`frozenset` of variable names whose truth values (as defined
         by C) determine whether this instruction should be run
 
+    .. attribute:: forced_iname_deps_is_final
+
+        A :class:`bool` determining whether :attr:`forced_iname_deps` constitutes
+        the *entire* list of iname dependencies.
+
     .. attribute:: forced_iname_deps
 
         A :class:`frozenset` of inames that are added to the list of iname
-        dependencies.
+        dependencies *or* constitute the entire list of iname dependencies,
+        depending on the value of :attr:`forced_iname_deps_is_final`.
 
     .. attribute:: priority
 
@@ -379,11 +385,16 @@ class InstructionBase(Record):
         Also allowed to be *None*.
     """
 
-    fields = set("id insn_deps predicates forced_iname_deps "
+    fields = set("id insn_deps predicates "
+            "forced_iname_deps_is_final forced_iname_deps "
             "priority boostable boostable_into".split())
 
-    def __init__(self, id, insn_deps, forced_iname_deps, priority,
+    def __init__(self, id, insn_deps,
+            forced_iname_deps_is_final, forced_iname_deps, priority,
             boostable, boostable_into, predicates):
+
+        if forced_iname_deps_is_final is None:
+            forced_iname_deps_is_final = False
 
         assert isinstance(forced_iname_deps, frozenset)
         assert isinstance(insn_deps, frozenset) or insn_deps is None
@@ -391,6 +402,7 @@ class InstructionBase(Record):
         Record.__init__(self,
                 id=id,
                 insn_deps=insn_deps,
+                forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 priority=priority,
                 boostable=boostable,
@@ -502,12 +514,16 @@ class ExpressionInstruction(InstructionBase):
 
     def __init__(self,
             assignee, expression,
-            id=None, forced_iname_deps=frozenset(), insn_deps=None,
+            id=None,
+            forced_iname_deps_is_final=None,
+            forced_iname_deps=frozenset(),
+            insn_deps=None,
             boostable=None, boostable_into=None,
             temp_var_type=None, priority=0, predicates=frozenset()):
 
         InstructionBase.__init__(self,
                 id=id,
+                forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps, boostable=boostable,
                 boostable_into=boostable_into,
@@ -642,8 +658,10 @@ class CInstruction(InstructionBase):
     def __init__(self,
             iname_exprs, code,
             read_variables=frozenset(), assignees=frozenset(),
-            id=None, insn_deps=None, forced_iname_deps=frozenset(), priority=0,
-            boostable=None, boostable_into=None, predicates=frozenset()):
+            id=None, insn_deps=None,
+            forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
+            priority=0, boostable=None, boostable_into=None,
+            predicates=frozenset()):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -656,6 +674,7 @@ class CInstruction(InstructionBase):
 
         InstructionBase.__init__(self,
                 id=id,
+                forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps, boostable=boostable,
                 boostable_into=boostable_into,
