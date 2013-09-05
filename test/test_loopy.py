@@ -1440,6 +1440,77 @@ def test_rob_stroud_bernstein(ctx_factory):
                 ))
 
 
+def test_rob_stroud_bernstein_full(ctx_factory):
+    #logging.basicConfig(level=logging.DEBUG)
+    ctx = ctx_factory()
+
+    # NOTE: result would have to be zero-filled beforehand
+
+    knl = lp.make_kernel(ctx.devices[0],
+            "{[el, i2, alpha1,alpha2, i1_2, alpha1_2, i2_2]: \
+                    0 <= el < nels and \
+                    0 <= i2 < nqp1d and \
+                    0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 and\
+                    \
+                    0 <= i1_2 < nqp1d and \
+                    0 <= alpha1_2 <= deg and \
+                    0 <= i2_2 < nqp1d \
+                    }",
+            """
+                <> xi = qpts[1, i2] {inames=+el}
+                <> s = 1-xi
+                <> r = xi/s
+                <> aind = 0 {id=aind_init,inames=+i2:el}
+
+                <> w = s**(deg-alpha1) {id=init_w}
+
+                <> tmp[alpha1,i2] = tmp[alpha1,i2] + w * coeffs[aind] \
+                        {id=write_tmp,inames=+alpha2}
+                w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
+                        {id=update_w,dep=init_w:write_tmp}
+                aind = aind + 1 \
+                        {id=aind_incr,\
+                        dep=aind_init:write_tmp:update_w, \
+                        inames=+el:i2:alpha1:alpha2}
+
+                <> xi2 = qpts[0, i1_2] {dep=aind_incr,inames=+el}
+                <> s2 = 1-xi2
+                <> r2 = xi2/s2
+                <> w2 = s2**deg
+
+                result[el, i1_2, i2_2] = result[el, i1_2, i2_2] + \
+                        w2 * tmp[alpha1_2, i2_2] \
+                        {inames=el:alpha1_2:i1_2:i2_2}
+
+                w2 = w2 * r2 * (deg-alpha1_2) / (1+alpha1_2)
+                """,
+            [
+                # Must declare coeffs to have "no" shape, to keep loopy
+                # from trying to figure it out the shape automatically.
+
+                lp.GlobalArg("coeffs", None, shape=None),
+                "..."
+                ],
+            assumptions="deg>=0 and nels>=1"
+            )
+
+    knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
+
+    if 0:
+        knl = lp.split_iname(knl, "el", 16, inner_tag="l.0")
+        knl = lp.split_iname(knl, "el_outer", 2, outer_tag="g.0", inner_tag="ilp",
+                slabs=(0, 1))
+        knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
+
+    print lp.CompiledKernel(ctx, knl).get_highlighted_code(
+            dict(
+                qpts=np.float32,
+                tmp=np.float32,
+                coeffs=np.float32,
+                result=np.float32,
+                ))
+
+
 @pytest.mark.parametrize("vec_len", [2, 3, 4, 8, 16])
 def test_vector_types(ctx_factory, vec_len):
     ctx = ctx_factory()
