@@ -177,6 +177,8 @@ def find_all_insn_inames(kernel):
 
                 if inames_new != inames_old:
                     did_something = True
+                    logger.debug("%s: find_all_insn_inames: %s -> %s (dep-based)" % (
+                        kernel.name, insn.id, ", ".join(sorted(inames_new))))
 
             # }}}
 
@@ -206,7 +208,7 @@ def find_all_insn_inames(kernel):
             if inames_new != inames_old:
                 did_something = True
                 insn_id_to_inames[insn.id] = frozenset(inames_new)
-                logger.debug("%s: find_all_insn_inames: %s -> %s" % (
+                logger.debug("%s: find_all_insn_inames: %s -> %s (domain-based)" % (
                     kernel.name, insn.id, ", ".join(sorted(inames_new))))
 
             # }}}
