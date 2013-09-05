@@ -709,17 +709,6 @@ class LoopKernel(Record):
                 upper_bound_pw_aff=upper_bound_pw_aff,
                 size=size)
 
-    def find_var_base_indices_and_shape_from_inames(
-            self, inames, cache_manager, context=None):
-        if not inames:
-            return [], []
-
-        base_indices_and_sizes = [
-                cache_manager.base_index_and_length(
-                    self.get_inames_domain(iname), iname, context)
-                for iname in inames]
-        return zip(*base_indices_and_sizes)
-
     @memoize_method
     def get_constant_iname_length(self, iname):
         from loopy.isl_helpers import static_max_of_pw_aff
