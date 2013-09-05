@@ -32,7 +32,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# {{{ sanity checks run during scheduling
+# {{{ sanity checks run pre-scheduling
+
+def check_temp_variable_shapes_are_constant(kernel):
+    for tv in kernel.temporary_variables.itervalues():
+        if any(not isinstance(s_i, int) for s_i in tv.shape):
+            raise LoopyError("shape of temporary variable '%s' is not "
+                    "constant" % tv.name)
+
 
 def check_insn_attributes(kernel):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
@@ -337,6 +344,7 @@ def pre_schedule_checks(kernel):
     try:
         logger.info("pre-schedule check %s: start" % kernel.name)
 
+        check_temp_variable_shapes_are_constant(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
         check_insn_attributes(kernel)

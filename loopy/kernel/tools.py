@@ -264,7 +264,7 @@ class SetOperationCacheManager:
         from loopy.symbolic import pw_aff_to_expr
 
         size = pw_aff_to_expr(static_max_of_pw_aff(
-                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=True,
+                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=False,
                 context=context))
         try:
             base_index = pw_aff_to_expr(
