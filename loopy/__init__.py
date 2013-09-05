@@ -1237,6 +1237,7 @@ def _fix_parameter(kernel, name, value):
             .copy(
                 domains=new_domains,
                 args=new_args,
+                temporary_variables=new_temp_vars,
                 assumptions=process_set(kernel.assumptions),
                 ))
 
