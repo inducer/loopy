@@ -917,18 +917,20 @@ def get_access_info(ary, index, eval_expr):
 
     array_name = ary.name
 
-    if ary.shape is None:
+    if ary.dim_tags is None:
         if len(index) != 1:
-            raise LoopyError("Array '%s' has unknown shape (shape is None) and "
-                    "therefore only supports one-dimensional indexing."
+            raise LoopyError("Array '%s' has no known axis implementation "
+                    "tags and therefore only supports one-dimensional "
+                    "indexing. (Did you mean 'shape=loopy.auto' instead of "
+                    "'shape=None'?)"
                     % ary.name)
 
         return AccessInfo(array_name=array_name, subscripts=index, vector_index=None)
 
-    if len(ary.shape) != len(index):
+    if len(ary.dim_tags) != len(index):
         raise LoopyError("subscript to '%s[%s]' has the wrong "
                 "number of indices (got: %d, expected: %d)" % (
-                    ary.name, index, len(index), len(ary.shape)))
+                    ary.name, index, len(index), len(ary.dim_tags)))
 
     num_target_axes = ary.num_target_axes()
 
