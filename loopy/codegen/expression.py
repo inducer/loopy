@@ -191,7 +191,8 @@ class TypeInferenceMapper(CombineMapper):
             result = obj.dtype
             if result is lp.auto:
                 raise DependencyTypeInferenceFailure(
-                        "temporary variable '%s'" % expr.name)
+                        "temporary variable '%s'" % expr.name,
+                        expr.name)
             else:
                 return result
 
@@ -199,7 +200,8 @@ class TypeInferenceMapper(CombineMapper):
             result = obj.dtype
             if result is None:
                 raise DependencyTypeInferenceFailure(
-                        "argument '%s'" % expr.name)
+                        "argument '%s'" % expr.name,
+                        expr.name)
             else:
                 return result
 

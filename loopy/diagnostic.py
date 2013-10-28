@@ -75,7 +75,9 @@ class TypeInferenceFailure(LoopyError):
 
 
 class DependencyTypeInferenceFailure(TypeInferenceFailure):
-    pass
+    def __init__(self, message, symbol):
+        TypeInferenceFailure.__init__(self, message)
+        self.symbol = symbol
 
 # }}}
 

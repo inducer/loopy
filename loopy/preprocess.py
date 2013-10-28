@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if var_name in kernel.all_params():
-        return kernel.index_dtype
+        return kernel.index_dtype, []
 
     def debug(s):
         logger.debug("%s: %s" % (kernel.name, s))
@@ -46,7 +46,9 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
     import loopy as lp
 
-    from loopy.codegen.expression import DependencyTypeInferenceFailure
+    symbols_with_unavailable_types = []
+
+    from loopy.diagnostic import DependencyTypeInferenceFailure
     for writer_insn_id in kernel.writer_map().get(var_name, []):
         writer_insn = kernel.id_to_insn[writer_insn_id]
         if not isinstance(writer_insn, lp.ExpressionInstruction):
@@ -64,16 +66,17 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
         except DependencyTypeInferenceFailure, e:
             debug("             failed: %s" % e)
+            symbols_with_unavailable_types.append(e.symbol)
 
     if not dtypes:
-        return None
+        return None, symbols_with_unavailable_types
 
     from pytools import is_single_valued
     if not is_single_valued(dtypes):
         raise LoopyError("ambiguous type inference for '%s'"
                 % var_name)
 
-    return dtypes[0]
+    return dtypes[0], []
 
 
 class _DictUnionView:
@@ -153,7 +156,8 @@ def infer_unknown_types(kernel, expect_completion=False):
 
         debug("inferring type for %s %s" % (type(item).__name__, item.name))
 
-        result = _infer_var_type(kernel, item.name, type_inf_mapper, subst_expander)
+        result, symbols_with_unavailable_types = \
+                _infer_var_type(kernel, item.name, type_inf_mapper, subst_expander)
 
         failed = result is None
         if not failed:
@@ -172,7 +176,9 @@ def infer_unknown_types(kernel, expect_completion=False):
                 # this item has failed before, give up.
                 if expect_completion:
                     raise LoopyError(
-                            "could not determine type of '%s'" % item.name)
+                            "could not determine type of '%s' "
+                            "(need type of '%s'--check for missing arguments)"
+                            % (item.name, ", ".join(symbols_with_unavailable_types)))
                 else:
                     # We're done here.
                     break

@@ -244,7 +244,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
 # }}}
 
 
-# {{{ integer arg finding from offsets
+# {{{ integer arg finding from strides
 
 def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags):
     gen("# {{{ find integer arguments from strides")
@@ -666,7 +666,7 @@ class CompiledKernel:
                 if arg.name in self.kernel.get_written_variables())
 
     @memoize_method
-    def get_kernel(self, var_to_dtype_set):
+    def get_typed_and_scheduled_kernel(self, var_to_dtype_set):
         kernel = self.kernel
 
         from loopy.kernel.tools import add_dtypes
@@ -698,8 +698,8 @@ class CompiledKernel:
         return kernel
 
     @memoize_method
-    def cl_kernel_info(self, arg_to_dtype_set=frozenset()):
-        kernel = self.get_kernel(arg_to_dtype_set)
+    def cl_kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
+        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
 
         from loopy.codegen import generate_code
         code, impl_arg_info = generate_code(kernel, **self.codegen_kwargs)
@@ -730,7 +730,7 @@ class CompiledKernel:
         if arg_to_dtype is not None:
             arg_to_dtype = frozenset(arg_to_dtype.iteritems())
 
-        kernel = self.get_kernel(arg_to_dtype)
+        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
 
         from loopy.codegen import generate_code
         code, arg_info = generate_code(kernel, **self.codegen_kwargs)
