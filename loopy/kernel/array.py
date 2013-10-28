@@ -455,7 +455,7 @@ class ArrayBase(Record):
         if dtype is not None and dtype is not lp.auto:
             dtype = np.dtype(dtype)
 
-        if dtype == np.object:
+        if dtype == object:
             raise TypeError("loopy does not support object arrays "
                     "(object dtype encountered on array '%s')"
                     % name)
