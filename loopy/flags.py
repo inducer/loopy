@@ -40,10 +40,10 @@ class LoopyFlags(Record):
     .. attribute:: skip_arg_checks
     .. attribute:: no_numpy
     .. attribute:: return_dict
-    .. attribute:: print_wrapper
-    .. attribute:: print_hl_wrapper
-    .. attribute:: print_cl
-    .. attribute:: print_hl_cl
+    .. attribute:: write_wrapper
+    .. attribute:: highlight_wrapper
+    .. attribute:: write_cl
+    .. attribute:: highlight_cl
     .. attribute:: edit_cl
     """
 
@@ -58,8 +58,8 @@ class LoopyFlags(Record):
             trace_assignment_values=False,
 
             skip_arg_checks=False, no_numpy=False, return_dict=False,
-            print_wrapper=False, print_hl_wrapper=False,
-            print_cl=False, print_hl_cl=False,
+            write_wrapper=False, highlight_wrapper=False,
+            write_cl=False, highlight_cl=False,
             edit_cl=False
             ):
         Record.__init__(

@@ -608,10 +608,16 @@ def generate_invoker(kernel, impl_arg_info, flags):
 
     # }}}
 
-    if flags.print_hl_wrapper:
-        print get_highlighted_python_code(gen.get())
-    if flags.print_wrapper:
-        print gen.get()
+    if flags.write_wrapper:
+        output = gen.get()
+        if flags.highlight_wrapper:
+            output = get_highlighted_python_code(output)
+
+        if flags.write_wrapper is True:
+            print output
+        else:
+            with open(flags.write_wrapper, "w") as outf:
+                outf.write(output)
 
     return gen.get_function()
 
@@ -704,10 +710,17 @@ class CompiledKernel:
         from loopy.codegen import generate_code
         code, impl_arg_info = generate_code(kernel, **self.codegen_kwargs)
 
-        if self.flags.print_cl:
-            print code
-        if self.flags.print_hl_cl:
-            print get_highlighted_cl_code(code)
+        if self.flags.write_cl:
+            output = code
+            if self.flags.highlight_cl:
+                output = get_highlighted_cl_code(output)
+
+            if self.flags.write_cl is True:
+                print output
+            else:
+                with open(self.flags.write_cl, "w") as outf:
+                    outf.write(output)
+
         if self.flags.edit_cl:
             from pytools import invoke_editor
             code = invoke_editor(code, "code.cl")
