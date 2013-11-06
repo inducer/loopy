@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 
 from pytools import Record
+import re
 
 
 class LoopyFlags(Record):
@@ -70,16 +71,17 @@ class LoopyFlags(Record):
 
                 skip_arg_checks=skip_arg_checks, no_numpy=no_numpy,
                 return_dict=return_dict,
-                print_wrapper=print_wrapper, print_hl_wrapper=print_hl_wrapper,
-                print_cl=print_cl, print_hl_cl=print_hl_cl,
+                write_wrapper=write_wrapper, highlight_wrapper=highlight_wrapper,
+                write_cl=write_cl, highlight_cl=highlight_cl,
                 edit_cl=edit_cl,
                 )
 
     def update(self, other):
         for f in self.__class__.fields:
-            setattr(self, f,
-                    getattr(self, f, False)
-                    or getattr(other, f, False))
+            setattr(self, f, getattr(self, f) or getattr(other, f))
+
+
+KEY_VAL_RE = re.compile("^([a-zA-Z0-9]+)=(.*)$")
 
 
 def make_flags(flags_arg):
@@ -87,8 +89,20 @@ def make_flags(flags_arg):
         return LoopyFlags()
     elif isinstance(flags_arg, str):
         iflags_args = {}
-        for name in flags_arg.split(","):
-            iflags_args[name] = True
+        for key_val in flags_arg.split(","):
+            kv_match = KEY_VAL_RE.match(key_val)
+            if kv_match is not None:
+                key = kv_match.group(1)
+                val = kv_match.group(2)
+                try:
+                    val = int(val)
+                except ValueError:
+                    pass
+
+                iflags_args[key] = val
+            else:
+                iflags_args[key_val] = True
+
         return LoopyFlags(**iflags_args)
     elif not isinstance(flags_arg, LoopyFlags):
         return LoopyFlags(**flags_arg)
