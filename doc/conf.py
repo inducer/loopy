@@ -109,6 +109,8 @@ else:
             "navbar_fixed_top": "true",
             "navbar_class": "navbar navbar-inverse",
             "navbar_site_name": "Contents",
+            'bootstrap_version': '3',
+            'source_link_position': 'footer',
             }
 
 # Theme options are theme-specific and customize the look and feel of a theme
