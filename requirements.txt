@@ -1,5 +1,5 @@
 numpy
 git+git://github.com/inducer/islpy
 cgen
-git+git://github.com/inducer/pyopencl
+git+git://github.com/pyopencl/pyopencl
 git+git://github.com/inducer/pymbolic
