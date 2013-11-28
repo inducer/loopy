@@ -174,11 +174,17 @@ def infer_unknown_types(kernel, expect_completion=False):
         if failed:
             if item.name in failed_names:
                 # this item has failed before, give up.
+                advice = ""
+                if symbols_with_unavailable_types:
+                    advice += (
+                            " (need type of '%s'--check for missing arguments)"
+                            % ", ".join(symbols_with_unavailable_types))
+
                 if expect_completion:
                     raise LoopyError(
-                            "could not determine type of '%s' "
-                            "(need type of '%s'--check for missing arguments)"
-                            % (item.name, ", ".join(symbols_with_unavailable_types)))
+                            "could not determine type of '%s'%s"
+                            % (item.name, advice))
+
                 else:
                     # We're done here.
                     break
