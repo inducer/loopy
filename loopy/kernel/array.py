@@ -456,8 +456,9 @@ class ArrayBase(Record):
             dtype = np.dtype(dtype)
 
         if dtype == object:
-            raise TypeError("loopy does not support object arrays "
-                    "(object dtype encountered on array '%s')"
+            raise TypeError("loopy does not directly support object arrays "
+                    "(object dtype encountered on array '%s') "
+                    "-- you may want to tag the relevant array axis as 'sep'"
                     % name)
 
         strides_known = strides is not None and strides is not lp.auto

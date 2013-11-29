@@ -161,7 +161,7 @@ def parse_insn(insn):
     elif subst_match is not None:
         groups = subst_match.groupdict()
     else:
-        raise RuntimeError("insn parse error")
+        raise RuntimeError("isntruction parse error at '%s'" % insn)
 
     from loopy.symbolic import parse
     try:
