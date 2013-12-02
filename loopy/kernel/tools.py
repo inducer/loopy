@@ -331,23 +331,49 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
     """
 
     # make sure all automatically added stuff shows up
-    from loopy import preprocess_kernel
-    kernel = preprocess_kernel(kernel)
+    from loopy.preprocess import add_default_dependencies
+    kernel = add_default_dependencies(kernel)
 
     if iname_cluster and not kernel.schedule:
-        from loopy.schedule import get_one_scheduled_kernel
-        kernel = get_one_scheduled_kernel(kernel)
+        try:
+            from loopy.schedule import get_one_scheduled_kernel
+            kernel = get_one_scheduled_kernel(kernel)
+        except RuntimeError, e:
+            iname_cluster = False
+            from warnings import warn
+            warn("error encountered during scheduling for dep graph -- "
+                    "cannot perform iname clustering: %s(%s)"
+                    % (type(e).__name__, e))
 
     dep_graph = {}
     lines = []
+
+    from loopy.kernel.data import ExpressionInstruction, CInstruction
+
     for insn in kernel.instructions:
+        if isinstance(insn, ExpressionInstruction):
+            op = "%s <- %s" % (insn.assignee, insn.expression)
+            if len(op) > 200:
+                op = op[:200] + "..."
+
+        elif isinstance(insn, CInstruction):
+            op = "<C instruction %s>" % insn.id
+        else:
+            op = "<instruction %s>" % insn.id
+
         if use_insn_id:
             insn_label = insn.id
+            tooltip = op
         else:
-            insn_label = "%s <- %s" % (insn.assignee, insn.expression)
+            insn_label = op
+            tooltip = insn.id
 
         lines.append("\"%s\" [label=\"%s\",shape=\"box\",tooltip=\"%s\"];"
-                % (insn.id, repr(insn_label)[1:-1], insn.id))
+                % (
+                    insn.id,
+                    repr(insn_label)[1:-1],
+                    repr(tooltip)[1:-1],
+                    ))
         for dep in insn.insn_deps:
             dep_graph.setdefault(insn.id, set()).add(dep)
 
@@ -395,7 +421,10 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
             else:
                 raise LoopyError("schedule item not unterstood: %r" % sched_item)
 
-    return "digraph loopy_deps {\n%s\n}" % "\n".join(lines)
+    return "digraph %s {\n%s\n}" % (
+            kernel.name,
+            "\n".join(lines)
+            )
 
 
 def show_dependency_graph(*args, **kwargs):
@@ -406,7 +435,7 @@ def show_dependency_graph(*args, **kwargs):
     dot = get_dot_dependency_graph(*args, **kwargs)
 
     from tempfile import mkdtemp
-    temp_dir = mkdtemp(prefix="tmp_loppy_dot")
+    temp_dir = mkdtemp(prefix="tmp_loopy_dot")
 
     dot_file_name = "loopy.dot"
 
@@ -420,7 +449,8 @@ def show_dependency_graph(*args, **kwargs):
             cwd=temp_dir)
 
     full_svg_file_name = join(temp_dir, svg_file_name)
-    logger.info("show_dot_dependency_graph: svg written to '%s'")
+    logger.info("show_dot_dependency_graph: svg written to '%s'"
+            % full_svg_file_name)
 
     from webbrowser import open as browser_open
     browser_open("file://" + full_svg_file_name)

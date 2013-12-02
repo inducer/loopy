@@ -82,6 +82,4 @@ class DependencyTypeInferenceFailure(TypeInferenceFailure):
 # }}}
 
 
-
-
 # vim: foldmethod=marker
