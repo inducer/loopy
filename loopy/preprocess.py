@@ -317,7 +317,7 @@ def add_default_dependencies(kernel):
 
     new_insns = []
     for insn in kernel.instructions:
-        if insn.insn_deps is None:
+        if not insn.insn_deps_is_final:
             auto_deps = set()
 
             # {{{ add automatic dependencies
@@ -337,7 +337,11 @@ def add_default_dependencies(kernel):
 
             # }}}
 
-            insn = insn.copy(insn_deps=frozenset(auto_deps))
+            insn_deps = insn.insn_deps
+            if insn_deps is None:
+                insn_deps = frozenset()
+
+            insn = insn.copy(insn_deps=frozenset(auto_deps) | insn_deps)
 
         new_insns.append(insn)
 

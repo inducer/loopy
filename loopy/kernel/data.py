@@ -28,6 +28,7 @@ THE SOFTWARE.
 import numpy as np
 from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
+from loopy.diagnostic import LoopyError
 
 
 class auto:
@@ -345,11 +346,19 @@ class InstructionBase(Record):
 
     .. attribute:: insn_deps
 
-        a list of ids of :class:`Instruction` instances that
-        *must* be executed before this one. Note that loop scheduling augments this
-        by adding dependencies on any writes to temporaries read by this instruction.
+        a list of ids of :class:`Instruction` instances that *must* be executed
+        before this one. Note that :func:`loopy.preprocess_kernel` (usually
+        invoked automatically) augments this by adding dependencies on any
+        writes to temporaries read by this instruction.
 
         May be *None* to invoke the default.
+
+    .. attribute:: insn_deps_is_final
+
+        A :class:`bool` determining whether :attr:`insn_deps` constitutes
+        the *entire* list of iname dependencies.
+
+        Defaults to *False*.
 
     .. attribute:: predicates
 
@@ -385,16 +394,19 @@ class InstructionBase(Record):
         Also allowed to be *None*.
     """
 
-    fields = set("id insn_deps predicates "
+    fields = set("id insn_deps insn_deps_is_final predicates "
             "forced_iname_deps_is_final forced_iname_deps "
             "priority boostable boostable_into".split())
 
-    def __init__(self, id, insn_deps,
+    def __init__(self, id, insn_deps, insn_deps_is_final,
             forced_iname_deps_is_final, forced_iname_deps, priority,
             boostable, boostable_into, predicates):
 
         if forced_iname_deps_is_final is None:
             forced_iname_deps_is_final = False
+
+        if insn_deps_is_final is None:
+            insn_deps_is_final = False
 
         assert isinstance(forced_iname_deps, frozenset)
         assert isinstance(insn_deps, frozenset) or insn_deps is None
@@ -402,6 +414,7 @@ class InstructionBase(Record):
         Record.__init__(self,
                 id=id,
                 insn_deps=insn_deps,
+                insn_deps_is_final=insn_deps_is_final,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 priority=priority,
@@ -518,6 +531,7 @@ class ExpressionInstruction(InstructionBase):
             forced_iname_deps_is_final=None,
             forced_iname_deps=frozenset(),
             insn_deps=None,
+            insn_deps_is_final=None,
             boostable=None, boostable_into=None,
             temp_var_type=None, priority=0, predicates=frozenset()):
 
@@ -525,7 +539,9 @@ class ExpressionInstruction(InstructionBase):
                 id=id,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
-                insn_deps=insn_deps, boostable=boostable,
+                insn_deps=insn_deps,
+                insn_deps_is_final=insn_deps_is_final,
+                boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
                 predicates=predicates)
@@ -660,7 +676,7 @@ class CInstruction(InstructionBase):
     def __init__(self,
             iname_exprs, code,
             read_variables=frozenset(), assignees=frozenset(),
-            id=None, insn_deps=None,
+            id=None, insn_deps=None, insn_deps_is_final=None,
             forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset()):
@@ -678,7 +694,9 @@ class CInstruction(InstructionBase):
                 id=id,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
-                insn_deps=insn_deps, boostable=boostable,
+                insn_deps=insn_deps,
+                insn_deps_is_final=insn_deps_is_final,
+                boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority, predicates=predicates)
 

@@ -1,3 +1,5 @@
+.. _reference:
+
 Reference Guide
 ===============
 
@@ -6,7 +8,7 @@ Reference Guide
 
 This guide defines all functionality exposed by loopy. If you would like
 a more gentle introduction, you may consider reading the example-based
-guide :ref:`guide` instead.
+:ref:`tutorial` instead.
 
 .. _inames:
 
@@ -14,7 +16,7 @@ Inames
 ------
 
 Loops are (by default) entered exactly once. This is necessary to preserve
-depdency semantics--otherwise e.g. a fetch could happen inside one loop nest,
+dependency semantics--otherwise e.g. a fetch could happen inside one loop nest,
 and then the instruction using that fetch could be inside a wholly different
 loop nest.
 
@@ -190,19 +192,34 @@ These are usually key-value pairs. The following attributes are recognized:
       to be in addition to the ones found by the heuristic described above.
 
 * ``dep=id1:id2`` creates a dependency of this instruction on the
-  instructions with identifiers ``id1`` and ``id2``. This requires that the
-  code generated for this instruction appears textually after both of these
-  instructions' generated code.
+  instructions with identifiers ``id1`` and ``id2``. The meaning of this
+  dependency is that the code generated for this instruction is required to
+  appear textually after all of these dependees' generated code.
 
   Identifiers here are allowed to be wildcards as defined by
-  the Python module :mod:`fnmatchcase`.
+  the Python module :mod:`fnmatchcase`. This is helpful in conjunction
+  with ``id_prefix``.
 
   .. note::
 
-      If this is not specified, :mod:`loopy` will automatically add
-      depdencies of reading instructions on writing instructions *if and
-      only if* there is exactly one writing instruction for the written
-      variable (temporary or argument).
+      Since specifying all possible dependencies is cumbersome and
+      error-prone, :mod:`loopy` employs a heuristic to automatically find
+      dependencies. Specifically, :mod:`loopy` will automatically add
+      a dependency to an instruction reading a variable if there is
+      exactly one instruction writing that variable. ("Variable" here may
+      mean either temporary variable or kernel argument.)
+
+      If each variable in a kernel is only written once, then this
+      heuristic should be able to compute all required dependencies.
+
+      Conversely, if a variable is written by two different instructions,
+      all ordering around that variable needs to be specified explicitly.
+      It is recommended to use :func:`get_dot_dependency_graph` to
+      visualize the dependency graph of possible orderings.
+
+      You may use a leading asterisk ("``*``") to turn off the single-writer
+      heuristic and indicate that the specified list of dependencies is
+      exhaustive.
 
 * ``priority=integer`` sets the instructions priority to the value
   ``integer``. Instructions with higher priority will be scheduled sooner,
@@ -381,4 +398,4 @@ Flags
 
 .. autoclass:: LoopyFlags
 
-.. vim: tw=75
+.. vim: tw=75:spell

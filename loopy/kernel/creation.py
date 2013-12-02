@@ -180,6 +180,7 @@ def parse_insn(insn):
 
     if insn_match is not None:
         insn_deps = None
+        insn_deps_is_final = False
         insn_id = None
         priority = 0
         forced_iname_deps_is_final = False
@@ -206,9 +207,15 @@ def parse_insn(insn):
                     insn_id = UniqueName(opt_value)
                 elif opt_key == "priority":
                     priority = int(opt_value)
+
                 elif opt_key == "dep":
+                    if opt_value.startswith("*"):
+                        insn_deps_is_final = True
+                        opt_value = (opt_value[1:]).strip()
+
                     insn_deps = frozenset(dep.strip() for dep in opt_value.split(":")
                             if dep.strip())
+
                 elif opt_key == "inames":
                     if opt_value.startswith("+"):
                         forced_iname_deps_is_final = False
@@ -240,6 +247,7 @@ def parse_insn(insn):
         return ExpressionInstruction(
                     id=insn_id,
                     insn_deps=insn_deps,
+                    insn_deps_is_final=insn_deps_is_final,
                     forced_iname_deps_is_final=forced_iname_deps_is_final,
                     forced_iname_deps=forced_iname_deps,
                     assignee=lhs, expression=rhs,

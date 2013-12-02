@@ -27,7 +27,7 @@ When you run this script, the following kernel is generated, compiled, and execu
 .. toctree::
     :maxdepth: 2
 
-    guide
+    tutorial
     reference
     misc
 
