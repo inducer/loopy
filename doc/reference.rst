@@ -374,6 +374,8 @@ following always works::
 
 .. autofunction:: get_dot_dependency_graph
 
+.. autofunction:: show_dependency_graph
+
 Flags
 -----
 

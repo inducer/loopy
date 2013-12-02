@@ -908,7 +908,8 @@ class LoopKernel(Record):
                 dep_lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
         if dep_lines:
             lines.append(sep)
-            lines.append("DEPENDENCIES:")
+            lines.append("DEPENDENCIES: "
+                    "(use loopy.show_dependency_graph to visualize)")
             lines.extend(dep_lines)
 
         lines.append(sep)
