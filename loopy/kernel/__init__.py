@@ -899,6 +899,9 @@ class LoopKernel(Record):
 
             lines.extend(trailing)
 
+            if insn.predicates:
+                lines.append(10*" " + "if (%s)" % " && ".join(insn.predicates))
+
         dep_lines = []
         for insn in self.instructions:
             if insn.insn_deps:

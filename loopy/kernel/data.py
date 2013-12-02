@@ -587,6 +587,8 @@ class ExpressionInstruction(InstructionBase):
         if options:
             result += " (%s)" % (": ".join(options))
 
+        if self.predicates:
+            result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
 
 
