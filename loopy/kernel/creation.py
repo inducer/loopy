@@ -474,7 +474,7 @@ class ArgumentGuesser:
         new_kernel_args = []
 
         for arg in kernel_args:
-            if isinstance(arg, str) and arg != "....":
+            if isinstance(arg, str) and arg != "...":
                 new_kernel_args.append(self.make_new_arg(arg))
             else:
                 new_kernel_args.append(arg)
