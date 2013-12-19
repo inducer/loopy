@@ -337,6 +337,8 @@ class SubstitutionRule(Record):
 
 # {{{ instruction
 
+# {{{ base class
+
 class InstructionBase(Record):
     """
     .. attribute:: id
@@ -489,6 +491,8 @@ class InstructionBase(Record):
 
         return result
 
+# }}}
+
 
 def _get_assignee_and_index(expr):
     from pymbolic.primitives import Variable, Subscript
@@ -506,6 +510,8 @@ def _get_assignee_and_index(expr):
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
+
+# {{{ expression instruction
 
 class ExpressionInstruction(InstructionBase):
     """
@@ -607,6 +613,8 @@ class ExpressionInstruction(InstructionBase):
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
 
+# }}}
+
 
 def _remove_common_indentation(code):
     if not "\n" in code:
@@ -635,6 +643,8 @@ def _remove_common_indentation(code):
 
     return "\n".join(line[base_indent:] for line in lines)
 
+
+# {{{ c instruction
 
 class CInstruction(InstructionBase):
     """
@@ -779,6 +789,8 @@ class CInstruction(InstructionBase):
 
         return first_line + "\n    " + "\n    ".join(
                 self.code.split("\n"))
+
+# }}}
 
 # }}}
 
