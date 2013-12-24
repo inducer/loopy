@@ -120,6 +120,52 @@ Arguments
 
 .. _temporaries:
 
+Loop domains
+^^^^^^^^^^^^
+
+TODO: Explain the domain tree
+
+.. _isl-syntax:
+
+ISL syntax
+~~~~~~~~~~
+
+The general syntax of an ISL set is the following::
+
+    {[VARIABLES]: CONDITIONS}
+
+``VARIABLES`` is a simple list of identifiers representing loop indices,
+or, as loopy calls them, inames. Example::
+
+    {[i, j, k]: CONDITIONS}
+
+The following constructs are supported for ``CONDITIONS``:
+
+* Simple conditions: ``i <= 15``, ``i>0``
+
+* Conjunctions: ``i > 0 and i <= 15``
+
+* Two-sided conditions: ``0 < i <= 15`` (equivalent to the previous
+  example)
+
+* Identical conditions on multiple variables:
+  ``0 < i,j <= 15``
+
+* Equality constraints: ``i = j*3`` (**Note:** ``=``, not ``==``.)
+
+* Modulo: ``i mod 3 = 0``
+
+* Existential quantifiers: ``(exists l: i = 3*l)`` (equivalent to the
+  previous example)
+
+Examples of constructs that are **not** allowed:
+
+* Multiplication by non-constants: ``j*k``
+
+* Disjunction: ``(i=1) or (i=5)``
+  (**Note:** This may be added in a future version of loopy.
+  For now, loop domains have to be convex.)
+
 Temporary Variables
 ^^^^^^^^^^^^^^^^^^^
 
@@ -133,9 +179,9 @@ have the lifetime of a kernel invocation.
 Instructions
 ^^^^^^^^^^^^
 
-.. _assignments:
-
 .. autoclass:: UniqueName
+
+.. _assignments:
 
 Assignments
 ~~~~~~~~~~~
@@ -232,6 +278,15 @@ These are usually key-value pairs. The following attributes are recognized:
   defined by C).
 
 .. autoclass:: ExpressionInstruction
+
+
+.. _expression-syntax:
+
+Expression Syntax
+~~~~~~~~~~~~~~~~~
+
+TODO: Functions
+TODO: Reductions
 
 C Block Instructions
 ~~~~~~~~~~~~~~~~~~~~
