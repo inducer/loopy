@@ -396,6 +396,6 @@ following always works::
 Flags
 -----
 
-.. autoclass:: LoopyFlags
+.. autoclass:: Flags
 
 .. vim: tw=75:spell

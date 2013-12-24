@@ -27,7 +27,7 @@ from pytools import Record
 import re
 
 
-class LoopyFlags(Record):
+class Flags(Record):
     """
     .. rubric:: Code-generation flags
 
@@ -86,7 +86,7 @@ KEY_VAL_RE = re.compile("^([a-zA-Z0-9]+)=(.*)$")
 
 def make_flags(flags_arg):
     if flags_arg is None:
-        return LoopyFlags()
+        return Flags()
     elif isinstance(flags_arg, str):
         iflags_args = {}
         for key_val in flags_arg.split(","):
@@ -103,6 +103,6 @@ def make_flags(flags_arg):
             else:
                 iflags_args[key_val] = True
 
-        return LoopyFlags(**iflags_args)
-    elif not isinstance(flags_arg, LoopyFlags):
-        return LoopyFlags(**flags_arg)
+        return Flags(**iflags_args)
+    elif not isinstance(flags_arg, Flags):
+        return Flags(**flags_arg)

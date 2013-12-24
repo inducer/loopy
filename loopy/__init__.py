@@ -71,7 +71,7 @@ from loopy.preprocess import (preprocess_kernel, realize_reduction,
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel
-from loopy.flags import LoopyFlags
+from loopy.flags import Flags
 from loopy.auto_test import auto_test_vs_ref
 
 __all__ = [
@@ -109,7 +109,7 @@ __all__ = [
 
         "auto_test_vs_ref",
 
-        "LoopyFlags",
+        "Flags",
 
         "make_kernel",
 

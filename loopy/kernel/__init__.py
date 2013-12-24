@@ -136,7 +136,7 @@ class LoopKernel(Record):
     .. attribute:: isl_context
     .. attribute:: flags
 
-        An instance of :class:`loopy.LoopyFlags`
+        An instance of :class:`loopy.Flags`
     """
 
     # {{{ constructor

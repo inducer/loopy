@@ -984,7 +984,7 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
         length 16.
     :arg silenced_warnings: a list (or semicolon-separated string) or warnings
         to silence
-    :arg flags: an instance of :class:`loopy.LoopyFlags` or an equivalent
+    :arg flags: an instance of :class:`loopy.Flags` or an equivalent
         string representation
     """
 
