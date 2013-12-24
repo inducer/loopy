@@ -949,6 +949,19 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
         May also contain :class:`TemporaryVariable` instances(which do not
         give rise to kernel-level arguments).
 
+        The string ``"..."`` may be passed as one of the entries
+        of the list, in which case loopy will infer names, shapes,
+        and types of arguments from the kernel code. It is
+        possible to just pass the list ``["..."]``, in which case
+        all arguments are inferred.
+
+        In Python 3, the string ``"..."`` may be spelled somewhat more sensibly
+        as just ``...`` (the ellipsis), for the same meaning.
+
+        As an additional option, each argument may be specified as just a name
+        (a string). This is useful to specify argument ordering. All other
+        characteristics of the named arguments are inferred.
+
     The following keyword arguments are recognized:
 
     :arg preambles: a list of (tag, code) tuples that identify preamble
