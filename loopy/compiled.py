@@ -764,12 +764,28 @@ class CompiledKernel:
     # }}}
 
     def __call__(self, queue, **kwargs):
-        """If all array arguments are :mod:`numpy` arrays, defaults to
-        returning numpy arrays as well.
-
+        """
         :arg allocator:
         :arg wait_for:
         :arg out_host:
+
+            Decides whether output arguments (i.e. arguments
+            written by the kernel) are to be returned as
+            :mod:`numpy` arrays. *True* for yes, *False* for no.
+
+            For the default value of *None*, if all (input) array
+            arguments are :mod:`numpy` arrays, defaults to
+            returning :mod:`numpy` arrays as well.
+
+        :returns: ``(evt, output)`` where *evt* is a :class:`pyopencl.Event`
+            associated with the execution of the kernel, and
+            output is a tuple of output arguments (arguments that
+            are written as part of the kernel). The order is given
+            by the order of kernel arguments. If this order is unspecified
+            (such as when kernel arguments are inferred automatically),
+            enable :attr:`loopy.Flags.return_dict` to make *output* a
+            :class:`dict` instead, with keys of argument names and values
+            of the returned arrays.
         """
 
         allocator = kwargs.pop("allocator", None)
