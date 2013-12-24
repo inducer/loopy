@@ -364,7 +364,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                         "queue, %s, allocator=allocator)"
                         % (arg.name, arg.name))
                 gen("_lpy_encountered_numpy = True")
-            gen("else:")
+            gen("elif %s is not None:" % arg.name)
             with Indentation(gen):
                 gen("_lpy_encountered_dev = True")
 
