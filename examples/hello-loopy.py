@@ -23,7 +23,7 @@ knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
 # execute
 # -------
-evt, (out,) = knl(queue, a=a, n=n)
+evt, (out,) = knl(queue, a=a)
 # ENDEXAMPLE
 
 cknl = lp.CompiledKernel(ctx, knl)
