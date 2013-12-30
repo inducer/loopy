@@ -73,7 +73,7 @@ def get_bounds_checks(domain, check_inames, implemented_domain,
 
 def get_usable_inames_for_conditional(kernel, sched_index):
     from loopy.schedule import EnterLoop, LeaveLoop
-    from loopy.kernel.data import ParallelTag, LocalIndexTagBase
+    from loopy.kernel.data import ParallelTag, LocalIndexTagBase, IlpBaseTag
 
     result = set()
 
@@ -88,11 +88,18 @@ def get_usable_inames_for_conditional(kernel, sched_index):
     for iname in kernel.all_inames():
         tag = kernel.iname_to_tag.get(iname)
 
-        # Parallel inames are always defined, BUT local indices may not be used
-        # in conditionals that cross barriers.
+        # Parallel inames are always defined, BUT:
+        #
+        # - local indices may not be used in conditionals that cross barriers.
+        #
+        # - ILP indices are not available in loop bounds, they only get defined
+        #   at the innermost level of nesting.
 
-        if (isinstance(tag, ParallelTag)
-                and not isinstance(tag, LocalIndexTagBase)):
+        if (
+                isinstance(tag, ParallelTag)
+                and not isinstance(tag, LocalIndexTagBase)
+                and not isinstance(tag, IlpBaseTag)
+                ):
             result.add(iname)
 
     return frozenset(result)

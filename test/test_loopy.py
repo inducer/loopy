@@ -1568,6 +1568,35 @@ def test_conditional(ctx_factory):
                 ))
 
 
+def test_ilp_loop_bound(ctx_factory):
+    # The salient bit of this test is that a joint bound on (outer, inner)
+    # from a split occurs in a setting where the inner loop has been ilp'ed.
+    # In 'normal' parallel loops, the inner index is available for conditionals
+    # throughout. In ILP'd loops, not so much.
+
+    ctx = ctx_factory()
+    knl = lp.make_kernel(ctx.devices[0],
+            "{ [i,j,k]: 0<=i,j,k<n }",
+            """
+            out[i,k] = sum(j, a[i,j]*b[j,k])
+            """,
+            [
+                lp.GlobalArg("a,b", np.float32, shape=lp.auto),
+                "...",
+                ],
+            assumptions="n>=1")
+
+    ref_knl = knl
+
+    knl = lp.set_loop_priority(knl, "j,i,k")
+    knl = lp.split_iname(knl,  "k", 4, inner_tag="ilp")
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            parameters=dict(
+                n=200
+                ))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
