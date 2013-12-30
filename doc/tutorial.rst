@@ -429,4 +429,55 @@ Specifying arguments
 Implementing Array Axes
 -----------------------
 
+Common Problems
+---------------
+
+A static maximum was not found
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Attempting to create this kernel results in an error:
+
+.. doctest::
+    :options: +ELLIPSIS
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...      "{ [i]: 0<=i<n }",
+    ...      """
+    ...      out[i] = 5
+    ...      out[0] = 6
+    ...      """)
+    ... # Loopy prints the following before this exception:
+    ... # While trying to find shape axis 0 of argument 'out', the following exception occurred:
+    Traceback (most recent call last):
+    ...
+    ValueError: a static maximum was not found for PwAff '[n] -> { [(1)] : n = 1; [(n)] : n >= 2; [(1)] : n <= 0 }'
+
+The problem is that loopy cannot find a simple, universally valid expression
+for the length of *out* in this case. The set notation at the end of the error
+message summarizes its best attempt:
+
+* If n=1, then out has size 1.
+* If n>=2, then out has size n.
+* If n<=0, then out has size 1.
+
+Sure, some of these cases could be coalesced, but that's beside the point.
+Loopy does not know that non-positive values of *n* make no sense. It needs to
+be told in order for the error to disappear--note the *assumptions* argument:
+
+.. doctest::
+    :options: +ELLIPSIS
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...      "{ [i]: 0<=i<n }",
+    ...      """
+    ...      out[i] = 5
+    ...      out[0] = 6
+    ...      """, assumptions="n>=1")
+
+Other situations where this error message can occur include:
+
+* Finding size of prefetch/precompute arrays
+* Finding sizes of argument arrays
+* Finding workgroup sizes
+
 .. vim: tw=75:spell
