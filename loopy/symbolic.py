@@ -938,7 +938,12 @@ class PrimeAdder(IdentityMapper):
 
 # {{{ get access range
 
-def get_access_range(domain, subscript):
+def get_access_range(domain, subscript, assumptions):
+    domain, assumptions = isl.align_two(domain,
+            assumptions)
+    domain = domain & assumptions
+    del assumptions
+
     dims = len(subscript)
 
     # we build access_map as a set because (idiocy!) Affs
@@ -996,14 +1001,12 @@ class AccessRangeMapper(WalkMapper):
         if not isinstance(subscript, tuple):
             subscript = (subscript,)
 
-        from loopy.symbolic import get_dependencies, get_access_range
-
         if not get_dependencies(subscript) <= set(domain.get_var_dict()):
             raise RuntimeError("cannot determine access range for '%s': "
                     "undetermined index in '%s'"
                     % (self.arg_name, ", ".join(str(i) for i in subscript)))
 
-        access_range = get_access_range(domain, subscript)
+        access_range = get_access_range(domain, subscript, self.kernel.assumptions)
 
         if self.access_range is None:
             self.access_range = access_range

@@ -1597,6 +1597,18 @@ def test_ilp_loop_bound(ctx_factory):
                 ))
 
 
+def test_arg_shape_uses_assumptions(ctx_factory):
+
+    ctx = ctx_factory()
+
+    lp.make_kernel(ctx.devices[0],
+            "{ [i,j]: 0<=i,j<n }",
+            """
+            out[i,j] = 2*a[i,j]
+            out[0,0] = 13.0
+            """, assumptions="n>=1")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
