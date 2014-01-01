@@ -237,7 +237,7 @@ def mark_local_temporaries(kernel):
             new_temp_vars[temp_var.name] = temp_var
             continue
 
-        my_writers = writers[temp_var.name]
+        my_writers = writers.get(temp_var.name, [])
 
         wants_to_be_local_per_insn = []
         for insn_id in my_writers:
@@ -287,7 +287,10 @@ def mark_local_temporaries(kernel):
                     "temporary variable '%s' never written, eliminating"
                     % temp_var.name, LoopyAdvisory)
 
+            continue
+
         is_local = wants_to_be_local_per_insn[0]
+
         from pytools import all
         if not all(wtbl == is_local for wtbl in wants_to_be_local_per_insn):
             raise LoopyError("not all instructions agree on whether "
@@ -528,7 +531,7 @@ def duplicate_private_temporaries_for_ilp(kernel):
     # {{{ find variables that need extra indices
 
     for tv in kernel.temporary_variables.itervalues():
-        for writer_insn_id in wmap[tv.name]:
+        for writer_insn_id in wmap.get(tv.name, []):
             writer_insn = kernel.id_to_insn[writer_insn_id]
             ilp_inames = frozenset(iname
                     for iname in kernel.insn_inames(writer_insn)
