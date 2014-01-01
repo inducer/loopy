@@ -1612,6 +1612,33 @@ def test_arg_shape_uses_assumptions(ctx_factory):
             """, assumptions="n>=1")
 
 
+def test_slab_decomposition_does_not_double_execute(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(ctx.devices[0],
+        "{ [i]: 0<=i<n }",
+        "a[i] = 2*a[i]")
+
+    ref_knl = knl
+
+    for outer_tag in ["for", "unr", "l.0"]:
+        knl = ref_knl
+        knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr",
+                outer_tag=outer_tag)
+        knl = lp.set_loop_priority(knl, "i_outer")
+
+        a = cl.clrandom.rand(queue, 20, np.float32)
+        a_ref = a.copy()
+        a_knl = a.copy()
+
+        evt, _ = ref_knl(queue, a=a_ref)
+        evt, _ = knl(queue, a=a_knl, flags="write_cl")
+
+        assert (a_ref == a_knl).get().all()
+        1/0
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
