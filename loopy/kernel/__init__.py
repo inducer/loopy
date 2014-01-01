@@ -846,7 +846,7 @@ class LoopKernel(Record):
             lines.append(len(parents)*"  " + str(dom))
 
         lines.append(sep)
-        lines.append("INAME-TO-TAG MAP:")
+        lines.append("INAME IMPLEMENTATION TAGS:")
         for iname in sorted(self.all_inames()):
             line = "%s: %s" % (iname, self.iname_to_tag.get(iname))
             lines.append(line)

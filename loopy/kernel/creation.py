@@ -991,7 +991,9 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
         a tuple (result_dtype, c_name), where c_name is the C-level symbol to
         be evaluated.
     :arg assumptions: the initial implemented_domain, captures assumptions
-        on the parameters. (an isl.Set)
+        on loop domain parameters. (an isl.Set or a string in
+        :ref:`isl-syntax`.  If given as a string, only the CONDITIONS part of
+        the set notation should be given.)
     :arg local_sizes: A dictionary from integers to integers, mapping
         workgroup axes to their sizes, e.g. *{0: 16}* forces axis 0 to be
         length 16.

@@ -915,8 +915,10 @@ def get_one_scheduled_kernel(kernel):
 
         if kernel_count == 2:
             from warnings import warn
+            from loopy.diagnostic import LoopyWarning
             warn("kernel scheduling was ambiguous--more than one "
-                    "schedule found, ignoring", stacklevel=2)
+                    "schedule found, ignoring", LoopyWarning,
+                    stacklevel=2)
             break
 
     return result

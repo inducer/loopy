@@ -792,6 +792,15 @@ def remove_unused_inames(knl, inames=None):
 # {{{ set loop priority
 
 def set_loop_priority(kernel, loop_priority):
+    """Indicates the textual order in which loops should be entered in the
+    kernel code. Note that this priority has an advisory role only. If the
+    kernel logically requires a different nesting, priority is ignored.
+    Priority is only considered if loop nesting is ambiguous.
+
+    :arg: an iterable of inames, or, for brevity, a comma-seaprated string of
+        inames
+    """
+
     if isinstance(loop_priority, str):
         loop_priority = [s.strip() for s in loop_priority.split(",")]
 

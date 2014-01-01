@@ -21,6 +21,7 @@ and initialize :mod:`pyopencl`
     >>> import pyopencl.array
     >>> import pyopencl.clrandom
     >>> import loopy as lp
+    >>> from pytools import StderrToStdout as IncludeWarningsInDoctest
 
     >>> ctx = cl.create_some_context(interactive=False)
     >>> queue = cl.CommandQueue(ctx)
@@ -30,7 +31,7 @@ examples:
 
 .. doctest::
 
-    >>> n = 1000
+    >>> n = 16*16
     >>> x_vec_dev = cl.clrandom.rand(queue, n, dtype=np.float32)
     >>> y_vec_dev = cl.clrandom.rand(queue, n, dtype=np.float32)
     >>> a_mat_dev = cl.clrandom.rand(queue, (n, n), dtype=np.float32)
@@ -99,7 +100,7 @@ always see loopy's view of a kernel by printing it.
     DOMAINS:
     [n] -> { [i] : i >= 0 and i <= -1 + n }
     ---------------------------------------------------------------------------
-    INAME-TO-TAG MAP:
+    INAME IMPLEMENTATION TAGS:
     i: None
     ---------------------------------------------------------------------------
     INSTRUCTIONS:
@@ -266,8 +267,8 @@ loopy's programming model is completely *unordered* by default. This means
 that:
 
 * There is no guarantee about the order in which the loop domain is
-  traversed. ``i==3`` could be reached before ``i==0`` but still after
-  ``i==0``. Your program is only correct if it produces a valid result
+  traversed. ``i==3`` could be reached before ``i==0`` but also before
+  ``i==17``. Your program is only correct if it produces a valid result
   irrespective of this ordering.
 
 * In addition, there is (by default) no ordering between instructions
@@ -334,6 +335,9 @@ dependencies are *in addition* to any manual dependencies added via
 ``{dep=...}``.  It is possible (but rare) that the heuristic adds undesired
 dependencies.  In this case, ``{dep=*...}`` (i.e. a leading asterisk) to
 prevent the heuristic from adding dependencies for this instruction.
+
+Loops and dependencies
+~~~~~~~~~~~~~~~~~~~~~~
 
 Next, it is important to understand how loops and dependencies interact.
 Let us take a look at the generated code for the above kernel:
@@ -414,10 +418,294 @@ graph:
 
 .. image:: images/dep-graph-correct.svg
 
+Loop nesting
+~~~~~~~~~~~~
+
+One last aspect of ordering over which we have thus far not exerted any
+control is the nesting of loops. For example, should the *i* loop be nested
+around the *j* loop, or the other way around, in the following simple
+zero-fill kernel?
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...     "{ [i,j]: 0<=i,j<n }",
+    ...     """
+    ...     a[i,j] = 0
+    ...     """)
+
+
+    >>> with IncludeWarningsInDoctest():
+    ...     evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    <BLANKLINE>
+    ...
+      for (int i = 0; i <= (-1 + n); ++i)
+        for (int j = 0; j <= (-1 + n); ++j)
+          a[n * i + j] = 0.0f;
+    ...
+
+Loopy has chosen a loop nesting for us, but it did not like doing so, as it
+also issued the following warning::
+
+    LoopyWarning: kernel scheduling was ambiguous--more than one schedule found, ignoring
+
+This is easily resolved:
+
+.. doctest::
+
+    >>> knl = lp.set_loop_priority(knl, "j,i")
+
+:func:`loopy.set_loop_priority` indicates the textual order in which loops
+should be entered in the kernel code.  Note that this priority has an
+advisory role only. If the kernel logically requires a different nesting,
+loop priority is ignored.  Priority is only considered if loop nesting is
+ambiguous.
+
+.. doctest::
+
+    >>> with IncludeWarningsInDoctest():
+    ...     evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    <BLANKLINE>
+    ...
+      for (int j = 0; j <= (-1 + n); ++j)
+        for (int i = 0; i <= (-1 + n); ++i)
+          a[n * i + j] = 0.0f;
+    ...
+
+No more warnings! Loop nesting is also reflected in the dependency graph:
+
+.. image:: images/dep-graph-nesting.svg
+
+.. _intro-transformations:
+
+Introduction to Kernel Transformations
+--------------------------------------
+
+What we have covered thus far puts you in a position to describe many kinds
+of computations to loopy--in the sense that loopy will generate code that
+carries out the correct operation. That's nice, but it's natural to also
+want control over *how* a program is executed. Loopy's way of capturing
+this information is by way of *transformations*. These have the following
+general shape::
+
+    new_kernel = lp.do_something(old_knl, arguments...)
+
+These transformations always return a *copy* of the old kernel with the
+requested change applied. Typically, the variable holding the old kernel
+is overwritten with the new kernel::
+
+    knl = lp.do_something(knl, arguments...)
+
+We've already seen an example of a transformation above:
+For instance, :func:`set_loop_priority` fit the pattern.
+
+:func:`loopy.split_iname` is another fundamental (and useful) transformation. It
+turns one existing iname (recall that this is loopy's word for a 'loop
+variable', roughly) into two new ones, an 'inner' and an 'outer' one,
+where the 'inner' loopy is of a fixed, specified length, and the 'outer'
+loop runs over these fixed-length 'chunks'. The three inames have the
+following relationship to one another::
+
+    OLD = INNER + GROUP_SIZE * OUTER
+
+Consider this example:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...     "{ [i]: 0<=i<n }",
+    ...     "a[i] = 0", assumptions="n>=0")
+    >>> knl = lp.split_iname(knl, "i", 16)
+    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    <BLANKLINE>
+    ...
+      for (int i_outer = 0; i_outer <= (-1 + ((15 + n) / 16)); ++i_outer)
+        for (int i_inner = 0; i_inner <= 15; ++i_inner)
+          if ((-1 + -1 * i_inner + -16 * i_outer + n) >= 0)
+            a[i_inner + i_outer * 16] = 0.0f;
+    ...
+
+By default, the new, split inames are named *OLD_outer* and *OLD_inner*,
+where *OLD* is the name of the previous iname. Upon exit from
+:func:`loopy.split_iname`, *OLD* is removed from the kernel and replaced by
+*OLD_inner* and *OLD_outer*.
+
+Also take note of the *assumptions* argument. This makes it possible to
+communicate assumptions about loop domain parameters. (but *not* about
+data) In this case, assuming non-negativity helps loopy generate more
+efficient code for division in the loop bound for *i_outer*. See below
+on how to communicate divisibility assumptions.
+
+Note that the words 'inner' and 'outer' here have no implied meaning in
+relation to loop nesting. For example, it's perfectly possible to request
+*i_inner* to be nested outside *i_outer*:
+
+.. doctest::
+
+    >>> knl = lp.set_loop_priority(knl, "i_inner,i_outer")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    <BLANKLINE>
+    ...
+      for (int i_inner = 0; i_inner <= 15; ++i_inner)
+        if ((-1 + n) >= 0)
+          for (int i_outer = 0; i_outer <= (-1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16)); ++i_outer)
+            a[i_inner + i_outer * 16] = 0.0f;
+    ...
+
+Notice how loopy has automatically generated guard conditionals to make
+sure the bounds on the old iname are obeyed.
+
+The combination of :func:`loopy.split_iname` and
+:func:`loopy.set_loop_priority` is already good enough to implement what is
+commonly called 'loop tiling':
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...     "{ [i,j]: 0<=i,j<n }",
+    ...     "out[i,j] = a[j,i]",
+    ...     assumptions="n mod 16 = 0 and n >= 1")
+    >>> knl = lp.split_iname(knl, "i", 16)
+    >>> knl = lp.split_iname(knl, "j", 16)
+    >>> knl = lp.set_loop_priority(knl, "i_outer,j_outer,i_inner")
+    >>> evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    <BLANKLINE>
+    ...
+      for (int i_outer = 0; i_outer <= (-1 + ((15 + n) / 16)); ++i_outer)
+        for (int j_outer = 0; j_outer <= (-1 + ((15 + n) / 16)); ++j_outer)
+          for (int i_inner = 0; i_inner <= 15; ++i_inner)
+            for (int j_inner = 0; j_inner <= 15; ++j_inner)
+              out[n * (i_inner + i_outer * 16) + j_inner + j_outer * 16] = a[n * (j_inner + j_outer * 16) + i_inner + i_outer * 16];
+    ...
+
+
 .. _implementing-inames:
 
-Implementing Inames
--------------------
+Implementing Loop Axes ("Inames")
+---------------------------------
+
+So far, all the loops we have seen loopy implement were ``for`` loops. Each
+iname in loopy carries a so-called 'implementation tag'. Let's split the
+main loop of a vector fill kernel into chunks of 4 and unroll the
+fixed-length inner loop by setting the inner loop's tag to ``"unr"``:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...     "{ [i]: 0<=i<n }",
+    ...     "a[i] = 0", assumptions="n>=0 and n mod 4 = 0")
+    >>> orig_knl = knl
+    >>> knl = lp.split_iname(knl, "i", 4)
+    >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
+    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    <BLANKLINE>
+    ...
+      for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
+      {
+        a[0 + i_outer * 4] = 0.0f;
+        a[1 + i_outer * 4] = 0.0f;
+        a[2 + i_outer * 4] = 0.0f;
+        a[3 + i_outer * 4] = 0.0f;
+      }
+    ...
+
+
+:func:`loopy.tag_inames` is a new transformation that assigns
+implementation tags to kernels.  ``"unr'`` is the first tag we've
+explicitly learned about. Technically, though, it is the second--``"for"``
+(or, equivalently, *None*), which is the default, instructs loopy to
+implement an iname using a for loop.
+
+Unrolling obviously only works for inames with a fixed maximum number of
+values, since only a finite amount of code can be generated. Unrolling the
+entire *i* loop in the kernel above would not work.
+
+Split-and-tag
+~~~~~~~~~~~~~
+
+Since split-and-tag is such a common combination, :func:`loopy.split_iname`
+provides a shortcut:
+
+.. doctest::
+
+    >>> knl = orig_knl
+    >>> knl = lp.split_iname(knl, "i", 4, inner_tag="unr")
+
+The *outer_tag* keyword argument exists, too, and works just like you would
+expect.
+
+Printing
+~~~~~~~~
+
+Iname implementation tags are also printed along with the entire kernel:
+
+.. doctest::
+
+    >>> print knl
+    ---------------------------------------------------------------------------
+    ...
+    INAME IMPLEMENTATION TAGS:
+    i_inner: unr
+    i_outer: None
+    ---------------------------------------------------------------------------
+    ...
+
+
+Avoiding Conditionals
+~~~~~~~~~~~~~~~~~~~~~
+
+You may have observed above that we have used a divisibility assumption on
+*n* in the kernels above. Without this assumption, loopy would generate
+conditional code to make sure no out-of-bounds loop instances are executed.
+This here is the original unrolling example without the divisibility
+assumption:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...     "{ [i]: 0<=i<n }",
+    ...     "a[i] = 0", assumptions="n>=0")
+    >>> orig_knl = knl
+    >>> knl = lp.split_iname(knl, "i", 4)
+    >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
+    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    <BLANKLINE>
+    ...
+      for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
+      {
+        a[0 + i_outer * 4] = 0.0f;
+        if ((-2 + -4 * i_outer + n) >= 0)
+          a[1 + i_outer * 4] = 0.0f;
+        if ((-3 + -4 * i_outer + n) >= 0)
+          a[2 + i_outer * 4] = 0.0f;
+        if ((-4 + -4 * i_outer + n) >= 0)
+          a[3 + i_outer * 4] = 0.0f;
+      }
+    ...
+
+While these conditionals enable the generated code to deal with arbitrary
+*n*, they come at a performance cost. But there's still no reason to pay
+for them with *every* item processed. Loopy allows generating separate code
+for the last iteration of the loop, by using the *slabs* keyword argument
+to :func:`split_iname`:
+
+.. doctest::
+
+    >>> knl = orig_knl
+    >>> knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    <BLANKLINE>
+      for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
+      {
+        a[0 + i_outer * 4] = 0.0f;
+        if ((-2 + -4 * i_outer + n) >= 0)
+          a[1 + i_outer * 4] = 0.0f;
+        if ((-3 + -4 * i_outer + n) >= 0)
+          a[2 + i_outer * 4] = 0.0f;
+        if ((-4 + -4 * i_outer + n) >= 0)
+          a[3 + i_outer * 4] = 0.0f;
+      }
+    ...
 
 .. _specifying-arguments:
 
@@ -428,6 +716,23 @@ Specifying arguments
 
 Implementing Array Axes
 -----------------------
+
+.. _more-complicated-programs:
+
+More complicated programs
+-------------------------
+
+SCOP
+
+Data-dependent control flow
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Conditionals
+~~~~~~~~~~~~
+
+Snippets of C
+~~~~~~~~~~~~~
+
 
 Common Problems
 ---------------
@@ -440,12 +745,12 @@ Attempting to create this kernel results in an error:
 .. doctest::
     :options: +ELLIPSIS
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
-    ...      "{ [i]: 0<=i<n }",
-    ...      """
-    ...      out[i] = 5
-    ...      out[0] = 6
-    ...      """)
+    >>> lp.make_kernel(ctx.devices[0],
+    ...     "{ [i]: 0<=i<n }",
+    ...     """
+    ...     out[i] = 5
+    ...     out[0] = 6
+    ...     """)
     ... # Loopy prints the following before this exception:
     ... # While trying to find shape axis 0 of argument 'out', the following exception occurred:
     Traceback (most recent call last):
@@ -453,7 +758,8 @@ Attempting to create this kernel results in an error:
     ValueError: a static maximum was not found for PwAff '[n] -> { [(1)] : n = 1; [(n)] : n >= 2; [(1)] : n <= 0 }'
 
 The problem is that loopy cannot find a simple, universally valid expression
-for the length of *out* in this case. The set notation at the end of the error
+for the length of *out* in this case. Notice how the kernel accesses both the
+*i*th and the first element of out.  The set notation at the end of the error
 message summarizes its best attempt:
 
 * If n=1, then out has size 1.
@@ -479,5 +785,71 @@ Other situations where this error message can occur include:
 * Finding size of prefetch/precompute arrays
 * Finding sizes of argument arrays
 * Finding workgroup sizes
+
+Write races
+~~~~~~~~~~~
+
+This kernel performs a simple transposition of an input matrix:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...       "{ [i,j]: 0<=i,j<n }",
+    ...       """
+    ...       out[j,i] = a[i,j]
+    ...       """, assumptions="n>=1", name="transpose")
+
+To get it ready for execution on a GPU, we split the *i* and *j* loops into
+groups of 16.
+
+.. doctest::
+
+    >>> knl = lp.split_iname(knl,  "j", 16, inner_tag="l.1", outer_tag="g.0")
+    >>> knl = lp.split_iname(knl,  "i", 16, inner_tag="l.0", outer_tag="g.1")
+
+We'll also request a prefetch--but suppose we only do so across the
+*i_inner* iname:
+
+.. doctest::
+
+    >>> knl = lp.add_prefetch(knl, "a", "i_inner")
+
+When we try to run our code, we get the following warning from loopy as a first
+sign that something is amiss:
+
+.. doctest::
+
+    >>> with IncludeWarningsInDoctest():
+    ...     evt, (out,) = knl(queue, a=a_mat_dev)
+    /...: WriteRaceConditionWarning: instruction 'a_fetch' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch_0' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch)' to silenced_warnings kernel argument to disable)
+      warn(text, type)
+
+When we ask to see the code, the issue becomes apparent:
+
+.. doctest::
+    :options: +ELLIPSIS
+
+    >>> evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
+    #define gid(N) ((int) get_group_id(N))
+    <BLANKLINE>
+    __kernel void __attribute__ ((reqd_work_group_size(16, 16, 1))) transpose(__global float const *restrict a, int const n, __global float *restrict out)
+    {
+      float a_fetch_0[16];
+    <BLANKLINE>
+      ...
+          a_fetch_0[lid(0)] = a[n * (lid(0) + 16 * gid(1)) + lid(1) + 16 * gid(0)];
+      ...
+          out[n * (lid(1) + gid(0) * 16) + lid(0) + gid(1) * 16] = a_fetch_0[lid(0)];
+      ...
+    }
+
+Loopy has a 2D workgroup to use for prefetching of a 1D array. When it
+considers making *a_fetch_0* ``local`` (in the OpenCL memory sense of the word)
+to make use of parallelism in prefetching, it discovers that a write race
+across the remaining axis of the workgroup would emerge.
+
+FIXME
 
 .. vim: tw=75:spell

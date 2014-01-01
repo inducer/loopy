@@ -29,7 +29,7 @@ from islpy import dim_type
 from loopy.codegen.control import build_loop_nest
 
 
-# {{{ conditional-minimizing slab decomposition
+# {{{ conditional-reducing slab decomposition
 
 def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
     iname_domain = kernel.get_inames_domain(iname)
