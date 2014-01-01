@@ -38,7 +38,10 @@ def check_temp_variable_shapes_are_constant(kernel):
     for tv in kernel.temporary_variables.itervalues():
         if any(not isinstance(s_i, int) for s_i in tv.shape):
             raise LoopyError("shape of temporary variable '%s' is not "
-                    "constant" % tv.name)
+                    "constant (but has to be since the size of "
+                    "the temporary needs to be known at build time). "
+                    "Use loopy.fix_parameters to set variables to "
+                    "constant values." % tv.name)
 
 
 def check_insn_attributes(kernel):
