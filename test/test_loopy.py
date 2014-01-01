@@ -1598,6 +1598,9 @@ def test_ilp_loop_bound(ctx_factory):
 
 
 def test_arg_shape_uses_assumptions(ctx_factory):
+    # If arg shape determination does not use assumptions, then it won't find a
+    # static shape for out, which is at least 1 x 1 in size, but otherwise of
+    # size n x n.
 
     ctx = ctx_factory()
 
