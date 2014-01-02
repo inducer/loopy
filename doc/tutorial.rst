@@ -3,9 +3,9 @@
 Tutorial
 ========
 
-This guide provides a gentle introduction into what loopy is, how it works, and
-what it can do. There's also the :ref:`reference` that clearly defines all
-aspects of loopy.
+This guide provides a gentle introduction into what loopy is, how it works,
+and what it can do. There's also the :ref:`reference` that aims to
+unambiguously define all aspects of loopy.
 
 Preparation
 -----------
@@ -14,7 +14,6 @@ For now, :mod:`loopy` depends on :mod:`pyopencl`. We import a few modules
 and initialize :mod:`pyopencl`
 
 .. doctest::
-    :options: +ELLIPSIS
 
     >>> import numpy as np
     >>> import pyopencl as cl
@@ -202,7 +201,6 @@ If you are suspecting that this code is causing you an issue, you can
 inspect that code, too, using :attr:`loopy.Flags.write_wrapper`:
 
 .. doctest::
-    :options: +ELLIPSIS
 
     >>> evt, (out,) = knl(queue, a=x_vec_host, flags="write_wrapper")
     from __future__ import division
@@ -296,7 +294,6 @@ instruction on the first. Looking at loopy's view of this kernel, we see
 that these dependencies show up there, too:
 
 .. doctest::
-    :options: +ELLIPSIS
 
     >>> print knl
     ---------------------------------------------------------------------------
@@ -364,7 +361,6 @@ While our requested instruction ordering has been obeyed, something is
 still not right:
 
 .. doctest::
-    :options: +ELLIPSIS
 
     >>> assert (out.get() == a_mat_dev.get().T*2).all()
     Traceback (most recent call last):
@@ -579,15 +575,24 @@ commonly called 'loop tiling':
     ...
 
 
+
 .. _implementing-inames:
 
 Implementing Loop Axes ("Inames")
 ---------------------------------
 
 So far, all the loops we have seen loopy implement were ``for`` loops. Each
-iname in loopy carries a so-called 'implementation tag'. Let's split the
-main loop of a vector fill kernel into chunks of 4 and unroll the
-fixed-length inner loop by setting the inner loop's tag to ``"unr"``:
+iname in loopy carries a so-called 'implementation tag'.  :ref:`tags` shows
+all possible choices for iname implementation tags. The important ones are
+explained below.
+
+Unrolling
+~~~~~~~~~
+
+Our first example of an 'implementation tag' is ``"unr"``, which performs
+loop unrolling.  Let us split the main loop of a vector fill kernel into
+chunks of 4 and unroll the fixed-length inner loop by setting the inner
+loop's tag to ``"unr"``:
 
 .. doctest::
 
@@ -650,6 +655,53 @@ Iname implementation tags are also printed along with the entire kernel:
     ---------------------------------------------------------------------------
     ...
 
+Parallelization
+~~~~~~~~~~~~~~~
+
+Loops are also parallelized in loopy by assigning them parallelizing
+implementation tags. In OpenCL, this means that the loop variable
+corresponds to either a local ID or a workgroup ID. The implementation tags
+for local IDs are ``"l.0"``, ``"l.1"``, ``"l.2"``, and so on.  The
+corresponding tags for group IDs are ``"g.0"``, ``"g.1"``, ``"g.2"``, and
+so on.
+
+Let's try this out on our vector fill kernel by creating workgroups of size
+128:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(ctx.devices[0],
+    ...     "{ [i]: 0<=i<n }",
+    ...     "a[i] = 0", assumptions="n>=0")
+    >>> knl = lp.split_iname(knl, "i", 128,
+    ...         outer_tag="g.0", inner_tag="l.0")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    <BLANKLINE>
+    ...
+    __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *restrict a, int const n)
+    {
+    <BLANKLINE>
+      if ((-1 + -128 * gid(0) + -1 * lid(0) + n) >= 0)
+        a[lid(0) + gid(0) * 128] = 0.0f;
+    }
+
+Loopy requires that workgroup sizes are fixed and constant at compile time.
+By comparison, the overall execution ND-range size (i.e. the number of
+workgroups) is allowed to be runtime-variable.
+
+Note how there was no need to specify group or range sizes. Loopy computes
+those for us:
+
+.. doctest::
+
+    >>> glob, loc = knl.get_grid_sizes()
+    >>> print glob
+    (Aff("[n] -> { [([(127 + n)/128])] }"),)
+    >>> print loc
+    (Aff("[n] -> { [(128)] }"),)
+
+Note that this functionality returns internal objects and is not really
+intended for end users.
 
 Avoiding Conditionals
 ~~~~~~~~~~~~~~~~~~~~~
@@ -743,7 +795,6 @@ A static maximum was not found
 Attempting to create this kernel results in an error:
 
 .. doctest::
-    :options: +ELLIPSIS
 
     >>> lp.make_kernel(ctx.devices[0],
     ...     "{ [i]: 0<=i<n }",
@@ -771,7 +822,6 @@ Loopy does not know that non-positive values of *n* make no sense. It needs to
 be told in order for the error to disappear--note the *assumptions* argument:
 
 .. doctest::
-    :options: +ELLIPSIS
 
     >>> knl = lp.make_kernel(ctx.devices[0],
     ...      "{ [i]: 0<=i<n }",
@@ -827,7 +877,6 @@ sign that something is amiss:
 When we ask to see the code, the issue becomes apparent:
 
 .. doctest::
-    :options: +ELLIPSIS
 
     >>> evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
     <BLANKLINE>
@@ -850,6 +899,6 @@ considers making *a_fetch_0* ``local`` (in the OpenCL memory sense of the word)
 to make use of parallelism in prefetching, it discovers that a write race
 across the remaining axis of the workgroup would emerge.
 
-FIXME
+TODO
 
 .. vim: tw=75:spell

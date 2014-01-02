@@ -12,19 +12,28 @@ a more gentle introduction, you may consider reading the example-based
 
 .. _inames:
 
+Domain Tree
+-----------
+
+
+
 Inames
-------
+^^^^^^
+
 
 Loops are (by default) entered exactly once. This is necessary to preserve
 dependency semantics--otherwise e.g. a fetch could happen inside one loop nest,
 and then the instruction using that fetch could be inside a wholly different
 loop nest.
 
-Integer Domain
---------------
+Instructions
+------------
 
 Expressions
------------
+^^^^^^^^^^^
+
+Loopy's expressions are a slight superset of the expressions supported by
+:mod:`pymbolic`.
 
 * `if`
 * `reductions`
@@ -47,20 +56,21 @@ are accepted, in addition to what is registered in :mod:`pyopencl`.
 
 .. _tags:
 
-Tags
-----
+Iname Implementation Tags
+-------------------------
 
 ===================== ====================================================
 Tag                   Meaning
 ===================== ====================================================
 `None` | `"for"`      Sequential loop
 `"l.N"`               Local (intra-group) axis N
-`"l.auto"`            Automatically chosen local (intra-group) axis
 `"g.N"`               Group-number axis N
-`"unr"`               Plain unrolling
+`"unr"`               Unroll
 `"ilp"` | `"ilp.unr"` Unroll using instruction-level parallelism
 `"ilp.seq"`           Realize parallel iname as innermost loop
 ===================== ====================================================
+
+.. "l.auto" intentionally undocumented
 
 (Throughout this table, `N` must be replaced by an actual number.)
 
