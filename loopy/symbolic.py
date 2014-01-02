@@ -754,10 +754,12 @@ def aff_to_expr(aff, except_name=None, error_on_name=None):
 
     except_coeff = 0
 
-    result = int(aff.get_constant())
+    denom = aff.get_denominator_val().to_python()
+
+    result = (aff.get_constant_val()*denom).to_python()
     for dt in [dim_type.in_, dim_type.param]:
         for i in xrange(aff.dim(dt)):
-            coeff = int(aff.get_coefficient(dt, i))
+            coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
             if coeff:
                 dim_name = aff.get_dim_name(dt, i)
                 if dim_name == except_name:
@@ -771,11 +773,10 @@ def aff_to_expr(aff, except_name=None, error_on_name=None):
     error_on_name = error_on_name or except_name
 
     for i in xrange(aff.dim(dim_type.div)):
-        coeff = int(aff.get_coefficient(dim_type.div, i))
+        coeff = (aff.get_coefficient_val(dim_type.div, i)*denom).to_python()
         if coeff:
             result += coeff*aff_to_expr(aff.get_div(i), error_on_name=error_on_name)
 
-    denom = int(aff.get_denominator())
     if except_name is not None:
         if except_coeff % denom != 0:
             raise RuntimeError("coefficient of '%s' is not divisible by "
@@ -810,7 +811,7 @@ def aff_from_expr(space, expr, vars_to_zero=set()):
         if dt == dim_type.set:
             dt = dim_type.in_
 
-        context[name] = zero.set_coefficient(dt, pos, 1)
+        context[name] = zero.set_coefficient_val(dt, pos, 1)
 
     for name in vars_to_zero:
         context[name] = zero
@@ -961,7 +962,7 @@ def get_access_range(domain, subscript, assumptions):
     for idim in xrange(dims):
         idx_aff = aff_from_expr(access_map.get_space(),
                 subscript[idim])
-        idx_aff = idx_aff.set_coefficient(
+        idx_aff = idx_aff.set_coefficient_val(
                 dim_type.in_, dn+idim, -1)
 
         access_map = access_map.add_constraint(

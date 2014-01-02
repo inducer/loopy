@@ -84,7 +84,7 @@ class TypeInferenceMapper(CombineMapper):
         small_integer_dtypes = []
         for child in expr.children:
             dtype = self.rec(child)
-            if isinstance(child, (int, np.integer)) and abs(child) < 1024:
+            if isinstance(child, (int, long, np.integer)) and abs(child) < 1024:
                 small_integer_dtypes.append(dtype)
             else:
                 dtypes.append(dtype)
@@ -109,7 +109,7 @@ class TypeInferenceMapper(CombineMapper):
             return self.combine([n_dtype, d_dtype])
 
     def map_constant(self, expr):
-        if isinstance(expr, int):
+        if isinstance(expr, (int, long)):
             for tp in [np.int32, np.int64]:
                 iinfo = np.iinfo(tp)
                 if iinfo.min <= expr <= iinfo.max:
@@ -258,7 +258,8 @@ def get_opencl_vec_member(idx):
     if idx is None:
         return idx
 
-    return "s%s" % hex(idx)[2:]
+    # The 'int' avoids an 'L' suffix for long ints.
+    return "s%s" % hex(int(idx))[2:]
 
 
 class SeenFunction(Record):
@@ -625,8 +626,8 @@ class LoopyCCodeMapper(RecursiveMapper):
             elif type_context == "i":
                 return str(int(expr))
             else:
-                if isinstance(expr, int):
-                    return str(int(expr))
+                if isinstance(expr, (int, long)):
+                    return str(expr)
 
                 raise RuntimeError("don't know how to generated code "
                         "for constant '%s'" % expr)

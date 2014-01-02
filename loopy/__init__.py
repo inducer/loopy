@@ -23,14 +23,6 @@ THE SOFTWARE.
 """
 
 
-def register_mpz_with_pymbolic():
-    from pymbolic.primitives import register_constant_class
-    import gmpy
-    mpz_type = type(gmpy.mpz(1))
-    register_constant_class(mpz_type)
-
-register_mpz_with_pymbolic()
-
 import islpy as isl
 from islpy import dim_type
 
@@ -364,7 +356,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
     for i, iname in enumerate(inames):
         iname_dt, iname_idx = zero.get_space().get_var_dict()[iname]
-        iname_aff = zero.add_coefficient(iname_dt, iname_idx, 1)
+        iname_aff = zero.add_coefficient_val(iname_dt, iname_idx, 1)
 
         joint_aff = joint_aff + base_divisor*iname_aff
 

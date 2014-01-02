@@ -139,7 +139,7 @@ def make_slab(space, iname, start, stop):
     else:
         iname_dt, iname_idx = iname
 
-    iname_aff = zero.add_coefficient(iname_dt, iname_idx, 1)
+    iname_aff = zero.add_coefficient_val(iname_dt, iname_idx, 1)
 
     result = (isl.BasicSet.universe(space)
             # start <= iname
@@ -164,13 +164,13 @@ def iname_rel_aff(space, iname, rel, aff):
     aff = align_spaces(aff, isl.Aff.zero_on_domain(space))
 
     if rel in ["==", "<="]:
-        return aff.add_coefficient(dt, pos, -1)
+        return aff.add_coefficient_val(dt, pos, -1)
     elif rel == ">=":
-        return aff.neg().add_coefficient(dt, pos, 1)
+        return aff.neg().add_coefficient_val(dt, pos, 1)
     elif rel == "<":
-        return (aff-1).add_coefficient(dt, pos, -1)
+        return (aff-1).add_coefficient_val(dt, pos, -1)
     elif rel == ">":
-        return (aff+1).neg().add_coefficient(dt, pos, 1)
+        return (aff+1).neg().add_coefficient_val(dt, pos, 1)
     else:
         raise ValueError("unknown value of 'rel': %s" % rel)
 
@@ -342,7 +342,7 @@ def boxify(cache_manager, domain, box_inames, context):
     zero = isl.Aff.zero_on_domain(result.space)
 
     for i in xrange(len(box_iname_indices)):
-        iname_aff = zero.add_coefficient(dim_type.in_, i, 1)
+        iname_aff = zero.add_coefficient_val(dim_type.in_, i, 1)
 
         def add_in_dims(aff):
             return aff.add_dims(dim_type.in_, len(box_inames))

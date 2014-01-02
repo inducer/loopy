@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 def check_temp_variable_shapes_are_constant(kernel):
     for tv in kernel.temporary_variables.itervalues():
-        if any(not isinstance(s_i, int) for s_i in tv.shape):
+        if any(not isinstance(s_i, (int, long)) for s_i in tv.shape):
             raise LoopyError("shape of temporary variable '%s' is not "
                     "constant (but has to be since the size of "
                     "the temporary needs to be known at build time). "
@@ -531,7 +531,8 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 point_axes = []
                 for iname in kernel.insn_inames(insn) | parameter_inames:
                     tp, dim = iname_to_dim[iname]
-                    point_axes.append("%s=%d" % (iname, pt.get_coordinate(tp, dim)))
+                    point_axes.append("%s=%d" % (
+                        iname, pt.get_coordinate_val(tp, dim).to_python()))
 
                 lines.append(
                         "sample point %s: %s" % (kind, ", ".join(point_axes)))

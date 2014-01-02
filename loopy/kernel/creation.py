@@ -33,6 +33,7 @@ import islpy as isl
 from islpy import dim_type
 
 import re
+import sys
 
 import logging
 logger = logging.getLogger(__name__)
@@ -861,7 +862,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
                                         armap.access_range, i) + 1,
                                     constants_only=False)))
                     except:
-                        print "While trying to find shape axis %d of "\
+                        print>>sys.stderr, "While trying to find shape axis %d of "\
                                 "argument '%s', the following " \
                                 "exception occurred:" % (i, arg.name)
                         raise

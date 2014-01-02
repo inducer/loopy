@@ -980,7 +980,7 @@ def get_access_info(ary, index, eval_expr):
         elif isinstance(dim_tag, VectorArrayDimTag):
             idx = eval_expr_wrapper(i, idx)
 
-            if not isinstance(idx, int):
+            if not isinstance(idx, (int, long)):
                 raise LoopyError("subscript '%s[%s]' has non-constant "
                         "index for separate-array axis %d (0-based)" % (
                             ary.name, index, i))
