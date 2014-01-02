@@ -1639,6 +1639,24 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         1/0
 
 
+def test_multiple_writes_to_local_temporary(ctx_factory):
+    # Loopy would previously only handle barrier insertion correctly if exactly
+    # one instruction wrote to each local temporary. This tests that multiple
+    # writes are OK.
+
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(ctx.devices[0],
+        "{[i,e]: 0<=i<5 and 0<=e<nelements}",
+        """
+        <> temp[i, 0] = 17
+        temp[i, 1] = 15
+        """)
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+
+    code, _ = lp.generate_code(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
