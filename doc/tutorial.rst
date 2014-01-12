@@ -153,11 +153,12 @@ for good measure.
     >>> assert (out.get() == (2*x_vec_dev).get()).all()
 
 We can have loopy print the OpenCL kernel it generated
-by passing :attr:`loopy.Flags.write_cl`.
+by passing :attr:`loopy.Options.write_cl`.
 
 .. doctest::
 
-    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev)
     <BLANKLINE>
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -177,7 +178,7 @@ call (the first being the :class:`pyopencl.Event` associated with the
 execution of the kernel). (If the ordering of the output tuple is not
 clear, it can be specified or turned into a :class:`dict`. See the
 *kernel_data* argument of :func:`loopy.make_kernel` and
-:attr:`loopy.Flags.return_dict`.)
+:attr:`loopy.Options.return_dict`.)
 
 For convenience, loopy kernels also directly accept :mod:`numpy` arrays:
 
@@ -190,7 +191,7 @@ Notice how both *out* nor *a* are :mod:`numpy` arrays, but neither needed
 to be transferred to or from the device.  Checking for numpy arrays and
 transferring them if needed comes at a potential performance cost.  If you
 would like to make sure that you avoid this cost, pass
-:attr:`loopy.Flags.no_numpy`.
+:attr:`loopy.Options.no_numpy`.
 
 Further notice how *n*, while technically being an argument, did not need
 to be passed, as loopy is able to find *n* from the shape of the input
@@ -198,11 +199,12 @@ argument *a*.
 
 For efficiency, loopy generates Python code that handles kernel invocation.
 If you are suspecting that this code is causing you an issue, you can
-inspect that code, too, using :attr:`loopy.Flags.write_wrapper`:
+inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
 
 .. doctest::
 
-    >>> evt, (out,) = knl(queue, a=x_vec_host, flags="write_wrapper")
+    >>> knl = lp.set_options(knl, write_wrapper=True, write_cl=False)
+    >>> evt, (out,) = knl(queue, a=x_vec_host)
     from __future__ import division
     ...
     def invoke_loopy_kernel_loopy_kernel(cl_kernel, queue, allocator=None, wait_for=None, out_host=None, a=None, n=None, out=None):
@@ -341,7 +343,8 @@ Let us take a look at the generated code for the above kernel:
 
 .. doctest::
 
-    >>> evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=a_mat_dev)
     <BLANKLINE>
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -392,7 +395,8 @@ Now the intended code is generated and our test passes.
 
 .. doctest::
 
-    >>> evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=a_mat_dev)
     <BLANKLINE>
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -431,8 +435,9 @@ zero-fill kernel?
     ...     """)
 
 
+    >>> knl = lp.set_options(knl, "write_cl")
     >>> with IncludeWarningsInDoctest():
-    ...     evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    ...     evt, (out,) = knl(queue, a=a_mat_dev)
     <BLANKLINE>
     ...
       for (int i = 0; i <= (-1 + n); ++i)
@@ -460,7 +465,7 @@ ambiguous.
 .. doctest::
 
     >>> with IncludeWarningsInDoctest():
-    ...     evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    ...     evt, (out,) = knl(queue, a=a_mat_dev)
     <BLANKLINE>
     ...
       for (int j = 0; j <= (-1 + n); ++j)
@@ -512,7 +517,8 @@ Consider this example:
     ...     "{ [i]: 0<=i<n }",
     ...     "a[i] = 0", assumptions="n>=0")
     >>> knl = lp.split_iname(knl, "i", 16)
-    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev)
     <BLANKLINE>
     ...
       for (int i_outer = 0; i_outer <= (-1 + ((15 + n) / 16)); ++i_outer)
@@ -539,7 +545,7 @@ relation to loop nesting. For example, it's perfectly possible to request
 .. doctest::
 
     >>> knl = lp.set_loop_priority(knl, "i_inner,i_outer")
-    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev)
     <BLANKLINE>
     ...
       for (int i_inner = 0; i_inner <= 15; ++i_inner)
@@ -564,7 +570,8 @@ commonly called 'loop tiling':
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.split_iname(knl, "j", 16)
     >>> knl = lp.set_loop_priority(knl, "i_outer,j_outer,i_inner")
-    >>> evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=a_mat_dev)
     <BLANKLINE>
     ...
       for (int i_outer = 0; i_outer <= (-1 + ((15 + n) / 16)); ++i_outer)
@@ -602,7 +609,8 @@ loop's tag to ``"unr"``:
     >>> orig_knl = knl
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
-    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev)
     <BLANKLINE>
     ...
       for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
@@ -675,7 +683,8 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     ...     "a[i] = 0", assumptions="n>=0")
     >>> knl = lp.split_iname(knl, "i", 128,
     ...         outer_tag="g.0", inner_tag="l.0")
-    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev)
     <BLANKLINE>
     ...
     __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *restrict a, int const n)
@@ -696,7 +705,7 @@ those for us:
 
     >>> glob, loc = knl.get_grid_sizes()
     >>> print glob
-    (Aff("[n] -> { [([(127 + n)/128])] }"),)
+    (Aff("[n] -> { [(floor((127 + n)/128))] }"),)
     >>> print loc
     (Aff("[n] -> { [(128)] }"),)
 
@@ -720,7 +729,8 @@ assumption:
     >>> orig_knl = knl
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
-    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev)
     <BLANKLINE>
     ...
       for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
@@ -745,7 +755,8 @@ to :func:`split_iname`:
 
     >>> knl = orig_knl
     >>> knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr")
-    >>> evt, (out,) = knl(queue, a=x_vec_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev)
     <BLANKLINE>
       for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
       {
@@ -878,7 +889,8 @@ When we ask to see the code, the issue becomes apparent:
 
 .. doctest::
 
-    >>> evt, (out,) = knl(queue, a=a_mat_dev, flags="write_cl")
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=a_mat_dev)
     <BLANKLINE>
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))

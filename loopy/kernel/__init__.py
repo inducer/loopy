@@ -134,9 +134,9 @@ class LoopKernel(Record):
 
     .. attribute:: cache_manager
     .. attribute:: isl_context
-    .. attribute:: flags
+    .. attribute:: options
 
-        An instance of :class:`loopy.Flags`
+        An instance of :class:`loopy.Options`
     """
 
     # {{{ constructor
@@ -165,7 +165,7 @@ class LoopKernel(Record):
             cache_manager=None,
             index_dtype=np.int32,
             isl_context=None,
-            flags=None,
+            options=None,
 
             # When kernels get intersected in slab decomposition,
             # their grid sizes shouldn't change. This provides
@@ -269,7 +269,7 @@ class LoopKernel(Record):
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
                 isl_context=isl_context,
-                flags=flags)
+                options=options)
 
     # }}}
 
@@ -959,17 +959,12 @@ class LoopKernel(Record):
     # {{{ direct execution
 
     @memoize_method
-    def get_compiled_kernel(self, ctx, options, flags):
+    def get_compiled_kernel(self, ctx):
         from loopy.compiled import CompiledKernel
-        return CompiledKernel(ctx, self, options=options, flags=flags)
+        return CompiledKernel(ctx, self)
 
     def __call__(self, queue, **kwargs):
-        flags = kwargs.pop("flags", None)
-        options = kwargs.pop("options", ())
-
-        assert isinstance(options, tuple)
-
-        return self.get_compiled_kernel(queue.context, options, flags)(
+        return self.get_compiled_kernel(queue.context)(
                 queue, **kwargs)
 
     # }}}

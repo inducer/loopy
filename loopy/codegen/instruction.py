@@ -98,7 +98,7 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
             ccm(expr, prec=None, type_context=dtype_to_type_context(target_dtype),
                 needed_dtype=target_dtype))
 
-    if kernel.flags.trace_assignments or kernel.flags.trace_assignment_values:
+    if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
         from cgen import Statement as S
 
         gs, ls = kernel.get_grid_sizes()
@@ -122,7 +122,7 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
                     ccm(i, prec=None, type_context="i")
                     for i in assignee_indices)
 
-        if kernel.flags.trace_assignment_values:
+        if kernel.options.trace_assignment_values:
             if target_dtype.kind == "i":
                 printf_format += " = %d"
                 printf_args.append(lhs_code)
@@ -144,7 +144,7 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
                     printf_format, printf_args_str))
 
         from cgen import Block
-        if kernel.flags.trace_assignment_values:
+        if kernel.options.trace_assignment_values:
             result = Block([result, printf_insn])
         else:
             # print first, execute later -> helps find segfaults

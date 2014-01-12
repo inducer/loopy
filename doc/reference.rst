@@ -458,9 +458,11 @@ following always works::
 
 .. autofunction:: show_dependency_graph
 
-Flags
------
+Options
+-------
 
-.. autoclass:: Flags
+.. autoclass:: Options
+
+.. autofunction:: set_options
 
 .. vim: tw=75:spell

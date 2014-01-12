@@ -1000,7 +1000,7 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
         length 16.
     :arg silenced_warnings: a list (or semicolon-separated string) or warnings
         to silence
-    :arg flags: an instance of :class:`loopy.Flags` or an equivalent
+    :arg options: an instance of :class:`loopy.Options` or an equivalent
         string representation
     """
 
@@ -1008,10 +1008,20 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     default_order = kwargs.pop("default_order", "C")
     default_offset = kwargs.pop("default_offset", 0)
     silenced_warnings = kwargs.pop("silenced_warnings", [])
+    options = kwargs.pop("options", None)
     flags = kwargs.pop("flags", None)
 
-    from loopy.flags import make_flags
-    flags = make_flags(flags)
+    if flags is not None:
+        if options is not None:
+            raise TypeError("may not pass both 'options' and 'flags'")
+
+        from warnings import warn
+        warn("'flags' is deprecated. Use 'options' instead",
+                DeprecationWarning, stacklevel=2)
+        options = flags
+
+    from loopy.options import make_options
+    options = make_options(options)
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")
@@ -1094,7 +1104,7 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     knl = LoopKernel(device, domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
             silenced_warnings=silenced_warnings,
-            flags=flags,
+            options=options,
             **kwargs)
 
     check_for_nonexistent_iname_deps(knl)

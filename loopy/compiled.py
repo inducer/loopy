@@ -131,7 +131,7 @@ def python_dtype_str(dtype):
 
 # {{{ integer arg finding from shapes
 
-def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, flags):
+def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options):
     # a mapping from integer argument names to a list of tuples
     # (arg_name, expression), where expression is a
     # unary function of kernel.arg_dict[arg_name]
@@ -199,7 +199,7 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, flags):
 
 # {{{ integer arg finding from offsets
 
-def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags):
+def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, options):
     gen("# {{{ find integer arguments from offsets")
     gen("")
 
@@ -215,7 +215,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
                     gen("%s = 0" % arg.name)
                 gen("else:")
                 with Indentation(gen):
-                    if not flags.no_numpy:
+                    if not options.no_numpy:
                         gen("_lpy_offset = getattr(%s, \"offset\", 0)"
                                 % impl_array_name)
                     else:
@@ -223,7 +223,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
 
                     base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
-                    if not flags.skip_arg_checks:
+                    if not options.skip_arg_checks:
                         gen("%s, _lpy_remdr = divmod(_lpy_offset, %d)"
                                 % (arg.name, base_arg.dtype.itemsize))
 
@@ -235,7 +235,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
                         gen("%s = _lpy_offset // %d)"
                                 % (arg.name, base_arg.dtype.itemsize))
 
-                    if not flags.skip_arg_checks:
+                    if not options.skip_arg_checks:
                         gen("del _lpy_offset")
 
     gen("# }}}")
@@ -246,7 +246,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
 
 # {{{ integer arg finding from strides
 
-def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags):
+def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, options):
     gen("# {{{ find integer arguments from strides")
     gen("")
 
@@ -256,7 +256,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
-                if not flags.skip_arg_checks:
+                if not options.skip_arg_checks:
                     gen("if %s is None:" % impl_array_name)
                     with Indentation(gen):
                         gen("raise RuntimeError(\"required stride '%s' for "
@@ -266,7 +266,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 
                     base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
-                    if not flags.skip_arg_checks:
+                    if not options.skip_arg_checks:
                         gen("%s, _lpy_remdr = divmod(%s.strides[%d], %d)"
                                 % (arg.name, impl_array_name, stride_impl_axis,
                                     base_arg.dtype.itemsize))
@@ -290,7 +290,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
 
 # {{{ value arg setup
 
-def generate_value_arg_setup(gen, kernel, impl_arg_info, flags):
+def generate_value_arg_setup(gen, kernel, impl_arg_info, options):
     import loopy as lp
     from loopy.kernel.array import ArrayBase
 
@@ -302,7 +302,7 @@ def generate_value_arg_setup(gen, kernel, impl_arg_info, flags):
         gen("# {{{ process %s" % arg.name)
         gen("")
 
-        if not flags.skip_arg_checks:
+        if not options.skip_arg_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"input argument '%s' must "
@@ -329,7 +329,7 @@ def generate_value_arg_setup(gen, kernel, impl_arg_info, flags):
 
 # {{{ array arg setup
 
-def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
+def generate_array_arg_setup(gen, kernel, impl_arg_info, options):
     import loopy as lp
 
     from loopy.kernel.array import ArrayBase
@@ -339,7 +339,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
     gen("# {{{ set up array arguments")
     gen("")
 
-    if not flags.no_numpy:
+    if not options.no_numpy:
         gen("_lpy_encountered_numpy = False")
         gen("_lpy_encountered_dev = False")
         gen("")
@@ -356,7 +356,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
         if not issubclass(arg.arg_class, ArrayBase):
             continue
 
-        if not flags.no_numpy:
+        if not options.no_numpy:
             gen("if isinstance(%s, _lpy_np.ndarray):" % arg.name)
             with Indentation(gen):
                 gen("# synchronous, nothing to worry about")
@@ -370,21 +370,21 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
             gen("")
 
-        if not flags.skip_arg_checks and not is_written:
+        if not options.skip_arg_checks and not is_written:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"input argument '%s' must "
                         "be supplied\")" % arg.name)
                 gen("")
 
-        if is_written and arg.arg_class is lp.ImageArg and not flags.skip_arg_checks:
+        if is_written and arg.arg_class is lp.ImageArg and not options.skip_arg_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"written image '%s' must "
                         "be supplied\")" % arg.name)
                 gen("")
 
-        if is_written and arg.shape is None and not flags.skip_arg_checks:
+        if is_written and arg.shape is None and not options.skip_arg_checks:
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"written argument '%s' has "
@@ -413,7 +413,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                     gen("_lpy_strides_%d = %s" % (i, strify(
                         itemsize*arg.unvec_strides[i])))
 
-                if not flags.skip_arg_checks:
+                if not options.skip_arg_checks:
                     for i in xrange(num_axes):
                         gen("assert _lpy_strides_%d > 0, "
                                 "\"'%s' has negative stride in axis %d\""
@@ -440,7 +440,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
                             strides=strify(sym_strides),
                             dtype=python_dtype_str(arg.dtype)))
 
-                if not flags.skip_arg_checks:
+                if not options.skip_arg_checks:
                     for i in xrange(num_axes):
                         gen("del _lpy_shape_%d" % i)
                         gen("del _lpy_strides_%d" % i)
@@ -455,7 +455,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
         # {{{ argument checking
 
         if arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
-                and not flags.skip_arg_checks:
+                and not options.skip_arg_checks:
             if possibly_made_by_loopy:
                 gen("if not _lpy_made_by_loopy:")
             else:
@@ -501,7 +501,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 
         # }}}
 
-        if possibly_made_by_loopy and not flags.skip_arg_checks:
+        if possibly_made_by_loopy and not options.skip_arg_checks:
             gen("del _lpy_made_by_loopy")
             gen("")
 
@@ -520,10 +520,10 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, flags):
 # }}}
 
 
-def generate_invoker(kernel, impl_arg_info, flags):
+def generate_invoker(kernel, impl_arg_info, options):
     system_args = [
             "cl_kernel", "queue", "allocator=None", "wait_for=None",
-            # ignored if flags.no_numpy
+            # ignored if options.no_numpy
             "out_host=None"
             ]
 
@@ -545,12 +545,12 @@ def generate_invoker(kernel, impl_arg_info, flags):
         gen("allocator = _lpy_cl_tools.DeferredAllocator(queue.context)")
     gen("")
 
-    generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, flags)
-    generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, flags)
-    generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, flags)
+    generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options)
+    generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, options)
+    generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, options)
 
-    generate_value_arg_setup(gen, kernel, impl_arg_info, flags)
-    generate_array_arg_setup(gen, kernel, impl_arg_info, flags)
+    generate_value_arg_setup(gen, kernel, impl_arg_info, options)
+    generate_array_arg_setup(gen, kernel, impl_arg_info, options)
 
     # {{{ generate invocation
 
@@ -575,7 +575,7 @@ def generate_invoker(kernel, impl_arg_info, flags):
 
     # {{{ output
 
-    if not flags.no_numpy:
+    if not options.no_numpy:
         gen("if out_host is None and (_lpy_encountered_numpy "
                 "and not _lpy_encountered_dev):")
         with Indentation(gen):
@@ -591,7 +591,7 @@ def generate_invoker(kernel, impl_arg_info, flags):
 
         gen("")
 
-    if flags.return_dict:
+    if options.return_dict:
         gen("return _lpy_evt, {%s}"
                 % ", ".join("\"%s\": %s" % (arg.name, arg.name)
                     for arg in impl_arg_info
@@ -608,15 +608,15 @@ def generate_invoker(kernel, impl_arg_info, flags):
 
     # }}}
 
-    if flags.write_wrapper:
+    if options.write_wrapper:
         output = gen.get()
-        if flags.highlight_wrapper:
+        if options.highlight_wrapper:
             output = get_highlighted_python_code(output)
 
-        if flags.write_wrapper is True:
+        if options.write_wrapper is True:
             print output
         else:
-            with open(flags.write_wrapper, "w") as outf:
+            with open(options.write_wrapper, "w") as outf:
                 outf.write(output)
 
     return gen.get_function()
@@ -632,39 +632,17 @@ class _CLKernelInfo(Record):
 
 
 class CompiledKernel:
-    def __init__(self, context, kernel, options=[], codegen_kwargs={},
-            flags=None, iflags=None):
+    def __init__(self, context, kernel, codegen_kwargs={}):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
             kernel has not yet been loop-scheduled, that is done, too, with no
             specific arguments.
-        :arg iflags: An :class:`loopy.Flags` instance, or a dictionary
-            of arguments with which a :class:`loopy.Flags` instance
-            can be initialized.
         """
 
         self.context = context
         self.codegen_kwargs = codegen_kwargs
-        self.options = list(options)
-
-        if flags is not None and iflags is not None:
-            raise TypeError("cannot specify flags and iflags at the same time")
-
-        if iflags is not None:
-            from warnings import warn
-            warn("The 'iflags' argument is deprecated", DeprecationWarning,
-                    stacklevel=2)
-
-            flags = iflags
-
-        from loopy.flags import make_flags
-        my_flags = kernel.flags.copy()
-        my_flags.update(make_flags(flags))
-
-        self.flags = my_flags
-
-        self.kernel = kernel.copy(flags=my_flags)
+        self.kernel = kernel
 
         self.packing_controller = SeparateArrayPackingController(kernel)
 
@@ -710,24 +688,24 @@ class CompiledKernel:
         from loopy.codegen import generate_code
         code, impl_arg_info = generate_code(kernel, **self.codegen_kwargs)
 
-        if self.flags.write_cl:
+        if self.kernel.options.write_cl:
             output = code
-            if self.flags.highlight_cl:
+            if self.kernel.options.highlight_cl:
                 output = get_highlighted_cl_code(output)
 
-            if self.flags.write_cl is True:
+            if self.kernel.options.write_cl is True:
                 print output
             else:
-                with open(self.flags.write_cl, "w") as outf:
+                with open(self.kernel.options.write_cl, "w") as outf:
                     outf.write(output)
 
-        if self.flags.edit_cl:
+        if self.kernel.options.edit_cl:
             from pytools import invoke_editor
             code = invoke_editor(code, "code.cl")
 
         cl_program = cl.Program(self.context, code)
         cl_kernel = getattr(
-                cl_program.build(options=self.options),
+                cl_program.build(options=kernel.options.cl_build_options),
                 kernel.name)
 
         return _CLKernelInfo(
@@ -735,7 +713,7 @@ class CompiledKernel:
                 cl_kernel=cl_kernel,
                 impl_arg_info=impl_arg_info,
                 invoker=generate_invoker(
-                    kernel, impl_arg_info, self.flags))
+                    kernel, impl_arg_info, self.kernel.options))
 
     # {{{ debugging aids
 
@@ -783,7 +761,7 @@ class CompiledKernel:
             are written as part of the kernel). The order is given
             by the order of kernel arguments. If this order is unspecified
             (such as when kernel arguments are inferred automatically),
-            enable :attr:`loopy.Flags.return_dict` to make *output* a
+            enable :attr:`loopy.Options.return_dict` to make *output* a
             :class:`dict` instead, with keys of argument names and values
             of the returned arrays.
         """

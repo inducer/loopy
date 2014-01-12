@@ -368,7 +368,7 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     def map_variable(self, expr, enclosing_prec, type_context):
         if expr.name in self.var_subst_map:
-            if self.kernel.flags.annotate_inames:
+            if self.kernel.options.annotate_inames:
                 return " /* %s */ %s" % (
                         expr.name,
                         self.rec(self.var_subst_map[expr.name],

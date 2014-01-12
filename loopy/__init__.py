@@ -63,7 +63,7 @@ from loopy.preprocess import (preprocess_kernel, realize_reduction,
 from loopy.schedule import generate_loop_schedules
 from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel
-from loopy.flags import Flags
+from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
 
 __all__ = [
@@ -101,7 +101,7 @@ __all__ = [
 
         "auto_test_vs_ref",
 
-        "Flags",
+        "Options",
 
         "make_kernel",
 
@@ -1255,6 +1255,41 @@ def fix_parameters(kernel, **value_dict):
         kernel = _fix_parameter(kernel, name, value)
 
     return kernel
+
+# }}}
+
+
+# {{{ set_options
+
+def set_options(kernel, *args, **kwargs):
+    """Return a new kernel with the options given as keyword arguments, or from
+    a string representation passed in as the first (and only) positional
+    argument.
+
+    See also :class:`Options`.
+    """
+
+    if args and kwargs:
+        raise TypeError("cannot pass both positional and keyword arguments")
+
+    new_opt = kernel.options.copy()
+
+    if kwargs:
+        for key, val in kwargs.iteritems():
+            if not hasattr(new_opt, key):
+                raise ValueError("unknown option '%s'" % key)
+
+            setattr(new_opt, key, val)
+    else:
+        if len(args) != 1:
+            raise TypeError("exactly one positional argument is required if "
+                    "no keyword args are given")
+        arg, = args
+
+        from loopy.options import make_options
+        new_opt.update(make_options(arg))
+
+    return kernel.copy(options=new_opt)
 
 # }}}
 

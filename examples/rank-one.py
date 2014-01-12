@@ -14,7 +14,7 @@ knl = lp.make_kernel(queue.device,
 a = np.arange(200, dtype=np.float32)
 b = np.arange(200, dtype=np.float32)
 
-evt, (c,) = knl(queue, a=a, b=b, flags="write_cl")
+evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
 # SETUPEND
 
 orig_knl = knl
@@ -26,7 +26,7 @@ knl = lp.split_iname(knl, "j", 16,
         outer_tag="g.1", inner_tag="l.1")
 # SPLITEND
 
-evt, (c,) = knl(queue, a=a, b=b, flags="write_cl")
+evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
 
 split_knl = knl
 
@@ -35,7 +35,7 @@ knl = lp.add_prefetch(knl, "a")
 knl = lp.add_prefetch(knl, "b")
 # PREFETCH1END
 
-evt, (c,) = knl(queue, a=a, b=b, flags="write_cl")
+evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
 
 knl = split_knl
 
@@ -44,7 +44,7 @@ knl = lp.add_prefetch(knl, "a", ["i_inner"])
 knl = lp.add_prefetch(knl, "b", ["j_inner"])
 # PREFETCH2END
 
-evt, (c,) = knl(queue, a=a, b=b, flags="write_cl")
+evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
 
 knl = orig_knl
 
@@ -68,4 +68,4 @@ knl = lp.split_iname(knl, "a_dim_0", 16,
         outer_tag="l.1", inner_tag="l.0")
 # PREFETCH3END
 
-evt, (c,) = knl(queue, a=a, b=b, flags="write_cl")
+evt, (c,) = knl(queue, a=a, b=b, options="write_cl")

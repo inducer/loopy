@@ -27,12 +27,12 @@ from pytools import Record
 import re
 
 
-class Flags(Record):
+class Options(Record):
     """
-    Unless otherwise specified, these flags are Boolean-valued
+    Unless otherwise specified, these options are Boolean-valued
     (i.e. on/off).
 
-    .. rubric:: Code-generation flags
+    .. rubric:: Code-generation options
 
     .. attribute:: annotate_inames
 
@@ -51,7 +51,7 @@ class Flags(Record):
         Like :attr:`trace_assignments`, but also trace the
         assigned values.
 
-    .. rubric:: Invocation-related flags
+    .. rubric:: Invocation-related options
 
     .. attribute:: skip_arg_checks
 
@@ -100,11 +100,19 @@ class Flags(Record):
         :envvar:`EDITOR`) on the generated kernel code,
         allowing for tweaks before the code is passed on to
         the OpenCL implementation for compilation.
+
+    .. attribute:: cl_build_options
+
+        Options to pass to the OpenCL compiler when building the kernel.
+        A list of strings.
     """
 
     def __init__(
-            # All of these should default to False for the string-based
-            # interface of make_flags (below) to make sense.
+            # All Boolean flags in here should default to False for the
+            # string-based interface of make_options (below) to make sense.
+
+            # All defaults are further required to be False when cast to bool
+            # for the update() functionality to work.
 
             self,
 
@@ -115,7 +123,7 @@ class Flags(Record):
             skip_arg_checks=False, no_numpy=False, return_dict=False,
             write_wrapper=False, highlight_wrapper=False,
             write_cl=False, highlight_cl=False,
-            edit_cl=False
+            edit_cl=False, cl_build_options=[],
             ):
         Record.__init__(
                 self,
@@ -128,7 +136,7 @@ class Flags(Record):
                 return_dict=return_dict,
                 write_wrapper=write_wrapper, highlight_wrapper=highlight_wrapper,
                 write_cl=write_cl, highlight_cl=highlight_cl,
-                edit_cl=edit_cl,
+                edit_cl=edit_cl, cl_build_options=cl_build_options,
                 )
 
     def update(self, other):
@@ -139,12 +147,12 @@ class Flags(Record):
 KEY_VAL_RE = re.compile("^([a-zA-Z0-9]+)=(.*)$")
 
 
-def make_flags(flags_arg):
-    if flags_arg is None:
-        return Flags()
-    elif isinstance(flags_arg, str):
-        iflags_args = {}
-        for key_val in flags_arg.split(","):
+def make_options(options_arg):
+    if options_arg is None:
+        return Options()
+    elif isinstance(options_arg, str):
+        ioptions_args = {}
+        for key_val in options_arg.split(","):
             kv_match = KEY_VAL_RE.match(key_val)
             if kv_match is not None:
                 key = kv_match.group(1)
@@ -154,10 +162,10 @@ def make_flags(flags_arg):
                 except ValueError:
                     pass
 
-                iflags_args[key] = val
+                ioptions_args[key] = val
             else:
-                iflags_args[key_val] = True
+                ioptions_args[key_val] = True
 
-        return Flags(**iflags_args)
-    elif not isinstance(flags_arg, Flags):
-        return Flags(**flags_arg)
+        return Options(**ioptions_args)
+    elif not isinstance(options_arg, Options):
+        return Options(**options_arg)
