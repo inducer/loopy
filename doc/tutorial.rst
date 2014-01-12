@@ -10,8 +10,8 @@ unambiguously define all aspects of loopy.
 Preparation
 -----------
 
-For now, :mod:`loopy` depends on :mod:`pyopencl`. We import a few modules
-and initialize :mod:`pyopencl`
+:mod:`loopy` currently requires on :mod:`pyopencl` to be installed. We
+import a few modules and initialize :mod:`pyopencl`
 
 .. doctest::
 
