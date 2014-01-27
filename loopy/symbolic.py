@@ -275,9 +275,7 @@ class DependencyMapper(DependencyMapperBase):
 
 @memoize
 def get_dependencies(expr):
-    from loopy.symbolic import DependencyMapper
     dep_mapper = DependencyMapper(composite_leaves=False)
-
     return frozenset(dep.name for dep in dep_mapper(expr))
 
 

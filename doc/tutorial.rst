@@ -11,7 +11,8 @@ Preparation
 -----------
 
 :mod:`loopy` currently requires on :mod:`pyopencl` to be installed. We
-import a few modules and initialize :mod:`pyopencl`
+import a few modules and set up a :class:`pyopencl.Context` and a
+:class:`pyopencl.CommandQueue`:
 
 .. doctest::
 
