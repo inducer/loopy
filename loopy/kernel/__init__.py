@@ -603,6 +603,39 @@ class LoopKernel(Record):
 
     # }}}
 
+    # {{{ dependency wrangling
+
+    @memoize_method
+    def recursive_insn_dep_map(self):
+        """Returns a :class:`dict` mapping an instruction IDs *a*
+        to all instruction IDs it directly or indirectly depends
+        on.
+        """
+
+        result = {}
+
+        def compute_deps(insn_id):
+            try:
+                return result[insn_id]
+            except KeyError:
+                pass
+
+            insn = self.id_to_insn[insn_id]
+            insn_result = set(insn.insn_deps)
+
+            for dep in list(insn.insn_deps):
+                insn_result.update(compute_deps(dep))
+
+            result[insn_id] = frozenset(insn_result)
+            return insn_result
+
+        for insn in self.instructions:
+            compute_deps(insn.id)
+
+        return result
+
+    # }}}
+
     # {{{ read and written variables
 
     @memoize_method
@@ -671,6 +704,13 @@ class LoopKernel(Record):
                     for dom in self.domains))
             return [arg.name for arg in self.args if isinstance(arg, ValueArg)
                     if arg.name in loop_arg_names]
+
+    @memoize_method
+    def global_var_names(self):
+        from loopy.kernel.data import GlobalArg
+        return set(arg.name for arg in self.args
+            if isinstance(arg, GlobalArg))
+
     # }}}
 
     # {{{ bounds finding
