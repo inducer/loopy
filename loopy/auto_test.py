@@ -32,6 +32,10 @@ import pyopencl.array as cl_array
 
 AUTO_TEST_SKIP_RUN = False
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 
 # {{{ create random argument arrays for testing
 
@@ -435,9 +439,12 @@ def auto_test_vs_ref(
             break
 
         ref_queue.finish()
-        ref_start = time()
 
-        print "using %s for the reference calculation" % dev
+        logger.info("%s (ref): using %s for the reference calculation" % (
+            ref_knl.name, dev))
+        logger.info("%s (ref): run" % ref_knl.name)
+
+        ref_start = time()
 
         if not AUTO_TEST_SKIP_RUN:
             ref_evt, _ = ref_compiled(ref_queue, **ref_args)
@@ -447,6 +454,8 @@ def auto_test_vs_ref(
         ref_queue.finish()
         ref_stop = time()
         ref_elapsed_wall = ref_stop-ref_start
+
+        logger.info("%s (ref): run done" % ref_knl.name)
 
         ref_evt.wait()
         ref_elapsed = 1e-9*(ref_evt.profile.END-ref_evt.profile.SUBMIT)
@@ -507,6 +516,8 @@ def auto_test_vs_ref(
             print compiled.cl_program.binaries[0]
             print 75*"-"
 
+        logger.info("%s: run warmup" % (knl.name))
+
         for i in range(warmup_rounds):
             if not AUTO_TEST_SKIP_RUN:
                 compiled(queue, **args)
@@ -537,6 +548,10 @@ def auto_test_vs_ref(
 
         events = []
         queue.finish()
+
+        logger.info("%s: warmup done" % (knl.name))
+
+        logger.info("%s: timing run" % (knl.name))
 
         timing_rounds = warmup_rounds
 
@@ -580,6 +595,8 @@ def auto_test_vs_ref(
                 timing_rounds *= 4
             else:
                 break
+
+        logger.info("%s: timing run done" % (knl.name))
 
         rates = ""
         for cnt, lbl in zip(op_count, op_label):
