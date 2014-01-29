@@ -1635,7 +1635,8 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         a_knl = a.copy()
 
         evt, _ = ref_knl(queue, a=a_ref)
-        evt, _ = knl(queue, a=a_knl, flags="write_cl")
+        knl = lp.set_options(knl, "write_cl")
+        evt, _ = knl(queue, a=a_knl)
 
         assert (a_ref == a_knl).get().all()
         1/0
