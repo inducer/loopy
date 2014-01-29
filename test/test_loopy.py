@@ -805,10 +805,10 @@ def test_equality_constraints(ctx_factory):
             ],
             [
                 "a[i,j] = 5 {id=set_all}",
-                "a[i,k] = 22 {dep=set_all}",
+                "b[i,k] = 22 {dep=set_all}",
                 ],
             [
-                lp.GlobalArg("a", dtype, shape="n, n", order=order),
+                lp.GlobalArg("a,b", dtype, shape="n, n", order=order),
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ],
             name="equality_constraints", assumptions="n>=1")
@@ -821,7 +821,8 @@ def test_equality_constraints(ctx_factory):
     #print knl.domains[0].detect_equalities()
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n), print_ref_code=True)
+            parameters=dict(n=n), print_ref_code=True,
+            fills_entire_output=False)
 
 
 def test_stride(ctx_factory):
@@ -864,10 +865,10 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
             ],
             [
                 "a[i] = 5 {id=set}",
-                "a[k] = 6 {dep=set}",
+                "b[k] = 6 {dep=set}",
                 ],
             [
-                lp.GlobalArg("a", dtype, shape="n", order=order),
+                lp.GlobalArg("a,b", dtype, shape="n", order=order),
                 lp.ValueArg("n", np.int32, approximately=1000),
                 ],
             assumptions="n>=1")
@@ -875,7 +876,8 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n), )
+            parameters=dict(n=n),
+            fills_entire_output=False)
 
 
 def test_double_sum(ctx_factory):
@@ -1655,6 +1657,7 @@ def test_multiple_writes_to_local_temporary(ctx_factory):
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
     code, _ = lp.generate_code(knl)
+    print code
 
 
 if __name__ == "__main__":
