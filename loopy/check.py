@@ -27,6 +27,7 @@ from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn
+from loopy.tools import is_integer
 
 import logging
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 def check_temp_variable_shapes_are_constant(kernel):
     for tv in kernel.temporary_variables.itervalues():
-        if any(not isinstance(s_i, (int, long)) for s_i in tv.shape):
+        if any(not is_integer(s_i) for s_i in tv.shape):
             raise LoopyError("shape of temporary variable '%s' is not "
                     "constant (but has to be since the size of "
                     "the temporary needs to be known at build time). "

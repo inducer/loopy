@@ -33,6 +33,7 @@ import pyopencl.array  # noqa
 import numpy as np
 
 from loopy.diagnostic import LoopyError
+from loopy.tools import is_integer
 
 
 # {{{ array dimension tags
@@ -286,7 +287,7 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
                 # unable to normalize without known shape
                 return None
 
-            if not isinstance(shape[i], (int, long, np.integer)):
+            if not is_integer(shape[i]):
                 raise TypeError("shape along vector axis %d of array '%s' "
                         "must be an integer, not an expression"
                         % (i, name))
@@ -668,7 +669,7 @@ class ArrayBase(Record):
         for i, dim_tag in enumerate(self.dim_tags):
             if isinstance(dim_tag, VectorArrayDimTag):
                 shape_i = self.shape[i]
-                if not isinstance(shape_i, (int, long, np.integer)):
+                if not is_integer(shape_i):
                     raise LoopyError("shape of '%s' has non-constant-integer "
                             "length for vector axis %d (0-based)" % (
                                 self.name, i))
@@ -807,7 +808,7 @@ class ArrayBase(Record):
 
             elif isinstance(dim_tag, SeparateArrayArrayDimTag):
                 shape_i = self.shape[user_axis]
-                if not isinstance(shape_i, (int, long, np.integer)):
+                if not is_integer(shape_i):
                     raise LoopyError("shape of '%s' has non-constant "
                             "integer axis %d (0-based)" % (
                                 self.name, user_axis))
@@ -821,7 +822,7 @@ class ArrayBase(Record):
 
             elif isinstance(dim_tag, VectorArrayDimTag):
                 shape_i = self.shape[user_axis]
-                if not isinstance(shape_i, (int, long, np.integer)):
+                if not is_integer(shape_i):
                     raise LoopyError("shape of '%s' has non-constant "
                             "integer axis %d (0-based)" % (
                                 self.name, user_axis))
@@ -852,7 +853,7 @@ class ArrayBase(Record):
         sep_shape = []
         for shape_i, dim_tag in zip(self.shape, self.dim_tags):
             if isinstance(dim_tag, SeparateArrayArrayDimTag):
-                if not isinstance(shape_i, (int, long, np.integer)):
+                if not is_integer(shape_i):
                     raise TypeError("array '%s' has non-fixed-size "
                             "separate-array axis" % self.name)
 
@@ -945,7 +946,7 @@ def get_access_info(ary, index, eval_expr):
     for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
         if isinstance(dim_tag, SeparateArrayArrayDimTag):
             idx = eval_expr_wrapper(i, idx)
-            if not isinstance(idx, (int, long, np.integer)):
+            if not is_integer(idx):
                 raise LoopyError("subscript '%s[%s]' has non-constant "
                         "index for separate-array axis %d (0-based)" % (
                             ary.name, index, i))
@@ -961,7 +962,7 @@ def get_access_info(ary, index, eval_expr):
 
             stride = dim_tag.stride
 
-            if isinstance(stride, (int, long, np.integer)):
+            if is_integer(stride):
                 if not dim_tag.stride % vector_size == 0:
                     raise LoopyError("array '%s' has axis %d stride of "
                             "%d, which is not divisible by the size of the "
@@ -980,7 +981,7 @@ def get_access_info(ary, index, eval_expr):
         elif isinstance(dim_tag, VectorArrayDimTag):
             idx = eval_expr_wrapper(i, idx)
 
-            if not isinstance(idx, (int, long, np.integer)):
+            if not is_integer(idx):
                 raise LoopyError("subscript '%s[%s]' has non-constant "
                         "index for separate-array axis %d (0-based)" % (
                             ary.name, index, i))

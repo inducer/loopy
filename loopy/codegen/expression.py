@@ -34,6 +34,7 @@ import pyopencl as cl
 import pyopencl.array  # noqa
 from pytools import Record
 
+from loopy.tools import is_integer
 from loopy.diagnostic import TypeInferenceFailure, DependencyTypeInferenceFailure
 
 
@@ -84,7 +85,7 @@ class TypeInferenceMapper(CombineMapper):
         small_integer_dtypes = []
         for child in expr.children:
             dtype = self.rec(child)
-            if isinstance(child, (int, long, np.integer)) and abs(child) < 1024:
+            if is_integer(child) and abs(child) < 1024:
                 small_integer_dtypes.append(dtype)
             else:
                 dtypes.append(dtype)
@@ -109,7 +110,7 @@ class TypeInferenceMapper(CombineMapper):
             return self.combine([n_dtype, d_dtype])
 
     def map_constant(self, expr):
-        if isinstance(expr, (int, long)):
+        if is_integer(expr):
             for tp in [np.int32, np.int64]:
                 iinfo = np.iinfo(tp)
                 if iinfo.min <= expr <= iinfo.max:
@@ -626,7 +627,7 @@ class LoopyCCodeMapper(RecursiveMapper):
             elif type_context == "i":
                 return str(int(expr))
             else:
-                if isinstance(expr, (int, long)):
+                if is_integer(expr):
                     return str(expr)
 
                 raise RuntimeError("don't know how to generated code "
