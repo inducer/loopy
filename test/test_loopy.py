@@ -1620,8 +1620,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
 
     knl = lp.make_kernel(ctx.devices[0],
         "{ [i]: 0<=i<n }",
-        "a[i] = 2*a[i]",
-        assumptions="n>=1")
+        "a[i] = 2*a[i]")
 
     ref_knl = knl
 
