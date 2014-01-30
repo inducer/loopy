@@ -716,9 +716,8 @@ class LoopKernel(Record):
     # {{{ bounds finding
 
     @memoize_method
-    def get_iname_bounds(self, iname):
+    def get_iname_bounds(self, iname, constants_only=False):
         domain = self.get_inames_domain(frozenset([iname]))
-        d_var_dict = domain.get_var_dict()
 
         assumptions = self.assumptions.project_out_except(
                 set(domain.get_var_dict(dim_type.param)), [dim_type.param])
@@ -727,15 +726,20 @@ class LoopKernel(Record):
 
         dom_intersect_assumptions = aligned_assumptions & domain
 
+        if constants_only:
+            # Kill all variable dependencies
+            dom_intersect_assumptions = dom_intersect_assumptions.project_out_except(
+                    [iname], [dim_type.param, dim_type.set])
+
+        iname_idx = dom_intersect_assumptions.get_var_dict()[iname][1]
+
         lower_bound_pw_aff = (
                 self.cache_manager.dim_min(
-                    dom_intersect_assumptions,
-                    d_var_dict[iname][1])
+                    dom_intersect_assumptions, iname_idx)
                 .coalesce())
         upper_bound_pw_aff = (
                 self.cache_manager.dim_max(
-                    dom_intersect_assumptions,
-                    d_var_dict[iname][1])
+                    dom_intersect_assumptions, iname_idx)
                 .coalesce())
 
         class BoundsRecord(Record):
@@ -754,7 +758,7 @@ class LoopKernel(Record):
         from loopy.isl_helpers import static_max_of_pw_aff
         from loopy.symbolic import aff_to_expr
         return int(aff_to_expr(static_max_of_pw_aff(
-                self.get_iname_bounds(iname).size,
+                self.get_iname_bounds(iname, constants_only=True).size,
                 constants_only=True)))
 
     @memoize_method

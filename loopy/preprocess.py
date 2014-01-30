@@ -567,7 +567,7 @@ def duplicate_private_temporaries_for_ilp(kernel):
             if iname in ilp_iname_to_length:
                 continue
 
-            bounds = kernel.get_iname_bounds(iname)
+            bounds = kernel.get_iname_bounds(iname, constants_only=True)
             ilp_iname_to_length[iname] = int(pw_aff_to_expr(
                         static_max_of_pw_aff(bounds.size, constants_only=True)))
 

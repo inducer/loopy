@@ -368,10 +368,4 @@ def boxify(cache_manager, domain, box_inames, context):
 
     return convexify(result)
 
-
-
-
-
-
-
 # vim: foldmethod=marker

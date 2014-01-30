@@ -360,7 +360,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
         joint_aff = joint_aff + base_divisor*iname_aff
 
-        bounds = kernel.get_iname_bounds(iname)
+        bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
         from loopy.isl_helpers import (
                 static_max_of_pw_aff, static_value_of_pw_aff)

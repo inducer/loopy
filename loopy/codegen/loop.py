@@ -116,7 +116,7 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 def generate_unroll_loop(kernel, sched_index, codegen_state):
     iname = kernel.schedule[sched_index].iname
 
-    bounds = kernel.get_iname_bounds(iname)
+    bounds = kernel.get_iname_bounds(iname, constants_only=True)
 
     from loopy.isl_helpers import (
             static_max_of_pw_aff, static_value_of_pw_aff)
