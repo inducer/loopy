@@ -296,6 +296,10 @@ class DomainChanger:
     """
 
     def __init__(self, kernel, inames):
+        """
+        :arg inames: a non-mutable iterable
+        """
+
         self.kernel = kernel
         if inames:
             ldi = kernel.get_leaf_domain_indices(inames)
@@ -311,6 +315,9 @@ class DomainChanger:
             self.domain = kernel.combine_domains(())
             self.leaf_domain_index = None
 
+    def get_original_domain(self):
+        return self.kernel.domains[self.leaf_domain_index]
+
     def get_domains_with(self, replacement):
         result = self.kernel.domains[:]
         if self.leaf_domain_index is not None:
@@ -319,6 +326,14 @@ class DomainChanger:
             result.append(replacement)
 
         return result
+
+    def get_kernel_with(self, replacement):
+        return self.kernel.copy(
+                domains=self.get_domains_with(replacement),
+
+                # Changing the domain might look like it wants to change grid
+                # sizes. Not true.
+                get_grid_sizes=self.kernel.get_grid_sizes)
 
 # }}}
 
