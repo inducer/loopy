@@ -1624,7 +1624,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
 
     ref_knl = knl
 
-    for outer_tag in ["for", "unr", "l.0"]:
+    for outer_tag in ["for", "g.0"]:
         knl = ref_knl
         knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr",
                 outer_tag=outer_tag)
@@ -1639,7 +1639,6 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         evt, _ = knl(queue, a=a_knl)
 
         assert (a_ref == a_knl).get().all()
-        1/0
 
 
 def test_multiple_writes_to_local_temporary(ctx_factory):

@@ -146,13 +146,12 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
 
 
 def intersect_kernel_with_slab(kernel, slab, iname):
-    hdi = kernel.get_home_domain_index(iname)
-    home_domain = kernel.domains[hdi]
-    new_domains = kernel.domains[:]
-    new_domains[hdi] = home_domain & isl.align_spaces(slab, home_domain)
+    from loopy.kernel.tools import DomainChanger
 
-    return kernel.copy(domains=new_domains,
-            get_grid_sizes=kernel.get_grid_sizes)
+    domch = DomainChanger(kernel, (iname,))
+    orig_domain = domch.get_original_domain()
+    orig_domain, slab = isl.align_two(orig_domain, slab)
+    return domch.get_kernel_with(orig_domain & slab)
 
 
 # {{{ hw-parallel loop
@@ -302,35 +301,30 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
                         dt, idx, 1)
 
         _, loop_iname_idx = dom_and_slab.get_var_dict()[loop_iname]
-        lbound = kernel.cache_manager.dim_min(
-                dom_and_slab, loop_iname_idx).coalesce()
-        ubound = kernel.cache_manager.dim_max(
-                dom_and_slab, loop_iname_idx).coalesce()
 
         from loopy.isl_helpers import (
                 static_min_of_pw_aff,
                 static_max_of_pw_aff)
 
-        lbound = static_min_of_pw_aff(lbound,
+        static_lbound = static_min_of_pw_aff(
+                kernel.cache_manager.dim_min(
+                    dom_and_slab, loop_iname_idx).coalesce(),
                 constants_only=False)
-        ubound = static_max_of_pw_aff(ubound,
+        static_ubound = static_max_of_pw_aff(
+                kernel.cache_manager.dim_max(
+                    dom_and_slab, loop_iname_idx).coalesce(),
                 constants_only=False)
 
         # }}}
 
         # {{{ find implemented slab, build inner code
 
-        from loopy.isl_helpers import iname_rel_aff
-        impl_slab = (
-                isl.BasicSet.universe(dom_and_slab.space)
-                .add_constraint(
-                    isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(dom_and_slab.space,
-                            loop_iname, ">=", lbound)))
-                .add_constraint(
-                    isl.Constraint.inequality_from_aff(
-                        iname_rel_aff(dom_and_slab.space,
-                            loop_iname, "<=", ubound))))
+        from loopy.isl_helpers import make_slab_from_bound_pwaffs
+
+        # impl_slab may be overapproximated
+        impl_slab = make_slab_from_bound_pwaffs(
+                dom_and_slab.space,
+                loop_iname, static_lbound, static_ubound)
 
         for iname in moved_inames:
             dt, idx = impl_slab.get_var_dict()[iname]
@@ -340,8 +334,10 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
 
         new_codegen_state = codegen_state.intersect(impl_slab)
 
-        inner = build_loop_nest(kernel, sched_index+1,
-                new_codegen_state)
+        inner = build_loop_nest(
+                intersect_kernel_with_slab(
+                    kernel, slab, iname),
+                sched_index+1, new_codegen_state)
 
         # }}}
 
@@ -352,20 +348,24 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
         from cgen import Initializer, POD, Const, Line, For
         from loopy.symbolic import aff_to_expr
 
-        if (ubound - lbound).plain_is_zero():
+        if (static_ubound - static_lbound).plain_is_zero():
             # single-trip, generate just a variable assignment, not a loop
             result.append(gen_code_block([
                 Initializer(Const(POD(kernel.index_dtype, loop_iname)),
-                    ccm(aff_to_expr(lbound), "i")),
+                    ccm(aff_to_expr(static_lbound), "i")),
                 Line(),
                 inner,
                 ]))
 
         else:
             from loopy.codegen import wrap_in
+            from pyopencl.tools import dtype_to_ctype
+
             result.append(wrap_in(For,
-                    "int %s = %s" % (loop_iname, ccm(aff_to_expr(lbound), "i")),
-                    "%s <= %s" % (loop_iname, ccm(aff_to_expr(ubound), "i")),
+                    "%s %s = %s"
+                    % (dtype_to_ctype(kernel.index_dtype),
+                        loop_iname, ccm(aff_to_expr(static_lbound), "i")),
+                    "%s <= %s" % (loop_iname, ccm(aff_to_expr(static_ubound), "i")),
                     "++%s" % loop_iname,
                     inner))
 

@@ -152,6 +152,21 @@ def make_slab(space, iname, start, stop):
     return result
 
 
+def make_slab_from_bound_pwaffs(space, iname, lbound, ubound):
+    dt, pos = space.get_var_dict()[iname]
+    iname_pwaff = isl.PwAff.var_on_domain(space, dt, pos)
+
+    iname_pwaff, lbound = isl.align_two(iname_pwaff, lbound)
+    iname_pwaff, ubound = isl.align_two(iname_pwaff, ubound)
+    assert iname_pwaff.space == lbound.space
+    assert iname_pwaff.space == ubound.space
+
+    return convexify(
+            iname_pwaff.ge_set(lbound)
+            &
+            iname_pwaff.le_set(ubound))
+
+
 def iname_rel_aff(space, iname, rel, aff):
     """*aff*'s domain space is allowed to not match *space*."""
 
@@ -198,7 +213,10 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
     if context is not None:
         reference = reference.intersect(context)
 
+    # {{{ find bounds that are also global bounds
+
     for set, candidate_aff in pieces:
+        # gist can be time-consuming, try without first
         for use_gist in [False, True]:
             if use_gist:
                 candidate_aff = candidate_aff.gist(set)
@@ -208,6 +226,8 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
 
             if reference <= set_method(pw_aff, candidate_aff):
                 return candidate_aff
+
+    # }}}
 
     raise ValueError("a static %s was not found for PwAff '%s'"
             % (what, pw_aff))
