@@ -497,7 +497,10 @@ class LoopKernel(Record):
 
     @memoize_method
     def get_leaf_domain_indices(self, inames):
-        """Find the leaves of the domain tree needed to cover all inames."""
+        """Find the leaves of the domain tree needed to cover all inames.
+
+        :arg inames: a non-mutable iterable
+        """
 
         hdm = self._get_home_domain_map()
         ppd = self.all_parents_per_domain()
