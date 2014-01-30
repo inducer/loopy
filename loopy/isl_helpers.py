@@ -204,10 +204,11 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
                     % (what, pw_aff))
         return result
 
-    # put constant bounds first
+    # Put constant bounds last, they're usually too restrictive.
     pieces = (
-            [(set, aff) for set, aff in pieces if aff.is_cst()]
-            + [(set, aff) for set, aff in pieces if not aff.is_cst()])
+            [(set, aff) for set, aff in pieces if not aff.is_cst()]
+            + [(set, aff) for set, aff in pieces if aff.is_cst()]
+            )
 
     reference = pw_aff.get_aggregate_domain()
     if context is not None:
