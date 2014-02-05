@@ -286,9 +286,16 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
 
         # {{{ find bounds
 
-        domain = isl.align_spaces(domain, slab, across_dim_types=True,
+        aligned_domain = isl.align_spaces(domain, slab, across_dim_types=True,
                 obj_bigger_ok=True)
-        dom_and_slab = domain & slab
+
+        dom_and_slab = aligned_domain & slab
+
+        assumptions_non_param = isl.BasicSet.from_params(kernel.assumptions)
+        dom_and_slab, assumptions_non_param = isl.align_two(
+                dom_and_slab, assumptions_non_param)
+        dom_and_slab = dom_and_slab & assumptions_non_param
+        del assumptions_non_param
 
         # move inames that are usable into parameters
         moved_inames = []
