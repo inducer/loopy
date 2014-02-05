@@ -625,7 +625,7 @@ loop's tag to ``"unr"``:
 
 
 :func:`loopy.tag_inames` is a new transformation that assigns
-implementation tags to kernels.  ``"unr'`` is the first tag we've
+implementation tags to kernels.  ``"unr"`` is the first tag we've
 explicitly learned about. Technically, though, it is the second--``"for"``
 (or, equivalently, *None*), which is the default, instructs loopy to
 implement an iname using a for loop.
@@ -747,10 +747,12 @@ assumption:
     ...
 
 While these conditionals enable the generated code to deal with arbitrary
-*n*, they come at a performance cost. But there's still no reason to pay
-for them with *every* item processed. Loopy allows generating separate code
-for the last iteration of the loop, by using the *slabs* keyword argument
-to :func:`split_iname`:
+*n*, they come at a performance cost. Loopy allows generating separate code
+for the last iteration of the *i_outer* loop, by using the *slabs* keyword
+argument to :func:`split_iname`. Since this last iteration of *i_outer* is
+the only iteration for which ``i_inner + 4*i_outer`` can become larger than
+*n*, only the (now separate) code for that iteration contains conditionals,
+enabling some cost savings:
 
 .. doctest::
 
@@ -759,16 +761,27 @@ to :func:`split_iname`:
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     <BLANKLINE>
-      for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
+    ...
+      /* bulk slab for 'i_outer' */
+      for (int i_outer = 0; i_outer <= (-2 + ((3 + n) / 4)); ++i_outer)
       {
         a[0 + i_outer * 4] = 0.0f;
-        if ((-2 + -4 * i_outer + n) >= 0)
-          a[1 + i_outer * 4] = 0.0f;
-        if ((-3 + -4 * i_outer + n) >= 0)
-          a[2 + i_outer * 4] = 0.0f;
-        if ((-4 + -4 * i_outer + n) >= 0)
-          a[3 + i_outer * 4] = 0.0f;
+        a[1 + i_outer * 4] = 0.0f;
+        a[2 + i_outer * 4] = 0.0f;
+        a[3 + i_outer * 4] = 0.0f;
       }
+      /* final slab for 'i_outer' */
+      for (int i_outer = (-1 + n + -1 * (3 * n / 4)); i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
+        if ((-1 + n) >= 0)
+        {
+          a[0 + i_outer * 4] = 0.0f;
+          if ((-2 + -4 * i_outer + n) >= 0)
+            a[1 + i_outer * 4] = 0.0f;
+          if ((-3 + -4 * i_outer + n) >= 0)
+            a[2 + i_outer * 4] = 0.0f;
+          if ((4 + 4 * i_outer + -1 * n) == 0)
+            a[3 + i_outer * 4] = 0.0f;
+        }
     ...
 
 .. _specifying-arguments:
