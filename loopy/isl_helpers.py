@@ -204,10 +204,29 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
                     % (what, pw_aff))
         return result
 
-    # put constant bounds first
-    pieces = (
-            [(set, aff) for set, aff in pieces if aff.is_cst()]
-            + [(set, aff) for set, aff in pieces if not aff.is_cst()])
+    from pytools import memoize, flatten
+
+    @memoize
+    def is_bounded(set):
+        assert set.dim(dim_type.set) == 0
+        return (set
+                .move_dims(dim_type.set, 0,
+                    dim_type.param, 0, set.dim(dim_type.param))
+                .is_bounded())
+
+    # put constant bounds with unbounded validity first
+    # FIXME: Heuristi-hack.
+    order = [
+            (True, False),  # constant, unbounded validity
+            (False, False),  # nonconstant, unbounded validity
+            (True, True),  # constant, bounded validity
+            (False, True),  # nonconstant, bounded validity
+            ]
+    pieces = flatten([
+            [(set, aff) for set, aff in pieces
+                if aff.is_cst() == want_is_constant
+                and is_bounded(set) == want_is_bounded]
+            for want_is_constant, want_is_bounded in order])
 
     reference = pw_aff.get_aggregate_domain()
     if context is not None:
