@@ -28,13 +28,13 @@ import numpy as np
 
 import pyopencl as cl
 import pyopencl.array as cl_array
+import loopy as lp
 
 
 AUTO_TEST_SKIP_RUN = False
 
 import logging
 logger = logging.getLogger(__name__)
-
 
 
 # {{{ create random argument arrays for testing
@@ -398,8 +398,9 @@ def auto_test_vs_ref(
         ref_queue = cl.CommandQueue(ref_ctx,
                 properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-        import loopy as lp
-        for knl in lp.generate_loop_schedules(ref_knl):
+        pp_ref_knl = lp.preprocess_kernel(ref_knl, device=dev)
+
+        for knl in lp.generate_loop_schedules(pp_ref_knl):
             ref_sched_kernel = knl
             break
 
@@ -487,6 +488,12 @@ def auto_test_vs_ref(
 
         test_kernels = test_knl
     else:
+        from loopy.kernel import kernel_state
+        if test_knl.state not in [
+                kernel_state.PREPROCESSED,
+                kernel_state.SCHEDULED]:
+            test_knl = lp.preprocess_kernel(test_knl, device=ctx.devices[0])
+
         if not test_knl.schedule:
             test_kernels = lp.generate_loop_schedules(test_knl)
         else:
@@ -604,7 +611,7 @@ def auto_test_vs_ref(
 
         print("elapsed: %g s event, %s s marker-event %g s wall "
                 "(%d rounds)%s" % (
-                elapsed, elapsed_evt_2, elapsed_wall, timing_rounds, rates))
+                    elapsed, elapsed_evt_2, elapsed_wall, timing_rounds, rates))
 
         if do_check:
             ref_rates = ""

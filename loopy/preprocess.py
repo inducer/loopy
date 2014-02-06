@@ -985,12 +985,12 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
 # {{{ temp storage adjust for bank conflict
 
-def adjust_local_temp_var_storage(kernel):
+def adjust_local_temp_var_storage(kernel, device):
     logger.debug("%s: adjust temp var storage" % kernel.name)
 
     new_temp_vars = {}
 
-    lmem_size = cl_char.usable_local_mem_size(kernel.device)
+    lmem_size = cl_char.usable_local_mem_size(device)
     for temp_var in kernel.temporary_variables.itervalues():
         if not temp_var.is_local:
             new_temp_vars[temp_var.name] = \
@@ -1013,12 +1013,12 @@ def adjust_local_temp_var_storage(kernel):
         # below to avoid bank conflicts
         from pytools import product
 
-        if kernel.device.local_mem_type == cl.device_local_mem_type.GLOBAL:
+        if device.local_mem_type == cl.device_local_mem_type.GLOBAL:
             # FIXME: could try to avoid cache associativity disasters
             new_storage_shape = storage_shape
 
-        elif kernel.device.local_mem_type == cl.device_local_mem_type.LOCAL:
-            min_mult = cl_char.local_memory_bank_count(kernel.device)
+        elif device.local_mem_type == cl.device_local_mem_type.LOCAL:
+            min_mult = cl_char.local_memory_bank_count(device)
             good_incr = None
             new_storage_shape = storage_shape
             min_why_not = None
@@ -1028,7 +1028,7 @@ def adjust_local_temp_var_storage(kernel):
                 test_storage_shape = storage_shape[:]
                 test_storage_shape[-1] = test_storage_shape[-1] + increment
                 new_mult, why_not = cl_char.why_not_local_access_conflict_free(
-                        kernel.device, temp_var.dtype.itemsize,
+                        device, temp_var.dtype.itemsize,
                         temp_var.shape, test_storage_shape)
 
                 # will choose smallest increment 'automatically'
@@ -1062,7 +1062,12 @@ def adjust_local_temp_var_storage(kernel):
 # }}}
 
 
-def preprocess_kernel(kernel):
+def preprocess_kernel(kernel, device=None):
+    from loopy.kernel import kernel_state
+    if kernel.state != kernel_state.INITIAL:
+        raise LoopyError("cannot re-preprocess an already preprocessed "
+                "kernel")
+
     logger.info("%s: preprocess start" % kernel.name)
 
     from loopy.subst import expand_subst
@@ -1096,11 +1101,18 @@ def preprocess_kernel(kernel):
     kernel = assign_automatic_axes(kernel)
     kernel = find_boostability(kernel)
     kernel = limit_boostability(kernel)
-    kernel = adjust_local_temp_var_storage(kernel)
+
+    if device is not None:
+        kernel = adjust_local_temp_var_storage(kernel, device)
+    else:
+        from loopy.diagnostic import warn
+        warn(kernel, "no_device_in_preprocess",
+                "no device parameter was passed to loopy.preprocess")
 
     logger.info("%s: preprocess done" % kernel.name)
 
-    return kernel
+    return kernel.copy(
+            state=kernel_state.PREPROCESSED)
 
 
 

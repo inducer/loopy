@@ -935,10 +935,9 @@ def resolve_wildcard_deps(knl):
 
 # {{{ kernel creation top-level
 
-def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
+def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     """User-facing kernel creation entrypoint.
 
-    :arg device: :class:`pyopencl.Device`
     :arg domains: :class:`islpy.BasicSet`
     :arg instructions:
     :arg kernel_data:
@@ -1101,7 +1100,7 @@ def make_kernel(device, domains, instructions, kernel_data=["..."], **kwargs):
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)
 
     from loopy.kernel import LoopKernel
-    knl = LoopKernel(device, domains, instructions, kernel_args,
+    knl = LoopKernel(domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
             silenced_warnings=silenced_warnings,
             options=options,

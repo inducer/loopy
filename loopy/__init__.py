@@ -60,7 +60,7 @@ from loopy.padding import (split_arg_axis, find_padding_multiple,
         add_padding)
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         infer_unknown_types)
-from loopy.schedule import generate_loop_schedules
+from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
 from loopy.codegen import generate_code
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
@@ -94,7 +94,7 @@ __all__ = [
         "infer_argument_dtypes", "add_and_infer_dtypes",
 
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
-        "generate_loop_schedules",
+        "generate_loop_schedules", "get_one_scheduled_kernel",
         "generate_code",
 
         "CompiledKernel",

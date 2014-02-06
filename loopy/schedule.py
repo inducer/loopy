@@ -999,10 +999,12 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
 # {{{ main scheduling entrypoint
 
 def generate_loop_schedules(kernel, debug_args={}):
-    loop_priority = kernel.loop_priority
+    from loopy.kernel import kernel_state
+    if kernel.state != kernel_state.PREPROCESSED:
+        raise LoopyError("cannot schedule a kernel that has not been "
+                "preprocessed")
 
-    from loopy.preprocess import preprocess_kernel
-    kernel = preprocess_kernel(kernel)
+    loop_priority = kernel.loop_priority
 
     from loopy.check import pre_schedule_checks
     pre_schedule_checks(kernel)
@@ -1049,7 +1051,9 @@ def generate_loop_schedules(kernel, debug_args={}):
                     reverse=False, kind="local")
 
             debug.stop()
-            yield kernel.copy(schedule=gen_sched)
+            yield kernel.copy(
+                    schedule=gen_sched,
+                    state=kernel_state.SCHEDULED)
             debug.start()
 
             schedule_count += 1

@@ -426,6 +426,8 @@ Finishing up
 
 .. autofunction:: generate_loop_schedules
 
+.. autofunction:: get_one_scheduled_kernel
+
 .. autofunction:: generate_code
 
 Running

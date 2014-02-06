@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 
+from loopy.diagnostic import LoopyError
 from pytools import Record
 import islpy as isl
 
@@ -287,16 +288,20 @@ class ImplementedDataInfo(Record):
 
 # {{{ main code generation entrypoint
 
-def generate_code(kernel):
+def generate_code(kernel, device=None):
     if kernel.schedule is None:
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel)
+    from loopy.kernel import kernel_state
+    if kernel.state != kernel_state.SCHEDULED:
+        raise LoopyError("cannot generate code for a kernel that has not been "
+                "scheduled")
 
     from loopy.preprocess import infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
 
     from loopy.check import pre_codegen_checks
-    pre_codegen_checks(kernel)
+    pre_codegen_checks(kernel, device=device)
 
     from cgen import (FunctionBody, FunctionDeclaration,
             Value, Module, Block,

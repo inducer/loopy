@@ -632,7 +632,7 @@ class _CLKernelInfo(Record):
 
 
 class CompiledKernel:
-    def __init__(self, context, kernel, codegen_kwargs={}):
+    def __init__(self, context, kernel):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -641,7 +641,6 @@ class CompiledKernel:
         """
 
         self.context = context
-        self.codegen_kwargs = codegen_kwargs
         self.kernel = kernel
 
         self.packing_controller = SeparateArrayPackingController(kernel)
@@ -676,6 +675,9 @@ class CompiledKernel:
             kernel = infer_unknown_types(kernel, expect_completion=True)
 
         if kernel.schedule is None:
+            from loopy.preprocess import preprocess_kernel
+            kernel = preprocess_kernel(kernel, self.context.devices[0])
+
             from loopy.schedule import get_one_scheduled_kernel
             kernel = get_one_scheduled_kernel(kernel)
 
@@ -686,7 +688,7 @@ class CompiledKernel:
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
 
         from loopy.codegen import generate_code
-        code, impl_arg_info = generate_code(kernel, **self.codegen_kwargs)
+        code, impl_arg_info = generate_code(kernel, device=self.context.devices[0])
 
         if self.kernel.options.write_cl:
             output = code
@@ -724,7 +726,7 @@ class CompiledKernel:
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
 
         from loopy.codegen import generate_code
-        code, arg_info = generate_code(kernel, **self.codegen_kwargs)
+        code, arg_info = generate_code(kernel, device=self.context.devices[0])
         return code
 
     def get_highlighted_code(self, arg_to_dtype=None):

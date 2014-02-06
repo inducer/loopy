@@ -373,7 +373,7 @@ def pre_schedule_checks(kernel):
 
 # {{{ pre-code-generation checks
 
-def check_sizes(kernel):
+def check_sizes(kernel, device):
     import loopy as lp
 
     from loopy.diagnostic import LoopyAdvisory
@@ -386,7 +386,7 @@ def check_sizes(kernel):
     glens, llens = kernel.get_grid_sizes_as_exprs()
 
     if (max(len(glens), len(llens))
-            > kernel.device.max_work_item_dimensions):
+            > device.max_work_item_dimensions):
         raise LoopyError("too many work item dimensions")
 
     from pymbolic import evaluate
@@ -401,15 +401,15 @@ def check_sizes(kernel):
                 % name, LoopyAdvisory)
     else:
         for i in range(len(llens)):
-            if llens[i] > kernel.device.max_work_item_sizes[i]:
+            if llens[i] > device.max_work_item_sizes[i]:
                 raise LoopyError("group axis %d too big" % i)
 
         from pytools import product
-        if product(llens) > kernel.device.max_work_group_size:
+        if product(llens) > device.max_work_group_size:
             raise LoopyError("work group too big")
 
     from pyopencl.characterize import usable_local_mem_size
-    if kernel.local_mem_use() > usable_local_mem_size(kernel.device):
+    if kernel.local_mem_use() > usable_local_mem_size(device):
         raise LoopyError("using too much local memory")
 
     from loopy.kernel.data import ConstantArg
@@ -417,7 +417,7 @@ def check_sizes(kernel):
             1 for arg in kernel.args
             if isinstance(arg, ConstantArg))
 
-    if const_arg_count > kernel.device.max_constant_args:
+    if const_arg_count > device.max_constant_args:
         raise LoopyError("too many constant arguments")
 
 
@@ -457,11 +457,18 @@ def check_that_shapes_and_strides_are_arguments(kernel):
                                     arg.name, ", ".join(deps-integer_arg_names)))
 
 
-def pre_codegen_checks(kernel):
+def pre_codegen_checks(kernel, device=None):
     try:
         logger.info("pre-codegen check %s: start" % kernel.name)
 
-        check_sizes(kernel)
+        if device is not None:
+            check_sizes(kernel, device)
+        else:
+            from loopy.diagnostic import warn
+            warn(kernel, "no_device_in_pre_codegen_checks",
+                    "No device parameter was passed to loopy.pre_codegen_checks. "
+                    "Perhaps you want to pass a device argument to generate_code.")
+
         check_that_shapes_and_strides_are_arguments(kernel)
 
         logger.info("pre-codegen check %s: done" % kernel.name)

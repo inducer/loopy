@@ -40,17 +40,17 @@ def test_nbody(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "[N] -> {[i,j,k]: 0<=i,j<N and 0<=k<3 }",
-           [
-               "axdist(k) := x[i,k]-x[j,k]",
-               "invdist := rsqrt(sum_float32(k, axdist(k)**2))",
-               "pot[i] = sum_float32(j, if(i != j, invdist, 0))",
-           ], [
-               lp.GlobalArg("x", dtype, shape="N,3", order="C"),
-               lp.GlobalArg("pot", dtype, shape="N", order="C"),
-               lp.ValueArg("N", np.int32),
-           ], name="nbody", assumptions="N>=1")
+            [
+                "axdist(k) := x[i,k]-x[j,k]",
+                "invdist := rsqrt(sum_float32(k, axdist(k)**2))",
+                "pot[i] = sum_float32(j, if(i != j, invdist, 0))",
+            ], [
+                lp.GlobalArg("x", dtype, shape="N,3", order="C"),
+                lp.GlobalArg("pot", dtype, shape="N", order="C"),
+                lp.ValueArg("N", np.int32),
+            ], name="nbody", assumptions="N>=1")
 
     seq_knl = knl
 

@@ -47,7 +47,7 @@ def test_dg_volume(ctx_factory):
 
     K = 10000
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel([
             "{[n,m,k]: 0<= n,m < Np and 0<= k < K}",
             ],
             """
@@ -175,7 +175,7 @@ def no_test_dg_surface(ctx_factory):
 
     K = 10000
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[m,n,k]: 0<= m < NfpNfaces and 0<= n < Np and 0<= k < K }"
                 ],

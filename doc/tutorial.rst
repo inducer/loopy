@@ -52,7 +52,7 @@ one vector, doubles it, and writes it to another.
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i]: 0<=i<n }",
     ...     "out[i] = 2*a[i]")
 
@@ -79,9 +79,6 @@ The parts that you see here are the two main components of a loopy kernel:
 
   See :ref:`expression-syntax` for a full list of allowed constructs in the
   left- and right-hand side expression of an assignment.
-
-Loopy also needs to know which OpenCL device to target.  ``ctx.devices[0]``
-specifies the first device in our OpenCL context.
 
 As you create and transform kernels, it's useful to know that you can
 always see loopy's view of a kernel by printing it.
@@ -234,6 +231,8 @@ call :func:`loopy.generate_code`:
 .. doctest::
 
     >>> typed_knl = lp.add_dtypes(knl, dict(a=np.float32))
+    >>> typed_knl = lp.preprocess_kernel(typed_knl, device=ctx.devices[0])
+    >>> typed_knl = lp.get_one_scheduled_kernel(typed_knl)
     >>> code, _ = lp.generate_code(typed_knl)
     >>> print code
     <BLANKLINE>
@@ -257,7 +256,7 @@ argument:
 .. doctest::
 
     >>> # WARNING: Incorrect.
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i,j]: 0<=i,j<n }",
     ...     """
     ...     out[j,i] = a[i,j]
@@ -284,7 +283,7 @@ an explicit dependency:
 .. doctest::
 
     >>> # WARNING: Incorrect.
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i,j]: 0<=i,j<n }",
     ...     """
     ...     out[j,i] = a[i,j] {id=transpose}
@@ -384,7 +383,7 @@ with identical bounds, for the use of the transpose:
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i,j,ii,jj]: 0<=i,j,ii,jj<n }",
     ...     """
     ...     out[j,i] = a[i,j] {id=transpose}
@@ -429,7 +428,7 @@ zero-fill kernel?
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i,j]: 0<=i,j<n }",
     ...     """
     ...     a[i,j] = 0
@@ -514,7 +513,7 @@ Consider this example:
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i]: 0<=i<n }",
     ...     "a[i] = 0", assumptions="n>=0")
     >>> knl = lp.split_iname(knl, "i", 16)
@@ -564,7 +563,7 @@ commonly called 'loop tiling':
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i,j]: 0<=i,j<n }",
     ...     "out[i,j] = a[j,i]",
     ...     assumptions="n mod 16 = 0 and n >= 1")
@@ -604,7 +603,7 @@ loop's tag to ``"unr"``:
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i]: 0<=i<n }",
     ...     "a[i] = 0", assumptions="n>=0 and n mod 4 = 0")
     >>> orig_knl = knl
@@ -679,7 +678,7 @@ Let's try this out on our vector fill kernel by creating workgroups of size
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i]: 0<=i<n }",
     ...     "a[i] = 0", assumptions="n>=0")
     >>> knl = lp.split_iname(knl, "i", 128,
@@ -724,7 +723,7 @@ assumption:
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...     "{ [i]: 0<=i<n }",
     ...     "a[i] = 0", assumptions="n>=0")
     >>> orig_knl = knl
@@ -821,7 +820,7 @@ Attempting to create this kernel results in an error:
 
 .. doctest::
 
-    >>> lp.make_kernel(ctx.devices[0],
+    >>> lp.make_kernel(
     ...     "{ [i]: 0<=i<n }",
     ...     """
     ...     out[i] = 5
@@ -848,7 +847,7 @@ be told in order for the error to disappear--note the *assumptions* argument:
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...      "{ [i]: 0<=i<n }",
     ...      """
     ...      out[i] = 5
@@ -868,7 +867,7 @@ This kernel performs a simple transposition of an input matrix:
 
 .. doctest::
 
-    >>> knl = lp.make_kernel(ctx.devices[0],
+    >>> knl = lp.make_kernel(
     ...       "{ [i,j]: 0<=i,j<n }",
     ...       """
     ...       out[j,i] = a[i,j]

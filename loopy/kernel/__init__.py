@@ -26,12 +26,12 @@ THE SOFTWARE.
 
 
 import numpy as np
-from pytools import Record, memoize_method
+from pytools import RecordWithoutPickling, memoize_method
 import islpy as isl
 from islpy import dim_type
 import re
 
-from pytools import UniqueNameGenerator, generate_unique_possibilities
+from pytools import UniqueNameGenerator, generate_unique_names
 
 from loopy.library.function import (
         default_function_mangler,
@@ -79,13 +79,15 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
-class LoopKernel(Record):
+class kernel_state:
+    INITIAL = 0
+    PREPROCESSED = 1
+    SCHEDULED = 2
+
+
+class LoopKernel(RecordWithoutPickling):
     """These correspond more or less directly to arguments of
     :func:`loopy.make_kernel`.
-
-    .. attribute:: device
-
-        :class:`pyopencl.Device`
 
     .. attribute:: domains
 
@@ -137,11 +139,15 @@ class LoopKernel(Record):
     .. attribute:: options
 
         An instance of :class:`loopy.Options`
+
+    .. attribute:: state
+
+        A value from :class:`kernel_state`.
     """
 
     # {{{ constructor
 
-    def __init__(self, device, domains, instructions, args=[], schedule=None,
+    def __init__(self, domains, instructions, args=[], schedule=None,
             name="loopy_kernel",
             preambles=[],
             preamble_generators=[default_preamble_generator],
@@ -166,6 +172,8 @@ class LoopKernel(Record):
             index_dtype=np.int32,
             isl_context=None,
             options=None,
+
+            state=kernel_state.INITIAL,
 
             # When kernels get intersected in slab decomposition,
             # their grid sizes shouldn't change. This provides
@@ -247,8 +255,15 @@ class LoopKernel(Record):
             # overwrites method down below
             self.get_grid_sizes = get_grid_sizes
 
-        Record.__init__(self,
-                device=device, domains=domains,
+        if state not in [
+                kernel_state.INITIAL,
+                kernel_state.PREPROCESSED,
+                kernel_state.SCHEDULED,
+                ]:
+            raise ValueError("invalid value for 'state'")
+
+        RecordWithoutPickling.__init__(self,
+                domains=domains,
                 instructions=instructions,
                 args=args,
                 schedule=schedule,
@@ -269,7 +284,8 @@ class LoopKernel(Record):
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
                 isl_context=isl_context,
-                options=options)
+                options=options,
+                state=state)
 
     # }}}
 
@@ -310,7 +326,7 @@ class LoopKernel(Record):
 
         used_ids = set(insn.id for insn in insns) | extra_used_ids
 
-        for id_str in generate_unique_possibilities(based_on):
+        for id_str in generate_unique_names(based_on):
             if id_str not in used_ids:
                 return id_str
 
@@ -745,7 +761,7 @@ class LoopKernel(Record):
                     dom_intersect_assumptions, iname_idx)
                 .coalesce())
 
-        class BoundsRecord(Record):
+        class BoundsRecord(RecordWithoutPickling):
             pass
 
         size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
@@ -814,8 +830,6 @@ class LoopKernel(Record):
 
             tgt_dict[tag.axis] = size
 
-        max_dims = self.device.max_work_item_dimensions
-
         def to_dim_tuple(size_dict, which, forced_sizes={}):
             forced_sizes = forced_sizes.copy()
 
@@ -839,10 +853,6 @@ class LoopKernel(Record):
                         which, len(size_list)))
 
                 size_list.append(size_dict[cur_axis])
-
-            if len(size_list) > max_dims:
-                raise ValueError("more %s dimensions assigned than supported "
-                        "by hardware (%d > %d)" % (which, len(size_list), max_dims))
 
             return tuple(size_list)
 
@@ -1015,6 +1025,16 @@ class LoopKernel(Record):
                 queue, **kwargs)
 
     # }}}
+
+    def __getinitargs__(self):
+        result = dict(
+                (key, getattr(self, key))
+                for key in self.__class__.fields
+                if hasattr(self, key))
+
+        result.pop("cache_manager", None)
+
+        return result
 
 # }}}
 

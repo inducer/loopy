@@ -73,7 +73,7 @@ def test_axpy(ctx_factory):
                 vec.make_float4(1, 2, 3, 4), vec.make_float4(6, 7, 8, 9)),
             (np.float32, None, 5, 7),
             ]:
-        knl = lp.make_kernel(ctx.devices[0],
+        knl = lp.make_kernel(
                 "[n] -> {[i]: 0<=i<n}",
                 [
                     "z[i] = a*x[i]+b*y[i]"
@@ -121,7 +121,7 @@ def test_transpose(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<%d}" % n,
             [
                 "b[i, j] = a[j, i]"
@@ -155,7 +155,7 @@ def test_plain_matrix_mul(ctx_factory):
             (cl_array.vec.float4, check_float4, 4),
             (np.float32, None, 1),
             ]:
-        knl = lp.make_kernel(ctx.devices[0],
+        knl = lp.make_kernel(
                 "{[i,j,k]: 0<=i,j,k<%d}" % n,
                 [
                     "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -189,7 +189,7 @@ def test_variable_size_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "[n] -> {[i,j,k]: 0<=i,j,k<n}",
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j]) {id=labl}"
@@ -226,7 +226,7 @@ def test_rank_one(ctx_factory):
     #n = int(get_suitable_size(ctx)**(2.7/2))
     n = 16**3
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "[n] -> {[i,j]: 0<=i,j<n}",
             [
                 "c[i, j] = a[i]*b[j] {id=mylabel, priority =5}"
@@ -303,7 +303,7 @@ def test_troublesome_premagma_fermi_matrix_mul(ctx_factory):
 
     n = 6*16*2
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -340,7 +340,7 @@ def test_intel_matrix_mul(ctx_factory):
 
     n = 128+32
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -392,7 +392,7 @@ def test_magma_fermi_matrix_mul(ctx_factory):
             ctx, cl.mem_flags.READ_ONLY, cl.mem_object_type.IMAGE2D):
         pytest.skip("image format not supported")
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -439,7 +439,7 @@ def test_image_matrix_mul(ctx_factory):
             ctx, cl.mem_flags.READ_ONLY, cl.mem_object_type.IMAGE2D):
         pytest.skip("image format not supported")
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -477,7 +477,7 @@ def test_image_matrix_mul_ilp(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -510,12 +510,11 @@ def test_image_matrix_mul_ilp(ctx_factory):
 @pytest.mark.skipif("sys.version_info < (2,6)")
 def test_ilp_race_matmul(ctx_factory):
     dtype = np.float32
-    ctx = ctx_factory()
     order = "C"
 
     n = 9
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j,k]: 0<=i,j,k<%d}" % n,
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -534,6 +533,7 @@ def test_ilp_race_matmul(ctx_factory):
     from loopy.diagnostic import WriteRaceConditionWarning
     from warnings import catch_warnings
     with catch_warnings(record=True) as warn_list:
+        knl = lp.preprocess_kernel(knl)
         list(lp.generate_loop_schedules(knl))
 
         assert any(isinstance(w.message, WriteRaceConditionWarning)
@@ -548,7 +548,7 @@ def test_fancy_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "[n] -> {[i,j,k]: 0<=i,j,k<n }",
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
@@ -582,7 +582,7 @@ def test_small_batched_matvec(ctx_factory):
     K = 9997
     Np = 36
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "[K] -> {[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,
             [
                 "result[k, i] = sum(j, d[i, j]*f[k, j])"

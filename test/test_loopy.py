@@ -52,7 +52,7 @@ __all__ = [
 def test_complicated_subst(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
                 f(x) := x*a[x]
@@ -84,7 +84,7 @@ def test_complicated_subst(ctx_factory):
 def test_type_inference_no_artificial_doubles(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
                 <> bb = a[i] - b[i]
@@ -98,6 +98,7 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
                 ],
             assumptions="n>=1")
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     for k in lp.generate_loop_schedules(knl):
         code = lp.generate_code(k)
         assert "double" not in code
@@ -106,7 +107,7 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
 def test_sized_and_complex_literals(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
                 <> aa = 5jf
@@ -129,7 +130,7 @@ def test_sized_and_complex_literals(ctx_factory):
 def test_simple_side_effect(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<100}",
             """
                 a[i] = a[i] + 1
@@ -137,6 +138,7 @@ def test_simple_side_effect(ctx_factory):
             [lp.GlobalArg("a", np.float32, shape=(100,))]
             )
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for gen_knl in kernel_gen:
@@ -148,7 +150,7 @@ def test_simple_side_effect(ctx_factory):
 def test_nonsense_reduction(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
             """
                 a[i] = sum(i, 2)
@@ -158,13 +160,13 @@ def test_nonsense_reduction(ctx_factory):
 
     import pytest
     with pytest.raises(RuntimeError):
-        list(lp.generate_loop_schedules(knl))
+        knl = lp.preprocess_kernel(knl, ctx.devices[0])
 
 
 def test_owed_barriers(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
             [
                 "<float32> z[i] = a[i]"
@@ -174,6 +176,7 @@ def test_owed_barriers(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for gen_knl in kernel_gen:
@@ -184,7 +187,7 @@ def test_owed_barriers(ctx_factory):
 def test_wg_too_small(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
             [
                 "<float32> z[i] = a[i] {id=copy}"
@@ -194,6 +197,7 @@ def test_wg_too_small(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     kernel_gen = lp.generate_loop_schedules(knl)
 
     import pytest
@@ -205,7 +209,7 @@ def test_wg_too_small(ctx_factory):
 def test_join_inames(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<16}",
             [
                 "b[i,j] = 2*a[i,j]"
@@ -227,7 +231,7 @@ def test_join_inames(ctx_factory):
 def test_divisibility_assumption(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "[n] -> {[i]: 0<=i<n}",
             [
                 "b[i] = 2*a[i]"
@@ -243,6 +247,7 @@ def test_divisibility_assumption(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 16)
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     for k in lp.generate_loop_schedules(knl):
         code = lp.generate_code(k)
         assert "if" not in code
@@ -254,7 +259,7 @@ def test_divisibility_assumption(ctx_factory):
 def test_multi_cse(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i]: 0<=i<100}",
             [
                 "<float32> z[i] = a[i] + a[i]**2"
@@ -265,6 +270,7 @@ def test_multi_cse(ctx_factory):
     knl = lp.split_iname(knl, "i", 16, inner_tag="l.0")
     knl = lp.add_prefetch(knl, "a", [])
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for gen_knl in kernel_gen:
@@ -279,7 +285,7 @@ def test_stencil(ctx_factory):
     # non-unifiable, two-constant-segments PwAff as the base index)
 
     n = 256
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j]: 0<= i,j < %d}" % n,
             [
                 "a_offset(ii, jj) := a[ii+1, jj+1]",
@@ -320,7 +326,7 @@ def test_stencil(ctx_factory):
 def test_stencil_with_overfetch(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j]: 0<= i,j < n}",
             [
                 "a_offset(ii, jj) := a[ii+2, jj+2]",
@@ -361,7 +367,7 @@ def test_stencil_with_overfetch(ctx_factory):
 def test_eq_constraint(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j]: 0<= i,j < 32}",
             [
                 "a[i] = b[i]"
@@ -374,6 +380,7 @@ def test_eq_constraint(ctx_factory):
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0")
     knl = lp.split_iname(knl, "i_inner", 16, outer_tag=None, inner_tag="l.0")
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for knl in kernel_gen:
@@ -388,7 +395,7 @@ def test_argmax(ctx_factory):
 
     n = 10000
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i]: 0<=i<%d}" % n,
             [
                 "<> result = argmax(i, fabs(a[i]))",
@@ -489,7 +496,7 @@ def test_fuzz_code_generator(ctx_factory):
             else:
                 return np.float64
 
-        knl = lp.make_kernel(ctx.devices[0], "{ : }",
+        knl = lp.make_kernel("{ : }",
                 [lp.ExpressionInstruction("value", expr)],
                 [lp.GlobalArg("value", np.complex128, shape=())]
                 + [
@@ -523,7 +530,7 @@ def test_empty_reduction(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[i]: 0<=i<20}",
                 "[i] -> {[j]: 0<=j<0}"
@@ -546,7 +553,7 @@ def test_nested_dependent_reduction(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[i]: 0<=i<n}",
                 "{[j]: 0<=j<i+sumlen}"
@@ -575,7 +582,7 @@ def test_multi_nested_dependent_reduction(ctx_factory):
     dtype = np.dtype(np.int32)
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[itgt]: 0 <= itgt < ntgts}",
                 "{[isrc_box]: 0 <= isrc_box < nboxes}",
@@ -603,7 +610,7 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
     dtype = np.dtype(np.int32)
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[itgt]: 0 <= itgt < ntgts}",
                 "{[isrc_box]: 0 <= isrc_box < nboxes}",
@@ -632,7 +639,7 @@ def test_dependent_loop_bounds(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[i]: 0<=i<n}",
                 "{[jj]: 0<=jj<row_len}",
@@ -660,7 +667,7 @@ def test_dependent_loop_bounds_2(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[i]: 0<=i<n}",
                 "{[jj]: 0<=jj<row_len}",
@@ -696,7 +703,7 @@ def test_dependent_loop_bounds_3(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[i]: 0<=i<n}",
                 "{[jj]: 0<=jj<row_len}",
@@ -724,6 +731,8 @@ def test_dependent_loop_bounds_3(ctx_factory):
     knl_bad = lp.split_iname(knl, "jj", 128, outer_tag="g.1",
             inner_tag="l.1")
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+
     import pytest
     with pytest.raises(RuntimeError):
         list(lp.generate_loop_schedules(knl_bad))
@@ -734,7 +743,7 @@ def test_independent_multi_domain(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "{[i]: 0<=i<n}",
                 "{[j]: 0<=j<n}",
@@ -770,7 +779,7 @@ def test_bare_data_dependency(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             [
                 "[znirp] -> {[i]: 0<=i<znirp}",
                 ],
@@ -799,7 +808,7 @@ def test_equality_constraints(ctx_factory):
 
     n = 10
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel([
             "[n] -> {[i,j]: 0<=i,j<n }",
             "{[k]: k =i+5 and k < n}",
             ],
@@ -833,7 +842,7 @@ def test_stride(ctx_factory):
 
     n = 10
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel([
             "{[i]: 0<=i<n and (exists l: i = 2*l)}",
             ],
             [
@@ -859,7 +868,7 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
 
     n = 10
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel([
             "{[i]: 0<=i<n }",
             "{[k]: k=i and (exists l: k = 2*l) }",
             ],
@@ -886,9 +895,8 @@ def test_double_sum(ctx_factory):
 
     n = 20
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
-            ],
             [
                 "a = sum((i,j), i*j)",
                 "b = sum(i, sum(j, i*j))",
@@ -910,9 +918,8 @@ def test_double_sum(ctx_factory):
 def test_ilp_write_race_detection_global(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "[n] -> {[i,j]: 0<=i,j<n }",
-            ],
             [
                 "a[i] = 5+i+j",
                 ],
@@ -923,6 +930,8 @@ def test_ilp_write_race_detection_global(ctx_factory):
             assumptions="n>=1")
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
+
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
 
     from loopy.diagnostic import WriteRaceConditionWarning
     from warnings import catch_warnings
@@ -936,7 +945,7 @@ def test_ilp_write_race_detection_global(ctx_factory):
 def test_ilp_write_race_avoidance_local(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i<16 and 0<=j<17 }",
             [
                 "<> a[i] = 5+i+j",
@@ -945,6 +954,7 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="ilp"))
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     for k in lp.generate_loop_schedules(knl):
         assert k.temporary_variables["a"].shape == (16, 17)
 
@@ -952,7 +962,7 @@ def test_ilp_write_race_avoidance_local(ctx_factory):
 def test_ilp_write_race_avoidance_private(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[j]: 0<=j<16 }",
             [
                 "<> a = 5+j",
@@ -961,6 +971,7 @@ def test_ilp_write_race_avoidance_private(ctx_factory):
 
     knl = lp.tag_inames(knl, dict(j="ilp"))
 
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
     for k in lp.generate_loop_schedules(knl):
         assert k.temporary_variables["a"].shape == (16,)
 
@@ -971,9 +982,8 @@ def test_write_parameter(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
-            ],
             """
                 a = sum((i,j), i*j)
                 b = sum(i, sum(j, i*j))
@@ -996,9 +1006,8 @@ def test_write_parameter(ctx_factory):
 def test_arg_shape_guessing(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
-            ],
             """
                 a = 1.5 + sum((i,j), i*j)
                 b[i, j] = i*j
@@ -1019,9 +1028,8 @@ def test_arg_shape_guessing(ctx_factory):
 def test_arg_guessing(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
-            ],
             """
                 a = 1.5 + sum((i,j), i*j)
                 b[i, j] = i*j
@@ -1037,9 +1045,8 @@ def test_arg_guessing_with_reduction(ctx_factory):
     #logging.basicConfig(level=logging.DEBUG)
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
-            ],
             """
                 a = 1.5 + sum((i,j), i*j)
                 d = 1.5 + sum((i,j), b[i,j])
@@ -1057,9 +1064,8 @@ def test_arg_guessing_with_reduction(ctx_factory):
 def test_nonlinear_index(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
-            ],
             """
                 a[i*i] = 17
                 """,
@@ -1076,9 +1082,8 @@ def test_nonlinear_index(ctx_factory):
 def test_triangle_domain(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n and i <= j}",
-            ],
             "a[i,j] = 17",
             assumptions="n>=1")
 
@@ -1092,9 +1097,8 @@ def test_offsets_and_slicing(ctx_factory):
 
     n = 20
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i<n and 0<=j<m }",
-            ],
             """
                 b[i,j] = 2*a[i,j]
                 """,
@@ -1128,7 +1132,7 @@ def test_offsets_and_slicing(ctx_factory):
 def test_vector_ilp_with_prefetch(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
             [
@@ -1157,7 +1161,7 @@ def test_convolution(ctx_factory):
 
     dtype = np.float32
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
         "{ [iimg, ifeat, icolor, im_x, im_y, f_x, f_y]: \
                 -f_w <= f_x,f_y <= f_w \
                 and 0 <= im_x < im_w and 0 <= im_y < im_h \
@@ -1224,7 +1228,7 @@ def test_convolution_with_nonzero_base(ctx_factory):
 
     dtype = np.float32
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
         "{ [iimg, ifeat, icolor, im_x, im_y, f_x, f_y]: \
                 -f_w <= f_x,f_y <= f_w \
                 and f_w <= im_x < im_w-f_w and f_w <= im_y < im_h-f_w \
@@ -1276,9 +1280,8 @@ def test_c_instruction(ctx_factory):
     #logging.basicConfig(level=logging.DEBUG)
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
-            ],
             [
                 lp.CInstruction("i", """
                     x = sin((float) i);
@@ -1301,7 +1304,7 @@ def test_c_instruction(ctx_factory):
 def test_dependent_domain_insn_iname_finding(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel([
             "{[isrc_box]: 0<=isrc_box<nsrc_boxes}",
             "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
             ],
@@ -1332,11 +1335,8 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
 
 
 def test_inames_deps_from_write_subscript(ctx_factory):
-    ctx = ctx_factory()
-
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n}",
-            ],
             """
                 <> src_ibox = source_boxes[i]
                 <int32> something = 5
@@ -1352,11 +1352,8 @@ def test_inames_deps_from_write_subscript(ctx_factory):
 
 
 def test_split_reduction(ctx_factory):
-    ctx = ctx_factory()
-
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j,k]: 0<=i,j,k<n}",
-            ],
             """
                 b = sum((i,j,k), a[i,j,k])
                 """,
@@ -1372,9 +1369,8 @@ def test_split_reduction(ctx_factory):
 def test_modulo_indexing(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0], [
+    knl = lp.make_kernel(
             "{[i,j]: 0<=i<n and 0<=j<5}",
-            ],
             """
                 b[i] = sum(j, a[(i+j)%n])
                 """,
@@ -1396,7 +1392,7 @@ def test_rob_stroud_bernstein(ctx_factory):
 
     # NOTE: tmp would have to be zero-filled beforehand
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[el, i2, alpha1,alpha2]: \
                     0 <= el < nels and \
                     0 <= i2 < nqp1d and \
@@ -1448,7 +1444,7 @@ def test_rob_stroud_bernstein_full(ctx_factory):
 
     # NOTE: result would have to be zero-filled beforehand
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{[el, i2, alpha1,alpha2, i1_2, alpha1_2, i2_2]: \
                     0 <= el < nels and \
                     0 <= i2 < nqp1d and \
@@ -1517,7 +1513,7 @@ def test_rob_stroud_bernstein_full(ctx_factory):
 def test_vector_types(ctx_factory, vec_len):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{ [i,j]: 0<=i<n and 0<=j<vec_len }",
             "out[i,j] = 2*a[i,j]",
             [
@@ -1547,7 +1543,6 @@ def test_conditional(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            ctx.devices[0],
             "{ [i,j]: 0<=i,j<n }",
             """
                 <> my_a = a[i,j] {id=read_a}
@@ -1577,7 +1572,7 @@ def test_ilp_loop_bound(ctx_factory):
     # throughout. In ILP'd loops, not so much.
 
     ctx = ctx_factory()
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
             "{ [i,j,k]: 0<=i,j,k<n }",
             """
             out[i,k] = sum(j, a[i,j]*b[j,k])
@@ -1604,9 +1599,7 @@ def test_arg_shape_uses_assumptions(ctx_factory):
     # static shape for out, which is at least 1 x 1 in size, but otherwise of
     # size n x n.
 
-    ctx = ctx_factory()
-
-    lp.make_kernel(ctx.devices[0],
+    lp.make_kernel(
             "{ [i,j]: 0<=i,j<n }",
             """
             out[i,j] = 2*a[i,j]
@@ -1618,7 +1611,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
         "{ [i]: 0<=i<n }",
         "a[i] = 2*a[i]",
         assumptions="n>=1")
@@ -1651,7 +1644,7 @@ def test_multiple_writes_to_local_temporary(ctx_factory):
 
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(ctx.devices[0],
+    knl = lp.make_kernel(
         "{[i,e]: 0<=i<5 and 0<=e<nelements}",
         """
         <> temp[i, 0] = 17
@@ -1659,8 +1652,10 @@ def test_multiple_writes_to_local_temporary(ctx_factory):
         """)
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
-    code, _ = lp.generate_code(knl)
-    print code
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    for k in lp.generate_loop_schedules(knl):
+        code, _ = lp.generate_code(k)
+        print code
 
 
 if __name__ == "__main__":
