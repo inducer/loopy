@@ -1500,6 +1500,9 @@ def test_rob_stroud_bernstein_full(ctx_factory):
                 slabs=(0, 1))
         knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
 
+    from pickle import dumps, loads
+    knl = loads(dumps(knl))
+
     print lp.CompiledKernel(ctx, knl).get_highlighted_code(
             dict(
                 qpts=np.float32,

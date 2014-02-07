@@ -135,7 +135,6 @@ class LoopKernel(RecordWithoutPickling):
         on expressions the user specifies later.
 
     .. attribute:: cache_manager
-    .. attribute:: isl_context
     .. attribute:: options
 
         An instance of :class:`loopy.Options`
@@ -170,7 +169,6 @@ class LoopKernel(RecordWithoutPickling):
             applied_iname_rewrites=[],
             cache_manager=None,
             index_dtype=np.int32,
-            isl_context=None,
             options=None,
 
             state=kernel_state.INITIAL,
@@ -283,7 +281,6 @@ class LoopKernel(RecordWithoutPickling):
                 function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
-                isl_context=isl_context,
                 options=options,
                 state=state)
 
@@ -471,6 +468,13 @@ class LoopKernel(RecordWithoutPickling):
 
     def get_home_domain_index(self, iname):
         return self._get_home_domain_map()[iname]
+
+    @memoize_method
+    def isl_context(self):
+        for dom in self.domains:
+            return dom.get_ctx()
+
+        assert False
 
     @memoize_method
     def combine_domains(self, domains):

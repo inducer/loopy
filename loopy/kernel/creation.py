@@ -1086,7 +1086,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             isl_context = domain.get_ctx()
     if isl_context is None:
         isl_context = isl.Context()
-    kwargs["isl_context"] = isl_context
 
     # }}}
 
