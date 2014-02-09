@@ -469,7 +469,7 @@ class LoopKernel(RecordWithoutPickling):
     def get_home_domain_index(self, iname):
         return self._get_home_domain_map()[iname]
 
-    @memoize_method
+    @property
     def isl_context(self):
         for dom in self.domains:
             return dom.get_ctx()
