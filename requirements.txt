@@ -1,4 +1,5 @@
 numpy
+git+git://github.com/inducer/pytools
 git+git://github.com/inducer/islpy
 cgen
 git+git://github.com/pyopencl/pyopencl
