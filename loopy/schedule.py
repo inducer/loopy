@@ -903,8 +903,9 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
             last_barrier_index = None
 
             for j, sub_sched_item in enumerate(subresult):
-                if (isinstance(sched_item, Barrier) and
-                        barrier_kind_more_or_equally_global(sched_item.kind, kind)):
+                if (isinstance(sub_sched_item, Barrier) and
+                        barrier_kind_more_or_equally_global(
+                            sub_sched_item.kind, kind)):
 
                     seen_barrier()
                     last_barrier_index = j
