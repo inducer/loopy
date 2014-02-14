@@ -10,6 +10,8 @@ unambiguously define all aspects of loopy.
 Preparation
 -----------
 
+.. {{{
+
 :mod:`loopy` currently requires on :mod:`pyopencl` to be installed. We
 import a few modules and set up a :class:`pyopencl.Context` and a
 :class:`pyopencl.CommandQueue`:
@@ -34,6 +36,7 @@ examples:
     >>> n = 16*16
     >>> x_vec_dev = cl.clrandom.rand(queue, n, dtype=np.float32)
     >>> y_vec_dev = cl.clrandom.rand(queue, n, dtype=np.float32)
+    >>> z_vec_dev = cl.clrandom.rand(queue, n, dtype=np.float32)
     >>> a_mat_dev = cl.clrandom.rand(queue, (n, n), dtype=np.float32)
     >>> b_mat_dev = cl.clrandom.rand(queue, (n, n), dtype=np.float32)
 
@@ -44,8 +47,12 @@ And some data on the host:
     >>> x_vec_host = np.random.randn(n).astype(np.float32)
     >>> y_vec_host = np.random.randn(n).astype(np.float32)
 
+.. }}}
+
 Getting started
 ---------------
+
+.. {{{
 
 We'll start by taking a closer look at a very simple kernel that reads in
 one vector, doubles it, and writes it to another.
@@ -139,8 +146,12 @@ following:
   as ``(stride:1)``. We will see more on this in
   :ref:`implementing-array-axes`.
 
+.. }}}
+
 Running a kernel
 ----------------
+
+.. {{{
 
 Running the kernel that we've just created is easy. Let's check the result
 for good measure.
@@ -246,8 +257,14 @@ call :func:`loopy.generate_code`:
         out[i] = 2.0f * a[i];
     }
 
+.. }}}
+
+.. _ordering:
+
 Ordering
 --------
+
+.. {{{
 
 Next, we'll change our kernel a bit. Our goal will be to transpose a matrix
 and double its entries, and we will do this in two steps for the sake of
@@ -328,7 +345,7 @@ a heuristic:
     instructions reading that variable will automatically depend on the
     writing instruction.
 
-The intention of this heuristic is to cover the common case of a
+The intent of this heuristic is to cover the common case of a
 precomputed result being stored and used many times. Generally, these
 dependencies are *in addition* to any manual dependencies added via
 ``{dep=...}``.  It is possible (but rare) that the heuristic adds undesired
@@ -477,10 +494,14 @@ No more warnings! Loop nesting is also reflected in the dependency graph:
 
 .. image:: images/dep-graph-nesting.svg
 
+.. }}}
+
 .. _intro-transformations:
 
 Introduction to Kernel Transformations
 --------------------------------------
+
+.. {{{
 
 What we have covered thus far puts you in a position to describe many kinds
 of computations to loopy--in the sense that loopy will generate code that
@@ -581,12 +602,14 @@ commonly called 'loop tiling':
               out[n * (i_inner + i_outer * 16) + j_inner + j_outer * 16] = a[n * (j_inner + j_outer * 16) + i_inner + i_outer * 16];
     ...
 
-
+.. }}}
 
 .. _implementing-inames:
 
 Implementing Loop Axes ("Inames")
 ---------------------------------
+
+.. {{{
 
 So far, all the loops we have seen loopy implement were ``for`` loops. Each
 iname in loopy carries a so-called 'implementation tag'.  :ref:`tags` shows
@@ -783,6 +806,8 @@ enabling some cost savings:
         }
     ...
 
+.. }}}
+
 .. _specifying-arguments:
 
 Specifying arguments
@@ -793,10 +818,145 @@ Specifying arguments
 Implementing Array Axes
 -----------------------
 
+
+Precomputation, Storage, and Temporary Variables
+------------------------------------------------
+
+.. {{{
+
+The loopy kernels we have seen thus far have consisted only of assignments
+from one global-memory storage location to another. Sometimes, computation
+results obviously get reused, so that recomputing them or even just
+re-fetching them from global memory becomes uneconomical. Loopy has
+a number of different ways of adressing this need.
+
+Explicit private temporaries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The simplest of these ways is the creation of an explicit temporary
+variable, as one might do in C or another programming language:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(
+    ...     "{ [i]: 0<=i<n }",
+    ...     """
+    ...     <float32> a_temp = sin(a[i])
+    ...     out1[i] = a_temp
+    ...     out2[i] = sqrt(1-a_temp*a_temp)
+    ...     """)
+
+The angle brackets ``<>`` denote the creation of a temporary. The name of
+the temporary may not override inames, argument names, or other names in
+the kernel. The name in between the angle brackets is a typename as
+understood by the type registry :mod:`pyopencl.array`. To first order,
+the conventional :mod:`numpy` scalar types (:class:`numpy.int16`,
+:class:`numpy.complex128`) will work. (Yes, :mod:`loopy` supports and
+generates correct code for complex arithmetic.)
+
+The generated code places this variable into what OpenCL calss 'private'
+memory, local to each work item.
+
+.. doctest::
+
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out1, out2) = knl(queue, a=x_vec_dev)
+    <BLANKLINE>
+    ...
+    {
+      float a_temp;
+    <BLANKLINE>
+      for (int i = 0; i <= (-1 + n); ++i)
+      {
+        a_temp = sin(a[i]);
+        out2[i] = sqrt(1.0f + -1.0f * a_temp * a_temp);
+        out1[i] = a_temp;
+      }
+    }
+
+Type inference for temporaries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Most :mod:`loopy` code can be written so as to be type-generic, so
+specifying a type for the variable is optional. The angle brackets alone
+denote that a temporary should be created, and the type of the variable
+will be deduced from the expression being assigned.
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(
+    ...     "{ [i]: 0<=i<n }",
+    ...     """
+    ...     <> a_temp = sin(a[i])
+    ...     out1[i] = a_temp
+    ...     out2[i] = sqrt(1-a_temp*a_temp)
+    ...     """)
+    >>> evt, (out1, out2) = knl(queue, a=x_vec_dev)
+
+Temporaries in local memory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In most situations, :mod:`loopy` will  automatically deduce whether a given
+temporary should be placed into local or private storage. If the variable
+is ever written to in parallel and indexed by expressions containing local
+IDs, then it is marked as residing in local memory. If this heuristic is
+insufficient, :class:`loopy.TemporaryVariable` instances can be marked
+local manually.
+
+Consider the following example:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(
+    ...     "{ [i_outer,i_inner, k]:  "
+    ...          "0<= 16*i_outer + i_inner <n and 0<= i_inner,k <16}",
+    ...     """
+    ...     <> a_temp[i_inner] = a[16*i_outer + i_inner]
+    ...     out[16*i_outer + i_inner] = sum(k, a_temp[k])
+    ...     """)
+    >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> evt, (out,) = knl(queue, a=x_vec_dev)
+    <BLANKLINE>
+    ...
+    {
+      __local float a_temp[16];
+      float acc_k;
+    <BLANKLINE>
+      if ((-1 + -16 * gid(0) + -1 * lid(0) + n) >= 0)
+      {
+        a_temp[lid(0)] = a[16 * gid(0) + lid(0)];
+        acc_k = 0.0f;
+      }
+      barrier(CLK_LOCAL_MEM_FENCE) /* for a_temp (insn_0_k_update depends on insn) */;
+      if ((-1 + -16 * gid(0) + -1 * lid(0) + n) >= 0)
+      {
+        for (int k = 0; k <= 15; ++k)
+          acc_k = acc_k + a_temp[k];
+        out[16 * gid(0) + lid(0)] = acc_k;
+      }
+    }
+
+Observe that ``a_temp`` was automatically placed in local memory, because
+it is written in parallel across values of the group-local iname
+``i_inner``. In addition, :mod:`loopy` has emitted a barrier instruction to
+achieve the :ref:`ordering` specified by the instruction dependencies.
+
+
+.. }}}
+
+Prefetching
+~~~~~~~~~~~
+
+Creating temporaries by transformation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 .. _more-complicated-programs:
 
 More complicated programs
 -------------------------
+
+.. {{{
 
 SCOP
 
@@ -809,9 +969,12 @@ Conditionals
 Snippets of C
 ~~~~~~~~~~~~~
 
+.. }}}
 
 Common Problems
 ---------------
+
+.. {{{
 
 A static maximum was not found
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -834,7 +997,7 @@ Attempting to create this kernel results in an error:
 
 The problem is that loopy cannot find a simple, universally valid expression
 for the length of *out* in this case. Notice how the kernel accesses both the
-*i*th and the first element of out.  The set notation at the end of the error
+*i*-th and the first element of out.  The set notation at the end of the error
 message summarizes its best attempt:
 
 * If n=1, then out has size 1.
@@ -926,4 +1089,6 @@ across the remaining axis of the workgroup would emerge.
 
 TODO
 
-.. vim: tw=75:spell
+.. }}}
+
+.. vim: tw=75:spell:foldmethod=marker
