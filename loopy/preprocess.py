@@ -289,7 +289,7 @@ def mark_local_temporaries(kernel):
 
             continue
 
-        is_local = wants_to_be_local_per_insn[0]
+        is_local = any(wants_to_be_local_per_insn)
 
         from pytools import all
         if not all(wtbl == is_local for wtbl in wants_to_be_local_per_insn):
