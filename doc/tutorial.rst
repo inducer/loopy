@@ -813,10 +813,20 @@ enabling some cost savings:
 Specifying arguments
 --------------------
 
+* Kinds: global, constant, value
+* Types
+
+.. _argument-shapes:
+
+Argument shapes
+~~~~~~~~~~~~~~~
+
+Shapes (and automatic finding thereof)
+
 .. _implementing-array-axes:
 
 Implementing Array Axes
------------------------
+~~~~~~~~~~~~~~~~~~~~~~~
 
 
 Precomputation, Storage, and Temporary Variables
@@ -877,10 +887,12 @@ memory, local to each work item.
 Type inference for temporaries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Most :mod:`loopy` code can be written so as to be type-generic, so
-specifying a type for the variable is optional. The angle brackets alone
-denote that a temporary should be created, and the type of the variable
-will be deduced from the expression being assigned.
+Most :mod:`loopy` code can be written so as to be type-generic (with types
+determined by parameters passed at run time). The same is true for
+temporary variables--specifying a type for the variable is optional. As you
+can see in the code below, angle brackets alone denote that a temporary
+should be created, and the type of the variable will be deduced from the
+expression being assigned.
 
 .. doctest::
 
@@ -937,19 +949,96 @@ Consider the following example:
       }
     }
 
-Observe that ``a_temp`` was automatically placed in local memory, because
+Observe that *a_temp* was automatically placed in local memory, because
 it is written in parallel across values of the group-local iname
-``i_inner``. In addition, :mod:`loopy` has emitted a barrier instruction to
+*i_inner*. In addition, :mod:`loopy` has emitted a barrier instruction to
 achieve the :ref:`ordering` specified by the instruction dependencies.
 
+.. note::
+
+    It is worth noting that it was not necessary to provide a size for the
+    temporary ``a_temp``. :mod:`loopy` deduced the size to be allocated (16
+    entries in this case) from the indices being accessed. This works just
+    as well for 2D and 3D temporaries.
+
+    The mechanism for finding accessed indices is the same as described
+    in :ref:`argument-shapes`.
+
+    If the size-finding heuristic fails or is impractical to use, the of
+    the temporary can be specified by explicitly creating a
+    :class:`loopy.TemporaryVariable`.
+
+    Note that the size of local temporaries must, for now, be a constant at
+    compile time.
 
 .. }}}
 
 Prefetching
 ~~~~~~~~~~~
 
-Creating temporaries by transformation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The above code example may have struck you as 'un-loopy-ish' in the sense
+that whether the contents of *a* is loaded into an temporary should be
+considered an implementation detail that is taken care of by a
+transformation rather than being baked into the code. Indeed, such a
+transformation exists in :func:`loopy.add_prefetch`:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(
+    ...     "{ [i_outer,i_inner, k]:  "
+    ...          "0<= 16*i_outer + i_inner <n and 0<= i_inner,k <16}",
+    ...     """
+    ...     out[16*i_outer + i_inner] = sum(k, a[16*i_outer + i_inner])
+    ...     """)
+    >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
+    >>> knl = lp.set_options(knl, "write_cl")
+    >>> knl_pf = lp.add_prefetch(knl, "a")
+    >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
+    <BLANKLINE>
+    ...
+        a_fetch_0 = a[16 * gid(0) + lid(0)];
+        for (int k = 0; k <= 15; ++k)
+          acc_k = acc_k + a_fetch_0;
+        out[16 * gid(0) + lid(0)] = acc_k;
+    ...
+
+This is not the same as our previous code and, in this scenario, a little
+bit useless, because each entry of *a* is 'pre-fetched', used, and then
+thrown away. (But realize that this could perhaps be useful in other
+situations when the same entry of *a* is accessed multiple times.)
+
+What's missing is that we need to tell :mod:`loopy` that we would like to
+fetch the *access footprint* of an entire loop--in this case, of *i_inner*,
+as the second argument of :func:`loopy.add_prefetch`. We thus arrive back
+at the same code with a temporary in local memory that we had generated
+earlier:
+
+.. doctest::
+
+    >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"])
+    >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
+    <BLANKLINE>
+    ...
+      if ((-1 + -16 * gid(0) + -1 * lid(0) + n) >= 0)
+        a_fetch_0[lid(0)] = a[lid(0) + 16 * gid(0)];
+      barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch_0 (insn_k_update depends on a_fetch) */;
+      if ((-1 + -16 * gid(0) + -1 * lid(0) + n) >= 0)
+      {
+        for (int k = 0; k <= 15; ++k)
+          acc_k = acc_k + a_fetch_0[lid(0)];
+        out[16 * gid(0) + lid(0)] = acc_k;
+      }
+    ...
+
+Tagged prefetching
+~~~~~~~~~~~~~~~~~~
+
+
+Substitution rules
+~~~~~~~~~~~~~~~~~~
+
+Generic Precomputation
+~~~~~~~~~~~~~~~~~~~~~~
 
 .. _more-complicated-programs:
 
