@@ -1089,7 +1089,6 @@ def preprocess_kernel(kernel, device=None):
     except KeyError:
         pass
 
-    print "PREPRO MISS"
     logger.info("%s: preprocess start" % kernel.name)
 
     from loopy.subst import expand_subst
