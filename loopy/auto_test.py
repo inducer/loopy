@@ -37,6 +37,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def is_dtype_supported(dtype):
+    # Work around https://github.com/numpy/numpy/issues/4317
+    return dtype.kind in "biufc"
+
+
 # {{{ create random argument arrays for testing
 
 def fill_rand(ary):
@@ -127,7 +132,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
                     raise RuntimeError("write-mode images not supported in "
                             "automatic testing")
 
-                if dtype.isbuiltin:
+                if is_dtype_supported(dtype):
                     storage_array.fill(fill_value)
                 else:
                     from warnings import warn
@@ -216,7 +221,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
                 storage_array = cl_array.empty(queue, alloc_size, dtype)
                 ary = cl_array.as_strided(storage_array, shape, numpy_strides)
 
-                if dtype.isbuiltin:
+                if is_dtype_supported(dtype):
                     storage_array.fill(fill_value)
                 else:
                     from warnings import warn
@@ -277,7 +282,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
 # {{{ default array comparison
 
 def _default_check_result(result, ref_result):
-    if not result.dtype.isbuiltin and not (result == ref_result).all():
+    if not is_dtype_supported(result.dtype) and not (result == ref_result).all():
         return (False, "results do not match exactly")
 
     if not np.allclose(ref_result, result, rtol=1e-3, atol=1e-3):
