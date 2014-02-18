@@ -971,8 +971,6 @@ achieve the :ref:`ordering` specified by the instruction dependencies.
     Note that the size of local temporaries must, for now, be a constant at
     compile time.
 
-.. }}}
-
 Prefetching
 ~~~~~~~~~~~
 
@@ -1039,6 +1037,8 @@ Substitution rules
 
 Generic Precomputation
 ~~~~~~~~~~~~~~~~~~~~~~
+
+.. }}}
 
 .. _more-complicated-programs:
 
