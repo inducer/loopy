@@ -1111,15 +1111,21 @@ schedule_cache = PersistentDict("loopy-schedule-cache-v2-"+VERSION_TEXT,
 
 
 def get_one_scheduled_kernel(kernel):
+    from loopy import CACHING_ENABLED
 
     sched_cache_key = kernel
-    try:
-        result, ambiguous = schedule_cache[sched_cache_key]
+    from_cache = False
 
-        logger.info("%s: schedule cache hit" % kernel.name)
-        from_cache = True
-    except KeyError:
-        from_cache = False
+    if CACHING_ENABLED:
+        try:
+            result, ambiguous = schedule_cache[sched_cache_key]
+
+            logger.info("%s: schedule cache hit" % kernel.name)
+            from_cache = True
+        except KeyError:
+            pass
+
+    if not from_cache:
         ambiguous = False
 
         kernel_count = 0
@@ -1142,7 +1148,7 @@ def get_one_scheduled_kernel(kernel):
                 "schedule found, ignoring", LoopyWarning,
                 stacklevel=2)
 
-    if not from_cache:
+    if CACHING_ENABLED and not from_cache:
         schedule_cache[sched_cache_key] = result, ambiguous
 
     return result

@@ -530,14 +530,15 @@ def test_ilp_race_matmul(ctx_factory):
     knl = lp.split_iname(knl, "k", 2)
     knl = lp.add_prefetch(knl, 'b', ["k_inner"])
 
-    from loopy.diagnostic import WriteRaceConditionWarning
-    from warnings import catch_warnings
-    with catch_warnings(record=True) as warn_list:
-        knl = lp.preprocess_kernel(knl)
-        list(lp.generate_loop_schedules(knl))
+    with lp.CacheMode(False):
+        from loopy.diagnostic import WriteRaceConditionWarning
+        from warnings import catch_warnings
+        with catch_warnings(record=True) as warn_list:
+            knl = lp.preprocess_kernel(knl)
+            list(lp.generate_loop_schedules(knl))
 
-        assert any(isinstance(w.message, WriteRaceConditionWarning)
-                for w in warn_list)
+            assert any(isinstance(w.message, WriteRaceConditionWarning)
+                    for w in warn_list)
 
 
 def test_fancy_matrix_mul(ctx_factory):

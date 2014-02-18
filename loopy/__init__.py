@@ -1325,4 +1325,38 @@ def register_function_manglers(kernel, manglers):
 # }}}
 
 
+# {{{ cache control
+
+CACHING_ENABLED = True
+
+
+def set_caching_enabled(flag):
+    """Set whether :mod:`loopy` is allowed to use disk caching for its various
+    code generation stages.
+    """
+    global CACHING_ENABLED
+    CACHING_ENABLED = flag
+
+
+class CacheMode(object):
+    """A context manager for setting whether :mod:`loopy` is allowed to use
+    disk caches.
+    """
+
+    def __init__(self, new_flag):
+        self.new_flag = new_flag
+
+    def __enter__(self):
+        global CACHING_ENABLED
+        self.previous_mode = CACHING_ENABLED
+        CACHING_ENABLED = self.new_flag
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        global CACHING_ENABLED
+        CACHING_ENABLED = self.previous_mode
+        del self.previous_mode
+
+# }}}
+
+
 # vim: foldmethod=marker

@@ -1076,18 +1076,24 @@ def preprocess_kernel(kernel, device=None):
         raise LoopyError("cannot re-preprocess an already preprocessed "
                 "kernel")
 
-    if device is not None:
-        device_id = device.persistent_unique_id
-    else:
-        device_id = None
+    # {{{ cache retrieval
 
-    pp_cache_key = (kernel, device_id)
-    try:
-        result = preprocess_cache[pp_cache_key]
-        logger.info("%s: preprocess cache hit" % kernel.name)
-        return result
-    except KeyError:
-        pass
+    from loopy import CACHING_ENABLED
+    if CACHING_ENABLED:
+        if device is not None:
+            device_id = device.persistent_unique_id
+        else:
+            device_id = None
+
+        pp_cache_key = (kernel, device_id)
+        try:
+            result = preprocess_cache[pp_cache_key]
+            logger.info("%s: preprocess cache hit" % kernel.name)
+            return result
+        except KeyError:
+            pass
+
+    # }}}
 
     logger.info("%s: preprocess start" % kernel.name)
 
@@ -1135,7 +1141,8 @@ def preprocess_kernel(kernel, device=None):
     kernel = kernel.copy(
             state=kernel_state.PREPROCESSED)
 
-    preprocess_cache[pp_cache_key] = kernel
+    if CACHING_ENABLED:
+        preprocess_cache[pp_cache_key] = kernel
 
     return kernel
 

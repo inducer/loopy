@@ -933,13 +933,14 @@ def test_ilp_write_race_detection_global(ctx_factory):
 
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
 
-    from loopy.diagnostic import WriteRaceConditionWarning
-    from warnings import catch_warnings
-    with catch_warnings(record=True) as warn_list:
-        list(lp.generate_loop_schedules(knl))
+    with lp.CacheMode(False):
+        from loopy.diagnostic import WriteRaceConditionWarning
+        from warnings import catch_warnings
+        with catch_warnings(record=True) as warn_list:
+            list(lp.generate_loop_schedules(knl))
 
-        assert any(isinstance(w.message, WriteRaceConditionWarning)
-                for w in warn_list)
+            assert any(isinstance(w.message, WriteRaceConditionWarning)
+                    for w in warn_list)
 
 
 def test_ilp_write_race_avoidance_local(ctx_factory):

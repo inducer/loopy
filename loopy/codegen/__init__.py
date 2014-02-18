@@ -341,18 +341,25 @@ def generate_code(kernel, device=None):
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
 
-    if device is not None:
-        device_id = device.persistent_unique_id
-    else:
-        device_id = None
+    # {{{ cache retrieval
 
-    code_gen_cache_key = (kernel, device_id)
-    try:
-        result = code_gen_cache[code_gen_cache_key]
-        logger.info("%s: code generation cache hit" % kernel.name)
-        return result
-    except KeyError:
-        pass
+    from loopy import CACHING_ENABLED
+
+    if CACHING_ENABLED:
+        if device is not None:
+            device_id = device.persistent_unique_id
+        else:
+            device_id = None
+
+        code_gen_cache_key = (kernel, device_id)
+        try:
+            result = code_gen_cache[code_gen_cache_key]
+            logger.info("%s: code generation cache hit" % kernel.name)
+            return result
+        except KeyError:
+            pass
+
+    # }}}
 
     from loopy.preprocess import infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)

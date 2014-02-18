@@ -467,4 +467,11 @@ Options
 
 .. autofunction:: set_options
 
+Controlling caching
+-------------------
+
+.. autofunction:: set_caching_enabled
+
+.. autoclass:: CacheMode
+
 .. vim: tw=75:spell
