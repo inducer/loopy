@@ -63,6 +63,8 @@ import numpy as np
 # {{{ loopy-specific primitives
 
 class FunctionIdentifier(Leaf):
+    init_arg_names = ()
+
     def __getinitargs__(self):
         return ()
 
@@ -87,6 +89,9 @@ class TaggedVariable(Variable):
     may then be used to address these uses--such as by prefetching only
     accesses tagged a certain way.
     """
+
+    init_arg_names = ("name", "tag")
+
     def __init__(self, name, tag):
         Variable.__init__(self, name)
         self.tag = tag
@@ -101,6 +106,8 @@ class TaggedVariable(Variable):
 
 
 class Reduction(AlgebraicLeaf):
+    init_arg_names = ("operation", "inames", "expr")
+
     def __init__(self, operation, inames, expr):
         assert isinstance(inames, tuple)
 
@@ -137,6 +144,8 @@ class Reduction(AlgebraicLeaf):
 
 
 class LinearSubscript(AlgebraicLeaf):
+    init_arg_names = ("aggregate", "index")
+
     def __init__(self, aggregate, index):
         self.aggregate = aggregate
         self.index = index
