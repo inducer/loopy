@@ -30,6 +30,10 @@ from loopy.symbolic import FunctionIdentifier
 
 
 class ReductionOperation(object):
+    """Subclasses of this type have to be hashable, picklable, and
+    equality-comparable.
+    """
+
     def result_dtype(self, arg_dtype, inames):
         raise NotImplementedError
 
@@ -38,6 +42,9 @@ class ReductionOperation(object):
 
     def __call__(self, dtype, operand1, operand2, inames):
         raise NotImplementedError
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
 class ScalarReductionOperation(ReductionOperation):
@@ -52,6 +59,13 @@ class ScalarReductionOperation(ReductionOperation):
             return self.forced_result_dtype
 
         return arg_dtype
+
+    def __hash__(self):
+        return hash((type(self), self.forced_result_dtype))
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.forced_result_dtype == other.forced_result_dtype)
 
     def __str__(self):
         result = type(self).__name__.replace("ReductionOperation", "").lower()
