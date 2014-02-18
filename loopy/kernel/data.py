@@ -28,10 +28,10 @@ THE SOFTWARE.
 import numpy as np
 from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError  # noqa
 
 
-class auto:
+class auto(object):
     """A generic placeholder object for something that should be automatically
     detected.  See, for example, the *shape* or *strides* argument of
     :class:`GlobalArg`.
@@ -46,6 +46,13 @@ class IndexTag(Record):
     def __hash__(self):
         raise RuntimeError("use .key to hash index tags")
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        return key_builder.rec(key_hash, self.key)
+
 
 class ParallelTag(IndexTag):
     pass
@@ -58,7 +65,7 @@ class HardwareParallelTag(ParallelTag):
 class UniqueTag(IndexTag):
     @property
     def key(self):
-        return type(self)
+        return type(self).__name__
 
 
 class AxisTag(UniqueTag):
@@ -70,7 +77,7 @@ class AxisTag(UniqueTag):
 
     @property
     def key(self):
-        return (type(self), self.axis)
+        return (type(self).__name__, self.axis)
 
     def __str__(self):
         return "%s.%d" % (
@@ -90,7 +97,9 @@ class LocalIndexTag(LocalIndexTagBase, AxisTag):
 
 
 class AutoLocalIndexTagBase(LocalIndexTagBase):
-    pass
+    @property
+    def key(self):
+        return type(self).__name__
 
 
 class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
@@ -99,7 +108,9 @@ class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
 
 
 class IlpBaseTag(ParallelTag):
-    pass
+    @property
+    def key(self):
+        return type(self).__name__
 
 
 class UnrolledIlpTag(IlpBaseTag):
@@ -116,10 +127,18 @@ class UnrollTag(IndexTag):
     def __str__(self):
         return "unr"
 
+    @property
+    def key(self):
+        return type(self).__name__
+
 
 class ForceSequentialTag(IndexTag):
     def __str__(self):
         return "forceseq"
+
+    @property
+    def key(self):
+        return type(self).__name__
 
 
 def parse_tag(tag):
@@ -158,7 +177,13 @@ def parse_tag(tag):
 
 
 class KernelArgument(Record):
-    pass
+    def __setstate__(self, state):
+        Record.__setstate__(self, state)
+
+        import loopy as lp
+        if self.dtype is not None and self.dtype is not lp.auto:
+            from loopy.tools import fix_dtype_after_unpickling
+            self.dtype = fix_dtype_after_unpickling(self.dtype)
 
 
 class GlobalArg(ArrayBase, KernelArgument):
@@ -237,6 +262,14 @@ class ValueArg(KernelArgument):
     def __repr__(self):
         return "<%s>" % self.__str__()
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.name)
+        key_builder.rec(key_hash, self.dtype)
+
 # }}}
 
 
@@ -310,6 +343,14 @@ class TemporaryVariable(ArrayBase):
     def __str__(self):
         return self.stringify(include_typename=False)
 
+    def __setstate__(self, state):
+        ArrayBase.__setstate__(self, state)
+
+        import loopy as lp
+        if self.dtype is not None and self.dtype is not lp.auto:
+            from loopy.tools import fix_dtype_after_unpickling
+            self.dtype = fix_dtype_after_unpickling(self.dtype)
+
 # }}}
 
 
@@ -331,6 +372,15 @@ class SubstitutionRule(Record):
     def __str__(self):
         return "%s(%s) := %s" % (
                 self.name, ", ".join(self.arguments), self.expression)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.name)
+        key_builder.rec(key_hash, self.arguments)
+        key_builder.update_for_pymbolic_expression(key_hash, self.expression)
 
 # }}}
 
@@ -491,6 +541,34 @@ class InstructionBase(Record):
 
         return result
 
+    # {{{ comparison, hashing
+
+    def __eq__(self, other):
+        if not type(self) == type(other):
+            return False
+
+        for field_name in self.fields:
+            if getattr(self, field_name) != getattr(other, field_name):
+                return False
+
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+
+        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
+        """
+
+        # Order matters for hash forming--sort the field names
+        for field_name in sorted(self.fields):
+            key_builder.rec(key_hash, getattr(self, field_name))
+
+    # }}}
+
 # }}}
 
 
@@ -612,6 +690,21 @@ class ExpressionInstruction(InstructionBase):
         if self.predicates:
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+
+        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
+        """
+
+        # Order matters for hash forming--sort the fields.
+        for field_name in sorted(self.fields):
+            if field_name in ["assignee", "expression"]:
+                key_builder.update_for_pymbolic_expression(
+                        key_hash, getattr(self, field_name))
+            else:
+                key_builder.rec(key_hash, getattr(self, field_name))
 
 # }}}
 
@@ -790,6 +883,24 @@ class CInstruction(InstructionBase):
         return first_line + "\n    " + "\n    ".join(
                 self.code.split("\n"))
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+
+        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
+        """
+
+        # Order matters for hash forming--sort the fields.
+        for field_name in sorted(self.fields):
+            if field_name == "assignees":
+                for a in self.assignees:
+                    key_builder.update_for_pymbolic_expression(key_hash, a)
+            elif field_name == "iname_exprs":
+                for name, val in self.iname_exprs:
+                    key_builder.rec(key_hash, name)
+                    key_builder.update_for_pymbolic_expression(key_hash, val)
+            else:
+                key_builder.rec(key_hash, getattr(self, field_name))
 # }}}
 
 # }}}

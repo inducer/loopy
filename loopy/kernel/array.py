@@ -39,7 +39,12 @@ from loopy.tools import is_integer
 # {{{ array dimension tags
 
 class ArrayDimImplementationTag(Record):
-    pass
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.stringify(True).encode("utf8"))
 
 
 class _StrideArrayDimTagBase(ArrayDimImplementationTag):
@@ -93,10 +98,15 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
 
 class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
     """
-    :arg order: "C" or "F", indicating whether this argument dimension will be added
+    .. attribute:: order
+
+        "C" or "F", indicating whether this argument dimension will be added
         as faster-moving ("C") or more-slowly-moving ("F") than the previous
         argument.
-    :arg pad_to: :attr:`ArrayBase.dtype` granularity to which to pad this dimension
+
+    .. attribute:: pad_to
+
+        :attr:`ArrayBase.dtype` granularity to which to pad this dimension
 
     This type of stride arg dim gets converted to :class:`FixedStrideArrayDimTag`
     on input to :class:`ArrayBase` subclasses.
@@ -613,6 +623,17 @@ class ArrayBase(Record):
 
     def __repr__(self):
         return "<%s>" % self.__str__()
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.name)
+        key_builder.rec(key_hash, self.dtype)
+        key_builder.update_for_pymbolic_expression(key_hash, self.shape)
+        key_builder.rec(key_hash, self.dim_tags)
+        key_builder.rec(key_hash, self.offset)
 
     @property
     @memoize_method

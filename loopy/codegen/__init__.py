@@ -29,6 +29,10 @@ import islpy as isl
 
 import numpy as np
 
+from pytools.persistent_dict import PersistentDict
+from loopy.tools import LoopyKeyBuilder
+from loopy.version import VERSION_TEXT
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -206,13 +210,41 @@ class CodeGenerationState(object):
 
 # {{{ cgen overrides
 
-from cgen import POD as PODBase
+from cgen import Declarator
 
 
-class POD(PODBase):
-    def get_decl_pair(self):
+class POD(Declarator):
+    """A simple declarator: The type is given as a :class:`numpy.dtype`
+    and the *name* is given as a string.
+    """
+
+    def __init__(self, dtype, name):
+        dtype = np.dtype(dtype)
+
         from pyopencl.tools import dtype_to_ctype
-        return [dtype_to_ctype(self.dtype)], self.name
+        self.ctype = dtype_to_ctype(dtype)
+        self.name = name
+
+    def get_decl_pair(self):
+        return [self.ctype], self.name
+
+    def struct_maker_code(self, name):
+        return name
+
+    @property
+    def dtype(self):
+        from pyopencl.tools import NAME_TO_DTYPE
+        return NAME_TO_DTYPE[self.ctype]
+
+    def struct_format(self):
+        return self.dtype.char
+
+    def alignment_requirement(self):
+        import pyopencl._pvt_struct as _struct
+        return _struct.calcsize(self.struct_format())
+
+    def default_value(self):
+        return 0
 
 # }}}
 
@@ -283,7 +315,19 @@ class ImplementedDataInfo(Record):
                 stride_for_name_and_axis=stride_for_name_and_axis,
                 allows_offset=allows_offset)
 
+    def __setstate__(self, state):
+        Record.__setstate__(self, state)
+
+        import loopy as lp
+        if self.dtype is not None and self.dtype is not lp.auto:
+            from loopy.tools import fix_dtype_after_unpickling
+            self.dtype = fix_dtype_after_unpickling(self.dtype)
+
 # }}}
+
+
+code_gen_cache = PersistentDict("loopy-code-gen-cache-"+VERSION_TEXT,
+        key_builder=LoopyKeyBuilder())
 
 
 # {{{ main code generation entrypoint
@@ -296,6 +340,19 @@ def generate_code(kernel, device=None):
     if kernel.state != kernel_state.SCHEDULED:
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
+
+    if device is not None:
+        device_id = device.persistent_unique_id
+    else:
+        device_id = None
+
+    code_gen_cache_key = (kernel, device_id)
+    try:
+        result = code_gen_cache[code_gen_cache_key]
+        logger.info("%s: code generation cache hit" % kernel.name)
+        return result
+    except KeyError:
+        pass
 
     from loopy.preprocess import infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
@@ -435,7 +492,13 @@ def generate_code(kernel, device=None):
 
     logger.info("%s: generate code: done" % kernel.name)
 
-    return result, impl_arg_info
+    result = result, impl_arg_info
+
+    for arg in impl_arg_info:
+        print arg.name, arg.dtype
+
+    code_gen_cache[code_gen_cache_key] = result
+    return result
 
 # }}}
 

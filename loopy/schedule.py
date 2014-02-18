@@ -28,6 +28,10 @@ import sys
 import islpy as isl
 from loopy.diagnostic import LoopyError  # noqa
 
+from pytools.persistent_dict import PersistentDict
+from loopy.tools import LoopyKeyBuilder
+from loopy.version import VERSION_TEXT
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -37,17 +41,24 @@ logger = logging.getLogger(__name__)
 class ScheduleItem(Record):
     __slots__ = []
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+        for field_name in self.hash_fields:
+            key_builder.rec(key_hash, getattr(self, field_name))
+
 
 class EnterLoop(ScheduleItem):
-    __slots__ = ["iname"]
+    hash_fields = __slots__ = ["iname"]
 
 
 class LeaveLoop(ScheduleItem):
-    __slots__ = ["iname"]
+    hash_fields = __slots__ = ["iname"]
 
 
 class RunInstruction(ScheduleItem):
-    __slots__ = ["insn_id"]
+    hash_fields = __slots__ = ["insn_id"]
 
 
 class Barrier(ScheduleItem):
@@ -60,7 +71,7 @@ class Barrier(ScheduleItem):
 
         ``"local"`` or ``"global"``
     """
-    __slots__ = ["comment", "kind"]
+    hash_fields = __slots__ = ["comment", "kind"]
 
 # }}}
 
@@ -1095,23 +1106,44 @@ def generate_loop_schedules(kernel, debug_args={}):
 # }}}
 
 
+schedule_cache = PersistentDict("loopy-schedule-cache-v2-"+VERSION_TEXT,
+        key_builder=LoopyKeyBuilder())
+
+
 def get_one_scheduled_kernel(kernel):
-    kernel_count = 0
 
-    for scheduled_kernel in generate_loop_schedules(kernel):
-        kernel_count += 1
+    sched_cache_key = kernel
+    try:
+        result, ambiguous = schedule_cache[sched_cache_key]
 
-        if kernel_count == 1:
-            # use the first schedule
-            result = scheduled_kernel
+        logger.info("%s: schedule cache hit" % kernel.name)
+        from_cache = True
+    except KeyError:
+        from_cache = False
+        ambiguous = False
 
-        if kernel_count == 2:
-            from warnings import warn
-            from loopy.diagnostic import LoopyWarning
-            warn("kernel scheduling was ambiguous--more than one "
-                    "schedule found, ignoring", LoopyWarning,
-                    stacklevel=2)
-            break
+        kernel_count = 0
+
+        for scheduled_kernel in generate_loop_schedules(kernel):
+            kernel_count += 1
+
+            if kernel_count == 1:
+                # use the first schedule
+                result = scheduled_kernel
+
+            if kernel_count == 2:
+                ambiguous = True
+                break
+
+    if ambiguous:
+        from warnings import warn
+        from loopy.diagnostic import LoopyWarning
+        warn("kernel scheduling was ambiguous--more than one "
+                "schedule found, ignoring", LoopyWarning,
+                stacklevel=2)
+
+    if not from_cache:
+        schedule_cache[sched_cache_key] = result, ambiguous
 
     return result
 

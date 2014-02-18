@@ -143,6 +143,13 @@ class Options(Record):
         for f in self.__class__.fields:
             setattr(self, f, getattr(self, f) or getattr(other, f))
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+        for field_name in sorted(self.__class__.fields):
+            key_builder.rec(key_hash, getattr(self, field_name))
+
 
 KEY_VAL_RE = re.compile("^([a-zA-Z0-9]+)=(.*)$")
 

@@ -1030,7 +1030,9 @@ class LoopKernel(RecordWithoutPickling):
 
     # }}}
 
-    def __getinitargs__(self):
+    # {{{ pickling
+
+    def __getstate__(self):
         result = dict(
                 (key, getattr(self, key))
                 for key in self.__class__.fields
@@ -1039,6 +1041,85 @@ class LoopKernel(RecordWithoutPickling):
         result.pop("cache_manager", None)
 
         return result
+
+    def __setstate__(self, state):
+        for k, v in state.iteritems():
+            setattr(self, k, v)
+
+        from loopy.kernel.tools import SetOperationCacheManager
+        self.cache_manager = SetOperationCacheManager()
+
+    # }}}
+
+    # {{{ persistent hash key generation / comparison
+
+    hash_fields = [
+            "domains",
+            "instructions",
+            "args",
+            "schedule",
+            "name",
+            "preambles",
+            "assumptions",
+            "local_sizes",
+            "temporary_variables",
+            "iname_to_tag",
+            "substitutions",
+            "iname_slab_increments",
+            "loop_priority",
+            "silenced_warnings",
+            "options",
+            "state",
+            ]
+
+    comparison_fields = hash_fields + [
+            # Contains pymbolic expressions, hence a (small) headache to hash.
+            # Likely not needed for hash uniqueness => headache avoided.
+            "applied_iname_rewrites",
+
+            # These are lists of functions. It's not clear how to
+            # hash these correctly, so let's not attempt it. We'll
+            # just assume that the rest of the hash is specific enough
+            # that we won't have to rely on differences in these to
+            # resolve hash conflicts.
+
+            "preamble_generators",
+            "function_manglers",
+            "symbol_manglers",
+            ]
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+
+        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
+        """
+        for field_name in self.hash_fields:
+            key_builder.rec(key_hash, getattr(self, field_name))
+
+    def __eq__(self, other):
+        if not isinstance(other, LoopKernel):
+            return False
+
+        for field_name in self.comparison_fields:
+            if field_name == "domains":
+                for set_a, set_b in zip(self.domains, other.domains):
+                    if not set_a.plain_is_equal(set_b):
+                        return False
+
+            elif field_name == "assumptions":
+                if not self.assumptions.plain_is_equal(other.assumptions):
+                    return False
+
+            elif getattr(self, field_name) != getattr(other, field_name):
+                return False
+
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    # }}}
 
 # }}}
 

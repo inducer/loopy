@@ -29,6 +29,10 @@ from loopy.diagnostic import (
         LoopyError, LoopyWarning, WriteRaceConditionWarning, warn,
         LoopyAdvisory)
 
+from pytools.persistent_dict import PersistentDict
+from loopy.tools import LoopyKeyBuilder
+from loopy.version import VERSION_TEXT
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -1062,12 +1066,30 @@ def adjust_local_temp_var_storage(kernel, device):
 # }}}
 
 
+preprocess_cache = PersistentDict("loopy-preprocess-cache-"+VERSION_TEXT,
+        key_builder=LoopyKeyBuilder())
+
+
 def preprocess_kernel(kernel, device=None):
     from loopy.kernel import kernel_state
     if kernel.state != kernel_state.INITIAL:
         raise LoopyError("cannot re-preprocess an already preprocessed "
                 "kernel")
 
+    if device is not None:
+        device_id = device.persistent_unique_id
+    else:
+        device_id = None
+
+    pp_cache_key = (kernel, device_id)
+    try:
+        result = preprocess_cache[pp_cache_key]
+        logger.info("%s: preprocess cache hit" % kernel.name)
+        return result
+    except KeyError:
+        pass
+
+    print "PREPRO MISS"
     logger.info("%s: preprocess start" % kernel.name)
 
     from loopy.subst import expand_subst
@@ -1111,10 +1133,11 @@ def preprocess_kernel(kernel, device=None):
 
     logger.info("%s: preprocess done" % kernel.name)
 
-    return kernel.copy(
+    kernel = kernel.copy(
             state=kernel_state.PREPROCESSED)
 
+    preprocess_cache[pp_cache_key] = kernel
 
-
+    return kernel
 
 # vim: foldmethod=marker
