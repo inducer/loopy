@@ -24,7 +24,9 @@ THE SOFTWARE.
 
 import numpy as np
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
-from loopy.symbolic import WalkMapper
+from loopy.symbolic import WalkMapper as LoopyWalkMapper
+from pymbolic.mapper.persistent_hash import (
+        PersistentHashWalkMapper as PersistentHashWalkMapperBase)
 
 
 def is_integer(obj):
@@ -33,7 +35,7 @@ def is_integer(obj):
 
 # {{{ custom KeyBuilder subclass
 
-class PersistentHashWalkMapper(WalkMapper):
+class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
     """A subclass of :class:`loopy.symbolic.WalkMapper` for constructing
     persistent hash keys for use with
     :class:`pytools.persistent_dict.PersistentDict`.
@@ -41,17 +43,7 @@ class PersistentHashWalkMapper(WalkMapper):
     See also :meth:`LoopyKeyBuilder.update_for_pymbolic_expression`.
     """
 
-    def __init__(self, key_hash):
-        self.key_hash = key_hash
-
-    def visit(self, expr):
-        self.key_hash.update(type(expr).__name__.encode("utf8"))
-
-    def map_variable(self, expr):
-        self.key_hash.update(expr.name.encode("utf8"))
-
-    def map_constant(self, expr):
-        self.key_hash.update(repr(expr).encode("utf8"))
+    # <empty implementation>
 
 
 class LoopyKeyBuilder(KeyBuilderBase):
