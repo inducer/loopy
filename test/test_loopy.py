@@ -50,7 +50,7 @@ __all__ = [
 
 
 def test_complicated_subst(ctx_factory):
-    ctx = ctx_factory()
+    #ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
