@@ -162,11 +162,16 @@ class ArgMinReductionOperation(_ArgExtremumReductionOperation):
 
 
 class ArgExtFunction(FunctionIdentifier):
+    init_arg_names = ("reduction_op", "scalar_dtype", "name", "inames")
+
     def __init__(self, reduction_op, scalar_dtype, name, inames):
         self.reduction_op = reduction_op
         self.scalar_dtype = scalar_dtype
         self.name = name
         self.inames = inames
+
+    def __getinitargs(self):
+        return (self.reduction_op, self.scalar_dtype, self.name, self.inames)
 
 
 def get_argext_preamble(func_id):
