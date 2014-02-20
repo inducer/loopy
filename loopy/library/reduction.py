@@ -170,7 +170,7 @@ class ArgExtFunction(FunctionIdentifier):
         self.name = name
         self.inames = inames
 
-    def __getinitargs(self):
+    def __getinitargs__(self):
         return (self.reduction_op, self.scalar_dtype, self.name, self.inames)
 
 
