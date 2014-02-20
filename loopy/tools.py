@@ -109,6 +109,9 @@ class PicklableDtype(object):
     """
 
     def __init__(self, dtype):
+        if dtype is None:
+            raise TypeError("may not pass None to construct PicklableDtype")
+
         self.dtype = np.dtype(dtype)
 
     def __hash__(self):

@@ -180,8 +180,12 @@ class KernelArgument(Record):
     def __init__(self, **kwargs):
         dtype = kwargs.pop("dtype")
 
-        from loopy.tools import PicklableDtype
-        kwargs["picklable_dtype"] = PicklableDtype(dtype)
+        if isinstance(dtype, np.dtype):
+            from loopy.tools import PicklableDtype
+            kwargs["picklable_dtype"] = PicklableDtype(dtype)
+        else:
+            kwargs["picklable_dtype"] = dtype
+
         Record.__init__(self, **kwargs)
 
     def get_copy_kwargs(self, **kwargs):
@@ -192,6 +196,14 @@ class KernelArgument(Record):
         del result["picklable_dtype"]
 
         return result
+
+    @property
+    def dtype(self):
+        from loopy.tools import PicklableDtype
+        if isinstance(self.picklable_dtype, PicklableDtype):
+            return self.picklable_dtype.dtype
+        else:
+            return self.picklable_dtype
 
 
 class GlobalArg(ArrayBase, KernelArgument):
