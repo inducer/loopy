@@ -60,13 +60,139 @@ import re
 import numpy as np
 
 
+# {{{ mappers with support for loopy-specific primitives
+
+class IdentityMapperMixin(object):
+    def map_reduction(self, expr, *args):
+        return Reduction(expr.operation, expr.inames, self.rec(expr.expr, *args))
+
+    def map_tagged_variable(self, expr, *args):
+        # leaf, doesn't change
+        return expr
+
+    def map_loopy_function_identifier(self, expr, *args):
+        return expr
+
+    map_linear_subscript = IdentityMapperBase.map_subscript
+
+
+class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
+    pass
+
+
+class PartialEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
+    def map_variable(self, expr):
+        return expr
+
+
+class WalkMapper(WalkMapperBase):
+    def map_reduction(self, expr, *args):
+        if not self.visit(expr):
+            return
+
+        self.rec(expr.expr, *args)
+
+    map_tagged_variable = WalkMapperBase.map_variable
+
+    def map_loopy_function_identifier(self, expr, *args):
+        self.visit(expr)
+
+    map_linear_subscript = WalkMapperBase.map_subscript
+
+
+class CallbackMapper(CallbackMapperBase, IdentityMapper):
+    map_reduction = CallbackMapperBase.map_constant
+
+
+class CombineMapper(CombineMapperBase):
+    def map_reduction(self, expr):
+        return self.rec(expr.expr)
+
+    map_linear_subscript = CombineMapperBase.map_subscript
+
+
+class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
+    pass
+
+
+class StringifyMapper(StringifyMapperBase):
+    def map_reduction(self, expr, prec):
+        return "reduce(%s, [%s], %s)" % (
+                expr.operation, ", ".join(expr.inames), expr.expr)
+
+    def map_tagged_variable(self, expr, prec):
+        return "%s$%s" % (expr.name, expr.tag)
+
+    def map_linear_subscript(self, expr, enclosing_prec):
+        from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
+        return self.parenthesize_if_needed(
+                self.format("%s[[%s]]",
+                    self.rec(expr.aggregate, PREC_CALL),
+                    self.rec(expr.index, PREC_NONE)),
+                enclosing_prec, PREC_CALL)
+
+    def map_loopy_function_identifier(self, expr, enclosing_prec):
+        return "%s<%s>" % (
+                type(expr).__name__,
+                ", ".join(str(a) for a in expr.__getinitargs__()))
+
+
+class UnidirectionalUnifier(UnidirectionalUnifierBase):
+    def map_reduction(self, expr, other, unis):
+        if not isinstance(other, type(expr)):
+            return self.treat_mismatch(expr, other, unis)
+        if (expr.inames != other.inames
+                or type(expr.operation) != type(other.operation)):
+            return []
+
+        return self.rec(expr.expr, other.expr, unis)
+
+    def map_tagged_variable(self, expr, other, urecs):
+        new_uni_record = self.unification_record_from_equation(
+                expr, other)
+        if new_uni_record is None:
+            # Check if the variables match literally--that's ok, too.
+            if (isinstance(other, TaggedVariable)
+                    and expr.name == other.name
+                    and expr.tag == other.tag
+                    and expr.name not in self.lhs_mapping_candidates):
+                return urecs
+            else:
+                return []
+        else:
+            from pymbolic.mapper.unifier import unify_many
+            return unify_many(urecs, new_uni_record)
+
+
+class DependencyMapper(DependencyMapperBase):
+    def map_call(self, expr, *args):
+        # Loopy does not have first-class functions. Do not descend
+        # into 'function' attribute of Call.
+        return self.combine(
+                self.rec(child, *args) for child in expr.parameters)
+
+    def map_reduction(self, expr):
+        return (self.rec(expr.expr)
+                - set(Variable(iname) for iname in expr.inames))
+
+    def map_tagged_variable(self, expr):
+        return set([expr])
+
+    def map_loopy_function_identifier(self, expr):
+        return set()
+
+    map_linear_subscript = DependencyMapperBase.map_subscript
+
+# }}}
+
+
 # {{{ loopy-specific primitives
 
 class FunctionIdentifier(Leaf):
     init_arg_names = ()
 
-    def __getinitargs__(self):
-        return ()
+    def stringifier(self):
+        return StringifyMapper
 
     mapper_method = intern("map_loopy_function_identifier")
 
@@ -157,127 +283,6 @@ class LinearSubscript(AlgebraicLeaf):
         return StringifyMapper
 
     mapper_method = intern("map_linear_subscript")
-
-# }}}
-
-
-# {{{ mappers with support for loopy-specific primitives
-
-class IdentityMapperMixin(object):
-    def map_reduction(self, expr, *args):
-        return Reduction(expr.operation, expr.inames, self.rec(expr.expr, *args))
-
-    def map_tagged_variable(self, expr, *args):
-        # leaf, doesn't change
-        return expr
-
-    def map_loopy_function_identifier(self, expr, *args):
-        return expr
-
-    map_linear_subscript = IdentityMapperBase.map_subscript
-
-
-class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
-    pass
-
-
-class PartialEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
-    def map_variable(self, expr):
-        return expr
-
-
-class WalkMapper(WalkMapperBase):
-    def map_reduction(self, expr, *args):
-        if not self.visit(expr):
-            return
-
-        self.rec(expr.expr, *args)
-
-    map_tagged_variable = WalkMapperBase.map_variable
-
-    def map_loopy_function_identifier(self, expr, *args):
-        self.visit(expr)
-
-    map_linear_subscript = WalkMapperBase.map_subscript
-
-
-class CallbackMapper(CallbackMapperBase, IdentityMapper):
-    map_reduction = CallbackMapperBase.map_constant
-
-
-class CombineMapper(CombineMapperBase):
-    def map_reduction(self, expr):
-        return self.rec(expr.expr)
-
-    map_linear_subscript = CombineMapperBase.map_subscript
-
-
-class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
-    pass
-
-
-class StringifyMapper(StringifyMapperBase):
-    def map_reduction(self, expr, prec):
-        return "reduce(%s, [%s], %s)" % (
-                expr.operation, ", ".join(expr.inames), expr.expr)
-
-    def map_tagged_variable(self, expr, prec):
-        return "%s$%s" % (expr.name, expr.tag)
-
-    def map_linear_subscript(self, expr, enclosing_prec):
-        from pymbolic.mapper.stringifier import PREC_CALL, PREC_NONE
-        return self.parenthesize_if_needed(
-                self.format("%s[[%s]]",
-                    self.rec(expr.aggregate, PREC_CALL),
-                    self.rec(expr.index, PREC_NONE)),
-                enclosing_prec, PREC_CALL)
-
-
-class UnidirectionalUnifier(UnidirectionalUnifierBase):
-    def map_reduction(self, expr, other, unis):
-        if not isinstance(other, type(expr)):
-            return self.treat_mismatch(expr, other, unis)
-        if (expr.inames != other.inames
-                or type(expr.operation) != type(other.operation)):
-            return []
-
-        return self.rec(expr.expr, other.expr, unis)
-
-    def map_tagged_variable(self, expr, other, urecs):
-        new_uni_record = self.unification_record_from_equation(
-                expr, other)
-        if new_uni_record is None:
-            # Check if the variables match literally--that's ok, too.
-            if (isinstance(other, TaggedVariable)
-                    and expr.name == other.name
-                    and expr.tag == other.tag
-                    and expr.name not in self.lhs_mapping_candidates):
-                return urecs
-            else:
-                return []
-        else:
-            from pymbolic.mapper.unifier import unify_many
-            return unify_many(urecs, new_uni_record)
-
-
-class DependencyMapper(DependencyMapperBase):
-    def map_call(self, expr, *args):
-        # Loopy does not have first-class functions. Do not descend
-        # into 'function' attribute of Call.
-        return self.combine(
-                self.rec(child, *args) for child in expr.parameters)
-
-    def map_reduction(self, expr):
-        return (self.rec(expr.expr)
-                - set(Variable(iname) for iname in expr.inames))
-
-    def map_tagged_variable(self, expr):
-        return set([expr])
-
-    def map_loopy_function_identifier(self, expr):
-        return set()
-
-    map_linear_subscript = DependencyMapperBase.map_subscript
 
 # }}}
 
