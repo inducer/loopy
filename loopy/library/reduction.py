@@ -40,6 +40,14 @@ class ReductionOperation(object):
     def neutral_element(self, dtype, inames):
         raise NotImplementedError
 
+    def __hash__(self):
+        # Force subclasses to override
+        raise NotImplementedError
+
+    def __eq__(self, other):
+        # Force subclasses to override
+        raise NotImplementedError
+
     def __call__(self, dtype, operand1, operand2, inames):
         raise NotImplementedError
 
@@ -141,6 +149,12 @@ class _ArgExtremumReductionOperation(ReductionOperation):
 
     def neutral_element(self, dtype, inames):
         return ArgExtFunction(self, dtype, "init", inames)()
+
+    def __hash__(self):
+        return hash(type(self))
+
+    def __eq__(self, other):
+        return type(self) == type(other)
 
     def __call__(self, dtype, operand1, operand2, inames):
         iname, = inames
