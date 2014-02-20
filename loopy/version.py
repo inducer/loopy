@@ -22,5 +22,5 @@ THE SOFTWARE.
 
 
 VERSION = (2014, 1)
-VERSION_STATUS = "beta2"
+VERSION_STATUS = "beta3"
 VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
