@@ -501,9 +501,6 @@ def generate_code(kernel, device=None):
 
     result = result, impl_arg_info
 
-    for arg in impl_arg_info:
-        print arg.name, arg.dtype
-
     code_gen_cache[code_gen_cache_key] = result
     return result
 
