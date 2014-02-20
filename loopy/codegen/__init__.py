@@ -301,9 +301,12 @@ class ImplementedDataInfo(Record):
             unvec_shape=None, unvec_strides=None,
             offset_for_name=None, stride_for_name_and_axis=None,
             allows_offset=None):
+
+        from loopy.tools import PicklableDtype
+
         Record.__init__(self,
                 name=name,
-                dtype=np.dtype(dtype),
+                picklable_dtype=PicklableDtype(dtype),
                 cgen_declarator=cgen_declarator,
                 arg_class=arg_class,
                 base_name=base_name,
@@ -315,13 +318,13 @@ class ImplementedDataInfo(Record):
                 stride_for_name_and_axis=stride_for_name_and_axis,
                 allows_offset=allows_offset)
 
-    def __setstate__(self, state):
-        Record.__setstate__(self, state)
-
-        import loopy as lp
-        if self.dtype is not None and self.dtype is not lp.auto:
-            from loopy.tools import fix_dtype_after_unpickling
-            self.dtype = fix_dtype_after_unpickling(self.dtype)
+    @property
+    def dtype(self):
+        from loopy.tools import PicklableDtype
+        if isinstance(self.picklable_dtype, PicklableDtype):
+            return self.picklable_dtype.dtype
+        else:
+            return self.picklable_dtype
 
 # }}}
 

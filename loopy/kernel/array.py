@@ -464,13 +464,18 @@ class ArrayBase(Record):
         import loopy as lp
 
         if dtype is not None and dtype is not lp.auto:
-            dtype = np.dtype(dtype)
+            from loopy.tools import PicklableDtype
+            picklable_dtype = PicklableDtype(dtype)
 
-        if dtype == object:
-            raise TypeError("loopy does not directly support object arrays "
-                    "(object dtype encountered on array '%s') "
-                    "-- you may want to tag the relevant array axis as 'sep'"
-                    % name)
+            if picklable_dtype.dtype == object:
+                raise TypeError("loopy does not directly support object arrays "
+                        "(object dtype encountered on array '%s') "
+                        "-- you may want to tag the relevant array axis as 'sep'"
+                        % name)
+        else:
+            picklable_dtype = dtype
+
+        del dtype
 
         strides_known = strides is not None and strides is not lp.auto
         shape_known = shape is not None and shape is not lp.auto
@@ -575,12 +580,29 @@ class ArrayBase(Record):
 
         Record.__init__(self,
                 name=name,
-                dtype=dtype,
+                picklable_dtype=picklable_dtype,
                 shape=shape,
                 dim_tags=dim_tags,
                 offset=offset,
                 order=order,
                 **kwargs)
+
+    @property
+    def dtype(self):
+        from loopy.tools import PicklableDtype
+        if isinstance(self.picklable_dtype, PicklableDtype):
+            return self.picklable_dtype.dtype
+        else:
+            return self.picklable_dtype
+
+    def get_copy_kwargs(self, **kwargs):
+        result = Record.get_copy_kwargs(self, **kwargs)
+        if "dtype" not in result:
+            result["dtype"] = self.dtype
+
+        del result["picklable_dtype"]
+
+        return result
 
     def stringify(self, include_typename):
         import loopy as lp

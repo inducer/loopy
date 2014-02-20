@@ -365,6 +365,8 @@ def test_stencil_with_overfetch(ctx_factory):
 
 
 def test_eq_constraint(ctx_factory):
+    logging.basicConfig(level=logging.INFO)
+
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -388,6 +390,8 @@ def test_eq_constraint(ctx_factory):
 
 
 def test_argmax(ctx_factory):
+    logging.basicConfig(level=logging.INFO)
+
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

@@ -91,16 +91,46 @@ class LoopyKeyBuilder(KeyBuilderBase):
 # }}}
 
 
-def fix_dtype_after_unpickling(dtype):
-    # Work around https://github.com/numpy/numpy/issues/4317
-    from pyopencl.compyte.dtypes import DTYPE_TO_NAME
-    for other_dtype in DTYPE_TO_NAME:
-        # Incredibly, DTYPE_TO_NAME contains strings...
-        if isinstance(other_dtype, np.dtype) and dtype == other_dtype:
-            return other_dtype
+class PicklableDtype(object):
+    """This object works around several issues with pickling :class:`numpy.dtype`
+    objects. It does so by serving as a picklable wrapper around the original
+    dtype.
 
-    raise RuntimeError(
-            "don't know what to do with (likely broken) unpickled dtype '%s'"
-            % dtype)
+    The issues are the following
+
+    - :class:`numpy.dtype` objects for custom types in :mod:`loopy` are usually
+      registered in the :mod:`pyopencl` dtype registry. This registration may
+      have been lost after unpickling. This container restores it implicitly,
+      as part of unpickling.
+
+    - There is a`numpy bug <https://github.com/numpy/numpy/issues/4317>`_
+      that prevents unpickled dtypes from hashing properly. This is solved
+      by retrieving the 'canonical' type from the dtype registry.
+    """
+
+    def __init__(self, dtype):
+        self.dtype = np.dtype(dtype)
+
+    def __hash__(self):
+        return hash(self.dtype)
+
+    def __eq__(self, other):
+        return (
+                type(self) == type(other)
+                and self.dtype == other.dtype)
+
+    def __ne__(self, other):
+        return not self.__eq__(self, other)
+
+    def __getstate__(self):
+        from pyopencl.compyte.dtypes import DTYPE_TO_NAME
+        c_name = DTYPE_TO_NAME[self.dtype]
+
+        return (c_name, self.dtype)
+
+    def __setstate__(self, state):
+        name, dtype = state
+        from pyopencl.tools import get_or_register_dtype
+        self.dtype = get_or_register_dtype([name], dtype)
 
 # vim: foldmethod=marker

@@ -177,13 +177,21 @@ def parse_tag(tag):
 
 
 class KernelArgument(Record):
-    def __setstate__(self, state):
-        Record.__setstate__(self, state)
+    def __init__(self, **kwargs):
+        dtype = kwargs.pop("dtype")
 
-        import loopy as lp
-        if self.dtype is not None and self.dtype is not lp.auto:
-            from loopy.tools import fix_dtype_after_unpickling
-            self.dtype = fix_dtype_after_unpickling(self.dtype)
+        from loopy.tools import PicklableDtype
+        kwargs["picklable_dtype"] = PicklableDtype(dtype)
+        Record.__init__(self, **kwargs)
+
+    def get_copy_kwargs(self, **kwargs):
+        result = Record.get_copy_kwargs(self, **kwargs)
+        if "dtype" not in result:
+            result["dtype"] = self.dtype
+
+        del result["picklable_dtype"]
+
+        return result
 
 
 class GlobalArg(ArrayBase, KernelArgument):
@@ -245,7 +253,7 @@ class ValueArg(KernelArgument):
         if dtype is not None:
             dtype = np.dtype(dtype)
 
-        Record.__init__(self, name=name, dtype=dtype,
+        KernelArgument.__init__(self, name=name, dtype=dtype,
                 approximately=approximately)
 
     def __str__(self):
@@ -295,7 +303,7 @@ class TemporaryVariable(ArrayBase):
             "is_local"
             ]
 
-    def __init__(self, name, dtype, shape=(), is_local=auto,
+    def __init__(self, name, dtype=None, shape=(), is_local=auto,
             dim_tags=None, offset=0, strides=None, order=None,
             base_indices=None, storage_shape=None):
         """
@@ -311,7 +319,8 @@ class TemporaryVariable(ArrayBase):
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
-        ArrayBase.__init__(self, name=name, dtype=dtype, shape=shape,
+        ArrayBase.__init__(self, name=name,
+                dtype=dtype, shape=shape,
                 dim_tags=dim_tags, order="C",
                 base_indices=base_indices, is_local=is_local,
                 storage_shape=storage_shape)
@@ -342,14 +351,6 @@ class TemporaryVariable(ArrayBase):
 
     def __str__(self):
         return self.stringify(include_typename=False)
-
-    def __setstate__(self, state):
-        ArrayBase.__setstate__(self, state)
-
-        import loopy as lp
-        if self.dtype is not None and self.dtype is not lp.auto:
-            from loopy.tools import fix_dtype_after_unpickling
-            self.dtype = fix_dtype_after_unpickling(self.dtype)
 
 # }}}
 
