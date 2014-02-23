@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 
 import numpy as np
-from pytools import RecordWithoutPickling, memoize_method
+from pytools import RecordWithoutPickling, Record, memoize_method
 import islpy as isl
 from islpy import dim_type
 import re
@@ -765,7 +765,7 @@ class LoopKernel(RecordWithoutPickling):
                     dom_intersect_assumptions, iname_idx)
                 .coalesce())
 
-        class BoundsRecord(RecordWithoutPickling):
+        class BoundsRecord(Record):
             pass
 
         size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)
@@ -1043,8 +1043,13 @@ class LoopKernel(RecordWithoutPickling):
         return result
 
     def __setstate__(self, state):
+        new_fields = set()
+
         for k, v in state.iteritems():
             setattr(self, k, v)
+            new_fields.add(k)
+
+        self.register_fields(new_fields)
 
         from loopy.kernel.tools import SetOperationCacheManager
         self.cache_manager = SetOperationCacheManager()
