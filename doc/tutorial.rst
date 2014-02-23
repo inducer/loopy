@@ -864,7 +864,7 @@ the conventional :mod:`numpy` scalar types (:class:`numpy.int16`,
 :class:`numpy.complex128`) will work. (Yes, :mod:`loopy` supports and
 generates correct code for complex arithmetic.)
 
-The generated code places this variable into what OpenCL calss 'private'
+The generated code places this variable into what OpenCL calls 'private'
 memory, local to each work item.
 
 .. doctest::
