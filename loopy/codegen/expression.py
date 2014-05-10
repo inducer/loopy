@@ -65,7 +65,15 @@ class TypeInferenceMapper(CombineMapper):
             other = dtypes.pop()
 
             if result.isbuiltin and other.isbuiltin:
-                result = (np.empty(0, dtype=result) + np.empty(0, dtype=other)).dtype
+                if (result, other) in [
+                        (np.int32, np.float32), (np.int32, np.float32)]:
+                    # numpy makes this a double. I disagree.
+                    result = np.dtype(np.float32)
+                else:
+                    result = (
+                            np.empty(0, dtype=result)
+                            + np.empty(0, dtype=other)
+                            ).dtype
             elif result.isbuiltin and not other.isbuiltin:
                 # assume the non-native type takes over
                 result = other
