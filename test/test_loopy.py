@@ -1666,6 +1666,37 @@ def test_multiple_writes_to_local_temporary(ctx_factory):
         print code
 
 
+def test_fd_demo(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i,j<n}",
+        "result[i,j] = u[i, j]**2 + -1 + (-4)*u[i + 1, j + 1] \
+                + u[i + 1 + 1, j + 1] + u[i + 1 + -1, j + 1] \
+                + u[i + 1, j + 1 + 1] + u[i + 1, j + 1 + -1]")
+        #assumptions="n mod 16=0")
+    knl = lp.split_iname(knl,
+            "i", 16, outer_tag="g.1", inner_tag="l.1")
+    knl = lp.split_iname(knl,
+            "j", 16, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.add_prefetch(knl, "u",
+            ["i_inner", "j_inner"],
+            fetch_bounding_box=True)
+
+    n = 1000
+    u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
+
+    knl = lp.set_options(knl, write_cl=True)
+    knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    code, inf = lp.generate_code(knl)
+    print code
+
+    assert "double" not in code
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
