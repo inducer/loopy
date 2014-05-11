@@ -164,6 +164,9 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options
                                     [(shape_i, sym_shape[axis_nr])]
                                     )[integer_arg_var]
                         except Exception, e:
+                            #from traceback import print_exc
+                            #print_exc()
+
                             # went wrong? oh well
                             from warnings import warn
                             warn("Unable to generate code to automatically "
