@@ -32,11 +32,12 @@ and private use. To use Loopy, you just need `pyopencl
 
 Places on the web related to Loopy:
 
-* `Python package index <http://pypi.python.org/pypi/loopy`_ (download releases) Note the extra '.' in the PyPI identifier!
+* `Python package index <http://pypi.python.org/pypi/loo.py>`_ (download releases) Note the extra '.' in the PyPI identifier!
 
 * `Documentation <http://documen.tician.de/loopy>`_ (read how things work)
 
   .. image:: https://badge.fury.io/py/loo.py.png
       :target: http://pypi.python.org/pypi/loo.py
-* `Github <http://github.com/pyopencl/loopy`_ (get latest source code, file bugs)
-* `Wiki <http://wiki.tiker.net/Loopy`_ (read installation tips, get examples, read FAQ)
+* `Github <http://github.com/pyopencl/loopy>`_ (get latest source code, file bugs)
+* `Wiki <http://wiki.tiker.net/Loopy>`_ (read installation tips, get examples, read FAQ)
+* `Homepage <http://mathema.tician.de/software/loopy>`_
