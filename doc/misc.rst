@@ -5,7 +5,7 @@ Installation
 
 This command should install :mod:`loopy`::
 
-    pip install islpy
+    pip install https://github.com/inducer/loopy/tarball/master
 
 You may need to run this with :command:`sudo`.
 If you don't already have `pip <https://pypi.python.org/pypi/pip>`_,
@@ -78,7 +78,7 @@ Citing Loopy
 If you use loopy for your work and find its approach helpful, please
 consider citing the following article.
 
-    A. Klöckner. Loo.py: transformation-based code~generation for GPUs and
+    A. Klöckner. Loo.py: transformation-based code generation for GPUs and
     CPUs. Proceedings of ARRAY '14: ACM SIGPLAN Workshop on Libraries,
     Languages, and Compilers for Array Programming. Edinburgh, Scotland.
 

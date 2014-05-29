@@ -43,7 +43,7 @@ setup(name="loo.py",
           "pyopencl>=2013.1",
           "pymbolic>=2013.2",
           "cgen",
-          "islpy>=2014.1"
+          "islpy>=2014.2"
           ],
 
       author="Andreas Kloeckner",
