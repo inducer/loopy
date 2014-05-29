@@ -1,21 +1,40 @@
+.. _installation:
+
 Installation
 ============
 
-Installation should require no more than the usual::
+This command should install :mod:`loopy`::
+
+    pip install islpy
+
+You may need to run this with :command:`sudo`.
+If you don't already have `pip <https://pypi.python.org/pypi/pip>`_,
+run this beforehand::
+
+    curl -O https://raw.github.com/pypa/pip/master/contrib/get-pip.py
+    python get-pip.py
+
+For a more manual installation, `download the source
+<http://pypi.python.org/pypi/islpy>`_, unpack it, and say::
 
     python setup.py install
+
+You may also clone its git repository::
+
+    git clone --recursive git://github.com/inducer/loopy
+    git clone --recursive http://git.tiker.net/trees/loopy.git
 
 User-visible Changes
 ====================
 
-Version 2013.1
+Version 2014.1
 --------------
 .. note::
 
     This version is currently under development. You can get snapshots from
     PyOpenCL's `git repository <https://github.com/inducer/loopy>`_
 
-* Initial release.
+* Initial release. 
 
 .. _license:
 
@@ -59,27 +78,22 @@ Citing Loopy
 If you use loopy for your work and find its approach helpful, please
 consider citing the following article.
 
-    TBD, Fixme.
+    A. Klöckner. Loo.py: transformation-based code~generation for GPUs and
+    CPUs. Proceedings of ARRAY '14: ACM SIGPLAN Workshop on Libraries,
+    Languages, and Compilers for Array Programming. Edinburgh, Scotland.
 
-We are not asking you to gratuitously cite PyOpenCL in work that is otherwise
-unrelated to software. That said, if you do discuss some of the development
-aspects of your code and would like to highlight a few of the ideas behind
-PyOpenCL, feel free to cite this article:
-
-    Andreas Klöckner, TBD
+(A link to this article will be available here shortly.)
 
 Here's a Bibtex entry for your convenience::
 
-    @article{kloeckner_pycuda_2012,
-       author = {{Kl{\"o}ckner}, Andreas
-            and {Warburton}, Timothy
-       title = "{TBD}",
-       journal = "TBD",
-       volume = "TBD",
-       number = "TBD",
-       pages = "TBD",
-       year = "TBD",
-       doi = "TBD",
+    @inproceedings{kloeckner_loopy_2014,
+       author = {{Kl{\"o}ckner}, Andreas},
+       title = "{Loo.py: transformation-based code~generation for GPUs and CPUs}",
+       booktitle = "{Proceedings of ARRAY `14: ACM SIGPLAN Workshop
+         on Libraries, Languages, and Compilers for Array Programming}",
+       year = 2014,
+       publisher = "{Association for Computing Machinery}",
+       address = "{Edinburgh, Scotland.}",
     }
 
 

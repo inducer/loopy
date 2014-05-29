@@ -20,8 +20,8 @@ exec(compile(version_file_contents, "pyopencl/version.py", 'exec'), ver_dic)
 
 setup(name="loo.py",
       version=ver_dic["VERSION_TEXT"],
-      description="An automatic loop generator for OpenCL",
-      long_description="",
+      description="A code generator for array-based code on CPUs and GPUs",
+      long_description=open("README.rst", "rt").read(),
       classifiers=[
           'Development Status :: 4 - Beta',
           'Intended Audience :: Developers',
@@ -47,7 +47,7 @@ setup(name="loo.py",
           ],
 
       author="Andreas Kloeckner",
-      url="http://pypi.python.org/pypi/pytools",
+      url="http://mathema.tician.de/software/loopy",
       author_email="inform@tiker.net",
       license="MIT",
       packages=[
