@@ -78,11 +78,10 @@ Citing Loopy
 If you use loopy for your work and find its approach helpful, please
 consider citing the following article.
 
-    A. Klöckner. Loo.py: transformation-based code generation for GPUs and
-    CPUs. Proceedings of ARRAY '14: ACM SIGPLAN Workshop on Libraries,
-    Languages, and Compilers for Array Programming. Edinburgh, Scotland.
-
-(A link to this article will be available here shortly.)
+    A. Klöckner. `Loo.py: transformation-based code generation for GPUs and
+    CPUs <http://arxiv.org/abs/1405.7470>`_. Proceedings of ARRAY '14: ACM
+    SIGPLAN Workshop on Libraries, Languages, and Compilers for Array
+    Programming. Edinburgh, Scotland.
 
 Here's a Bibtex entry for your convenience::
 
@@ -94,6 +93,7 @@ Here's a Bibtex entry for your convenience::
        year = 2014,
        publisher = "{Association for Computing Machinery}",
        address = "{Edinburgh, Scotland.}",
+       doi = "{10.1145/2627373.2627387}",
     }
 
 
