@@ -1,12 +1,6 @@
 Welcome to loopy's documentation!
 =================================
 
-.. note::
-
-  As of May 28, 2014, :mod:`loopy` is release-ready as software, but this
-  documentation is still somewhat of a work in progress. If you're OK with
-  mildly incomplete documentation, please head over to :ref:`installation`.
-
 loopy is a code generator for array-based code in the OpenCL/CUDA execution
 model. Here's a very simple example of how to double the entries of a vector
 using loopy:
@@ -35,6 +29,12 @@ Places on the web related to Loopy
 
 Table of Contents
 -----------------
+
+If you're only just learning about loopy, consider the following `paper
+<http://arxiv.org/abs/1405.7470>`_ on loo.py that may serve as a good
+introduction.
+
+Please check :ref:`installation` to get started.
 
 .. toctree::
     :maxdepth: 2
