@@ -15,7 +15,7 @@ Places on the web related to Loopy:
 * `Wiki <http://wiki.tiker.net/Loopy>`_ (read installation tips, get examples, read FAQ)
 * `Homepage <http://mathema.tician.de/software/loopy>`_
 
----
+----
 
 Loopy's core idea is that a computation should be described simply and then
 *transformed* into a version that gets high performance. This transformation
