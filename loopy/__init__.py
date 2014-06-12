@@ -1381,4 +1381,53 @@ class CacheMode(object):
 # }}}
 
 
+# {{{ data layout change
+
+def make_copy_kernel(new_dim_tags, old_dim_tags=None):
+    """Returns a :class:`LoopKernel` that changes the data layout
+    of a variable (called "input") to the new layout specified by
+    *new_dim_tags* from the one specified by *old_dim_tags*.
+    *old_dim_tags* defaults to an all-C layout of the same rank
+    as the one given by *new_dim_tags*.
+    """
+
+    from loopy.kernel.array import (parse_array_dim_tags,
+            SeparateArrayArrayDimTag, VectorArrayDimTag)
+    new_dim_tags = parse_array_dim_tags(new_dim_tags)
+
+    rank = len(new_dim_tags)
+    if old_dim_tags is None:
+        old_dim_tags = parse_array_dim_tags(",".join(rank * ["c"]))
+    elif isinstance(old_dim_tags, str):
+        old_dim_tags = parse_array_dim_tags(old_dim_tags)
+
+    indices = ["i%d" % i for i in range(rank)]
+    shape = ["n%d" % i for i in range(rank)]
+    commad_indices = ", ".join(indices)
+    bounds = " and ".join(
+            "0<=%s<%s" % (ind, shape_i)
+            for ind, shape_i in zip(indices, shape))
+
+    set_str = "{[%s]: %s}" % (
+                commad_indices,
+                bounds
+                )
+    result = make_kernel(set_str,
+            "output[%s] = input[%s]"
+            % (commad_indices, commad_indices))
+
+    result = tag_data_axes(result, "input", old_dim_tags)
+    result = tag_data_axes(result, "output", new_dim_tags)
+
+    unrolled_tags = (SeparateArrayArrayDimTag, VectorArrayDimTag)
+    for i in range(rank):
+        if (isinstance(new_dim_tags[i], unrolled_tags)
+                or isinstance(old_dim_tags[i], unrolled_tags)):
+            result = tag_inames(result, {indices[i]: "unr"})
+
+    return result
+
+# }}}
+
+
 # vim: foldmethod=marker

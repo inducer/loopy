@@ -320,6 +320,8 @@ function, which is responsible for creating kernels:
 
 .. autofunction:: make_kernel
 
+.. autofunction:: make_copy_kernel
+
 Transforming Kernels
 --------------------
 

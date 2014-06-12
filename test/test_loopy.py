@@ -1689,9 +1689,6 @@ def test_multiple_writes_to_local_temporary(ctx_factory):
 
 
 def test_fd_demo(ctx_factory):
-    ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
-
     knl = lp.make_kernel(
         "{[i,j]: 0<=i,j<n}",
         "result[i,j] = u[i, j]**2 + -1 + (-4)*u[i + 1, j + 1] \
@@ -1706,8 +1703,8 @@ def test_fd_demo(ctx_factory):
             ["i_inner", "j_inner"],
             fetch_bounding_box=True)
 
-    n = 1000
-    u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
+    #n = 1000
+    #u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
 
     knl = lp.set_options(knl, write_cl=True)
     knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
@@ -1717,6 +1714,29 @@ def test_fd_demo(ctx_factory):
     print code
 
     assert "double" not in code
+
+
+def test_make_copy_kernel(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    intermediate_format = "f,f,sep"
+
+    a1 = np.random.randn(1024, 4, 3)
+
+    cknl1 = lp.make_copy_kernel(intermediate_format)
+
+    cknl1 = lp.fix_parameters(cknl1, n2=3)
+
+    cknl1 = lp.set_options(cknl1, write_cl=True)
+    evt, a2 = cknl1(queue, input=a1)
+
+    cknl2 = lp.make_copy_kernel("c,c,c", intermediate_format)
+    cknl2 = lp.fix_parameters(cknl2, n2=3)
+
+    evt, a3 = cknl2(queue, input=a2)
+
+    assert (a1 == a3).all()
 
 
 if __name__ == "__main__":
