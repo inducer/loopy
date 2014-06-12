@@ -362,6 +362,8 @@ Dealing with Parameters
 
 .. autofunction:: fix_parameters
 
+.. autofunction:: assume
+
 Dealing with Substitution Rules
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -375,8 +377,6 @@ Caching, Precomputation and Prefetching
 .. autofunction:: precompute
 
 .. autofunction:: add_prefetch
-
-    Uses :func:`extract_subst` and :func:`precompute`.
 
 Influencing data access
 ^^^^^^^^^^^^^^^^^^^^^^^

@@ -225,16 +225,8 @@ class LoopKernel(RecordWithoutPickling):
             assumptions = isl.BasicSet.universe(assumptions_space)
 
         elif isinstance(assumptions, str):
-            all_inames = set()
-            all_params = set()
-            for dom in domains:
-                all_inames.update(dom.get_var_names(dim_type.set))
-                all_params.update(dom.get_var_names(dim_type.param))
-
-            domain_parameters = all_params-all_inames
-
             assumptions_set_str = "[%s] -> { : %s}" \
-                    % (",".join(s for s in domain_parameters),
+                    % (",".join(s for s in self.outer_params(domains)),
                         assumptions)
             assumptions = isl.BasicSet.read_from_str(domains[0].get_ctx(),
                     assumptions_set_str)
@@ -590,6 +582,18 @@ class LoopKernel(RecordWithoutPickling):
             result.update(set(dom.get_var_names(dim_type.param)) - all_inames)
 
         return frozenset(result)
+
+    def outer_params(self, domains=None):
+        if domains is None:
+            domains = self.domains
+
+        all_inames = set()
+        all_params = set()
+        for dom in self.domains:
+            all_inames.update(dom.get_var_names(dim_type.set))
+            all_params.update(dom.get_var_names(dim_type.param))
+
+        return all_params-all_inames
 
     @memoize_method
     def all_insn_inames(self):

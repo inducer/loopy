@@ -908,6 +908,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         directly by putting an index expression into *var_name*. Substitutions
         such as those occurring in dimension splits are recorded and also
         applied to these indices.
+
+    This function combines :func:`extract_subst` and :func:`precompute`.
     """
 
     # {{{ fish indexing out of var_name and into footprint_subscripts
@@ -1255,6 +1257,26 @@ def fix_parameters(kernel, **value_dict):
         kernel = _fix_parameter(kernel, name, value)
 
     return kernel
+
+# }}}
+
+
+# {{{ assume
+
+def assume(kernel, assumptions):
+    if isinstance(assumptions, str):
+        assumptions_set_str = "[%s] -> { : %s}" \
+                % (",".join(s for s in kernel.outer_params()),
+                    assumptions)
+        assumptions = isl.BasicSet.read_from_str(kernel.domains[0].get_ctx(),
+                assumptions_set_str)
+
+    if not isinstance(assumptions, isl.BasicSet):
+        raise TypeError("'assumptions' must be a BasicSet or a string")
+
+    old_assumptions, new_assumptions = isl.align_two(kernel.assumptions, assumptions)
+
+    return kernel.copy(assumptions=old_assumptions.params() & new_assumptions.params())
 
 # }}}
 

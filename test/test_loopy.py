@@ -127,6 +127,28 @@ def test_sized_and_complex_literals(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
 
 
+def test_assume(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            "a[i] = a[i] + 1",
+            [lp.GlobalArg("a", np.float32, shape="n"), "..."])
+
+    knl = lp.split_iname(knl, "i", 16)
+    knl = lp.set_loop_priority(knl, "i_outer,i_inner")
+    knl = lp.assume(knl, "n mod 16 = 0")
+    knl = lp.assume(knl, "n > 10")
+    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    kernel_gen = lp.generate_loop_schedules(knl)
+
+    for gen_knl in kernel_gen:
+        print gen_knl
+        compiled = lp.CompiledKernel(ctx, gen_knl)
+        print compiled.get_code()
+        assert "if" not in compiled.get_code()
+
+
 def test_simple_side_effect(ctx_factory):
     ctx = ctx_factory()
 
