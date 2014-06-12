@@ -589,7 +589,7 @@ class LoopKernel(RecordWithoutPickling):
 
         all_inames = set()
         all_params = set()
-        for dom in self.domains:
+        for dom in domains:
             all_inames.update(dom.get_var_names(dim_type.set))
             all_params.update(dom.get_var_names(dim_type.param))
 
