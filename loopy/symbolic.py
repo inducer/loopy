@@ -999,6 +999,7 @@ class AccessRangeMapper(WalkMapper):
         self.kernel = kernel
         self.arg_name = arg_name
         self.access_range = None
+        self.bad_subscripts = []
 
     def map_subscript(self, expr, inames):
         domain = self.kernel.get_inames_domain(inames)
@@ -1015,9 +1016,8 @@ class AccessRangeMapper(WalkMapper):
             subscript = (subscript,)
 
         if not get_dependencies(subscript) <= set(domain.get_var_dict()):
-            raise RuntimeError("cannot determine access range for '%s': "
-                    "undetermined index in '%s'"
-                    % (self.arg_name, ", ".join(str(i) for i in subscript)))
+            self.bad_subscripts.append(subscript)
+            return
 
         access_range = get_access_range(domain, subscript, self.kernel.assumptions)
 
