@@ -504,6 +504,9 @@ class ExpandingIdentityMapper(IdentityMapper):
 
         return renamed_result, renames
 
+    def map_instruction(self, insn):
+        return insn
+
     def map_kernel(self, kernel):
         new_insns = [
                 # While subst rules are not allowed in assignees, the mapper
@@ -514,9 +517,14 @@ class ExpandingIdentityMapper(IdentityMapper):
                 for insn in kernel.instructions]
 
         new_substs, renames = self._get_new_substitutions_and_renames()
+
+        new_insns = [self.map_instruction(insn)
+                for insn in rename_subst_rules_in_instructions(
+                    new_insns, renames)]
+
         return kernel.copy(
             substitutions=new_substs,
-            instructions=rename_subst_rules_in_instructions(new_insns, renames))
+            instructions=new_insns)
 
 
 class ExpandingSubstitutionMapper(ExpandingIdentityMapper):
