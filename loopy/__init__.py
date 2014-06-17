@@ -523,11 +523,13 @@ class _InameDuplicator(ExpandingIdentityMapper):
             return var(new_name)
 
     def map_instruction(self, insn):
+        if not self.within(((insn.id, None),)):
+            return insn
+
         new_fid = frozenset(
                 self.old_to_new.get(iname, iname)
                 for iname in insn.forced_iname_deps)
-        return insn.copy(
-                forced_iname_deps=new_fid)
+        return insn.copy(forced_iname_deps=new_fid)
 
 
 def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
@@ -567,9 +569,11 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
             new_iname = name_gen(new_iname)
 
         else:
+            if name_gen.is_name_conflicting(new_iname):
+                raise ValueError("new iname '%s' conflicts with existing names"
+                        % new_iname)
+
             name_gen.add_name(new_iname)
-            raise ValueError("new iname '%s' conflicts with existing names"
-                    % new_iname)
 
         new_inames[i] = new_iname
 

@@ -152,6 +152,12 @@ SUBST_RE = re.compile(
 
 
 def parse_insn(insn):
+    """
+    :return: a tuple ``(insn, inames_to_dup)``, where insn is a
+        :class:`ExpressionInstruction` or a :class:`SubstitutionRule`
+        and *inames_to_dup* is None or a list of tuples `(old, new)`.
+    """
+
     insn_match = INSN_RE.match(insn)
     subst_match = SUBST_RE.match(insn)
     if insn_match is not None and subst_match is not None:
@@ -183,6 +189,7 @@ def parse_insn(insn):
         insn_deps = None
         insn_deps_is_final = False
         insn_id = None
+        inames_to_dup = []
         priority = 0
         forced_iname_deps_is_final = False
         forced_iname_deps = frozenset()
@@ -208,6 +215,14 @@ def parse_insn(insn):
                     insn_id = UniqueName(opt_value)
                 elif opt_key == "priority":
                     priority = int(opt_value)
+                elif opt_key == "dup":
+                    for value in opt_value.split(":"):
+                        arrow_idx = value.find("->")
+                        if arrow_idx >= 0:
+                            inames_to_dup.append(
+                                    (value[:arrow_idx], value[arrow_idx+2:]))
+                        else:
+                            inames_to_dup.append((value, None))
 
                 elif opt_key == "dep":
                     if opt_value.startswith("*"):
@@ -254,7 +269,7 @@ def parse_insn(insn):
                     assignee=lhs, expression=rhs,
                     temp_var_type=temp_var_type,
                     priority=priority,
-                    predicates=predicates)
+                    predicates=predicates), inames_to_dup
 
     elif subst_match is not None:
         from pymbolic.primitives import Variable, Call
@@ -280,7 +295,7 @@ def parse_insn(insn):
         return SubstitutionRule(
                 name=subst_name,
                 arguments=tuple(arg_names),
-                expression=rhs)
+                expression=rhs), []
 
 
 def parse_if_necessary(insn, defines):
@@ -1068,15 +1083,23 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     parsed_instructions = []
     kwargs["substitutions"] = substitutions = {}
+    inames_to_dup = []
 
     if isinstance(instructions, str):
         instructions = [instructions]
+
     for insn in instructions:
-        for new_insn in parse_if_necessary(insn, defines):
+        for new_insn, insn_inames_to_dup in parse_if_necessary(insn, defines):
             if isinstance(new_insn, InstructionBase):
                 parsed_instructions.append(new_insn)
+
+                # Need to maintain 1-to-1 correspondence to instructions
+                inames_to_dup.append(insn_inames_to_dup)
+
             elif isinstance(new_insn, SubstitutionRule):
                 substitutions[new_insn.name] = new_insn
+
+                assert not insn_inames_to_dup
             else:
                 raise RuntimeError("unexpected type in instruction parsing")
 
@@ -1111,6 +1134,12 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             silenced_warnings=silenced_warnings,
             options=options,
             **kwargs)
+
+    from loopy import duplicate_inames
+    for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
+        for old_iname, new_iname in insn_inames_to_dup:
+            knl = duplicate_inames(knl, old_iname,
+                    within=insn.id, new_inames=new_iname)
 
     check_for_nonexistent_iname_deps(knl)
 
