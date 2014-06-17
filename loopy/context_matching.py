@@ -95,7 +95,7 @@ def parse_id_match(id_matches):
     def re_from_glob(s):
         import re
         from fnmatch import translate
-        return re.compile(translate(s.strip()))
+        return re.compile("^"+translate(s.strip())+"$")
 
     if not isinstance(id_match, tuple):
         components = id_match.split("$")
