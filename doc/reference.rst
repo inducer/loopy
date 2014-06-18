@@ -247,6 +247,15 @@ These are usually key-value pairs. The following attributes are recognized:
       value to indicate that you would like the inames you specify here
       to be in addition to the ones found by the heuristic described above.
 
+* ``dup=i:j->j_new:k->k_new`` makes a copy of the inames ``i``, ``j``, and
+  ``k``, with all the same domain constraints as the original inames.
+  A new name of the copy of ``i`` will be automatically chosen, whereas
+  the new name of ``j`` will be ``j_new``, and the new name of ``k`` will
+  be ``k_new``.
+
+  This is a shortcut for calling :func:`loopy.duplicate_inames` later
+  (once the kernel is created).
+
 * ``dep=id1:id2`` creates a dependency of this instruction on the
   instructions with identifiers ``id1`` and ``id2``. The meaning of this
   dependency is that the code generated for this instruction is required to
