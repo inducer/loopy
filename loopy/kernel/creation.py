@@ -300,7 +300,7 @@ def parse_insn(insn):
 
 def parse_if_necessary(insn, defines):
     if isinstance(insn, InstructionBase):
-        yield insn
+        yield insn, []
         return
     elif not isinstance(insn, str):
         raise TypeError("Instructions must be either an Instruction "
