@@ -1024,7 +1024,7 @@ class AccessRangeMapper(WalkMapper):
             subscript = (subscript,)
 
         if not get_dependencies(subscript) <= set(domain.get_var_dict()):
-            self.bad_subscripts.append(subscript)
+            self.bad_subscripts.append(expr)
             return
 
         access_range = get_access_range(domain, subscript, self.kernel.assumptions)

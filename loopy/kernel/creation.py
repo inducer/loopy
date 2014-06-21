@@ -864,10 +864,9 @@ def guess_arg_shape_if_requested(kernel, default_order):
             if armap.access_range is None:
                 if armap.bad_subscripts:
                     raise RuntimeError("cannot determine access range for '%s': "
-                            "undetermined index in subscripts '%s'"
-                            % (arg.name, " | ".join(
-                                "(%s)" % (
-                                    ", ".join(str(i) for i in armap.bad_subscripts)))))
+                            "undetermined index in subscript(s) '%s'"
+                            % (arg.name, ", ".join(
+                                    str(i) for i in armap.bad_subscripts)))
 
                 # no subscripts found, let's call it a scalar
                 shape = ()
