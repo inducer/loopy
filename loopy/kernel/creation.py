@@ -785,6 +785,13 @@ def determine_shapes_of_temporaries(knl):
                             armap.access_range, i)
                         for i in xrange(armap.access_range.dim(dim_type.set))])
             else:
+                if armap.bad_subscripts:
+                    raise RuntimeError("cannot determine access range for '%s': "
+                            "undetermined index in subscript(s) '%s'"
+                            % (tv.name, ", ".join(
+                                    str(i) for i in armap.bad_subscripts)))
+
+                # no subscripts found, let's call it a scalar
                 base_indices = ()
                 shape = ()
 
