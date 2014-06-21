@@ -138,7 +138,7 @@ def check_for_inactive_iname_access(kernel):
 def check_for_write_races(kernel):
     from loopy.symbolic import DependencyMapper
     from loopy.kernel.data import ParallelTag, GroupIndexTag, LocalIndexTagBase
-    depmap = DependencyMapper()
+    depmap = DependencyMapper(composite_leaves=False)
 
     iname_to_tag = kernel.iname_to_tag.get
     for insn in kernel.instructions:
