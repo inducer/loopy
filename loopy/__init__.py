@@ -1441,4 +1441,37 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
 # }}}
 
 
+# {{{ set argument order
+
+def set_argument_order(kernel, arg_names):
+    """
+    :arg arg_names: A list (or comma-separated string) or argument
+        names. All arguments must be in this list.
+    """
+
+    if isinstance(arg_names, str):
+        arg_names = arg_names.split(",")
+
+    new_args = []
+    old_arg_dict = kernel.arg_dict.copy()
+
+    for arg_name in arg_names:
+        try:
+            arg = old_arg_dict.pop(arg_name)
+        except KeyError:
+            raise LoopyError("unknown argument '%s'"
+                    % arg_name)
+
+        new_args.append(arg)
+
+    if old_arg_dict:
+        raise LoopyError("incomplete argument list passed "
+                "to set_argument_order. Left over: '%s'"
+                % ", ".join(arg_name for arg_name in old_arg_dict))
+
+    return kernel.copy(args=new_args)
+
+# }}}
+
+
 # vim: foldmethod=marker

@@ -1739,6 +1739,14 @@ def test_make_copy_kernel(ctx_factory):
     assert (a1 == a3).all()
 
 
+def test_set_arg_order():
+    knl = lp.make_kernel(
+            "{ [i,j]: 0<=i,j<n }",
+            "out[i,j] = a[i]*b[j]")
+
+    knl = lp.set_argument_order(knl, "out,a,n,b")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -423,8 +423,10 @@ Library interface
 
 .. autofunction:: register_function_manglers
 
-Argument types
-^^^^^^^^^^^^^^
+Arguments
+^^^^^^^^^
+
+.. autofunction:: set_argument_order
 
 .. autofunction:: add_dtypes
 
