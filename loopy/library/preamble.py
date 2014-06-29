@@ -43,7 +43,7 @@ def default_preamble_generator(seen_dtypes, seen_functions):
 
     if has_double:
         yield ("00_enable_double", """
-            #if __OPENCL_VERSION__ <= CL_VERSION_1_1
+            #if __OPENCL_C_VERSION__ < 120
             #pragma OPENCL EXTENSION cl_khr_fp64: enable
             #endif
             """)
