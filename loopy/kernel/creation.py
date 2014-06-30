@@ -924,7 +924,7 @@ def apply_default_order_to_args(kernel, default_order):
 
     processed_args = []
     for arg in kernel.args:
-        if isinstance(arg, ArrayBase):
+        if isinstance(arg, ArrayBase) and arg.order is None:
             arg = arg.copy(order=default_order)
         processed_args.append(arg)
 

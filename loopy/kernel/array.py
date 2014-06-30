@@ -30,7 +30,7 @@ from pytools import Record, memoize_method
 import pyopencl as cl  # noqa
 import pyopencl.array  # noqa
 
-import numpy as np
+import numpy as np  # noqa
 
 from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
