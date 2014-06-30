@@ -721,7 +721,7 @@ def expand_cses(knl):
 
 # {{{ temporary variable creation
 
-def create_temporaries(knl):
+def create_temporaries(knl, default_order):
     new_insns = []
     new_temp_vars = knl.temporary_variables.copy()
 
@@ -747,7 +747,8 @@ def create_temporaries(knl):
                     dtype=insn.temp_var_type,
                     is_local=lp.auto,
                     base_indices=lp.auto,
-                    shape=lp.auto)
+                    shape=lp.auto,
+                    order=default_order)
 
             insn = insn.copy(temp_var_type=None)
 
@@ -1150,7 +1151,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_nonexistent_iname_deps(knl)
 
     knl = tag_reduction_inames_as_sequential(knl)
-    knl = create_temporaries(knl)
+    knl = create_temporaries(knl, default_order)
     knl = determine_shapes_of_temporaries(knl)
     knl = expand_cses(knl)
     knl = expand_defines_in_shapes(knl, defines)
