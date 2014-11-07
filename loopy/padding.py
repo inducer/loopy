@@ -187,7 +187,7 @@ def split_arg_axis(kernel, args_and_axes, count):
         else:
             raise RuntimeError("order '%s' not understood" % order)
 
-        return expr.aggregate[tuple(idx)]
+        return expr.aggregate.index(tuple(idx))
 
     aash = ArgAxisSplitHelper(kernel.substitutions, var_name_gen,
             set(arg_to_rest.iterkeys()), split_access_axis)

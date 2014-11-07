@@ -777,7 +777,7 @@ def determine_shapes_of_temporaries(knl):
             for insn in knl.instructions:
                 for assignee_name, assignee_index in insn.assignees_and_indices():
                     if assignee_index:
-                        armap(var(assignee_name)[assignee_index],
+                        armap(var(assignee_name).index(assignee_index),
                                 knl.insn_inames(insn))
 
             if armap.access_range is not None:

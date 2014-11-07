@@ -512,7 +512,7 @@ class InvocationReplacer(ExpandingIdentityMapper):
 
         new_outer_expr = var(self.target_var_name)
         if stor_subscript:
-            new_outer_expr = new_outer_expr[tuple(stor_subscript)]
+            new_outer_expr = new_outer_expr.index(tuple(stor_subscript))
 
         # Can't possibly be nested, but recurse anyway to
         # make sure substitution rules referenced below here
@@ -643,8 +643,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     invocation_descriptors = []
 
     if footprint_generators:
+        from pymbolic.primitives import Variable, Call
+
         for fpg in footprint_generators:
-            from pymbolic.primitives import Variable, Call
             if isinstance(fpg, Variable):
                 args = ()
             elif isinstance(fpg, Call):
@@ -816,7 +817,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     assignee = var(target_var_name)
 
     if non1_storage_axis_names:
-        assignee = assignee[tuple(var(iname) for iname in non1_storage_axis_names)]
+        assignee = assignee.index(
+                tuple(var(iname) for iname in non1_storage_axis_names))
 
     def zero_length_1_arg(arg_name):
         if arg_name in non1_storage_axis_names:
@@ -880,8 +882,5 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     from loopy import tag_inames
     return tag_inames(kernel, new_iname_to_tag)
-
-
-
 
 # vim: foldmethod=marker

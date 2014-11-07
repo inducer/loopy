@@ -512,7 +512,7 @@ class ExtraInameIndexInserter(IdentityMapper):
                 index = (index,)
             index = tuple(self.rec(i) for i in index)
 
-            return expr.aggregate[index + new_idx]
+            return expr.aggregate.index(index + new_idx)
 
     def map_variable(self, expr):
         try:
@@ -520,7 +520,7 @@ class ExtraInameIndexInserter(IdentityMapper):
         except KeyError:
             return expr
         else:
-            return expr[new_idx]
+            return expr.index(new_idx)
 
 
 def duplicate_private_temporaries_for_ilp(kernel):

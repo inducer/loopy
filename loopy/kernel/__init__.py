@@ -883,7 +883,7 @@ class LoopKernel(RecordWithoutPickling):
     @memoize_method
     def local_var_names(self):
         return set(
-                tv.name
+            tv.name
             for tv in self.temporary_variables.itervalues()
             if tv.is_local)
 

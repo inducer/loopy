@@ -982,9 +982,10 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     from pymbolic import var
     uni_template = parsed_var_name
     if len(parameters) > 1:
-        uni_template = uni_template[tuple(var(par_name) for par_name in parameters)]
+        uni_template = uni_template.index(
+                tuple(var(par_name) for par_name in parameters))
     elif len(parameters) == 1:
-        uni_template = uni_template[var(parameters[0])]
+        uni_template = uni_template.index(var(parameters[0]))
 
     # }}}
 
