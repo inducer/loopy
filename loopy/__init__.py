@@ -1288,7 +1288,8 @@ def assume(kernel, assumptions):
 
     old_assumptions, new_assumptions = isl.align_two(kernel.assumptions, assumptions)
 
-    return kernel.copy(assumptions=old_assumptions.params() & new_assumptions.params())
+    return kernel.copy(
+            assumptions=old_assumptions.params() & new_assumptions.params())
 
 # }}}
 
