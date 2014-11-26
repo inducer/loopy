@@ -25,6 +25,8 @@ THE SOFTWARE.
 """
 
 
+from six.moves import intern
+
 from pytools import memoize, memoize_method, Record
 import pytools.lex
 
@@ -1045,7 +1047,5 @@ class AccessRangeMapper(WalkMapper):
         return WalkMapper.map_reduction(self, expr, inames | set(expr.inames))
 
 # }}}
-
-
 
 # vim: foldmethod=marker
