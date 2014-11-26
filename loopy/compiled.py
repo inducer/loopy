@@ -163,7 +163,7 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options
                                     [integer_arg_var.name],
                                     [(shape_i, sym_shape.index(axis_nr))]
                                     )[integer_arg_var]
-                        except Exception, e:
+                        except Exception as e:
                             #from traceback import print_exc
                             #print_exc()
 

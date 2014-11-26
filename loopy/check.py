@@ -394,7 +394,7 @@ def check_sizes(kernel, device):
     try:
         glens = evaluate(glens, parameters)
         llens = evaluate(llens, parameters)
-    except UnknownVariableError, name:
+    except UnknownVariableError as name:
         from warnings import warn
         warn("could not check axis bounds because no value "
                 "for variable '%s' was passed to check_kernels()"

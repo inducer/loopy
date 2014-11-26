@@ -355,10 +355,10 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         print("(LEGEND: entry into loop: <iname>, exit from loop: </iname>, "
                 "instructions w/ no delimiters)")
         #print("boost allowed:", allow_boost)
-        print(75*"="
+        print(75*"=")
         print("LOOP NEST MAP:")
         for iname, val in sched_state.loop_nest_map.iteritems():
-            print("%s : %s" % (iname, ", ".join(val))
+            print("%s : %s" % (iname, ", ".join(val)))
         print(75*"=")
         print("WHY IS THIS A DEAD-END SCHEDULE?")
 
@@ -1079,18 +1079,18 @@ def generate_loop_schedules(kernel, debug_args={}):
 
     if not schedule_count:
         if debug.interactive:
-            print(75*"-"
-            print("ERROR: Sorry--loo.py did not find a schedule for your kernel."
-            print(75*"-"
-            print("Loo.py will now show you the scheduler state at the point"
-            print("where the longest (dead-end) schedule was generated, in the"
-            print("the hope that some of this makes sense and helps you find"
-            print("the issue."
+            print(75*"-")
+            print("ERROR: Sorry--loo.py did not find a schedule for your kernel.")
+            print(75*"-")
+            print("Loo.py will now show you the scheduler state at the point")
+            print("where the longest (dead-end) schedule was generated, in the")
+            print("the hope that some of this makes sense and helps you find")
+            print("the issue.")
             print()
             print("To disable this interactive behavior, pass")
             print("  debug_args=dict(interactive=False)")
             print("to generate_loop_schedules().")
-            print(75*"-"
+            print(75*"-")
             six.input("Enter:")
             print()
             print()

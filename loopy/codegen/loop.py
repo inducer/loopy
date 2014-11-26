@@ -129,7 +129,7 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
         lower_bound_aff = static_value_of_pw_aff(
                 bounds.lower_bound_pw_aff.coalesce(),
                 constants_only=False)
-    except Exception, e:
+    except Exception as e:
         raise type(e)("while finding lower bound of '%s': " % iname)
 
     result = []

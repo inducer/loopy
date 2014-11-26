@@ -425,7 +425,7 @@ def auto_test_vs_ref(
                             ref_queue, parameters,
                             fill_value=fill_value_ref)
             ref_args["out_host"] = False
-        except cl.RuntimeError, e:
+        except cl.RuntimeError as e:
             if e.code == cl.status_code.IMAGE_FORMAT_NOT_SUPPORTED:
                 import traceback
                 ref_errors.append("\n".join([
