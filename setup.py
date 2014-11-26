@@ -3,12 +3,6 @@
 
 from setuptools import setup
 
-try:
-    from distutils.command.build_py import build_py_2to3 as build_py
-except ImportError:
-    # 2.x
-    from distutils.command.build_py import build_py
-
 ver_dic = {}
 version_file = open("loopy/version.py")
 try:
@@ -43,7 +37,8 @@ setup(name="loo.py",
           "pyopencl>=2014.1",
           "pymbolic>=2014.1.1",
           "cgen>=2013.1.2",
-          "islpy>=2014.2"
+          "islpy>=2014.2",
+          "six"
           ],
 
       author="Andreas Kloeckner",
@@ -56,6 +51,4 @@ setup(name="loo.py",
           "loopy.kernel",
           "loopy.library",
           ],
-
-      # 2to3 invocation
-      cmdclass={'build_py': build_py})
+      )
