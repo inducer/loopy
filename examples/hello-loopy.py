@@ -27,4 +27,4 @@ evt, (out,) = knl(queue, a=a)
 # ENDEXAMPLE
 
 cknl = lp.CompiledKernel(ctx, knl)
-print cknl.get_highlighted_code({"a": np.float32})
+print(cknl.get_highlighted_code({"a": np.float32}))

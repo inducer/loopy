@@ -546,12 +546,12 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                         "sample point %s: %s" % (kind, ", ".join(point_axes)))
 
             if code is not None:
-                print 79*"-"
-                print "CODE:"
-                print 79*"-"
+                print(79*"-")
+                print("CODE:")
+                print(79*"-")
                 from loopy.compiled import get_highlighted_cl_code
-                print get_highlighted_cl_code(code)
-                print 79*"-"
+                print(get_highlighted_cl_code(code))
+                print(79*"-")
 
             raise LoopyError("sanity check failed--implemented and desired "
                     "domain for instruction '%s' do not match\n\n"

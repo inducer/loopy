@@ -92,7 +92,7 @@ def cannot_schedule_test_tim3d_slab(ctx_factory):
 
         knl = duplicate_os(knl)
 
-        print knl
+        print(knl)
 
         return knl
 
@@ -192,7 +192,7 @@ def test_tim3d_slab(ctx_factory):
         # prefetch the derivative matrix
         knl = lp.add_prefetch(knl, "D[:,:]")
 
-        print knl
+        print(knl)
 
         return knl
 

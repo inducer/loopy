@@ -699,7 +699,7 @@ class CompiledKernel:
                 output = get_highlighted_cl_code(output)
 
             if self.kernel.options.write_cl is True:
-                print output
+                print(output)
             else:
                 with open(self.kernel.options.write_cl, "w") as outf:
                     outf.write(output)
