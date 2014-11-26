@@ -950,7 +950,7 @@ def get_access_info(ary, index, eval_expr):
         from pymbolic.mapper.evaluator import UnknownVariableError
         try:
             return eval_expr(expr)
-        except UnknownVariableError, e:
+        except UnknownVariableError as e:
             raise LoopyError("When trying to index the array '%s' along axis "
                     "%d (tagged '%s'), the index was not a compile-time "
                     "constant (but it has to be in order for code to be "

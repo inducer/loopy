@@ -363,11 +363,11 @@ def pre_schedule_checks(kernel):
 
         logger.info("pre-schedule check %s: done" % kernel.name)
     except:
-        print 75*"="
-        print "failing kernel during pre-schedule check:"
-        print 75*"="
-        print kernel
-        print 75*"="
+        print(75*"=")
+        print("failing kernel during pre-schedule check:")
+        print(75*"=")
+        print(kernel)
+        print(75*"=")
         raise
 
 
@@ -473,11 +473,11 @@ def pre_codegen_checks(kernel, device=None):
 
         logger.info("pre-codegen check %s: done" % kernel.name)
     except:
-        print 75*"="
-        print "failing kernel during pre-schedule check:"
-        print 75*"="
-        print kernel
-        print 75*"="
+        print(75*"=")
+        print("failing kernel during pre-schedule check:")
+        print(75*"=")
+        print(kernel)
+        print(75*"=")
         raise
 
 # }}}

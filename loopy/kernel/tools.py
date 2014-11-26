@@ -279,7 +279,7 @@ class SetOperationCacheManager:
             base_index = pw_aff_to_expr(
                     static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
                         context=context))
-        except Exception, e:
+        except Exception as e:
             raise type(e)("while finding lower bound of '%s': %s" % (iname, str(e)))
 
         return base_index, size
@@ -353,7 +353,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
         try:
             from loopy.schedule import get_one_scheduled_kernel
             kernel = get_one_scheduled_kernel(kernel)
-        except RuntimeError, e:
+        except RuntimeError as e:
             iname_cluster = False
             from warnings import warn
             warn("error encountered during scheduling for dep graph -- "

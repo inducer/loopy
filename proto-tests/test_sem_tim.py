@@ -60,10 +60,10 @@ def test_laplacian(ctx_factory):
             ],
             name="semlap", assumptions="K>=1")
 
-    #print lp.preprocess_kernel(knl, cse_ok=True)
+    #print(lp.preprocess_kernel(knl, cse_ok=True))
     #1/0
     #
-    #print knl
+    #print(knl)
     #1/0
     knl = lp.realize_cse(knl, "urf", np.float32, ["o1"])
     knl = lp.realize_cse(knl, "usf", np.float32, ["o2"])
@@ -93,8 +93,8 @@ def test_laplacian(ctx_factory):
 
     #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 
-    #print seq_knl
-    #print lp.preprocess_kernel(knl)
+    #print(seq_knl)
+    #print(lp.preprocess_kernel(knl))
     #1/0
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
@@ -170,14 +170,14 @@ def test_laplacian_lmem(ctx_factory):
 
     #knl = lp.add_prefetch(knl, "G", [2,3,4]) # axis/argument indices on G
     #knl = lp.add_prefetch(knl, "G", ["i", "j", "m", "k"]) # axis/argument indices on G
-    #print knl
+    #print(knl)
     #1/0
 
     #knl = lp.split_iname(knl, "e_inner", 4, inner_tag="ilp")
 #    knl = lp.join_dimensions(knl, ["i", "j"], "i_and_j")
 
-    #print seq_knl
-    #print lp.preprocess_kernel(knl)
+    #print(seq_knl)
+    #print(lp.preprocess_kernel(knl))
     #1/0
 
 # TW: turned this off since it generated:
@@ -250,7 +250,7 @@ def test_laplacian_lmem_ilp(ctx_factory):
     knl = lp.add_prefetch(knl, "G", ["m", "i", "j", "k", "e_inner_inner"])
     knl = lp.add_prefetch(knl, "D", ["m", "j"])
 
-    #print seq_knl
+    #print(seq_knl)
     #1/0
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
@@ -259,7 +259,7 @@ def test_laplacian_lmem_ilp(ctx_factory):
     kernel_gen = lp.check_kernels(kernel_gen, dict(K=1000))
 
     for knl in kernel_gen:
-        print lp.generate_code(knl)
+        print(lp.generate_code(knl))
 
 
 
@@ -336,7 +336,7 @@ def test_advect(ctx_factory):
             ],
             name="sem_advect", assumptions="K>=1")
 
-    print knl
+    print(knl)
     1/0
 
     seq_knl = knl
@@ -456,14 +456,14 @@ def test_advect_dealias(ctx_factory):
             ],
             name="sem_advect", assumptions="K>=1")
 
-    print knl
+    print(knl)
     1/0
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
-    print knl
+    print(knl)
     #1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)
@@ -520,14 +520,14 @@ def test_interp_diff(ctx_factory):
             ],
             name="sem_lap_precon", assumptions="K>=1")
 
-    print knl
+    print(knl)
     1/0
 
     knl = lp.split_iname(knl, "e", 16, outer_tag="g.0")#, slabs=(0, 1))
 
     knl = lp.tag_inames(knl, dict(i="l.0", j="l.1"))
 
-    print knl
+    print(knl)
     #1/0
 
     kernel_gen = lp.generate_loop_schedules(knl)

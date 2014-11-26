@@ -411,11 +411,11 @@ def auto_test_vs_ref(
 
         ref_compiled = CompiledKernel(ref_ctx, ref_sched_kernel)
         if print_ref_code:
-            print 75*"-"
-            print "Reference Code:"
-            print 75*"-"
-            print get_highlighted_cl_code(ref_compiled.code)
-            print 75*"-"
+            print(75*"-")
+            print("Reference Code:")
+            print(75*"-")
+            print(get_highlighted_cl_code(ref_compiled.code))
+            print(75*"-")
 
         ref_cl_kernel_info = ref_compiled.cl_kernel_info(frozenset())
 
@@ -517,16 +517,16 @@ def auto_test_vs_ref(
                     queue, ref_arg_data, parameters, fill_value=fill_value)
         args["out_host"] = False
 
-        print 75*"-"
-        print "Kernel #%d:" % i
-        print 75*"-"
+        print(75*"-")
+        print("Kernel #%d:" % i)
+        print(75*"-")
         if print_code:
-            print compiled.get_highlighted_code()
-            print 75*"-"
+            print(compiled.get_highlighted_code())
+            print(75*"-")
         if dump_binary:
-            print type(compiled.cl_program)
-            print compiled.cl_program.binaries[0]
-            print 75*"-"
+            print(type(compiled.cl_program))
+            print(compiled.cl_program.binaries[0])
+            print(75*"-")
 
         logger.info("%s: run warmup" % (knl.name))
 
@@ -622,8 +622,8 @@ def auto_test_vs_ref(
             ref_rates = ""
             for cnt, lbl in zip(op_count, op_label):
                 ref_rates += " %g %s/s" % (cnt/ref_elapsed, lbl)
-            print "ref: elapsed: %g s event, %g s wall%s" % (
-                    ref_elapsed, ref_elapsed_wall, ref_rates)
+            print("ref: elapsed: %g s event, %g s wall%s" % (
+                    ref_elapsed, ref_elapsed_wall, ref_rates))
 
     # }}}
 

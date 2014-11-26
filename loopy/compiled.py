@@ -617,7 +617,7 @@ def generate_invoker(kernel, impl_arg_info, options):
             output = get_highlighted_python_code(output)
 
         if options.write_wrapper is True:
-            print output
+            print(output)
         else:
             with open(options.write_wrapper, "w") as outf:
                 outf.write(output)

@@ -371,7 +371,7 @@ def parse_domains(ctx, domains, defines):
             try:
                 dom = isl.BasicSet.read_from_str(ctx, dom)
             except:
-                print "failed to parse domain '%s'" % dom
+                print("failed to parse domain '%s'" % dom)
                 raise
         else:
             assert isinstance(dom, (isl.Set, isl.BasicSet))
@@ -860,7 +860,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
                                 kernel.insn_inames(insn))
                         armap(submap(insn.expression, insn.id),
                                 kernel.insn_inames(insn))
-            except TypeError, e:
+            except TypeError as e:
                 from loopy.diagnostic import LoopyError
                 raise LoopyError(
                         "Failed to (automatically, as requested) find "

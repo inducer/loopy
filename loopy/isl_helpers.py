@@ -359,9 +359,9 @@ def convexify(domain):
     dom_bsets = domain.get_basic_sets()
     assert len(dom_bsets) > 1
 
-    print "PIECES:"
+    print("PIECES:")
     for dbs in dom_bsets:
-        print "  %s" % (isl.Set.from_basic_set(dbs).gist(domain))
+        print("  %s" % (isl.Set.from_basic_set(dbs).gist(domain)))
     raise NotImplementedError("Could not find convex representation of set")
 
 

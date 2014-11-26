@@ -94,7 +94,7 @@ def test_tim2d(ctx_factory):
         knl = lp.tag_inames(knl, dict(m="unr"))
 
         knl = lp.set_instruction_priority(knl, "D_fetch", 5)
-        print knl
+        print(knl)
 
         return knl
 

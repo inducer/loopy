@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 
+import six
 from pytools import Record
 import sys
 import islpy as isl
@@ -345,21 +346,21 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
     if debug_mode:
         if debug.wrote_status == 2:
             print
-        print 75*"="
-        print "KERNEL:"
-        print kernel
-        print 75*"="
-        print "CURRENT SCHEDULE:"
-        print "%s (length: %d)" % (dump_schedule(schedule), len(schedule))
+        print(75*"=")
+        print("KERNEL:")
+        print(kernel)
+        print(75*"=")
+        print("CURRENT SCHEDULE:")
+        print("%s (length: %d)" % (dump_schedule(schedule), len(schedule)))
         print("(LEGEND: entry into loop: <iname>, exit from loop: </iname>, "
                 "instructions w/ no delimiters)")
-        #print "boost allowed:", allow_boost
-        print 75*"="
-        print "LOOP NEST MAP:"
+        #print("boost allowed:", allow_boost)
+        print(75*"="
+        print("LOOP NEST MAP:")
         for iname, val in sched_state.loop_nest_map.iteritems():
-            print "%s : %s" % (iname, ", ".join(val))
-        print 75*"="
-        print "WHY IS THIS A DEAD-END SCHEDULE?"
+            print("%s : %s" % (iname, ", ".join(val))
+        print(75*"=")
+        print("WHY IS THIS A DEAD-END SCHEDULE?")
 
     #if len(schedule) == 2:
         #from pudb import set_trace; set_trace()
@@ -383,8 +384,8 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
         if not is_ready:
             if debug_mode:
-                print "instruction '%s' is missing insn depedencies '%s'" % (
-                        insn.id, ",".join(set(insn.insn_deps) - scheduled_insn_ids))
+                print("instruction '%s' is missing insn depedencies '%s'" % (
+                        insn.id, ",".join(set(insn.insn_deps) - scheduled_insn_ids)))
             continue
 
         want = kernel.insn_inames(insn) - sched_state.parallel_inames
@@ -403,10 +404,10 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
             if debug_mode:
                 if want-have:
-                    print ("instruction '%s' is missing inames '%s'"
+                    print("instruction '%s' is missing inames '%s'"
                             % (insn.id, ",".join(want-have)))
                 if have-want:
-                    print ("instruction '%s' won't work under inames '%s'"
+                    print("instruction '%s' won't work under inames '%s'"
                             % (insn.id, ",".join(have-want)))
 
         # {{{ determine reachability
@@ -418,7 +419,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
         if is_ready and allow_insn:
             if debug_mode:
-                print "scheduling '%s'" % insn.id
+                print("scheduling '%s'" % insn.id)
             scheduled_insn_ids.add(insn.id)
             schedule = schedule + [RunInstruction(insn_id=insn.id)]
 
@@ -504,12 +505,12 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
             - active_inames_set)
 
     if debug_mode:
-        print 75*"-"
-        print "inames still needed :", ",".join(needed_inames)
-        print "active inames :", ",".join(active_inames)
-        print "inames entered so far :", ",".join(entered_inames)
-        print "reachable insns:", ",".join(reachable_insn_ids)
-        print 75*"-"
+        print(75*"-")
+        print("inames still needed :", ",".join(needed_inames))
+        print("active inames :", ",".join(active_inames))
+        print("inames entered so far :", ",".join(entered_inames))
+        print("reachable insns:", ",".join(reachable_insn_ids))
+        print(75*"-")
 
     if needed_inames:
         iname_to_usefulness = {}
@@ -522,7 +523,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
                     active_inames_set | sched_state.parallel_inames)
             if not sched_state.loop_nest_map[iname] <= currently_accessible_inames:
                 if debug_mode:
-                    print "scheduling %s prohibited by loop nest map" % iname
+                    print("scheduling %s prohibited by loop nest map" % iname)
                 continue
 
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
@@ -572,7 +573,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
             if usefulness is None:
                 if debug_mode:
-                    print "iname '%s' deemed not useful" % iname
+                    print("iname '%s' deemed not useful" % iname)
                 continue
 
             iname_to_usefulness[iname] = usefulness
@@ -610,7 +611,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         # }}}
 
         if debug_mode:
-            print "useful inames: %s" % ",".join(useful_loops_set)
+            print("useful inames: %s" % ",".join(useful_loops_set))
 
         for tier in priority_tiers:
             found_viable_schedule = False
@@ -633,8 +634,8 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
     # }}}
 
     if debug_mode:
-        print 75*"="
-        raw_input("Hit Enter for next schedule:")
+        print(75*"=")
+        six.input("Hit Enter for next schedule:")
 
     if not active_inames and not unscheduled_insn_ids:
         # if done, yield result
@@ -1078,21 +1079,21 @@ def generate_loop_schedules(kernel, debug_args={}):
 
     if not schedule_count:
         if debug.interactive:
-            print 75*"-"
-            print "ERROR: Sorry--loo.py did not find a schedule for your kernel."
-            print 75*"-"
-            print "Loo.py will now show you the scheduler state at the point"
-            print "where the longest (dead-end) schedule was generated, in the"
-            print "the hope that some of this makes sense and helps you find"
-            print "the issue."
-            print
-            print "To disable this interactive behavior, pass"
-            print "  debug_args=dict(interactive=False)"
-            print "to generate_loop_schedules()."
-            print 75*"-"
-            raw_input("Enter:")
-            print
-            print
+            print(75*"-"
+            print("ERROR: Sorry--loo.py did not find a schedule for your kernel."
+            print(75*"-"
+            print("Loo.py will now show you the scheduler state at the point"
+            print("where the longest (dead-end) schedule was generated, in the"
+            print("the hope that some of this makes sense and helps you find"
+            print("the issue."
+            print()
+            print("To disable this interactive behavior, pass")
+            print("  debug_args=dict(interactive=False)")
+            print("to generate_loop_schedules().")
+            print(75*"-"
+            six.input("Enter:")
+            print()
+            print()
 
             debug.debug_length = len(debug.longest_rejected_schedule)
             for _ in generate_loop_schedules_internal(sched_state, loop_priority,

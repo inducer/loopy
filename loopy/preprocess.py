@@ -68,7 +68,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
             dtypes.append(result)
 
-        except DependencyTypeInferenceFailure, e:
+        except DependencyTypeInferenceFailure as e:
             debug("             failed: %s" % e)
             symbols_with_unavailable_types.append(e.symbol)
 
@@ -200,7 +200,7 @@ def infer_unknown_types(kernel, expect_completion=False):
 
             if queue_names == failed_names:
                 # We did what we could...
-                print queue_names, failed_names, item.name
+                print(queue_names, failed_names, item.name)
                 assert not expect_completion
                 break
 

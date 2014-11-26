@@ -31,9 +31,9 @@ def test_aff_to_expr():
     b = zero.set_coefficient_val(isl.dim_type.in_, 1, 1)
 
     x = (5*a + 3*b) % 17 % 5
-    print x
+    print(x)
     from loopy.symbolic import aff_to_expr
-    print aff_to_expr(x)
+    print(aff_to_expr(x))
 
 
 if __name__ == "__main__":

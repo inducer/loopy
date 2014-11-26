@@ -69,7 +69,7 @@ def test_complicated_subst(ctx_factory):
     from loopy.subst import expand_subst
     knl = expand_subst(knl, "g$two < h$two")
 
-    print knl
+    print(knl)
 
     sr_keys = knl.substitutions.keys()
     for letter, how_many in [
@@ -143,9 +143,9 @@ def test_assume(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for gen_knl in kernel_gen:
-        print gen_knl
+        print(gen_knl)
         compiled = lp.CompiledKernel(ctx, gen_knl)
-        print compiled.get_code()
+        print(compiled.get_code())
         assert "if" not in compiled.get_code()
 
 
@@ -164,9 +164,9 @@ def test_simple_side_effect(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for gen_knl in kernel_gen:
-        print gen_knl
+        print(gen_knl)
         compiled = lp.CompiledKernel(ctx, gen_knl)
-        print compiled.code
+        print(compiled.code)
 
 
 def test_nonsense_reduction(ctx_factory):
@@ -203,7 +203,7 @@ def test_owed_barriers(ctx_factory):
 
     for gen_knl in kernel_gen:
         compiled = lp.CompiledKernel(ctx, gen_knl)
-        print compiled.code
+        print(compiled.code)
 
 
 def test_wg_too_small(ctx_factory):
@@ -297,7 +297,7 @@ def test_multi_cse(ctx_factory):
 
     for gen_knl in kernel_gen:
         compiled = lp.CompiledKernel(ctx, gen_knl)
-        print compiled.code
+        print(compiled.code)
 
 
 def test_stencil(ctx_factory):
@@ -408,7 +408,7 @@ def test_eq_constraint(ctx_factory):
     kernel_gen = lp.generate_loop_schedules(knl)
 
     for knl in kernel_gen:
-        print lp.generate_code(knl)
+        print(lp.generate_code(knl))
 
 
 def test_argmax(ctx_factory):
@@ -533,19 +533,19 @@ def test_fuzz_code_generator(ctx_factory):
         evt, (lp_value,) = ck(queue, out_host=True, **var_values)
         err = abs(true_value-lp_value)/abs(true_value)
         if abs(err) > 1e-10:
-            print 80*"-"
-            print "WRONG: rel error=%g" % err
-            print "true=%r" % true_value
-            print "loopy=%r" % lp_value
-            print 80*"-"
-            print ck.code
-            print 80*"-"
-            print var_values
-            print 80*"-"
-            print repr(expr)
-            print 80*"-"
-            print expr
-            print 80*"-"
+            print(80*"-")
+            print("WRONG: rel error=%g" % err)
+            print("true=%r" % true_value)
+            print("loopy=%r" % lp_value)
+            print(80*"-")
+            print(ck.code)
+            print(80*"-")
+            print(var_values)
+            print(80*"-")
+            print(repr(expr))
+            print(80*"-")
+            print(expr)
+            print(80*"-")
             1/0
 
 # }}}
@@ -628,7 +628,7 @@ def test_multi_nested_dependent_reduction(ctx_factory):
             assumptions="ntgts>=1")
 
     cknl = lp.CompiledKernel(ctx, knl)
-    print cknl.code
+    print(cknl.code)
     # FIXME: Actually test functionality.
 
 
@@ -657,7 +657,7 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
             assumptions="ntgts>=1")
 
     cknl = lp.CompiledKernel(ctx, knl)
-    print cknl.get_code()
+    print(cknl.get_code())
     # FIXME: Actually test functionality.
 
 
@@ -684,9 +684,9 @@ def test_dependent_loop_bounds(ctx_factory):
             assumptions="n>=1 and row_len>=1")
 
     cknl = lp.CompiledKernel(ctx, knl)
-    print "---------------------------------------------------"
-    print cknl.get_highlighted_code()
-    print "---------------------------------------------------"
+    print("---------------------------------------------------")
+    print(cknl.get_highlighted_code())
+    print("---------------------------------------------------")
 
 
 def test_dependent_loop_bounds_2(ctx_factory):
@@ -715,9 +715,9 @@ def test_dependent_loop_bounds_2(ctx_factory):
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0",
             inner_tag="l.0")
     cknl = lp.CompiledKernel(ctx, knl)
-    print "---------------------------------------------------"
-    print cknl.get_highlighted_code()
-    print "---------------------------------------------------"
+    print("---------------------------------------------------")
+    print(cknl.get_highlighted_code())
+    print("---------------------------------------------------")
 
 
 def test_dependent_loop_bounds_3(ctx_factory):
@@ -750,9 +750,9 @@ def test_dependent_loop_bounds_3(ctx_factory):
             inner_tag="l.0")
 
     cknl = lp.CompiledKernel(ctx, knl)
-    print "---------------------------------------------------"
-    print cknl.get_highlighted_code()
-    print "---------------------------------------------------"
+    print("---------------------------------------------------")
+    print(cknl.get_highlighted_code())
+    print("---------------------------------------------------")
 
     knl_bad = lp.split_iname(knl, "jj", 128, outer_tag="g.1",
             inner_tag="l.1")
@@ -852,8 +852,8 @@ def test_equality_constraints(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.1")
-    #print knl
-    #print knl.domains[0].detect_equalities()
+    #print(knl)
+    #print(knl.domains[0].detect_equalities())
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             parameters=dict(n=n), print_ref_code=True,
@@ -1048,8 +1048,8 @@ def test_arg_shape_guessing(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    print knl
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+    print(knl)
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
 
 def test_arg_guessing(ctx_factory):
@@ -1064,8 +1064,8 @@ def test_arg_guessing(ctx_factory):
                 """,
             assumptions="n>=1")
 
-    print knl
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+    print(knl)
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
 
 def test_arg_guessing_with_reduction(ctx_factory):
@@ -1082,8 +1082,8 @@ def test_arg_guessing_with_reduction(ctx_factory):
                 """,
             assumptions="n>=1")
 
-    print knl
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+    print(knl)
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
 # }}}
 
@@ -1102,8 +1102,8 @@ def test_nonlinear_index(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    print knl
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+    print(knl)
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
 
 def test_triangle_domain(ctx_factory):
@@ -1114,8 +1114,8 @@ def test_triangle_domain(ctx_factory):
             "a[i,j] = 17",
             assumptions="n>=1")
 
-    print knl
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+    print(knl)
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
 
 def test_offsets_and_slicing(ctx_factory):
@@ -1149,7 +1149,7 @@ def test_offsets_and_slicing(ctx_factory):
 
     b_full_h[b_sub] = 2*a_full_h[a_sub]
 
-    print cknl.get_highlighted_code({"a": a.dtype})
+    print(cknl.get_highlighted_code({"a": a.dtype}))
     cknl(queue, a=a, b=b)
 
     import numpy.linalg as la
@@ -1324,8 +1324,8 @@ def test_c_instruction(ctx_factory):
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
-    print knl
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code()
+    print(knl)
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
 
 def test_dependent_domain_insn_iname_finding(ctx_factory):
@@ -1348,17 +1348,17 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
                     None, shape="nsources"),
                 "..."])
 
-    print knl
+    print(knl)
     assert "isrc_box" in knl.insn_inames("set_strength")
 
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code(
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
             dict(
                 source_boxes=np.int32,
                 box_source_starts=np.int32,
                 box_source_counts_nonchild=np.int32,
                 strengths=np.float64,
                 nsources=np.int32,
-                ))
+                )))
 
 
 def test_inames_deps_from_write_subscript(ctx_factory):
@@ -1374,7 +1374,7 @@ def test_inames_deps_from_write_subscript(ctx_factory):
                     None, shape=None),
                 "..."])
 
-    print knl
+    print(knl)
     assert "i" in knl.insn_inames("myred")
 
 
@@ -1407,11 +1407,11 @@ def test_modulo_indexing(ctx_factory):
                 ]
             )
 
-    print knl
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code(
+    print(knl)
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
             dict(
                 a=np.float32,
-                ))
+                )))
 
 
 def test_rob_stroud_bernstein(ctx_factory):
@@ -1457,12 +1457,12 @@ def test_rob_stroud_bernstein(ctx_factory):
             slabs=(0, 1))
     knl = lp.tag_inames(knl, dict(i2="l.1", alpha1="unr", alpha2="unr"))
 
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code(
+    print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
             dict(
                 qpts=np.float32,
                 coeffs=np.float32,
                 tmp=np.float32,
-                ))
+                )))
 
 
 def test_rob_stroud_bernstein_full(ctx_factory):
@@ -1530,13 +1530,14 @@ def test_rob_stroud_bernstein_full(ctx_factory):
     from pickle import dumps, loads
     knl = loads(dumps(knl))
 
-    print lp.CompiledKernel(ctx, knl).get_highlighted_code(
+    knl = lp.CompiledKernel(ctx, knl).get_highlighted_code(
             dict(
                 qpts=np.float32,
                 tmp=np.float32,
                 coeffs=np.float32,
                 result=np.float32,
                 ))
+    print(knl)
 
 
 @pytest.mark.parametrize("vec_len", [2, 3, 4, 8, 16])
@@ -1685,7 +1686,7 @@ def test_multiple_writes_to_local_temporary(ctx_factory):
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
     for k in lp.generate_loop_schedules(knl):
         code, _ = lp.generate_code(k)
-        print code
+        print(code)
 
 
 def test_fd_demo(ctx_factory):
@@ -1711,7 +1712,7 @@ def test_fd_demo(ctx_factory):
     knl = lp.preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
     code, inf = lp.generate_code(knl)
-    print code
+    print(code)
 
     assert "double" not in code
 
