@@ -1108,7 +1108,7 @@ def generate_loop_schedules(kernel, debug_args={}):
 # }}}
 
 
-schedule_cache = PersistentDict("loopy-schedule-cache-v2-"+VERSION_TEXT,
+schedule_cache = PersistentDict("loopy-schedule-cache-v3-"+VERSION_TEXT,
         key_builder=LoopyKeyBuilder())
 
 

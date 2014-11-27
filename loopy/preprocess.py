@@ -1071,7 +1071,7 @@ def adjust_local_temp_var_storage(kernel, device):
 # }}}
 
 
-preprocess_cache = PersistentDict("loopy-preprocess-cache-"+VERSION_TEXT,
+preprocess_cache = PersistentDict("loopy-preprocess-cache-v2-"+VERSION_TEXT,
         key_builder=LoopyKeyBuilder())
 
 

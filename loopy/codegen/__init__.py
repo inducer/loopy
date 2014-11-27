@@ -331,7 +331,7 @@ class ImplementedDataInfo(Record):
 # }}}
 
 
-code_gen_cache = PersistentDict("loopy-code-gen-cache-"+VERSION_TEXT,
+code_gen_cache = PersistentDict("loopy-code-gen-cache-v2-"+VERSION_TEXT,
         key_builder=LoopyKeyBuilder())
 
 
