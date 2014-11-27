@@ -176,7 +176,7 @@ def generate_c_instruction_code(kernel, insn, codegen_state):
                 Initializer(
                     POD(kernel.index_dtype, name),
                     codegen_state.c_code_mapper(
-                        iname_expr, prec=None, type_context="i")))
+                        iname_expr, prec=PREC_NONE, type_context="i")))
 
     if body:
         body.append(Line())

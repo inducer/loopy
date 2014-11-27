@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 
 import six
-from six.moves import range, zip
+from six.moves import range
 import numpy as np
 import pyopencl as cl
 import pyopencl.characterize as cl_char
@@ -471,7 +471,7 @@ def realize_reduction(kernel, insn_id_filter=None):
             insn = insn.copy(
                         expression=new_expression,
                         insn_deps=insn.insn_deps
-                            | frozenset(new_insn_insn_deps),
+                        | frozenset(new_insn_insn_deps),
                         forced_iname_deps=temp_kernel.insn_inames(insn))
 
             insn_queue = generated_insns + [insn] + insn_queue
