@@ -62,7 +62,8 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if not isinstance(writer_insn, lp.ExpressionInstruction):
             continue
 
-        expr = subst_expander(writer_insn.expression, insn_id=writer_insn_id)
+        expr = subst_expander(writer_insn.expression,
+                insn_id=writer_insn_id, insn_tags=writer_insn.tags)
 
         try:
             debug("             via expr %s" % expr)

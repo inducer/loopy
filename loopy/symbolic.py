@@ -429,8 +429,14 @@ class ExpandingIdentityMapper(IdentityMapper):
         rule = self.old_subst_rules[name]
 
         rec_arguments = self.rec(arguments, expn_state)
+
+        if tag is None:
+            tags = None
+        else:
+            tags = (tag,)
+
         new_expn_state = expn_state.copy(
-                stack=expn_state.stack + ((name, tag),),
+                stack=expn_state.stack + ((name, tags),),
                 arg_context=self.make_new_arg_context(
                     name, rule.arguments, rec_arguments, expn_state.arg_context))
 
@@ -448,9 +454,9 @@ class ExpandingIdentityMapper(IdentityMapper):
         else:
             return sym
 
-    def __call__(self, expr, insn_id):
+    def __call__(self, expr, insn_id, insn_tags):
         if insn_id is not None:
-            stack = ((insn_id, None),)
+            stack = ((insn_id, insn_tags),)
         else:
             stack = ()
 
@@ -520,7 +526,7 @@ class ExpandingIdentityMapper(IdentityMapper):
                 # may perform tasks entirely unrelated to subst rules, so
                 # we must map assignees, too.
 
-                insn.with_transformed_expressions(self, insn.id)
+                insn.with_transformed_expressions(self, insn.id, insn.tags)
                 for insn in kernel.instructions]
 
         new_substs, renames = self._get_new_substitutions_and_renames()
@@ -564,7 +570,13 @@ class SubstitutionRuleExpander(ExpandingIdentityMapper):
         self.ctx_match = ctx_match
 
     def map_substitution(self, name, tag, arguments, expn_state):
-        new_stack = expn_state.stack + ((name, tag),)
+        if tag is None:
+            tags = None
+        else:
+            tags = (tag,)
+
+        new_stack = expn_state.stack + ((name, tags),)
+
         if self.ctx_match(new_stack):
             # expand
             rule = self.old_subst_rules[name]

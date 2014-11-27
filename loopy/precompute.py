@@ -407,7 +407,8 @@ class InvocationGatherer(ExpandingIdentityMapper):
         arg_deps = set()
         for arg_val in six.itervalues(arg_context):
             arg_deps = (arg_deps
-                    | get_dependencies(self.subst_expander(arg_val, insn_id=None)))
+                    | get_dependencies(self.subst_expander(
+                        arg_val, insn_id=None, insn_tags=None)))
 
         if not arg_deps <= self.kernel.all_inames():
             from warnings import warn
@@ -680,7 +681,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     import loopy as lp
     for insn in kernel.instructions:
         if isinstance(insn, lp.ExpressionInstruction):
-            invg(insn.expression, insn.id)
+            invg(insn.expression, insn.id, insn.tags)
 
     for invdesc in invg.invocation_descriptors:
         invocation_descriptors.append(
@@ -717,7 +718,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
     value_inames = get_dependencies(
-            submap(subst.expression, insn_id=None)) & kernel.all_inames()
+            submap(subst.expression, insn_id=None, insn_tags=None)
+            ) & kernel.all_inames()
     if value_inames - expanding_usage_arg_deps < extra_storage_axes:
         raise RuntimeError("unreferenced sweep inames specified: "
                 + ", ".join(extra_storage_axes

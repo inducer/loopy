@@ -296,6 +296,9 @@ These are usually key-value pairs. The following attributes are recognized:
   variables (which must be scalar variables) evaluate to ``true`` (as
   defined by C).
 
+* ``tags=tag1:tag2`` Apply tags to this instruction that can then be used
+  for :ref:`context-matching`.
+
 .. autoclass:: ExpressionInstruction
 
 
@@ -334,8 +337,12 @@ function, which is responsible for creating kernels:
 Transforming Kernels
 --------------------
 
+.. _context-matching:
+
 Matching contexts
 ^^^^^^^^^^^^^^^^^
+
+TODO: Matching instruction tags
 
 .. automodule:: loopy.context_matching
 

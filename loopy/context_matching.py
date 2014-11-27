@@ -27,6 +27,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import types
+
 
 # {{{ id match objects
 
@@ -40,26 +42,30 @@ class RegexIdentifierMatch(object):
         self.id_re = id_re
         self.tag_re = tag_re
 
-    def __call__(self, identifier, tag):
+    def __call__(self, identifier, tags):
+        assert isinstance(tags, (tuple, types.NoneType))
+
         if self.tag_re is None:
             return self.id_re.match(identifier) is not None
         else:
-            if tag is None:
-                tag = ""
+            if not tags:
+                tags = ("",)
 
             return (
                     self.id_re.match(identifier) is not None
-                    and self.tag_re.match(tag) is not None)
+                    and any(
+                        self.tag_re.match(tag) is not None
+                        for tag in tags))
 
 
 class AlternativeMatch(object):
     def __init__(self, matches):
         self.matches = matches
 
-    def __call__(self, identifier, tag):
+    def __call__(self, identifier, tags):
         from pytools import any
         return any(
-                mtch(identifier, tag) for mtch in self.matches)
+                mtch(identifier, tags) for mtch in self.matches)
 
 # }}}
 
@@ -204,7 +210,6 @@ def parse_stack_match(smatch):
     return match
 
 # }}}
-
 
 
 # vim: foldmethod=marker

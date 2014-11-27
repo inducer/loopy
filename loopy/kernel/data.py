@@ -457,6 +457,11 @@ class InstructionBase(Record):
         A :class:`set` of inames into which the instruction
         may need to be boosted, as a heuristic help for the scheduler.
         Also allowed to be *None*.
+
+    .. attribute:: tags
+
+        A tuple of string identifiers that can be used to identify groups
+        of statements.
     """
 
     fields = set("id insn_deps insn_deps_is_final predicates "
@@ -465,13 +470,16 @@ class InstructionBase(Record):
 
     def __init__(self, id, insn_deps, insn_deps_is_final,
             forced_iname_deps_is_final, forced_iname_deps, priority,
-            boostable, boostable_into, predicates):
+            boostable, boostable_into, predicates, tags):
 
         if forced_iname_deps_is_final is None:
             forced_iname_deps_is_final = False
 
         if insn_deps_is_final is None:
             insn_deps_is_final = False
+
+        if tags is None:
+            tags = ()
 
         assert isinstance(forced_iname_deps, frozenset)
         assert isinstance(insn_deps, frozenset) or insn_deps is None
@@ -485,7 +493,8 @@ class InstructionBase(Record):
                 priority=priority,
                 boostable=boostable,
                 boostable_into=boostable_into,
-                predicates=predicates)
+                predicates=predicates,
+                tags=tags)
 
     # {{{ abstract interface
 
@@ -551,6 +560,8 @@ class InstructionBase(Record):
             result.append("deps="+":".join(self.insn_deps))
         if self.priority:
             result.append("priority=%d" % self.priority)
+        if self.tags:
+            result.append("tags=%s" % ":".join(self.tags))
 
         return result
 
@@ -629,7 +640,7 @@ class ExpressionInstruction(InstructionBase):
             forced_iname_deps=frozenset(),
             insn_deps=None,
             insn_deps_is_final=None,
-            boostable=None, boostable_into=None,
+            boostable=None, boostable_into=None, tags=None,
             temp_var_type=None, priority=0, predicates=frozenset()):
 
         InstructionBase.__init__(self,
@@ -641,7 +652,8 @@ class ExpressionInstruction(InstructionBase):
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
-                predicates=predicates)
+                predicates=predicates,
+                tags=tags)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -795,7 +807,7 @@ class CInstruction(InstructionBase):
             id=None, insn_deps=None, insn_deps_is_final=None,
             forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
             priority=0, boostable=None, boostable_into=None,
-            predicates=frozenset()):
+            predicates=frozenset(), tags=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -814,7 +826,7 @@ class CInstruction(InstructionBase):
                 insn_deps_is_final=insn_deps_is_final,
                 boostable=boostable,
                 boostable_into=boostable_into,
-                priority=priority, predicates=predicates)
+                priority=priority, predicates=predicates, tags=tags)
 
         # {{{ normalize iname_exprs
 
@@ -914,6 +926,7 @@ class CInstruction(InstructionBase):
                     key_builder.update_for_pymbolic_expression(key_hash, val)
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
+
 # }}}
 
 # }}}

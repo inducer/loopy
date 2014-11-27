@@ -198,6 +198,7 @@ def parse_insn(insn):
         forced_iname_deps_is_final = False
         forced_iname_deps = frozenset()
         predicates = frozenset()
+        tags = ()
 
         if groups["options"] is not None:
             for option in groups["options"].split(","):
@@ -244,8 +245,15 @@ def parse_insn(insn):
                         forced_iname_deps_is_final = True
 
                     forced_iname_deps = frozenset(opt_value.split(":"))
+
                 elif opt_key == "if":
                     predicates = frozenset(opt_value.split(":"))
+
+                elif opt_key == "tags":
+                    tags = tuple(
+                            tag.strip() for tag in opt_value.split(":")
+                            if tag.strip())
+
                 else:
                     raise ValueError("unrecognized instruction option '%s'"
                             % opt_key)
@@ -273,7 +281,8 @@ def parse_insn(insn):
                     assignee=lhs, expression=rhs,
                     temp_var_type=temp_var_type,
                     priority=priority,
-                    predicates=predicates), inames_to_dup
+                    predicates=predicates,
+                    tags=tags), inames_to_dup
 
     elif subst_match is not None:
         from pymbolic.primitives import Variable, Call
@@ -450,16 +459,16 @@ class ArgumentGuesser:
                 (assignee_var_name, _), = insn.assignees_and_indices()
                 self.all_written_names.add(assignee_var_name)
                 self.all_names.update(get_dependencies(
-                    self.submap(insn.assignee, insn.id)))
+                    self.submap(insn.assignee, insn.id, insn.tags)))
                 self.all_names.update(get_dependencies(
-                    self.submap(insn.expression, insn.id)))
+                    self.submap(insn.expression, insn.id, insn.tags)))
 
     def find_index_rank(self, name):
         irf = IndexRankFinder(name)
 
         for insn in self.instructions:
             insn.with_transformed_expressions(
-                    lambda expr: irf(self.submap(expr, insn.id)))
+                    lambda expr: irf(self.submap(expr, insn.id, insn.tags)))
 
         if not irf.index_ranks:
             return 0
@@ -860,9 +869,9 @@ def guess_arg_shape_if_requested(kernel, default_order):
             try:
                 for insn in kernel.instructions:
                     if isinstance(insn, lp.ExpressionInstruction):
-                        armap(submap(insn.assignee, insn.id),
+                        armap(submap(insn.assignee, insn.id, insn.tags),
                                 kernel.insn_inames(insn))
-                        armap(submap(insn.expression, insn.id),
+                        armap(submap(insn.expression, insn.id, insn.tags),
                                 kernel.insn_inames(insn))
             except TypeError as e:
                 from loopy.diagnostic import LoopyError
