@@ -957,6 +957,8 @@ class LoopKernel(RecordWithoutPickling):
             options = [insn.id]
             if insn.priority:
                 options.append("priority=%d" % insn.priority)
+            if insn.tags:
+                options.append("tags=%s" % ":".join(insn.tags))
 
             if len(loop_list) > loop_list_width:
                 lines.append("[%s]" % loop_list)
@@ -966,7 +968,7 @@ class LoopKernel(RecordWithoutPickling):
             else:
                 lines.append("[%s]%s%s <- %s   # %s" % (
                     loop_list, " "*(loop_list_width-len(loop_list)),
-                    lhs, rhs, ", ".join(options)))
+                    lhs, rhs, ",".join(options)))
 
             lines.extend(trailing)
 
