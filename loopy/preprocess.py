@@ -1,8 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -27,6 +23,9 @@ THE SOFTWARE.
 """
 
 
+import six
+from six.moves import range, zip
+import numpy as np
 import pyopencl as cl
 import pyopencl.characterize as cl_char
 from loopy.diagnostic import (
@@ -836,9 +835,10 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
             aggregate_strides[iname] = aggregate_strides.get(iname, 0) + stride
 
     if aggregate_strides:
-        import sys
+        very_large_stride = np.iinfo(np.int32).max
+
         return sorted((iname for iname in kernel.insn_inames(insn)),
-                key=lambda iname: aggregate_strides.get(iname, sys.maxint))
+                key=lambda iname: aggregate_strides.get(iname, very_large_stride))
     else:
         return None
 
