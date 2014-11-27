@@ -723,7 +723,7 @@ class ExpressionInstruction(InstructionBase):
 
 
 def _remove_common_indentation(code):
-    if not "\n" in code:
+    if "\n" not in code:
         return code
 
     # accommodate pyopencl-ish syntax highlighting
