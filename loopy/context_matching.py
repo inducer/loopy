@@ -27,7 +27,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import types
+NoneType = type(None)
 
 
 # {{{ id match objects
@@ -43,7 +43,7 @@ class RegexIdentifierMatch(object):
         self.tag_re = tag_re
 
     def __call__(self, identifier, tags):
-        assert isinstance(tags, (tuple, types.NoneType))
+        assert isinstance(tags, (tuple, NoneType))
 
         if self.tag_re is None:
             return self.id_re.match(identifier) is not None
