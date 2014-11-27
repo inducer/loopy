@@ -1,4 +1,7 @@
 from __future__ import division
+from __future__ import absolute_import
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -257,7 +260,7 @@ def dtype_to_type_context(dtype):
         return 'd'
     if dtype in [np.float32, np.complex64]:
         return 'f'
-    if dtype in cl.array.vec.types.values():
+    if dtype in list(cl.array.vec.types.values()):
         return dtype_to_type_context(dtype.fields["x"][0])
 
     return None

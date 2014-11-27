@@ -1,4 +1,8 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -47,7 +51,7 @@ class InvocationDescriptor(Record):
 
 
 def to_parameters_or_project_out(param_inames, set_inames, set):
-    for iname in set.get_space().get_var_dict().keys():
+    for iname in list(set.get_space().get_var_dict().keys()):
         if iname in param_inames:
             dt, idx = set.get_space().get_var_dict()[iname]
             set = set.move_dims(
@@ -195,7 +199,7 @@ def build_global_storage_to_sweep_map(kernel, invocation_descriptors,
                 invdesc.is_in_footprint = False
                 continue
 
-            for i in xrange(usage_domain.dim(dim_type.set)):
+            for i in range(usage_domain.dim(dim_type.set)):
                 iname = usage_domain.get_dim_name(dim_type.set, i)
                 if iname in sweep_inames:
                     usage_domain = usage_domain.set_dim_name(
@@ -242,7 +246,7 @@ def find_var_base_indices_and_shape_from_inames(
     base_indices_and_sizes = [
             cache_manager.base_index_and_length(domain, iname, context)
             for iname in inames]
-    return zip(*base_indices_and_sizes)
+    return list(zip(*base_indices_and_sizes))
 
 
 def compute_bounds(kernel, domain, subst_name, stor2sweep,
@@ -401,7 +405,7 @@ class InvocationGatherer(ExpandingIdentityMapper):
                     name, rule.arguments, arguments, expn_state.arg_context)
 
         arg_deps = set()
-        for arg_val in arg_context.itervalues():
+        for arg_val in six.itervalues(arg_context):
             arg_deps = (arg_deps
                     | get_dependencies(self.subst_expander(arg_val, insn_id=None)))
 
@@ -724,7 +728,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     if storage_axes is None:
         storage_axes = (
                 list(extra_storage_axes)
-                + list(xrange(len(arg_names))))
+                + list(range(len(arg_names))))
 
     expr_subst_dict = {}
 

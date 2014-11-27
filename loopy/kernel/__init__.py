@@ -1,6 +1,10 @@
 """Kernel object."""
 
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -218,7 +222,7 @@ class LoopKernel(RecordWithoutPickling):
             dom0_space = domains[0].get_space()
             assumptions_space = isl.Space.params_alloc(
                     dom0_space.get_ctx(), dom0_space.dim(dim_type.param))
-            for i in xrange(dom0_space.dim(dim_type.param)):
+            for i in range(dom0_space.dim(dim_type.param)):
                 assumptions_space = assumptions_space.set_dim_name(
                         dim_type.param, i,
                         dom0_space.get_dim_name(dim_type.param, i))
@@ -294,14 +298,14 @@ class LoopKernel(RecordWithoutPickling):
 
     @memoize_method
     def non_iname_variable_names(self):
-        return (set(self.arg_dict.iterkeys())
-                | set(self.temporary_variables.iterkeys()))
+        return (set(six.iterkeys(self.arg_dict))
+                | set(six.iterkeys(self.temporary_variables)))
 
     @memoize_method
     def all_variable_names(self):
         return (
-                set(self.temporary_variables.iterkeys())
-                | set(self.substitutions.iterkeys())
+                set(six.iterkeys(self.temporary_variables))
+                | set(six.iterkeys(self.substitutions))
                 | set(arg.name for arg in self.args)
                 | set(self.all_inames()))
 
@@ -551,7 +555,7 @@ class LoopKernel(RecordWithoutPickling):
             root_to_leaf[current_root] = home_domain_index
             domain_indices.update(domain_parents)
 
-        return root_to_leaf.values()
+        return list(root_to_leaf.values())
 
     @memoize_method
     def _get_inames_domain_backend(self, inames):
@@ -607,7 +611,7 @@ class LoopKernel(RecordWithoutPickling):
     @memoize_method
     def all_referenced_inames(self):
         result = set()
-        for inames in self.all_insn_inames().itervalues():
+        for inames in six.itervalues(self.all_insn_inames()):
             result.update(inames)
         return result
 
@@ -675,7 +679,7 @@ class LoopKernel(RecordWithoutPickling):
 
         admissible_vars = (
                 set(arg.name for arg in self.args)
-                | set(self.temporary_variables.iterkeys()))
+                | set(six.iterkeys(self.temporary_variables)))
 
         for insn in self.instructions:
             for var_name in insn.read_dependency_names() & admissible_vars:
@@ -842,7 +846,7 @@ class LoopKernel(RecordWithoutPickling):
             forced_sizes = forced_sizes.copy()
 
             size_list = []
-            sorted_axes = sorted(size_dict.iterkeys())
+            sorted_axes = sorted(six.iterkeys(size_dict))
 
             while sorted_axes or forced_sizes:
                 if sorted_axes:
@@ -884,11 +888,11 @@ class LoopKernel(RecordWithoutPickling):
     def local_var_names(self):
         return set(
             tv.name
-            for tv in self.temporary_variables.itervalues()
+            for tv in six.itervalues(self.temporary_variables)
             if tv.is_local)
 
     def local_mem_use(self):
-        return sum(lv.nbytes for lv in self.temporary_variables.itervalues()
+        return sum(lv.nbytes for lv in six.itervalues(self.temporary_variables)
                 if lv.is_local)
 
     # }}}
@@ -919,13 +923,13 @@ class LoopKernel(RecordWithoutPickling):
         if self.substitutions:
             lines.append(sep)
             lines.append("SUBSTIUTION RULES:")
-            for rule_name in sorted(self.substitutions.iterkeys()):
+            for rule_name in sorted(six.iterkeys(self.substitutions)):
                 lines.append(str(self.substitutions[rule_name]))
 
         if self.temporary_variables:
             lines.append(sep)
             lines.append("TEMPORARIES:")
-            for tv in sorted(self.temporary_variables.itervalues(),
+            for tv in sorted(six.itervalues(self.temporary_variables),
                     key=lambda tv: tv.name):
                 lines.append(str(tv))
 
@@ -1049,7 +1053,7 @@ class LoopKernel(RecordWithoutPickling):
     def __setstate__(self, state):
         new_fields = set()
 
-        for k, v in state.iteritems():
+        for k, v in six.iteritems(state):
             setattr(self, k, v)
             new_fields.add(k)
 

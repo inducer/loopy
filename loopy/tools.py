@@ -1,4 +1,6 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -27,10 +29,15 @@ from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
 from loopy.symbolic import WalkMapper as LoopyWalkMapper
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
+import six  # noqa
 
 
-def is_integer(obj):
-    return isinstance(obj, (int, long, np.integer))
+if six.PY2:
+    def is_integer(obj):
+        return isinstance(obj, (int, long, np.integer))
+else:
+    def is_integer(obj):
+        return isinstance(obj, (int, np.integer))
 
 
 # {{{ custom KeyBuilder subclass
@@ -58,7 +65,7 @@ class LoopyKeyBuilder(KeyBuilderBase):
 
     def update_for_dict(self, key_hash, key):
         # Order matters for the hash--insert in sorted order.
-        for dict_key in sorted(key.iterkeys()):
+        for dict_key in sorted(six.iterkeys(key)):
             self.rec(key_hash, (dict_key, key[dict_key]))
 
     def update_for_BasicSet(self, key_hash, key):

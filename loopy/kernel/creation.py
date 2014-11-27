@@ -1,6 +1,10 @@
 """UI for kernel creation."""
 
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -377,7 +381,7 @@ def parse_domains(ctx, domains, defines):
             assert isinstance(dom, (isl.Set, isl.BasicSet))
             # assert dom.get_ctx() == ctx
 
-        for i_iname in xrange(dom.dim(dim_type.set)):
+        for i_iname in range(dom.dim(dim_type.set)):
             iname = dom.get_dim_name(dim_type.set, i_iname)
 
             if iname is None:
@@ -507,7 +511,7 @@ class ArgumentGuesser:
 
         # {{{ find names that are *not* arguments
 
-        temp_var_names = set(self.temporary_variables.iterkeys())
+        temp_var_names = set(six.iterkeys(self.temporary_variables))
 
         for insn in self.instructions:
             if isinstance(insn, ExpressionInstruction):
@@ -627,7 +631,7 @@ def check_for_multiple_writes_to_loop_bounds(knl):
 def check_written_variable_names(knl):
     admissible_vars = (
             set(arg.name for arg in knl.args)
-            | set(knl.temporary_variables.iterkeys()))
+            | set(six.iterkeys(knl.temporary_variables)))
 
     for insn in knl.instructions:
         for var_name, _ in insn.assignees_and_indices():
@@ -771,7 +775,7 @@ def determine_shapes_of_temporaries(knl):
     import loopy as lp
 
     new_temp_vars = {}
-    for tv in knl.temporary_variables.itervalues():
+    for tv in six.itervalues(knl.temporary_variables):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             armap = AccessRangeMapper(knl, tv.name)
             for insn in knl.instructions:
@@ -781,10 +785,10 @@ def determine_shapes_of_temporaries(knl):
                                 knl.insn_inames(insn))
 
             if armap.access_range is not None:
-                base_indices, shape = zip(*[
+                base_indices, shape = list(zip(*[
                         knl.cache_manager.base_index_and_length(
                             armap.access_range, i)
-                        for i in xrange(armap.access_range.dim(dim_type.set))])
+                        for i in range(armap.access_range.dim(dim_type.set))]))
             else:
                 if armap.bad_subscripts:
                     raise RuntimeError("cannot determine access range for '%s': "
@@ -826,7 +830,7 @@ def expand_defines_in_shapes(kernel, defines):
         processed_args.append(arg)
 
     processed_temp_vars = {}
-    for tv in kernel.temporary_variables.itervalues():
+    for tv in six.itervalues(kernel.temporary_variables):
         processed_temp_vars[tv.name] = tv.map_exprs(expr_map)
 
     return kernel.copy(
@@ -883,7 +887,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
                 from loopy.symbolic import pw_aff_to_expr
 
                 shape = []
-                for i in xrange(armap.access_range.dim(dim_type.set)):
+                for i in range(armap.access_range.dim(dim_type.set)):
                     try:
                         shape.append(
                                 pw_aff_to_expr(static_max_of_pw_aff(

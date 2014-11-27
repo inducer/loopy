@@ -1,4 +1,6 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -69,7 +71,7 @@ def gen_code_block(elements):
 
     for el in elements:
         if isinstance(el, GeneratedCode):
-            for insn_id, idoms in el.implemented_domains.iteritems():
+            for insn_id, idoms in six.iteritems(el.implemented_domains):
                 implemented_domains.setdefault(insn_id, []).extend(idoms)
 
             if isinstance(el.ast, Block):
@@ -379,7 +381,7 @@ def generate_code(kernel, device=None):
     from cgen.opencl import (CLKernel, CLRequiredWorkGroupSize)
 
     allow_complex = False
-    for var in kernel.args + list(kernel.temporary_variables.itervalues()):
+    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
         if var.dtype.kind == "c":
             allow_complex = True
 
@@ -437,7 +439,7 @@ def generate_code(kernel, device=None):
 
     body.extend(
             idi.cgen_declarator
-            for tv in kernel.temporary_variables.itervalues()
+            for tv in six.itervalues(kernel.temporary_variables)
             for idi in tv.decl_info(
                 is_written=True, index_dtype=kernel.index_dtype))
 
@@ -472,7 +474,7 @@ def generate_code(kernel, device=None):
 
     for arg in kernel.args:
         seen_dtypes.add(arg.dtype)
-    for tv in kernel.temporary_variables.itervalues():
+    for tv in six.itervalues(kernel.temporary_variables):
         seen_dtypes.add(tv.dtype)
 
     preambles = kernel.preambles[:]

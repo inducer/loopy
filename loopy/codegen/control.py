@@ -1,6 +1,8 @@
 """Loop nest build top-level control/hoisting."""
 
 from __future__ import division
+from __future__ import absolute_import
+import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -43,7 +45,7 @@ def get_admissible_conditional_inames_for(kernel, sched_index):
 
     has_barrier = has_barrier_within(kernel, sched_index)
 
-    for iname, tag in kernel.iname_to_tag.iteritems():
+    for iname, tag in six.iteritems(kernel.iname_to_tag):
         if isinstance(tag, HardwareParallelTag):
             if not has_barrier or not isinstance(tag, LocalIndexTag):
                 result.add(iname)
@@ -116,7 +118,7 @@ def remove_inames_for_shared_hw_axes(kernel, cond_inames):
             tag_key_uses.setdefault(tag.key, []).append(iname)
 
     multi_use_keys = set(
-            key for key, user_inames in tag_key_uses.iteritems()
+            key for key, user_inames in six.iteritems(tag_key_uses)
             if len(user_inames) > 1)
 
     multi_use_inames = set()

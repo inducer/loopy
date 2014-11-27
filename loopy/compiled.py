@@ -1,4 +1,8 @@
 from __future__ import division, with_statement
+from __future__ import absolute_import
+import six
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -85,7 +89,7 @@ class SeparateArrayPackingController(object):
 
         kernel_kwargs = kernel_kwargs.copy()
 
-        for packing_info in self.packing_info.itervalues():
+        for packing_info in six.itervalues(self.packing_info):
             arg_name = packing_info.name
             if packing_info.name in kernel_kwargs:
                 arg = kernel_kwargs[arg_name]
@@ -100,7 +104,7 @@ class SeparateArrayPackingController(object):
         if not self.packing_info:
             return outputs
 
-        for packing_info in self.packing_info.itervalues():
+        for packing_info in six.itervalues(self.packing_info):
             if not packing_info.is_written:
                 continue
 
@@ -180,7 +184,7 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options
     gen("# {{{ find integer arguments from shapes")
     gen("")
 
-    for iarg_name, sources in iarg_to_sources.iteritems():
+    for iarg_name, sources in six.iteritems(iarg_to_sources):
         gen("if %s is None:" % iarg_name)
         with Indentation(gen):
             if_stmt = "if"
@@ -408,26 +412,26 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options):
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 num_axes = len(arg.strides)
-                for i in xrange(num_axes):
+                for i in range(num_axes):
                     gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
 
                 itemsize = kernel_arg.dtype.itemsize
-                for i in xrange(num_axes):
+                for i in range(num_axes):
                     gen("_lpy_strides_%d = %s" % (i, strify(
                         itemsize*arg.unvec_strides[i])))
 
                 if not options.skip_arg_checks:
-                    for i in xrange(num_axes):
+                    for i in range(num_axes):
                         gen("assert _lpy_strides_%d > 0, "
                                 "\"'%s' has negative stride in axis %d\""
                                 % (i, arg.name, i))
 
                 sym_strides = tuple(
                         var("_lpy_strides_%d" % i)
-                        for i in xrange(num_axes))
+                        for i in range(num_axes))
                 sym_shape = tuple(
                         var("_lpy_shape_%d" % i)
-                        for i in xrange(num_axes))
+                        for i in range(num_axes))
 
                 alloc_size_expr = (sum(astrd*(alen-1)
                     for alen, astrd in zip(sym_shape, sym_strides))
@@ -444,7 +448,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options):
                             dtype=python_dtype_str(arg.dtype)))
 
                 if not options.skip_arg_checks:
-                    for i in xrange(num_axes):
+                    for i in range(num_axes):
                         gen("del _lpy_shape_%d" % i)
                         gen("del _lpy_strides_%d" % i)
                     gen("del _lpy_alloc_size")
@@ -724,7 +728,7 @@ class CompiledKernel:
 
     def get_code(self, arg_to_dtype=None):
         if arg_to_dtype is not None:
-            arg_to_dtype = frozenset(arg_to_dtype.iteritems())
+            arg_to_dtype = frozenset(six.iteritems(arg_to_dtype))
 
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
 
@@ -779,7 +783,7 @@ class CompiledKernel:
 
         impl_arg_to_arg = self.kernel.impl_arg_to_arg
         arg_to_dtype = {}
-        for arg_name, val in kwargs.iteritems():
+        for arg_name, val in six.iteritems(kwargs):
             arg = impl_arg_to_arg.get(arg_name, None)
 
             if arg is None:
@@ -795,7 +799,7 @@ class CompiledKernel:
                     arg_to_dtype[arg_name] = dtype
 
         kernel_info = self.cl_kernel_info(
-                frozenset(arg_to_dtype.iteritems()))
+                frozenset(six.iteritems(arg_to_dtype)))
 
         return kernel_info.invoker(
                 kernel_info.cl_kernel, queue, allocator, wait_for,

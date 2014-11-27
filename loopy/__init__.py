@@ -1,4 +1,8 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -442,13 +446,13 @@ def tag_inames(kernel, iname_to_tag, force=False):
     from loopy.kernel.data import parse_tag
 
     iname_to_tag = dict((iname, parse_tag(tag))
-            for iname, tag in iname_to_tag.iteritems())
+            for iname, tag in six.iteritems(iname_to_tag))
 
     from loopy.kernel.data import (ParallelTag, AutoLocalIndexTagBase,
             ForceSequentialTag)
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
-    for iname, new_tag in iname_to_tag.iteritems():
+    for iname, new_tag in six.iteritems(iname_to_tag):
         if iname not in kernel.all_inames():
             raise LoopyError("iname '%s' does not exist" % iname)
 
@@ -498,7 +502,7 @@ class _InameDuplicator(ExpandingIdentityMapper):
                 rules, make_unique_var_name)
 
         self.old_to_new = old_to_new
-        self.old_inames_set = set(old_to_new.iterkeys())
+        self.old_inames_set = set(six.iterkeys(old_to_new))
         self.within = within
 
     def map_reduction(self, expr, expn_state):
@@ -595,7 +599,7 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
     # {{{ change the inames in the code
 
     indup = _InameDuplicator(knl.substitutions, name_gen,
-            old_to_new=dict(zip(inames, new_inames)),
+            old_to_new=dict(list(zip(inames, new_inames))),
             within=within)
 
     knl = indup.map_kernel(knl)
@@ -1245,7 +1249,7 @@ def _fix_parameter(kernel, name, value):
             new_args.append(arg.map_exprs(map_expr))
 
     new_temp_vars = {}
-    for tv in kernel.temporary_variables.itervalues():
+    for tv in six.itervalues(kernel.temporary_variables):
         new_temp_vars[tv.name] = tv.map_exprs(map_expr)
 
     from loopy.context_matching import parse_stack_match
@@ -1265,7 +1269,7 @@ def _fix_parameter(kernel, name, value):
 
 
 def fix_parameters(kernel, **value_dict):
-    for name, value in value_dict.iteritems():
+    for name, value in six.iteritems(value_dict):
         kernel = _fix_parameter(kernel, name, value)
 
     return kernel
@@ -1310,7 +1314,7 @@ def set_options(kernel, *args, **kwargs):
     new_opt = kernel.options.copy()
 
     if kwargs:
-        for key, val in kwargs.iteritems():
+        for key, val in six.iteritems(kwargs):
             if not hasattr(new_opt, key):
                 raise ValueError("unknown option '%s'" % key)
 

@@ -1,4 +1,6 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -91,7 +93,7 @@ def split_arg_axis(kernel, args_and_axes, count):
     # {{{ adjust args
 
     new_args = kernel.args[:]
-    for arg_name, (axis, order) in arg_to_rest.iteritems():
+    for arg_name, (axis, order) in six.iteritems(arg_to_rest):
         arg_idx = arg_to_idx[arg_name]
 
         arg = new_args[arg_idx]
@@ -190,13 +192,13 @@ def split_arg_axis(kernel, args_and_axes, count):
         return expr.aggregate.index(tuple(idx))
 
     aash = ArgAxisSplitHelper(kernel.substitutions, var_name_gen,
-            set(arg_to_rest.iterkeys()), split_access_axis)
+            set(six.iterkeys(arg_to_rest)), split_access_axis)
     kernel = aash.map_kernel(kernel)
 
     kernel = kernel.copy(args=new_args)
 
     from loopy import split_iname
-    for iname, (outer_iname, inner_iname) in split_vars.iteritems():
+    for iname, (outer_iname, inner_iname) in six.iteritems(split_vars):
         kernel = split_iname(kernel, iname, count,
                 outer_iname=outer_iname, inner_iname=inner_iname)
 

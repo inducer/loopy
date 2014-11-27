@@ -1,6 +1,11 @@
 """Pymbolic mappers for loopy."""
 
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
+from six.moves import zip
+from functools import reduce
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -369,7 +374,7 @@ class ExpandingIdentityMapper(IdentityMapper):
         # maps subst rule (args, bodies) to (names, original_name)
         self.subst_rule_registry = dict(
                 ((rule.arguments, rule.expression), (name, name))
-                for name, rule in old_subst_rules.iteritems())
+                for name, rule in six.iteritems(old_subst_rules))
 
         # maps subst rule (args, bodies) to use counts
         self.subst_rule_use_count = {}
@@ -472,7 +477,7 @@ class ExpandingIdentityMapper(IdentityMapper):
         from loopy.kernel.data import SubstitutionRule
 
         orig_name_histogram = {}
-        for key, (name, orig_name) in self.subst_rule_registry.iteritems():
+        for key, (name, orig_name) in six.iteritems(self.subst_rule_registry):
             if self.subst_rule_use_count.get(key, 0):
                 orig_name_histogram[orig_name] = \
                         orig_name_histogram.get(orig_name, 0) + 1
@@ -480,7 +485,7 @@ class ExpandingIdentityMapper(IdentityMapper):
         result = {}
         renames = {}
 
-        for key, (name, orig_name) in self.subst_rule_registry.iteritems():
+        for key, (name, orig_name) in six.iteritems(self.subst_rule_registry):
             args, body = key
 
             if self.subst_rule_use_count.get(key, 0):
@@ -498,7 +503,7 @@ class ExpandingIdentityMapper(IdentityMapper):
         subst_renamer = SubstitutionRuleRenamer(renames)
 
         renamed_result = {}
-        for name, rule in result.iteritems():
+        for name, rule in six.iteritems(result):
             renamed_result[name] = rule.copy(
                     expression=subst_renamer(rule.expression))
 
@@ -780,7 +785,7 @@ def aff_to_expr(aff, except_name=None, error_on_name=None):
 
     result = (aff.get_constant_val()*denom).to_python()
     for dt in [dim_type.in_, dim_type.param]:
-        for i in xrange(aff.dim(dt)):
+        for i in range(aff.dim(dt)):
             coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
             if coeff:
                 dim_name = aff.get_dim_name(dt, i)
@@ -794,7 +799,7 @@ def aff_to_expr(aff, except_name=None, error_on_name=None):
 
     error_on_name = error_on_name or except_name
 
-    for i in xrange(aff.dim(dim_type.div)):
+    for i in range(aff.dim(dim_type.div)):
         coeff = (aff.get_coefficient_val(dim_type.div, i)*denom).to_python()
         if coeff:
             result += coeff*aff_to_expr(aff.get_div(i), error_on_name=error_on_name)
@@ -829,7 +834,7 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
 def aff_from_expr(space, expr, vars_to_zero=set()):
     zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
     context = {}
-    for name, (dt, pos) in space.get_var_dict().iteritems():
+    for name, (dt, pos) in six.iteritems(space.get_var_dict()):
         if dt == dim_type.set:
             dt = dim_type.in_
 
@@ -981,7 +986,7 @@ def get_access_range(domain, subscript, assumptions):
     dn = access_map.dim(dim_type.set)
     access_map = access_map.insert_dims(dim_type.set, dn, dims)
 
-    for idim in xrange(dims):
+    for idim in range(dims):
         idx_aff = aff_from_expr(access_map.get_space(),
                 subscript[idim])
         idx_aff = idx_aff.set_coefficient_val(

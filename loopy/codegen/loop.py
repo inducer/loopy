@@ -1,4 +1,6 @@
 from __future__ import division
+from __future__ import absolute_import
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 

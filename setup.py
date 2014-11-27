@@ -38,7 +38,7 @@ setup(name="loo.py",
           "pymbolic>=2014.1.1",
           "cgen>=2013.1.2",
           "islpy>=2014.2",
-          "six"
+          "six",
           ],
 
       author="Andreas Kloeckner",

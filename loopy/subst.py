@@ -1,4 +1,6 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -130,7 +132,7 @@ def extract_subst(kernel, subst_name, template, parameters):
     for insn in kernel.instructions:
         dfmapper(insn.expression)
 
-    for sr in kernel.substitutions.itervalues():
+    for sr in six.itervalues(kernel.substitutions):
         dfmapper(sr.expression)
 
     # }}}
@@ -176,7 +178,7 @@ def extract_subst(kernel, subst_name, template, parameters):
                 expression=template,
                 )}
 
-    for subst in kernel.substitutions.itervalues():
+    for subst in six.itervalues(kernel.substitutions):
         new_substs[subst.name] = subst.copy(
                 expression=cbmapper(subst.expression))
 

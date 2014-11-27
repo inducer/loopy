@@ -1,4 +1,7 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -36,7 +39,7 @@ logger = logging.getLogger(__name__)
 # {{{ sanity checks run pre-scheduling
 
 def check_temp_variable_shapes_are_constant(kernel):
-    for tv in kernel.temporary_variables.itervalues():
+    for tv in six.itervalues(kernel.temporary_variables):
         if any(not is_integer(s_i) for s_i in tv.shape):
             raise LoopyError("shape of temporary variable '%s' is not "
                     "constant (but has to be since the size of "
@@ -211,7 +214,7 @@ def check_for_orphaned_user_hardware_axes(kernel):
     from loopy.kernel.data import LocalIndexTag
     for axis in kernel.local_sizes:
         found = False
-        for tag in kernel.iname_to_tag.itervalues():
+        for tag in six.itervalues(kernel.iname_to_tag):
             if isinstance(tag, LocalIndexTag) and tag.axis == axis:
                 found = True
                 break
@@ -293,7 +296,7 @@ class _AccessCheckMapper(WalkMapper):
                 return
 
             shape_domain = isl.BasicSet.universe(access_range.get_space())
-            for idim in xrange(len(subscript)):
+            for idim in range(len(subscript)):
                 from loopy.isl_helpers import make_slab
                 slab = make_slab(
                         shape_domain.get_space(), (dim_type.in_, idim),
@@ -490,7 +493,7 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
 
     from islpy import align_two
 
-    for insn_id, idomains in implemented_domains.iteritems():
+    for insn_id, idomains in six.iteritems(implemented_domains):
         insn = kernel.id_to_insn[insn_id]
 
         assert idomains

@@ -1,6 +1,9 @@
 """isl helpers"""
 
 from __future__ import division
+from __future__ import absolute_import
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -370,8 +373,8 @@ def boxify(cache_manager, domain, box_inames, context):
     box_iname_indices = [var_dict[iname][1] for iname in box_inames]
     n_nonbox_inames = min(box_iname_indices)
 
-    assert box_iname_indices == range(
-            n_nonbox_inames, domain.dim(dim_type.set))
+    assert box_iname_indices == list(range(
+            n_nonbox_inames, domain.dim(dim_type.set)))
 
     n_old_parameters = domain.dim(dim_type.param)
     domain = domain.move_dims(
@@ -380,7 +383,7 @@ def boxify(cache_manager, domain, box_inames, context):
     result = domain.universe_like()
     zero = isl.Aff.zero_on_domain(result.space)
 
-    for i in xrange(len(box_iname_indices)):
+    for i in range(len(box_iname_indices)):
         iname_aff = zero.add_coefficient_val(dim_type.in_, i, 1)
 
         def add_in_dims(aff):

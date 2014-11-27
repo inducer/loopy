@@ -1,6 +1,8 @@
 """Operations on the kernel object."""
 
 from __future__ import division
+from __future__ import absolute_import
+import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -225,7 +227,7 @@ def find_all_insn_inames(kernel):
 
     logger.debug("%s: find_all_insn_inames: done" % kernel.name)
 
-    for v in insn_id_to_inames.itervalues():
+    for v in six.itervalues(insn_id_to_inames):
         assert isinstance(v, frozenset)
 
     return insn_id_to_inames
@@ -518,7 +520,7 @@ class DomainParameterFinder(object):
     def __call__(self, kwargs):
         result = {}
 
-        for param_name, sources in self.param_to_sources.iteritems():
+        for param_name, sources in six.iteritems(self.param_to_sources):
             if param_name not in kwargs:
                 for arg_name, axis_nr, shape_func in sources:
                     if arg_name in kwargs:

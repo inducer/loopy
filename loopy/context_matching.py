@@ -2,6 +2,8 @@
 rule invocations stacks."""
 
 from __future__ import division
+from __future__ import absolute_import
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -158,7 +160,7 @@ class StackWildcardMatch(StackMatchBase):
         if self.up_match(stack):
             return True
 
-        for i in xrange(1, n):
+        for i in range(1, n):
             if self.up_match(stack[:-i]):
                 return True
 

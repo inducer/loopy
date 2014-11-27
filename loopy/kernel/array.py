@@ -1,6 +1,9 @@
 """Implementation tagging of array axes."""
 
 from __future__ import division
+from __future__ import absolute_import
+from six.moves import range
+from six.moves import zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -543,7 +546,7 @@ class ArrayBase(Record):
                 if isinstance(dim_tag, _StrideArrayDimTagBase):
                     target_axes.add(dim_tag.target_axis)
 
-            if target_axes != set(xrange(len(target_axes))):
+            if target_axes != set(range(len(target_axes))):
                 raise ValueError("target axes for variable '%s' are non-"
                         "contiguous" % self.name)
 
@@ -856,7 +859,7 @@ class ArrayBase(Record):
                             "integer axis %d (0-based)" % (
                                 self.name, user_axis))
 
-                for i in xrange(shape_i):
+                for i in range(shape_i):
                     for res in gen_decls(name_suffix + "_s%d" % i,
                             shape, strides, unvec_shape, unvec_strides,
                             stride_arg_axes, dtype,

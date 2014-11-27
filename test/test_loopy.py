@@ -1,4 +1,7 @@
 from __future__ import division
+from __future__ import absolute_import
+import six
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -71,7 +74,7 @@ def test_complicated_subst(ctx_factory):
 
     print(knl)
 
-    sr_keys = knl.substitutions.keys()
+    sr_keys = list(knl.substitutions.keys())
     for letter, how_many in [
             ("f", 1),
             ("g", 1),
@@ -496,7 +499,7 @@ def make_random_expression(var_values, size):
 
 
 def generate_random_fuzz_examples(count):
-    for i in xrange(count):
+    for i in range(count):
         size = [0]
         var_values = {}
         expr = make_random_expression(var_values, size)
@@ -527,7 +530,7 @@ def test_fuzz_code_generator(ctx_factory):
                 [lp.GlobalArg("value", np.complex128, shape=())]
                 + [
                     lp.ValueArg(name, get_dtype(val))
-                    for name, val in var_values.iteritems()
+                    for name, val in six.iteritems(var_values)
                     ])
         ck = lp.CompiledKernel(ctx, knl)
         evt, (lp_value,) = ck(queue, out_host=True, **var_values)
@@ -933,7 +936,7 @@ def test_double_sum(ctx_factory):
 
     evt, (a, b) = cknl(queue, n=n)
 
-    ref = sum(i*j for i in xrange(n) for j in xrange(n))
+    ref = sum(i*j for i in range(n) for j in range(n))
     assert a.get() == ref
     assert b.get() == ref
 

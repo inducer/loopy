@@ -1,4 +1,5 @@
 from __future__ import division
+from __future__ import absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -357,7 +358,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         #print("boost allowed:", allow_boost)
         print(75*"=")
         print("LOOP NEST MAP:")
-        for iname, val in sched_state.loop_nest_map.iteritems():
+        for iname, val in six.iteritems(sched_state.loop_nest_map):
             print("%s : %s" % (iname, ", ".join(val)))
         print(75*"=")
         print("WHY IS THIS A DEAD-END SCHEDULE?")
@@ -586,7 +587,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         # loops in the second are not even tried (and so on).
 
         loop_priority_set = set(loop_priority)
-        useful_loops_set = set(iname_to_usefulness.iterkeys())
+        useful_loops_set = set(six.iterkeys(iname_to_usefulness))
         useful_and_desired = useful_loops_set & loop_priority_set
 
         if useful_and_desired:
