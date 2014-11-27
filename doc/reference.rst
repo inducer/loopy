@@ -368,6 +368,8 @@ Wrangling inames
 
 .. autofunction:: split_reduction_outward
 
+.. autofunction:: affine_map_inames
+
 Dealing with Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^
 

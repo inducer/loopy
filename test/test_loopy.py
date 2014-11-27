@@ -1751,6 +1751,18 @@ def test_set_arg_order():
     knl = lp.set_argument_order(knl, "out,a,n,b")
 
 
+def test_affine_map_inames():
+    knl = lp.make_kernel(
+        "{[e, i,j,n]: 0<=e<E and 0<=i,j,n<N}",
+        "rhsQ[e, n+i, j] = rhsQ[e, n+i, j] - D[i, n]*x[i,j]")
+
+    knl = lp.affine_map_inames(knl,
+            "i", "i0",
+            "i0 = n+i")
+
+    print(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
