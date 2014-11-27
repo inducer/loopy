@@ -49,7 +49,7 @@ from pyopencl.tools import pytest_generate_tests_for_pyopencl \
 __all__ = [
         "pytest_generate_tests",
         "cl"  # 'cl.create_some_context'
-    ]
+        ]
 
 
 def test_complicated_subst(ctx_factory):
@@ -315,10 +315,10 @@ def test_stencil(ctx_factory):
             [
                 "a_offset(ii, jj) := a[ii+1, jj+1]",
                 "z[i,j] = -2*a_offset(i,j)"
-                    " + a_offset(i,j-1)"
-                    " + a_offset(i,j+1)"
-                    " + a_offset(i-1,j)"
-                    " + a_offset(i+1,j)"
+                " + a_offset(i,j-1)"
+                " + a_offset(i,j+1)"
+                " + a_offset(i-1,j)"
+                " + a_offset(i+1,j)"
                 ],
             [
                 lp.GlobalArg("a", np.float32, shape=(n+2, n+2,)),
@@ -356,15 +356,15 @@ def test_stencil_with_overfetch(ctx_factory):
             [
                 "a_offset(ii, jj) := a[ii+2, jj+2]",
                 "z[i,j] = -2*a_offset(i,j)"
-                    " + a_offset(i,j-1)"
-                    " + a_offset(i,j+1)"
-                    " + a_offset(i-1,j)"
-                    " + a_offset(i+1,j)"
+                " + a_offset(i,j-1)"
+                " + a_offset(i,j+1)"
+                " + a_offset(i-1,j)"
+                " + a_offset(i+1,j)"
 
-                    " + a_offset(i,j-2)"
-                    " + a_offset(i,j+2)"
-                    " + a_offset(i-2,j)"
-                    " + a_offset(i+2,j)"
+                " + a_offset(i,j-2)"
+                " + a_offset(i,j+2)"
+                " + a_offset(i-2,j)"
+                " + a_offset(i+2,j)"
                 ],
             assumptions="n>=1")
 
@@ -511,8 +511,8 @@ def test_fuzz_code_generator(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     #from expr_fuzz import get_fuzz_examples
-    for expr, var_values in generate_random_fuzz_examples(50):
     #for expr, var_values in get_fuzz_examples():
+    for expr, var_values in generate_random_fuzz_examples(50):
         from pymbolic import evaluate
         try:
             true_value = evaluate(expr, var_values)
@@ -1698,7 +1698,7 @@ def test_fd_demo(ctx_factory):
         "result[i,j] = u[i, j]**2 + -1 + (-4)*u[i + 1, j + 1] \
                 + u[i + 1 + 1, j + 1] + u[i + 1 + -1, j + 1] \
                 + u[i + 1, j + 1 + 1] + u[i + 1, j + 1 + -1]")
-        #assumptions="n mod 16=0")
+    #assumptions="n mod 16=0")
     knl = lp.split_iname(knl,
             "i", 16, outer_tag="g.1", inner_tag="l.1")
     knl = lp.split_iname(knl,
