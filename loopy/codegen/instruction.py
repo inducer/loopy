@@ -1,7 +1,6 @@
 """Code generation for Instruction objects."""
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
+
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -26,8 +25,10 @@ THE SOFTWARE.
 """
 
 
+from six.moves import range
 import islpy as isl
 from loopy.codegen import GeneratedInstruction
+from pymbolic.mapper.stringifier import PREC_NONE
 
 
 def wrap_in_conditionals(codegen_state, domain, check_inames, required_preds, stmt):
@@ -92,7 +93,6 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     (assignee_var_name, assignee_indices), = insn.assignees_and_indices()
     target_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
-    from pymbolic.mapper.stringifier import PREC_NONE
     from cgen import Assign
     from loopy.codegen.expression import dtype_to_type_context
     lhs_code = ccm(insn.assignee, prec=PREC_NONE, type_context=None)
@@ -123,7 +123,7 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
         if assignee_indices:
             printf_format += "[%s]" % ",".join(len(assignee_indices) * ["%d"])
             printf_args.extend(
-                    ccm(i, prec=None, type_context="i")
+                    ccm(i, prec=PREC_NONE, type_context="i")
                     for i in assignee_indices)
 
         if kernel.options.trace_assignment_values:
@@ -184,7 +184,6 @@ def generate_c_instruction_code(kernel, insn, codegen_state):
     body.extend(Line(l) for l in insn.code.split("\n"))
 
     return Block(body)
-
 
 
 # vim: foldmethod=marker

@@ -29,6 +29,7 @@ from loopy.codegen import gen_code_block
 import islpy as isl
 from islpy import dim_type
 from loopy.codegen.control import build_loop_nest
+from pymbolic.mapper.stringifier import PREC_NONE
 
 
 # {{{ conditional-reducing slab decomposition
@@ -361,7 +362,7 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
             # single-trip, generate just a variable assignment, not a loop
             result.append(gen_code_block([
                 Initializer(Const(POD(kernel.index_dtype, loop_iname)),
-                    ccm(aff_to_expr(static_lbound), "i")),
+                    ccm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                 Line(),
                 inner,
                 ]))
@@ -373,8 +374,9 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
             result.append(wrap_in(For,
                     "%s %s = %s"
                     % (dtype_to_ctype(kernel.index_dtype),
-                        loop_iname, ccm(aff_to_expr(static_lbound), "i")),
-                    "%s <= %s" % (loop_iname, ccm(aff_to_expr(static_ubound), "i")),
+                        loop_iname, ccm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                    "%s <= %s" % (
+                        loop_iname, ccm(aff_to_expr(static_ubound), PREC_NONE, "i")),
                     "++%s" % loop_iname,
                     inner))
 

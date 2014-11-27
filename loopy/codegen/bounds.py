@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 import islpy as isl
 from islpy import dim_type
+from pymbolic.mapper.stringifier import PREC_NONE
 
 
 def constraint_to_code(ccm, cns):
@@ -34,7 +35,7 @@ def constraint_to_code(ccm, cns):
         comp_op = ">="
 
     from loopy.symbolic import constraint_to_expr
-    return "%s %s 0" % (ccm(constraint_to_expr(cns), 'i'), comp_op)
+    return "%s %s 0" % (ccm(constraint_to_expr(cns), PREC_NONE, "i"), comp_op)
 
 
 # {{{ bounds check generator
