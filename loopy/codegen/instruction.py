@@ -92,10 +92,10 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     (assignee_var_name, assignee_indices), = insn.assignees_and_indices()
     target_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
+    from pymbolic.mapper.stringifier import PREC_NONE
     from cgen import Assign
     from loopy.codegen.expression import dtype_to_type_context
-    lhs_code = ccm(insn.assignee, prec=None, type_context=None)
-    from pymbolic.mapper.stringifier import PREC_NONE
+    lhs_code = ccm(insn.assignee, prec=PREC_NONE, type_context=None)
     result = Assign(
             lhs_code,
             ccm(expr, prec=PREC_NONE,
