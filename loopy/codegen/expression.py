@@ -84,7 +84,7 @@ class TypeInferenceMapper(CombineMapper):
                 # assume the non-native type takes over
                 pass
             else:
-                if not result is other:
+                if result is not other:
                     raise TypeInferenceFailure(
                             "nothing known about result of operation on "
                             "'%s' and '%s'" % (result, other))
