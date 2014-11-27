@@ -95,9 +95,11 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     from cgen import Assign
     from loopy.codegen.expression import dtype_to_type_context
     lhs_code = ccm(insn.assignee, prec=None, type_context=None)
+    from pymbolic.mapper.stringifier import PREC_NONE
     result = Assign(
             lhs_code,
-            ccm(expr, prec=None, type_context=dtype_to_type_context(target_dtype),
+            ccm(expr, prec=PREC_NONE,
+                type_context=dtype_to_type_context(target_dtype),
                 needed_dtype=target_dtype))
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
