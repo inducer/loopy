@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: latin1 -*-
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 ver_dic = {}
 version_file = open("loopy/version.py")
@@ -49,10 +49,5 @@ setup(name="loo.py",
       url="http://mathema.tician.de/software/loopy",
       author_email="inform@tiker.net",
       license="MIT",
-      packages=[
-          "loopy",
-          "loopy.codegen",
-          "loopy.kernel",
-          "loopy.library",
-          ],
+      packages=find_packages(),
       )
