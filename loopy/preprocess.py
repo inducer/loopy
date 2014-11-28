@@ -34,7 +34,7 @@ from loopy.diagnostic import (
 
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
-from loopy.version import VERSION_TEXT
+from loopy.version import DATA_MODEL_VERSION
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1071,7 +1071,7 @@ def adjust_local_temp_var_storage(kernel, device):
 # }}}
 
 
-preprocess_cache = PersistentDict("loopy-preprocess-cache-v2-"+VERSION_TEXT,
+preprocess_cache = PersistentDict("loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 

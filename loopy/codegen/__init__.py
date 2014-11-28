@@ -33,7 +33,7 @@ import numpy as np
 
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
-from loopy.version import VERSION_TEXT
+from loopy.version import DATA_MODEL_VERSION
 
 import logging
 logger = logging.getLogger(__name__)
@@ -174,8 +174,8 @@ class CodeGenerationState(object):
             c_code_mapper=None):
         return CodeGenerationState(
                 implemented_domain=implemented_domain or self.implemented_domain,
-                implemented_predicates=
-                implemented_predicates or self.implemented_predicates,
+                implemented_predicates=(
+                    implemented_predicates or self.implemented_predicates),
                 c_code_mapper=c_code_mapper or self.c_code_mapper)
 
     def intersect(self, other):
@@ -331,7 +331,7 @@ class ImplementedDataInfo(Record):
 # }}}
 
 
-code_gen_cache = PersistentDict("loopy-code-gen-cache-v2-"+VERSION_TEXT,
+code_gen_cache = PersistentDict("loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 

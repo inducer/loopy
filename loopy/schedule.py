@@ -32,7 +32,7 @@ from loopy.diagnostic import LoopyError  # noqa
 
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
-from loopy.version import VERSION_TEXT
+from loopy.version import DATA_MODEL_VERSION
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1108,7 +1108,7 @@ def generate_loop_schedules(kernel, debug_args={}):
 # }}}
 
 
-schedule_cache = PersistentDict("loopy-schedule-cache-v3-"+VERSION_TEXT,
+schedule_cache = PersistentDict("loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
