@@ -59,12 +59,8 @@ To-do
 - Data implementation tags
   - turn base_indices into offset
   - vectorization
-  - automatic copies
   - write_image()
   - change_arg_to_image (test!)
-
-  - automatic copies from an array with one set of tags
-    to the same array with another set.
 
 - Make tests run on GPUs
 
@@ -73,6 +69,8 @@ To-do
 - Derive all errors from central hierarchy
 
 - Provide context for more errors?
+
+- Allow mixing computed and stored strides
 
 Fixes:
 
