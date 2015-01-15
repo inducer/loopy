@@ -300,12 +300,12 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
                 # unable to normalize without known shape
                 return None
 
-            if not is_integer(shape[i]):
+            if not is_integer(shape[vector_dim]):
                 raise TypeError("shape along vector axis %d of array '%s' "
-                        "must be an integer, not an expression"
-                        % (i, name))
+                        "must be an integer, not an expression ('%s')"
+                        % (i, name, shape[vector_dim]))
 
-            stride_so_far = shape[i]
+            stride_so_far = shape[vector_dim]
             # FIXME: OpenCL-specific
             if stride_so_far == 3:
                 stride_so_far = 4
