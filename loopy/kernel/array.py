@@ -124,7 +124,6 @@ class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
                 target_axis=target_axis)
 
     def stringify(self, include_target_axis):
-        result = "stride:%s" % self.stride
         if self.pad_to is None:
             result = self.order
         else:
