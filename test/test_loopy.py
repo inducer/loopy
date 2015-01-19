@@ -1572,6 +1572,28 @@ def test_vector_types(ctx_factory, vec_len):
             fills_entire_output=False)
 
 
+def test_tag_data_axes(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i,j,k]: 0<=i,j,k<n }",
+            "out[i,j,k] = 15")
+
+    ref_knl = knl
+
+    with pytest.raises(lp.LoopyError):
+        lp.tag_data_axes(knl, "out", "N1,N0,N5")
+
+    with pytest.raises(lp.LoopyError):
+        lp.tag_data_axes(knl, "out", "N1,N0,c")
+
+    knl = lp.tag_data_axes(knl, "out", "N1,N0,N2")
+    knl = lp.tag_inames(knl, dict(j="g.0", i="g.1"))
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            parameters=dict(n=20))
+
+
 def test_conditional(ctx_factory):
     #logging.basicConfig(level=logging.DEBUG)
     ctx = ctx_factory()

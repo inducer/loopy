@@ -1,9 +1,6 @@
 """Implementation tagging of array axes."""
 
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -28,6 +25,10 @@ THE SOFTWARE.
 """
 
 import re
+
+from six.moves import range, zip
+from six import iteritems
+
 from pytools import Record, memoize_method
 
 import pyopencl as cl  # noqa
@@ -51,14 +52,34 @@ class ArrayDimImplementationTag(Record):
 
 
 class _StrideArrayDimTagBase(ArrayDimImplementationTag):
-    pass
+    """
+    .. attribute :: target_axis
+
+        For objects (such as images) with more than one axis, *target_axis*
+        sets which of these indices is being targeted by this dimension.
+        Note that there may be multiple dim_tags with the same *target_axis*,
+        their contributions are combined additively.
+
+        Note that "normal" arrays only have one *target_axis*.
+
+    .. attribute:: layout_nesting_level
+
+        For determining the stride of :class:`ComputedStrideArrayDimTag`,
+        this determines the layout nesting level of this axis.
+        This must be a contiguous sequence of unique
+        integers starting at 0 in a single :attr:`ArrayBase.dim_tags`.
+        The lowest nesting level varies fastest when viewed
+        in linear memory.
+
+        May be None on :class:`FixedStrideArrayDimTag`, in which
+        case no :class:`ComputedStrideArrayDimTag` instances may
+        occur.
+    """
 
 
 class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
     """An arg dimension implementation tag for a fixed (potentially
     symbolic) stride.
-
-    The stride is given in units of :attr:`ArrayBase.dtype`.
 
     .. attribute :: stride
 
@@ -71,23 +92,33 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
         - :class:`loopy.auto`, indicating that a new kernel argument
           for this stride should automatically be created.
 
-    .. attribute :: target_axis
-
-        For objects (such as images) with more than one axis, *target_axis*
-        sets which of these indices is being targeted by this dimension.
-        Note that there may be multiple dim_tags with the same *target_axis*,
-        their contributions are combined additively.
-
-        Note that "normal" arrays only have one *target_axis*.
+    The stride is given in units of :attr:`ArrayBase.dtype`.
     """
 
-    def __init__(self, stride, target_axis=0):
-        _StrideArrayDimTagBase.__init__(self, stride=stride, target_axis=target_axis)
+    def __init__(self, stride, target_axis=0, layout_nesting_level=None):
+        if not (
+                layout_nesting_level is None
+                or
+                isinstance(layout_nesting_level, int)):
+            raise TypeError("layout_nesting_level must be an int or None")
+
+        _StrideArrayDimTagBase.__init__(self,
+                stride=stride, target_axis=target_axis,
+                layout_nesting_level=layout_nesting_level)
         self.stride = stride
         self.target_axis = target_axis
 
     def stringify(self, include_target_axis):
-        result = "stride:%s" % self.stride
+        result = ""
+        if self.layout_nesting_level is not None:
+            result += "N%d" % self.layout_nesting_level
+
+        import loopy as lp
+        if self.stride is lp.auto:
+            result += "stride:auto"
+        else:
+            result += "stride:"+str(self.stride)
+
         if include_target_axis:
             result += "->%d" % self.target_axis
         return result
@@ -101,12 +132,6 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
 
 class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
     """
-    .. attribute:: order
-
-        "C" or "F", indicating whether this argument dimension will be added
-        as faster-moving ("C") or more-slowly-moving ("F") than the previous
-        argument.
-
     .. attribute:: pad_to
 
         :attr:`ArrayBase.dtype` granularity to which to pad this dimension
@@ -115,19 +140,17 @@ class ComputedStrideArrayDimTag(_StrideArrayDimTagBase):
     on input to :class:`ArrayBase` subclasses.
     """
 
-    def __init__(self, order, pad_to=None, target_axis=0):
-        order = order.upper()
-        if order not in "CF":
-            raise ValueError("'order' must be either 'C' or 'F'")
+    def __init__(self, layout_nesting_level, pad_to=None, target_axis=0, ):
+        if not isinstance(layout_nesting_level, int):
+            raise TypeError("layout_nesting_level must be an int")
 
-        _StrideArrayDimTagBase.__init__(self, order=order, pad_to=pad_to,
-                target_axis=target_axis)
+        _StrideArrayDimTagBase.__init__(self, pad_to=pad_to,
+                target_axis=target_axis, layout_nesting_level=layout_nesting_level)
 
     def stringify(self, include_target_axis):
-        if self.pad_to is None:
-            result = self.order
-        else:
-            result = "%s(pad=%s)" % (self.order, self.pad_to)
+        result = "N"+str(self.layout_nesting_level)
+        if self.pad_to is not None:
+            result += "(pad=%s)" % self.pad_to
 
         if include_target_axis:
             result += "->%d" % self.target_axis
@@ -163,24 +186,38 @@ class VectorArrayDimTag(ArrayDimImplementationTag):
         return self
 
 
-PADDED_STRIDE_TAG = re.compile(r"^([a-zA-Z]+)\(pad=(.*)\)$")
+NESTING_LEVEL_RE = re.compile(r"^N([0-9]+)(?::(.*)|)$")
+PADDED_STRIDE_TAG_RE = re.compile(r"^([a-zA-Z]*)\(pad=(.*)\)$")
 TARGET_AXIS_RE = re.compile(r"->([0-9])$")
 
 
-def parse_array_dim_tag(tag, default_target_axis=0):
+def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
     if isinstance(tag, ArrayDimImplementationTag):
-        return tag
+        return False, tag
 
     if not isinstance(tag, str):
         raise TypeError("arg dimension implementation tag must be "
                 "string or tag object")
 
     tag = tag.strip()
+    orig_tag = tag
 
     if tag == "sep":
-        return SeparateArrayArrayDimTag()
+        return False, SeparateArrayArrayDimTag()
     elif tag == "vec":
-        return VectorArrayDimTag()
+        return False, VectorArrayDimTag()
+
+    nesting_level_match = NESTING_LEVEL_RE.match(tag)
+
+    if nesting_level_match is not None:
+        nesting_level = int(nesting_level_match.group(1))
+        tag = nesting_level_match.group(2)
+        if tag is None:
+            tag = ""
+    else:
+        nesting_level = None
+
+    has_explicit_nesting_level = nesting_level is not None
 
     target_axis_match = TARGET_AXIS_RE.search(tag)
 
@@ -190,29 +227,58 @@ def parse_array_dim_tag(tag, default_target_axis=0):
     else:
         target_axis = default_target_axis
 
+    ta_nesting_levels = nesting_levels.get(target_axis, [])
+
     if tag.startswith("stride:"):
         fixed_stride_descr = tag[7:]
         if fixed_stride_descr.strip() == "auto":
             import loopy as lp
-            return FixedStrideArrayDimTag(lp.auto, target_axis)
+            return has_explicit_nesting_level, FixedStrideArrayDimTag(
+                    lp.auto, target_axis,
+                    layout_nesting_level=nesting_level)
         else:
             from loopy.symbolic import parse
-            return FixedStrideArrayDimTag(parse(fixed_stride_descr), target_axis)
+            return has_explicit_nesting_level, FixedStrideArrayDimTag(
+                    parse(fixed_stride_descr), target_axis,
+                    layout_nesting_level=nesting_level)
 
-    elif tag in ["c", "C", "f", "F"]:
-        return ComputedStrideArrayDimTag(tag, target_axis=target_axis)
     else:
-        padded_stride_match = PADDED_STRIDE_TAG.match(tag)
-        if padded_stride_match is None:
-            raise ValueError("invalid arg dim tag: '%s'" % tag)
+        padded_stride_match = PADDED_STRIDE_TAG_RE.match(tag)
+        if padded_stride_match is not None:
+            tag = padded_stride_match.group(1)
+            pad_to = parse(padded_stride_match.group(2))
+        else:
+            pad_to = None
 
-        order = padded_stride_match.group(1)
-        pad = parse(padded_stride_match.group(2))
+        if tag in ["c", "C"]:
+            if nesting_level is not None:
+                raise LoopyError("may not specify 'C' array order with explicit "
+                        "layout nesting level")
 
-        if order not in ["c", "C", "f", "F"]:
-            raise ValueError("invalid arg dim tag: '%s'" % tag)
+            if ta_nesting_levels:
+                nesting_level = min(ta_nesting_levels)-1
+            else:
+                nesting_level = 0
 
-        return ComputedStrideArrayDimTag(order, pad, target_axis=target_axis)
+        elif tag in ["f", "F"]:
+            if nesting_level is not None:
+                raise LoopyError("may not specify 'C' array order with explicit "
+                        "layout nesting level")
+
+            if ta_nesting_levels:
+                nesting_level = max(ta_nesting_levels)+1
+            else:
+                nesting_level = 0
+
+        elif tag == "":
+            if nesting_level is None:
+                raise LoopyError("invalid dim tag: '%s'" % orig_tag)
+
+        else:
+            raise LoopyError("invalid dim tag: '%s'" % orig_tag)
+
+        return has_explicit_nesting_level, ComputedStrideArrayDimTag(
+                nesting_level, pad_to=pad_to, target_axis=target_axis)
 
 
 def parse_array_dim_tags(dim_tags, use_increasing_target_axes=False):
@@ -222,10 +288,63 @@ def parse_array_dim_tags(dim_tags, use_increasing_target_axes=False):
     default_target_axis = 0
 
     result = []
+
+    # a mapping from target axes to used nesting levels
+    nesting_levels = {}
+
+    target_axis_to_has_explicit_nesting_level = {}
+
     for dim_tag in dim_tags:
-        result.append(parse_array_dim_tag(dim_tag, default_target_axis))
+        has_explicit_nesting_level, parsed_dim_tag = _parse_array_dim_tag(
+            dim_tag, default_target_axis, nesting_levels)
+
+        # {{{ check for C/F mixed with explicit layout nesting level specs
+
+        if parsed_dim_tag.target_axis in target_axis_to_has_explicit_nesting_level:
+            if (has_explicit_nesting_level
+                    != target_axis_to_has_explicit_nesting_level[
+                        parsed_dim_tag.target_axis]):
+                raise LoopyError("may not mix C/F dim_tag specifications with "
+                        "explicit specification of layout nesting levels")
+        else:
+            target_axis_to_has_explicit_nesting_level[parsed_dim_tag.target_axis] = \
+                    has_explicit_nesting_level
+
+        # }}}
+
+        if isinstance(parsed_dim_tag, _StrideArrayDimTagBase):
+            lnl = parsed_dim_tag.layout_nesting_level
+            target_axis = parsed_dim_tag.target_axis
+            if lnl is not None:
+                if lnl in nesting_levels.get(target_axis, []):
+                    raise LoopyError("layout nesting level %d is not unique"
+                            " in target axis %d"
+                            % (lnl, target_axis))
+
+                nesting_levels.setdefault(target_axis, []) \
+                        .append(parsed_dim_tag.layout_nesting_level)
+
+        result.append(parsed_dim_tag)
+
         if use_increasing_target_axes:
             default_target_axis += 1
+
+    # {{{ check contiguity of nesting levels
+
+    for target_axis, ta_nesting_levels in iteritems(nesting_levels):
+        if sorted(ta_nesting_levels) != list(
+                range(
+                    min(ta_nesting_levels),
+                    min(ta_nesting_levels) + len(ta_nesting_levels))):
+            raise LoopyError("layout nesting levels '%s' "
+                    "for target axis %d not contiguous"
+                    % (
+                        ",".join(
+                            str(nl)
+                            for nl in ta_nesting_levels),
+                        target_axis))
+
+    # }}}
 
     return result
 
@@ -239,41 +358,38 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
     #
     # - target axes are implementation facing. Normal in-memory arrays have one.
     #   3D images have three.
+
     import loopy as lp
 
     # {{{ pick apart arg dim tags into computed, fixed and vec
 
     vector_dim = None
 
-    # one list of indices into dim_tags for each target axis
-    computed_stride_dim_tags = [[] for i in range(num_target_axes)]
-    fixed_stride_dim_tags = [[] for i in range(num_target_axes)]
+    # a mapping from target axes to {layout_nesting_level: dim_tag_index}
+    target_axis_to_nesting_level_map = {}
 
     for i, dim_tag in enumerate(dim_tags):
         if isinstance(dim_tag, VectorArrayDimTag):
             if vector_dim is not None:
-                raise ValueError("arg '%s' may only have one vector-tagged "
+                raise LoopyError("arg '%s' may only have one vector-tagged "
                         "argument dimension" % name)
 
             vector_dim = i
 
-        elif isinstance(dim_tag, FixedStrideArrayDimTag):
-            fixed_stride_dim_tags[dim_tag.target_axis].append(i)
+        elif isinstance(dim_tag, _StrideArrayDimTagBase):
+            if dim_tag.layout_nesting_level is None:
+                continue
 
-        elif isinstance(dim_tag, ComputedStrideArrayDimTag):
-            if dim_tag.order in "cC":
-                computed_stride_dim_tags[dim_tag.target_axis].insert(0, i)
-            elif dim_tag.order in "fF":
-                computed_stride_dim_tags[dim_tag.target_axis].append(i)
-            else:
-                raise ValueError("invalid value '%s' for "
-                        "ComputedStrideArrayDimTag.order" % dim_tag.order)
+            nl_map = target_axis_to_nesting_level_map \
+                    .setdefault(dim_tag.target_axis, {})
+            assert dim_tag.layout_nesting_level not in nl_map
+            nl_map[dim_tag.layout_nesting_level] = i
 
         elif isinstance(dim_tag, SeparateArrayArrayDimTag):
             pass
 
         else:
-            raise ValueError("invalid array dim tag")
+            raise LoopyError("invalid array dim tag")
 
     # }}}
 
@@ -282,16 +398,6 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
     new_dim_tags = dim_tags[:]
 
     for target_axis in range(num_target_axes):
-        if (computed_stride_dim_tags[target_axis]
-                and fixed_stride_dim_tags[target_axis]):
-            error_msg = "computed and fixed stride arg dim tags may " \
-                    "not be mixed for argument '%s'" % name
-
-            if num_target_axes > 1:
-                error_msg += " (target axis %d)" % target_axis
-
-            raise ValueError(error_msg)
-
         if vector_dim is None:
             stride_so_far = 1
         else:
@@ -302,34 +408,54 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
             if not is_integer(shape[vector_dim]):
                 raise TypeError("shape along vector axis %d of array '%s' "
                         "must be an integer, not an expression ('%s')"
-                        % (i, name, shape[vector_dim]))
+                        % (vector_dim, name, shape[vector_dim]))
 
             stride_so_far = shape[vector_dim]
             # FIXME: OpenCL-specific
             if stride_so_far == 3:
                 stride_so_far = 4
 
-        if fixed_stride_dim_tags[target_axis]:
-            for i in fixed_stride_dim_tags[target_axis]:
-                dim_tag = dim_tags[i]
-                new_dim_tags[i] = dim_tag
-        else:
-            for i in computed_stride_dim_tags[target_axis]:
-                dim_tag = dim_tags[i]
-                new_dim_tags[i] = FixedStrideArrayDimTag(stride_so_far,
-                        target_axis=dim_tag.target_axis)
+        nesting_level_map = target_axis_to_nesting_level_map.get(target_axis, {})
+        nl_keys = sorted(nesting_level_map.keys())
+
+        if not nl_keys:
+            continue
+
+        for key in nl_keys:
+            dim_tag_index = nesting_level_map[key]
+            dim_tag = dim_tags[dim_tag_index]
+
+            if isinstance(dim_tag, ComputedStrideArrayDimTag):
+                if stride_so_far is None:
+                    raise LoopyError("unable to determine fixed stride "
+                            "for axis %d because it is nested outside of "
+                            "an 'auto' stride axis"
+                            % dim_tag_index)
+
+                new_dim_tags[dim_tag_index] = FixedStrideArrayDimTag(stride_so_far,
+                        target_axis=dim_tag.target_axis,
+                        layout_nesting_level=dim_tag.layout_nesting_level)
 
                 if shape is None or shape is lp.auto:
                     # unable to normalize without known shape
                     return None
 
-                stride_so_far *= shape[i]
+                stride_so_far *= shape[dim_tag_index]
 
                 if dim_tag.pad_to is not None:
                     from pytools import div_ceil
                     stride_so_far = (
                             div_ceil(stride_so_far, dim_tag.pad_to)
                             * stride_so_far)
+
+            elif isinstance(dim_tag, FixedStrideArrayDimTag):
+                stride_so_far = dim_tag.stride
+
+                if stride_so_far is lp.auto:
+                    stride_so_far = None
+
+            else:
+                raise TypeError("internal error in dim_tag conversion")
 
     # }}}
 
@@ -494,7 +620,7 @@ class ArrayBase(Record):
             raise TypeError("may not specify both strides and dim_tags")
 
         if dim_tags is None and strides_known:
-            dim_tags = [FixedStrideArrayDimTag(s) for s in strides]
+            dim_tags = [FixedStrideArrayDimTag(s) for s in enumerate(strides)]
             strides = None
 
         # }}}
@@ -515,7 +641,7 @@ class ArrayBase(Record):
                 num_user_axes = new_num_user_axes
             else:
                 if new_num_user_axes != num_user_axes:
-                    raise ValueError("contradictory values for number of dimensions "
+                    raise LoopyError("contradictory values for number of dimensions "
                             "of array '%s' from shape, strides, or dim_tags"
                             % name)
 
@@ -546,7 +672,7 @@ class ArrayBase(Record):
                     target_axes.add(dim_tag.target_axis)
 
             if target_axes != set(range(len(target_axes))):
-                raise ValueError("target axes for variable '%s' are non-"
+                raise LoopyError("target axes for variable '%s' are non-"
                         "contiguous" % self.name)
 
             num_target_axes = len(target_axes)
@@ -555,7 +681,7 @@ class ArrayBase(Record):
             # }}}
 
             if not (self.min_target_axes <= num_target_axes <= self.max_target_axes):
-                raise ValueError("%s only supports between %d and %d target axes "
+                raise LoopyError("%s only supports between %d and %d target axes "
                         "('%s' has %d)" % (type(self).__name__, self.min_target_axes,
                             self.max_target_axes, self.name, num_target_axes))
 
