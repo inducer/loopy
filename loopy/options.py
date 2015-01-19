@@ -86,7 +86,7 @@ class Options(Record):
 
     .. attribute:: write_cl
 
-        Print the generate OpenCL kernel.
+        Print the generated OpenCL kernel.
         Accepts a file name as a value. Writes to
         ``sys.stdout`` if none is given.
 
