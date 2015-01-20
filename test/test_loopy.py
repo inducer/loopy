@@ -1212,9 +1212,11 @@ def test_convolution(ctx_factory):
         flags="annotate_inames",
         defines=dict(ncolors=3))
 
-    ref_knl = knl
-
     f_w = 3
+
+    knl = lp.fix_parameters(knl, f_w=f_w)
+
+    ref_knl = knl
 
     def variant_0(knl):
         #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
@@ -1229,7 +1231,6 @@ def test_convolution(ctx_factory):
     def variant_2(knl):
         knl = lp.split_iname(knl, "im_x", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.split_iname(knl, "im_y", 16, outer_tag="g.1", inner_tag="l.1")
-        knl = lp.fix_parameters(knl, f_w=f_w)
         knl = lp.tag_inames(knl, dict(ifeat="g.2"))
         knl = lp.add_prefetch(knl, "f[ifeat,:,:,:]")
         knl = lp.add_prefetch(knl, "img", "im_x_inner, im_y_inner, f_x, f_y")
