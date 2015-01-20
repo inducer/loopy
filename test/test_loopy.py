@@ -1786,6 +1786,57 @@ def test_affine_map_inames():
     print(knl)
 
 
+def test_poisson(ctx_factory):
+    # Stolen from Peter Coogan and Rob Kirby for FEM assembly
+    ctx = ctx_factory()
+
+    nbf = 5
+    nqp = 5
+    sdim = 3
+
+    knl = lp.make_kernel(
+            "{ [c,i,j,k,ell,ell2]: \
+            0 <= c < nels and \
+            0 <= i < nbf and \
+            0 <= j < nbf and \
+            0 <= k < nqp and \
+            0 <= ell < sdim and \
+            0 <= ell2 < sdim }",
+            """
+            dpsi(bf,k0,dir) := sum(ell2, DFinv[c,ell2,dir] * DPsi[bf,k0,ell2] )
+            Ael[c,i,j] = J[c] * w[k] * sum(ell, dpsi(i,k,ell) * dpsi(j,k,ell))
+            """,
+            assumptions="nels>=1 and nbf >= 1 and nels mod 4 = 0")
+
+    knl = lp.fix_parameters(knl, nbf=nbf, sdim=sdim, nqp=nqp)
+
+    ref_knl = knl
+
+    knl = lp.set_loop_priority(knl, ["c", "j", "i", "k"])
+
+    def initialknl(knl):
+        knl = lp.precompute(knl, "dpsi", "i,k,ell", default_tag='for')
+        knl = lp.set_loop_priority(knl, "c,i,j")
+        return knl
+
+    knl = initialknl(knl)
+
+    def add_types(knl):
+        return lp.add_and_infer_dtypes(knl, dict(
+            w=np.float32,
+            J=np.float32,
+            DPsi=np.float32,
+            DFinv=np.float32,
+            ))
+
+    ref_knl = add_types(ref_knl)
+    knl = add_types(knl)
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
