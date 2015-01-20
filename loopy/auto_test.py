@@ -359,6 +359,19 @@ def auto_test_vs_ref(
         message) indicating correctness/acceptability of the result
     """
 
+    if len(ref_knl.args) != len(test_knl.args):
+        raise LoopyError("ref_knl and test_knl do not have the same number "
+                "of arguments")
+
+    for i, (ref_arg, test_arg) in enumerate(zip(ref_knl.args, test_knl.args)):
+        if ref_arg.name != test_arg.name:
+            raise LoopyError("ref_knl and test_knl argument lists disagee at index "
+                    "%d (1-based)" % (i+1))
+
+        if ref_arg.dtype != test_arg.dtype:
+            raise LoopyError("ref_knl and test_knl argument lists disagee at index "
+                    "%d (1-based)" % (i+1))
+
     from loopy.compiled import CompiledKernel, get_highlighted_cl_code
 
     if isinstance(op_count, (int, float)):
