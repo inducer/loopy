@@ -574,8 +574,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     :arg sweep_inames: A :class:`list` of inames and/or rule argument
         names to be swept.
+        May also equivalently be a comma-separated string.
     :arg storage_axes: A :class:`list` of inames and/or rule argument
         names/indices to be used as storage axes.
+        May also equivalently be a comma-separated string.
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
 
@@ -589,14 +591,16 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ check, standardize arguments
 
+    if isinstance(sweep_inames, str):
+        sweep_inames = sweep_inames.split(",")
+
     for iname in sweep_inames:
         if iname not in kernel.all_inames():
             raise RuntimeError("sweep iname '%s' is not a known iname"
                     % iname)
 
     if isinstance(storage_axes, str):
-        raise TypeError("storage_axes may not be a string--likely a leftover "
-                "footprint_generators argument")
+        storage_axes = storage_axes.split(",")
 
     if isinstance(subst_use, str):
         subst_use = [subst_use]
