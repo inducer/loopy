@@ -524,7 +524,7 @@ For instance, :func:`set_loop_priority` fit the pattern.
 :func:`loopy.split_iname` is another fundamental (and useful) transformation. It
 turns one existing iname (recall that this is loopy's word for a 'loop
 variable', roughly) into two new ones, an 'inner' and an 'outer' one,
-where the 'inner' loopy is of a fixed, specified length, and the 'outer'
+where the 'inner' loop is of a fixed, specified length, and the 'outer'
 loop runs over these fixed-length 'chunks'. The three inames have the
 following relationship to one another::
 
