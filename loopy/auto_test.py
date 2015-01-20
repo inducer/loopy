@@ -508,8 +508,8 @@ def auto_test_vs_ref(
         else:
             test_kernels = [test_knl]
 
+    from loopy.preprocess import infer_unknown_types
     for i, kernel in enumerate(test_kernels):
-        from loopy.preprocess import infer_unknown_types
         kernel = infer_unknown_types(kernel, expect_completion=True)
 
         compiled = CompiledKernel(ctx, kernel)
