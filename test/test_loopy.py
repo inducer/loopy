@@ -1814,12 +1814,15 @@ def test_poisson(ctx_factory):
 
     knl = lp.set_loop_priority(knl, ["c", "j", "i", "k"])
 
-    def initialknl(knl):
+    def variant_1(knl):
         knl = lp.precompute(knl, "dpsi", "i,k,ell", default_tag='for')
         knl = lp.set_loop_priority(knl, "c,i,j")
         return knl
 
-    knl = initialknl(knl)
+    def variant_2(knl):
+        knl = lp.precompute(knl, "dpsi", "i,ell", default_tag='for')
+        knl = lp.set_loop_priority(knl, "c,i,j")
+        return knl
 
     def add_types(knl):
         return lp.add_and_infer_dtypes(knl, dict(
@@ -1829,12 +1832,15 @@ def test_poisson(ctx_factory):
             DFinv=np.float32,
             ))
 
-    ref_knl = add_types(ref_knl)
-    knl = add_types(knl)
+    for variant in [
+            #variant_1,
+            variant_2
+            ]:
+        knl = variant(knl)
 
-    lp.auto_test_vs_ref(
-            ref_knl, ctx, knl,
-            parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
+        lp.auto_test_vs_ref(
+                add_types(ref_knl), ctx, add_types(knl),
+                parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
 
 
 if __name__ == "__main__":
