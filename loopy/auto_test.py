@@ -32,6 +32,7 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
 import loopy as lp
+from loopy.diagnostic import LoopyError
 
 
 AUTO_TEST_SKIP_RUN = False
@@ -95,7 +96,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
 
         elif arg.arg_class is GlobalArg or arg.arg_class is ImageArg:
             if arg.shape is None:
-                raise ValueError("arrays need known shape to use automatic "
+                raise LoopyError("arrays need known shape to use automatic "
                         "testing")
 
             shape = evaluate(arg.unvec_shape, parameters)
@@ -118,7 +119,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
                         for alen, astrd in zip(shape, strides)) + 1
 
                 if dtype is None:
-                    raise RuntimeError("dtype for argument '%s' is not yet "
+                    raise LoopyError("dtype for argument '%s' is not yet "
                             "known. Perhaps you want to use "
                             "loopy.add_dtypes "
                             "or loopy.infer_argument_dtypes?"
@@ -132,7 +133,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
 
             if is_output:
                 if arg.arg_class is ImageArg:
-                    raise RuntimeError("write-mode images not supported in "
+                    raise LoopyError("write-mode images not supported in "
                             "automatic testing")
 
                 if is_dtype_supported(dtype):
@@ -164,7 +165,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
                         ref_numpy_strides=numpy_strides,
                         needs_checking=is_output))
         else:
-            raise RuntimeError("arg type not understood")
+            raise LoopyError("arg type not understood")
 
     return ref_args, ref_arg_data
 
@@ -273,7 +274,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
             arg_desc.test_alloc_size = alloc_size
 
         else:
-            raise RuntimeError("arg type not understood")
+            raise LoopyError("arg type not understood")
 
     return args
 
@@ -326,7 +327,7 @@ def _enumerate_cl_devices_for_ref_test():
                 noncpu_devs.append(dev)
 
     if not (cpu_devs or noncpu_devs):
-        raise RuntimeError("no CL device found for test")
+        raise LoopyError("no CL device found for test")
 
     if not cpu_devs:
         warn("No CPU device found for running reference kernel. The reference "
@@ -376,7 +377,7 @@ def auto_test_vs_ref(
 
     if read_and_written_args:
         # FIXME: In principle, that's possible to test
-        raise RuntimeError("kernel reads *and* writes argument(s) '%s' "
+        raise LoopyError("kernel reads *and* writes argument(s) '%s' "
                 "and therefore cannot be automatically tested"
                 % ", ".join(read_and_written_args))
 
@@ -472,7 +473,7 @@ def auto_test_vs_ref(
         break
 
     if not found_ref_device:
-        raise RuntimeError("could not find a suitable device for the "
+        raise LoopyError("could not find a suitable device for the "
                 "reference computation.\n"
                 "These errors were encountered:\n"+"\n".join(ref_errors))
 
