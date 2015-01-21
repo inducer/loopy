@@ -105,8 +105,6 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
         _StrideArrayDimTagBase.__init__(self,
                 stride=stride, target_axis=target_axis,
                 layout_nesting_level=layout_nesting_level)
-        self.stride = stride
-        self.target_axis = target_axis
 
     def stringify(self, include_target_axis):
         result = ""
@@ -621,7 +619,7 @@ class ArrayBase(Record):
             raise TypeError("may not specify both strides and dim_tags")
 
         if dim_tags is None and strides_known:
-            dim_tags = [FixedStrideArrayDimTag(s) for s in enumerate(strides)]
+            dim_tags = [FixedStrideArrayDimTag(s) for s in strides]
             strides = None
 
         # }}}
