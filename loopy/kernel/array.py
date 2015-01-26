@@ -109,7 +109,7 @@ class FixedStrideArrayDimTag(_StrideArrayDimTagBase):
     def stringify(self, include_target_axis):
         result = ""
         if self.layout_nesting_level is not None:
-            result += "N%d" % self.layout_nesting_level
+            result += "N%d:" % self.layout_nesting_level
 
         import loopy as lp
         if self.stride is lp.auto:
