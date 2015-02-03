@@ -5,15 +5,15 @@ loopy is a code generator for array-based code in the OpenCL/CUDA execution
 model. Here's a very simple example of how to double the entries of a vector
 using loopy:
 
-.. literalinclude:: ../examples/hello-loopy.py
+.. literalinclude:: ../examples/python/hello-loopy.py
    :end-before: ENDEXAMPLE
 
 This example is included in the :mod:`loopy` distribution as
-:download:`examples/hello-loopy.py <../examples/hello-loopy.py>`.
+:download:`examples/python/hello-loopy.py <../examples/python/hello-loopy.py>`.
 
 When you run this script, the following kernel is generated, compiled, and executed:
 
-.. literalinclude:: ../examples/hello-loopy.cl
+.. literalinclude:: ../examples/python/hello-loopy.cl
     :language: c
 
 (See the full example for how to print the generated code.)

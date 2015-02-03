@@ -45,6 +45,8 @@ setup(name="loo.py",
           "six",
           ],
 
+      scripts=["bin/loopy"],
+
       author="Andreas Kloeckner",
       url="http://mathema.tician.de/software/loopy",
       author_email="inform@tiker.net",

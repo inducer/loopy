@@ -1,5 +1,5 @@
 include test/*.py
-include examples/*.py
+recursive-include examples *.py *.cl *.floopy *.sh
 
 include doc/*.rst
 include doc/Makefile

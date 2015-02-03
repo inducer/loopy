@@ -1,0 +1,79 @@
+subroutine volumeKernel(elements, Nfields, Ngeo, Ndim, Dop, geo, Q, rhsQ  )
+
+  implicit none
+
+  integer elements, Nfields, Ngeo, Ndim
+
+  real*4 Dop(Nq,Nq)
+  real*4 Q(Nq,Nq,Nq,Nfields,elements)
+  real*4 geo(Nq,Nq,Nq,Ngeo,elements)
+  real*4 rhsQ(Nq,Nq,Nq,Nfields,elements)
+
+  integer e,i,j,k,d,n,cnt
+
+  real*4 u,v,w,p, dFdr, dFds, dFdt, divF
+  real*4 F(Nq,Nq,Nq,Ndim)
+
+
+  do e=1,elements
+     do k=1,Nq
+        do j=1,Nq
+           do i=1,Nq
+
+              u = Q(i,j,k,1,e)
+              v = Q(i,j,k,2,e)
+              w = Q(i,j,k,3,e)
+              p = Q(i,j,k,4,e)
+
+              F(i,j,k,1) = -u
+              F(i,j,k,2) = -v
+              F(i,j,k,3) = -w
+
+           end do
+        end do
+     end do
+
+     do k=1,Nq
+        do j=1,Nq
+           do i=1,Nq
+              divF = 0
+              cnt = 1
+              do d=1,Ndim
+                 dFdr = 0
+                 dFds = 0
+                 dFdt = 0
+
+                 do n=1,Nq
+                    dFdr = dFdr + Dop(i,n)*F(n,j,k,d)
+                    dFds = dFds + Dop(j,n)*F(i,n,k,d)
+                    dFdt = dFdt + Dop(k,n)*F(i,j,n,d)
+                 end do
+
+                 divF = divF &
+                      + geo(i,j,k,cnt,e)*dFdr &
+                      + geo(i,j,k,cnt+1,e)*dFds &
+                      + geo(i,j,k,cnt+2,e)*dFdt
+                 cnt = cnt + Ndim
+              end do
+
+              rhsQ(i,j,k,1,e) = divF
+
+           end do
+        end do
+     end do
+  end do
+
+end subroutine volumeKernel
+
+!$loopy begin transform
+!
+! volumeKernel = lp.split_iname(volumeKernel,
+!     "e", 32, outer_tag="g.1", inner_tag="g.0")
+! volumeKernel = lp.fix_parameters(volumeKernel,
+!     Nq=5, Ndim=3)
+! volumeKernel = lp.tag_inames(volumeKernel, dict(
+!     i="l.0", j="l.1", k="l.2",
+!     i_1="l.0", j_1="l.1", k_1="l.2"
+!     ))
+!
+!$loopy end transform

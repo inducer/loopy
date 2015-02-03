@@ -1,0 +1,199 @@
+#! /usr/bin/env python
+from __future__ import print_function
+
+import sys
+
+import loopy as lp
+import numpy as np
+
+
+def to_python_literal(value):
+    try:
+        int(value)
+    except ValueError:
+        pass
+    else:
+        # It's an integer
+        return value
+
+    try:
+        float(value)
+    except ValueError:
+        pass
+    else:
+        # It's a float
+        return repr(float(value))
+
+    return repr(value)
+
+
+def defines_to_python_code(defines_str):
+    import re
+    DEFINE_RE = re.compile(r"^\#define\s+([a-zA-Z0-9_]+)\s+(.*)$")
+    result = []
+    for l in defines_str.split("\n"):
+        if not l.strip():
+            continue
+
+        match = DEFINE_RE.match(l)
+        if match is None:
+            raise RuntimeError("#define not understood: '%s'" % l)
+
+        result.append(
+                "%s = %s" % (match.group(1), to_python_literal(match.group(2))))
+
+    return "\n".join(result)
+
+
+def main():
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(description="Stand-alone loopy frontend")
+
+    parser.add_argument("infile")
+    parser.add_argument("outfile")
+    parser.add_argument("--lang", default="loopy")
+    parser.add_argument("--target")
+    parser.add_argument("--name")
+    parser.add_argument("--transform")
+    parser.add_argument("--occa-defines")
+    parser.add_argument("--occa-add-dummy-arg", action="store_true")
+    parser.add_argument("--print-ir", action="store_true")
+    args = parser.parse_args()
+
+    # {{{ set up target
+
+    if args.target is None:
+        raise ValueError("must specify target")
+
+    import re
+    CL_TARGET_RE = re.compile(r"^cl:([0-9]+),([0-9]+)$")
+
+    cl_target_re_match = CL_TARGET_RE.match(args.target)
+    if cl_target_re_match is not None:
+        platform_ordinal = int(cl_target_re_match.group(1))
+        device_ordinal = int(cl_target_re_match.group(2))
+
+        import pyopencl as cl
+        plat = cl.get_platforms()[platform_ordinal]
+        target = plat.get_devices()[device_ordinal]
+    else:
+        raise ValueError("target '%s' not understood"
+                % args.target)
+
+    # }}}
+
+    if args.infile == "-":
+        infile_content = sys.stdin.read()
+    else:
+        with open(args.infile, "r") as infile_fd:
+            infile_content = infile_fd.read()
+
+    # {{{ path wrangling
+
+    from os.path import dirname, abspath
+    from os import getcwd
+
+    infile_dirname = dirname(args.infile)
+    if infile_dirname:
+        infile_dirname = abspath(infile_dirname)
+    else:
+        infile_dirname = getcwd()
+
+    import sys
+    sys.path.append(infile_dirname)
+
+    # }}}
+
+    if args.lang == "loopy":
+        data_dic = {}
+        data_dic["lp"] = lp
+        data_dic["np"] = np
+        data_dic["lp_target"] = target
+
+        if args.occa_defines:
+            with open(args.occa_defines, "r") as defines_fd:
+                occa_define_code = defines_to_python_code(defines_fd.read())
+            exec(compile(occa_define_code, args.occa_defines, "exec"), data_dic)
+
+        with open(args.infile, "r") as infile_fd:
+            exec(compile(infile_content, args.infile, "exec"), data_dic)
+
+        if args.transform:
+            with open(args.transform, "r") as xform_fd:
+                exec(compile(xform_fd.read(),
+                    args.transform, "exec"), data_dic)
+
+        try:
+            kernel = data_dic["lp_knl"]
+        except KeyError:
+            raise RuntimeError("loopy-lang requires 'lp_knl' "
+                    "to be defined on exit")
+
+        if args.name is not None:
+            kernel = kernel.copy(name=args.name)
+
+        kernels = [kernel]
+
+    elif args.lang == "floopy":
+        pre_transform_code = None
+        if args.transform:
+            with open(args.transform, "r") as xform_fd:
+                pre_transform_code = xform_fd.read()
+
+        if args.occa_defines:
+            if pre_transform_code is None:
+                pre_transform_code = ""
+
+            with open(args.occa_defines, "r") as defines_fd:
+                pre_transform_code = (
+                        defines_to_python_code(defines_fd.read())
+                        + pre_transform_code)
+
+        from floopy.fortran import f2loopy
+        kernels = f2loopy(target, infile_content,
+                pre_transform_code=pre_transform_code)
+
+        if args.name is not None:
+            kernels = [kernel for kernel in kernels
+                    if kernel.name == args.name]
+
+        if not kernels:
+            raise RuntimeError("no kernels found (name specified: %s)"
+                    % args.name)
+
+    else:
+        raise RuntimeError("unknown language: '%s'"
+                % args.lang)
+
+    if args.print_ir:
+        for kernel in kernels:
+            print(kernel, file=sys.stderr)
+
+    if args.occa_add_dummy_arg:
+        new_kernels = []
+        for kernel in kernels:
+            new_args = [
+                    lp.GlobalArg("occa_info", np.int32, shape=None)
+                    ] + kernel.args
+            new_kernels.append(kernel.copy(args=new_args))
+
+        kernels = new_kernels
+        del new_kernels
+
+    codes = []
+    from loopy.codegen import generate_code
+    for kernel in kernels:
+        kernel = lp.preprocess_kernel(kernel)
+        code, impl_arg_info = generate_code(kernel)
+        codes.append(code)
+
+    if args.outfile == "-":
+        sys.stdout.write("\n\n".join(codes))
+    else:
+        with open(args.outfile, "w") as outfile_fd:
+            outfile_fd.write("\n\n".join(codes))
+
+
+if __name__ == "__main__":
+    main()

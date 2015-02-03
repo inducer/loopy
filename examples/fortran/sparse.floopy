@@ -1,0 +1,30 @@
+subroutine sparse(rowstarts, colindices, values, m, n, nvals, x, y)
+  implicit none
+
+  integer rowstarts(m+1), colindices(nvals)
+  real*8 values(nvals)
+  real*8 x(n), y(n), rowsum
+
+  integer m, n, rowstart, rowend, length, nvals
+
+  do i = 1, m
+    rowstart = rowstarts(i)
+    rowend = rowstarts(i+1)
+    length = rowend - rowstart
+
+    rowsum = 0
+    do j = 1, length
+      rowsum = rowsum + &
+        x(colindices(rowstart+j-1))*values(rowstart+j-1)
+    end do
+    y(i) = rowsum
+  end do
+end
+
+!$loopy begin transform
+! sparse = lp.split_iname(sparse, "i", 128)
+! sparse = lp.tag_inames(sparse, {"i_outer": "g.0"})
+! sparse = lp.tag_inames(sparse, {"i_inner": "l.0"})
+! sparse = lp.split_iname(sparse, "j", 4)
+! sparse = lp.tag_inames(sparse, {"j_inner": "unr"})
+!$loopy end transform

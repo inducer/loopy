@@ -1,0 +1,24 @@
+subroutine fill(out, a, n)
+  implicit none
+
+  real*8 a, out(n)
+  integer n
+
+!$loopy begin tagged: init
+  do i = 1, n
+    out(i) = a
+  end do
+!$loopy end tagged: init
+  do i = 1, n
+    out(i) = out(i) * 2
+  end do
+end
+
+!$loopy begin transform
+!
+! fill = lp.split_iname(fill, "i", 128,
+!     outer_tag="g.0", inner_tag="l.0")
+! fill = lp.split_iname(fill, "i_1", 128,
+!     outer_tag="g.0", inner_tag="l.0")
+!$loopy end transform
+! vim:filetype=floopy
