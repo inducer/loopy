@@ -29,7 +29,7 @@ def f2loopy(target, source, free_form=True, strict=True,
     tree = api.parse(source, isfree=free_form, isstrict=strict,
             analyze=False, ignore_comments=False)
 
-    from floopy.fortran.translator import F2LoopyTranslator
+    from loopy.frontend.fortran.translator import F2LoopyTranslator
     f2loopy = F2LoopyTranslator()
     f2loopy(tree)
 

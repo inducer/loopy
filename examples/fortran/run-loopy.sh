@@ -1,3 +1,3 @@
 #! /bin/sh
 
-floopy --target=cl:0,0 --lang=loopy "$1" -
+python $(which loopy) --target=cl:0,0 --lang=loopy "$NAME" - "$@"

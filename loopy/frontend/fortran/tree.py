@@ -27,7 +27,7 @@ import re
 
 class FTreeWalkerBase(object):
     def __init__(self):
-        from floopy.fortran.expression import FortranExpressionParser
+        from loopy.frontend.fortran.expression import FortranExpressionParser
         self.expr_parser = FortranExpressionParser(self)
 
     def rec(self, expr, *args, **kwargs):

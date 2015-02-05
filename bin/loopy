@@ -150,7 +150,7 @@ def main():
                         defines_to_python_code(defines_fd.read())
                         + pre_transform_code)
 
-        from floopy.fortran import f2loopy
+        from loopy.frontend.fortran import f2loopy
         kernels = f2loopy(target, infile_content,
                 pre_transform_code=pre_transform_code)
 

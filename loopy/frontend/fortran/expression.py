@@ -23,7 +23,7 @@ THE SOFTWARE.
 """
 
 from pymbolic.parser import Parser as ExpressionParserBase
-from floopy.fortran.diagnostic import TranslationError
+from loopy.frontend.fortran.diagnostic import TranslationError
 
 import pymbolic.primitives as prim
 import numpy as np

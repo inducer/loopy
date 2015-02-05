@@ -27,8 +27,8 @@ import re
 import loopy as lp
 import numpy as np
 from warnings import warn
-from floopy.fortran.tree import FTreeWalkerBase
-from floopy.fortran.diagnostic import (
+from loopy.frontend.fortran.tree import FTreeWalkerBase
+from loopy.frontend.fortran.diagnostic import (
         TranslationError, TranslatorWarning)
 import islpy as isl
 from islpy import dim_type
