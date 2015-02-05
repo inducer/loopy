@@ -3,13 +3,6 @@
 
 from setuptools import setup, find_packages
 
-try:
-    import cx_Freeze
-    HAVE_CXFREEZE = True
-    setup = cx_Freeze.setup
-except ImportError:
-    HAVE_CXFREEZE = False
-
 ver_dic = {}
 version_file = open("loopy/version.py")
 try:
@@ -18,24 +11,6 @@ finally:
     version_file.close()
 
 exec(compile(version_file_contents, "pyopencl/version.py", 'exec'), ver_dic)
-
-setup_kwargs = {}
-
-if HAVE_CXFREEZE:
-    setup_kwargs = dict(
-            executables=[
-                cx_Freeze.Executable(
-                    'bin/loopy',
-                    base='Console',
-                    targetName='loopy')
-                ],
-            options=dict(
-                build_exe=dict(
-                    packages=[],
-                    excludes=["scipy", "meshpy", "Tkinter", "pyublas", "hedge", "pyopencl"]
-                ))
-            )
-
 
 setup(name="loo.py",
       version=ver_dic["VERSION_TEXT"],
@@ -77,5 +52,4 @@ setup(name="loo.py",
       author_email="inform@tiker.net",
       license="MIT",
       packages=find_packages(),
-
-      **setup_kwargs)
+      )
