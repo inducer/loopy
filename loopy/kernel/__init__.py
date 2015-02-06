@@ -148,7 +148,6 @@ class LoopKernel(RecordWithoutPickling):
         A value from :class:`kernel_state`.
     """
 
-
     # {{{ constructor
 
     def __init__(self, domains, instructions, args=[], schedule=None,

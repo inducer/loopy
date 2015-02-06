@@ -23,7 +23,7 @@ THE SOFTWARE.
 """
 
 
-def f2loopy(target, source, free_form=True, strict=True,
+def f2loopy(source, free_form=True, strict=True,
         pre_transform_code=None):
     from fparser import api
     tree = api.parse(source, isfree=free_form, isstrict=strict,
