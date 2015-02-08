@@ -106,7 +106,7 @@ class PicklableDtype(object):
     The issues are the following
 
     - :class:`numpy.dtype` objects for custom types in :mod:`loopy` are usually
-      registered in the :mod:`pyopencl` dtype registry. This registration may
+      registered in the target's dtype registry. This registration may
       have been lost after unpickling. This container restores it implicitly,
       as part of unpickling.
 
@@ -115,10 +115,13 @@ class PicklableDtype(object):
       by retrieving the 'canonical' type from the dtype registry.
     """
 
-    def __init__(self, dtype):
+    def __init__(self, dtype, target=None):
+        assert not isinstance(dtype, PicklableDtype)
+
         if dtype is None:
             raise TypeError("may not pass None to construct PicklableDtype")
 
+        self.target = target
         self.dtype = np.dtype(dtype)
 
     def __hash__(self):
@@ -133,14 +136,25 @@ class PicklableDtype(object):
         return not self.__eq__(self, other)
 
     def __getstate__(self):
-        from pyopencl.compyte.dtypes import DTYPE_TO_NAME
-        c_name = DTYPE_TO_NAME[self.dtype]
+        if self.target is None:
+            raise RuntimeError("unable to pickle dtype: target not known")
 
-        return (c_name, self.dtype)
+        c_name = self.target.dtype_to_typename(self.dtype)
+        return (self.target, c_name, self.dtype)
 
     def __setstate__(self, state):
-        name, dtype = state
-        from pyopencl.tools import get_or_register_dtype
-        self.dtype = get_or_register_dtype([name], dtype)
+        target, name, dtype = state
+        self.target = target
+        self.dtype = self.target.get_or_register_dtype([name], dtype)
+
+    def with_target(self, target):
+        if (self.target is not None
+                and target is not self.target):
+            raise RuntimeError("target already set to different value")
+
+        return PicklableDtype(self.dtype, target)
+
+    def assert_has_target(self):
+        assert self.target is not None
 
 # vim: foldmethod=marker

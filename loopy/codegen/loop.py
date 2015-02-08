@@ -369,11 +369,10 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
 
         else:
             from loopy.codegen import wrap_in
-            from pyopencl.tools import dtype_to_ctype
 
             result.append(wrap_in(For,
                     "%s %s = %s"
-                    % (dtype_to_ctype(kernel.index_dtype),
+                    % (kernel.target.dtype_to_typename(kernel.index_dtype),
                         loop_iname, ccm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                     "%s <= %s" % (
                         loop_iname, ccm(aff_to_expr(static_ubound), PREC_NONE, "i")),

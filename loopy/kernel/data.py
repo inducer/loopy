@@ -175,10 +175,9 @@ def parse_tag(tag):
 
 # {{{ arguments
 
-
 class KernelArgument(Record):
     def __init__(self, **kwargs):
-        dtype = kwargs.pop("dtype")
+        dtype = kwargs.pop("dtype", None)
 
         if isinstance(dtype, np.dtype):
             from loopy.tools import PicklableDtype
@@ -210,13 +209,13 @@ class GlobalArg(ArrayBase, KernelArgument):
     min_target_axes = 0
     max_target_axes = 1
 
-    def get_arg_decl(self, name_suffix, shape, dtype, is_written):
+    def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
         from loopy.codegen import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
         from cgen.opencl import CLGlobal
 
         arg_decl = RestrictPointer(
-                POD(dtype, self.name + name_suffix))
+                POD(target, dtype, self.name + name_suffix))
 
         if not is_written:
             arg_decl = Const(arg_decl)
@@ -228,7 +227,7 @@ class ConstantArg(ArrayBase, KernelArgument):
     min_target_axes = 0
     max_target_axes = 1
 
-    def get_arg_decl(self, name_suffix, shape, dtype, is_written):
+    def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
         from loopy.codegen import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
         from cgen.opencl import CLConstant
@@ -250,7 +249,7 @@ class ImageArg(ArrayBase, KernelArgument):
     def dimensions(self):
         return len(self.dim_tags)
 
-    def get_arg_decl(self, name_suffix, shape, dtype, is_written):
+    def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
         if is_written:
             mode = "w"
         else:
@@ -262,7 +261,8 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000):
-        if dtype is not None:
+        from loopy.tools import PicklableDtype
+        if dtype is not None and not isinstance(dtype, PicklableDtype):
             dtype = np.dtype(dtype)
 
         KernelArgument.__init__(self, name=name, dtype=dtype,
@@ -342,12 +342,12 @@ class TemporaryVariable(ArrayBase):
         from pytools import product
         return product(si for si in self.shape)*self.dtype.itemsize
 
-    def get_arg_decl(self, name_suffix, shape, dtype, is_written):
+    def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
         from cgen import ArrayOf
         from loopy.codegen import POD  # uses the correct complex type
         from cgen.opencl import CLLocal
 
-        temp_var_decl = POD(self.dtype, self.name)
+        temp_var_decl = POD(target, self.dtype, self.name)
 
         # FIXME take into account storage_shape, or something like it
         storage_shape = self.shape

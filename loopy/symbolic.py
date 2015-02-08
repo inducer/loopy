@@ -243,10 +243,8 @@ class Reduction(AlgebraicLeaf):
 
     def __init__(self, operation, inames, expr):
         assert isinstance(inames, tuple)
-
-        if isinstance(operation, str):
-            from loopy.library.reduction import parse_reduction_op
-            operation = parse_reduction_op(operation)
+        from loopy.library.reduction import ReductionOperation
+        assert isinstance(operation, ReductionOperation)
 
         self.operation = operation
         self.inames = inames
@@ -620,7 +618,27 @@ class FunctionToPrimitiveMapper(IdentityMapper):
     turns those into the actual pymbolic primitives used for that.
     """
 
+    def _parse_reduction(self, operation, inames, red_expr):
+        if isinstance(inames, Variable):
+            inames = (inames,)
+
+        if not isinstance(inames, (tuple)):
+            raise TypeError("iname argument to reduce() must be a symbol "
+                    "or a tuple of symbols")
+
+        processed_inames = []
+        for iname in inames:
+            if not isinstance(iname, Variable):
+                raise TypeError("iname argument to reduce() must be a symbol "
+                        "or a tuple or a tuple of symbols")
+
+            processed_inames.append(iname.name)
+
+        return Reduction(operation, tuple(processed_inames), red_expr)
+
     def map_call(self, expr):
+        from loopy.library.reduction import parse_reduction_op
+
         from pymbolic.primitives import Variable
         if not isinstance(expr.function, Variable):
             return IdentityMapper.map_call(self, expr)
@@ -644,51 +662,38 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         elif name == "reduce":
             if len(expr.parameters) == 3:
                 operation, inames, red_expr = expr.parameters
+
+                if not isinstance(operation, Variable):
+                    raise TypeError("operation argument to reduce() "
+                            "must be a symbol")
+
+                operation = parse_reduction_op(operation.name)
+                return self._parse_reduction(operation, inames, self.rec(red_expr))
             else:
                 raise TypeError("invalid 'reduce' calling sequence")
 
         elif name == "if":
-            if len(expr.parameters) in [2, 3]:
+            if len(expr.parameters) == 3:
                 from pymbolic.primitives import If
                 return If(*expr.parameters)
             else:
-                raise TypeError("if takes two or three arguments")
+                raise TypeError("if takes three arguments")
 
         else:
             # see if 'name' is an existing reduction op
 
-            from loopy.library.reduction import parse_reduction_op
-            if parse_reduction_op(name):
+            operation = parse_reduction_op(name)
+            if operation:
                 if len(expr.parameters) != 2:
                     raise RuntimeError("invalid invocation of "
                             "reduction operation '%s'" % expr.function.name)
 
-                operation = expr.function
                 inames, red_expr = expr.parameters
+                return self._parse_reduction(operation, inames, self.rec(red_expr))
+
             else:
                 return IdentityMapper.map_call(self, expr)
 
-        red_expr = self.rec(red_expr)
-
-        if not isinstance(operation, Variable):
-            raise TypeError("operation argument to reduce() must be a symbol")
-        operation = operation.name
-        if isinstance(inames, Variable):
-            inames = (inames,)
-
-        if not isinstance(inames, (tuple)):
-            raise TypeError("iname argument to reduce() must be a symbol "
-                    "or a tuple of symbols")
-
-        processed_inames = []
-        for iname in inames:
-            if not isinstance(iname, Variable):
-                raise TypeError("iname argument to reduce() must be a symbol "
-                        "or a tuple or a tuple of symbols")
-
-            processed_inames.append(iname.name)
-
-        return Reduction(operation, tuple(processed_inames), red_expr)
 
 # {{{ customization to pymbolic parser
 

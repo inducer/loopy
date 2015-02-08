@@ -1043,6 +1043,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         to silence
     :arg options: an instance of :class:`loopy.Options` or an equivalent
         string representation
+    :arg target: an instance of :class:`loopy.target.TargetBase`, or *None*,
+        to use an OpenCL target.
     """
 
     defines = kwargs.pop("defines", {})
@@ -1051,6 +1053,17 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     silenced_warnings = kwargs.pop("silenced_warnings", [])
     options = kwargs.pop("options", None)
     flags = kwargs.pop("flags", None)
+    target = kwargs.pop("target", None)
+
+    if target is None:
+        try:
+            import pyopencl  # noqa
+        except ImportError:
+            from loopy.target.opencl import OpenCLTarget
+            target = OpenCLTarget()
+        else:
+            from loopy.target.pyopencl import PyOpenCLTarget
+            target = PyOpenCLTarget()
 
     if flags is not None:
         if options is not None:
@@ -1153,6 +1166,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             temporary_variables=temporary_variables,
             silenced_warnings=silenced_warnings,
             options=options,
+            target=target,
             **kwargs)
 
     from loopy import duplicate_inames

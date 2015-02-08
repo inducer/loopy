@@ -31,9 +31,6 @@ from six import iteritems
 
 from pytools import Record, memoize_method
 
-import pyopencl as cl  # noqa
-import pyopencl.array  # noqa
-
 import numpy as np  # noqa
 
 from loopy.diagnostic import LoopyError
@@ -244,6 +241,8 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
         padded_stride_match = PADDED_STRIDE_TAG_RE.match(tag)
         if padded_stride_match is not None:
             tag = padded_stride_match.group(1)
+
+            from loopy.symbolic import parse
             pad_to = parse(padded_stride_match.group(2))
         else:
             pad_to = None
@@ -592,7 +591,10 @@ class ArrayBase(Record):
 
         if dtype is not None and dtype is not lp.auto:
             from loopy.tools import PicklableDtype
-            picklable_dtype = PicklableDtype(dtype)
+            if not isinstance(dtype, PicklableDtype):
+                picklable_dtype = PicklableDtype(dtype)
+            else:
+                picklable_dtype = dtype
 
             if picklable_dtype.dtype == object:
                 raise TypeError("loopy does not directly support object arrays "
@@ -826,7 +828,7 @@ class ArrayBase(Record):
 
         return self.copy(**kwargs)
 
-    def vector_size(self):
+    def vector_size(self, target):
         """Return the size of the vector type used for the array
         divided by the basic data type.
 
@@ -844,13 +846,13 @@ class ArrayBase(Record):
                             "length for vector axis %d (0-based)" % (
                                 self.name, i))
 
-                vec_dtype = cl.array.vec.types[self.dtype, shape_i]
+                vec_dtype = target.vector_dtype(self.dtype, shape_i)
 
                 return int(vec_dtype.itemsize) // int(self.dtype.itemsize)
 
         return 1
 
-    def decl_info(self, is_written, index_dtype):
+    def decl_info(self, target, is_written, index_dtype):
         """Return a list of :class:`loopy.codegen.ImplementedDataInfo`
         instances corresponding to the argume
         """
@@ -907,6 +909,7 @@ class ArrayBase(Record):
 
                     stride_args.append(
                             ImplementedDataInfo(
+                                target=target,
                                 name=stride_name,
                                 dtype=index_dtype,
                                 cgen_declarator=Const(POD(index_dtype, stride_name)),
@@ -915,12 +918,13 @@ class ArrayBase(Record):
                                     full_name, stride_impl_axis)))
 
                 yield ImplementedDataInfo(
+                            target=target,
                             name=full_name,
                             base_name=self.name,
 
                             # implemented by various argument types
                             cgen_declarator=self.get_arg_decl(
-                                name_suffix, shape, dtype, is_written),
+                                target, name_suffix, shape, dtype, is_written),
 
                             arg_class=type(self),
                             dtype=dtype,
@@ -935,6 +939,7 @@ class ArrayBase(Record):
                     from cgen import Const, POD
                     offset_name = full_name+"_offset"
                     yield ImplementedDataInfo(
+                                target=target,
                                 name=offset_name,
                                 dtype=index_dtype,
                                 cgen_declarator=Const(POD(index_dtype, offset_name)),
@@ -1003,7 +1008,7 @@ class ArrayBase(Record):
                         # vectors always have stride 1
                         unvec_strides + (1,),
                         stride_arg_axes,
-                        cl.array.vec.types[dtype, shape_i],
+                        target.vector_dtype(dtype, shape_i),
                         user_index + (None,)):
                     yield res
 
@@ -1067,7 +1072,7 @@ class AccessInfo(Record):
     """
 
 
-def get_access_info(ary, index, eval_expr):
+def get_access_info(target, ary, index, eval_expr):
     """
     :arg ary: an object of type :class:`ArrayBase`
     :arg index: a tuple of indices representing a subscript into ary
@@ -1109,7 +1114,7 @@ def get_access_info(ary, index, eval_expr):
     vector_index = None
     subscripts = [0] * num_target_axes
 
-    vector_size = ary.vector_size()
+    vector_size = ary.vector_size(target)
 
     # {{{ process separate-array dim tags first, to find array name
 

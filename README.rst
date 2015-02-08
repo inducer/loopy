@@ -43,6 +43,11 @@ It is not (and does not want to be) a general-purpose programming language.
 
 Loopy is licensed under the liberal `MIT license
 <http://en.wikipedia.org/wiki/MIT_License>`_ and free for commercial, academic,
-and private use. To use Loopy, you just need `pyopencl
-<http://mathema.tician.de/software/pyopencl>`_.
+and private use. All of Loopy's dependencies can be automatically installed from
+the package index after using::
+
+    pip install loo.py
+
+In addition, Loopy is compatible with and enhances
+`pyopencl <http://mathema.tician.de/software/pyopencl>`_.
 

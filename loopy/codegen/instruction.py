@@ -99,7 +99,7 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     result = Assign(
             lhs_code,
             ccm(expr, prec=PREC_NONE,
-                type_context=dtype_to_type_context(target_dtype),
+                type_context=dtype_to_type_context(kernel.target, target_dtype),
                 needed_dtype=target_dtype))
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
@@ -174,7 +174,7 @@ def generate_c_instruction_code(kernel, insn, codegen_state):
 
         body.append(
                 Initializer(
-                    POD(kernel.index_dtype, name),
+                    POD(kernel.target, kernel.index_dtype, name),
                     codegen_state.c_code_mapper(
                         iname_expr, prec=PREC_NONE, type_context="i")))
 

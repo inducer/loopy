@@ -384,7 +384,9 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options):
                         "be supplied\")" % arg.name)
                 gen("")
 
-        if is_written and arg.arg_class is lp.ImageArg and not options.skip_arg_checks:
+        if (is_written
+                and arg.arg_class is lp.ImageArg
+                and not options.skip_arg_checks):
             gen("if %s is None:" % arg.name)
             with Indentation(gen):
                 gen("raise RuntimeError(\"written image '%s' must "
@@ -683,7 +685,7 @@ class CompiledKernel:
 
         if kernel.schedule is None:
             from loopy.preprocess import preprocess_kernel
-            kernel = preprocess_kernel(kernel, self.context.devices[0])
+            kernel = preprocess_kernel(kernel)
 
             from loopy.schedule import get_one_scheduled_kernel
             kernel = get_one_scheduled_kernel(kernel)
@@ -695,7 +697,7 @@ class CompiledKernel:
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
 
         from loopy.codegen import generate_code
-        code, impl_arg_info = generate_code(kernel, device=self.context.devices[0])
+        code, impl_arg_info = generate_code(kernel)
 
         if self.kernel.options.write_cl:
             output = code
@@ -733,7 +735,7 @@ class CompiledKernel:
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
 
         from loopy.codegen import generate_code
-        code, arg_info = generate_code(kernel, device=self.context.devices[0])
+        code, arg_info = generate_code(kernel)
         return code
 
     def get_highlighted_code(self, arg_to_dtype=None):

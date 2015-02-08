@@ -23,64 +23,19 @@ THE SOFTWARE.
 """
 
 
-import numpy as np
-
-
-def default_function_mangler(name, arg_dtypes):
+def default_function_mangler(target, name, arg_dtypes):
     from loopy.library.reduction import reduction_function_mangler
 
     manglers = [reduction_function_mangler]
     for mangler in manglers:
-        result = mangler(name, arg_dtypes)
+        result = mangler(target, name, arg_dtypes)
         if result is not None:
             return result
 
     return None
 
 
-def opencl_function_mangler(name, arg_dtypes):
-    if name in ["max", "min"] and len(arg_dtypes) == 2:
-        dtype = np.find_common_type([], arg_dtypes)
-
-        if dtype.kind == "c":
-            raise RuntimeError("min/max do not support complex numbers")
-
-        if dtype.kind == "f":
-            name = "f" + name
-
-        return dtype, name
-
-    if name in "atan2" and len(arg_dtypes) == 2:
-        return arg_dtypes[0], name
-
-    if len(arg_dtypes) == 1:
-        arg_dtype, = arg_dtypes
-
-        if arg_dtype.kind == "c":
-            if arg_dtype == np.complex64:
-                tpname = "cfloat"
-            elif arg_dtype == np.complex128:
-                tpname = "cdouble"
-            else:
-                raise RuntimeError("unexpected complex type '%s'" % arg_dtype)
-
-            if name in ["sqrt", "exp", "log",
-                    "sin", "cos", "tan",
-                    "sinh", "cosh", "tanh",
-                    "conj"]:
-                return arg_dtype, "%s_%s" % (tpname, name)
-
-            if name in ["real", "imag", "abs"]:
-                return np.dtype(arg_dtype.type(0).real), "%s_%s" % (tpname, name)
-
-    if name == "dot":
-        scalar_dtype, offset, field_name = arg_dtypes[0].fields["s0"]
-        return scalar_dtype, name
-
-    return None
-
-
-def single_arg_function_mangler(name, arg_dtypes):
+def single_arg_function_mangler(target, name, arg_dtypes):
     if len(arg_dtypes) == 1:
         dtype, = arg_dtypes
         return dtype, name

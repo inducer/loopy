@@ -27,6 +27,7 @@ from pymbolic import var
 import numpy as np
 
 from loopy.symbolic import FunctionIdentifier
+from loopy.diagnostic import LoopyError
 
 
 class ReductionOperation(object):
@@ -34,7 +35,7 @@ class ReductionOperation(object):
     equality-comparable.
     """
 
-    def result_dtype(self, arg_dtype, inames):
+    def result_dtype(self, target, arg_dtype, inames):
         raise NotImplementedError
 
     def neutral_element(self, dtype, inames):
@@ -54,32 +55,50 @@ class ReductionOperation(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    @staticmethod
+    def parse_result_type(target, op_type):
+        try:
+            return np.dtype(op_type)
+        except TypeError:
+            pass
+
+        if op_type.startswith("vec_"):
+            try:
+                return target.get_or_register_dtype(op_type[4:])
+            except AttributeError:
+                pass
+
+        raise LoopyError("unable to parse reduction type: '%s'"
+                % op_type)
+
 
 class ScalarReductionOperation(ReductionOperation):
-    def __init__(self, forced_result_dtype=None):
+    def __init__(self, forced_result_type=None):
         """
-        :arg forced_result_dtype: Force the reduction result to be of this type.
+        :arg forced_result_type: Force the reduction result to be of this type.
+            May be a string identifying the type for the backend under
+            consideration.
         """
-        self.forced_result_dtype = forced_result_dtype
+        self.forced_result_type = forced_result_type
 
-    def result_dtype(self, arg_dtype, inames):
-        if self.forced_result_dtype is not None:
-            return self.forced_result_dtype
+    def result_dtype(self, target, arg_dtype, inames):
+        if self.forced_result_type is not None:
+            return self.parse_result_type(target, self.forced_result_type)
 
         return arg_dtype
 
     def __hash__(self):
-        return hash((type(self), self.forced_result_dtype))
+        return hash((type(self), self.forced_result_type))
 
     def __eq__(self, other):
         return (type(self) == type(other)
-                and self.forced_result_dtype == other.forced_result_dtype)
+                and self.forced_result_type == other.forced_result_type)
 
     def __str__(self):
         result = type(self).__name__.replace("ReductionOperation", "").lower()
 
-        if self.forced_result_dtype is not None:
-            result = "%s<%s>" % (result, str(self.forced_result_dtype))
+        if self.forced_result_type is not None:
+            result = "%s<%s>" % (result, str(self.forced_result_type))
 
         return result
 
@@ -136,15 +155,14 @@ class _ArgExtremumReductionOperation(ReductionOperation):
     def prefix(self, dtype):
         return "loopy_arg%s_%s" % (self.which, dtype.type.__name__)
 
-    def result_dtype(self, dtype, inames):
+    def result_dtype(self, target, dtype, inames):
         try:
             return ARGEXT_STRUCT_DTYPES[dtype]
         except KeyError:
             struct_dtype = np.dtype([("value", dtype), ("index", np.int32)])
             ARGEXT_STRUCT_DTYPES[dtype] = struct_dtype
 
-            from pyopencl.tools import get_or_register_dtype
-            get_or_register_dtype(self.prefix(dtype)+"_result", struct_dtype)
+            target.get_or_register_dtype(self.prefix(dtype)+"_result", struct_dtype)
             return struct_dtype
 
     def neutral_element(self, dtype, inames):
@@ -188,11 +206,10 @@ class ArgExtFunction(FunctionIdentifier):
         return (self.reduction_op, self.scalar_dtype, self.name, self.inames)
 
 
-def get_argext_preamble(func_id):
+def get_argext_preamble(target, func_id):
     op = func_id.reduction_op
     prefix = op.prefix(func_id.scalar_dtype)
 
-    from pyopencl.tools import dtype_to_ctype
     from pymbolic.mapper.c_code import CCodeMapper
 
     c_code_mapper = CCodeMapper()
@@ -225,7 +242,7 @@ def get_argext_preamble(func_id):
     }
     """ % dict(
             type_name=prefix+"_result",
-            scalar_type=dtype_to_ctype(func_id.scalar_dtype),
+            scalar_type=target.dtype_to_typename(func_id.scalar_dtype),
             prefix=prefix,
             neutral=c_code_mapper(
                 op.neutral_sign*get_le_neutral(func_id.scalar_dtype)),
@@ -267,20 +284,8 @@ def parse_reduction_op(name):
         op_name = red_op_match.group(1)
         op_type = red_op_match.group(2)
 
-        try:
-            op_dtype = np.dtype(op_type)
-        except TypeError:
-            op_dtype = None
-
-        if op_dtype is None and op_type.startswith("vec_"):
-            import pyopencl.array as cl_array
-            try:
-                op_dtype = getattr(cl_array.vec, op_type[4:])
-            except AttributeError:
-                op_dtype = None
-
-        if op_name in _REDUCTION_OPS and op_dtype is not None:
-            return _REDUCTION_OPS[op_name](op_dtype)
+        if op_name in _REDUCTION_OPS:
+            return _REDUCTION_OPS[op_name](op_type)
 
     if name in _REDUCTION_OPS:
         return _REDUCTION_OPS[name]()
@@ -295,18 +300,27 @@ def parse_reduction_op(name):
 # }}}
 
 
-def reduction_function_mangler(func_id, arg_dtypes):
+def reduction_function_mangler(target, func_id, arg_dtypes):
     if isinstance(func_id, ArgExtFunction):
+        from loopy.target.opencl import OpenCLTarget
+        if not isinstance(target, OpenCLTarget):
+            raise LoopyError("only OpenCL supported for now")
+
         op = func_id.reduction_op
-        return (op.result_dtype(func_id.scalar_dtype, func_id.inames),
+        return (op.result_dtype(target, func_id.scalar_dtype, func_id.inames),
                 "%s_%s" % (op.prefix(func_id.scalar_dtype), func_id.name))
 
     return None
 
 
-def reduction_preamble_generator(seen_dtypes, seen_functions):
+def reduction_preamble_generator(target, seen_dtypes, seen_functions):
+    from loopy.target.opencl import OpenCLTarget
+
     for func in seen_functions:
         if isinstance(func.name, ArgExtFunction):
-            yield get_argext_preamble(func.name)
+            if not isinstance(target, OpenCLTarget):
+                raise LoopyError("only OpenCL supported for now")
+
+            yield get_argext_preamble(target, func.name)
 
 # vim: fdm=marker

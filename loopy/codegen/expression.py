@@ -33,8 +33,6 @@ from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
         PREC_POWER)
 from pymbolic.mapper import CombineMapper
 import islpy as isl
-import pyopencl as cl
-import pyopencl.array  # noqa
 from pytools import Record
 
 from loopy.tools import is_integer
@@ -179,11 +177,10 @@ class TypeInferenceMapper(CombineMapper):
         if expr.name in self.kernel.all_inames():
             return self.kernel.index_dtype
 
-        for mangler in self.kernel.symbol_manglers:
-            result = mangler(expr.name)
-            if result is not None:
-                result_dtype, _ = result
-                return result_dtype
+        result = self.kernel.mangle_symbol(expr.name)
+        if result is not None:
+            result_dtype, _ = result
+            return result_dtype
 
         obj = self.new_assignments.get(expr.name)
 
@@ -238,7 +235,8 @@ class TypeInferenceMapper(CombineMapper):
     map_logical_or = map_comparison
 
     def map_reduction(self, expr):
-        return expr.operation.result_dtype(self.rec(expr.expr), expr.inames)
+        return expr.operation.result_dtype(
+                self.kernel.target, self.rec(expr.expr), expr.inames)
 
 # }}}
 
@@ -251,7 +249,7 @@ class TypeInferenceMapper(CombineMapper):
 # - 'd' for double-precision floating point
 # or None for 'no known context'.
 
-def dtype_to_type_context(dtype):
+def dtype_to_type_context(target, dtype):
     dtype = np.dtype(dtype)
 
     if dtype.kind == 'i':
@@ -260,8 +258,8 @@ def dtype_to_type_context(dtype):
         return 'd'
     if dtype in [np.float32, np.complex64]:
         return 'f'
-    if dtype in list(cl.array.vec.types.values()):
-        return dtype_to_type_context(dtype.fields["x"][0])
+    if target.is_vector_dtype(dtype):
+        return dtype_to_type_context(target, dtype.fields["x"][0])
 
     return None
 
@@ -402,11 +400,10 @@ class LoopyCCodeMapper(RecursiveMapper):
                     raise RuntimeError("unsubscripted reference to array '%s'"
                             % expr.name)
 
-        for mangler in self.kernel.symbol_manglers:
-            result = mangler(expr.name)
-            if result is not None:
-                _, c_name = result
-                return c_name
+        result = self.kernel.mangle_symbol(expr.name)
+        if result is not None:
+            _, c_name = result
+            return c_name
 
         return expr.name
 
@@ -447,7 +444,7 @@ class LoopyCCodeMapper(RecursiveMapper):
         from loopy.kernel.array import get_access_info
         from pymbolic import evaluate
 
-        access_info = get_access_info(ary, expr.index,
+        access_info = get_access_info(self.kernel.target, ary, expr.index,
                 lambda expr: evaluate(expr, self.var_subst_map))
 
         vec_member = get_opencl_vec_member(access_info.vector_index)
@@ -462,7 +459,7 @@ class LoopyCCodeMapper(RecursiveMapper):
 
             if ary.dtype == np.float32:
                 return base_access+".x"
-            if ary.dtype in cl.array.vec.type_to_scalar_and_count:
+            if self.kernel.target.is_vector_dtype(ary.dtype):
                 return base_access
             elif ary.dtype == np.float64:
                 return "as_double(%s.xy)" % base_access
@@ -667,7 +664,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                 result_dtype, c_name, arg_tgt_dtypes = mangle_result
 
                 str_parameters = [
-                        self.rec(par, PREC_NONE, dtype_to_type_context(tgt_dtype),
+                        self.rec(par, PREC_NONE,
+                            dtype_to_type_context(self.kernel.target, tgt_dtype),
                             tgt_dtype)
                         for par, par_dtype, tgt_dtype in zip(
                             expr.parameters, par_dtypes, arg_tgt_dtypes)]
@@ -683,7 +681,8 @@ class LoopyCCodeMapper(RecursiveMapper):
             # not. Using the inferred type as a stopgap for now.
             str_parameters = [
                     self.rec(par, PREC_NONE,
-                        type_context=dtype_to_type_context(par_dtype))
+                        type_context=dtype_to_type_context(
+                            self.kernel.target, par_dtype))
                     for par, par_dtype in zip(expr.parameters, par_dtypes)]
 
         if c_name is None:

@@ -220,11 +220,12 @@ class POD(Declarator):
     and the *name* is given as a string.
     """
 
-    def __init__(self, dtype, name):
+    def __init__(self, target, dtype, name):
         dtype = np.dtype(dtype)
 
-        from pyopencl.tools import dtype_to_ctype
-        self.ctype = dtype_to_ctype(dtype)
+        self.target = target
+        self.ctype = target.dtype_to_typename(dtype)
+        self.dtype = dtype
         self.name = name
 
     def get_decl_pair(self):
@@ -233,17 +234,11 @@ class POD(Declarator):
     def struct_maker_code(self, name):
         return name
 
-    @property
-    def dtype(self):
-        from pyopencl.tools import NAME_TO_DTYPE
-        return NAME_TO_DTYPE[self.ctype]
-
     def struct_format(self):
         return self.dtype.char
 
     def alignment_requirement(self):
-        import pyopencl._pvt_struct as _struct
-        return _struct.calcsize(self.struct_format())
+        return self.target.alignment_requirement(self)
 
     def default_value(self):
         return 0
@@ -297,7 +292,7 @@ class ImplementedDataInfo(Record):
     .. attribute:: allows_offset
     """
 
-    def __init__(self, name, dtype, cgen_declarator, arg_class,
+    def __init__(self, target, name, dtype, cgen_declarator, arg_class,
             base_name=None,
             shape=None, strides=None,
             unvec_shape=None, unvec_strides=None,
@@ -308,7 +303,7 @@ class ImplementedDataInfo(Record):
 
         Record.__init__(self,
                 name=name,
-                picklable_dtype=PicklableDtype(dtype),
+                picklable_dtype=PicklableDtype(dtype, target=target),
                 cgen_declarator=cgen_declarator,
                 arg_class=arg_class,
                 base_name=base_name,
@@ -338,6 +333,11 @@ code_gen_cache = PersistentDict("loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
 # {{{ main code generation entrypoint
 
 def generate_code(kernel, device=None):
+    if device is not None:
+        from warnings import warn
+        warn("passing 'device' to generate_code() is deprecated",
+                DeprecationWarning, stacklevel=2)
+
     if kernel.schedule is None:
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel)
@@ -351,14 +351,9 @@ def generate_code(kernel, device=None):
     from loopy import CACHING_ENABLED
 
     if CACHING_ENABLED:
-        if device is not None:
-            device_id = device.persistent_unique_id
-        else:
-            device_id = None
-
-        code_gen_cache_key = (kernel, device_id)
+        input_kernel = kernel
         try:
-            result = code_gen_cache[code_gen_cache_key]
+            result = code_gen_cache[input_kernel]
             logger.info("%s: code generation cache hit" % kernel.name)
             return result
         except KeyError:
@@ -370,7 +365,7 @@ def generate_code(kernel, device=None):
     kernel = infer_unknown_types(kernel, expect_completion=True)
 
     from loopy.check import pre_codegen_checks
-    pre_codegen_checks(kernel, device=device)
+    pre_codegen_checks(kernel)
 
     from cgen import (FunctionBody, FunctionDeclaration,
             Value, Module, Block,
@@ -407,14 +402,16 @@ def generate_code(kernel, device=None):
         if isinstance(arg, ArrayBase):
             impl_arg_info.extend(
                     arg.decl_info(
+                        kernel.target,
                         is_written=arg.name in kernel.get_written_variables(),
                         index_dtype=kernel.index_dtype))
 
         elif isinstance(arg, ValueArg):
             impl_arg_info.append(ImplementedDataInfo(
+                target=kernel.target,
                 name=arg.name,
                 dtype=arg.dtype,
-                cgen_declarator=Const(POD(arg.dtype, arg.name)),
+                cgen_declarator=Const(POD(kernel.target, arg.dtype, arg.name)),
                 arg_class=ValueArg))
 
         else:
@@ -427,12 +424,11 @@ def generate_code(kernel, device=None):
 
     # }}}
 
-    from pyopencl.tools import dtype_to_ctype
     mod.extend([
         LiteralLines(r"""
         #define lid(N) ((%(idx_ctype)s) get_local_id(N))
         #define gid(N) ((%(idx_ctype)s) get_group_id(N))
-        """ % dict(idx_ctype=dtype_to_ctype(kernel.index_dtype))),
+        """ % dict(idx_ctype=kernel.target.dtype_to_typename(kernel.index_dtype))),
         Line()])
 
     # {{{ build lmem array declarators for temporary variables
@@ -441,6 +437,7 @@ def generate_code(kernel, device=None):
             idi.cgen_declarator
             for tv in six.itervalues(kernel.temporary_variables)
             for idi in tv.decl_info(
+                kernel.target,
                 is_written=True, index_dtype=kernel.index_dtype))
 
     # }}}
@@ -478,8 +475,11 @@ def generate_code(kernel, device=None):
         seen_dtypes.add(tv.dtype)
 
     preambles = kernel.preambles[:]
-    for prea_gen in kernel.preamble_generators:
-        preambles.extend(prea_gen(seen_dtypes, seen_functions))
+
+    preamble_generators = (kernel.preamble_generators
+            + kernel.target.preamble_generators())
+    for prea_gen in preamble_generators:
+        preambles.extend(prea_gen(kernel.target, seen_dtypes, seen_functions))
 
     seen_preamble_tags = set()
     dedup_preambles = []
@@ -506,7 +506,9 @@ def generate_code(kernel, device=None):
 
     result = result, impl_arg_info
 
-    code_gen_cache[code_gen_cache_key] = result
+    if CACHING_ENABLED:
+        code_gen_cache[input_kernel] = result
+
     return result
 
 # }}}

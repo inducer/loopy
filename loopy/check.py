@@ -67,7 +67,7 @@ def check_insn_attributes(kernel):
 
 def check_loop_priority_inames_known(kernel):
     for iname in kernel.loop_priority:
-        if not iname in kernel.all_inames():
+        if iname not in kernel.all_inames():
             raise LoopyError("unknown iname '%s' in loop priorities" % iname)
 
 
@@ -376,54 +376,6 @@ def pre_schedule_checks(kernel):
 
 # {{{ pre-code-generation checks
 
-def check_sizes(kernel, device):
-    import loopy as lp
-
-    from loopy.diagnostic import LoopyAdvisory
-
-    parameters = {}
-    for arg in kernel.args:
-        if isinstance(arg, lp.ValueArg) and arg.approximately is not None:
-            parameters[arg.name] = arg.approximately
-
-    glens, llens = kernel.get_grid_sizes_as_exprs()
-
-    if (max(len(glens), len(llens))
-            > device.max_work_item_dimensions):
-        raise LoopyError("too many work item dimensions")
-
-    from pymbolic import evaluate
-    from pymbolic.mapper.evaluator import UnknownVariableError
-    try:
-        glens = evaluate(glens, parameters)
-        llens = evaluate(llens, parameters)
-    except UnknownVariableError as name:
-        from warnings import warn
-        warn("could not check axis bounds because no value "
-                "for variable '%s' was passed to check_kernels()"
-                % name, LoopyAdvisory)
-    else:
-        for i in range(len(llens)):
-            if llens[i] > device.max_work_item_sizes[i]:
-                raise LoopyError("group axis %d too big" % i)
-
-        from pytools import product
-        if product(llens) > device.max_work_group_size:
-            raise LoopyError("work group too big")
-
-    from pyopencl.characterize import usable_local_mem_size
-    if kernel.local_mem_use() > usable_local_mem_size(device):
-        raise LoopyError("using too much local memory")
-
-    from loopy.kernel.data import ConstantArg
-    const_arg_count = sum(
-            1 for arg in kernel.args
-            if isinstance(arg, ConstantArg))
-
-    if const_arg_count > device.max_constant_args:
-        raise LoopyError("too many constant arguments")
-
-
 def check_that_shapes_and_strides_are_arguments(kernel):
     from loopy.kernel.data import ValueArg
     from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
@@ -460,18 +412,11 @@ def check_that_shapes_and_strides_are_arguments(kernel):
                                     arg.name, ", ".join(deps-integer_arg_names)))
 
 
-def pre_codegen_checks(kernel, device=None):
+def pre_codegen_checks(kernel):
     try:
         logger.info("pre-codegen check %s: start" % kernel.name)
 
-        if device is not None:
-            check_sizes(kernel, device)
-        else:
-            from loopy.diagnostic import warn
-            warn(kernel, "no_device_in_pre_codegen_checks",
-                    "No device parameter was passed to loopy.pre_codegen_checks. "
-                    "Perhaps you want to pass a device argument to generate_code.")
-
+        kernel.target.pre_codegen_check(kernel)
         check_that_shapes_and_strides_are_arguments(kernel)
 
         logger.info("pre-codegen check %s: done" % kernel.name)

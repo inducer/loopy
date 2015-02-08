@@ -420,7 +420,7 @@ def auto_test_vs_ref(
         ref_queue = cl.CommandQueue(ref_ctx,
                 properties=cl.command_queue_properties.PROFILING_ENABLE)
 
-        pp_ref_knl = lp.preprocess_kernel(ref_knl, device=dev)
+        pp_ref_knl = lp.preprocess_kernel(ref_knl)
 
         for knl in lp.generate_loop_schedules(pp_ref_knl):
             ref_sched_kernel = knl
@@ -514,7 +514,7 @@ def auto_test_vs_ref(
         if test_knl.state not in [
                 kernel_state.PREPROCESSED,
                 kernel_state.SCHEDULED]:
-            test_knl = lp.preprocess_kernel(test_knl, device=ctx.devices[0])
+            test_knl = lp.preprocess_kernel(test_knl)
 
         if not test_knl.schedule:
             test_kernels = lp.generate_loop_schedules(test_knl)

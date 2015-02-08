@@ -14,3 +14,5 @@ distribute*tar.gz
 *.log
 *profiler.conf
 core
+.coverage
+htmlcov

@@ -39,11 +39,7 @@ from pytools import UniqueNameGenerator, generate_unique_names
 
 from loopy.library.function import (
         default_function_mangler,
-        opencl_function_mangler,
         single_arg_function_mangler)
-
-from loopy.library.symbol import opencl_symbol_mangler
-from loopy.library.preamble import default_preamble_generator
 
 from loopy.diagnostic import CannotBranchDomainTree
 
@@ -146,6 +142,10 @@ class LoopKernel(RecordWithoutPickling):
     .. attribute:: state
 
         A value from :class:`kernel_state`.
+
+    .. attribute:: target
+
+        A subclass of :class:`loopy.target.TargetBase`.
     """
 
     # {{{ constructor
@@ -153,7 +153,7 @@ class LoopKernel(RecordWithoutPickling):
     def __init__(self, domains, instructions, args=[], schedule=None,
             name="loopy_kernel",
             preambles=[],
-            preamble_generators=[default_preamble_generator],
+            preamble_generators=[],
             assumptions=None,
             local_sizes={},
             temporary_variables={},
@@ -161,10 +161,9 @@ class LoopKernel(RecordWithoutPickling):
             substitutions={},
             function_manglers=[
                 default_function_mangler,
-                opencl_function_mangler,
                 single_arg_function_mangler,
                 ],
-            symbol_manglers=[opencl_symbol_mangler],
+            symbol_manglers=[],
 
             iname_slab_increments={},
             loop_priority=[],
@@ -176,6 +175,7 @@ class LoopKernel(RecordWithoutPickling):
             options=None,
 
             state=kernel_state.INITIAL,
+            target=None,
 
             # When kernels get intersected in slab decomposition,
             # their grid sizes shouldn't change. This provides
@@ -278,17 +278,34 @@ class LoopKernel(RecordWithoutPickling):
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
                 options=options,
-                state=state)
+                state=state,
+                target=target)
 
     # }}}
 
     # {{{ function mangling
 
     def mangle_function(self, identifier, arg_dtypes):
-        for mangler in self.function_manglers:
-            mangle_result = mangler(identifier, arg_dtypes)
+        manglers = self.target.function_manglers() + self.function_manglers
+
+        for mangler in manglers:
+            mangle_result = mangler(self.target, identifier, arg_dtypes)
             if mangle_result is not None:
                 return mangle_result
+
+        return None
+
+    # }}}
+
+    # {{{ symbol mangling
+
+    def mangle_symbol(self, identifier):
+        manglers = self.target.symbol_manglers() + self.symbol_manglers
+
+        for mangler in manglers:
+            result = mangler(self.target, identifier)
+            if result is not None:
+                return result
 
         return None
 
@@ -1085,6 +1102,7 @@ class LoopKernel(RecordWithoutPickling):
             "silenced_warnings",
             "options",
             "state",
+            "target",
             ]
 
     comparison_fields = hash_fields + [

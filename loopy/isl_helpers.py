@@ -32,62 +32,6 @@ import islpy as isl
 from islpy import dim_type
 
 
-def block_shift_constraint(cns, type, pos, multiple, as_equality=None):
-    if as_equality != cns.is_equality():
-        if as_equality:
-            factory = isl.Constraint.equality_from_aff
-        else:
-            factory = isl.Constraint.inequality_from_aff
-
-        cns = factory(cns.get_aff())
-
-    cns = cns.set_constant(cns.get_constant()
-            + cns.get_coefficient(type, pos)*multiple)
-
-    return cns
-
-
-def negate_constraint(cns):
-    assert not cns.is_equality()
-    # FIXME hackety hack
-    my_set = (isl.BasicSet.universe(cns.get_space())
-            .add_constraint(cns))
-    my_set = my_set.complement()
-
-    results = []
-
-    def examine_basic_set(s):
-        s.foreach_constraint(results.append)
-
-    my_set.foreach_basic_set(examine_basic_set)
-    result, = results
-    return result
-
-
-def make_index_map(set, index_expr):
-    from loopy.symbolic import eq_constraint_from_expr
-
-    if not isinstance(index_expr, tuple):
-        index_expr = (index_expr,)
-
-    amap = isl.Map.from_domain(set).add_dims(dim_type.out, len(index_expr))
-    out_names = ["_ary_idx_%d" % i for i in range(len(index_expr))]
-
-    dim = amap.get_space()
-    all_constraints = tuple(
-            eq_constraint_from_expr(dim, iexpr_i)
-            for iexpr_i in index_expr)
-
-    for i, out_name in enumerate(out_names):
-        amap = amap.set_dim_name(dim_type.out, i, out_name)
-
-    for i, (out_name, constr) in enumerate(zip(out_names, all_constraints)):
-        constr.set_coefficients_by_name({out_name: -1})
-        amap = amap.add_constraint(constr)
-
-    return amap
-
-
 def pw_aff_to_aff(pw_aff):
     if isinstance(pw_aff, isl.Aff):
         return pw_aff

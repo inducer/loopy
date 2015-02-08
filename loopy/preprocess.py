@@ -24,10 +24,7 @@ THE SOFTWARE.
 
 
 import six
-from six.moves import range
 import numpy as np
-import pyopencl as cl
-import pyopencl.characterize as cl_char
 from loopy.diagnostic import (
         LoopyError, LoopyWarning, WriteRaceConditionWarning, warn,
         LoopyAdvisory)
@@ -38,6 +35,36 @@ from loopy.version import DATA_MODEL_VERSION
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+# {{{ propagate target info
+
+def propagate_target(kernel):
+    import loopy as lp
+    new_args = []
+
+    for arg in kernel.args:
+        dtype = arg.picklable_dtype
+        if dtype is not None and dtype is not lp.auto:
+            dtype = dtype.with_target(kernel.target)
+
+        new_args.append(arg.copy(dtype=dtype))
+
+    new_temporary_variables = {}
+    for name, temp in six.iteritems(kernel.temporary_variables):
+        dtype = temp.picklable_dtype
+        if dtype is not None and dtype is not lp.auto:
+            dtype = dtype.with_target(kernel.target)
+
+        new_temporary_variables[name] = temp.copy(dtype=dtype)
+
+    kernel = kernel.copy(
+            args=new_args,
+            temporary_variables=new_temporary_variables)
+
+    return kernel
+
+# }}}
 
 
 # {{{ infer types
@@ -402,7 +429,8 @@ def realize_reduction(kernel, insn_id_filter=None):
         new_temporary_variables[target_var_name] = TemporaryVariable(
                 name=target_var_name,
                 shape=(),
-                dtype=expr.operation.result_dtype(arg_dtype, expr.inames),
+                dtype=expr.operation.result_dtype(
+                    kernel.target, arg_dtype, expr.inames),
                 is_local=False)
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
@@ -992,90 +1020,16 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 # }}}
 
 
-# {{{ temp storage adjust for bank conflict
-
-def adjust_local_temp_var_storage(kernel, device):
-    logger.debug("%s: adjust temp var storage" % kernel.name)
-
-    new_temp_vars = {}
-
-    lmem_size = cl_char.usable_local_mem_size(device)
-    for temp_var in six.itervalues(kernel.temporary_variables):
-        if not temp_var.is_local:
-            new_temp_vars[temp_var.name] = \
-                    temp_var.copy(storage_shape=temp_var.shape)
-            continue
-
-        other_loctemp_nbytes = [
-                tv.nbytes
-                for tv in six.itervalues(kernel.temporary_variables)
-                if tv.is_local and tv.name != temp_var.name]
-
-        storage_shape = temp_var.storage_shape
-
-        if storage_shape is None:
-            storage_shape = temp_var.shape
-
-        storage_shape = list(storage_shape)
-
-        # sizes of all dims except the last one, which we may change
-        # below to avoid bank conflicts
-        from pytools import product
-
-        if device.local_mem_type == cl.device_local_mem_type.GLOBAL:
-            # FIXME: could try to avoid cache associativity disasters
-            new_storage_shape = storage_shape
-
-        elif device.local_mem_type == cl.device_local_mem_type.LOCAL:
-            min_mult = cl_char.local_memory_bank_count(device)
-            good_incr = None
-            new_storage_shape = storage_shape
-            min_why_not = None
-
-            for increment in range(storage_shape[-1]//2):
-
-                test_storage_shape = storage_shape[:]
-                test_storage_shape[-1] = test_storage_shape[-1] + increment
-                new_mult, why_not = cl_char.why_not_local_access_conflict_free(
-                        device, temp_var.dtype.itemsize,
-                        temp_var.shape, test_storage_shape)
-
-                # will choose smallest increment 'automatically'
-                if new_mult < min_mult:
-                    new_lmem_use = (sum(other_loctemp_nbytes)
-                            + temp_var.dtype.itemsize*product(test_storage_shape))
-                    if new_lmem_use < lmem_size:
-                        new_storage_shape = test_storage_shape
-                        min_mult = new_mult
-                        min_why_not = why_not
-                        good_incr = increment
-
-            if min_mult != 1:
-                from warnings import warn
-                from loopy.diagnostic import LoopyAdvisory
-                warn("could not find a conflict-free mem layout "
-                        "for local variable '%s' "
-                        "(currently: %dx conflict, increment: %s, reason: %s)"
-                        % (temp_var.name, min_mult, good_incr, min_why_not),
-                        LoopyAdvisory)
-        else:
-            from warnings import warn
-            warn("unknown type of local memory")
-
-            new_storage_shape = storage_shape
-
-        new_temp_vars[temp_var.name] = temp_var.copy(storage_shape=new_storage_shape)
-
-    return kernel.copy(temporary_variables=new_temp_vars)
-
-# }}}
-
-
 preprocess_cache = PersistentDict("loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
 def preprocess_kernel(kernel, device=None):
+    if device is not None:
+        from warnings import warn
+        warn("passing 'device' to preprocess_kernel() is deprecated",
+                DeprecationWarning, stacklevel=2)
+
     from loopy.kernel import kernel_state
     if kernel.state != kernel_state.INITIAL:
         raise LoopyError("cannot re-preprocess an already preprocessed "
@@ -1085,14 +1039,10 @@ def preprocess_kernel(kernel, device=None):
 
     from loopy import CACHING_ENABLED
     if CACHING_ENABLED:
-        if device is not None:
-            device_id = device.persistent_unique_id
-        else:
-            device_id = None
+        input_kernel = kernel
 
-        pp_cache_key = (kernel, device_id)
         try:
-            result = preprocess_cache[pp_cache_key]
+            result = preprocess_cache[kernel]
             logger.info("%s: preprocess cache hit" % kernel.name)
             return result
         except KeyError:
@@ -1134,20 +1084,29 @@ def preprocess_kernel(kernel, device=None):
     kernel = find_boostability(kernel)
     kernel = limit_boostability(kernel)
 
-    if device is not None:
-        kernel = adjust_local_temp_var_storage(kernel, device)
-    else:
-        from loopy.diagnostic import warn
-        warn(kernel, "no_device_in_preprocess",
-                "no device parameter was passed to loopy.preprocess")
+    kernel = kernel.target.preprocess(kernel)
 
     logger.info("%s: preprocess done" % kernel.name)
 
     kernel = kernel.copy(
             state=kernel_state.PREPROCESSED)
 
+    # {{{ propagate target info
+
+    # PicklableDtype instances for example need to know the target they're working
+    # towards in order to pickle and unpickle them. This is the first pass that
+    # uses caching, so we need to be ready to pickle. This means propagating
+    # this target information.
+
     if CACHING_ENABLED:
-        preprocess_cache[pp_cache_key] = kernel
+        input_kernel = propagate_target(input_kernel)
+
+    kernel = propagate_target(kernel)
+
+    # }}}
+
+    if CACHING_ENABLED:
+        preprocess_cache[input_kernel] = kernel
 
     return kernel
 

@@ -37,12 +37,7 @@ from loopy.diagnostic import LoopyError
 # {{{ imported user interface
 
 from loopy.library.function import (
-        default_function_mangler, single_arg_function_mangler,
-        opencl_function_mangler)
-
-from loopy.library.preamble import default_preamble_generator
-
-from loopy.library.symbol import opencl_symbol_mangler
+        default_function_mangler, single_arg_function_mangler)
 
 from loopy.kernel.data import (
         auto,
@@ -81,8 +76,6 @@ __all__ = [
         "ExpressionInstruction", "CInstruction",
 
         "default_function_mangler", "single_arg_function_mangler",
-        "opencl_function_mangler", "opencl_symbol_mangler",
-        "default_preamble_generator",
 
         "make_kernel", "UniqueName",
 
