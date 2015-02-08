@@ -29,8 +29,6 @@ from pytools import Record
 
 import numpy as np
 
-import pyopencl as cl
-import pyopencl.array as cl_array
 import loopy as lp
 from loopy.diagnostic import LoopyError
 
@@ -66,6 +64,9 @@ class TestArgInfo(Record):
 # {{{ "reference" arguments
 
 def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
+    import pyopencl as cl
+    import pyopencl.array as cl_array
+
     from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
@@ -176,6 +177,9 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
 
 def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
         fill_value):
+    import pyopencl as cl
+    import pyopencl.array as cl_array
+
     from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
 
     from pymbolic import evaluate
@@ -310,6 +314,8 @@ def _default_check_result(result, ref_result):
 # {{{ ref device finder
 
 def _enumerate_cl_devices_for_ref_test():
+    import pyopencl as cl
+
     noncpu_devs = []
     cpu_devs = []
 
@@ -358,6 +364,8 @@ def auto_test_vs_ref(
         *(result, reference_result)* returning a a tuple (class:`bool`,
         message) indicating correctness/acceptability of the result
     """
+
+    import pyopencl as cl
 
     if len(ref_knl.args) != len(test_knl.args):
         raise LoopyError("ref_knl and test_knl do not have the same number "

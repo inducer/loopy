@@ -27,8 +27,6 @@ THE SOFTWARE.
 """
 
 
-import pyopencl as cl
-import pyopencl.tools  # noqa
 import numpy as np
 from pytools import Record, memoize_method
 from loopy.diagnostic import ParameterFinderWarning
@@ -126,11 +124,12 @@ class SeparateArrayPackingController(object):
 
 
 def python_dtype_str(dtype):
+    import pyopencl.tools as cl_tools
     if dtype.isbuiltin:
         return "_lpy_np."+dtype.name
     else:
         return ("_lpy_cl_tools.get_or_register_dtype(\"%s\")"
-                % cl.tools.dtype_to_ctype(dtype))
+                % cl_tools.dtype_to_ctype(dtype))
 
 
 # {{{ integer arg finding from shapes
@@ -714,6 +713,7 @@ class CompiledKernel:
             from pytools import invoke_editor
             code = invoke_editor(code, "code.cl")
 
+        import pyopencl as cl
         cl_program = cl.Program(self.context, code)
         cl_kernel = getattr(
                 cl_program.build(options=kernel.options.cl_build_options),
