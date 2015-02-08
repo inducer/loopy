@@ -116,7 +116,7 @@ def main():
 
         kernels = [kernel]
 
-    elif args.lang == "floopy":
+    elif args.lang in ["fortran", "floopy"]:
         pre_transform_code = None
         if args.transform:
             with open(args.transform, "r") as xform_fd:
