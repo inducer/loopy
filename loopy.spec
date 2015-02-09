@@ -1,6 +1,5 @@
 # -*- mode: python -*-
 
-block_cipher = None
 single_file = True
 
 
@@ -9,10 +8,9 @@ a = Analysis(['bin/loopy'],
              hiddenimports=[],
              hookspath=None,
              runtime_hooks=None,
-             excludes=["hedge", "meshpy", "pyopencl", "pycparser", "PIL"],
-             cipher=block_cipher)
-pyz = PYZ(a.pure,
-             cipher=block_cipher)
+             excludes=["hedge", "meshpy", "pyopencl", "pycparser", "PIL"]
+             )
+pyz = PYZ(a.pure)
 
 if single_file:
     exe = EXE(pyz,
