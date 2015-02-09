@@ -25,7 +25,6 @@ THE SOFTWARE.
 from pymbolic.parser import Parser as ExpressionParserBase
 from loopy.frontend.fortran.diagnostic import TranslationError
 
-import pymbolic.primitives as prim
 import numpy as np
 
 import pytools.lex
@@ -44,22 +43,9 @@ _and = intern("and")
 _or = intern("or")
 
 
-class TypedLiteral(prim.Leaf):
-    def __init__(self, value, dtype):
-        self.value = value
-        self.dtype = np.dtype(dtype)
-
-    def __getinitargs__(self):
-        return self.value, self.dtype
-
-    mapper_method = intern("map_literal")
-
-
 # {{{ expression parser
 
 class FortranExpressionParser(ExpressionParserBase):
-    # FIXME double/single prec literals
-
     lex_table = [
         (_less_than, pytools.lex.RE(r"\.lt\.", re.I)),
         (_greater_than, pytools.lex.RE(r"\.gt\.", re.I)),
@@ -95,14 +81,12 @@ class FortranExpressionParser(ExpressionParserBase):
 
             value = value.replace("d", "e")
             if value.startswith("."):
-                prev_value = value
                 value = "0"+value
-                print value, prev_value
+
             elif value.startswith("-."):
-                prev_value = value
                 value = "-0"+value[1:]
-                print value, prev_value
-            return TypedLiteral(value, dtype)
+
+            return dtype(float(value))
 
         elif next_tag is _identifier:
             name = pstate.next_str_and_advance()
@@ -207,7 +191,7 @@ class FortranExpressionParser(ExpressionParserBase):
                 else:
                     dtype = np.complex128
 
-                left_exp = TypedLiteral(left_exp, dtype)
+                left_exp = dtype(float(r) + float(i)*1j)
 
         return left_exp, did_something
 
