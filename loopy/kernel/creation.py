@@ -1197,6 +1197,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
 
+    from loopy.preprocess import prepare_for_caching
+    knl = prepare_for_caching(knl)
+
     return knl
 
 # }}}

@@ -37,9 +37,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# {{{ propagate target info
+# {{{ prepare for caching
 
-def propagate_target(kernel):
+def prepare_for_caching(kernel):
     import loopy as lp
     new_args = []
 
@@ -1091,7 +1091,7 @@ def preprocess_kernel(kernel, device=None):
     kernel = kernel.copy(
             state=kernel_state.PREPROCESSED)
 
-    # {{{ propagate target info
+    # {{{ prepare for caching
 
     # PicklableDtype instances for example need to know the target they're working
     # towards in order to pickle and unpickle them. This is the first pass that
@@ -1099,9 +1099,9 @@ def preprocess_kernel(kernel, device=None):
     # this target information.
 
     if CACHING_ENABLED:
-        input_kernel = propagate_target(input_kernel)
+        input_kernel = prepare_for_caching(input_kernel)
 
-    kernel = propagate_target(kernel)
+    kernel = prepare_for_caching(kernel)
 
     # }}}
 
