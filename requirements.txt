@@ -5,4 +5,4 @@ cgen
 git+git://github.com/pyopencl/pyopencl
 git+git://github.com/inducer/pymbolic
 
-hg+https://code.google.com/p/f2py/
+hg+https://bitbucket.org/inducer/f2py
