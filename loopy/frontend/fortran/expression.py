@@ -25,6 +25,7 @@ THE SOFTWARE.
 from pymbolic.parser import Parser as ExpressionParserBase
 from loopy.frontend.fortran.diagnostic import TranslationError
 
+from six.moves import intern
 import numpy as np
 
 import pytools.lex
