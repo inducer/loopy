@@ -58,7 +58,8 @@ class TypeInferenceMapper(CombineMapper):
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
     # are Python-equal (for many common constants such as integers).
 
-    def combine(self, dtypes):
+    @staticmethod
+    def combine(dtypes):
         dtypes = list(dtypes)
 
         result = dtypes.pop()

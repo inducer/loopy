@@ -106,12 +106,9 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if not dtypes:
         return None, symbols_with_unavailable_types
 
-    from pytools import is_single_valued
-    if not is_single_valued(dtypes):
-        raise LoopyError("ambiguous type inference for '%s'"
-                % var_name)
+    result = type_inf_mapper.combine(dtypes)
 
-    return dtypes[0], []
+    return result, []
 
 
 class _DictUnionView:
