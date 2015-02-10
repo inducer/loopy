@@ -466,7 +466,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
                         "do loops with non-unit stride")
 
             if not isinstance(step, int):
-                print type(step)
                 raise TranslationError(
                         "non-constant steps not supported: %s" % step)
 
