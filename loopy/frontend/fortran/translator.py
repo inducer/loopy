@@ -61,7 +61,7 @@ class SubscriptIndexBaseShifter(IdentityMapper):
             raise TranslationError("inconsistent number of indices "
                     "to '%s'" % name)
 
-        for i in xrange(len(dims)):
+        for i in range(len(dims)):
             if len(dims[i]) == 2:
                 # has a base index
                 subscript[i] -= dims[i][0]
