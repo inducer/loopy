@@ -24,6 +24,8 @@ THE SOFTWARE.
 
 import re
 
+import six
+
 import loopy as lp
 import numpy as np
 from warnings import warn
@@ -117,8 +119,8 @@ class Scope(object):
 
     def known_names(self):
         return (self.used_names
-                | set(self.dim_map.iterkeys())
-                | set(self.type_map.iterkeys()))
+                | set(six.iterkeys(self.dim_map))
+                | set(six.iterkeys(self.type_map)))
 
     def is_known(self, name):
         return (name in self.used_names
