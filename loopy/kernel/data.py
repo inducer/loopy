@@ -371,9 +371,9 @@ class TemporaryVariable(ArrayBase):
 
 class SubstitutionRule(Record):
     """
-    :ivar name:
-    :ivar arguments:
-    :ivar expression:
+    .. attribute:: name
+    .. attribute:: arguments
+    .. attribute:: expression
     """
 
     def __init__(self, name, arguments, expression):
@@ -411,10 +411,11 @@ class InstructionBase(Record):
 
     .. attribute:: insn_deps
 
-        a list of ids of :class:`Instruction` instances that *must* be executed
-        before this one. Note that :func:`loopy.preprocess_kernel` (usually
-        invoked automatically) augments this by adding dependencies on any
-        writes to temporaries read by this instruction.
+        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances that
+        *must* be executed before this one. Note that
+        :func:`loopy.preprocess_kernel` (usually invoked automatically)
+        augments this by adding dependencies on any writes to temporaries read
+        by this instruction.
 
         May be *None* to invoke the default.
 
