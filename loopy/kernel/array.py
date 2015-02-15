@@ -438,7 +438,11 @@ def convert_computed_to_fixed_dim_tags(name, num_user_axes, num_target_axes,
                     # unable to normalize without known shape
                     return None
 
-                stride_so_far *= shape[dim_tag_index]
+                shape_axis = shape[dim_tag_index]
+                if shape_axis is None:
+                    stride_so_far = None
+                else:
+                    stride_so_far *= shape_axis
 
                 if dim_tag.pad_to is not None:
                     from pytools import div_ceil
@@ -547,6 +551,9 @@ class ArrayBase(Record):
               Each entry of the tuple is also allowed to be a :mod:`pymbolic`
               expression involving kernel parameters, or a (potentially-comma
               separated) or a string that can be parsed to such an expression.
+
+              Any element of the shape tuple not used to compute strides
+              may be *None*.
 
             * A string which can be parsed into the previous form.
 
@@ -818,7 +825,13 @@ class ArrayBase(Record):
         import loopy as lp
 
         if self.shape is not None and self.shape is not lp.auto:
-            kwargs["shape"] = tuple(mapper(s) for s in self.shape)
+            def none_pass_mapper(s):
+                if s is None:
+                    return s
+                else:
+                    return mapper(s)
+
+            kwargs["shape"] = tuple(none_pass_mapper(s) for s in self.shape)
 
         if self.dim_tags is not None:
             kwargs["dim_tags"] = [dim_tag.map_expr(mapper)

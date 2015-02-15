@@ -96,6 +96,33 @@ def test_fill_const(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5, a=5))
 
 
+def test_asterisk_in_shape(ctx_factory):
+    fortran_src = """
+        subroutine fill(out, out2, inp, n)
+          implicit none
+
+          real*8 a, out(n), out2(n), inp(*)
+          integer n
+
+          do i = 1, n
+            a = inp(n)
+            out(i) = 5*a
+            out2(i) = 6*a
+          end do
+        end
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl(queue, inp=np.array([1, 2, 3.]), n=3)
+
+    #lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

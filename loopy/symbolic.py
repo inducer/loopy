@@ -362,7 +362,7 @@ def rename_subst_rules_in_instructions(insns, renames):
 
 class ExpandingIdentityMapper(IdentityMapper):
     """Note: the third argument dragged around by this mapper is the
-    current expansion expansion state.
+    current :class:`ExpansionState`.
     """
 
     def __init__(self, old_subst_rules, make_unique_var_name):

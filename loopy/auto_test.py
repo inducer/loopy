@@ -44,6 +44,19 @@ def is_dtype_supported(dtype):
     return dtype.kind in "biufc"
 
 
+def evaluate_shape(shape, context):
+    from pymbolic import evaluate
+
+    result = []
+    for saxis in shape:
+        if saxis is None:
+            result.append(saxis)
+        else:
+            result.append(evaluate(saxis, context))
+
+    return tuple(result)
+
+
 # {{{ create random argument arrays for testing
 
 def fill_rand(ary):
@@ -96,11 +109,11 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
             ref_arg_data.append(None)
 
         elif arg.arg_class is GlobalArg or arg.arg_class is ImageArg:
-            if arg.shape is None:
-                raise LoopyError("arrays need known shape to use automatic "
-                        "testing")
+            if arg.shape is None or any(saxis is None for saxis in arg.shape):
+                raise LoopyError("array '%s' needs known shape to use automatic "
+                        "testing" % arg.name)
 
-            shape = evaluate(arg.unvec_shape, parameters)
+            shape = evaluate_shape(arg.unvec_shape, parameters)
             dtype = kernel_arg.dtype
 
             is_output = arg.base_name in kernel.get_written_variables()
@@ -206,7 +219,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
                 raise NotImplementedError("write-mode images not supported in "
                         "automatic testing")
 
-            shape = evaluate(arg.unvec_shape, parameters)
+            shape = evaluate_shape(arg.unvec_shape, parameters)
             assert shape == arg_desc.ref_shape
 
             # must be contiguous

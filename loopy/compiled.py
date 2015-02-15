@@ -477,14 +477,44 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options):
                             "(got: %%s, expected: %s)\" %% %s.dtype)"
                             % (arg.name, arg.dtype, arg.name))
 
-                if kernel_arg.shape is not None:
+                # {{{ generate shape checking code
+
+                def strify_allowing_none(shape_axis):
+                    if shape_axis is None:
+                        return "None"
+                    else:
+                        return strify(shape_axis)
+
+                shape_mismatch_msg = (
+                        "raise TypeError(\"shape mismatch on argument '%s' "
+                        "(got: %%s, expected: %%s)\" "
+                        "%% (%s.shape, (%s,)))"
+                        % (arg.name, arg.name,
+                            ", ".join(strify_allowing_none(sa)
+                                for sa in arg.unvec_shape)))
+
+                if any(shape_axis is None for shape_axis in kernel_arg.shape):
+                    gen("if len(%s.shape) != %s:"
+                            % (arg.name, len(arg.unvec_shape)))
+                    with Indentation(gen):
+                        gen(shape_mismatch_msg)
+
+                    for i, shape_axis in enumerate(arg.unvec_shape):
+                        if shape_axis is None:
+                            continue
+
+                        gen("if %s.shape[%d] != %s:"
+                                % (arg.name, i, strify(shape_axis)))
+                        with Indentation(gen):
+                            gen(shape_mismatch_msg)
+
+                elif kernel_arg.shape is not None:
                     gen("if %s.shape != %s:"
                             % (arg.name, strify(arg.unvec_shape)))
                     with Indentation(gen):
-                        gen("raise TypeError(\"shape mismatch on argument '%s' "
-                                "(got: %%s, expected: %%s)\" "
-                                "%% (%s.shape, %s))"
-                                % (arg.name, arg.name, strify(arg.unvec_shape)))
+                        gen(shape_mismatch_msg)
+
+                # }}}
 
                 if arg.unvec_strides and kernel_arg.dim_tags:
                     itemsize = kernel_arg.dtype.itemsize

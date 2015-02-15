@@ -275,8 +275,13 @@ class _AccessCheckMapper(WalkMapper):
             from loopy.symbolic import get_dependencies, get_access_range
 
             available_vars = set(self.domain.get_var_dict())
+            shape_deps = set()
+            for shape_axis in shape:
+                if shape_axis is not None:
+                    shape_deps.update(get_dependencies(shape_axis))
+
             if not (get_dependencies(subscript) <= available_vars
-                    and get_dependencies(shape) <= available_vars):
+                    and shape_deps <= available_vars):
                 return
 
             if len(subscript) != len(shape):
@@ -297,12 +302,15 @@ class _AccessCheckMapper(WalkMapper):
 
             shape_domain = isl.BasicSet.universe(access_range.get_space())
             for idim in range(len(subscript)):
-                from loopy.isl_helpers import make_slab
-                slab = make_slab(
-                        shape_domain.get_space(), (dim_type.in_, idim),
-                        0, shape[idim])
+                shape_axis = shape[idim]
 
-                shape_domain = shape_domain.intersect(slab)
+                if shape_axis is not None:
+                    from loopy.isl_helpers import make_slab
+                    slab = make_slab(
+                            shape_domain.get_space(), (dim_type.in_, idim),
+                            0, shape_axis)
+
+                    shape_domain = shape_domain.intersect(slab)
 
             if not access_range.is_subset(shape_domain):
                 raise LoopyError("'%s' in instruction '%s' "
@@ -391,11 +399,15 @@ def check_that_shapes_and_strides_are_arguments(kernel):
     for arg in kernel.args:
         if isinstance(arg, ArrayBase):
             if isinstance(arg.shape, tuple):
-                deps = get_dependencies(arg.shape)
-                if not deps <= integer_arg_names:
+                shape_deps = set()
+                for shape_axis in arg.shape:
+                    if shape_axis is not None:
+                        shape_deps.update(get_dependencies(shape_axis))
+
+                if not shape_deps <= integer_arg_names:
                     raise LoopyError("'%s' has a shape that depends on "
                             "non-argument(s): %s" % (
-                                arg.name, ", ".join(deps-integer_arg_names)))
+                                arg.name, ", ".join(shape_deps-integer_arg_names)))
 
             if arg.dim_tags is None:
                 continue

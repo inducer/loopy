@@ -35,6 +35,7 @@ from loopy.frontend.fortran.diagnostic import (
 import islpy as isl
 from islpy import dim_type
 from loopy.symbolic import IdentityMapper
+from pymbolic.primitives import Wildcard
 
 
 # {{{ subscript base shifter
@@ -158,9 +159,16 @@ class Scope(object):
         shape = []
         for i, dim in enumerate(dims):
             if len(dim) == 1:
-                shape.append(dim[0])
+                if isinstance(dim[0], Wildcard):
+                    shape.append(None)
+                else:
+                    shape.append(dim[0])
+
             elif len(dim) == 2:
-                shape.append(dim[1]-dim[0]+1)
+                if isinstance(dim[0], Wildcard):
+                    shape.append(None)
+                else:
+                    shape.append(dim[1]-dim[0]+1)
             else:
                 raise TranslationError("dimension axis %d "
                         "of '%s' not understood: %s"
@@ -418,7 +426,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         raise NotImplementedError
 
     def map_Entry(self, node):
-        raise NotImplementedError
+        raise NotImplementedError("entry")
 
     # {{{ control flow
 
