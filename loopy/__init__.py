@@ -1657,4 +1657,38 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 # }}}
 
 
+# {{{ remove instructions
+
+def remove_instructions(kernel, insn_ids):
+    """Return a new kernel with instructions in *insn_ids* removed.
+
+    Dependencies across (one, for now) deleted isntructions are propagated.
+    Behavior is undefined for now for chains of dependencies within the
+    set of deleted instructions.
+    """
+
+    if not insn_ids:
+        return kernel
+
+    assert isinstance(insn_ids, set)
+    id_to_insn = kernel.id_to_insn
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if insn.id in insn_ids:
+            continue
+
+        # transitively propagate dependencies
+        # (only one level for now)
+        new_deps = insn.insn_deps - insn_ids
+        for dep_id in insn.insn_deps & insn_ids:
+            new_deps = new_deps | id_to_insn[dep_id].insn_deps
+
+        new_insns.append(insn.copy(insn_deps=frozenset(new_deps)))
+
+    return kernel.copy(
+            instructions=new_insns)
+
+# }}}
+
 # vim: foldmethod=marker

@@ -421,6 +421,8 @@ Manipulating Instructions
 
 .. autofunction:: add_dependency
 
+.. autofunction:: remove_instructions
+
 Library interface
 ^^^^^^^^^^^^^^^^^
 
