@@ -315,6 +315,8 @@ C Block Instructions
 
 .. autoclass:: CInstruction
 
+.. _substitution-rule:
+
 Substitution Rules
 ^^^^^^^^^^^^^^^^^^
 
@@ -388,6 +390,8 @@ Dealing with Substitution Rules
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. autofunction:: extract_subst
+
+.. autofunction:: temporary_to_subst
 
 .. autofunction:: expand_subst
 

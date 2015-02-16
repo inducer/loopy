@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
@@ -43,6 +40,9 @@ __all__ = [
         "pytest_generate_tests",
         "cl"  # 'cl.create_some_context'
         ]
+
+
+pytestmark = pytest.mark.importorskip("fparser")
 
 
 def test_fill(ctx_factory):
@@ -120,7 +120,91 @@ def test_asterisk_in_shape(ctx_factory):
 
     knl(queue, inp=np.array([1, 2, 3.]), n=3)
 
-    #lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
+
+def test_temporary_to_subst(ctx_factory):
+    fortran_src = """
+        subroutine fill(out, out2, inp, n)
+          implicit none
+
+          real*8 a, out(n), out2(n), inp(n)
+          integer n
+
+          do i = 1, n
+            a = inp(n)
+            out(i) = 5*a
+            out2(i) = 6*a
+          end do
+        end
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    ref_knl = knl
+
+    knl = lp.temporary_to_subst(knl, "a")
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
+def test_temporary_to_subst_two_defs(ctx_factory):
+    fortran_src = """
+        subroutine fill(out, out2, inp, n)
+          implicit none
+
+          real*8 a, out(n), out2(n), inp(n)
+          integer n
+
+          do i = 1, n
+            a = inp(i)
+            out(i) = 5*a
+            a = 3*inp(n)
+            out2(i) = 6*a
+          end do
+        end
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    ref_knl = knl
+
+    knl = lp.temporary_to_subst(knl, "a")
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
+def test_temporary_to_subst_indices(ctx_factory):
+    fortran_src = """
+        subroutine fill(out, out2, inp, n)
+          implicit none
+
+          real*8 a(n), out(n), out2(n), inp(n)
+          integer n
+
+          do i = 1, n
+            a(i) = 6*inp(i)
+          enddo
+
+          do i = 1, n
+            out(i) = 5*a(i)
+          end do
+        end
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    knl = lp.fix_parameters(knl, n=5)
+
+    ref_knl = knl
+
+    knl = lp.temporary_to_subst(knl, "a")
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
 if __name__ == "__main__":
