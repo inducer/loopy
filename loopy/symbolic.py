@@ -57,6 +57,8 @@ from pymbolic.mapper.coefficient import \
         CoefficientCollector as CoefficientCollectorBase
 from pymbolic.mapper.unifier import UnidirectionalUnifier \
         as UnidirectionalUnifierBase
+from pymbolic.mapper.constant_folder import \
+        ConstantFoldingMapper as ConstantFoldingMapperBase
 
 from pymbolic.parser import Parser as ParserBase
 
@@ -119,6 +121,11 @@ class CombineMapper(CombineMapperBase):
 
 
 class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
+    pass
+
+
+class ConstantFoldingMapper(ConstantFoldingMapperBase,
+        IdentityMapperMixin):
     pass
 
 
