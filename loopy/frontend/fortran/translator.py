@@ -645,7 +645,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     default_order="F"
                     )
 
-            proc_dict[sub.subprogram_name] = knl
+            proc_dict[sub.subprogram_name] = lp.fold_constants(knl)
 
         transform_code = remove_common_indentation(
                 self.transform_code_lines)
