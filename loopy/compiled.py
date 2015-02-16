@@ -485,13 +485,19 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options):
                     else:
                         return strify(shape_axis)
 
+                def strify_tuple(t):
+                    if len(t) == 0:
+                        return "()"
+                    else:
+                        return "(%s,)" % ", ".join(
+                                strify_allowing_none(sa)
+                                for sa in t)
+
                 shape_mismatch_msg = (
                         "raise TypeError(\"shape mismatch on argument '%s' "
                         "(got: %%s, expected: %%s)\" "
-                        "%% (%s.shape, (%s,)))"
-                        % (arg.name, arg.name,
-                            ", ".join(strify_allowing_none(sa)
-                                for sa in arg.unvec_shape)))
+                        "%% (%s.shape, %s))"
+                        % (arg.name, arg.name, strify_tuple(arg.unvec_shape)))
 
                 if any(shape_axis is None for shape_axis in kernel_arg.shape):
                     gen("if len(%s.shape) != %s:"
