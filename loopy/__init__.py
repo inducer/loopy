@@ -1214,12 +1214,40 @@ def _split_reduction(kernel, inames, direction, within=None):
 
 
 def split_reduction_inward(kernel, inames, within=None):
-    # FIXME document me
+    """Takes a reduction of the form::
+
+        sum([i,j,k], ...)
+
+    and splits it into two nested reductions::
+
+        sum([j,k], sum([i], ...))
+
+    In this case, *inames* would have been ``"i"`` indicating that
+    the iname ``i`` should be made the iname governing the inner reduction.
+
+    :arg inames: A list of inames, or a comma-separated string that can
+        be parsed into those
+    """
+
     return _split_reduction(kernel, inames, "in", within)
 
 
 def split_reduction_outward(kernel, inames, within=None):
-    # FIXME document me
+    """Takes a reduction of the form::
+
+        sum([i,j,k], ...)
+
+    and splits it into two nested reductions::
+
+        sum([i], sum([j,k], ...))
+
+    In this case, *inames* would have been ``"i"`` indicating that
+    the iname ``i`` should be made the iname governing the outer reduction.
+
+    :arg inames: A list of inames, or a comma-separated string that can
+        be parsed into those
+    """
+
     return _split_reduction(kernel, inames, "out", within)
 
 # }}}

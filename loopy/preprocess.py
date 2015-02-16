@@ -132,7 +132,7 @@ class _DictUnionView:
 
 
 def infer_unknown_types(kernel, expect_completion=False):
-    """Infer types on temporaries and argumetns."""
+    """Infer types on temporaries and arguments."""
 
     logger.debug("%s: infer types" % kernel.name)
 

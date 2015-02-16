@@ -373,6 +373,9 @@ class SubstitutionRule(Record):
     """
     .. attribute:: name
     .. attribute:: arguments
+
+        A tuple of strings
+
     .. attribute:: expression
     """
 
@@ -411,8 +414,8 @@ class InstructionBase(Record):
 
     .. attribute:: insn_deps
 
-        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances that
-        *must* be executed before this one. Note that
+        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
+         that *must* be executed before this one. Note that
         :func:`loopy.preprocess_kernel` (usually invoked automatically)
         augments this by adding dependencies on any writes to temporaries read
         by this instruction.
