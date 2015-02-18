@@ -502,7 +502,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options):
                 if kernel_arg.shape is None:
                     pass
 
-                if any(shape_axis is None for shape_axis in kernel_arg.shape):
+                elif any(shape_axis is None for shape_axis in kernel_arg.shape):
                     gen("if len(%s.shape) != %s:"
                             % (arg.name, len(arg.unvec_shape)))
                     with Indentation(gen):
