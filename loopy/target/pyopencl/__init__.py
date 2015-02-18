@@ -236,6 +236,9 @@ class PyOpenCLTarget(OpenCLTarget):
 
         self.device = device
 
+        # This ensures the dtype registry is populated.
+        import pyopencl.tools  # noqa
+
     hash_fields = ["device"]
     comparison_fields = ["device"]
 
