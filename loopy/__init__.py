@@ -1032,7 +1032,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 def find_instructions(kernel, insn_match):
     from loopy.context_matching import parse_id_match
     match = parse_id_match(insn_match)
-    return [insn for insn in kernel.instructions if match(insn.id, None)]
+    return [insn for insn in kernel.instructions if match(insn.id, insn.tags)]
 
 
 def map_instructions(kernel, insn_match, f):
