@@ -301,12 +301,15 @@ def temporary_to_subst(kernel, temp_name, within=None):
 
                 def_id.add(dep_id)
             else:
-                def_id.add(get_relevant_definition_insn_id(dep_id))
+                rec_result = get_relevant_definition_insn_id(dep_id)
+                if rec_result is not None:
+                    def_id.add(rec_result)
 
         if len(def_id) > 1:
             raise LoopyError("more than one write to '%s' found in "
-                    "depdendencies of '%s'--definition cannot be resolved"
-                    % (temp_name, usage_insn_id))
+                    "depdendencies of '%s'--definition cannot be resolved "
+                    "(writer instructions ids: %s)"
+                    % (temp_name, usage_insn_id, ", ".join(def_id)))
 
         if not def_id:
             return None
