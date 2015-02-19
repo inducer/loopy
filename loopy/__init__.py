@@ -1098,8 +1098,14 @@ def remove_instructions(kernel, insn_ids):
 
         # transitively propagate dependencies
         # (only one level for now)
-        new_deps = insn.insn_deps - insn_ids
-        for dep_id in insn.insn_deps & insn_ids:
+        if insn.insn_deps is None:
+            insn_deps = frozenset()
+        else:
+            insn_deps = insn.insn_deps
+
+        new_deps = insn_deps - insn_ids
+
+        for dep_id in insn_deps & insn_ids:
             new_deps = new_deps | id_to_insn[dep_id].insn_deps
 
         new_insns.append(insn.copy(insn_deps=frozenset(new_deps)))
