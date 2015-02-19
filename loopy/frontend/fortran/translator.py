@@ -550,6 +550,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
     def map_Stop(self, node):
         raise NotImplementedError("stop")
 
+    faulty_loopy_pragma = re.compile(r"\s*\$\s*loopy\s*")
+
     begin_tag_re = re.compile(r"\$loopy begin tagged:\s*(.*?)\s*$")
     end_tag_re = re.compile(r"\$loopy end tagged:\s*(.*?)\s*$")
 
@@ -558,6 +560,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         begin_tag_match = self.begin_tag_re.match(stripped_comment_line)
         end_tag_match = self.end_tag_re.match(stripped_comment_line)
+        faulty_loopy_pragma_match = self.faulty_loopy_pragma.match(stripped_comment_line)
 
         if stripped_comment_line == "$loopy begin transform":
             if self.in_transform_code:
@@ -584,6 +587,11 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         elif self.in_transform_code:
             self.transform_code_lines.append(node.content)
+
+        elif faulty_loopy_pragma_match is not None:
+            from warnings import warn
+            warn("The comment line '%s' was not recognized as a loopy directive"
+                    % stripped_comment_line)
 
     # }}}
 
