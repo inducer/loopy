@@ -229,7 +229,7 @@ class TemporaryToSubstChanger(ExpandingIdentityMapper):
             if result is not None:
                 return result
 
-        return super(ExpandingIdentityMapper, self).map_variable(
+        return super(TemporaryToSubstChanger, self).map_variable(
                 expr, expn_state)
 
     def map_subscript(self, expr, expn_state):
@@ -238,7 +238,7 @@ class TemporaryToSubstChanger(ExpandingIdentityMapper):
             if result is not None:
                 return result
 
-        return super(ExpandingIdentityMapper, self).map_variable(
+        return super(TemporaryToSubstChanger, self).map_subscript(
                 expr, expn_state)
 
     def transform_access(self, index, expn_state):
