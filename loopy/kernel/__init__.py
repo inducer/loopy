@@ -95,6 +95,9 @@ class LoopKernel(RecordWithoutPickling):
 
     .. attribute:: instructions
     .. attribute:: args
+
+        A list of :class:`loopy.kernel.data.KernelArgument`
+
     .. attribute:: schedule
 
         *None* or a list of :class:`loopy.schedule.ScheduleItem`
@@ -105,7 +108,16 @@ class LoopKernel(RecordWithoutPickling):
     .. attribute:: assumptions
     .. attribute:: local_sizes
     .. attribute:: temporary_variables
+
+        A :class:`dict` of mapping variable names to
+        :class:`loopy.kernel.data.TemporaryVariable`
+        instances.
+
     .. attribute:: iname_to_tag
+
+        A :class:`dict` mapping inames (as strings)
+        to instances of :class:`loopy.kernel.data.IndexTag`.
+
     .. attribute:: function_manglers
     .. attribute:: symbol_manglers
 
