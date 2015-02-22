@@ -203,6 +203,8 @@ class DependencyMapper(DependencyMapperBase):
 # {{{ loopy-specific primitives
 
 class FunctionIdentifier(Leaf):
+    """A base class for symbols representing functions."""
+
     init_arg_names = ()
 
     def stringifier(self):
@@ -212,6 +214,10 @@ class FunctionIdentifier(Leaf):
 
 
 class TypedCSE(CommonSubexpression):
+    """A :class:`pymbolic.primitives.CommonSubexpression` annotated with
+    a :class:`numpy.dtype`.
+    """
+
     def __init__(self, child, prefix=None, dtype=None):
         CommonSubexpression.__init__(self, child, prefix)
         self.dtype = dtype
@@ -246,6 +252,24 @@ class TaggedVariable(Variable):
 
 
 class Reduction(AlgebraicLeaf):
+    """Represents a reduction operation on :attr:`expr`
+    across :attr:`inames`.
+
+    .. attribute:: operation
+
+        an instance of :class:`loopy.library.reduction.ReductionOperation`
+
+    .. attribute:: inames
+
+        a list of inames across which reduction on :attr:`expr` is being
+        carried out.
+
+    .. attribute:: expr
+
+        The expression (as a :class:`pymbolic.primitives.Expression`)
+        on which reduction is performed.
+    """
+
     init_arg_names = ("operation", "inames", "expr")
 
     def __init__(self, operation, inames, expr):
@@ -282,6 +306,10 @@ class Reduction(AlgebraicLeaf):
 
 
 class LinearSubscript(AlgebraicLeaf):
+    """Represents a linear index into a multi-dimensional array, completely
+    ignoring any multi-dimensional layout.
+    """
+
     init_arg_names = ("aggregate", "index")
 
     def __init__(self, aggregate, index):
