@@ -39,35 +39,49 @@ class ExpressionFlopCounter(FlopCounter):
 		return 0
 
 	def map_subscript(self, expr):
-		return 0
+		return self.rec(expr.index)
 
 	def map_tagged_variable(self, expr):
 		return 0
+'''
+	def map_leaf(self, expr):
+		return 0
+
+	def map_wildccard(self, expr):
+		return 0
+
+	def map_function_symbol(self, expr):
+		return 0
+
+	def map_call(self, expr):
+		return 0
+
+	def map_call_with_kwargs(self, expr):
+		return 0
+
+	def map_lookup(self, expr):
+		return 0
+'''
 
 
 class PerformanceForecaster:
 
 	# count the number of flops in the kernel
 	# param_vals is a dictionary mapping parameters to values
-	def count_kernel_flops(self, knl, param_vals):
-		flopCounter = ExpressionFlopCounter()
-		totalFlops = 0
-		for insn in knl.instructions:
-			# count flops for this instruction
-			flops = flopCounter(insn.expression)
+	def kernel_flop_count(self, knl, param_vals):
+		poly = self.kernel_flop_poly(knl)
+		return poly.eval_with_dict(param_vals)
 
+	def kernel_flop_poly(self, knl):
+		poly = 0
+		flopCounter = ExpressionFlopCounter()
+		for insn in knl.instructions:
 			# how many times is this instruction executed?
 			# check domain size:
 			insn_inames = knl.insn_inames(insn)
-			inames_domain = knl.get_inames_domain(insn_inames)
+			inames_domain = knl.get_inames_domain(knl.insn_inames(insn))
 			domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-
-			print "(count_kernel_flops debug msg) domain: ", domain.card(), "; flops: ", flops
-			print "(count_kernel_flops debug msg) param_vals: ", param_vals
-			domain_size = 1  #TODO: 
-			totalFlops += domain_size*flops
-
-	
-		return totalFlops
-
+			flops = flopCounter(insn.expression())
+			poly += flops*domain.card()
+		return poly
 
