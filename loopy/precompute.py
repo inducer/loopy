@@ -249,7 +249,7 @@ def find_var_base_indices_and_shape_from_inames(
     return list(zip(*base_indices_and_sizes))
 
 
-def compute_bounds(kernel, domain, subst_name, stor2sweep,
+def compute_bounds(kernel, domain, stor2sweep,
         primed_sweep_inames, storage_axis_names):
 
     bounds_footprint_map = move_to_par_from_out(
@@ -259,9 +259,7 @@ def compute_bounds(kernel, domain, subst_name, stor2sweep,
     storage_domain = bounds_footprint_map.domain().coalesce()
 
     if not storage_domain.is_bounded():
-        raise RuntimeError("In precomputation of substitution '%s': "
-                "sweep did not result in a bounded storage domain"
-                % subst_name)
+        raise RuntimeError("sweep did not result in a bounded storage domain")
 
     return find_var_base_indices_and_shape_from_inames(
             storage_domain, [saxis+"'" for saxis in storage_axis_names],
@@ -270,7 +268,7 @@ def compute_bounds(kernel, domain, subst_name, stor2sweep,
 # }}}
 
 
-def get_access_info(kernel, domain, subst_name,
+def get_access_info(kernel, domain,
         storage_axis_names, storage_axis_sources,
         sweep_inames, invocation_descriptors):
 
@@ -299,7 +297,7 @@ def get_access_info(kernel, domain, subst_name,
             sweep_inames, primed_sweep_inames, prime_sweep_inames)
 
     storage_base_indices, storage_shape = compute_bounds(
-            kernel, domain, subst_name, stor2sweep, primed_sweep_inames,
+            kernel, domain, stor2sweep, primed_sweep_inames,
             storage_axis_names)
 
     # compute augmented domain
@@ -805,7 +803,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     (non1_storage_axis_names, new_domain,
             storage_base_indices, non1_storage_base_indices, non1_storage_shape) = \
-                    get_access_info(kernel, domch.domain, subst_name,
+                    get_access_info(kernel, domch.domain,
                             storage_axis_names, storage_axis_sources,
                             sweep_inames, invocation_descriptors)
 
