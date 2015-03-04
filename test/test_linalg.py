@@ -106,8 +106,8 @@ def test_axpy(ctx_factory):
                     outer_tag="unr", inner_tag="l.0")
             return knl
 
-        for variant in [variant_cpu, variant_gpu]:
         #for variant in [ variant_gpu]:
+        for variant in [variant_cpu, variant_gpu]:
             lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                     op_count=[np.dtype(dtype).itemsize*n*3/1e9],
                     op_label=["GBytes"],
@@ -216,6 +216,41 @@ def test_variable_size_matrix_mul(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
             parameters={"n": n})
+
+
+def test_funny_shape_matrix_mul(ctx_factory):
+    ctx = ctx_factory()
+
+    n = get_suitable_size(ctx)
+    m = n+12
+    l = m+12
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+                ],
+            name="matmul", assumptions="n,m,l >= 1")
+
+    knl = lp.add_dtypes(knl, {
+        "a": np.float32,
+        "b": np.float32,
+        })
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 16,
+            outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", 8,
+            outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 32)
+
+    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
+    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl,
+            op_count=[2*n**3/1e9], op_label=["GFlops"],
+            parameters={"n": n, "m": m, "l": l})
 
 
 def test_rank_one(ctx_factory):
