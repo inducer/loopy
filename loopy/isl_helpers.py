@@ -140,7 +140,7 @@ def iname_rel_aff(space, iname, rel, aff):
 def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):
     if context is not None:
         context = isl.align_spaces(context, pw_aff.get_domain_space(),
-                obj_bigger_ok=True)
+                obj_bigger_ok=True).params()
         pw_aff = pw_aff.gist(context)
 
     pieces = pw_aff.get_pieces()
