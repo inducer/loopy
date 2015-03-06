@@ -8,5 +8,7 @@ echo "working in container $CNT"
 
 docker start -i $CNT
 
+docker cp $CNT:/tmp/build/loopy/dist/loopy $(pwd) || true
+
 docker rm $CNT
 

@@ -39,3 +39,4 @@ cd loopy
 grep -v pyopencl requirements.txt > myreq.txt
 pip install -r myreq.txt
 
+./build-helpers/run-pyinstaller.sh
