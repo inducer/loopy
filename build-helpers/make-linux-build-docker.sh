@@ -10,5 +10,7 @@ docker start -i $CNT
 
 docker cp $CNT:/tmp/build/loopy/dist/loopy $(pwd) || true
 
+mv loopy loopy-centos6-$(date +"%Y-%m-%d")
+
 docker rm $CNT
 
