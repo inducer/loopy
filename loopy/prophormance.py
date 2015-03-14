@@ -2,7 +2,7 @@ from __future__ import division
 from __future__ import absolute_import 
 import six 
 
-__copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
+__copyright__ = "Copyright (C) 2015 James Stevens"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -38,16 +38,15 @@ class ExpressionFlopCounter(FlopCounter):
 		warn("ExpressionFlopCounter counting reduction expression as 0 flops.", stacklevel=2)
 		return 0
 
-	def map_subscript(self, expr):
-		return self.rec(expr.index)
+# from pymbolic:
 
 	def map_tagged_variable(self, expr):
 		return 0
-'''
-	def map_leaf(self, expr):
+
+	def map_variable(self, expr):
 		return 0
 
-	def map_wildccard(self, expr):
+	def map_wildcard(self, expr):
 		return 0
 
 	def map_function_symbol(self, expr):
@@ -59,20 +58,105 @@ class ExpressionFlopCounter(FlopCounter):
 	def map_call_with_kwargs(self, expr):
 		return 0
 
+	def map_subscript(self, expr):
+		return self.rec(expr.index)
+
 	def map_lookup(self, expr):
 		return 0
+
+	def map_sum(self, expr):
+		return 0
+
+	def map_product(self, expr):
+		return 0
+
+	def map_quotient(self, expr):
+		return 0
+
+	def map_floor_div(self, expr):
+		return 0
+
+	def map_remainder(self, expr):
+		return 0
+
+	def map_power(self, expr):
+		return 0
+
+	def map_left_shift(self, expr):
+		return 0
+
+	def map_right_shift(self, expr):
+		return 0
+
+	def map_bitwise_not(self, expr):
+		return 0
+
+	def map_bitwise_or(self, expr):
+		return 0
+
+	def map_bitwise_xor(self, expr):
+		return 0
+
+	def map_bitwise_and(self, expr):
+		return 0
+
+	def map_comparison(self, expr):
+		return 0
+
+	def map_logical_not(self, expr):
+		return 0
+
+	def map_logical_or(self, expr):
+		return 0
+
+	def map_logical_and(self, expr):
+		return 0
+
+	def map_if(self, expr):
+		return 0
+
+	def map_if_positive(self, expr):
+		return 0
+
+	def map_min(self, expr):
+		return 0
+
+	def map_max(self, expr):
+		return 0
+
+	def map_common_subexpression(self, expr):
+		return 0
+
+	def map_substitution(self, expr):
+		return 0
+
+	def map_derivative(self, expr):
+		return 0
+
+	def map_slice(self, expr):
+		return 0
+
+
+# to evaluate poly: poly.eval_with_dict(dictionary)
+def get_flop_poly(knl):
+	poly = 0
+	flopCounter = ExpressionFlopCounter()
+	for insn in knl.instructions:
+		# how many times is this instruction executed?
+		# check domain size:
+		insn_inames = knl.insn_inames(insn)
+		inames_domain = knl.get_inames_domain(knl.insn_inames(insn))
+		domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+		flops = flopCounter(insn.expression())
+		poly += flops*domain.card()
+	return poly
+
+
 '''
-
-
 class PerformanceForecaster:
 
-	# count the number of flops in the kernel
-	# param_vals is a dictionary mapping parameters to values
-	def kernel_flop_count(self, knl, param_vals):
-		poly = self.kernel_flop_poly(knl)
-		return poly.eval_with_dict(param_vals)
-
-	def kernel_flop_poly(self, knl):
+	# to evaluate poly: poly.eval_with_dict(dictionary)
+	def get_flop_poly(self, knl):
 		poly = 0
 		flopCounter = ExpressionFlopCounter()
 		for insn in knl.instructions:
@@ -84,4 +168,4 @@ class PerformanceForecaster:
 			flops = flopCounter(insn.expression())
 			poly += flops*domain.card()
 		return poly
-
+'''
