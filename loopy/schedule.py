@@ -1,5 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -186,7 +185,10 @@ def loop_nest_map(kernel):
     from loopy.kernel.data import IlpBaseTag
     for inner_iname in all_inames:
         result[inner_iname] = set()
-        for outer_iname in kernel.all_inames():
+        for outer_iname in all_inames:
+            if inner_iname == outer_iname:
+                continue
+
             tag = kernel.iname_to_tag.get(outer_iname)
             if isinstance(tag, IlpBaseTag):
                 # ILP tags are special because they are parallel tags
@@ -201,7 +203,7 @@ def loop_nest_map(kernel):
 
     for dom_idx, dom in enumerate(kernel.domains):
         for outer_iname in dom.get_var_names(isl.dim_type.param):
-            if outer_iname not in kernel.all_inames():
+            if outer_iname not in all_inames:
                 continue
 
             for inner_iname in dom.get_var_names(isl.dim_type.set):
@@ -346,7 +348,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
     if debug_mode:
         if debug.wrote_status == 2:
-            print
+            print()
         print(75*"=")
         print("KERNEL:")
         print(kernel)

@@ -115,9 +115,10 @@ def build_per_access_storage_to_domain_map(invdesc, domain,
         else:
             stor2sweep = stor2sweep.intersect(cns_map)
 
-    stor2sweep = stor2sweep.move_dims(
-            dim_type.in_, 0,
-            dim_type.out, rn, stor_dim)
+    if stor2sweep is not None:
+        stor2sweep = stor2sweep.move_dims(
+                dim_type.in_, 0,
+                dim_type.out, rn, stor_dim)
 
     # stor2sweep is back in map_space
     return stor2sweep
@@ -168,7 +169,7 @@ def build_global_storage_to_sweep_map(kernel, invocation_descriptors,
             invdesc.is_in_footprint = True
 
     if isinstance(global_stor2sweep, isl.BasicMap):
-        global_stor2sweep = isl.Map.from_basic_map(stor2sweep)
+        global_stor2sweep = isl.Map.from_basic_map(global_stor2sweep)
     global_stor2sweep = global_stor2sweep.intersect_range(domain_dup_sweep)
 
     # space for global_stor2sweep:
@@ -249,7 +250,7 @@ def find_var_base_indices_and_shape_from_inames(
     return list(zip(*base_indices_and_sizes))
 
 
-def compute_bounds(kernel, domain, subst_name, stor2sweep,
+def compute_bounds(kernel, domain, stor2sweep,
         primed_sweep_inames, storage_axis_names):
 
     bounds_footprint_map = move_to_par_from_out(
@@ -259,9 +260,7 @@ def compute_bounds(kernel, domain, subst_name, stor2sweep,
     storage_domain = bounds_footprint_map.domain().coalesce()
 
     if not storage_domain.is_bounded():
-        raise RuntimeError("In precomputation of substitution '%s': "
-                "sweep did not result in a bounded storage domain"
-                % subst_name)
+        raise RuntimeError("sweep did not result in a bounded storage domain")
 
     return find_var_base_indices_and_shape_from_inames(
             storage_domain, [saxis+"'" for saxis in storage_axis_names],
@@ -270,7 +269,7 @@ def compute_bounds(kernel, domain, subst_name, stor2sweep,
 # }}}
 
 
-def get_access_info(kernel, domain, subst_name,
+def get_access_info(kernel, domain,
         storage_axis_names, storage_axis_sources,
         sweep_inames, invocation_descriptors):
 
@@ -299,7 +298,7 @@ def get_access_info(kernel, domain, subst_name,
             sweep_inames, primed_sweep_inames, prime_sweep_inames)
 
     storage_base_indices, storage_shape = compute_bounds(
-            kernel, domain, subst_name, stor2sweep, primed_sweep_inames,
+            kernel, domain, stor2sweep, primed_sweep_inames,
             storage_axis_names)
 
     # compute augmented domain
@@ -307,13 +306,11 @@ def get_access_info(kernel, domain, subst_name,
     # {{{ filter out unit-length dimensions
 
     non1_storage_axis_names = []
-    non1_storage_base_indices = []
     non1_storage_shape = []
 
     for saxis, bi, l in zip(storage_axis_names, storage_base_indices, storage_shape):
         if l != 1:
             non1_storage_axis_names.append(saxis)
-            non1_storage_base_indices.append(bi)
             non1_storage_shape.append(l)
 
     # }}}
@@ -361,7 +358,7 @@ def get_access_info(kernel, domain, subst_name,
     aug_domain = aug_domain.project_out(dim_type.set, dup_sweep_index, nsweep)
 
     return (non1_storage_axis_names, aug_domain,
-            storage_base_indices, non1_storage_base_indices, non1_storage_shape)
+            storage_base_indices, non1_storage_shape)
 
 
 def simplify_via_aff(expr):
@@ -786,39 +783,55 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     expanding_inames = sweep_inames_set | frozenset(expanding_usage_arg_deps)
     assert expanding_inames <= kernel.all_inames()
 
-    # {{{ find domain to be changed
+    if storage_axis_names:
+        # {{{ find domain to be changed
 
-    from loopy.kernel.tools import DomainChanger
-    domch = DomainChanger(kernel, expanding_inames)
+        from loopy.kernel.tools import DomainChanger
+        domch = DomainChanger(kernel, expanding_inames)
 
-    if domch.leaf_domain_index is not None:
-        # If the sweep inames are at home in parent domains, then we'll add
-        # fetches with loops over copies of these parent inames that will end
-        # up being scheduled *within* loops over these parents.
+        if domch.leaf_domain_index is not None:
+            # If the sweep inames are at home in parent domains, then we'll add
+            # fetches with loops over copies of these parent inames that will end
+            # up being scheduled *within* loops over these parents.
 
-        for iname in sweep_inames_set:
-            if kernel.get_home_domain_index(iname) != domch.leaf_domain_index:
-                raise RuntimeError("sweep iname '%s' is not 'at home' in the "
-                        "sweep's leaf domain" % iname)
+            for iname in sweep_inames_set:
+                if kernel.get_home_domain_index(iname) != domch.leaf_domain_index:
+                    raise RuntimeError("sweep iname '%s' is not 'at home' in the "
+                            "sweep's leaf domain" % iname)
 
-    # }}}
+        # }}}
 
-    (non1_storage_axis_names, new_domain,
-            storage_base_indices, non1_storage_base_indices, non1_storage_shape) = \
-                    get_access_info(kernel, domch.domain, subst_name,
-                            storage_axis_names, storage_axis_sources,
-                            sweep_inames, invocation_descriptors)
+        (non1_storage_axis_names, new_domain,
+                storage_base_indices, non1_storage_shape) = \
+                        get_access_info(kernel, domch.domain,
+                                storage_axis_names, storage_axis_sources,
+                                sweep_inames, invocation_descriptors)
 
-    from loopy.isl_helpers import convexify, boxify
-    if fetch_bounding_box:
-        new_domain = boxify(kernel.cache_manager, new_domain,
-                non1_storage_axis_names, kernel.assumptions)
+        from loopy.isl_helpers import convexify, boxify
+        if fetch_bounding_box:
+            new_domain = boxify(kernel.cache_manager, new_domain,
+                    non1_storage_axis_names, kernel.assumptions)
+        else:
+            new_domain = convexify(new_domain)
+
+        for saxis in storage_axis_names:
+            if saxis not in non1_storage_axis_names:
+                del new_iname_to_tag[saxis]
+
+        new_kernel_domains = domch.get_domains_with(new_domain)
     else:
-        new_domain = convexify(new_domain)
+        # leave kernel domains unchanged
+        new_kernel_domains = kernel.domains
 
-    for saxis in storage_axis_names:
-        if saxis not in non1_storage_axis_names:
-            del new_iname_to_tag[saxis]
+        non1_storage_axis_names = ()
+        storage_base_indices = ()
+        non1_storage_shape = ()
+
+        # no index dependencies--every reference to the subst rule
+        # is necessarily in the footprint.
+
+        for invdesc in invocation_descriptors:
+            invdesc.is_in_footprint = True
 
     # {{{ set up compute insn
 
@@ -886,7 +899,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     # }}}
 
     kernel = kernel.copy(
-            domains=domch.get_domains_with(new_domain),
+            domains=new_kernel_domains,
             instructions=[compute_insn] + kernel.instructions,
             temporary_variables=new_temporary_variables)
 
