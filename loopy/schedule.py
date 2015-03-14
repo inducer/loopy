@@ -1,5 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -349,7 +348,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
     if debug_mode:
         if debug.wrote_status == 2:
-            print
+            print()
         print(75*"=")
         print("KERNEL:")
         print(kernel)
