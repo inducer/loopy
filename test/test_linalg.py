@@ -226,7 +226,7 @@ def test_funny_shape_matrix_mul(ctx_factory):
     l = m+12
 
     knl = lp.make_kernel(
-            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
                 ],
