@@ -221,6 +221,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.isl_context = isl.Context()
 
         self.insn_id_counter = 0
+        self.condition_id_counter = 0
 
         self.kernels = []
 
@@ -229,8 +230,33 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.in_transform_code = False
 
         self.instruction_tags = []
+        self.conditions = []
 
         self.transform_code_lines = []
+
+    def add_expression_instruction(self, lhs, rhs):
+        scope = self.scope_stack[-1]
+
+        new_id = "insn%d" % self.insn_id_counter
+        self.insn_id_counter += 1
+
+        if scope.previous_instruction_id:
+            insn_deps = frozenset([scope.previous_instruction_id])
+        else:
+            insn_deps = frozenset()
+
+        from loopy.kernel.data import ExpressionInstruction
+        insn = ExpressionInstruction(
+                lhs, rhs,
+                forced_iname_deps=frozenset(
+                    scope.active_loopy_inames),
+                insn_deps=insn_deps,
+                id=new_id,
+                predicates=frozenset(self.conditions),
+                tags=tuple(self.instruction_tags))
+
+        scope.previous_instruction_id = new_id
+        scope.instructions.append(insn)
 
     # {{{ map_XXX functions
 
@@ -385,28 +411,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         scope.use_name(lhs_name)
 
-        from loopy.kernel.data import ExpressionInstruction
-
         rhs = scope.process_expression_for_loopy(self.parse_expr(node.expr))
 
-        new_id = "insn%d" % self.insn_id_counter
-        self.insn_id_counter += 1
-
-        if scope.previous_instruction_id:
-            insn_deps = frozenset([scope.previous_instruction_id])
-        else:
-            insn_deps = frozenset()
-
-        insn = ExpressionInstruction(
-                lhs, rhs,
-                forced_iname_deps=frozenset(
-                    scope.active_loopy_inames),
-                insn_deps=insn_deps,
-                id=new_id,
-                tags=tuple(self.instruction_tags))
-
-        scope.previous_instruction_id = new_id
-        scope.instructions.append(insn)
+        self.add_expression_instruction(lhs, rhs)
 
     def map_Allocate(self, node):
         raise NotImplementedError("allocate")
@@ -448,10 +455,31 @@ class F2LoopyTranslator(FTreeWalkerBase):
         # node.content[0]
 
     def map_IfThen(self, node):
-        raise NotImplementedError("if-then")
+        scope = self.scope_stack[-1]
+
+        cond_name = "loopy_cond%d" % self.condition_id_counter
+        self.condition_id_counter += 1
+        assert cond_name not in scope.type_map
+
+        scope.type_map[cond_name] = np.int32
+
+        from pymbolic import var
+        cond_var = var(cond_name)
+
+        self.add_expression_instruction(
+                cond_var, self.parse_expr(node.expr))
+
+        self.conditions.append(cond_name)
+
+        for c in node.content:
+            self.rec(c)
+
+    def map_Else(self, node):
+        cond_name = self.conditions.pop()
+        self.conditions.append("!" + cond_name)
 
     def map_EndIfThen(self, node):
-        return []
+        self.conditions.pop()
 
     def map_Do(self, node):
         scope = self.scope_stack[-1]
@@ -460,7 +488,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
             loop_var, loop_bounds = node.loopcontrol.split("=")
             loop_var = loop_var.strip()
             scope.use_name(loop_var)
-            loop_bounds = [self.parse_expr(s) for s in loop_bounds.split(",")]
+            loop_bounds = self.parse_expr(
+                    loop_bounds, min_precedence=self.expr_parser._PREC_FUNC_ARGS)
 
             if len(loop_bounds) == 2:
                 start, stop = loop_bounds
@@ -560,7 +589,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         begin_tag_match = self.begin_tag_re.match(stripped_comment_line)
         end_tag_match = self.end_tag_re.match(stripped_comment_line)
-        faulty_loopy_pragma_match = self.faulty_loopy_pragma.match(stripped_comment_line)
+        faulty_loopy_pragma_match = self.faulty_loopy_pragma.match(
+                stripped_comment_line)
 
         if stripped_comment_line == "$loopy begin transform":
             if self.in_transform_code:

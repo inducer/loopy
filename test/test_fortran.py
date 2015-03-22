@@ -207,6 +207,40 @@ def test_temporary_to_subst_indices(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
+def test_if(ctx_factory):
+    fortran_src = """
+        subroutine fill(out, out2, inp, n)
+          implicit none
+
+          real*8 a, b, out(n), out2(n), inp(n)
+          integer n
+
+          do i = 1, n
+            a = inp(i)
+            if (a.ge.3) then
+                b = 2*a
+                do j = 1,3
+                    b = 3 * b
+                end do
+                out(i) = 5*b
+            else
+                out(i) = 4*a
+            endif
+          end do
+        end
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    ref_knl = knl
+
+    knl = lp.temporary_to_subst(knl, "a")
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -81,8 +81,8 @@ class FTreeWalkerBase(object):
 
     # {{{ expressions
 
-    def parse_expr(self, expr_str):
-        return self.expr_parser(expr_str)
+    def parse_expr(self, expr_str, **kwargs):
+        return self.expr_parser(expr_str, **kwargs)
 
     # }}}
 
