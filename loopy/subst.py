@@ -319,7 +319,6 @@ def temporary_to_subst(kernel, temp_name, within=None):
         return def_id
 
     usage_to_definition = {}
-    definition_insn_ids = set()
 
     for insn in kernel.instructions:
         if temp_name not in insn.read_dependency_names():
@@ -332,7 +331,11 @@ def temporary_to_subst(kernel, temp_name, within=None):
                     % (temp_name, insn.id))
 
         usage_to_definition[insn.id] = def_id
-        definition_insn_ids.add(def_id)
+
+    definition_insn_ids = set()
+    for insn in kernel.instructions:
+        if temp_name in insn.write_dependency_names():
+            definition_insn_ids.add(insn.id)
 
     # }}}
 
