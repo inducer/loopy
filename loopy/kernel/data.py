@@ -431,8 +431,10 @@ class InstructionBase(Record):
 
     .. attribute:: predicates
 
-        a :class:`frozenset` of variable names whose truth values (as defined
-        by C) determine whether this instruction should be run
+        a :class:`frozenset` of variable names the conjunction (logical and) of
+        whose truth values (as defined by C) determine whether this instruction
+        should be run. Each variable name may, optionally, be preceded by
+        an exclamation point, indicating negation.
 
     .. attribute:: forced_iname_deps_is_final
 
@@ -678,7 +680,10 @@ class ExpressionInstruction(InstructionBase):
         for _, subscript in self.assignees_and_indices():
             result = result | get_dependencies(subscript)
 
-        result = result | self.predicates
+        processed_predicates = frozenset(
+                pred.lstrip("!") for pred in self.predicates)
+
+        result = result | processed_predicates
 
         return result
 
