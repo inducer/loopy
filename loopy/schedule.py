@@ -638,7 +638,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
     if debug_mode:
         print(75*"=")
-        six.input("Hit Enter for next schedule:")
+        six.moves.input("Hit Enter for next schedule:")
 
     if not active_inames and not unscheduled_insn_ids:
         # if done, yield result
@@ -1094,7 +1094,7 @@ def generate_loop_schedules(kernel, debug_args={}):
             print("  debug_args=dict(interactive=False)")
             print("to generate_loop_schedules().")
             print(75*"-")
-            six.input("Enter:")
+            six.moves.input("Enter:")
             print()
             print()
 
