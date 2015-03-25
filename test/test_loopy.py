@@ -84,6 +84,23 @@ def test_complicated_subst(ctx_factory):
         assert substs_with_letter == how_many
 
 
+def test_extract_subst(ctx_factory):
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+                a[i] = 23*b[i]**2 + 25*b[i]**2
+                """)
+
+    knl = lp.extract_subst(knl, "bsquare", "alpha*b[i]**2", "alpha")
+
+    print(knl)
+
+    from loopy.symbolic import parse
+
+    insn, = knl.instructions
+    assert insn.expression == parse("bsquare(23) + bsquare(25)")
+
+
 def test_type_inference_no_artificial_doubles(ctx_factory):
     ctx = ctx_factory()
 

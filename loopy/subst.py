@@ -43,10 +43,12 @@ class ExprDescriptor(Record):
     __slots__ = ["insn", "expr", "unif_var_dict"]
 
 
-def extract_subst(kernel, subst_name, template, parameters):
+def extract_subst(kernel, subst_name, template, parameters=()):
     """
     :arg subst_name: The name of the substitution rule to be created.
     :arg template: Unification template expression.
+    :arg parameters: An iterable of parameters used in
+        *template*, or a comma-separated string of the same.
 
     All targeted subexpressions must match ('unify with') *template*
     The template may contain '*' wildcards that will have to match exactly across all
@@ -56,6 +58,10 @@ def extract_subst(kernel, subst_name, template, parameters):
     if isinstance(template, str):
         from pymbolic import parse
         template = parse(template)
+
+    if isinstance(parameters, str):
+        parameters = tuple(
+                s.strip() for s in parameters.split())
 
     var_name_gen = kernel.get_var_name_generator()
 
