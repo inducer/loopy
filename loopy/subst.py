@@ -61,7 +61,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
     if isinstance(parameters, str):
         parameters = tuple(
-                s.strip() for s in parameters.split())
+                s.strip() for s in parameters.split(","))
 
     var_name_gen = kernel.get_var_name_generator()
 
