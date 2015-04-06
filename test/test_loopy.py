@@ -1760,6 +1760,26 @@ def test_fd_demo(ctx_factory):
     assert "double" not in code
 
 
+def test_fd_1d(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        "result[i] = u[i+1]-u[i]")
+
+    knl = lp.add_and_infer_dtypes(knl, {"u": np.float32})
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 16)
+    knl = lp.extract_subst(knl, "u_acc", "u[j]", parameters="j")
+    knl = lp.precompute(knl, "u_acc", "i_inner", default_tag="for")
+    knl = lp.assume(knl, "n mod 16 = 0")
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(n=2048))
+
+
 def test_make_copy_kernel(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
