@@ -407,6 +407,9 @@ class InvocationGatherer(ExpandingIdentityMapper):
                     | get_dependencies(self.subst_expander(
                         arg_val, insn_id=None, insn_tags=None)))
 
+        # FIXME: This is too strict--and the footprint machinery
+        # needs to be taught how to deal with locally constant
+        # variables.
         if not arg_deps <= self.kernel.all_inames():
             from warnings import warn
             warn("Precompute arguments in '%s(%s)' do not consist exclusively "
