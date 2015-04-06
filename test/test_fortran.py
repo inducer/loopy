@@ -241,6 +241,35 @@ def test_if(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
+def test_tagged(ctx_factory):
+    fortran_src = """
+        subroutine rot_norm(out, alpha, out2, inp, inp2, n)
+          implicit none
+          real*8 a, b, r, out(n), out2(n), inp(n), inp2(n)
+          real*8 alpha
+          integer n
+
+          do i = 1, n
+            !$loopy begin tagged: input
+            a = cos(alpha)*inp(i) + sin(alpha)*inp2(i)
+            b = -sin(alpha)*inp(i) + cos(alpha)*inp2(i)
+            !$loopy end tagged: input
+
+            r = sqrt(a**2 + b**2)
+            a = a/r
+            b = b/r
+
+            out(i) = a
+            out2(i) = b
+          end do
+        end
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    assert sum(1 for insn in lp.find_instructions(knl, "*$input")) == 2
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
