@@ -274,7 +274,6 @@ def temporary_to_subst(kernel, temp_name, within=None):
     """Extract an assignment to a temporary variable
     as a :ref:`substituion-rule`. The temporary may
 
-
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
 

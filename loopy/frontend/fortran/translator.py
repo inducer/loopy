@@ -683,6 +683,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     default_order="F"
                     )
 
+            from loopy.loop import fuse_loop_domains
+            knl = fuse_loop_domains(knl)
+
             proc_dict[sub.subprogram_name] = lp.fold_constants(knl)
 
         transform_code = remove_common_indentation(
