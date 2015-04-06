@@ -526,7 +526,8 @@ class InvocationReplacer(ExpandingIdentityMapper):
 
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, new_storage_axis_names=None, storage_axis_to_tag={},
-        default_tag="l.auto", dtype=None, fetch_bounding_box=False):
+        default_tag="l.auto", dtype=None, fetch_bounding_box=False,
+        temporary_is_local=None):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -886,13 +887,16 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     import loopy as lp
 
+    if temporary_is_local is None:
+        temporary_is_local = lp.auto
+
     new_temporary_variables = kernel.temporary_variables.copy()
     temp_var = lp.TemporaryVariable(
             name=target_var_name,
             dtype=dtype,
             base_indices=(0,)*len(non1_storage_shape),
             shape=tuple(non1_storage_shape),
-            is_local=lp.auto)
+            is_local=temporary_is_local)
 
     new_temporary_variables[target_var_name] = temp_var
 
