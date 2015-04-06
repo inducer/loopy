@@ -36,7 +36,6 @@ def wrap_in_conditionals(codegen_state, domain, check_inames, required_preds, st
     bounds_checks = get_bounds_checks(
             domain, check_inames,
             codegen_state.implemented_domain, overapproximate=False)
-
     bounds_check_set = isl.Set.universe(domain.get_space()) \
             .add_constraints(bounds_checks)
     bounds_check_set, new_implemented_domain = isl.align_two(
@@ -70,6 +69,7 @@ def generate_instruction_code(kernel, insn, codegen_state):
         raise RuntimeError("unexpected instruction type")
 
     insn_inames = kernel.insn_inames(insn)
+
     insn_code, impl_domain = wrap_in_conditionals(
             codegen_state,
             kernel.get_inames_domain(insn_inames), insn_inames,
