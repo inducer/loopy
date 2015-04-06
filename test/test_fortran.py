@@ -201,7 +201,9 @@ def test_temporary_to_subst_indices(ctx_factory):
 
     ref_knl = knl
 
+    assert "a" in knl.temporary_variables
     knl = lp.temporary_to_subst(knl, "a")
+    assert "a" not in knl.temporary_variables
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl)

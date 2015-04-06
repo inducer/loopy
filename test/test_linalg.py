@@ -183,32 +183,28 @@ def test_plain_matrix_mul(ctx_factory):
 
 
 def test_variable_size_matrix_mul(ctx_factory):
-    dtype = np.float32
     ctx = ctx_factory()
-    order = "C"
 
     n = get_suitable_size(ctx)
 
     knl = lp.make_kernel(
-            "[n] -> {[i,j,k]: 0<=i,j,k<n}",
-            [
-                "c[i, j] = sum(k, a[i, k]*b[k, j]) {id=labl}"
-                ],
-            [
-                lp.GlobalArg("a", dtype, shape="n, n", order=order),
-                lp.GlobalArg("b", dtype, shape="n, n", order=order),
-                lp.GlobalArg("c", dtype, shape="n, n", order=order),
-                lp.ValueArg("n", np.int32, approximately=n),
-                ],
-            name="matmul", assumptions="n >= 16")
+            "{[i,j,k]: 0<=i,j,k<n}",
+            "c[i, j] = sum(k, a[i, k]*b[k, j])")
+
+    knl = lp.add_dtypes(knl, {
+        "a": np.float32,
+        "b": np.float32,
+        })
 
     ref_knl = knl
 
     knl = lp.split_iname(knl, "i", 16,
-            outer_tag="g.0", inner_tag="l.1")
-    knl = lp.split_iname(knl, "j", 8,
-            outer_tag="g.1", inner_tag="l.0")
-    knl = lp.split_iname(knl, "k", 32)
+            outer_tag="g.0", inner_tag="l.1",
+            slabs=(0, 1))
+    knl = lp.split_iname(knl, "j", 16,
+            outer_tag="g.1", inner_tag="l.0",
+            slabs=(0, 1))
+    knl = lp.split_iname(knl, "k", 8, slabs=(0, 1))
 
     knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
     knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
@@ -245,8 +241,12 @@ def test_funny_shape_matrix_mul(ctx_factory):
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 32)
 
-    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
-    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
+    #knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
+    #knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
+    knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
+    knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
+    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner")
+    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],

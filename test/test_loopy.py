@@ -63,14 +63,9 @@ def test_complicated_subst(ctx_factory):
                 h(x) := 1 + g(x) + 20*g$two(x)
 
                 a[i] = h$one(i) * h$two(i)
-                """,
-            [
-                lp.GlobalArg("a", np.float32, shape=("n",)),
-                lp.ValueArg("n", np.int32),
-                ])
+                """)
 
-    from loopy.subst import expand_subst
-    knl = expand_subst(knl, "g$two < h$two")
+    knl = lp.expand_subst(knl, "g$two < h$two")
 
     print(knl)
 
@@ -1711,12 +1706,10 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         assert (a_ref == a_knl).get().all()
 
 
-def test_multiple_writes_to_local_temporary(ctx_factory):
+def test_multiple_writes_to_local_temporary():
     # Loopy would previously only handle barrier insertion correctly if exactly
     # one instruction wrote to each local temporary. This tests that multiple
     # writes are OK.
-
-    ctx = ctx_factory()
 
     knl = lp.make_kernel(
         "{[i,e]: 0<=i<5 and 0<=e<nelements}",
@@ -1726,13 +1719,13 @@ def test_multiple_writes_to_local_temporary(ctx_factory):
         """)
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
-    knl = lp.preprocess_kernel(knl, ctx.devices[0])
+    knl = lp.preprocess_kernel(knl)
     for k in lp.generate_loop_schedules(knl):
         code, _ = lp.generate_code(k)
         print(code)
 
 
-def test_fd_demo(ctx_factory):
+def test_fd_demo():
     knl = lp.make_kernel(
         "{[i,j]: 0<=i,j<n}",
         "result[i,j] = u[i, j]**2 + -1 + (-4)*u[i + 1, j + 1] \
