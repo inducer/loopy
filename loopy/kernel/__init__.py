@@ -392,10 +392,9 @@ class LoopKernel(RecordWithoutPickling):
         iname_set_stack = []
         result = []
 
-        writer_map = self.writer_map()
+        from loopy.kernel.tools import is_domain_dependent_on_inames
 
-        for dom in self.domains:
-            parameters = set(dom.get_var_names(dim_type.param))
+        for dom_idx, dom in enumerate(self.domains):
             inames = set(dom.get_var_names(dim_type.set))
 
             # This next domain may be nested inside the previous domain.
@@ -405,36 +404,10 @@ class LoopKernel(RecordWithoutPickling):
 
             discard_level_count = 0
             while discard_level_count < len(iname_set_stack):
-                # {{{ check for parenthood by loop bound iname
-
                 last_inames = iname_set_stack[-1-discard_level_count]
-                if last_inames & parameters:
+
+                if is_domain_dependent_on_inames(self, dom_idx, last_inames):
                     break
-
-                # }}}
-
-                # {{{ check for parenthood by written variable
-
-                is_parent_by_variable = False
-                for par in parameters:
-                    if par in self.temporary_variables:
-                        writer_insns = writer_map[par]
-
-                        if len(writer_insns) > 1:
-                            raise RuntimeError("loop bound '%s' "
-                                    "may only be written to once" % par)
-
-                        writer_insn, = writer_insns
-                        writer_inames = self.insn_inames(writer_insn)
-
-                        if writer_inames & last_inames:
-                            is_parent_by_variable = True
-                            break
-
-                if is_parent_by_variable:
-                    break
-
-                # }}}
 
                 discard_level_count += 1
 

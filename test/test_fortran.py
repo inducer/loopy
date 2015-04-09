@@ -272,6 +272,51 @@ def test_tagged(ctx_factory):
 
     assert sum(1 for insn in lp.find_instructions(knl, "*$input")) == 2
 
+
+def test_matmul(ctx_factory):
+    fortran_src = """
+        subroutine dgemm(m,n,l,a,b,c)
+          implicit none
+          real*8 temp, a(m,l),b(l,n),c(m,n)
+          integer m,n,k,i,j,l
+
+          do j = 1,n
+            do i = 1,m
+              temp = 0
+              do k = 1,l
+                temp = temp + b(k,j)*a(i,k)
+              end do
+              c(i,j) = temp
+            end do
+          end do
+        end subroutine
+
+        !$loopy begin transform
+        !$loopy end transform
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    assert len(knl.domains) == 1
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 16,
+            outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", 8,
+            outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 32)
+
+    knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
+    knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
+    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner")
+    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner")
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5, m=7, l=10))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

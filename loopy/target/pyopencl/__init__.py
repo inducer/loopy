@@ -34,6 +34,9 @@ from loopy.target.opencl import OpenCLTarget
 import pyopencl as cl
 import pyopencl.characterize as cl_char
 
+# This ensures the dtype registry is populated.
+import pyopencl.tools  # noqa
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -228,16 +231,13 @@ def pyopencl_preamble_generator(target, seen_dtypes, seen_functions):
 # }}}
 
 
-# {{{
+# {{{ pyopencl tools
 
 class PyOpenCLTarget(OpenCLTarget):
     def __init__(self, device=None):
         super(PyOpenCLTarget, self).__init__()
 
         self.device = device
-
-        # This ensures the dtype registry is populated.
-        import pyopencl.tools  # noqa
 
     hash_fields = ["device"]
     comparison_fields = ["device"]

@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 
+import islpy as isl
 import six
 
 
@@ -39,7 +40,6 @@ def potential_loop_nest_map(kernel):
     iname_to_insns = kernel.iname_to_insns()
 
     # examine pairs of all inames--O(n**2), I know.
-    from loopy.kernel.data import IlpBaseTag
     for inner_iname in all_inames:
         inner_result = set()
         for outer_iname in all_inames:
@@ -56,22 +56,67 @@ def potential_loop_nest_map(kernel):
 
 
 def fuse_loop_domains(kernel):
-    did_something = False
+    from loopy.kernel.tools import is_domain_dependent_on_inames
+
     while True:
         lnm = potential_loop_nest_map(kernel)
+        parents_per_domain = kernel.parents_per_domain()
+        all_parents_per_domain = kernel.all_parents_per_domain()
+
+        new_domains = None
 
         for inner_iname, outer_inames in six.iteritems(lnm):
             for outer_iname in outer_inames:
-                inner_do
+                # {{{ check if it's safe to fuse
 
+                inner_domain_idx = kernel.get_home_domain_index(inner_iname)
+                outer_domain_idx = kernel.get_home_domain_index(outer_iname)
 
+                if inner_domain_idx == outer_domain_idx:
+                    break
 
-        print kernel
-        print lnm
-        1/0
+                if (
+                        outer_domain_idx in all_parents_per_domain[inner_domain_idx]
+                        and not
+                        outer_domain_idx == parents_per_domain[inner_domain_idx]):
+                    # Outer domain is not a direct parent of the inner
+                    # domain. Unable to fuse.
+                    continue
 
-        if not did_something:
+                outer_dom = kernel.domains[outer_domain_idx]
+                inner_dom = kernel.domains[inner_domain_idx]
+
+                outer_inames = set(outer_dom.get_var_names(isl.dim_type.set))
+                if is_domain_dependent_on_inames(kernel, inner_domain_idx,
+                        outer_inames):
+                    # Bounds of inner domain depend on outer domain.
+                    # Unable to fuse.
+                    continue
+
+                # }}}
+
+                new_domains = kernel.domains[:]
+                min_idx = min(inner_domain_idx, outer_domain_idx)
+                max_idx = max(inner_domain_idx, outer_domain_idx)
+
+                del new_domains[max_idx]
+                del new_domains[min_idx]
+
+                outer_dom, inner_dom = isl.align_two(outer_dom, inner_dom)
+
+                new_domains.insert(min_idx, inner_dom & outer_dom)
+                break
+
+            if new_domains:
+                break
+
+        if not new_domains:
+            # Nothing was accomplished in the last loop trip, time to quit.
             break
+
+        kernel = kernel.copy(domains=new_domains)
 
     return kernel
 
+
+# vim: fdm=marker
