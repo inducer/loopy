@@ -358,7 +358,7 @@ def temporary_to_subst(kernel, temp_name, within=None):
 
     new_substs = kernel.substitutions.copy()
     for def_id, subst_name in six.iteritems(tts.definition_insn_id_to_subst_name):
-        def_insn = id_to_insn[def_id]
+        def_insn = kernel.id_to_insn[def_id]
 
         (_, indices), = def_insn.assignees_and_indices()
 
