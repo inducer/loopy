@@ -195,11 +195,11 @@ def build_loop_nest(kernel, sched_index, codegen_state):
     sched_index_info_entries = [
             ScheduleIndexInfo(
                 schedule_index=i,
-                admissible_cond_inames=
-                get_admissible_conditional_inames_for(kernel, i),
+                admissible_cond_inames=(
+                    get_admissible_conditional_inames_for(kernel, i)),
                 required_predicates=get_required_predicates(kernel, i)
                 )
-        for i in my_sched_indices]
+            for i in my_sched_indices]
 
     # }}}
 
@@ -279,11 +279,11 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             current_iname_set = (
                     current_iname_set
                     & sched_index_info_entries[candidate_group_length-1]
-                        .admissible_cond_inames)
+                    .admissible_cond_inames)
             current_pred_set = (
                     current_pred_set
                     & sched_index_info_entries[candidate_group_length-1]
-                        .required_predicates)
+                    .required_predicates)
 
             # {{{ see which inames are actually used in group
 
@@ -374,8 +374,6 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     return gen_code_block(
             build_insn_group(sched_index_info_entries, codegen_state))
-
-
 
 
 # vim: foldmethod=marker

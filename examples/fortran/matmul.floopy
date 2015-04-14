@@ -1,0 +1,26 @@
+subroutine dgemm(m,n,l,alpha,a,b,c)
+  implicit none
+  real*8 temp, a(m,l),b(l,n),c(m,n), alpha
+  integer m,n,k,i,j,l
+
+  do j = 1,n
+    do k = 1,l
+      do i = 1,m
+        c(i,j) = c(i,j) + alpha*b(k,j)*a(i,k)
+      end do
+    end do
+  end do
+end subroutine
+
+!$loopy begin transform
+! dgemm = lp.split_iname(dgemm, "i", 16,
+!         outer_tag="g.0", inner_tag="l.1")
+! dgemm = lp.split_iname(dgemm, "j", 8,
+!         outer_tag="g.1", inner_tag="l.0")
+! dgemm = lp.split_iname(dgemm, "k", 32)
+!
+! dgemm = lp.extract_subst(dgemm, "a_acc", "a[i1,i2]", parameters="i1, i2")
+! dgemm = lp.extract_subst(dgemm, "b_acc", "b[i1,i2]", parameters="i1, i2")
+! dgemm = lp.precompute(dgemm, "a_acc", "k_inner,i_inner")
+! dgemm = lp.precompute(dgemm, "b_acc", "j_inner,k_inner")
+!$loopy end transform

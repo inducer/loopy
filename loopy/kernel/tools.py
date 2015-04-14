@@ -539,4 +539,41 @@ class DomainParameterFinder(object):
 
 # }}}
 
+
+# {{{ is domain dependent on inames
+
+def is_domain_dependent_on_inames(kernel, domain_index, inames):
+    dom = kernel.domains[domain_index]
+    dom_parameters = set(dom.get_var_names(dim_type.param))
+
+    # {{{ check for parenthood by loop bound iname
+
+    if inames & dom_parameters:
+        return True
+
+    # }}}
+
+    # {{{ check for parenthood by written variable
+
+    for par in dom_parameters:
+        if par in kernel.temporary_variables:
+            writer_insns = kernel.writer_map()[par]
+
+            if len(writer_insns) > 1:
+                raise RuntimeError("loop bound '%s' "
+                        "may only be written to once" % par)
+
+            writer_insn, = writer_insns
+            writer_inames = kernel.insn_inames(writer_insn)
+
+            if writer_inames & inames:
+                return True
+
+    # }}}
+
+    return False
+
+# }}}
+
+
 # vim: foldmethod=marker

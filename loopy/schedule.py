@@ -638,7 +638,7 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
 
     if debug_mode:
         print(75*"=")
-        six.input("Hit Enter for next schedule:")
+        six.moves.input("Hit Enter for next schedule:")
 
     if not active_inames and not unscheduled_insn_ids:
         # if done, yield result
@@ -1025,8 +1025,6 @@ def generate_loop_schedules(kernel, debug_args={}):
     from loopy.check import pre_schedule_checks
     pre_schedule_checks(kernel)
 
-    logger.info("%s: schedule start" % kernel.name)
-
     schedule_count = 0
 
     debug = ScheduleDebugger(**debug_args)
@@ -1094,7 +1092,7 @@ def generate_loop_schedules(kernel, debug_args={}):
             print("  debug_args=dict(interactive=False)")
             print("to generate_loop_schedules().")
             print(75*"-")
-            six.input("Enter:")
+            six.moves.input("Enter:")
             print()
             print()
 
@@ -1134,6 +1132,11 @@ def get_one_scheduled_kernel(kernel):
 
         kernel_count = 0
 
+        from time import time
+        start_time = time()
+
+        logger.info("%s: schedule start" % kernel.name)
+
         for scheduled_kernel in generate_loop_schedules(kernel):
             kernel_count += 1
 
@@ -1144,6 +1147,9 @@ def get_one_scheduled_kernel(kernel):
             if kernel_count == 2:
                 ambiguous = True
                 break
+
+        logger.info("%s: scheduling done after %.2f s" % (
+            kernel.name, time()-start_time))
 
     if ambiguous:
         from warnings import warn

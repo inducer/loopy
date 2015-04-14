@@ -43,10 +43,12 @@ class ExprDescriptor(Record):
     __slots__ = ["insn", "expr", "unif_var_dict"]
 
 
-def extract_subst(kernel, subst_name, template, parameters):
+def extract_subst(kernel, subst_name, template, parameters=()):
     """
     :arg subst_name: The name of the substitution rule to be created.
     :arg template: Unification template expression.
+    :arg parameters: An iterable of parameters used in
+        *template*, or a comma-separated string of the same.
 
     All targeted subexpressions must match ('unify with') *template*
     The template may contain '*' wildcards that will have to match exactly across all
@@ -56,6 +58,10 @@ def extract_subst(kernel, subst_name, template, parameters):
     if isinstance(template, str):
         from pymbolic import parse
         template = parse(template)
+
+    if isinstance(parameters, str):
+        parameters = tuple(
+                s.strip() for s in parameters.split(","))
 
     var_name_gen = kernel.get_var_name_generator()
 
@@ -268,7 +274,6 @@ def temporary_to_subst(kernel, temp_name, within=None):
     """Extract an assignment to a temporary variable
     as a :ref:`substituion-rule`. The temporary may
 
-
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
 
@@ -319,7 +324,6 @@ def temporary_to_subst(kernel, temp_name, within=None):
         return def_id
 
     usage_to_definition = {}
-    definition_insn_ids = set()
 
     for insn in kernel.instructions:
         if temp_name not in insn.read_dependency_names():
@@ -332,7 +336,11 @@ def temporary_to_subst(kernel, temp_name, within=None):
                     % (temp_name, insn.id))
 
         usage_to_definition[insn.id] = def_id
-        definition_insn_ids.add(def_id)
+
+    definition_insn_ids = set()
+    for insn in kernel.instructions:
+        if temp_name in insn.write_dependency_names():
+            definition_insn_ids.add(insn.id)
 
     # }}}
 
@@ -350,7 +358,7 @@ def temporary_to_subst(kernel, temp_name, within=None):
 
     new_substs = kernel.substitutions.copy()
     for def_id, subst_name in six.iteritems(tts.definition_insn_id_to_subst_name):
-        def_insn = id_to_insn[def_id]
+        def_insn = kernel.id_to_insn[def_id]
 
         (_, indices), = def_insn.assignees_and_indices()
 
