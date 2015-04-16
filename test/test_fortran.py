@@ -316,7 +316,7 @@ def test_matmul(ctx_factory, buffer_inames):
     knl = lp.precompute(knl, "a_acc", "k_inner,i_inner")
     knl = lp.precompute(knl, "b_acc", "j_inner,k_inner")
 
-    knl = lp.buffer_write(knl, "c", buffer_inames=buffer_inames,
+    knl = lp.buffer_array(knl, "c", buffer_inames=buffer_inames,
             init_expression="0", store_expression="base+buffer")
 
     #ctx = ctx_factory()

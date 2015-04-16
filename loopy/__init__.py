@@ -55,7 +55,7 @@ from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst, temporary_to_subst
 from loopy.precompute import precompute
-from loopy.buffer_writes import buffer_write
+from loopy.buffer import buffer_array
 from loopy.padding import (split_arg_axis, find_padding_multiple,
         add_padding)
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
@@ -83,7 +83,7 @@ __all__ = [
         "register_reduction_parser",
 
         "extract_subst", "expand_subst", "temporary_to_subst",
-        "precompute", "buffer_write",
+        "precompute", "buffer_array",
         "split_arg_axis", "find_padding_multiple", "add_padding",
 
         "get_dot_dependency_graph",

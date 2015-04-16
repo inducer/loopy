@@ -1,6 +1,5 @@
 from __future__ import division, absolute_import
-import six
-from six.moves import range, zip
+from six.moves import range
 
 __copyright__ = "Copyright (C) 2012-2015 Andreas Kloeckner"
 
@@ -24,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.array_buffer import (ArrayToBufferMap, NoOpArrayToBufferMap,
+from loopy.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
 from loopy.symbolic import (get_dependencies, ExpandingIdentityMapper,
         SubstitutionMapper)
@@ -111,7 +110,7 @@ class ArrayAccessReplacer(ExpandingIdentityMapper):
 # }}}
 
 
-def buffer_write(kernel, var_name, buffer_inames, init_expression=None,
+def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         store_expression=None, within=None, default_tag="l.auto",
         temporary_is_local=None, fetch_bounding_box=False):
     """
@@ -186,7 +185,7 @@ def buffer_write(kernel, var_name, buffer_inames, init_expression=None,
                             expands_footprint=True,
                             storage_axis_exprs=index))
 
-    # {{{ use given / find new storage_axes
+    # {{{ find fetch/store inames
 
     init_inames = []
     store_inames = []
@@ -204,7 +203,7 @@ def buffer_write(kernel, var_name, buffer_inames, init_expression=None,
 
     # }}}
 
-    # {{{ modify loop domains
+    # {{{ modify loop domain
 
     non1_init_inames = []
     non1_store_inames = []
