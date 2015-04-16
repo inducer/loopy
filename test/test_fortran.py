@@ -273,7 +273,12 @@ def test_tagged(ctx_factory):
     assert sum(1 for insn in lp.find_instructions(knl, "*$input")) == 2
 
 
-def test_matmul(ctx_factory):
+@pytest.mark.parametrize("buffer_inames", [
+    "",
+    "i_inner",
+    "i_inner,j_inner",
+    ])
+def test_matmul(ctx_factory, buffer_inames):
     fortran_src = """
         subroutine dgemm(m,n,l,a,b,c)
           implicit none
@@ -311,11 +316,8 @@ def test_matmul(ctx_factory):
     knl = lp.precompute(knl, "a_acc", "k_inner,i_inner")
     knl = lp.precompute(knl, "b_acc", "j_inner,k_inner")
 
-    # FIXME: also test
-    # knl = lp.buffer_write(knl, "c", (), init_expression="0",
-    #         store_expression="base+buffer")
-    knl = lp.buffer_write(knl, "c", "i_inner,j_inner", init_expression="0",
-            store_expression="base+buffer", within_inames="i_outer,j_outer")
+    knl = lp.buffer_write(knl, "c", buffer_inames=buffer_inames,
+            init_expression="0", store_expression="base+buffer")
 
     #ctx = ctx_factory()
     #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5, m=7, l=10))
