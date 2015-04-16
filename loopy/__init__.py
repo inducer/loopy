@@ -55,6 +55,7 @@ from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst, temporary_to_subst
 from loopy.precompute import precompute
+from loopy.buffer_writes import buffer_write
 from loopy.padding import (split_arg_axis, find_padding_multiple,
         add_padding)
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
@@ -82,7 +83,7 @@ __all__ = [
         "register_reduction_parser",
 
         "extract_subst", "expand_subst", "temporary_to_subst",
-        "precompute",
+        "precompute", "buffer_write",
         "split_arg_axis", "find_padding_multiple", "add_padding",
 
         "get_dot_dependency_graph",
@@ -1570,11 +1571,11 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
         equations = [equations]
 
     import re
-    EQN_RE = re.compile(r"^([^=]+)=([^=]+)$")
+    eqn_re = re.compile(r"^([^=]+)=([^=]+)$")
 
     def parse_equation(eqn):
         if isinstance(eqn, str):
-            eqn_match = EQN_RE.match(eqn)
+            eqn_match = eqn_re.match(eqn)
             if not eqn_match:
                 raise ValueError("invalid equation: %s" % eqn)
 

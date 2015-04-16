@@ -352,6 +352,10 @@ class ExpansionState(Record):
     :ivar arg_context: a dict representing current argument values
     """
 
+    @property
+    def insn_id(self):
+        return self.stack[0][0]
+
 
 class SubstitutionRuleRenamer(IdentityMapper):
     def __init__(self, renames):

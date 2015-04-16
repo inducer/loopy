@@ -350,7 +350,7 @@ class ArrayToBufferMap(object):
                 set(global_s2s_par_dom.get_var_names(dim_type.param))
                 & self.kernel.all_inames())
 
-        for arg in accdesc.args:
+        for arg in accdesc.storage_axis_exprs:
             arg_inames.update(get_dependencies(arg))
         arg_inames = frozenset(arg_inames)
 

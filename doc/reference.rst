@@ -402,6 +402,8 @@ Caching, Precomputation and Prefetching
 
 .. autofunction:: add_prefetch
 
+.. autofunction:: buffer_write
+
 Influencing data access
 ^^^^^^^^^^^^^^^^^^^^^^^
 

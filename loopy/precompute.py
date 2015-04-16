@@ -25,7 +25,6 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
 from loopy.symbolic import (get_dependencies, SubstitutionMapper,
         ExpandingIdentityMapper)
 from pymbolic.mapper.substitutor import make_subst_func
@@ -57,13 +56,7 @@ def storage_axis_exprs(storage_axis_sources, args):
     return result
 
 
-def simplify_via_aff(expr):
-    from loopy.symbolic import aff_from_expr, aff_to_expr
-    deps = get_dependencies(expr)
-    return aff_to_expr(aff_from_expr(
-        isl.Space.create_from_names(isl.Context(), list(deps)),
-        expr))
-
+# {{{ gather rule invocations
 
 class RuleInvocationGatherer(ExpandingIdentityMapper):
     def __init__(self, kernel, subst_name, subst_tag, within):
@@ -130,18 +123,18 @@ class RuleInvocationGatherer(ExpandingIdentityMapper):
 
         return 0  # exact value irrelevant
 
+# }}}
+
+
+# {{{ replace rule invocation
 
 class RuleInvocationReplacer(ExpandingIdentityMapper):
     def __init__(self, kernel, subst_name, subst_tag, within,
             access_descriptors, array_base_map,
             storage_axis_names, storage_axis_sources,
-            storage_base_indices, non1_storage_axis_names,
+            non1_storage_axis_names,
             target_var_name):
         ExpandingIdentityMapper.__init__(self,
-                kernel.substitutions, kernel.get_var_name_generator())
-
-        from loopy.symbolic import SubstitutionRuleExpander
-        self.subst_expander = SubstitutionRuleExpander(
                 kernel.substitutions, kernel.get_var_name_generator())
 
         self.kernel = kernel
@@ -154,7 +147,6 @@ class RuleInvocationReplacer(ExpandingIdentityMapper):
 
         self.storage_axis_names = storage_axis_names
         self.storage_axis_sources = storage_axis_sources
-        self.storage_base_indices = storage_base_indices
         self.non1_storage_axis_names = non1_storage_axis_names
 
         self.target_var_name = target_var_name
@@ -198,11 +190,13 @@ class RuleInvocationReplacer(ExpandingIdentityMapper):
 
         assert len(arguments) == len(rule.arguments)
 
+        abm = self.array_base_map
+
         stor_subscript = []
         for sax_name, sax_source, sax_base_idx in zip(
                 self.storage_axis_names,
                 self.storage_axis_sources,
-                self.storage_base_indices):
+                abm.storage_base_indices):
             if sax_name not in self.non1_storage_axis_names:
                 continue
 
@@ -213,6 +207,7 @@ class RuleInvocationReplacer(ExpandingIdentityMapper):
                 # an iname
                 ax_index = var(sax_source)
 
+            from loopy.isl_helpers import simplify_via_aff
             ax_index = simplify_via_aff(ax_index - sax_base_idx)
             stor_subscript.append(ax_index)
 
@@ -226,6 +221,8 @@ class RuleInvocationReplacer(ExpandingIdentityMapper):
         self.rec(rule.expression, expn_state.copy(arg_context={}))
 
         return new_outer_expr
+
+# }}}
 
 
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
@@ -300,6 +297,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         if iname not in kernel.all_inames():
             raise RuntimeError("sweep iname '%s' is not a known iname"
                     % iname)
+
+    sweep_inames = list(sweep_inames)
+    sweep_inames_set = frozenset(sweep_inames)
 
     if isinstance(storage_axes, str):
         storage_axes = storage_axes.split(",")
@@ -397,9 +397,6 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         raise RuntimeError("no invocations of '%s' found" % subst_name)
 
     # }}}
-
-    sweep_inames = list(sweep_inames)
-    sweep_inames_set = frozenset(sweep_inames)
 
     # {{{ find inames used in arguments
 
@@ -573,7 +570,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     invr = RuleInvocationReplacer(kernel, subst_name, subst_tag, within,
             access_descriptors, abm,
             storage_axis_names, storage_axis_sources,
-            abm.storage_base_indices, non1_storage_axis_names,
+            non1_storage_axis_names,
             target_var_name)
 
     kernel = invr.map_kernel(kernel)

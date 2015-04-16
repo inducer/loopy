@@ -282,17 +282,12 @@ def test_matmul(ctx_factory):
 
           do j = 1,n
             do i = 1,m
-              temp = 0
               do k = 1,l
-                temp = temp + b(k,j)*a(i,k)
+                c(i,j) = c(i,j) + b(k,j)*a(i,k)
               end do
-              c(i,j) = temp
             end do
           end do
         end subroutine
-
-        !$loopy begin transform
-        !$loopy end transform
         """
 
     from loopy.frontend.fortran import f2loopy
@@ -307,15 +302,28 @@ def test_matmul(ctx_factory):
     knl = lp.split_iname(knl, "j", 8,
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 32)
+    knl = lp.assume(knl, "n mod 32 = 0")
+    knl = lp.assume(knl, "m mod 32 = 0")
+    knl = lp.assume(knl, "l mod 16 = 0")
 
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
     knl = lp.precompute(knl, "a_acc", "k_inner,i_inner")
     knl = lp.precompute(knl, "b_acc", "j_inner,k_inner")
 
-    ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5, m=7, l=10))
+    # FIXME: also test
+    # knl = lp.buffer_write(knl, "c", (), init_expression="0",
+    #         store_expression="base+buffer")
+    knl = lp.buffer_write(knl, "c", "i_inner,j_inner", init_expression="0",
+            store_expression="base+buffer", within_inames="i_outer,j_outer")
 
+    #ctx = ctx_factory()
+    #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5, m=7, l=10))
+
+    knl = lp.preprocess_kernel(knl)
+    for k in lp.generate_loop_schedules(knl):
+        code, _ = lp.generate_code(k)
+        print(code)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
