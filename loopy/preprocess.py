@@ -26,7 +26,7 @@ THE SOFTWARE.
 import six
 import numpy as np
 from loopy.diagnostic import (
-        LoopyError, LoopyWarning, WriteRaceConditionWarning, warn,
+        LoopyError, WriteRaceConditionWarning, warn,
         LoopyAdvisory)
 
 from pytools.persistent_dict import PersistentDict
@@ -139,12 +139,8 @@ def infer_unknown_types(kernel, expect_completion=False):
     def debug(s):
         logger.debug("%s: %s" % (kernel.name, s))
 
+    unexpanded_kernel = kernel
     if kernel.substitutions:
-        from warnings import warn as py_warn
-        py_warn("type inference called when substitution "
-                "rules are still unexpanded, expanding",
-                LoopyWarning, stacklevel=2)
-
         from loopy.subst import expand_subst
         kernel = expand_subst(kernel)
 
@@ -240,7 +236,7 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     # }}}
 
-    return kernel.copy(
+    return unexpanded_kernel.copy(
             temporary_variables=new_temp_vars,
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
