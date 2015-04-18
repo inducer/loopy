@@ -841,8 +841,9 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
                 continue
             coeffs = CoefficientCollector()(iexpr_i)
             for var, coeff in six.iteritems(coeffs):
-                assert isinstance(var, Variable)
-                if var.name in auto_axis_inames:  # excludes '1', i.e.  the constant
+                if (isinstance(var, Variable)
+                        and var.name in auto_axis_inames):
+                    # excludes '1', i.e.  the constant
                     new_stride = coeff*stride
                     old_stride = iname_to_stride_expr.get(var.name, None)
                     if old_stride is None or new_stride < old_stride:
