@@ -114,7 +114,6 @@ class RuleInvocationGatherer(ExpandingIdentityMapper):
 
         args = [arg_context[arg_name] for arg_name in rule.arguments]
 
-        # Do not set expands_footprint here, it is set below.
         self.access_descriptors.append(
                 RuleAccessDescriptor(
                     identifier=access_descriptor_id(args, expn_state.stack),
@@ -152,41 +151,29 @@ class RuleInvocationReplacer(ExpandingIdentityMapper):
         self.target_var_name = target_var_name
 
     def map_substitution(self, name, tag, arguments, expn_state):
-        process_me = name == self.subst_name
+        if not (
+                name == self.subst_name
+                and self.within(expn_state.stack)
+                and (self.subst_tag is None or self.subst_tag == tag)):
+            return ExpandingIdentityMapper.map_substitution(
+                    self, name, tag, arguments, expn_state)
 
-        if self.subst_tag is not None and self.subst_tag != tag:
-            process_me = False
-
-        process_me = process_me and self.within(expn_state.stack)
-
-        # {{{ find matching invocation descriptor
+        # {{{ check if in footprint
 
         rule = self.old_subst_rules[name]
         arg_context = self.make_new_arg_context(
                     name, rule.arguments, arguments, expn_state.arg_context)
         args = [arg_context[arg_name] for arg_name in rule.arguments]
 
-        if not process_me:
-            return ExpandingIdentityMapper.map_substitution(
-                    self, name, tag, arguments, expn_state)
-
-        matching_accdesc = None
-        for accdesc in self.access_descriptors:
-            if accdesc.identifier == access_descriptor_id(args, expn_state.stack):
-                # Could be more than one, that's fine.
-                matching_accdesc = accdesc
-                break
-
-        assert matching_accdesc is not None
-
-        accdesc = matching_accdesc
-        del matching_accdesc
-
-        # }}}
+        accdesc = AccessDescriptor(
+                storage_axis_exprs=storage_axis_exprs(
+                    self.storage_axis_sources, args))
 
         if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
             return ExpandingIdentityMapper.map_substitution(
                     self, name, tag, arguments, expn_state)
+
+        # }}}
 
         assert len(arguments) == len(rule.arguments)
 
@@ -374,7 +361,6 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             access_descriptors.append(
                     RuleAccessDescriptor(
                         identifier=access_descriptor_id(args, None),
-                        expands_footprint=True,
                         args=args
                         ))
 
@@ -382,19 +368,16 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ gather up invocations in kernel code, finish access_descriptors
 
-    invg = RuleInvocationGatherer(kernel, subst_name, subst_tag, within)
+    if not footprint_generators:
+        invg = RuleInvocationGatherer(kernel, subst_name, subst_tag, within)
 
-    import loopy as lp
-    for insn in kernel.instructions:
-        if isinstance(insn, lp.ExpressionInstruction):
-            invg(insn.expression, insn.id, insn.tags)
+        import loopy as lp
+        for insn in kernel.instructions:
+            if isinstance(insn, lp.ExpressionInstruction):
+                invg(insn.expression, insn.id, insn.tags)
 
-    for accdesc in invg.access_descriptors:
-        access_descriptors.append(
-                accdesc.copy(expands_footprint=footprint_generators is None))
-
-    if not access_descriptors:
-        raise RuntimeError("no invocations of '%s' found" % subst_name)
+        if not access_descriptors:
+            raise RuntimeError("no invocations of '%s' found" % subst_name)
 
     # }}}
 
@@ -403,10 +386,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     expanding_usage_arg_deps = set()
 
     for accdesc in access_descriptors:
-        if accdesc.expands_footprint:
-            for arg in accdesc.args:
-                expanding_usage_arg_deps.update(
-                        get_dependencies(arg) & kernel.all_inames())
+        for arg in accdesc.args:
+            expanding_usage_arg_deps.update(
+                    get_dependencies(arg) & kernel.all_inames())
 
     # }}}
 

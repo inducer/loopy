@@ -42,7 +42,6 @@ class AccessDescriptor(Record):
 
     __slots__ = [
             "identifier",
-            "expands_footprint",
             "storage_axis_exprs",
             ]
 
@@ -138,16 +137,15 @@ def build_global_storage_to_sweep_map(kernel, access_descriptors,
 
     # build footprint
     for accdesc in access_descriptors:
-        if accdesc.expands_footprint:
-            stor2sweep = build_per_access_storage_to_domain_map(
-                    accdesc, domain_dup_sweep,
-                    storage_axis_names,
-                    prime_sweep_inames)
+        stor2sweep = build_per_access_storage_to_domain_map(
+                accdesc, domain_dup_sweep,
+                storage_axis_names,
+                prime_sweep_inames)
 
-            if global_stor2sweep is None:
-                global_stor2sweep = stor2sweep
-            else:
-                global_stor2sweep = global_stor2sweep.union(stor2sweep)
+        if global_stor2sweep is None:
+            global_stor2sweep = stor2sweep
+        else:
+            global_stor2sweep = global_stor2sweep.union(stor2sweep)
 
     if isinstance(global_stor2sweep, isl.BasicMap):
         global_stor2sweep = isl.Map.from_basic_map(global_stor2sweep)
@@ -336,9 +334,6 @@ class ArrayToBufferMap(object):
             return convexify(domain)
 
     def is_access_descriptor_in_footprint(self, accdesc):
-        if accdesc.expands_footprint:
-            return True
-
         # Make all inames except the sweep parameters. (The footprint may depend on
         # those.) (I.e. only leave sweep inames as out parameters.)
 

@@ -74,7 +74,6 @@ class ArrayAccessReplacer(ExpandingIdentityMapper):
     def map_array_access(self, index, expn_state):
         accdesc = AccessDescriptor(
             identifier=None,
-            expands_footprint=False,
             storage_axis_exprs=index)
 
         if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
@@ -182,7 +181,6 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                 access_descriptors.append(
                         AccessDescriptor(
                             identifier=insn.id,
-                            expands_footprint=True,
                             storage_axis_exprs=index))
 
     # {{{ find fetch/store inames
