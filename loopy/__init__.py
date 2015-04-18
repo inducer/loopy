@@ -150,13 +150,13 @@ class _InameSplitter(ExpandingIdentityMapper):
             return Reduction(expr.operation, tuple(new_inames),
                         self.rec(expr.expr, expn_state))
         else:
-            return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
+            return super(_InameSplitter, self).map_reduction(expr, expn_state)
 
     def map_variable(self, expr, expn_state):
         if expr.name == self.split_iname and self.within(expn_state.stack):
             return self.replacement_index
         else:
-            return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+            return super(_InameSplitter, self).map_variable(expr, expn_state)
 
 
 def split_iname(kernel, split_iname, inner_length,
@@ -318,7 +318,7 @@ class _InameJoiner(ExpandingSubstitutionMapper):
             return Reduction(expr.operation, tuple(new_inames),
                         self.rec(expr.expr, expn_state))
         else:
-            return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
+            return super(_InameJoiner, self).map_reduction(expr, expn_state)
 
 
 def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
@@ -492,7 +492,7 @@ def tag_inames(kernel, iname_to_tag, force=False):
 class _InameDuplicator(ExpandingIdentityMapper):
     def __init__(self, rules, make_unique_var_name,
             old_to_new, within):
-        ExpandingIdentityMapper.__init__(self,
+        super(_InameDuplicator, self).__init__(
                 rules, make_unique_var_name)
 
         self.old_to_new = old_to_new
@@ -1179,7 +1179,7 @@ def tag_data_axes(knl, ary_names, dim_tags):
 
 class _ReductionSplitter(ExpandingIdentityMapper):
     def __init__(self, kernel, within, inames, direction):
-        ExpandingIdentityMapper.__init__(self,
+        super(_ReductionSplitter, self).__init__(
                 kernel.substitutions, kernel.get_var_name_generator())
 
         self.within = within
@@ -1202,7 +1202,7 @@ class _ReductionSplitter(ExpandingIdentityMapper):
             else:
                 assert False
         else:
-            return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
+            return super(_ReductionSplitter, self).map_reduction(expr, expn_state)
 
 
 def _split_reduction(kernel, inames, direction, within=None):
