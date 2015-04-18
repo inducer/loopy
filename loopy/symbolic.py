@@ -586,10 +586,10 @@ class ExpandingSubstitutionMapper(ExpandingIdentityMapper):
 
     def map_variable(self, expr, expn_state):
         result = self.subst_func(expr)
-        if result is not None or not self.within(expn_state.stack):
-            return result
-        else:
+        if result is None or not self.within(expn_state.stack):
             return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+        else:
+            return result
 
 # }}}
 
