@@ -344,10 +344,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ process invocations in footprint generators, start access_descriptors
 
-    access_descriptors = []
-
     if footprint_generators:
         from pymbolic.primitives import Variable, Call
+
+        access_descriptors = []
 
         for fpg in footprint_generators:
             if isinstance(fpg, Variable):
@@ -374,8 +374,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         import loopy as lp
         for insn in kernel.instructions:
             if isinstance(insn, lp.ExpressionInstruction):
+                invg(insn.assignee, insn.id, insn.tags)
                 invg(insn.expression, insn.id, insn.tags)
 
+        access_descriptors = invg.access_descriptors
         if not access_descriptors:
             raise RuntimeError("no invocations of '%s' found" % subst_name)
 
