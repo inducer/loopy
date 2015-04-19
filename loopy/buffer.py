@@ -313,7 +313,10 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     init_instruction = ExpressionInstruction(id=init_insn_id,
                 assignee=buf_var_init,
                 expression=init_expression,
-                forced_iname_deps=frozenset(within_inames))
+                forced_iname_deps=frozenset(within_inames),
+                insn_deps=frozenset(),
+                insn_deps_is_final=True,
+                )
 
     # }}}
 
