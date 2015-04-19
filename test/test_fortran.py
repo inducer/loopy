@@ -322,10 +322,57 @@ def test_matmul(ctx_factory, buffer_inames):
     #ctx = ctx_factory()
     #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5, m=7, l=10))
 
+    # FIXME: Make r/w tests possible, reactivate the above
     knl = lp.preprocess_kernel(knl)
     for k in lp.generate_loop_schedules(knl):
         code, _ = lp.generate_code(k)
         print(code)
+
+
+@pytest.mark.xfail
+def test_batched_sparse():
+    fortran_src = """
+        subroutine sparse(rowstarts, colindices, values, m, n, nvecs, nvals, x, y)
+          implicit none
+
+          integer rowstarts(m+1), colindices(nvals)
+          real*8 values(nvals)
+          real*8 x(n, nvecs), y(n, nvecs), rowsum(nvecs)
+
+          integer m, n, rowstart, rowend, length, nvals, nvecs
+
+          do i = 1, m
+            rowstart = rowstarts(i)
+            rowend = rowstarts(i+1)
+            length = rowend - rowstart
+
+            do k = 1, nvecs
+              rowsum(k) = 0
+            enddo
+            do k = 1, nvecs
+              do j = 1, length
+                rowsum(k) = rowsum(k) + &
+                  x(colindices(rowstart+j-1),k)*values(rowstart+j-1)
+              end do
+            end do
+            do k = 1, nvecs
+              y(i,k) = rowsum(k)
+            end do
+          end do
+        end
+
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    knl = lp.split_iname(knl, "i", 128)
+    knl = lp.tag_inames(knl, {"i_outer": "g.0"})
+    knl = lp.tag_inames(knl, {"i_inner": "l.0"})
+    knl = lp.add_prefetch(knl, "values")
+    knl = lp.add_prefetch(knl, "colindices")
+    knl = lp.fix_parameters(knl, nvecs=4)
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
