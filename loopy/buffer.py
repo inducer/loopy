@@ -323,6 +323,13 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     aar = ArrayAccessReplacer(kernel, var_name, within, abm, buf_var)
     kernel = aar.map_kernel(kernel)
 
+    did_write = False
+    for insn_id in aar.modified_insn_ids:
+        insn = kernel.id_to_insn[insn_id]
+        if any(assignee_name == buf_var_name
+                for assignee_name, _ in insn.assignees_and_indices()):
+            did_write = True
+
     # {{{ add init_insn_id to insn_deps
 
     new_insns = []
@@ -377,9 +384,13 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     # }}}
 
+    new_insns.append(init_instruction)
+    if did_write:
+        new_insns.append(store_instruction)
+
     kernel = kernel.copy(
             domains=new_kernel_domains,
-            instructions=new_insns + [init_instruction, store_instruction],
+            instructions=new_insns,
             temporary_variables=new_temporary_variables)
 
     from loopy import tag_inames
