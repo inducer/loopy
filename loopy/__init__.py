@@ -141,7 +141,9 @@ class _InameSplitter(ExpandingIdentityMapper):
         self.replacement_index = replacement_index
 
     def map_reduction(self, expr, expn_state):
-        if self.split_iname in expr.inames and self.within(expn_state.stack):
+        if (self.split_iname in expr.inames
+                and self.split_iname not in expn_state.arg_context
+                and self.within(expn_state.stack)):
             new_inames = list(expr.inames)
             new_inames.remove(self.split_iname)
             new_inames.extend([self.outer_iname, self.inner_iname])
@@ -153,7 +155,9 @@ class _InameSplitter(ExpandingIdentityMapper):
             return super(_InameSplitter, self).map_reduction(expr, expn_state)
 
     def map_variable(self, expr, expn_state):
-        if expr.name == self.split_iname and self.within(expn_state.stack):
+        if (expr.name == self.split_iname
+                and self.split_iname not in expn_state.arg_context
+                and self.within(expn_state.stack)):
             return self.replacement_index
         else:
             return super(_InameSplitter, self).map_variable(expr, expn_state)
@@ -300,7 +304,8 @@ class _InameJoiner(ExpandingSubstitutionMapper):
 
     def map_reduction(self, expr, expn_state):
         expr_inames = set(expr.inames)
-        overlap = self.join_inames & expr_inames
+        overlap = (self.join_inames & expr_inames
+                - set(expn_state.arg_context))
         if overlap and self.within(expn_state.stack):
             if overlap != expr_inames:
                 raise LoopyError(
@@ -500,22 +505,27 @@ class _InameDuplicator(ExpandingIdentityMapper):
         self.within = within
 
     def map_reduction(self, expr, expn_state):
-        if set(expr.inames) & self.old_inames_set and self.within(expn_state.stack):
+        if (set(expr.inames) & self.old_inames_set
+                and self.within(expn_state.stack)):
             new_inames = tuple(
                     self.old_to_new.get(iname, iname)
+                    if iname not in expn_state.arg_context
+                    else iname
                     for iname in expr.inames)
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, new_inames,
                         self.rec(expr.expr, expn_state))
         else:
-            return ExpandingIdentityMapper.map_reduction(self, expr, expn_state)
+            return super(_InameDuplicator, self).map_reduction(expr, expn_state)
 
     def map_variable(self, expr, expn_state):
         new_name = self.old_to_new.get(expr.name)
 
-        if new_name is None or not self.within(expn_state.stack):
-            return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+        if (new_name is None
+                or expr.name in expn_state.arg_context
+                or not self.within(expn_state.stack)):
+            return super(_InameDuplicator, self).map_variable(expr, expn_state)
         else:
             from pymbolic import var
             return var(new_name)
@@ -1187,6 +1197,10 @@ class _ReductionSplitter(ExpandingIdentityMapper):
         self.direction = direction
 
     def map_reduction(self, expr, expn_state):
+        if set(expr.inames) & set(expn_state.arg_context):
+            # FIXME
+            raise NotImplementedError()
+
         if self.inames <= set(expr.inames) and self.within(expn_state.stack):
             leftover_inames = set(expr.inames) - self.inames
 

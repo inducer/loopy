@@ -81,6 +81,8 @@ class ArrayAccessReplacer(ExpandingIdentityMapper):
 
         abm = self.array_base_map
 
+        index = expn_state.apply_arg_context(index)
+
         assert len(index) == len(abm.non1_storage_axis_flags)
 
         access_subscript = []

@@ -346,15 +346,25 @@ def parse_tagged_name(expr):
 
 class ExpansionState(Record):
     """
-    :ivar stack: a tuple representing the current expansion stack, as a tuple
+    .. attribute:: stack
+
+        a tuple representing the current expansion stack, as a tuple
         of (name, tag) pairs. At the top level, this should be initialized to a
         tuple with the id of the calling instruction.
-    :ivar arg_context: a dict representing current argument values
+
+    .. attribute:: arg_context
+
+        a dict representing current argument values
     """
 
     @property
     def insn_id(self):
         return self.stack[0][0]
+
+    def apply_arg_context(self, expr):
+        from pymbolic.mapper.substitutor import make_subst_func
+        return SubstitutionMapper(
+                make_subst_func(self.arg_context))(expr)
 
 
 class SubstitutionRuleRenamer(IdentityMapper):
@@ -402,6 +412,9 @@ def rename_subst_rules_in_instructions(insns, renames):
 class ExpandingIdentityMapper(IdentityMapper):
     """Note: the third argument dragged around by this mapper is the
     current :class:`ExpansionState`.
+
+    Subclasses of this must be careful to not touch identifiers that
+    are in :attr:`ExpansionState.arg_context`.
     """
 
     def __init__(self, old_subst_rules, make_unique_var_name):
@@ -585,8 +598,12 @@ class ExpandingSubstitutionMapper(ExpandingIdentityMapper):
         self.within = within
 
     def map_variable(self, expr, expn_state):
+        if (expr.name in expn_state.arg_context
+                or not self.within(expn_state.stack)):
+            return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+
         result = self.subst_func(expr)
-        if result is not None or not self.within(expn_state.stack):
+        if result is not None:
             return result
         else:
             return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
