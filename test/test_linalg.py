@@ -615,8 +615,8 @@ def test_small_batched_matvec(ctx_factory):
 
     order = "C"
 
-    K = 9997
-    Np = 36
+    K = 9997  # noqa
+    Np = 36  # noqa
 
     knl = lp.make_kernel(
             "[K] -> {[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,
