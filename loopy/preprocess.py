@@ -27,12 +27,11 @@ import six
 import numpy as np
 from loopy.diagnostic import (
         LoopyError, WriteRaceConditionWarning, warn,
-        LoopyAdvisory)
+        LoopyAdvisory, DependencyTypeInferenceFailure)
 
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
-from loopy.diagnostic import DependencyTypeInferenceFailure, LoopyError
 
 import logging
 logger = logging.getLogger(__name__)
