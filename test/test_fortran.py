@@ -275,14 +275,13 @@ def test_tagged(ctx_factory):
 
 @pytest.mark.parametrize("buffer_inames", [
     "",
-    "i_inner",
     "i_inner,j_inner",
     ])
 def test_matmul(ctx_factory, buffer_inames):
     fortran_src = """
         subroutine dgemm(m,n,l,a,b,c)
           implicit none
-          real*8 temp, a(m,l),b(l,n),c(m,n)
+          real*8 a(m,l),b(l,n),c(m,n)
           integer m,n,k,i,j,l
 
           do j = 1,n
@@ -319,14 +318,14 @@ def test_matmul(ctx_factory, buffer_inames):
     knl = lp.buffer_array(knl, "c", buffer_inames=buffer_inames,
             init_expression="0", store_expression="base+buffer")
 
-    #ctx = ctx_factory()
-    #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5, m=7, l=10))
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, l=128))
 
-    # FIXME: Make r/w tests possible, reactivate the above
-    knl = lp.preprocess_kernel(knl)
-    for k in lp.generate_loop_schedules(knl):
-        code, _ = lp.generate_code(k)
-        print(code)
+    # # FIXME: Make r/w tests possible, reactivate the above
+    # knl = lp.preprocess_kernel(knl)
+    # for k in lp.generate_loop_schedules(knl):
+    #     code, _ = lp.generate_code(k)
+    #     print(code)
 
 
 @pytest.mark.xfail

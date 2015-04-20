@@ -74,6 +74,10 @@ class TypeInferenceFailure(LoopyError):
     pass
 
 
+class AutomaticTestFailure(LoopyError):
+    pass
+
+
 class DependencyTypeInferenceFailure(TypeInferenceFailure):
     def __init__(self, message, symbol):
         TypeInferenceFailure.__init__(self, message)

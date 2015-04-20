@@ -1936,6 +1936,28 @@ def test_poisson(ctx_factory):
                 parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
 
 
+def test_auto_test_can_detect_problems(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i,j<n}",
+        """
+        a[i,j] = 25
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+
+    ref_knl = knl
+
+    knl = lp.link_inames(knl, "i,j", "i0")
+
+    from loopy.diagnostic import AutomaticTestFailure
+    with pytest.raises(AutomaticTestFailure):
+        lp.auto_test_vs_ref(
+                ref_knl, ctx, knl,
+                parameters=dict(n=123))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
