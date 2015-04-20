@@ -371,11 +371,11 @@ def auto_test_vs_ref(
 
     for i, (ref_arg, test_arg) in enumerate(zip(ref_knl.args, test_knl.args)):
         if ref_arg.name != test_arg.name:
-            raise LoopyError("ref_knl and test_knl argument lists disagee at index "
+            raise LoopyError("ref_knl and test_knl argument lists disagree at index "
                     "%d (1-based)" % (i+1))
 
         if ref_arg.dtype != test_arg.dtype:
-            raise LoopyError("ref_knl and test_knl argument lists disagee at index "
+            raise LoopyError("ref_knl and test_knl argument lists disagree at index "
                     "%d (1-based)" % (i+1))
 
     from loopy.compiled import CompiledKernel, get_highlighted_cl_code
