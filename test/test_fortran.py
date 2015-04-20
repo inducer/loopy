@@ -130,7 +130,7 @@ def test_temporary_to_subst(ctx_factory):
           integer n
 
           do i = 1, n
-            a = inp(n)
+            a = inp(i)
             out(i) = 5*a
             out2(i) = 6*a
           end do
@@ -142,7 +142,7 @@ def test_temporary_to_subst(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.temporary_to_subst(knl, "a")
+    knl = lp.temporary_to_subst(knl, "a", "i")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
