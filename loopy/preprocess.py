@@ -32,6 +32,7 @@ from loopy.diagnostic import (
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
+from loopy.diagnostic import DependencyTypeInferenceFailure, LoopyError
 
 import logging
 logger = logging.getLogger(__name__)
@@ -413,7 +414,11 @@ def realize_reduction(kernel, insn_id_filter=None):
         target_var_name = var_name_gen("acc_"+"_".join(expr.inames))
         target_var = var(target_var_name)
 
-        arg_dtype = type_inf_mapper(expr.expr)
+        try:
+            arg_dtype = type_inf_mapper(expr.expr)
+        except DependencyTypeInferenceFailure:
+            raise LoopyError("failed to determine type of accumulator for "
+                    "reduction '%s'" % expr)
 
         from loopy.kernel.data import ExpressionInstruction, TemporaryVariable
 
