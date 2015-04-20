@@ -25,12 +25,12 @@ THE SOFTWARE.
 """
 
 
-from loopy.symbolic import ExpandingIdentityMapper
+from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
 
-class ArgAxisSplitHelper(ExpandingIdentityMapper):
-    def __init__(self, rules, var_name_gen, arg_names, handler):
-        ExpandingIdentityMapper.__init__(self, rules, var_name_gen)
+class ArgAxisSplitHelper(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, arg_names, handler):
+        super(ArgAxisSplitHelper, self).__init__(rule_mapping_context)
         self.arg_names = arg_names
         self.handler = handler
 
@@ -38,7 +38,7 @@ class ArgAxisSplitHelper(ExpandingIdentityMapper):
         if expr.aggregate.name in self.arg_names:
             return self.handler(expr)
         else:
-            return ExpandingIdentityMapper.map_subscript(self, expr, expn_state)
+            return super(ArgAxisSplitHelper, self).map_subscript(expr, expn_state)
 
 
 def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True):
@@ -205,9 +205,11 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True):
 
         return expr.aggregate.index(tuple(idx))
 
-    aash = ArgAxisSplitHelper(kernel.substitutions, var_name_gen,
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, var_name_gen)
+    aash = ArgAxisSplitHelper(rule_mapping_context,
             set(six.iterkeys(arg_to_rest)), split_access_axis)
-    kernel = aash.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
 
     kernel = kernel.copy(args=new_args)
 

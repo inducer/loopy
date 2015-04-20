@@ -25,7 +25,8 @@ THE SOFTWARE.
 
 from loopy.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
-from loopy.symbolic import (get_dependencies, ExpandingIdentityMapper,
+from loopy.symbolic import (get_dependencies,
+        RuleAwareIdentityMapper, SubstitutionRuleMappingContext,
         SubstitutionMapper)
 from pymbolic.mapper.substitutor import make_subst_func
 
@@ -34,12 +35,11 @@ from pymbolic import var
 
 # {{{ replace array access
 
-class ArrayAccessReplacer(ExpandingIdentityMapper):
-    def __init__(self, kernel, var_name, within, array_base_map, buf_var):
-        super(ArrayAccessReplacer, self).__init__(
-                kernel.substitutions, kernel.get_var_name_generator())
+class ArrayAccessReplacer(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context,
+            var_name, within, array_base_map, buf_var):
+        super(ArrayAccessReplacer, self).__init__(rule_mapping_context)
 
-        self.kernel = kernel
         self.within = within
 
         self.array_base_map = array_base_map
@@ -320,8 +320,11 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     # }}}
 
-    aar = ArrayAccessReplacer(kernel, var_name, within, abm, buf_var)
-    kernel = aar.map_kernel(kernel)
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    aar = ArrayAccessReplacer(rule_mapping_context, var_name,
+            within, abm, buf_var)
+    kernel = rule_mapping_context.finish_kernel(aar.map_kernel(kernel))
 
     did_write = False
     for insn_id in aar.modified_insn_ids:

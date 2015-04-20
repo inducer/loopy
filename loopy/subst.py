@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 from loopy.symbolic import (
         get_dependencies, SubstitutionMapper,
-        ExpandingIdentityMapper)
+        RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 
@@ -200,15 +200,13 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
 # {{{ temporary_to_subst
 
-class TemporaryToSubstChanger(ExpandingIdentityMapper):
-    def __init__(self, kernel, temp_name, definition_insn_ids,
+class TemporaryToSubstChanger(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, temp_name, definition_insn_ids,
             usage_to_definition, within):
-        self.var_name_gen = kernel.get_var_name_generator()
+        self.var_name_gen = rule_mapping_context.make_unique_var_name
 
-        super(TemporaryToSubstChanger, self).__init__(
-                kernel.substitutions, self.var_name_gen)
+        super(TemporaryToSubstChanger, self).__init__(rule_mapping_context)
 
-        self.kernel = kernel
         self.temp_name = temp_name
         self.definition_insn_ids = definition_insn_ids
         self.usage_to_definition = usage_to_definition
@@ -349,10 +347,13 @@ def temporary_to_subst(kernel, temp_name, within=None):
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
 
-    tts = TemporaryToSubstChanger(kernel, temp_name, definition_insn_ids,
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    tts = TemporaryToSubstChanger(rule_mapping_context,
+            temp_name, definition_insn_ids,
             usage_to_definition, within)
 
-    kernel = tts.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(tts.map_kernel(kernel))
 
     from loopy.kernel.data import SubstitutionRule
 
@@ -412,19 +413,18 @@ def temporary_to_subst(kernel, temp_name, within=None):
 # }}}
 
 
-def expand_subst(kernel, ctx_match=None):
+def expand_subst(kernel, within=None):
     logger.debug("%s: expand subst" % kernel.name)
 
-    from loopy.symbolic import SubstitutionRuleExpander
+    from loopy.symbolic import RuleAwareSubstitutionRuleExpander
     from loopy.context_matching import parse_stack_match
-    submap = SubstitutionRuleExpander(kernel.substitutions,
-            kernel.get_var_name_generator(),
-            parse_stack_match(ctx_match))
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    submap = RuleAwareSubstitutionRuleExpander(
+            rule_mapping_context,
+            kernel.substitutions,
+            parse_stack_match(within))
 
-    kernel = submap.map_kernel(kernel)
-    if ctx_match is None:
-        return kernel.copy(substitutions={})
-    else:
-        return kernel
+    return rule_mapping_context.finish_kernel(submap.map_kernel(kernel))
 
 # vim: foldmethod=marker

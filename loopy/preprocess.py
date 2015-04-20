@@ -88,8 +88,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if not isinstance(writer_insn, lp.ExpressionInstruction):
             continue
 
-        expr = subst_expander(writer_insn.expression,
-                insn_id=writer_insn_id, insn_tags=writer_insn.tags)
+        expr = subst_expander(writer_insn.expression)
 
         try:
             debug("             via expr %s" % expr)
@@ -171,8 +170,7 @@ def infer_unknown_types(kernel, expect_completion=False):
                 ]))
 
     from loopy.symbolic import SubstitutionRuleExpander
-    subst_expander = SubstitutionRuleExpander(kernel.substitutions,
-            kernel.get_var_name_generator())
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
     # {{{ work on type inference queue
 

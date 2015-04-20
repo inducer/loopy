@@ -1,11 +1,8 @@
 """Pymbolic mappers for loopy."""
 
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import division, absolute_import
 import six
-from six.moves import range
-from six.moves import zip
-from functools import reduce
+from six.moves import range, zip, reduce
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -197,6 +194,41 @@ class DependencyMapper(DependencyMapperBase):
 
     map_linear_subscript = DependencyMapperBase.map_subscript
 
+
+class SubstitutionRuleExpander(IdentityMapper):
+    def __init__(self, rules):
+        self.rules = rules
+
+    def map_variable(self, expr):
+        if expr.name in self.rules:
+            return self.map_substitution(expr.name, self.rules[expr.name], ())
+        else:
+            return super(SubstitutionRuleExpander, self).map_variable(expr)
+
+    def map_call(self, expr):
+        if expr.function.name in self.rules:
+            return self.map_substitution(
+                    expr.function.name,
+                    self.rules[expr.function.name],
+                    expr.parameters)
+        else:
+            return super(SubstitutionRuleExpander, self).map_call(expr)
+
+    def map_substitution(self, name, rule, arguments):
+        if len(rule.arguments) != len(arguments):
+            from loopy.diagnostic import LoopyError
+            raise LoopyError("number of arguments to '%s' does not match "
+                    "definition" % name)
+
+        from pymbolic.mapper.substitutor import make_subst_func
+        submap = SubstitutionMapper(
+                make_subst_func(
+                    dict(zip(rule.arguments, arguments))))
+
+        expr = submap(rule.expression)
+
+        return self.rec(expr)
+
 # }}}
 
 
@@ -333,7 +365,7 @@ def get_dependencies(expr):
     return frozenset(dep.name for dep in dep_mapper(expr))
 
 
-# {{{ identity mapper that expands subst rules on the fly
+# {{{ rule-aware mappers
 
 def parse_tagged_name(expr):
     if isinstance(expr, TaggedVariable):
@@ -409,14 +441,7 @@ def rename_subst_rules_in_instructions(insns, renames):
             for insn in insns]
 
 
-class ExpandingIdentityMapper(IdentityMapper):
-    """Note: the third argument dragged around by this mapper is the
-    current :class:`ExpansionState`.
-
-    Subclasses of this must be careful to not touch identifiers that
-    are in :attr:`ExpansionState.arg_context`.
-    """
-
+class SubstitutionRuleMappingContext(object):
     def __init__(self, old_subst_rules, make_unique_var_name):
         self.old_subst_rules = old_subst_rules
         self.make_unique_var_name = make_unique_var_name
@@ -444,74 +469,6 @@ class ExpandingIdentityMapper(IdentityMapper):
 
         self.subst_rule_use_count[key] = self.subst_rule_use_count.get(key, 0) + 1
         return new_name
-
-    def map_variable(self, expr, expn_state):
-        name, tag = parse_tagged_name(expr)
-        if name not in self.old_subst_rules:
-            return IdentityMapper.map_variable(self, expr, expn_state)
-        else:
-            return self.map_substitution(name, tag, (), expn_state)
-
-    def map_call(self, expr, expn_state):
-        if not isinstance(expr.function, Variable):
-            return IdentityMapper.map_call(self, expr, expn_state)
-
-        name, tag = parse_tagged_name(expr.function)
-
-        if name not in self.old_subst_rules:
-            return IdentityMapper.map_call(self, expr, expn_state)
-        else:
-            return self.map_substitution(name, tag, expr.parameters, expn_state)
-
-    @staticmethod
-    def make_new_arg_context(rule_name, arg_names, arguments, arg_context):
-        if len(arg_names) != len(arguments):
-            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
-                    % (rule_name, len(arguments), len(arg_names), ))
-
-        from pymbolic.mapper.substitutor import make_subst_func
-        arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
-        return dict(
-                (formal_arg_name, arg_subst_map(arg_value))
-                for formal_arg_name, arg_value in zip(arg_names, arguments))
-
-    def map_substitution(self, name, tag, arguments, expn_state):
-        rule = self.old_subst_rules[name]
-
-        rec_arguments = self.rec(arguments, expn_state)
-
-        if tag is None:
-            tags = None
-        else:
-            tags = (tag,)
-
-        new_expn_state = expn_state.copy(
-                stack=expn_state.stack + ((name, tags),),
-                arg_context=self.make_new_arg_context(
-                    name, rule.arguments, rec_arguments, expn_state.arg_context))
-
-        result = self.rec(rule.expression, new_expn_state)
-
-        new_name = self.register_subst_rule(name, rule.arguments, result)
-
-        if tag is None:
-            sym = Variable(new_name)
-        else:
-            sym = TaggedVariable(new_name, tag)
-
-        if arguments:
-            return sym(*rec_arguments)
-        else:
-            return sym
-
-    def __call__(self, expr, insn_id, insn_tags):
-        if insn_id is not None:
-            stack = ((insn_id, insn_tags),)
-        else:
-            stack = ()
-
-        return IdentityMapper.__call__(self, expr, ExpansionState(
-            stack=stack, arg_context={}))
 
     def _get_new_substitutions_and_renames(self):
         """This makes a new dictionary of substitutions from the ones
@@ -567,6 +524,96 @@ class ExpandingIdentityMapper(IdentityMapper):
 
         return renamed_result, renames
 
+    def finish_kernel(self, kernel):
+        new_substs, renames = self._get_new_substitutions_and_renames()
+
+        new_insns = rename_subst_rules_in_instructions(kernel.instructions, renames)
+
+        return kernel.copy(
+            substitutions=new_substs,
+            instructions=new_insns)
+
+
+class RuleAwareIdentityMapper(IdentityMapper):
+    """Note: the third argument dragged around by this mapper is the
+    current :class:`ExpansionState`.
+
+    Subclasses of this must be careful to not touch identifiers that
+    are in :attr:`ExpansionState.arg_context`.
+    """
+
+    def __init__(self, rule_mapping_context):
+        self.rule_mapping_context = rule_mapping_context
+
+    def map_variable(self, expr, expn_state):
+        name, tag = parse_tagged_name(expr)
+        if name not in self.rule_mapping_context.old_subst_rules:
+            return IdentityMapper.map_variable(self, expr, expn_state)
+        else:
+            return self.map_substitution(name, tag, (), expn_state)
+
+    def map_call(self, expr, expn_state):
+        if not isinstance(expr.function, Variable):
+            return IdentityMapper.map_call(self, expr, expn_state)
+
+        name, tag = parse_tagged_name(expr.function)
+
+        if name not in self.rule_mapping_context.old_subst_rules:
+            return super(RuleAwareIdentityMapper, self).map_call(expr, expn_state)
+        else:
+            return self.map_substitution(name, tag, expr.parameters, expn_state)
+
+    @staticmethod
+    def make_new_arg_context(rule_name, arg_names, arguments, arg_context):
+        if len(arg_names) != len(arguments):
+            raise RuntimeError("Rule '%s' invoked with %d arguments (needs %d)"
+                    % (rule_name, len(arguments), len(arg_names), ))
+
+        from pymbolic.mapper.substitutor import make_subst_func
+        arg_subst_map = SubstitutionMapper(make_subst_func(arg_context))
+        return dict(
+                (formal_arg_name, arg_subst_map(arg_value))
+                for formal_arg_name, arg_value in zip(arg_names, arguments))
+
+    def map_substitution(self, name, tag, arguments, expn_state):
+        rule = self.rule_mapping_context.old_subst_rules[name]
+
+        rec_arguments = self.rec(arguments, expn_state)
+
+        if tag is None:
+            tags = None
+        else:
+            tags = (tag,)
+
+        new_expn_state = expn_state.copy(
+                stack=expn_state.stack + ((name, tags),),
+                arg_context=self.make_new_arg_context(
+                    name, rule.arguments, rec_arguments, expn_state.arg_context))
+
+        result = self.rec(rule.expression, new_expn_state)
+
+        new_name = self.rule_mapping_context.register_subst_rule(
+                name, rule.arguments, result)
+
+        if tag is None:
+            sym = Variable(new_name)
+        else:
+            sym = TaggedVariable(new_name, tag)
+
+        if arguments:
+            return sym(*rec_arguments)
+        else:
+            return sym
+
+    def __call__(self, expr, insn_id, insn_tags):
+        if insn_id is not None:
+            stack = ((insn_id, insn_tags),)
+        else:
+            stack = ()
+
+        return IdentityMapper.__call__(self, expr, ExpansionState(
+            stack=stack, arg_context={}))
+
     def map_instruction(self, insn):
         return insn
 
@@ -575,24 +622,16 @@ class ExpandingIdentityMapper(IdentityMapper):
                 # While subst rules are not allowed in assignees, the mapper
                 # may perform tasks entirely unrelated to subst rules, so
                 # we must map assignees, too.
-
-                insn.with_transformed_expressions(self, insn.id, insn.tags)
+                self.map_instruction(
+                    insn.with_transformed_expressions(self, insn.id, insn.tags))
                 for insn in kernel.instructions]
 
-        new_substs, renames = self._get_new_substitutions_and_renames()
-
-        new_insns = [self.map_instruction(insn)
-                for insn in rename_subst_rules_in_instructions(
-                    new_insns, renames)]
-
-        return kernel.copy(
-            substitutions=new_substs,
-            instructions=new_insns)
+        return kernel.copy(instructions=new_insns)
 
 
-class ExpandingSubstitutionMapper(ExpandingIdentityMapper):
-    def __init__(self, rules, make_unique_var_name, subst_func, within):
-        ExpandingIdentityMapper.__init__(self, rules, make_unique_var_name)
+class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, subst_func, within):
+        super(RuleAwareSubstitutionMapper, self).__init__(rule_mapping_context)
 
         self.subst_func = subst_func
         self.within = within
@@ -600,28 +639,23 @@ class ExpandingSubstitutionMapper(ExpandingIdentityMapper):
     def map_variable(self, expr, expn_state):
         if (expr.name in expn_state.arg_context
                 or not self.within(expn_state.stack)):
-            return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+            return super(RuleAwareSubstitutionMapper, self).map_variable(
+                    expr, expn_state)
 
         result = self.subst_func(expr)
         if result is not None:
             return result
         else:
-            return ExpandingIdentityMapper.map_variable(self, expr, expn_state)
+            return super(RuleAwareSubstitutionMapper, self).map_variable(
+                    expr, expn_state)
 
-# }}}
 
+class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, rules, within):
+        super(RuleAwareSubstitutionRuleExpander, self).__init__(rule_mapping_context)
 
-# {{{ substitution rule expander
-
-class SubstitutionRuleExpander(ExpandingIdentityMapper):
-    def __init__(self, rules, make_unique_var=None, ctx_match=None):
-        ExpandingIdentityMapper.__init__(self, rules, make_unique_var)
-
-        if ctx_match is None:
-            from loopy.context_matching import AllStackMatch
-            ctx_match = AllStackMatch()
-
-        self.ctx_match = ctx_match
+        self.rules = rules
+        self.within = within
 
     def map_substitution(self, name, tag, arguments, expn_state):
         if tag is None:
@@ -631,9 +665,9 @@ class SubstitutionRuleExpander(ExpandingIdentityMapper):
 
         new_stack = expn_state.stack + ((name, tags),)
 
-        if self.ctx_match(new_stack):
+        if self.within(new_stack):
             # expand
-            rule = self.old_subst_rules[name]
+            rule = self.rules[name]
 
             new_expn_state = expn_state.copy(
                     stack=new_stack,
@@ -651,8 +685,8 @@ class SubstitutionRuleExpander(ExpandingIdentityMapper):
 
         else:
             # do not expand
-            return ExpandingIdentityMapper.map_substitution(
-                    self, name, tag, arguments, expn_state)
+            return super(RuleAwareSubstitutionRuleExpander, self).map_substitution(
+                    name, tag, arguments, expn_state)
 
 # }}}
 

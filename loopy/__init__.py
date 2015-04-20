@@ -30,7 +30,8 @@ THE SOFTWARE.
 import islpy as isl
 from islpy import dim_type
 
-from loopy.symbolic import ExpandingIdentityMapper, ExpandingSubstitutionMapper
+from loopy.symbolic import (RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
+        SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 
 
@@ -126,11 +127,10 @@ __all__ = [
 
 # {{{ split inames
 
-class _InameSplitter(ExpandingIdentityMapper):
-    def __init__(self, kernel, within,
+class _InameSplitter(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, within,
             split_iname, outer_iname, inner_iname, replacement_index):
-        ExpandingIdentityMapper.__init__(self,
-                kernel.substitutions, kernel.get_var_name_generator())
+        super(_InameSplitter, self).__init__(rule_mapping_context)
 
         self.within = within
 
@@ -277,10 +277,13 @@ def split_iname(kernel, split_iname, inner_length,
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
 
-    ins = _InameSplitter(kernel, within,
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    ins = _InameSplitter(rule_mapping_context, within,
             split_iname, outer_iname, inner_iname, new_loop_index)
 
     kernel = ins.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(kernel)
 
     if existing_tag is not None:
         kernel = tag_inames(kernel,
@@ -293,10 +296,10 @@ def split_iname(kernel, split_iname, inner_length,
 
 # {{{ join inames
 
-class _InameJoiner(ExpandingSubstitutionMapper):
-    def __init__(self, kernel, within, subst_func, joined_inames, new_iname):
-        ExpandingSubstitutionMapper.__init__(self,
-                kernel.substitutions, kernel.get_var_name_generator(),
+class _InameJoiner(RuleAwareSubstitutionMapper):
+    def __init__(self, rule_mapping_context, within, subst_func,
+            joined_inames, new_iname):
+        super(_InameJoiner, self).__init__(rule_mapping_context,
                 subst_func, within)
 
         self.joined_inames = set(joined_inames)
@@ -425,11 +428,14 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     within = parse_stack_match(within)
 
     from pymbolic.mapper.substitutor import make_subst_func
-    ijoin = _InameJoiner(kernel, within,
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    ijoin = _InameJoiner(rule_mapping_context, within,
             make_subst_func(subst_dict),
             inames, new_iname)
 
-    kernel = ijoin.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(
+            ijoin.map_kernel(kernel))
 
     if tag is not None:
         kernel = tag_inames(kernel, {new_iname: tag})
@@ -494,11 +500,10 @@ def tag_inames(kernel, iname_to_tag, force=False):
 
 # {{{ duplicate inames
 
-class _InameDuplicator(ExpandingIdentityMapper):
-    def __init__(self, rules, make_unique_var_name,
+class _InameDuplicator(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context,
             old_to_new, within):
-        super(_InameDuplicator, self).__init__(
-                rules, make_unique_var_name)
+        super(_InameDuplicator, self).__init__(rule_mapping_context)
 
         self.old_to_new = old_to_new
         self.old_inames_set = set(six.iterkeys(old_to_new))
@@ -602,11 +607,14 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 
     # {{{ change the inames in the code
 
-    indup = _InameDuplicator(knl.substitutions, name_gen,
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            knl.substitutions, name_gen)
+    indup = _InameDuplicator(rule_mapping_context,
             old_to_new=dict(list(zip(inames, new_inames))),
             within=within)
 
-    knl = indup.map_kernel(knl)
+    knl = rule_mapping_context.finish_kernel(
+            indup.map_kernel(knl))
 
     # }}}
 
@@ -732,10 +740,13 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
     within = parse_stack_match(within)
 
     from pymbolic.mapper.substitutor import make_subst_func
-    ijoin = ExpandingSubstitutionMapper(knl.substitutions, var_name_gen,
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            knl.substitutions, var_name_gen)
+    ijoin = RuleAwareSubstitutionMapper(knl.substitutions, var_name_gen,
                     make_subst_func(subst_dict), within)
 
-    knl = ijoin.map_kernel(knl)
+    knl = rule_mapping_context.finish_kernel(
+            ijoin.map_kernel(knl))
 
     # }}}
 
@@ -1187,10 +1198,10 @@ def tag_data_axes(knl, ary_names, dim_tags):
 
 # {{{ split_reduction
 
-class _ReductionSplitter(ExpandingIdentityMapper):
-    def __init__(self, kernel, within, inames, direction):
+class _ReductionSplitter(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, within, inames, direction):
         super(_ReductionSplitter, self).__init__(
-                kernel.substitutions, kernel.get_var_name_generator())
+                rule_mapping_context)
 
         self.within = within
         self.inames = inames
@@ -1230,8 +1241,12 @@ def _split_reduction(kernel, inames, direction, within=None):
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
 
-    rsplit = _ReductionSplitter(kernel, within, inames, direction)
-    return rsplit.map_kernel(kernel)
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    rsplit = _ReductionSplitter(rule_mapping_context,
+            within, inames, direction)
+    return rule_mapping_context.finish_kernel(
+            rsplit.map_kernel(kernel))
 
 
 def split_reduction_inward(kernel, inames, within=None):
@@ -1328,11 +1343,13 @@ def _fix_parameter(kernel, name, value):
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(None)
 
-    from loopy.symbolic import ExpandingSubstitutionMapper
-    esubst_map = ExpandingSubstitutionMapper(
-            kernel.substitutions, kernel.get_var_name_generator(),
-            subst_func, within=within)
-    return (esubst_map.map_kernel(kernel)
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    esubst_map = RuleAwareSubstitutionMapper(
+            rule_mapping_context, subst_func, within=within)
+    return (
+            rule_mapping_context.finish_kernel(
+                esubst_map.map_kernel(kernel))
             .copy(
                 domains=new_domains,
                 args=new_args,
@@ -1633,10 +1650,14 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     var_name_gen = kernel.get_var_name_generator()
 
     from pymbolic.mapper.substitutor import make_subst_func
-    old_to_new = ExpandingSubstitutionMapper(kernel.substitutions, var_name_gen,
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, var_name_gen)
+    old_to_new = RuleAwareSubstitutionMapper(rule_mapping_context,
             make_subst_func(subst_dict), within=lambda stack: True)
 
-    kernel = (old_to_new.map_kernel(kernel)
+    kernel = (
+            rule_mapping_context.finish_kernel(
+                old_to_new.map_kernel(kernel))
             .copy(
                 applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
                 ))
