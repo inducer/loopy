@@ -740,7 +740,7 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
     from pymbolic.mapper.substitutor import make_subst_func
     rule_mapping_context = SubstitutionRuleMappingContext(
             knl.substitutions, var_name_gen)
-    ijoin = RuleAwareSubstitutionMapper(knl.substitutions, var_name_gen,
+    ijoin = RuleAwareSubstitutionMapper(rule_mapping_context,
                     make_subst_func(subst_dict), within)
 
     knl = rule_mapping_context.finish_kernel(
