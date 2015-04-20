@@ -713,8 +713,6 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
     all_equal = True
     first_proj = projections[0]
     for proj in projections[1:]:
-        print(proj.gist(first_proj))
-        print(first_proj.gist(proj))
         all_equal = all_equal and (proj <= first_proj and first_proj <= proj)
 
     if not all_equal:
