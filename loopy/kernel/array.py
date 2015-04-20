@@ -342,6 +342,14 @@ def parse_array_dim_tags(dim_tags, use_increasing_target_axes=False):
                             for nl in ta_nesting_levels),
                         target_axis))
 
+        ta_nesting_level_increment = -min(ta_nesting_levels)
+        for i in range(len(result)):
+            if (isinstance(result[i], _StrideArrayDimTagBase)
+                    and result[i].target_axis == target_axis):
+                result[i] = result[i].copy(
+                        layout_nesting_level=result[i].layout_nesting_level
+                        + ta_nesting_level_increment)
+
     # }}}
 
     return result
