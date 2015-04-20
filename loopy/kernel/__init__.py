@@ -79,7 +79,7 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
-class kernel_state:
+class kernel_state:  # noqa
     INITIAL = 0
     PREPROCESSED = 1
     SCHEDULED = 2
