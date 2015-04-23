@@ -337,11 +337,19 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     new_insns = []
 
+    def none_to_empty_set(s):
+        if s is None:
+            return frozenset()
+        else:
+            return s
+
     for insn in kernel.instructions:
         if insn.id in aar.modified_insn_ids:
             new_insns.append(
                     insn.copy(
-                        insn_deps=insn.insn_deps | frozenset([init_insn_id])))
+                        insn_deps=(
+                            none_to_empty_set(insn.insn_deps)
+                            | frozenset([init_insn_id]))))
         else:
             new_insns.append(insn)
 
