@@ -142,7 +142,7 @@ Dealt with
 - How can one automatically generate something like microblocks?
   -> Some sort of axis-adding transform?
 
-- ExpandingIdentityMapper
+- RuleAwareIdentityMapper
   extract_subst -> needs WalkMapper [actually fine as is]
   padding [DONE]
   replace make_unique_var_name [DONE]

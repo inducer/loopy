@@ -26,11 +26,12 @@ THE SOFTWARE.
 """
 
 from pytools import Record
+from warnings import warn
 
 import numpy as np
 
 import loopy as lp
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, AutomaticTestFailure
 
 
 AUTO_TEST_SKIP_RUN = False
@@ -76,7 +77,7 @@ class TestArgInfo(Record):
 
 # {{{ "reference" arguments
 
-def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
+def make_ref_args(kernel, impl_arg_info, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
@@ -143,36 +144,36 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
                 numpy_strides = [itemsize*s for s in strides]
 
                 storage_array = cl_array.empty(queue, alloc_size, dtype)
-                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
 
-            if is_output:
-                if arg.arg_class is ImageArg:
-                    raise LoopyError("write-mode images not supported in "
-                            "automatic testing")
+            if is_output and arg.arg_class is ImageArg:
+                raise LoopyError("write-mode images not supported in "
+                        "automatic testing")
 
-                if is_dtype_supported(dtype):
-                    storage_array.fill(fill_value)
-                else:
-                    from warnings import warn
-                    warn("Cannot pre-fill array of dtype '%s' with set "
-                            "value--zeroing instead" % dtype)
-                    storage_array.view(np.uint8).fill(0)
+            fill_rand(storage_array)
 
-                ref_args[arg.name] = ary
+            if arg.arg_class is ImageArg:
+                # must be contiguous
+                pre_run_ary = pre_run_storage_array = storage_array.copy()
+
+                ref_args[arg.name] = cl.image_from_array(
+                        queue.context, ary.get())
             else:
-                fill_rand(storage_array)
-                if arg.arg_class is ImageArg:
-                    # must be contiguous
-                    ref_args[arg.name] = cl.image_from_array(
-                            queue.context, ary.get())
-                else:
-                    ref_args[arg.name] = ary
+                pre_run_storage_array = storage_array.copy()
+
+                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
+                pre_run_ary = cl_array.as_strided(
+                        pre_run_storage_array, shape, numpy_strides)
+                ref_args[arg.name] = ary
 
             ref_arg_data.append(
                     TestArgInfo(
                         name=arg.name,
                         ref_array=ary,
                         ref_storage_array=storage_array,
+
+                        ref_pre_run_array=pre_run_ary,
+                        ref_pre_run_storage_array=pre_run_storage_array,
+
                         ref_shape=shape,
                         ref_strides=strides,
                         ref_alloc_size=alloc_size,
@@ -188,8 +189,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters, fill_value):
 
 # {{{ "full-scale" arguments
 
-def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
-        fill_value):
+def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
@@ -224,7 +224,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
 
             # must be contiguous
             args[arg.name] = cl.image_from_array(
-                    queue.context, arg_desc.ref_array.get())
+                    queue.context, arg_desc.ref_pre_run_array.get())
 
         elif arg.arg_class is GlobalArg:
             shape = evaluate(arg.unvec_shape, parameters)
@@ -238,50 +238,37 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters,
             alloc_size = sum(astrd*(alen-1)
                     for alen, astrd in zip(shape, strides)) + 1
 
-            if arg.base_name in kernel.get_written_variables():
-                storage_array = cl_array.empty(queue, alloc_size, dtype)
-                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
+            # use contiguous array to transfer to host
+            host_ref_contig_array = arg_desc.ref_pre_run_storage_array.get()
 
-                if is_dtype_supported(dtype):
-                    storage_array.fill(fill_value)
-                else:
-                    from warnings import warn
-                    warn("Cannot pre-fill array of dtype '%s'" % dtype)
-                    storage_array.view(np.uint8).fill(0)
+            # use device shape/strides
+            from pyopencl.compyte.array import as_strided
+            host_ref_array = as_strided(host_ref_contig_array,
+                    arg_desc.ref_shape, arg_desc.ref_numpy_strides)
 
-                args[arg.name] = ary
-            else:
-                # use contiguous array to transfer to host
-                host_ref_contig_array = arg_desc.ref_storage_array.get()
+            # flatten the thing
+            host_ref_flat_array = host_ref_array.flatten()
 
-                # use device shape/strides
-                from pyopencl.compyte.array import as_strided
-                host_ref_array = as_strided(host_ref_contig_array,
-                        arg_desc.ref_shape, arg_desc.ref_numpy_strides)
+            # create host array with test shape (but not strides)
+            host_contig_array = np.empty(shape, dtype=dtype)
 
-                # flatten the thing
-                host_ref_flat_array = host_ref_array.flatten()
+            common_len = min(
+                    len(host_ref_flat_array),
+                    len(host_contig_array.ravel()))
+            host_contig_array.ravel()[:common_len] = \
+                    host_ref_flat_array[:common_len]
 
-                # create host array with test shape (but not strides)
-                host_contig_array = np.empty(shape, dtype=dtype)
+            # create host array with test shape and storage layout
+            host_storage_array = np.empty(alloc_size, dtype)
+            host_array = as_strided(
+                    host_storage_array, shape, numpy_strides)
+            host_array[:] = host_contig_array
 
-                common_len = min(
-                        len(host_ref_flat_array),
-                        len(host_contig_array.ravel()))
-                host_contig_array.ravel()[:common_len] = \
-                        host_ref_flat_array[:common_len]
+            host_contig_array = arg_desc.ref_storage_array.get()
+            storage_array = cl_array.to_device(queue, host_storage_array)
+            ary = cl_array.as_strided(storage_array, shape, numpy_strides)
 
-                # create host array with test shape and storage layout
-                host_storage_array = np.empty(alloc_size, dtype)
-                host_array = as_strided(
-                        host_storage_array, shape, numpy_strides)
-                host_array[:] = host_contig_array
-
-                host_contig_array = arg_desc.ref_storage_array.get()
-                storage_array = cl_array.to_device(queue, host_storage_array)
-                ary = cl_array.as_strided(storage_array, shape, numpy_strides)
-
-                args[arg.name] = ary
+            args[arg.name] = ary
 
             arg_desc.test_storage_array = storage_array
             arg_desc.test_array = ary
@@ -324,15 +311,13 @@ def _default_check_result(result, ref_result):
 # }}}
 
 
-# {{{ ref device finder
+# {{{ find device for reference test
 
 def _enumerate_cl_devices_for_ref_test():
     import pyopencl as cl
 
     noncpu_devs = []
     cpu_devs = []
-
-    from warnings import warn
 
     for pf in cl.get_platforms():
         if pf.name == "Portable Computing Language":
@@ -368,7 +353,7 @@ def auto_test_vs_ref(
         ref_knl, ctx, test_knl, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
         dump_binary=False,
-        fills_entire_output=True, do_check=True, check_result=None
+        fills_entire_output=None, do_check=True, check_result=None
         ):
     """Compare results of `ref_knl` to the kernels generated by
     scheduling *test_knl*.
@@ -386,46 +371,29 @@ def auto_test_vs_ref(
 
     for i, (ref_arg, test_arg) in enumerate(zip(ref_knl.args, test_knl.args)):
         if ref_arg.name != test_arg.name:
-            raise LoopyError("ref_knl and test_knl argument lists disagee at index "
+            raise LoopyError("ref_knl and test_knl argument lists disagree at index "
                     "%d (1-based)" % (i+1))
 
         if ref_arg.dtype != test_arg.dtype:
-            raise LoopyError("ref_knl and test_knl argument lists disagee at index "
+            raise LoopyError("ref_knl and test_knl argument lists disagree at index "
                     "%d (1-based)" % (i+1))
 
     from loopy.compiled import CompiledKernel, get_highlighted_cl_code
 
     if isinstance(op_count, (int, float)):
-        from warnings import warn
         warn("op_count should be a list", stacklevel=2)
         op_count = [op_count]
     if isinstance(op_label, str):
-        from warnings import warn
         warn("op_label should be a list", stacklevel=2)
         op_label = [op_label]
-
-    read_and_written_args = (
-            ref_knl.get_read_variables()
-            & ref_knl.get_written_variables()
-            & set(ref_knl.arg_dict))
-
-    if read_and_written_args:
-        # FIXME: In principle, that's possible to test
-        raise LoopyError("kernel reads *and* writes argument(s) '%s' "
-                "and therefore cannot be automatically tested"
-                % ", ".join(read_and_written_args))
 
     from time import time
 
     if check_result is None:
         check_result = _default_check_result
 
-    if fills_entire_output:
-        fill_value_ref = -17
-        fill_value = -18
-    else:
-        fill_value_ref = -17
-        fill_value = fill_value_ref
+    if fills_entire_output is not None:
+        warn("fills_entire_output is deprecated", DeprecationWarning, stacklevel=2)
 
     # {{{ compile and run reference code
 
@@ -460,8 +428,7 @@ def auto_test_vs_ref(
         try:
             ref_args, ref_arg_data = \
                     make_ref_args(ref_sched_kernel, ref_cl_kernel_info.impl_arg_info,
-                            ref_queue, parameters,
-                            fill_value=fill_value_ref)
+                            ref_queue, parameters)
             ref_args["out_host"] = False
         except cl.RuntimeError as e:
             if e.code == cl.status_code.IMAGE_FORMAT_NOT_SUPPORTED:
@@ -523,7 +490,6 @@ def auto_test_vs_ref(
     args = None
     from loopy.kernel import LoopKernel
     if not isinstance(test_knl, LoopKernel):
-        from warnings import warn
         warn("Passing an iterable of kernels to auto_test_vs_ref "
                 "is deprecated--just pass the kernel instead. "
                 "Scheduling will be performed in auto_test_vs_ref.",
@@ -552,7 +518,7 @@ def auto_test_vs_ref(
             cl_kernel_info = compiled.cl_kernel_info(frozenset())
 
             args = make_args(kernel, cl_kernel_info.impl_arg_info,
-                    queue, ref_arg_data, parameters, fill_value=fill_value)
+                    queue, ref_arg_data, parameters)
         args["out_host"] = False
 
         print(75*"-")
@@ -593,7 +559,9 @@ def auto_test_vs_ref(
                     test_ary = test_ary[:common_len]
 
                     error_is_small, error = check_result(test_ary, ref_ary)
-                    assert error_is_small, error
+                    if not error_is_small:
+                        raise AutomaticTestFailure(error)
+
                     need_check = False
 
         events = []

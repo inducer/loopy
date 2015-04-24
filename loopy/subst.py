@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 from loopy.symbolic import (
         get_dependencies, SubstitutionMapper,
-        ExpandingIdentityMapper)
+        RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 
@@ -200,18 +200,19 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
 # {{{ temporary_to_subst
 
-class TemporaryToSubstChanger(ExpandingIdentityMapper):
-    def __init__(self, kernel, temp_name, definition_insn_ids,
-            usage_to_definition, within):
-        self.var_name_gen = kernel.get_var_name_generator()
+class TemporaryToSubstChanger(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, temp_name, definition_insn_ids,
+            usage_to_definition, extra_arguments, within):
+        self.var_name_gen = rule_mapping_context.make_unique_var_name
 
-        super(TemporaryToSubstChanger, self).__init__(
-                kernel.substitutions, self.var_name_gen)
+        super(TemporaryToSubstChanger, self).__init__(rule_mapping_context)
 
-        self.kernel = kernel
         self.temp_name = temp_name
         self.definition_insn_ids = definition_insn_ids
         self.usage_to_definition = usage_to_definition
+
+        from pymbolic import var
+        self.extra_arguments = tuple(var(arg) for arg in extra_arguments)
 
         self.within = within
 
@@ -230,7 +231,8 @@ class TemporaryToSubstChanger(ExpandingIdentityMapper):
             return subst_name
 
     def map_variable(self, expr, expn_state):
-        if expr.name == self.temp_name:
+        if (expr.name == self.temp_name
+                and expr.name not in expn_state.arg_context):
             result = self.transform_access(None, expn_state)
             if result is not None:
                 return result
@@ -239,7 +241,8 @@ class TemporaryToSubstChanger(ExpandingIdentityMapper):
                 expr, expn_state)
 
     def map_subscript(self, expr, expn_state):
-        if expr.aggregate.name == self.temp_name:
+        if (expr.aggregate.name == self.temp_name
+                and expr.aggregate.name not in expn_state.arg_context):
             result = self.transform_access(expr.index, expn_state)
             if result is not None:
                 return result
@@ -248,7 +251,7 @@ class TemporaryToSubstChanger(ExpandingIdentityMapper):
                 expr, expn_state)
 
     def transform_access(self, index, expn_state):
-        my_insn_id = expn_state.stack[0][0]
+        my_insn_id = expn_state.insn_id
 
         if my_insn_id in self.definition_insn_ids:
             return None
@@ -259,9 +262,13 @@ class TemporaryToSubstChanger(ExpandingIdentityMapper):
             self.saw_unmatched_usage_sites[my_def_id] = True
             return None
 
-        my_insn_id = expn_state.stack[0][0]
-
         subst_name = self.get_subst_name(my_def_id)
+
+        if self.extra_arguments:
+            if index is None:
+                index = self.extra_arguments
+            else:
+                index = index + self.extra_arguments
 
         from pymbolic import var
         if index is None:
@@ -270,9 +277,11 @@ class TemporaryToSubstChanger(ExpandingIdentityMapper):
             return var(subst_name)(*index)
 
 
-def temporary_to_subst(kernel, temp_name, within=None):
+def temporary_to_subst(kernel, temp_name, extra_arguments=(), within=None):
     """Extract an assignment to a temporary variable
-    as a :ref:`substituion-rule`. The temporary may
+    as a :ref:`substituiton-rule`. The temporary may be an array, in
+    which case the array indices will become arguments to the substitution
+    rule.
 
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
@@ -283,6 +292,9 @@ def temporary_to_subst(kernel, temp_name, within=None):
     the original assignment to *temp_name* as well
     as the temporary variable is left in place.
     """
+
+    if isinstance(extra_arguments, str):
+        extra_arguments = tuple(s.strip() for s in extra_arguments.split(","))
 
     # {{{ establish the relevant definition of temp_name for each usage site
 
@@ -347,10 +359,13 @@ def temporary_to_subst(kernel, temp_name, within=None):
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
 
-    tts = TemporaryToSubstChanger(kernel, temp_name, definition_insn_ids,
-            usage_to_definition, within)
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    tts = TemporaryToSubstChanger(rule_mapping_context,
+            temp_name, definition_insn_ids,
+            usage_to_definition, extra_arguments, within)
 
-    kernel = tts.map_kernel(kernel)
+    kernel = rule_mapping_context.finish_kernel(tts.map_kernel(kernel))
 
     from loopy.kernel.data import SubstitutionRule
 
@@ -376,7 +391,7 @@ def temporary_to_subst(kernel, temp_name, within=None):
 
         new_substs[subst_name] = SubstitutionRule(
                 name=subst_name,
-                arguments=tuple(arguments),
+                arguments=tuple(arguments) + extra_arguments,
                 expression=def_insn.expression)
 
     # }}}
@@ -410,19 +425,18 @@ def temporary_to_subst(kernel, temp_name, within=None):
 # }}}
 
 
-def expand_subst(kernel, ctx_match=None):
+def expand_subst(kernel, within=None):
     logger.debug("%s: expand subst" % kernel.name)
 
-    from loopy.symbolic import SubstitutionRuleExpander
+    from loopy.symbolic import RuleAwareSubstitutionRuleExpander
     from loopy.context_matching import parse_stack_match
-    submap = SubstitutionRuleExpander(kernel.substitutions,
-            kernel.get_var_name_generator(),
-            parse_stack_match(ctx_match))
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    submap = RuleAwareSubstitutionRuleExpander(
+            rule_mapping_context,
+            kernel.substitutions,
+            parse_stack_match(within))
 
-    kernel = submap.map_kernel(kernel)
-    if ctx_match is None:
-        return kernel.copy(substitutions={})
-    else:
-        return kernel
+    return rule_mapping_context.finish_kernel(submap.map_kernel(kernel))
 
 # vim: foldmethod=marker

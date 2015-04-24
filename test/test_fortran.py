@@ -130,7 +130,7 @@ def test_temporary_to_subst(ctx_factory):
           integer n
 
           do i = 1, n
-            a = inp(n)
+            a = inp(i)
             out(i) = 5*a
             out2(i) = 6*a
           end do
@@ -142,7 +142,7 @@ def test_temporary_to_subst(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.temporary_to_subst(knl, "a")
+    knl = lp.temporary_to_subst(knl, "a", "i")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
@@ -273,26 +273,25 @@ def test_tagged(ctx_factory):
     assert sum(1 for insn in lp.find_instructions(knl, "*$input")) == 2
 
 
-def test_matmul(ctx_factory):
+@pytest.mark.parametrize("buffer_inames", [
+    "",
+    "i_inner,j_inner",
+    ])
+def test_matmul(ctx_factory, buffer_inames):
     fortran_src = """
         subroutine dgemm(m,n,l,a,b,c)
           implicit none
-          real*8 temp, a(m,l),b(l,n),c(m,n)
+          real*8 a(m,l),b(l,n),c(m,n)
           integer m,n,k,i,j,l
 
           do j = 1,n
             do i = 1,m
-              temp = 0
               do k = 1,l
-                temp = temp + b(k,j)*a(i,k)
+                c(i,j) = c(i,j) + b(k,j)*a(i,k)
               end do
-              c(i,j) = temp
             end do
           end do
         end subroutine
-
-        !$loopy begin transform
-        !$loopy end transform
         """
 
     from loopy.frontend.fortran import f2loopy
@@ -307,14 +306,71 @@ def test_matmul(ctx_factory):
     knl = lp.split_iname(knl, "j", 8,
             outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", 32)
+    knl = lp.assume(knl, "n mod 32 = 0")
+    knl = lp.assume(knl, "m mod 32 = 0")
+    knl = lp.assume(knl, "l mod 16 = 0")
 
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
     knl = lp.precompute(knl, "a_acc", "k_inner,i_inner")
     knl = lp.precompute(knl, "b_acc", "j_inner,k_inner")
 
+    knl = lp.buffer_array(knl, "c", buffer_inames=buffer_inames,
+            init_expression="0", store_expression="base+buffer")
+
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5, m=7, l=10))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, l=128))
+
+    # # FIXME: Make r/w tests possible, reactivate the above
+    # knl = lp.preprocess_kernel(knl)
+    # for k in lp.generate_loop_schedules(knl):
+    #     code, _ = lp.generate_code(k)
+    #     print(code)
+
+
+@pytest.mark.xfail
+def test_batched_sparse():
+    fortran_src = """
+        subroutine sparse(rowstarts, colindices, values, m, n, nvecs, nvals, x, y)
+          implicit none
+
+          integer rowstarts(m+1), colindices(nvals)
+          real*8 values(nvals)
+          real*8 x(n, nvecs), y(n, nvecs), rowsum(nvecs)
+
+          integer m, n, rowstart, rowend, length, nvals, nvecs
+
+          do i = 1, m
+            rowstart = rowstarts(i)
+            rowend = rowstarts(i+1)
+            length = rowend - rowstart
+
+            do k = 1, nvecs
+              rowsum(k) = 0
+            enddo
+            do k = 1, nvecs
+              do j = 1, length
+                rowsum(k) = rowsum(k) + &
+                  x(colindices(rowstart+j-1),k)*values(rowstart+j-1)
+              end do
+            end do
+            do k = 1, nvecs
+              y(i,k) = rowsum(k)
+            end do
+          end do
+        end
+
+        """
+
+    from loopy.frontend.fortran import f2loopy
+    knl, = f2loopy(fortran_src)
+
+    knl = lp.split_iname(knl, "i", 128)
+    knl = lp.tag_inames(knl, {"i_outer": "g.0"})
+    knl = lp.tag_inames(knl, {"i_inner": "l.0"})
+    knl = lp.add_prefetch(knl, "values")
+    knl = lp.add_prefetch(knl, "colindices")
+    knl = lp.fix_parameters(knl, nvecs=4)
 
 
 if __name__ == "__main__":

@@ -459,16 +459,16 @@ class ArgumentGuesser:
                 (assignee_var_name, _), = insn.assignees_and_indices()
                 self.all_written_names.add(assignee_var_name)
                 self.all_names.update(get_dependencies(
-                    self.submap(insn.assignee, insn.id, insn.tags)))
+                    self.submap(insn.assignee)))
                 self.all_names.update(get_dependencies(
-                    self.submap(insn.expression, insn.id, insn.tags)))
+                    self.submap(insn.expression)))
 
     def find_index_rank(self, name):
         irf = IndexRankFinder(name)
 
         for insn in self.instructions:
             insn.with_transformed_expressions(
-                    lambda expr: irf(self.submap(expr, insn.id, insn.tags)))
+                    lambda expr: irf(self.submap(expr)))
 
         if not irf.index_ranks:
             return 0
@@ -859,8 +859,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
     from loopy.kernel.array import ArrayBase
     from loopy.symbolic import SubstitutionRuleExpander, AccessRangeMapper
 
-    submap = SubstitutionRuleExpander(kernel.substitutions,
-            kernel.get_var_name_generator())
+    submap = SubstitutionRuleExpander(kernel.substitutions)
 
     for arg in kernel.args:
         if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
@@ -869,11 +868,12 @@ def guess_arg_shape_if_requested(kernel, default_order):
             try:
                 for insn in kernel.instructions:
                     if isinstance(insn, lp.ExpressionInstruction):
-                        armap(submap(insn.assignee, insn.id, insn.tags),
-                                kernel.insn_inames(insn))
-                        armap(submap(insn.expression, insn.id, insn.tags),
-                                kernel.insn_inames(insn))
+                        armap(submap(insn.assignee), kernel.insn_inames(insn))
+                        armap(submap(insn.expression), kernel.insn_inames(insn))
             except TypeError as e:
+                from traceback import print_exc
+                print_exc()
+
                 from loopy.diagnostic import LoopyError
                 raise LoopyError(
                         "Failed to (automatically, as requested) find "

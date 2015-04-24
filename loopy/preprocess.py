@@ -26,8 +26,8 @@ THE SOFTWARE.
 import six
 import numpy as np
 from loopy.diagnostic import (
-        LoopyError, LoopyWarning, WriteRaceConditionWarning, warn,
-        LoopyAdvisory)
+        LoopyError, WriteRaceConditionWarning, warn,
+        LoopyAdvisory, DependencyTypeInferenceFailure)
 
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -88,8 +88,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if not isinstance(writer_insn, lp.ExpressionInstruction):
             continue
 
-        expr = subst_expander(writer_insn.expression,
-                insn_id=writer_insn_id, insn_tags=writer_insn.tags)
+        expr = subst_expander(writer_insn.expression)
 
         try:
             debug("             via expr %s" % expr)
@@ -139,12 +138,8 @@ def infer_unknown_types(kernel, expect_completion=False):
     def debug(s):
         logger.debug("%s: %s" % (kernel.name, s))
 
+    unexpanded_kernel = kernel
     if kernel.substitutions:
-        from warnings import warn as py_warn
-        py_warn("type inference called when substitution "
-                "rules are still unexpanded, expanding",
-                LoopyWarning, stacklevel=2)
-
         from loopy.subst import expand_subst
         kernel = expand_subst(kernel)
 
@@ -175,8 +170,7 @@ def infer_unknown_types(kernel, expect_completion=False):
                 ]))
 
     from loopy.symbolic import SubstitutionRuleExpander
-    subst_expander = SubstitutionRuleExpander(kernel.substitutions,
-            kernel.get_var_name_generator())
+    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
 
     # {{{ work on type inference queue
 
@@ -240,7 +234,7 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     # }}}
 
-    return kernel.copy(
+    return unexpanded_kernel.copy(
             temporary_variables=new_temp_vars,
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
@@ -419,7 +413,11 @@ def realize_reduction(kernel, insn_id_filter=None):
         target_var_name = var_name_gen("acc_"+"_".join(expr.inames))
         target_var = var(target_var_name)
 
-        arg_dtype = type_inf_mapper(expr.expr)
+        try:
+            arg_dtype = type_inf_mapper(expr.expr)
+        except DependencyTypeInferenceFailure:
+            raise LoopyError("failed to determine type of accumulator for "
+                    "reduction '%s'" % expr)
 
         from loopy.kernel.data import ExpressionInstruction, TemporaryVariable
 
@@ -845,8 +843,9 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
                 continue
             coeffs = CoefficientCollector()(iexpr_i)
             for var, coeff in six.iteritems(coeffs):
-                assert isinstance(var, Variable)
-                if var.name in auto_axis_inames:  # excludes '1', i.e.  the constant
+                if (isinstance(var, Variable)
+                        and var.name in auto_axis_inames):
+                    # excludes '1', i.e.  the constant
                     new_stride = coeff*stride
                     old_stride = iname_to_stride_expr.get(var.name, None)
                     if old_stride is None or new_stride < old_stride:

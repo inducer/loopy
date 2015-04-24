@@ -1816,6 +1816,69 @@ def test_affine_map_inames():
     print(knl)
 
 
+def test_precompute_confusing_subst_arguments(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<n and 0<=j<5}",
+        """
+        D(i):=a[i+1]-a[i]
+        b[i,j] = D(j)
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+
+    ref_knl = knl
+
+    knl = lp.tag_inames(knl, dict(j="g.1"))
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    from loopy.symbolic import get_dependencies
+    assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
+    knl = lp.precompute(knl, "D")
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(n=12345))
+
+
+def test_precompute_nested_subst(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<n and 0<=j<5}",
+        """
+        E:=a[i]
+        D:=E*E
+        b[i] = D
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+
+    ref_knl = knl
+
+    knl = lp.tag_inames(knl, dict(j="g.1"))
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    from loopy.symbolic import get_dependencies
+    assert "i_inner" not in get_dependencies(knl.substitutions["D"].expression)
+    knl = lp.precompute(knl, "D", "i_inner")
+
+    # There's only one surviving 'E' rule.
+    assert len([
+        rule_name
+        for rule_name in knl.substitutions
+        if rule_name.startswith("E")]) == 1
+
+    # That rule should use the newly created prefetch inames,
+    # not the prior 'i_inner'
+    assert "i_inner" not in get_dependencies(knl.substitutions["E"].expression)
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(n=12345))
+
+
 def test_poisson(ctx_factory):
     # Stolen from Peter Coogan and Rob Kirby for FEM assembly
     ctx = ctx_factory()
@@ -1871,6 +1934,28 @@ def test_poisson(ctx_factory):
         lp.auto_test_vs_ref(
                 add_types(ref_knl), ctx, add_types(knl),
                 parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
+
+
+def test_auto_test_can_detect_problems(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i,j<n}",
+        """
+        a[i,j] = 25
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+
+    ref_knl = knl
+
+    knl = lp.link_inames(knl, "i,j", "i0")
+
+    from loopy.diagnostic import AutomaticTestFailure
+    with pytest.raises(AutomaticTestFailure):
+        lp.auto_test_vs_ref(
+                ref_knl, ctx, knl,
+                parameters=dict(n=123))
 
 
 if __name__ == "__main__":

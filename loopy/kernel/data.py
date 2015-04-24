@@ -28,10 +28,10 @@ THE SOFTWARE.
 import numpy as np
 from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
-from loopy.diagnostic import LoopyError  # noqa
+from loopy.diagnostic import LoopyError
 
 
-class auto(object):
+class auto(object):  # noqa
     """A generic placeholder object for something that should be automatically
     detected.  See, for example, the *shape* or *strides* argument of
     :class:`GlobalArg`.
@@ -483,6 +483,10 @@ class InstructionBase(Record):
 
         if insn_deps_is_final is None:
             insn_deps_is_final = False
+
+        if insn_deps_is_final and not isinstance(insn_deps, frozenset):
+            raise LoopyError("Setting insn_deps_is_final to True requires "
+                    "actually specifying insn_deps")
 
         if tags is None:
             tags = ()

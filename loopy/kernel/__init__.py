@@ -79,7 +79,7 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
 # {{{ loop kernel object
 
-class kernel_state:
+class kernel_state:  # noqa
     INITIAL = 0
     PREPROCESSED = 1
     SCHEDULED = 2
@@ -922,18 +922,18 @@ class LoopKernel(RecordWithoutPickling):
             line = "%s: %s" % (iname, self.iname_to_tag.get(iname))
             lines.append(line)
 
-        if self.substitutions:
-            lines.append(sep)
-            lines.append("SUBSTIUTION RULES:")
-            for rule_name in sorted(six.iterkeys(self.substitutions)):
-                lines.append(str(self.substitutions[rule_name]))
-
         if self.temporary_variables:
             lines.append(sep)
             lines.append("TEMPORARIES:")
             for tv in sorted(six.itervalues(self.temporary_variables),
                     key=lambda tv: tv.name):
                 lines.append(str(tv))
+
+        if self.substitutions:
+            lines.append(sep)
+            lines.append("SUBSTIUTION RULES:")
+            for rule_name in sorted(six.iterkeys(self.substitutions)):
+                lines.append(str(self.substitutions[rule_name]))
 
         lines.append(sep)
         lines.append("INSTRUCTIONS:")

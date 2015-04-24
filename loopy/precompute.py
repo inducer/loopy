@@ -25,15 +25,15 @@ THE SOFTWARE.
 """
 
 
-import islpy as isl
-from loopy.symbolic import (get_dependencies, SubstitutionMapper,
-        ExpandingIdentityMapper)
+from loopy.symbolic import (get_dependencies,
+        RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
+        SubstitutionRuleMappingContext)
 from pymbolic.mapper.substitutor import make_subst_func
 import numpy as np
 
 from pymbolic import var
 
-from loopy.array_buffer import (ArrayToBufferMap, NoOpArrayToBufferMap,
+from loopy.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
 
 
@@ -57,18 +57,11 @@ def storage_axis_exprs(storage_axis_sources, args):
     return result
 
 
-def simplify_via_aff(expr):
-    from loopy.symbolic import aff_from_expr, aff_to_expr
-    deps = get_dependencies(expr)
-    return aff_to_expr(aff_from_expr(
-        isl.Space.create_from_names(isl.Context(), list(deps)),
-        expr))
+# {{{ gather rule invocations
 
-
-class RuleInvocationGatherer(ExpandingIdentityMapper):
-    def __init__(self, kernel, subst_name, subst_tag, within):
-        ExpandingIdentityMapper.__init__(self,
-                kernel.substitutions, kernel.get_var_name_generator())
+class RuleInvocationGatherer(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, kernel, subst_name, subst_tag, within):
+        super(RuleInvocationGatherer, self).__init__(rule_mapping_context)
 
         from loopy.symbolic import SubstitutionRuleExpander
         self.subst_expander = SubstitutionRuleExpander(
@@ -90,18 +83,17 @@ class RuleInvocationGatherer(ExpandingIdentityMapper):
         process_me = process_me and self.within(expn_state.stack)
 
         if not process_me:
-            return ExpandingIdentityMapper.map_substitution(
-                    self, name, tag, arguments, expn_state)
+            return super(RuleInvocationGatherer, self).map_substitution(
+                    name, tag, arguments, expn_state)
 
-        rule = self.old_subst_rules[name]
+        rule = self.rule_mapping_context.old_subst_rules[name]
         arg_context = self.make_new_arg_context(
                     name, rule.arguments, arguments, expn_state.arg_context)
 
         arg_deps = set()
         for arg_val in six.itervalues(arg_context):
             arg_deps = (arg_deps
-                    | get_dependencies(self.subst_expander(
-                        arg_val, insn_id=None, insn_tags=None)))
+                    | get_dependencies(self.subst_expander(arg_val)))
 
         # FIXME: This is too strict--and the footprint machinery
         # needs to be taught how to deal with locally constant
@@ -116,12 +108,11 @@ class RuleInvocationGatherer(ExpandingIdentityMapper):
                         ", ".join(arg_deps - self.kernel.all_inames()),
                         ))
 
-            return ExpandingIdentityMapper.map_substitution(
-                    self, name, tag, arguments, expn_state)
+            return super(RuleInvocationGatherer, self).map_substitution(
+                    name, tag, arguments, expn_state)
 
         args = [arg_context[arg_name] for arg_name in rule.arguments]
 
-        # Do not set expands_footprint here, it is set below.
         self.access_descriptors.append(
                 RuleAccessDescriptor(
                     identifier=access_descriptor_id(args, expn_state.stack),
@@ -130,21 +121,19 @@ class RuleInvocationGatherer(ExpandingIdentityMapper):
 
         return 0  # exact value irrelevant
 
+# }}}
 
-class RuleInvocationReplacer(ExpandingIdentityMapper):
-    def __init__(self, kernel, subst_name, subst_tag, within,
+
+# {{{ replace rule invocation
+
+class RuleInvocationReplacer(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, subst_name, subst_tag, within,
             access_descriptors, array_base_map,
             storage_axis_names, storage_axis_sources,
-            storage_base_indices, non1_storage_axis_names,
+            non1_storage_axis_names,
             target_var_name):
-        ExpandingIdentityMapper.__init__(self,
-                kernel.substitutions, kernel.get_var_name_generator())
+        super(RuleInvocationReplacer, self).__init__(rule_mapping_context)
 
-        from loopy.symbolic import SubstitutionRuleExpander
-        self.subst_expander = SubstitutionRuleExpander(
-                kernel.substitutions, kernel.get_var_name_generator())
-
-        self.kernel = kernel
         self.subst_name = subst_name
         self.subst_tag = subst_tag
         self.within = within
@@ -154,55 +143,44 @@ class RuleInvocationReplacer(ExpandingIdentityMapper):
 
         self.storage_axis_names = storage_axis_names
         self.storage_axis_sources = storage_axis_sources
-        self.storage_base_indices = storage_base_indices
         self.non1_storage_axis_names = non1_storage_axis_names
 
         self.target_var_name = target_var_name
 
     def map_substitution(self, name, tag, arguments, expn_state):
-        process_me = name == self.subst_name
+        if not (
+                name == self.subst_name
+                and self.within(expn_state.stack)
+                and (self.subst_tag is None or self.subst_tag == tag)):
+            return super(RuleInvocationReplacer, self).map_substitution(
+                    name, tag, arguments, expn_state)
 
-        if self.subst_tag is not None and self.subst_tag != tag:
-            process_me = False
+        # {{{ check if in footprint
 
-        process_me = process_me and self.within(expn_state.stack)
-
-        # {{{ find matching invocation descriptor
-
-        rule = self.old_subst_rules[name]
+        rule = self.rule_mapping_context.old_subst_rules[name]
         arg_context = self.make_new_arg_context(
                     name, rule.arguments, arguments, expn_state.arg_context)
         args = [arg_context[arg_name] for arg_name in rule.arguments]
 
-        if not process_me:
-            return ExpandingIdentityMapper.map_substitution(
-                    self, name, tag, arguments, expn_state)
+        accdesc = AccessDescriptor(
+                storage_axis_exprs=storage_axis_exprs(
+                    self.storage_axis_sources, args))
 
-        matching_accdesc = None
-        for accdesc in self.access_descriptors:
-            if accdesc.identifier == access_descriptor_id(args, expn_state.stack):
-                # Could be more than one, that's fine.
-                matching_accdesc = accdesc
-                break
-
-        assert matching_accdesc is not None
-
-        accdesc = matching_accdesc
-        del matching_accdesc
+        if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
+            return super(RuleInvocationReplacer, self).map_substitution(
+                    name, tag, arguments, expn_state)
 
         # }}}
 
-        if not self.array_base_map.is_access_descriptor_in_footprint(accdesc):
-            return ExpandingIdentityMapper.map_substitution(
-                    self, name, tag, arguments, expn_state)
-
         assert len(arguments) == len(rule.arguments)
+
+        abm = self.array_base_map
 
         stor_subscript = []
         for sax_name, sax_source, sax_base_idx in zip(
                 self.storage_axis_names,
                 self.storage_axis_sources,
-                self.storage_base_indices):
+                abm.storage_base_indices):
             if sax_name not in self.non1_storage_axis_names:
                 continue
 
@@ -213,6 +191,7 @@ class RuleInvocationReplacer(ExpandingIdentityMapper):
                 # an iname
                 ax_index = var(sax_source)
 
+            from loopy.isl_helpers import simplify_via_aff
             ax_index = simplify_via_aff(ax_index - sax_base_idx)
             stor_subscript.append(ax_index)
 
@@ -220,12 +199,13 @@ class RuleInvocationReplacer(ExpandingIdentityMapper):
         if stor_subscript:
             new_outer_expr = new_outer_expr.index(tuple(stor_subscript))
 
-        # Can't possibly be nested, but recurse anyway to
-        # make sure substitution rules referenced below here
-        # do not get thrown away.
-        self.rec(rule.expression, expn_state.copy(arg_context={}))
+        # Can't possibly be nested, and no need to traverse
+        # further as compute expression has already been seen
+        # by rule_mapping_context.
 
         return new_outer_expr
+
+# }}}
 
 
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
@@ -301,6 +281,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             raise RuntimeError("sweep iname '%s' is not a known iname"
                     % iname)
 
+    sweep_inames = list(sweep_inames)
+    sweep_inames_set = frozenset(sweep_inames)
+
     if isinstance(storage_axes, str):
         storage_axes = storage_axes.split(",")
 
@@ -357,10 +340,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ process invocations in footprint generators, start access_descriptors
 
-    access_descriptors = []
-
     if footprint_generators:
         from pymbolic.primitives import Variable, Call
+
+        access_descriptors = []
 
         for fpg in footprint_generators:
             if isinstance(fpg, Variable):
@@ -374,7 +357,6 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             access_descriptors.append(
                     RuleAccessDescriptor(
                         identifier=access_descriptor_id(args, None),
-                        expands_footprint=True,
                         args=args
                         ))
 
@@ -382,34 +364,33 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ gather up invocations in kernel code, finish access_descriptors
 
-    invg = RuleInvocationGatherer(kernel, subst_name, subst_tag, within)
+    if not footprint_generators:
+        rule_mapping_context = SubstitutionRuleMappingContext(
+                kernel.substitutions, kernel.get_var_name_generator())
+        invg = RuleInvocationGatherer(
+                rule_mapping_context, kernel, subst_name, subst_tag, within)
+        del rule_mapping_context
 
-    import loopy as lp
-    for insn in kernel.instructions:
-        if isinstance(insn, lp.ExpressionInstruction):
-            invg(insn.expression, insn.id, insn.tags)
+        import loopy as lp
+        for insn in kernel.instructions:
+            if isinstance(insn, lp.ExpressionInstruction):
+                invg(insn.assignee, insn.id, insn.tags)
+                invg(insn.expression, insn.id, insn.tags)
 
-    for accdesc in invg.access_descriptors:
-        access_descriptors.append(
-                accdesc.copy(expands_footprint=footprint_generators is None))
-
-    if not access_descriptors:
-        raise RuntimeError("no invocations of '%s' found" % subst_name)
+        access_descriptors = invg.access_descriptors
+        if not access_descriptors:
+            raise RuntimeError("no invocations of '%s' found" % subst_name)
 
     # }}}
-
-    sweep_inames = list(sweep_inames)
-    sweep_inames_set = frozenset(sweep_inames)
 
     # {{{ find inames used in arguments
 
     expanding_usage_arg_deps = set()
 
     for accdesc in access_descriptors:
-        if accdesc.expands_footprint:
-            for arg in accdesc.args:
-                expanding_usage_arg_deps.update(
-                        get_dependencies(arg) & kernel.all_inames())
+        for arg in accdesc.args:
+            expanding_usage_arg_deps.update(
+                    get_dependencies(arg) & kernel.all_inames())
 
     # }}}
 
@@ -424,7 +405,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
     value_inames = get_dependencies(
-            submap(subst.expression, insn_id=None, insn_tags=None)
+            submap(subst.expression)
             ) & kernel.all_inames()
     if value_inames - expanding_usage_arg_deps < extra_storage_axes:
         raise RuntimeError("unreferenced sweep inames specified: "
@@ -438,7 +419,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 list(extra_storage_axes)
                 + list(range(len(subst.arguments))))
 
-    expr_subst_dict = {}
+    prior_storage_axis_name_dict = {}
 
     storage_axis_names = []
     storage_axis_sources = []  # number for arg#, or iname
@@ -471,17 +452,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         new_iname_to_tag[name] = storage_axis_to_tag.get(
                 tag_lookup_saxis, default_tag)
 
-        expr_subst_dict[old_name] = var(name)
+        prior_storage_axis_name_dict[name] = old_name
 
     del storage_axis_to_tag
     del storage_axes
     del new_storage_axis_names
-
-    compute_expr = (
-            SubstitutionMapper(make_subst_func(expr_subst_dict))
-            (subst.expression))
-
-    del expr_subst_dict
 
     # }}}
 
@@ -535,48 +510,68 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         # leave kernel domains unchanged
         new_kernel_domains = kernel.domains
 
+        non1_storage_axis_names = []
         abm = NoOpArrayToBufferMap()
+
+    kernel = kernel.copy(domains=new_kernel_domains)
 
     # {{{ set up compute insn
 
     target_var_name = var_name_gen(based_on=c_subst_name)
-
     assignee = var(target_var_name)
 
     if non1_storage_axis_names:
         assignee = assignee.index(
                 tuple(var(iname) for iname in non1_storage_axis_names))
 
-    def zero_length_1_arg(arg_name):
-        if arg_name in non1_storage_axis_names:
-            return var(arg_name)
-        else:
-            return 0
+    # {{{ process substitutions on compute instruction
 
-    compute_expr = (SubstitutionMapper(
-        make_subst_func(dict(
-            (arg_name, zero_length_1_arg(arg_name)+bi)
-            for arg_name, bi in zip(storage_axis_names, abm.storage_base_indices)
-            )))
-        (compute_expr))
+    storage_axis_subst_dict = {}
+
+    for arg_name, bi in zip(storage_axis_names, abm.storage_base_indices):
+        if arg_name in non1_storage_axis_names:
+            arg = var(arg_name)
+        else:
+            arg = 0
+
+        storage_axis_subst_dict[
+                prior_storage_axis_name_dict.get(arg_name, arg_name)] = arg+bi
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+
+    from loopy.context_matching import AllStackMatch
+    expr_subst_map = RuleAwareSubstitutionMapper(
+            rule_mapping_context,
+            make_subst_func(storage_axis_subst_dict),
+            within=AllStackMatch())
+
+    compute_expression = expr_subst_map(subst.expression, None, None)
+
+    # }}}
 
     from loopy.kernel.data import ExpressionInstruction
+    compute_insn_id = kernel.make_unique_instruction_id(based_on=c_subst_name)
     compute_insn = ExpressionInstruction(
-            id=kernel.make_unique_instruction_id(based_on=c_subst_name),
+            id=compute_insn_id,
             assignee=assignee,
-            expression=compute_expr)
+            expression=compute_expression)
 
     # }}}
 
     # {{{ substitute rule into expressions in kernel (if within footprint)
 
-    invr = RuleInvocationReplacer(kernel, subst_name, subst_tag, within,
+    invr = RuleInvocationReplacer(rule_mapping_context,
+            subst_name, subst_tag, within,
             access_descriptors, abm,
             storage_axis_names, storage_axis_sources,
-            abm.storage_base_indices, non1_storage_axis_names,
+            non1_storage_axis_names,
             target_var_name)
 
     kernel = invr.map_kernel(kernel)
+    kernel = kernel.copy(
+            instructions=[compute_insn] + kernel.instructions)
+    kernel = rule_mapping_context.finish_kernel(kernel)
 
     # }}}
 
@@ -603,12 +598,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     new_temporary_variables[target_var_name] = temp_var
 
-    # }}}
-
     kernel = kernel.copy(
-            domains=new_kernel_domains,
-            instructions=[compute_insn] + kernel.instructions,
             temporary_variables=new_temporary_variables)
+
+    # }}}
 
     from loopy import tag_inames
     return tag_inames(kernel, new_iname_to_tag)
