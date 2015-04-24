@@ -24,128 +24,184 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import numpy as np
-from islpy import dim_type
+import numpy as np  # noqa
 import loopy as lp
 import pyopencl as cl
 import pyopencl.array
+import warnings
+from islpy import dim_type
 from pymbolic.mapper.flop_counter import FlopCounter
+from pymbolic.mapper import CombineMapper
 
-class ExpressionFlopCounter(FlopCounter):
 
-	# ExpressionFlopCounter extends FlopCounter extends CombineMapper extends RecursiveMapper
-	
-	def map_reduction(self, expr, knl):
-		inames_domain = knl.get_inames_domain(frozenset([expr.inames[0]]))
-		domain = (inames_domain.project_out_except(frozenset([expr.inames[0]]), [dim_type.set]))
-		if str(expr.operation) == 'sum' or str(expr.operation) == 'product' :
-			return domain.card()*(1+self.rec(expr.expr))
-		else:
-			from warnings import warn
-			warn("ExpressionFlopCounter counting reduction operation as 0 flops.", stacklevel=2)
-			return domain.card()*(0+self.rec(expr.expr))
+class ExpressionOpCounter(FlopCounter):
 
-	# from pymbolic:
+    # ExpressionOpCounter extends FlopCounter extends CombineMapper extends RecursiveMapper
+    
+    def __init__(self, knl):
+        self.knl = knl
+        from loopy.codegen.expression import TypeInferenceMapper
+        self.type_inf = TypeInferenceMapper(knl)
 
-	def map_tagged_variable(self, expr):
-		return 0
+    def map_tagged_variable(self, expr):
+        return 0
 
-	# def map_variable(self, expr):   # implemented in FlopCounter
+    #def map_variable(self, expr):   # implemented in FlopCounter
+    #    return 0
 
-	def map_wildcard(self, expr):
-		return 0
+    #def map_wildcard(self, expr):
+    #    return 0,0
 
-	def map_function_symbol(self, expr):
-		return 0
+    #def map_function_symbol(self, expr):
+    #    return 0,0
 
-	# def map_call(self, expr):  # implemented in CombineMapper, recurses
-	# def map_call_with_kwargs(self, expr):  # implemented in CombineMapper, recurses
+    def map_call(self, expr):  # implemented in CombineMapper (functions in opencl spec)
+        return 0
 
-	def map_subscript(self, expr):  # implemented in CombineMapper
-		return self.rec(expr.index)
+    # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
 
-	# def map_lookup(self, expr):  # implemented in CombineMapper, recurses
-	# def map_sum(self, expr)  # implemented in FlopCounter
-	# def map_product(self, expr):  # implemented in FlopCounter
-	# def map_quotient(self, expr):  # implemented in FlopCounter
-	# def map_floor_div(self, expr):  # implemented in FlopCounter
+    def map_subscript(self, expr):  # implemented in CombineMapper
+        return self.rec(expr.index)
 
-	def map_remainder(self, expr):  # implemented in CombineMapper
-		return 0
+    # def map_lookup(self, expr):  # implemented in CombineMapper
 
-	# def map_power(self, expr):  # implemented in FlopCounter, recurses; coming soon
+    # need to worry about data type in these (and others):
+    '''
+    def map_sum(self, expr):  # implemented in FlopCounter
+        return 0
+    def map_product(self, expr):  # implemented in FlopCounter
+        return 0
+    def map_quotient(self, expr):  # implemented in FlopCounter
+        return 0
+    def map_floor_div(self, expr):  # implemented in FlopCounter
+        return 0
+    '''
+    def map_remainder(self, expr):  # implemented in CombineMapper
+        return 1+self.rec(expr.numerator)+self.rec(expr.denominator)
 
-	def map_left_shift(self, expr):  # implemented in CombineMapper, recurses; coming soon
-		return 0
+    def map_power(self, expr):  # implemented in FlopCounter
+        return 1+self.rec(expr.base)+self.rec(expr.exponent)
 
-	def map_right_shift(self, expr):  # implemented in CombineMapper, maps to left_shift; coming soon
-		return 0
+    def map_left_shift(self, expr):  # implemented in CombineMapper
+        return 0+self.rec(expr.shiftee)+self.rec(expr.shift)  #TODO test
 
-	def map_bitwise_not(self, expr):  # implemented in CombineMapper, recurses; coming soon
-		return 0
+    map_right_shift = map_left_shift  #TODO test
 
-	def map_bitwise_or(self, expr):  # implemented in CombineMapper, maps to map_sum; coming soon
-		return 0
+    def map_bitwise_not(self, expr):  # implemented in CombineMapper #TODO test
+        return 0+self.rec(expr.child)  
 
-	def map_bitwise_xor(self, expr):  # implemented in CombineMapper, maps to map_sum; coming soon
-		return 0
+    def map_bitwise_or(self, expr):  # implemented in CombineMapper, maps to map_sum; #TODO test
+        return 0+sum(self.rec(child) for child in expr.children)
 
-	def map_bitwise_and(self, expr):  # implemented in CombineMapper, maps to map_sum; coming soon
-		return 0
+    map_bitwise_xor = map_bitwise_or  # implemented in CombineMapper, maps to map_sum; #TODO test
+    map_bitwise_and = map_bitwise_or  # implemented in CombineMapper, maps to map_sum; #TODO test
 
-	def map_comparison(self, expr):  # implemented in CombineMapper, recurses; coming soon
-		return 0
+    def map_comparison(self, expr):  # implemented in CombineMapper
+        print expr
+        my_type = self.type_inf(expr)
+        print my_type
+        return 0+self.rec(expr.left)+self.rec(expr.right)
 
-	def map_logical_not(self, expr):  # implemented in CombineMapper, maps to bitwise_not; coming soon
-		return 0
+    def map_logical_not(self, expr):  # implemented in CombineMapper, maps to bitwise_not
+        return 0+self.rec(expr.child)
 
-	def map_logical_or(self, expr):  # implemented in CombineMapper, maps to map_sum; coming soon
-		return 0
+    def map_logical_or(self, expr):  # implemented in CombineMapper, maps to map_sum
+        return 0+sum(self.rec(child) for child in expr.children) 
 
-	def map_logical_and(self, expr):  # implemented in CombineMapper, maps to map_sum; coming soon
-		return 0
+    map_logical_and = map_logical_or
 
-	def map_if(self, expr):  # implemented in CombineMapper, recurses; coming soon
-		return 0
+    def map_if(self, expr):  # implemented in CombineMapper, recurses
+        warnings.warn("Counting operations as max of if-statement branches.")
+        return self.rec(expr.condition)+max(self.rec(expr.then), self.rec(expr.else_))
 
-	# def map_if_positive(self, expr):  # implemented in FlopCounter
+    # def map_if_positive(self, expr):  # implemented in FlopCounter
 
-	def map_min(self, expr):  # implemented in CombineMapper, maps to map_sum; coming soon
-		return 0
+    def map_min(self, expr):  # implemented in CombineMapper, maps to map_sum;  #TODO test
+        return 0+sum(self.rec(child) for child in expr.children)
 
-	def map_max(self, expr):  # implemented in CombineMapper, maps to map_sum 
-		return 0
+    map_max = map_min  # implemented in CombineMapper, maps to map_sum;  #TODO test
 
-	def map_common_subexpression(self, expr):
-		print "TESTING-map_common_subexpression: ", expr
-		return 0
 
-	def map_substitution(self, expr):
-		print "TESTING-map_substitution: ", expr
-		return 0
+    def map_common_subexpression(self, expr):
+        raise NotImplementedError("OpCounter encountered common_subexpression, \
+                                   map_common_subexpression not implemented.")
+        return 0
 
-	def map_derivative(self, expr):
-		print "TESTING-map_derivative: ", expr
-		return 0
+    def map_substitution(self, expr):
+        raise NotImplementedError("OpCounter encountered substitution, \
+                                    map_substitution not implemented.")
+        return 0
 
-	def map_slice(self, expr):
-		print "TESTING-map_slice: ", expr
-		return 0
+    def map_derivative(self, expr):
+        raise NotImplementedError("OpCounter encountered derivative, \
+                                    map_derivative not implemented.")
+        return 0
 
+    def map_slice(self, expr):
+        raise NotImplementedError("OpCounter encountered slice, \
+                                    map_slice not implemented.")
+        return 0
+
+
+class SubscriptCounter(CombineMapper):
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    def combine(self, values):
+        return sum(values)
+
+    def map_subscript(self, expr):
+        name = expr.aggregate.name
+        arg = self.kernel.arg_dict.get(name)
+        tv = self.kernel.temporary_variables.get(name)
+        if arg is not None:
+            if isinstance(arg, lp.GlobalArg):
+                # It's global memory
+                pass
+        elif tv is not None:
+            if tv.is_local:
+                # It's shared memory
+                pass
+
+        return 1 + self.rec(expr.index)
+
+    def map_constant(self, expr):
+        return 0
+
+    def map_variable(self, expr):
+        return 0
 
 # to evaluate poly: poly.eval_with_dict(dictionary)
-def get_flop_poly(knl):
-	poly = 0
-	flopCounter = ExpressionFlopCounter()
-	for insn in knl.instructions:
-		# how many times is this instruction executed?
-		# check domain size:
-		insn_inames = knl.insn_inames(insn) 
-		inames_domain = knl.get_inames_domain(insn_inames)
-		domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-		#flops = flopCounter(insn.expression())
-		flops = flopCounter(insn.expression(),knl)
-		poly += flops*domain.card()
-	return poly
+def get_op_poly(knl):
 
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    knl = infer_unknown_types(knl, expect_completion=True)
+
+    knl = preprocess_kernel(knl)
+    #print knl
+
+    fpoly = 0
+    dpoly = 0
+    op_counter = ExpressionOpCounter(knl)
+    for insn in knl.instructions:
+        # how many times is this instruction executed?
+        # check domain size:
+        insn_inames = knl.insn_inames(insn) 
+        inames_domain = knl.get_inames_domain(insn_inames)
+        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+        #flops, dops = op_counter(insn.expression)
+        flops = op_counter(insn.expression)
+        fpoly += flops*domain.card()
+        #dpoly += dops*domain.card()
+    return fpoly
+
+def get_DRAM_access_poly(knl): # for now just counting subscripts
+    poly = 0
+    subscript_counter = subscript_counter(knl)
+    for insn in knl.instructions:
+        insn_inames = knl.insn_inames(insn) 
+        inames_domain = knl.get_inames_domain(insn_inames)
+        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+        poly += subscript_counter(insn.expression) * domain.card()
+    return poly
 
