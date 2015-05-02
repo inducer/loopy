@@ -131,7 +131,7 @@ def test_op_counter_bitwise(ctx_factory):
             [
                 """
                 c[i, j, k] = (a[i,j,k] | 1) + (b[i,j,k] & 1)
-                e[i, k] = (g[i,k] ^ k)*(~h[i,k+1])
+                e[i, k] = (g[i,k] ^ k)*(~h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
                 """
             ],
             name="bitwise", assumptions="n,m,l >= 1")
