@@ -28,6 +28,7 @@ THE SOFTWARE.
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
+from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 import numpy as np
 
@@ -209,7 +210,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
 
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
-        storage_axes=None, new_storage_axis_names=None, storage_axis_to_tag={},
+        storage_axes=None, precompute_inames=None, storage_axis_to_tag={},
         default_tag="l.auto", dtype=None, fetch_bounding_box=False,
         temporary_is_local=None):
     """Precompute the expression described in the substitution rule determined by
@@ -262,6 +263,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         May also equivalently be a comma-separated string.
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
+    :arg precompute_inames:
+        If the specified inames do not already exist, they will be
+        created. If they do already exist, their loop domain is verified
+        against the one required for this precomputation.
 
     If `storage_axes` is not specified, it defaults to the arrangement
     `<direct sweep axes><arguments>` with the direct sweep axes being the
@@ -274,7 +279,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     # {{{ check, standardize arguments
 
     if isinstance(sweep_inames, str):
-        sweep_inames = sweep_inames.split(",")
+        sweep_inames = [iname.strip() for iname in sweep_inames.split(",")]
 
     for iname in sweep_inames:
         if iname not in kernel.all_inames():
@@ -285,7 +290,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     sweep_inames_set = frozenset(sweep_inames)
 
     if isinstance(storage_axes, str):
-        storage_axes = storage_axes.split(",")
+        storage_axes = [ax.strip() for ax in storage_axes.split(",")]
+
+    if isinstance(precompute_inames, str):
+        precompute_inames = [iname.strip() for iname in precompute_inames.split(",")]
 
     if isinstance(subst_use, str):
         subst_use = [subst_use]
@@ -424,6 +432,29 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     storage_axis_names = []
     storage_axis_sources = []  # number for arg#, or iname
 
+    # {{{ check for pre-existing precompute_inames
+
+    if precompute_inames is not None:
+        preexisting_precompute_inames = (
+                set(precompute_inames) & kernel.all_inames())
+
+        if (
+                preexisting_precompute_inames
+                and
+                len(preexisting_precompute_inames) < len(precompute_inames)):
+            raise LoopyError("some (but not all) of the inames in "
+                    "precompute_inames already exist. existing: %s non-existing: %s"
+                    % (
+                        preexisting_precompute_inames,
+                        set(precompute_inames) - preexisting_precompute_inames))
+
+        precompute_inames_already_exist = bool(preexisting_precompute_inames)
+
+    else:
+        precompute_inames_already_exist = False
+
+    # }}}
+
     for i, saxis in enumerate(storage_axes):
         tag_lookup_saxis = saxis
 
@@ -439,14 +470,15 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             old_name = saxis
             name = "%s_%s" % (c_subst_name, old_name)
 
-        if new_storage_axis_names is not None and i < len(new_storage_axis_names):
-            name = new_storage_axis_names[i]
+        if precompute_inames is not None and i < len(precompute_inames):
+            name = precompute_inames[i]
             tag_lookup_saxis = name
-            if var_name_gen.is_name_conflicting(name):
+            if not precompute_inames_already_exist and var_name_gen.is_name_conflicting(name):
                 raise RuntimeError("new storage axis name '%s' "
                         "conflicts with existing name" % name)
 
-        name = var_name_gen(name)
+        if not precompute_inames_already_exist:
+            name = var_name_gen(name)
 
         storage_axis_names.append(name)
         new_iname_to_tag[name] = storage_axis_to_tag.get(
@@ -456,7 +488,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     del storage_axis_to_tag
     del storage_axes
-    del new_storage_axis_names
+    del precompute_inames
 
     # }}}
 
@@ -476,8 +508,12 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     if storage_axis_names:
         # {{{ find domain to be changed
 
+        change_inames = expanding_inames
+        if precompute_inames_already_exist:
+            change_inames = change_inames | preexisting_precompute_inames
+
         from loopy.kernel.tools import DomainChanger
-        domch = DomainChanger(kernel, expanding_inames)
+        domch = DomainChanger(kernel, change_inames)
 
         if domch.leaf_domain_index is not None:
             # If the sweep inames are at home in parent domains, then we'll add
@@ -501,10 +537,14 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             else:
                 del new_iname_to_tag[saxis]
 
-        new_kernel_domains = domch.get_domains_with(
-                abm.augment_domain_with_sweep(
-                    domch.domain, non1_storage_axis_names,
-                    boxify_sweep=fetch_bounding_box))
+        if not precompute_inames_already_exist:
+            new_kernel_domains = domch.get_domains_with(
+                    abm.augment_domain_with_sweep(
+                        domch.domain, non1_storage_axis_names,
+                        boxify_sweep=fetch_bounding_box))
+        else:
+            new_kernel_domains = domch.get_domains_with(domch.domain)
+
 
     else:
         # leave kernel domains unchanged

@@ -1016,7 +1016,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
                     kernel,  rule_name, sweep_inames,
                     footprint_subscripts, arg)
     new_kernel = precompute(kernel, subst_use, sweep_inames,
-            new_storage_axis_names=dim_arg_names,
+            precompute_inames=dim_arg_names,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box)
 

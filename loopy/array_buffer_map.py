@@ -303,8 +303,7 @@ class ArrayToBufferMap(object):
             boxify_sweep=False):
 
         renamed_aug_domain = self.aug_domain
-        first_storage_index = (
-                renamed_aug_domain.dim(dim_type.set)
+        first_storage_index = (renamed_aug_domain.dim(dim_type.set)
                 - len(self.non1_storage_shape))
 
         inon1 = 0
@@ -323,7 +322,10 @@ class ArrayToBufferMap(object):
 
             inon1 += 1
 
-        domain, renamed_aug_domain = isl.align_two(domain, renamed_aug_domain)
+        # Order of arguments to align_two matters--'domain' should be the
+        # 'guiding' ordering.
+        renamed_aug_domain, domain = isl.align_two(renamed_aug_domain, domain)
+
         domain = domain & renamed_aug_domain
 
         from loopy.isl_helpers import convexify, boxify
