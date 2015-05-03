@@ -259,13 +259,9 @@ class PyOpenCLTarget(OpenCLTarget):
     def pre_codegen_check(self, kernel):
         check_sizes(kernel, self.device)
 
-    def get_or_register_dtype(self, names, dtype=None):
-        from pyopencl.compyte.dtypes import get_or_register_dtype
-        return get_or_register_dtype(names, dtype)
-
-    def dtype_to_typename(self, dtype):
-        from pyopencl.compyte.dtypes import dtype_to_ctype
-        return dtype_to_ctype(dtype)
+    def get_dtype_registry(self):
+        from pyopencl.compyte.dtypes import TYPE_REGISTRY
+        return TYPE_REGISTRY
 
     def is_vector_dtype(self, dtype):
         from pyopencl.array import vec

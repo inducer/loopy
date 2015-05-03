@@ -77,7 +77,7 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
 
     elif isinstance(sched_item, Barrier):
         from loopy.codegen import GeneratedInstruction
-        from cgen import Statement as S
+        from cgen import Statement as S  # noqa
 
         if sched_item.comment:
             comment = " /* %s */" % sched_item.comment
@@ -362,7 +362,8 @@ def build_loop_nest(kernel, sched_index, codegen_state):
                 from loopy.codegen.bounds import constraint_to_code
 
                 conditionals = [
-                        constraint_to_code(codegen_state.c_code_mapper, cns)
+                        constraint_to_code(
+                            codegen_state.expression_to_code_mapper, cns)
                         for cns in bounds_checks] + list(pred_checks)
 
                 result = [wrap_in_if(conditionals, gen_code_block(result))]

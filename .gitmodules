@@ -1,3 +1,3 @@
-[submodule "loopy/target/opencl/compyte"]
-	path = loopy/target/opencl/compyte
+[submodule "loopy/target/c/compyte"]
+	path = loopy/target/c/compyte
 	url = https://github.com/inducer/compyte

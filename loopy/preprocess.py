@@ -162,7 +162,7 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     # }}}
 
-    from loopy.codegen.expression import TypeInferenceMapper
+    from loopy.expression import TypeInferenceMapper
     type_inf_mapper = TypeInferenceMapper(kernel,
             _DictUnionView([
                 new_temp_vars,
@@ -401,7 +401,7 @@ def realize_reduction(kernel, insn_id_filter=None):
     var_name_gen = kernel.get_var_name_generator()
     new_temporary_variables = kernel.temporary_variables.copy()
 
-    from loopy.codegen.expression import TypeInferenceMapper
+    from loopy.expression import TypeInferenceMapper
     type_inf_mapper = TypeInferenceMapper(kernel)
 
     def map_reduction(expr, rec):

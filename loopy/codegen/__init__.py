@@ -160,23 +160,26 @@ class CodeGenerationState(object):
         A :class:`frozenset` of predicates for which checks have been
         implemented.
 
-    .. attribute:: c_code_mapper
+    .. attribute:: expression_to_code_mapper
 
         A :class:`loopy.codegen.expression.CCodeMapper` that does not take
         per-ILP assignments into account.
     """
-    def __init__(self, implemented_domain, implemented_predicates, c_code_mapper):
+    def __init__(self, implemented_domain, implemented_predicates,
+            expression_to_code_mapper):
         self.implemented_domain = implemented_domain
         self.implemented_predicates = implemented_predicates
-        self.c_code_mapper = c_code_mapper
+        self.expression_to_code_mapper = expression_to_code_mapper
 
     def copy(self, implemented_domain=None, implemented_predicates=frozenset(),
-            c_code_mapper=None):
+            expression_to_code_mapper=None):
         return CodeGenerationState(
                 implemented_domain=implemented_domain or self.implemented_domain,
                 implemented_predicates=(
                     implemented_predicates or self.implemented_predicates),
-                c_code_mapper=c_code_mapper or self.c_code_mapper)
+                expression_to_code_mapper=(
+                    expression_to_code_mapper
+                    or self.expression_to_code_mapper))
 
     def intersect(self, other):
         new_impl, new_other = isl.align_two(self.implemented_domain, other)
@@ -205,7 +208,8 @@ class CodeGenerationState(object):
         new_impl_domain = new_impl_domain.add_constraint(cns)
         return self.copy(
                 implemented_domain=new_impl_domain,
-                c_code_mapper=self.c_code_mapper.copy_and_assign(iname, expr))
+                expression_to_code_mapper=(
+                    self.expression_to_code_mapper.copy_and_assign(iname, expr)))
 
 # }}}
 
@@ -380,14 +384,10 @@ def generate_code(kernel, device=None):
         if var.dtype.kind == "c":
             allow_complex = True
 
+    mod = []
+
     seen_dtypes = set()
     seen_functions = set()
-
-    from loopy.codegen.expression import LoopyCCodeMapper
-    ccm = (LoopyCCodeMapper(kernel, seen_dtypes, seen_functions,
-        allow_complex=allow_complex))
-
-    mod = []
 
     body = Block()
 
@@ -446,7 +446,8 @@ def generate_code(kernel, device=None):
     codegen_state = CodeGenerationState(
             implemented_domain=initial_implemented_domain,
             implemented_predicates=frozenset(),
-            c_code_mapper=ccm)
+            expression_to_code_mapper=kernel.target.get_expression_to_code_mapper(
+                kernel, seen_dtypes, seen_functions, allow_complex))
 
     from loopy.codegen.loop import set_up_hw_parallel_loops
     gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)

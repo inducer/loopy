@@ -26,44 +26,21 @@ THE SOFTWARE.
 
 import numpy as np
 
-from loopy.target import TargetBase
-
-
-# {{{ type registry
-
-def _register_types():
-    from loopy.target.opencl.compyte.dtypes import (
-            _fill_dtype_registry, get_or_register_dtype)
-    import struct
-
-    _fill_dtype_registry(respect_windows=False, include_bool=False)
-
-    # complex number support left out
-
-    is_64_bit = struct.calcsize('@P') * 8 == 64
-    if not is_64_bit:
-        get_or_register_dtype(
-                ["unsigned long", "unsigned long int"], np.uint64)
-        get_or_register_dtype(
-                ["signed long", "signed long int", "long int"], np.int64)
-
-_register_types()
-
-# }}}
+from loopy.target.c import CTarget
+from pytools import memoize_method
 
 
 # {{{ vector types
 
-class vec:
+class vec:  # noqa
     pass
 
 
 def _create_vector_types():
     field_names = ["x", "y", "z", "w"]
 
-    from loopy.target.opencl.compyte.dtypes import get_or_register_dtype
-
     vec.types = {}
+    vec.names_and_dtypes = []
     vec.type_to_scalar_and_count = {}
 
     counts = [2, 3, 4, 8, 16]
@@ -109,39 +86,19 @@ def _create_vector_types():
                     dtype = np.dtype([(n, base_type) for (n, title)
                                       in zip(names, titles)])
 
-            get_or_register_dtype(name, dtype)
-
             setattr(vec, name, dtype)
 
-            def create_array(dtype, count, padded_count, *args, **kwargs):
-                if len(args) < count:
-                    from warnings import warn
-                    warn("default values for make_xxx are deprecated;"
-                            " instead specify all parameters or use"
-                            " array.vec.zeros_xxx", DeprecationWarning)
-                padded_args = tuple(list(args)+[0]*(padded_count-len(args)))
-                array = eval("array(padded_args, dtype=dtype)",
-                        dict(array=np.array, padded_args=padded_args,
-                        dtype=dtype))
-                for key, val in kwargs.items():
-                    array[key] = val
-                return array
-
-            setattr(vec, "make_"+name, staticmethod(eval(
-                    "lambda *args, **kwargs: create_array(dtype, %i, %i, "
-                    "*args, **kwargs)" % (count, padded_count),
-                    dict(create_array=create_array, dtype=dtype))))
-            setattr(vec, "filled_"+name, staticmethod(eval(
-                    "lambda val: vec.make_%s(*[val]*%i)" % (name, count))))
-            setattr(vec, "zeros_"+name,
-                    staticmethod(eval("lambda: vec.filled_%s(0)" % (name))))
-            setattr(vec, "ones_"+name,
-                    staticmethod(eval("lambda: vec.filled_%s(1)" % (name))))
+            vec.names_and_dtypes.append((name, dtype))
 
             vec.types[np.dtype(base_type), count] = dtype
             vec.type_to_scalar_and_count[dtype] = np.dtype(base_type), count
 
 _create_vector_types()
+
+
+def _register_vector_types(dtype_registry):
+    for name, dtype in vec.names_and_dtypes:
+        dtype_registry.get_or_register_dtype(name, dtype)
 
 # }}}
 
@@ -234,7 +191,7 @@ def opencl_preamble_generator(target, seen_dtypes, seen_functions):
 
 # {{{ target
 
-class OpenCLTarget(TargetBase):
+class OpenCLTarget(CTarget):
     def function_manglers(self):
         return (
                 super(OpenCLTarget, self).function_manglers() + [
@@ -255,13 +212,24 @@ class OpenCLTarget(TargetBase):
                     reduction_preamble_generator
                     ])
 
-    def get_or_register_dtype(self, names, dtype=None):
-        from loopy.target.opencl.compyte.dtypes import get_or_register_dtype
-        return get_or_register_dtype(names, dtype)
+    @memoize_method
+    def get_dtype_registry(self):
+        from loopy.target.c.compyte import (
+                DTypeRegistry, fill_with_registry_with_c_types)
+        result = DTypeRegistry()
+        fill_with_registry_with_c_types(result)
 
-    def dtype_to_typename(self, dtype):
-        from loopy.target.opencl.compyte.dtypes import dtype_to_ctype
-        return dtype_to_ctype(dtype)
+        # complex number support left out
+
+        # CL defines 'long' as 64-bit
+        result.get_or_register_dtype(
+                ["unsigned long", "unsigned long int"], np.uint64)
+        result.get_or_register_dtype(
+                ["signed long", "signed long int", "long int"], np.int64)
+
+        _register_vector_types(result)
+
+        return result
 
     def is_vector_dtype(self, dtype):
         return list(vec.types.values())

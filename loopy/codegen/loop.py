@@ -250,8 +250,9 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
         # slabbing conditionals.
         slabbed_kernel = intersect_kernel_with_slab(kernel, slab, iname)
         new_codegen_state = codegen_state.copy(
-                c_code_mapper=codegen_state.c_code_mapper.copy_and_assign(
-                    iname, hw_axis_expr))
+                expression_to_code_mapper=(
+                    codegen_state.expression_to_code_mapper.copy_and_assign(
+                        iname, hw_axis_expr)))
 
         inner = set_up_hw_parallel_loops(
                 slabbed_kernel, sched_index,
@@ -268,7 +269,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
 # {{{ sequential loop
 
 def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
-    ccm = codegen_state.c_code_mapper
+    ecm = codegen_state.expression_to_code_mapper
     loop_iname = kernel.schedule[sched_index].iname
 
     slabs = get_slab_decomposition(
@@ -362,7 +363,7 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
             # single-trip, generate just a variable assignment, not a loop
             result.append(gen_code_block([
                 Initializer(Const(POD(kernel.index_dtype, loop_iname)),
-                    ccm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                 Line(),
                 inner,
                 ]))
@@ -373,9 +374,9 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
             result.append(wrap_in(For,
                     "%s %s = %s"
                     % (kernel.target.dtype_to_typename(kernel.index_dtype),
-                        loop_iname, ccm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                        loop_iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                     "%s <= %s" % (
-                        loop_iname, ccm(aff_to_expr(static_ubound), PREC_NONE, "i")),
+                        loop_iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
                     "++%s" % loop_iname,
                     inner))
 
