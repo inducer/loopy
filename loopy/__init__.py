@@ -97,7 +97,7 @@ __all__ = [
 
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules", "get_one_scheduled_kernel",
-        "generate_code",
+        "generate_code", "generate_body",
 
         "CompiledKernel",
 

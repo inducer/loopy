@@ -488,4 +488,51 @@ def generate_code(kernel, device=None):
 # }}}
 
 
+# {{{ generate function body
+
+def generate_body(kernel):
+    if kernel.schedule is None:
+        from loopy.schedule import get_one_scheduled_kernel
+        kernel = get_one_scheduled_kernel(kernel)
+    from loopy.kernel import kernel_state
+    if kernel.state != kernel_state.SCHEDULED:
+        raise LoopyError("cannot generate code for a kernel that has not been "
+                "scheduled")
+
+    from loopy.preprocess import infer_unknown_types
+    kernel = infer_unknown_types(kernel, expect_completion=True)
+
+    from loopy.check import pre_codegen_checks
+    pre_codegen_checks(kernel)
+
+    logger.info("%s: generate code: start" % kernel.name)
+
+    allow_complex = False
+    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
+        if var.dtype.kind == "c":
+            allow_complex = True
+
+    seen_dtypes = set()
+    seen_functions = set()
+
+    initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
+    codegen_state = CodeGenerationState(
+            implemented_domain=initial_implemented_domain,
+            implemented_predicates=frozenset(),
+            expression_to_code_mapper=kernel.target.get_expression_to_code_mapper(
+                kernel, seen_dtypes, seen_functions, allow_complex))
+
+    code_str, implemented_domains = kernel.target.generate_body(
+            kernel, codegen_state)
+
+    from loopy.check import check_implemented_domains
+    assert check_implemented_domains(kernel, implemented_domains,
+            code_str)
+
+    logger.info("%s: generate code: done" % kernel.name)
+
+    return code_str
+
+# }}}
+
 # vim: foldmethod=marker

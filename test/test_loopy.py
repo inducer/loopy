@@ -1958,6 +1958,51 @@ def test_auto_test_can_detect_problems(ctx_factory):
                 parameters=dict(n=123))
 
 
+def test_generate_c_snippet():
+    from loopy.target.c import CTarget
+
+    from pymbolic import var
+    I = var("I")  # noqa
+    f = var("f")
+    df = var("df")
+    q_v = var("q_v")
+    eN = var("eN")  # noqa
+    k = var("k")
+    u = var("u")
+
+    from functools import partial
+    l_sum = partial(lp.Reduction, "sum")
+
+    Instr = lp.ExpressionInstruction  # noqa
+
+    knl = lp.make_kernel(
+        "{[I, k]: 0<=I<nSpace and 0<=k<nQuad}",
+        [
+            Instr(f[I], l_sum(k, q_v[k, I]*u)),
+            Instr(df[I], l_sum(k, q_v[k, I])),
+            ],
+        [
+            lp.GlobalArg("q_v", np.float64, shape="nQuad, nSpace"),
+            lp.GlobalArg("f,df", np.float64, shape="nSpace"),
+            lp.ValueArg("u", np.float64),
+            "...",
+            ],
+        target=CTarget(),
+        assumptions="nQuad>=1")
+
+    if 0:  # enable to play with prefetching
+        # (prefetch currently requires constant sizes)
+        knl = lp.fix_parameters(knl, nQuad=5, nSpace=3)
+        knl = lp.add_prefetch(knl, "q_v", "k,I", default_tag=None)
+
+    knl = lp.split_iname(knl, "k", 4, inner_tag="unr", slabs=(0, 1))
+    knl = lp.set_loop_priority(knl, "I,k_outer,k_inner")
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    print(lp.generate_body(knl))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
