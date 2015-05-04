@@ -24,6 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+
 import numpy as np  # noqa
 from loopy.target import TargetBase
 
@@ -56,3 +58,56 @@ class CTarget(TargetBase):
         from loopy.target.c.codegen.expression import LoopyCCodeMapper
         return (LoopyCCodeMapper(kernel, seen_dtypes, seen_functions,
             allow_complex=allow_complex))
+
+    # {{{ code generation
+
+    def generate_code(self, kernel, codegen_state, impl_arg_info):
+        from cgen import FunctionBody, FunctionDeclaration, Value, Module
+
+        body, implemented_domains = kernel.target.generate_body(
+                kernel, codegen_state)
+
+        mod = Module([
+            FunctionBody(
+                kernel.target.wrap_function_declaration(
+                    kernel,
+                    FunctionDeclaration(
+                        Value("void", kernel.name),
+                        [iai.cgen_declarator for iai in impl_arg_info])),
+                body)
+            ])
+
+        return str(mod), implemented_domains
+
+    def wrap_function_declaration(self, kernel, fdecl):
+        return fdecl
+
+    def generate_body(self, kernel, codegen_state):
+        from cgen import Block
+        body = Block()
+
+        # {{{ declare temporaries
+
+        body.extend(
+                idi.cgen_declarator
+                for tv in six.itervalues(kernel.temporary_variables)
+                for idi in tv.decl_info(
+                    kernel.target,
+                    is_written=True, index_dtype=kernel.index_dtype))
+
+        # }}}
+
+        from loopy.codegen.loop import set_up_hw_parallel_loops
+        gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)
+
+        from cgen import Line
+        body.append(Line())
+
+        if isinstance(gen_code.ast, Block):
+            body.extend(gen_code.ast.contents)
+        else:
+            body.append(gen_code.ast)
+
+        return body, gen_code.implemented_domains
+
+    # }}}

@@ -747,34 +747,6 @@ class ExpressionInstruction(InstructionBase):
 # }}}
 
 
-def _remove_common_indentation(code):
-    if "\n" not in code:
-        return code
-
-    # accommodate pyopencl-ish syntax highlighting
-    code = code.lstrip("//CL//")
-
-    if not code.startswith("\n"):
-        return code
-
-    lines = code.split("\n")
-    while lines[0].strip() == "":
-        lines.pop(0)
-    while lines[-1].strip() == "":
-        lines.pop(-1)
-
-    if lines:
-        base_indent = 0
-        while lines[0][base_indent] in " \t":
-            base_indent += 1
-
-        for line in lines[1:]:
-            if line[:base_indent].strip():
-                raise ValueError("inconsistent indentation")
-
-    return "\n".join(line[base_indent:] for line in lines)
-
-
 # {{{ c instruction
 
 class CInstruction(InstructionBase):
@@ -873,7 +845,8 @@ class CInstruction(InstructionBase):
         # }}}
 
         self.iname_exprs = new_iname_exprs
-        self.code = _remove_common_indentation(code)
+        from loopy.tools import remove_common_indentation
+        self.code = remove_common_indentation(code)
         self.read_variables = read_variables
         self.assignees = new_assignees
 

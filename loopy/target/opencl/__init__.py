@@ -237,6 +237,43 @@ class OpenCLTarget(CTarget):
     def get_vector_dtype(self, base, count):
         return vec.types[base, count]
 
+    def wrap_function_declaration(self, kernel, fdecl):
+        from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
+        return CLRequiredWorkGroupSize(
+                kernel.get_grid_sizes_as_exprs()[1],
+                CLKernel(fdecl))
+
+    def generate_code(self, kernel, codegen_state, impl_arg_info):
+        code, implemented_domains = (
+                super(OpenCLTarget, self).generate_code(
+                    kernel, codegen_state, impl_arg_info))
+
+        from loopy.tools import remove_common_indentation
+        code = (
+                remove_common_indentation("""
+                    #define lid(N) ((%(idx_ctype)s) get_local_id(N))
+                    #define gid(N) ((%(idx_ctype)s) get_group_id(N))
+                    """ % dict(idx_ctype=self.dtype_to_typename(kernel.index_dtype)))
+                + "\n\n"
+                + code)
+
+        return code, implemented_domains
+
+    def generate_body(self, kernel, codegen_state):
+        body, implemented_domains = (
+                super(OpenCLTarget, self).generate_body(kernel, codegen_state))
+
+        from loopy.kernel.data import ImageArg
+
+        if any(isinstance(arg, ImageArg) for arg in kernel.args):
+            from cgen import Value, Const, Initializer
+            body.contents.insert(0,
+                    Initializer(Const(Value("sampler_t", "loopy_sampler")),
+                        "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
+                        "| CLK_FILTER_NEAREST"))
+
+        return body, implemented_domains
+
 # }}}
 
 # vim: foldmethod=marker

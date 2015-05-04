@@ -32,7 +32,6 @@ from pymbolic.mapper import RecursiveMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
         PREC_POWER)
 import islpy as isl
-from pytools import Record
 
 from loopy.expression import dtype_to_type_context, TypeInferenceMapper
 
@@ -45,26 +44,6 @@ def get_opencl_vec_member(idx):
 
     # The 'int' avoids an 'L' suffix for long ints.
     return "s%s" % hex(int(idx))[2:]
-
-
-class SeenFunction(Record):
-    """
-    .. attribute:: name
-    .. attribute:: c_name
-    .. attribute:: arg_dtypes
-
-        a tuple of arg dtypes
-    """
-
-    def __init__(self, name, c_name, arg_dtypes):
-        Record.__init__(self,
-                name=name,
-                c_name=c_name,
-                arg_dtypes=arg_dtypes)
-
-    def __hash__(self):
-        return hash((type(self),)
-                + tuple((f, getattr(self, f)) for f in type(self).fields))
 
 
 # {{{ C code mapper
@@ -330,6 +309,7 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         def seen_func(name):
             idt = self.kernel.index_dtype
+            from loopy.codegen import SeenFunction
             self.seen_functions.add(SeenFunction(name, name, (idt, idt)))
 
         if den_nonneg:
@@ -451,6 +431,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                         "for function '%s' not understood"
                         % identifier)
 
+        from loopy.codegen import SeenFunction
         self.seen_functions.add(SeenFunction(identifier, c_name, par_dtypes))
         if str_parameters is None:
             # /!\ FIXME For some functions (e.g. 'sin'), it makes sense to
