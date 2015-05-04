@@ -555,9 +555,10 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
     # {{{ normalize arguments, find unique new_inames
 
     if isinstance(inames, str):
-        inames = inames.split(",")
+        inames = [iname.strip() for iname in inames.split(",")]
+
     if isinstance(new_inames, str):
-        new_inames = new_inames.split(",")
+        new_inames = [iname.strip() for iname in new_inames.split(",")]
 
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
