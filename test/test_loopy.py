@@ -2003,6 +2003,67 @@ def test_generate_c_snippet():
     print(lp.generate_body(knl))
 
 
+def test_precompute_with_preexisting_inames(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[e,i,j,k]: 0<=e<E and 0<=i,j,k<n}",
+        """
+        result[e,i] = sum(j, D1[i,j]*u[e,j])
+        result2[e,i] = sum(k, D2[i,k]*u[e,k])
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {
+        "u": np.float32,
+        "D1": np.float32,
+        "D2": np.float32,
+        })
+
+    knl = lp.fix_parameters(knl, n=13)
+
+    ref_knl = knl
+
+    knl = lp.extract_subst(knl, "D1_subst", "D1[ii,jj]", parameters="ii,jj")
+    knl = lp.extract_subst(knl, "D2_subst", "D2[ii,jj]", parameters="ii,jj")
+
+    knl = lp.precompute(knl, "D1_subst", "i,j", default_tag="for",
+            precompute_inames="ii,jj")
+    knl = lp.precompute(knl, "D2_subst", "i,k", default_tag="for",
+            precompute_inames="ii,jj")
+
+    knl = lp.set_loop_priority(knl, "ii,jj,e,j,k")
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(E=200))
+
+
+def test_precompute_with_preexisting_inames_fail():
+    knl = lp.make_kernel(
+        "{[e,i,j,k]: 0<=e<E and 0<=i,j<n and 0<=k<2*n}",
+        """
+        result[e,i] = sum(j, D1[i,j]*u[e,j])
+        result2[e,i] = sum(k, D2[i,k]*u[e,k])
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {
+        "u": np.float32,
+        "D1": np.float32,
+        "D2": np.float32,
+        })
+
+    knl = lp.fix_parameters(knl, n=13)
+
+    knl = lp.extract_subst(knl, "D1_subst", "D1[ii,jj]", parameters="ii,jj")
+    knl = lp.extract_subst(knl, "D2_subst", "D2[ii,jj]", parameters="ii,jj")
+
+    knl = lp.precompute(knl, "D1_subst", "i,j", default_tag="for",
+            precompute_inames="ii,jj")
+    with pytest.raises(lp.LoopyError):
+        lp.precompute(knl, "D2_subst", "i,k", default_tag="for",
+                precompute_inames="ii,jj")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

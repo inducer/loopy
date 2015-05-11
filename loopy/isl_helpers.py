@@ -376,4 +376,12 @@ def simplify_via_aff(expr):
         expr))
 
 
+def project_out(set, inames):
+    for iname in inames:
+        var_dict = set.get_var_dict()
+        dt, dim_idx = var_dict[iname]
+        set = set.project_out(dt, dim_idx, 1)
+
+    return set
+
 # vim: foldmethod=marker
