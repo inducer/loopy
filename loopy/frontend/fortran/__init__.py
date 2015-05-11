@@ -26,7 +26,8 @@ from loopy.diagnostic import LoopyError
 
 
 def f2loopy(source, free_form=True, strict=True,
-        pre_transform_code=None, use_c_preprocessor=False,
+        pre_transform_code=None, pre_transform_code_context=None,
+        use_c_preprocessor=False,
         file_name="<floopy code>"):
     if use_c_preprocessor:
         try:
@@ -60,9 +61,10 @@ def f2loopy(source, free_form=True, strict=True,
             analyze=False, ignore_comments=False)
 
     from loopy.frontend.fortran.translator import F2LoopyTranslator
-    f2loopy = F2LoopyTranslator()
+    f2loopy = F2LoopyTranslator(file_name)
     f2loopy(tree)
 
-    return f2loopy.make_kernels(pre_transform_code=pre_transform_code)
+    return f2loopy.make_kernels(pre_transform_code=pre_transform_code,
+            pre_transform_code_context=pre_transform_code_context)
 
 # vim: foldmethod=marker
