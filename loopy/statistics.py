@@ -224,6 +224,16 @@ class SubscriptCounter(CombineMapper):
     def map_variable(self, expr):
         return 0
 
+#TODO find stride looking in ArrayBase.dim tag
+'''
+for each instruction, find which iname is associated with local id0 (iname_to_tag)
+then for each array axis in that instruction, run through all axes and see if local id0 iname occurs
+for each axis where this occurs, see if stride=1 (using coefficient collecter)
+
+variable has dimTags (one for each axis), 
+localid 0 is threadidx.x
+'''
+
 
 # to evaluate poly: poly.eval_with_dict(dictionary)
 def get_op_poly(knl):
