@@ -214,7 +214,7 @@ def remove_common_indentation(lines):
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
-    def __init__(self):
+    def __init__(self, filename):
         FTreeWalkerBase.__init__(self)
 
         self.scope_stack = []
@@ -233,6 +233,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.conditions = []
 
         self.transform_code_lines = []
+
+        self.filename = filename
 
     def add_expression_instruction(self, lhs, rhs):
         scope = self.scope_stack[-1]
@@ -331,7 +333,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         tp = self.dtype_from_stmt(node)
 
-        for name, shape in self.parse_dimension_specs(node.entity_decls):
+        for name, shape in self.parse_dimension_specs(node, node.entity_decls):
             if shape is not None:
                 assert name not in scope.dim_map
                 scope.dim_map[name] = shape
@@ -350,7 +352,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
     def map_Dimension(self, node):
         scope = self.scope_stack[-1]
 
-        for name, shape in self.parse_dimension_specs(node.items):
+        for name, shape in self.parse_dimension_specs(node, node.items):
             if shape is not None:
                 assert name not in scope.dim_map
                 scope.dim_map[name] = shape
@@ -369,7 +371,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         for name, data in node.stmts:
             name, = name
             assert name not in scope.data
-            scope.data[name] = [self.parse_expr(i) for i in data]
+            scope.data[name] = [self.parse_expr(node, i) for i in data]
 
         return []
 
@@ -399,7 +401,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         scope = self.scope_stack[-1]
 
         lhs = scope.process_expression_for_loopy(
-                self.parse_expr(node.variable))
+                self.parse_expr(node, node.variable))
         from pymbolic.primitives import Subscript, Call
         if isinstance(lhs, Call):
             raise TranslationError("function call (to '%s') on left hand side of"
@@ -411,7 +413,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         scope.use_name(lhs_name)
 
-        rhs = scope.process_expression_for_loopy(self.parse_expr(node.expr))
+        rhs = scope.process_expression_for_loopy(self.parse_expr(node, node.expr))
 
         self.add_expression_instruction(lhs, rhs)
 
@@ -425,9 +427,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         raise NotImplementedError("save")
 
     def map_Line(self, node):
-        #from warnings import warn
-        #warn("Encountered a 'line': %s" % node)
-        raise NotImplementedError
+        pass
 
     def map_Program(self, node):
         raise NotImplementedError
@@ -467,7 +467,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         cond_var = var(cond_name)
 
         self.add_expression_instruction(
-                cond_var, self.parse_expr(node.expr))
+                cond_var, self.parse_expr(node, node.expr))
 
         self.conditions.append(cond_name)
 
@@ -489,6 +489,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
             loop_var = loop_var.strip()
             scope.use_name(loop_var)
             loop_bounds = self.parse_expr(
+                    node,
                     loop_bounds, min_precedence=self.expr_parser._PREC_FUNC_ARGS)
 
             if len(loop_bounds) == 2:
@@ -627,12 +628,16 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
     # }}}
 
-    def make_kernels(self, pre_transform_code=None):
+    def make_kernels(self, pre_transform_code=None, pre_transform_code_context=None):
         kernel_names = [
                 sub.subprogram_name
                 for sub in self.kernels]
 
-        proc_dict = {}
+        if pre_transform_code_context is None:
+            proc_dict = {}
+        else:
+            proc_dict = pre_transform_code_context.copy()
+
         proc_dict["lp"] = lp
         proc_dict["np"] = np
 

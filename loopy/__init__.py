@@ -31,7 +31,8 @@ import islpy as isl
 from islpy import dim_type
 
 from loopy.symbolic import (RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
-        SubstitutionRuleMappingContext)
+        SubstitutionRuleMappingContext,
+        TaggedVariable, Reduction, LinearSubscript, )
 from loopy.diagnostic import LoopyError
 
 
@@ -62,12 +63,14 @@ from loopy.padding import (split_arg_axis, find_padding_multiple,
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         infer_unknown_types)
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.codegen import generate_code
+from loopy.codegen import generate_code, generate_body
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
 
 __all__ = [
+        "TaggedVariable", "Reduction", "LinearSubscript",
+
         "auto",
 
         "LoopKernel",
@@ -94,7 +97,7 @@ __all__ = [
 
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules", "get_one_scheduled_kernel",
-        "generate_code",
+        "generate_code", "generate_body",
 
         "CompiledKernel",
 
@@ -555,9 +558,10 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
     # {{{ normalize arguments, find unique new_inames
 
     if isinstance(inames, str):
-        inames = inames.split(",")
+        inames = [iname.strip() for iname in inames.split(",")]
+
     if isinstance(new_inames, str):
-        new_inames = new_inames.split(",")
+        new_inames = [iname.strip() for iname in new_inames.split(",")]
 
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)

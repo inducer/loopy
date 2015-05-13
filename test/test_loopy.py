@@ -1958,6 +1958,112 @@ def test_auto_test_can_detect_problems(ctx_factory):
                 parameters=dict(n=123))
 
 
+def test_generate_c_snippet():
+    from loopy.target.c import CTarget
+
+    from pymbolic import var
+    I = var("I")  # noqa
+    f = var("f")
+    df = var("df")
+    q_v = var("q_v")
+    eN = var("eN")  # noqa
+    k = var("k")
+    u = var("u")
+
+    from functools import partial
+    l_sum = partial(lp.Reduction, "sum")
+
+    Instr = lp.ExpressionInstruction  # noqa
+
+    knl = lp.make_kernel(
+        "{[I, k]: 0<=I<nSpace and 0<=k<nQuad}",
+        [
+            Instr(f[I], l_sum(k, q_v[k, I]*u)),
+            Instr(df[I], l_sum(k, q_v[k, I])),
+            ],
+        [
+            lp.GlobalArg("q_v", np.float64, shape="nQuad, nSpace"),
+            lp.GlobalArg("f,df", np.float64, shape="nSpace"),
+            lp.ValueArg("u", np.float64),
+            "...",
+            ],
+        target=CTarget(),
+        assumptions="nQuad>=1")
+
+    if 0:  # enable to play with prefetching
+        # (prefetch currently requires constant sizes)
+        knl = lp.fix_parameters(knl, nQuad=5, nSpace=3)
+        knl = lp.add_prefetch(knl, "q_v", "k,I", default_tag=None)
+
+    knl = lp.split_iname(knl, "k", 4, inner_tag="unr", slabs=(0, 1))
+    knl = lp.set_loop_priority(knl, "I,k_outer,k_inner")
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    print(lp.generate_body(knl))
+
+
+def test_precompute_with_preexisting_inames(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[e,i,j,k]: 0<=e<E and 0<=i,j,k<n}",
+        """
+        result[e,i] = sum(j, D1[i,j]*u[e,j])
+        result2[e,i] = sum(k, D2[i,k]*u[e,k])
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {
+        "u": np.float32,
+        "D1": np.float32,
+        "D2": np.float32,
+        })
+
+    knl = lp.fix_parameters(knl, n=13)
+
+    ref_knl = knl
+
+    knl = lp.extract_subst(knl, "D1_subst", "D1[ii,jj]", parameters="ii,jj")
+    knl = lp.extract_subst(knl, "D2_subst", "D2[ii,jj]", parameters="ii,jj")
+
+    knl = lp.precompute(knl, "D1_subst", "i,j", default_tag="for",
+            precompute_inames="ii,jj")
+    knl = lp.precompute(knl, "D2_subst", "i,k", default_tag="for",
+            precompute_inames="ii,jj")
+
+    knl = lp.set_loop_priority(knl, "ii,jj,e,j,k")
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(E=200))
+
+
+def test_precompute_with_preexisting_inames_fail():
+    knl = lp.make_kernel(
+        "{[e,i,j,k]: 0<=e<E and 0<=i,j<n and 0<=k<2*n}",
+        """
+        result[e,i] = sum(j, D1[i,j]*u[e,j])
+        result2[e,i] = sum(k, D2[i,k]*u[e,k])
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {
+        "u": np.float32,
+        "D1": np.float32,
+        "D2": np.float32,
+        })
+
+    knl = lp.fix_parameters(knl, n=13)
+
+    knl = lp.extract_subst(knl, "D1_subst", "D1[ii,jj]", parameters="ii,jj")
+    knl = lp.extract_subst(knl, "D2_subst", "D2[ii,jj]", parameters="ii,jj")
+
+    knl = lp.precompute(knl, "D1_subst", "i,j", default_tag="for",
+            precompute_inames="ii,jj")
+    with pytest.raises(lp.LoopyError):
+        lp.precompute(knl, "D2_subst", "i,k", default_tag="for",
+                precompute_inames="ii,jj")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

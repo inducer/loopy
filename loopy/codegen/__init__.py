@@ -1,6 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -24,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
 
 from loopy.diagnostic import LoopyError
 from pytools import Record
@@ -146,6 +145,26 @@ def add_comment(cmt, code):
 # }}}
 
 
+class SeenFunction(Record):
+    """
+    .. attribute:: name
+    .. attribute:: c_name
+    .. attribute:: arg_dtypes
+
+        a tuple of arg dtypes
+    """
+
+    def __init__(self, name, c_name, arg_dtypes):
+        Record.__init__(self,
+                name=name,
+                c_name=c_name,
+                arg_dtypes=arg_dtypes)
+
+    def __hash__(self):
+        return hash((type(self),)
+                + tuple((f, getattr(self, f)) for f in type(self).fields))
+
+
 # {{{ code generation state
 
 class CodeGenerationState(object):
@@ -160,23 +179,26 @@ class CodeGenerationState(object):
         A :class:`frozenset` of predicates for which checks have been
         implemented.
 
-    .. attribute:: c_code_mapper
+    .. attribute:: expression_to_code_mapper
 
         A :class:`loopy.codegen.expression.CCodeMapper` that does not take
         per-ILP assignments into account.
     """
-    def __init__(self, implemented_domain, implemented_predicates, c_code_mapper):
+    def __init__(self, implemented_domain, implemented_predicates,
+            expression_to_code_mapper):
         self.implemented_domain = implemented_domain
         self.implemented_predicates = implemented_predicates
-        self.c_code_mapper = c_code_mapper
+        self.expression_to_code_mapper = expression_to_code_mapper
 
     def copy(self, implemented_domain=None, implemented_predicates=frozenset(),
-            c_code_mapper=None):
+            expression_to_code_mapper=None):
         return CodeGenerationState(
                 implemented_domain=implemented_domain or self.implemented_domain,
                 implemented_predicates=(
                     implemented_predicates or self.implemented_predicates),
-                c_code_mapper=c_code_mapper or self.c_code_mapper)
+                expression_to_code_mapper=(
+                    expression_to_code_mapper
+                    or self.expression_to_code_mapper))
 
     def intersect(self, other):
         new_impl, new_other = isl.align_two(self.implemented_domain, other)
@@ -205,7 +227,8 @@ class CodeGenerationState(object):
         new_impl_domain = new_impl_domain.add_constraint(cns)
         return self.copy(
                 implemented_domain=new_impl_domain,
-                c_code_mapper=self.c_code_mapper.copy_and_assign(iname, expr))
+                expression_to_code_mapper=(
+                    self.expression_to_code_mapper.copy_and_assign(iname, expr)))
 
 # }}}
 
@@ -367,34 +390,13 @@ def generate_code(kernel, device=None):
     from loopy.check import pre_codegen_checks
     pre_codegen_checks(kernel)
 
-    from cgen import (FunctionBody, FunctionDeclaration,
-            Value, Module, Block,
-            Line, Const, LiteralLines, Initializer)
-
     logger.info("%s: generate code: start" % kernel.name)
-
-    from cgen.opencl import (CLKernel, CLRequiredWorkGroupSize)
-
-    allow_complex = False
-    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
-        if var.dtype.kind == "c":
-            allow_complex = True
-
-    seen_dtypes = set()
-    seen_functions = set()
-
-    from loopy.codegen.expression import LoopyCCodeMapper
-    ccm = (LoopyCCodeMapper(kernel, seen_dtypes, seen_functions,
-        allow_complex=allow_complex))
-
-    mod = []
-
-    body = Block()
 
     # {{{ examine arg list
 
-    from loopy.kernel.data import ImageArg, ValueArg
+    from loopy.kernel.data import ValueArg
     from loopy.kernel.array import ArrayBase
+    from cgen import Const
 
     impl_arg_info = []
 
@@ -417,55 +419,29 @@ def generate_code(kernel, device=None):
         else:
             raise ValueError("argument type not understood: '%s'" % type(arg))
 
-    if any(isinstance(arg, ImageArg) for arg in kernel.args):
-        body.append(Initializer(Const(Value("sampler_t", "loopy_sampler")),
-            "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
-                "| CLK_FILTER_NEAREST"))
+    allow_complex = False
+    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
+        if var.dtype.kind == "c":
+            allow_complex = True
 
     # }}}
 
-    mod.extend([
-        LiteralLines(r"""
-        #define lid(N) ((%(idx_ctype)s) get_local_id(N))
-        #define gid(N) ((%(idx_ctype)s) get_group_id(N))
-        """ % dict(idx_ctype=kernel.target.dtype_to_typename(kernel.index_dtype))),
-        Line()])
-
-    # {{{ build lmem array declarators for temporary variables
-
-    body.extend(
-            idi.cgen_declarator
-            for tv in six.itervalues(kernel.temporary_variables)
-            for idi in tv.decl_info(
-                kernel.target,
-                is_written=True, index_dtype=kernel.index_dtype))
-
-    # }}}
+    seen_dtypes = set()
+    seen_functions = set()
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(
             implemented_domain=initial_implemented_domain,
             implemented_predicates=frozenset(),
-            c_code_mapper=ccm)
+            expression_to_code_mapper=kernel.target.get_expression_to_code_mapper(
+                kernel, seen_dtypes, seen_functions, allow_complex))
 
-    from loopy.codegen.loop import set_up_hw_parallel_loops
-    gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)
+    code_str, implemented_domains = kernel.target.generate_code(
+            kernel, codegen_state, impl_arg_info)
 
-    body.append(Line())
-
-    if isinstance(gen_code.ast, Block):
-        body.extend(gen_code.ast.contents)
-    else:
-        body.append(gen_code.ast)
-
-    mod.append(
-        FunctionBody(
-            CLRequiredWorkGroupSize(
-                kernel.get_grid_sizes_as_exprs()[1],
-                CLKernel(FunctionDeclaration(
-                    Value("void", kernel.name),
-                    [iai.cgen_declarator for iai in impl_arg_info]))),
-            body))
+    from loopy.check import check_implemented_domains
+    assert check_implemented_domains(kernel, implemented_domains,
+            code_str)
 
     # {{{ handle preambles
 
@@ -491,20 +467,18 @@ def generate_code(kernel, device=None):
         seen_preamble_tags.add(tag)
         dedup_preambles.append(preamble)
 
-    mod = ([LiteralLines(lines) for lines in dedup_preambles]
-            + [Line()] + mod)
+    from loopy.tools import remove_common_indentation
+    preamble_codes = [
+            remove_common_indentation(lines) + "\n"
+            for lines in dedup_preambles]
+
+    code_str = "".join(preamble_codes) + code_str
 
     # }}}
 
-    result = str(Module(mod))
-
-    from loopy.check import check_implemented_domains
-    assert check_implemented_domains(kernel, gen_code.implemented_domains,
-            result)
-
     logger.info("%s: generate code: done" % kernel.name)
 
-    result = result, impl_arg_info
+    result = code_str, impl_arg_info
 
     if CACHING_ENABLED:
         code_gen_cache[input_kernel] = result
@@ -513,5 +487,52 @@ def generate_code(kernel, device=None):
 
 # }}}
 
+
+# {{{ generate function body
+
+def generate_body(kernel):
+    if kernel.schedule is None:
+        from loopy.schedule import get_one_scheduled_kernel
+        kernel = get_one_scheduled_kernel(kernel)
+    from loopy.kernel import kernel_state
+    if kernel.state != kernel_state.SCHEDULED:
+        raise LoopyError("cannot generate code for a kernel that has not been "
+                "scheduled")
+
+    from loopy.preprocess import infer_unknown_types
+    kernel = infer_unknown_types(kernel, expect_completion=True)
+
+    from loopy.check import pre_codegen_checks
+    pre_codegen_checks(kernel)
+
+    logger.info("%s: generate code: start" % kernel.name)
+
+    allow_complex = False
+    for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
+        if var.dtype.kind == "c":
+            allow_complex = True
+
+    seen_dtypes = set()
+    seen_functions = set()
+
+    initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
+    codegen_state = CodeGenerationState(
+            implemented_domain=initial_implemented_domain,
+            implemented_predicates=frozenset(),
+            expression_to_code_mapper=kernel.target.get_expression_to_code_mapper(
+                kernel, seen_dtypes, seen_functions, allow_complex))
+
+    code_str, implemented_domains = kernel.target.generate_body(
+            kernel, codegen_state)
+
+    from loopy.check import check_implemented_domains
+    assert check_implemented_domains(kernel, implemented_domains,
+            code_str)
+
+    logger.info("%s: generate code: done" % kernel.name)
+
+    return code_str
+
+# }}}
 
 # vim: foldmethod=marker

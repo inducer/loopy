@@ -24,6 +24,8 @@ THE SOFTWARE.
 
 import re
 
+from loopy.diagnostic import LoopyError
+
 
 class FTreeWalkerBase(object):
     def __init__(self):
@@ -53,13 +55,13 @@ class FTreeWalkerBase(object):
             r"^(?P<name>[_0-9a-zA-Z]+)"
             "(\((?P<shape>[-+*0-9:a-zA-Z, \t]+)\))?$")
 
-    def parse_dimension_specs(self, dim_decls):
+    def parse_dimension_specs(self, node, dim_decls):
         def parse_bounds(bounds_str):
             start_end = bounds_str.split(":")
 
             assert 1 <= len(start_end) <= 2
 
-            return [self.parse_expr(s) for s in start_end]
+            return [self.parse_expr(node, s) for s in start_end]
 
         for decl in dim_decls:
             entity_match = self.ENTITY_RE.match(decl)
@@ -81,8 +83,13 @@ class FTreeWalkerBase(object):
 
     # {{{ expressions
 
-    def parse_expr(self, expr_str, **kwargs):
-        return self.expr_parser(expr_str, **kwargs)
+    def parse_expr(self, node, expr_str, **kwargs):
+        try:
+            return self.expr_parser(expr_str, **kwargs)
+        except Exception as e:
+            raise LoopyError(
+                    "Error parsing expression '%s' on line %d of '%s': %s"
+                    % (expr_str, node.item.span[0], self.filename, str(e)))
 
     # }}}
 

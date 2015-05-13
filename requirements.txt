@@ -6,3 +6,6 @@ git+git://github.com/pyopencl/pyopencl
 git+git://github.com/inducer/pymbolic
 
 hg+https://bitbucket.org/inducer/f2py
+
+# Optional, needed for using the C preprocessor on Fortran
+ply>=3.6

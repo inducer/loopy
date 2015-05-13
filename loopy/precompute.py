@@ -473,7 +473,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         if precompute_inames is not None and i < len(precompute_inames):
             name = precompute_inames[i]
             tag_lookup_saxis = name
-            if not precompute_inames_already_exist and var_name_gen.is_name_conflicting(name):
+            if (not precompute_inames_already_exist
+                    and var_name_gen.is_name_conflicting(name)):
                 raise RuntimeError("new storage axis name '%s' "
                         "conflicts with existing name" % name)
 
@@ -543,8 +544,34 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                         domch.domain, non1_storage_axis_names,
                         boxify_sweep=fetch_bounding_box))
         else:
-            new_kernel_domains = domch.get_domains_with(domch.domain)
+            check_domain = domch.domain
 
+            # {{{ check the domain the preexisting inames' domain
+
+            # inames already exist in check_domain, add them primed
+            primed_non1_saxis_names = [
+                    iname+"'" for iname in non1_storage_axis_names]
+
+            check_domain = abm.augment_domain_with_sweep(
+                check_domain, primed_non1_saxis_names,
+                boxify_sweep=fetch_bounding_box)
+
+            # project out the original copies
+            from loopy.isl_helpers import project_out
+            check_domain = project_out(check_domain, non1_storage_axis_names)
+
+            for iname in non1_storage_axis_names:
+                var_dict = check_domain.get_var_dict()
+                dt, dim_idx = var_dict[iname+"'"]
+                check_domain = check_domain.set_dim_name(dt, dim_idx, iname)
+
+            if not (check_domain <= domch.domain and domch.domain <= check_domain):
+                raise LoopyError("domain of preexisting inames does not match "
+                        "domain needed for precompute")
+
+            # }}}
+
+            new_kernel_domains = domch.get_domains_with(domch.domain)
 
     else:
         # leave kernel domains unchanged

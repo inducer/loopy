@@ -45,7 +45,9 @@ def wrap_in_conditionals(codegen_state, domain, check_inames, required_preds, st
     if bounds_check_set.is_empty():
         return None, None
 
-    condition_codelets = [constraint_to_code(codegen_state.c_code_mapper, cns)
+    condition_codelets = [
+            constraint_to_code(
+                codegen_state.expression_to_code_mapper, cns)
             for cns in bounds_checks]
 
     condition_codelets.extend(
@@ -86,7 +88,7 @@ def generate_instruction_code(kernel, insn, codegen_state):
 
 
 def generate_expr_instruction_code(kernel, insn, codegen_state):
-    ccm = codegen_state.c_code_mapper
+    ecm = codegen_state.expression_to_code_mapper
 
     expr = insn.expression
 
@@ -94,16 +96,16 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     target_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
     from cgen import Assign
-    from loopy.codegen.expression import dtype_to_type_context
-    lhs_code = ccm(insn.assignee, prec=PREC_NONE, type_context=None)
+    from loopy.expression import dtype_to_type_context
+    lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
     result = Assign(
             lhs_code,
-            ccm(expr, prec=PREC_NONE,
+            ecm(expr, prec=PREC_NONE,
                 type_context=dtype_to_type_context(kernel.target, target_dtype),
                 needed_dtype=target_dtype))
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
-        from cgen import Statement as S
+        from cgen import Statement as S  # noqa
 
         gs, ls = kernel.get_grid_sizes()
 
@@ -123,7 +125,7 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
         if assignee_indices:
             printf_format += "[%s]" % ",".join(len(assignee_indices) * ["%d"])
             printf_args.extend(
-                    ccm(i, prec=PREC_NONE, type_context="i")
+                    ecm(i, prec=PREC_NONE, type_context="i")
                     for i in assignee_indices)
 
         if kernel.options.trace_assignment_values:
@@ -158,7 +160,7 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
 
 
 def generate_c_instruction_code(kernel, insn, codegen_state):
-    ccm = codegen_state.c_code_mapper
+    ecm = codegen_state.expression_to_code_mapper
 
     body = []
 
@@ -168,14 +170,14 @@ def generate_c_instruction_code(kernel, insn, codegen_state):
     from pymbolic.primitives import Variable
     for name, iname_expr in insn.iname_exprs:
         if (isinstance(iname_expr, Variable)
-                and name not in ccm.var_subst_map):
+                and name not in ecm.var_subst_map):
             # No need, the bare symbol will work
             continue
 
         body.append(
                 Initializer(
                     POD(kernel.target, kernel.index_dtype, name),
-                    codegen_state.c_code_mapper(
+                    codegen_state.expression_to_code_mapper(
                         iname_expr, prec=PREC_NONE, type_context="i")))
 
     if body:

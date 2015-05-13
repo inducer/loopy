@@ -22,17 +22,49 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from loopy.diagnostic import LoopyError
+
 
 def f2loopy(source, free_form=True, strict=True,
-        pre_transform_code=None):
+        pre_transform_code=None, pre_transform_code_context=None,
+        use_c_preprocessor=False,
+        file_name="<floopy code>"):
+    if use_c_preprocessor:
+        try:
+            import ply.lex as lex
+            import ply.cpp as cpp
+        except ImportError:
+            raise LoopyError("Using the C preprocessor requires PLY to be installed")
+
+        lexer = lex.lex(cpp)
+
+        from ply.cpp import Preprocessor
+        p = Preprocessor(lexer)
+        p.parse(source, file_name)
+
+        tokens = []
+        while True:
+            tok = p.token()
+
+            if not tok:
+                break
+
+            if tok.type == "CPP_COMMENT":
+                continue
+
+            tokens.append(tok.value)
+
+        source = "".join(tokens)
+
     from fparser import api
     tree = api.parse(source, isfree=free_form, isstrict=strict,
             analyze=False, ignore_comments=False)
 
     from loopy.frontend.fortran.translator import F2LoopyTranslator
-    f2loopy = F2LoopyTranslator()
+    f2loopy = F2LoopyTranslator(file_name)
     f2loopy(tree)
 
-    return f2loopy.make_kernels(pre_transform_code=pre_transform_code)
+    return f2loopy.make_kernels(pre_transform_code=pre_transform_code,
+            pre_transform_code_context=pre_transform_code_context)
 
 # vim: foldmethod=marker

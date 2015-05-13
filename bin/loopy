@@ -116,7 +116,7 @@ def main():
 
         kernels = [kernel]
 
-    elif args.lang in ["fortran", "floopy"]:
+    elif args.lang in ["fortran", "floopy", "fpp"]:
         pre_transform_code = None
         if args.transform:
             with open(args.transform, "r") as xform_fd:
@@ -132,7 +132,8 @@ def main():
                         + pre_transform_code)
 
         from loopy.frontend.fortran import f2loopy
-        kernels = f2loopy(infile_content, pre_transform_code=pre_transform_code)
+        kernels = f2loopy(infile_content, pre_transform_code=pre_transform_code,
+                use_c_preprocessor=(args.lang == "fpp"))
 
         if args.name is not None:
             kernels = [kernel for kernel in kernels

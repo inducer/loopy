@@ -98,6 +98,8 @@ class LoopyKeyBuilder(KeyBuilderBase):
 # }}}
 
 
+# {{{ picklable dtype
+
 class PicklableDtype(object):
     """This object works around several issues with pickling :class:`numpy.dtype`
     objects. It does so by serving as a picklable wrapper around the original
@@ -156,5 +158,39 @@ class PicklableDtype(object):
 
     def assert_has_target(self):
         assert self.target is not None
+
+# }}}
+
+
+# {{{ remove common indentation
+
+def remove_common_indentation(code):
+    if "\n" not in code:
+        return code
+
+    # accommodate pyopencl-ish syntax highlighting
+    code = code.lstrip("//CL//")
+
+    if not code.startswith("\n"):
+        return code
+
+    lines = code.split("\n")
+    while lines[0].strip() == "":
+        lines.pop(0)
+    while lines[-1].strip() == "":
+        lines.pop(-1)
+
+    if lines:
+        base_indent = 0
+        while lines[0][base_indent] in " \t":
+            base_indent += 1
+
+        for line in lines[1:]:
+            if line[:base_indent].strip():
+                raise ValueError("inconsistent indentation")
+
+    return "\n".join(line[base_indent:] for line in lines)
+
+# }}}
 
 # vim: foldmethod=marker
