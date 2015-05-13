@@ -143,7 +143,9 @@ def test_op_counter_bitwise(ctx_factory):
     m = 256
     l = 128
     i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    not_there = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert i32 == 3*n*m+n*m*l
+    assert not_there == 0
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
