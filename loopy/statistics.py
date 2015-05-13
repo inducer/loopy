@@ -33,35 +33,34 @@ from pymbolic.mapper import CombineMapper
 
 class TypeToOpCountMap:
 
-    def __init__(self):
-        self.dict = {}
+    def __init__(self, init_dict=None):
+        if init_dict is None:
+            self.dict = {}
+        else:
+            self.dict = init_dict
 
     def __add__(self, other):
-        result = TypeToOpCountMap()
-        result.dict = dict(self.dict.items() + other.dict.items()
-                           + [(k, self.dict[k] + other.dict[k])
-                           for k in set(self.dict) & set(other.dict)])
-        return result
+        return TypeToOpCountMap(dict(self.dict.items() + other.dict.items()
+                                     + [(k, self.dict[k] + other.dict[k])
+                                     for k in set(self.dict) & set(other.dict)]))
 
     def __radd__(self, other):
         if (other != 0):
-            message = "TypeToOpCountMap: Attempted to add TypeToOpCountMap to " + \
-                      str(type(other)) + " " + str(other) + ". TypeToOpCountMap " + \
-                      "may only be added to 0 and other TypeToOpCountMap objects."
-            raise ValueError(message)
+            raise ValueError("TypeToOpCountMap: Attempted to add TypeToOpCountMap "
+                                "to {} {}. TypeToOpCountMap may only be added to "
+                                "0 and other TypeToOpCountMap objects."
+                                .format(type(other), other))
             return
         return self
 
     def __mul__(self, other):
         if isinstance(other, isl.PwQPolynomial):
-            result = TypeToOpCountMap()
-            for index in self.dict.keys():
-                result.dict[index] = self.dict[index]*other
-            return result
+            return TypeToOpCountMap({index: self.dict[index]*other
+                                     for index in self.dict.keys()})
         else:
-            message = "TypeToOpCountMap: Attempted to multiply TypeToOpCountMap by " + \
-                      str(type(other)) + " " + str(other) + "."
-            raise ValueError(message)
+            raise ValueError("TypeToOpCountMap: Attempted to multiply "
+                                "TypeToOpCountMap by {} {}."
+                                .format(type(other), other))
 
     __rmul__ = __mul__
 
@@ -82,11 +81,8 @@ class ExpressionOpCounter(CombineMapper):
     def map_constant(self, expr):
         return TypeToOpCountMap()
 
-    def map_tagged_variable(self, expr):
-        return TypeToOpCountMap()
-
-    def map_variable(self, expr):
-        return TypeToOpCountMap()
+    map_tagged_variable = map_constant
+    map_variable = map_constant
 
     #def map_wildcard(self, expr):
     #    return 0,0
@@ -94,9 +90,7 @@ class ExpressionOpCounter(CombineMapper):
     #def map_function_symbol(self, expr):
     #    return 0,0
 
-    def map_call(self, expr):
-        # implemented in CombineMapper (functions in opencl spec)
-        return TypeToOpCountMap()
+    map_call = map_constant
 
     # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
 
@@ -106,60 +100,51 @@ class ExpressionOpCounter(CombineMapper):
     # def map_lookup(self, expr):  # implemented in CombineMapper
 
     def map_sum(self, expr):
-        op_count_map = TypeToOpCountMap()
-        op_count_map.dict[self.type_inf(expr)] = len(expr.children)-1
         if expr.children:
-            return op_count_map + sum(self.rec(child) for child in expr.children)
+            return TypeToOpCountMap(
+                        {self.type_inf(expr): len(expr.children)-1}
+                        ) + sum(self.rec(child) for child in expr.children)
         else:
             return TypeToOpCountMap()
 
     map_product = map_sum
 
     def map_quotient(self, expr, *args):
-        op_count_map = TypeToOpCountMap()
-        op_count_map.dict[self.type_inf(expr)] = 1
-        return op_count_map + self.rec(expr.numerator) + self.rec(expr.denominator)
+        return TypeToOpCountMap({self.type_inf(expr): 1}) \
+                                + self.rec(expr.numerator) \
+                                + self.rec(expr.denominator)
 
     map_floor_div = map_quotient
-
-    def map_remainder(self, expr):  # implemented in CombineMapper
-        op_count_map = TypeToOpCountMap()
-        op_count_map.dict[self.type_inf(expr)] = 1
-        return op_count_map + self.rec(expr.numerator)+self.rec(expr.denominator)
+    map_remainder = map_quotient  # implemented in CombineMapper
 
     def map_power(self, expr):
-        op_count_map = TypeToOpCountMap()
-        op_count_map.dict[self.type_inf(expr)] = 1
-        return op_count_map + self.rec(expr.base)+self.rec(expr.exponent)
+        return TypeToOpCountMap({self.type_inf(expr): 1}) \
+                                + self.rec(expr.base) \
+                                + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):  # implemented in CombineMapper
-        return self.rec(expr.shiftee)+self.rec(expr.shift)  # TODO test
+        return self.rec(expr.shiftee)+self.rec(expr.shift)
 
-    map_right_shift = map_left_shift  # TODO test
+    map_right_shift = map_left_shift
 
-    def map_bitwise_not(self, expr):  # implemented in CombineMapper # TODO test
+    def map_bitwise_not(self, expr):  # implemented in CombineMapper
         return self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
-        # implemented in CombineMapper, maps to map_sum; # TODO test
+        # implemented in CombineMapper, maps to map_sum;
         return sum(self.rec(child) for child in expr.children)
 
     map_bitwise_xor = map_bitwise_or
-    # implemented in CombineMapper, maps to map_sum; # TODO test
+    # implemented in CombineMapper, maps to map_sum;
 
     map_bitwise_and = map_bitwise_or
-    # implemented in CombineMapper, maps to map_sum; # TODO test
+    # implemented in CombineMapper, maps to map_sum;
 
     def map_comparison(self, expr):  # implemented in CombineMapper
         return self.rec(expr.left)+self.rec(expr.right)
 
-    def map_logical_not(self, expr):
-        # implemented in CombineMapper, maps to bitwise_not
-        return self.rec(expr.child)
-
-    def map_logical_or(self, expr):  # implemented in CombineMapper, maps to map_sum
-        return sum(self.rec(child) for child in expr.children)
-
+    map_logical_not = map_bitwise_not
+    map_logical_or = map_bitwise_or  # implemented in CombineMapper, maps to map_sum
     map_logical_and = map_logical_or
 
     def map_if(self, expr):  # implemented in CombineMapper, recurses
@@ -170,9 +155,8 @@ class ExpressionOpCounter(CombineMapper):
         warnings.warn("Counting operations as sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
-    def map_min(self, expr):
-        # implemented in CombineMapper, maps to map_sum;  # TODO test
-        return sum(self.rec(child) for child in expr.children)
+    map_min = map_bitwise_or
+    # implemented in CombineMapper, maps to map_sum;  # TODO test
 
     map_max = map_min  # implemented in CombineMapper, maps to map_sum;  # TODO test
 
@@ -223,16 +207,6 @@ class SubscriptCounter(CombineMapper):
 
     def map_variable(self, expr):
         return 0
-
-#TODO find stride looking in ArrayBase.dim tag
-'''
-for each instruction, find which iname is associated with local id0 (iname_to_tag)
-then for each array axis in that instruction, run through all axes and see if local id0 iname occurs
-for each axis where this occurs, see if stride=1 (using coefficient collecter)
-
-variable has dimTags (one for each axis), 
-localid 0 is threadidx.x
-'''
 
 
 # to evaluate poly: poly.eval_with_dict(dictionary)

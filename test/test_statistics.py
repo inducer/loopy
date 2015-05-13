@@ -137,17 +137,13 @@ def test_op_counter_bitwise(ctx_factory):
             name="bitwise", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+                        dict(a=np.int32, b=np.int32, g=np.int64, h=np.int64))
     poly = get_op_poly(knl)
     n = 512
     m = 256
     l = 128
-    '''
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
     i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    '''
-    # TODO figure out how these operations should be counted
+    assert i32 == 3*n*m+n*m*l
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
