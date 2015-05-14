@@ -164,14 +164,14 @@ class PicklableDtype(object):
 
 # {{{ remove common indentation
 
-def remove_common_indentation(code):
+def remove_common_indentation(code, require_leading_newline=True):
     if "\n" not in code:
         return code
 
     # accommodate pyopencl-ish syntax highlighting
     code = code.lstrip("//CL//")
 
-    if not code.startswith("\n"):
+    if require_leading_newline and not code.startswith("\n"):
         return code
 
     lines = code.split("\n")

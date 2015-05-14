@@ -194,24 +194,6 @@ class Scope(object):
 # }}}
 
 
-def remove_common_indentation(lines):
-    while lines and lines[0].strip() == "":
-        lines.pop(0)
-    while lines and lines[-1].strip() == "":
-        lines.pop(-1)
-
-    if lines:
-        base_indent = 0
-        while lines[0][base_indent] in " \t":
-            base_indent += 1
-
-        for line in lines[1:]:
-            if line[:base_indent].strip():
-                raise ValueError("inconsistent indentation")
-
-    return "\n".join(line[base_indent:] for line in lines)
-
-
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
@@ -641,15 +623,15 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
     # }}}
 
-    def make_kernels(self, pre_transform_code=None, pre_transform_code_context=None):
+    def make_kernels(self, pre_transform_code=None, transform_code_context=None):
         kernel_names = [
                 sub.subprogram_name
                 for sub in self.kernels]
 
-        if pre_transform_code_context is None:
+        if transform_code_context is None:
             proc_dict = {}
         else:
-            proc_dict = pre_transform_code_context.copy()
+            proc_dict = transform_code_context.copy()
 
         proc_dict["lp"] = lp
         proc_dict["np"] = np
@@ -707,13 +689,15 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             proc_dict[sub.subprogram_name] = lp.fold_constants(knl)
 
+        from loopy.tools import remove_common_indentation
         transform_code = remove_common_indentation(
-                self.transform_code_lines)
+                "\n".join(self.transform_code_lines),
+                require_leading_newline=False)
 
         if pre_transform_code is not None:
             proc_dict["_MODULE_SOURCE_CODE"] = pre_transform_code
             exec(compile(pre_transform_code,
-                "<loopy transforms>", "exec"), proc_dict)
+                "<loopy pre-transform code>", "exec"), proc_dict)
 
         proc_dict["_MODULE_SOURCE_CODE"] = transform_code
         exec(compile(transform_code,

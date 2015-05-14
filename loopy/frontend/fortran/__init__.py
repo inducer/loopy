@@ -25,10 +25,56 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError
 
 
+def _extract_define_lines(source):
+    lines = source.split("\n")
+
+    import re
+    comment_re = re.compile(r"^\s*\!(.*)$")
+
+    remaining_lines = []
+    define_lines = []
+
+    in_define_code = False
+    for l in lines:
+        comment_match = comment_re.match(l)
+
+        if comment_match is None:
+            if in_define_code:
+                raise LoopyError("non-comment source line in define block")
+
+            remaining_lines.append(l)
+            continue
+
+        cmt = comment_match.group(1)
+        cmt_stripped = cmt.strip()
+
+        if cmt_stripped == "$loopy begin define":
+            if in_define_code:
+                raise LoopyError("can't enter transform code twice")
+            in_define_code = True
+
+        elif cmt_stripped == "$loopy end define":
+            if not in_define_code:
+                raise LoopyError("can't leave transform code twice")
+            in_define_code = False
+
+        elif in_define_code:
+            define_lines.append(cmt)
+
+        else:
+            remaining_lines.append(l)
+
+    return "\n".join(remaining_lines), "\n".join(define_lines)
+
+
 def f2loopy(source, free_form=True, strict=True,
-        pre_transform_code=None, pre_transform_code_context=None,
-        use_c_preprocessor=False,
+        pre_transform_code=None, transform_code_context=None,
+        use_c_preprocessor=False, preprocessor_defines=None,
         file_name="<floopy code>"):
+    """
+    :arg preprocessor_defines: a list of strings as they might occur after a
+        C-style ``#define`` directive, for example ``deg2rad(x) (x/180d0 * 3.14d0)``.
+    """
     if use_c_preprocessor:
         try:
             import ply.lex as lex
@@ -40,6 +86,28 @@ def f2loopy(source, free_form=True, strict=True,
 
         from ply.cpp import Preprocessor
         p = Preprocessor(lexer)
+
+        if preprocessor_defines:
+            for d in preprocessor_defines:
+                p.define(d)
+
+        source, define_code = _extract_define_lines(source)
+        if define_code is not None:
+            from loopy.tools import remove_common_indentation
+            define_code = remove_common_indentation(
+                    define_code,
+                    require_leading_newline=False)
+            def_dict = {}
+            def_dict["define"] = p.define
+
+            if pre_transform_code is not None:
+                def_dict["_MODULE_SOURCE_CODE"] = pre_transform_code
+                exec(compile(pre_transform_code,
+                    "<loopy pre-transform code>", "exec"), def_dict)
+
+            def_dict["_MODULE_SOURCE_CODE"] = define_code
+            exec(compile(define_code, "<loopy defines>", "exec"), def_dict)
+
         p.parse(source, file_name)
 
         tokens = []
@@ -65,6 +133,6 @@ def f2loopy(source, free_form=True, strict=True,
     f2loopy(tree)
 
     return f2loopy.make_kernels(pre_transform_code=pre_transform_code,
-            pre_transform_code_context=pre_transform_code_context)
+            transform_code_context=transform_code_context)
 
 # vim: foldmethod=marker
