@@ -6,6 +6,7 @@ subroutine sparse(rowstarts, colindices, values, m, n, nvals, x, y)
   real*8 x(n), y(n), rowsum
 
   integer m, n, rowstart, rowend, length, nvals
+  integer i, j
 
   do i = 1, m
     rowstart = rowstarts(i)

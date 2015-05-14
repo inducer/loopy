@@ -35,6 +35,7 @@ from loopy.frontend.fortran.diagnostic import (
 import islpy as isl
 from islpy import dim_type
 from loopy.symbolic import IdentityMapper
+from loopy.diagnostic import LoopyError
 from pymbolic.primitives import Wildcard
 
 
@@ -235,6 +236,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.transform_code_lines = []
 
         self.filename = filename
+
+        self.index_dtype = None
 
     def add_expression_instruction(self, lhs, rhs):
         scope = self.scope_stack[-1]
@@ -487,6 +490,16 @@ class F2LoopyTranslator(FTreeWalkerBase):
         if node.loopcontrol:
             loop_var, loop_bounds = node.loopcontrol.split("=")
             loop_var = loop_var.strip()
+
+            iname_dtype = scope.get_type(loop_var)
+            if self.index_dtype is None:
+                self.index_dtype = iname_dtype
+            else:
+                if self.index_dtype != iname_dtype:
+                    raise LoopyError("type of '%s' (%s) does not agree with prior "
+                            "index type (%s)"
+                            % (loop_var, iname_dtype, self.index_dtype))
+
             scope.use_name(loop_var)
             loop_bounds = self.parse_expr(
                     node,
@@ -685,7 +698,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     sub.instructions,
                     kernel_data,
                     name=sub.subprogram_name,
-                    default_order="F"
+                    default_order="F",
+                    index_dtype=self.index_dtype,
                     )
 
             from loopy.loop import fuse_loop_domains

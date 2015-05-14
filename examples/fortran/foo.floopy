@@ -2,7 +2,7 @@ subroutine fill(out, a, n)
   implicit none
 
   real*8 a, out(n)
-  integer n
+  integer n, i
 
   do i = 1, n
     out(i) = a

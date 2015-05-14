@@ -51,7 +51,7 @@ def test_fill(ctx_factory):
           implicit none
 
           real*8 a, out(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             out(i) = a
@@ -80,7 +80,7 @@ def test_fill_const(ctx_factory):
           implicit none
 
           real*8 a, out(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             out(i) = 3.45
@@ -102,7 +102,7 @@ def test_asterisk_in_shape(ctx_factory):
           implicit none
 
           real*8 a, out(n), out2(n), inp(*)
-          integer n
+          integer n, i
 
           do i = 1, n
             a = inp(n)
@@ -127,7 +127,7 @@ def test_temporary_to_subst(ctx_factory):
           implicit none
 
           real*8 a, out(n), out2(n), inp(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             a = inp(i)
@@ -154,7 +154,7 @@ def test_temporary_to_subst_two_defs(ctx_factory):
           implicit none
 
           real*8 a, out(n), out2(n), inp(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             a = inp(i)
@@ -182,7 +182,7 @@ def test_temporary_to_subst_indices(ctx_factory):
           implicit none
 
           real*8 a(n), out(n), out2(n), inp(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             a(i) = 6*inp(i)
@@ -215,7 +215,7 @@ def test_if(ctx_factory):
           implicit none
 
           real*8 a, b, out(n), out2(n), inp(n)
-          integer n
+          integer n, i, j
 
           do i = 1, n
             a = inp(i)
@@ -249,7 +249,7 @@ def test_tagged(ctx_factory):
           implicit none
           real*8 a, b, r, out(n), out2(n), inp(n), inp2(n)
           real*8 alpha
-          integer n
+          integer n, i
 
           do i = 1, n
             !$loopy begin tagged: input
@@ -339,6 +339,7 @@ def test_batched_sparse():
           real*8 x(n, nvecs), y(n, nvecs), rowsum(nvecs)
 
           integer m, n, rowstart, rowend, length, nvals, nvecs
+          integer i, j, k
 
           do i = 1, m
             rowstart = rowstarts(i)
