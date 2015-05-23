@@ -164,7 +164,7 @@ def test_op_counter_triangular_domain():
     expect_fallback = False
     import islpy as isl
     try:
-        isl.BasicSet.carod
+        isl.BasicSet.card
     except AttributeError:
         expect_fallback = True
     else:
