@@ -1,4 +1,4 @@
-from __future__ import division
+from __future__ import division, print_function
 
 __copyright__ = "Copyright (C) 2015 James Stevens"
 
@@ -23,14 +23,14 @@ THE SOFTWARE.
 """
 
 import sys
-from pyopencl.tools import (
+from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 from loopy.statistics import *  # noqa
 import numpy as np
 
 
-def test_op_counter_basic(ctx_factory):
+def test_op_counter_basic():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -56,7 +56,7 @@ def test_op_counter_basic(ctx_factory):
     assert i32 == n*m
 
 
-def test_op_counter_reduction(ctx_factory):
+def test_op_counter_reduction():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -74,10 +74,10 @@ def test_op_counter_reduction(ctx_factory):
     assert f32 == 2*n*m*l
 
 
-def test_op_counter_logic(ctx_factory):
+def test_op_counter_logic():
 
     knl = lp.make_kernel(
-            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
             [
                 """
                 e[i,k] = if(not(k<l-2) and k>6 or k/2==l, g[i,k]*2, g[i,k]+h[i,k]/2)
@@ -98,10 +98,10 @@ def test_op_counter_logic(ctx_factory):
     assert i32 == n*m
 
 
-def test_op_counter_specialops(ctx_factory):
+def test_op_counter_specialops():
 
     knl = lp.make_kernel(
-            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
             [
                 """
                 c[i, j, k] = (2*a[i,j,k])%(2+b[i,j,k]/3.0)
@@ -124,10 +124,10 @@ def test_op_counter_specialops(ctx_factory):
     assert i32 == n*m
 
 
-def test_op_counter_bitwise(ctx_factory):
+def test_op_counter_bitwise():
 
     knl = lp.make_kernel(
-            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
             [
                 """
                 c[i, j, k] = (a[i,j,k] | 1) + (b[i,j,k] & 1)
@@ -143,9 +143,42 @@ def test_op_counter_bitwise(ctx_factory):
     m = 256
     l = 128
     i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    print(poly.dict[np.dtype(np.int32)])
     not_there = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert i32 == 3*n*m+n*m*l
     assert not_there == 0
+
+
+def test_op_counter_triangular_domain():
+
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i<n and 0<=j<m and i<j}",
+            """
+            a[i, j] = b[i,j] * 2
+            """,
+            name="bitwise", assumptions="n,m >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+            dict(b=np.float64))
+
+    expect_fallback = False
+    import islpy as isl
+    try:
+        isl.BasicSet.carod
+    except AttributeError:
+        expect_fallback = True
+    else:
+        expect_fallback = False
+
+    poly = get_op_poly(knl)[np.dtype(np.float64)]
+    value_dict = dict(m=13, n=200)
+    flops = poly.eval_with_dict(value_dict)
+
+    if expect_fallback:
+        assert flops == 144
+    else:
+        assert flops == 78
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
