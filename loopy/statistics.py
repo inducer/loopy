@@ -81,7 +81,7 @@ class ExpressionOpCounter(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
-        from loopy.codegen.expression import TypeInferenceMapper
+        from loopy.expression import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
     def combine(self, values):
