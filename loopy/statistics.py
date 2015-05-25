@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six  # noqa
+import six
 
 import loopy as lp
 import warnings
@@ -35,17 +35,20 @@ class TypeToOpCountMap:
 
     def __init__(self, init_dict=None):
         if init_dict is None:
-            self.dict = {}
-        else:
-            self.dict = init_dict
+            init_dict = {}
+
+        self.dict = init_dict
 
     def __add__(self, other):
-        return TypeToOpCountMap(dict(self.dict.items() + other.dict.items()
-                                     + [(k, self.dict[k] + other.dict[k])
-                                     for k in set(self.dict) & set(other.dict)]))
+        result = self.dict.copy()
+
+        for k, v in six.iteritems(other.dict):
+            result[k] = self.dict.get(k, 0) + v
+
+        return TypeToOpCountMap(result)
 
     def __radd__(self, other):
-        if (other != 0):
+        if other != 0:
             raise ValueError("TypeToOpCountMap: Attempted to add TypeToOpCountMap "
                                 "to {} {}. TypeToOpCountMap may only be added to "
                                 "0 and other TypeToOpCountMap objects."
