@@ -1,8 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -26,6 +22,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+
+import six
+from six.moves import range, zip
 
 import islpy as isl
 from islpy import dim_type
@@ -58,6 +57,7 @@ from loopy.library.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst, temporary_to_subst
 from loopy.precompute import precompute
 from loopy.buffer import buffer_array
+from loopy.fusion import fuse_kernels
 from loopy.padding import (split_arg_axis, find_padding_multiple,
         add_padding)
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
@@ -88,6 +88,7 @@ __all__ = [
 
         "extract_subst", "expand_subst", "temporary_to_subst",
         "precompute", "buffer_array",
+        "fuse_kernels",
         "split_arg_axis", "find_padding_multiple", "add_padding",
 
         "get_dot_dependency_graph",
@@ -539,7 +540,7 @@ class _InameDuplicator(RuleAwareIdentityMapper):
             return var(new_name)
 
     def map_instruction(self, insn):
-        if not self.within(((insn.id, None),)):
+        if not self.within(((insn.id, insn.tags),)):
             return insn
 
         new_fid = frozenset(
@@ -1778,6 +1779,25 @@ def fold_constants(kernel):
     return kernel.copy(
             instructions=new_insns,
             substitutions=new_substs)
+
+# }}}
+
+
+# {{{ tag_instructions
+
+def tag_instructions(kernel, new_tag, within=None):
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if within(((insn.id, insn.tags),)):
+            new_insns.append(
+                    insn.copy(tags=insn.tags + (new_tag,)))
+        else:
+            new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
 
 # }}}
 

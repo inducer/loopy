@@ -321,12 +321,6 @@ def test_matmul(ctx_factory, buffer_inames):
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, l=128))
 
-    # # FIXME: Make r/w tests possible, reactivate the above
-    # knl = lp.preprocess_kernel(knl)
-    # for k in lp.generate_loop_schedules(knl):
-    #     code, _ = lp.generate_code(k)
-    #     print(code)
-
 
 @pytest.mark.xfail
 def test_batched_sparse():
@@ -372,6 +366,47 @@ def test_batched_sparse():
     knl = lp.add_prefetch(knl, "values")
     knl = lp.add_prefetch(knl, "colindices")
     knl = lp.fix_parameters(knl, nvecs=4)
+
+
+def test_fuse_kernels(ctx_factory):
+    fortran_template = """
+        subroutine {name}(nelements, ndofs, result, d, q)
+          implicit none
+          integer e, i, j, k
+          integer nelements, ndofs
+          real*8 result(nelements, ndofs, ndofs)
+          real*8 q(nelements, ndofs, ndofs)
+          real*8 d(ndofs, ndofs)
+
+          do e = 1,nelements
+            do i = 1,ndofs
+              do j = 1,ndofs
+                do k = 1,ndofs
+                  {line}
+                end do
+              end do
+            end do
+          end do
+        end subroutine
+        """
+
+    xd_line = "result(e,i,j) = result(e,i,j) + d(i,k)*q(e,i,k)"
+    yd_line = "result(e,i,j) = result(e,i,j) + d(i,k)*q(e,k,j)"
+
+    from loopy.frontend.fortran import f2loopy
+    xderiv, = f2loopy(
+            fortran_template.format(line=xd_line, name="xderiv"))
+    yderiv, = f2loopy(
+            fortran_template.format(line=yd_line, name="yderiv"))
+    xyderiv, = f2loopy(
+            fortran_template.format(
+                line=(xd_line + "\n" + yd_line), name="xyderiv"))
+
+    knl = lp.fuse_kernels((xderiv, yderiv))
+    knl = lp.set_loop_priority(knl, "e,i,j,k")
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
 
 
 if __name__ == "__main__":

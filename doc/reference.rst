@@ -336,6 +336,8 @@ function, which is responsible for creating kernels:
 
 .. autofunction:: make_copy_kernel
 
+.. autofunction:: fuse_kernels
+
 Transforming Kernels
 --------------------
 
@@ -428,6 +430,8 @@ Manipulating Instructions
 .. autofunction:: add_dependency
 
 .. autofunction:: remove_instructions
+
+.. autofunction:: tag_instructions
 
 Library interface
 ^^^^^^^^^^^^^^^^^
