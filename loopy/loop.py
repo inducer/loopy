@@ -104,7 +104,8 @@ def fuse_loop_domains(kernel):
 
                 outer_dom, inner_dom = isl.align_two(outer_dom, inner_dom)
 
-                new_domains.insert(min_idx, inner_dom & outer_dom)
+                from loopy.isl_helpers import convexify
+                new_domains.insert(min_idx, convexify(inner_dom & outer_dom))
                 break
 
             if new_domains:
