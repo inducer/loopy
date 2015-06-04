@@ -299,7 +299,6 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
         dom_and_slab, assumptions_non_param = isl.align_two(
                 dom_and_slab, assumptions_non_param)
         dom_and_slab = dom_and_slab & assumptions_non_param
-        del assumptions_non_param
 
         # move inames that are usable into parameters
         moved_inames = []
@@ -317,13 +316,22 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
                 static_min_of_pw_aff,
                 static_max_of_pw_aff)
 
-        static_lbound = static_min_of_pw_aff(
+        lbound = (
                 kernel.cache_manager.dim_min(
-                    dom_and_slab, loop_iname_idx).coalesce(),
+                    dom_and_slab, loop_iname_idx)
+                .gist(kernel.assumptions)
+                .coalesce())
+        ubound = (
+            kernel.cache_manager.dim_max(
+                dom_and_slab, loop_iname_idx)
+            .gist(kernel.assumptions)
+            .coalesce())
+
+        static_lbound = static_min_of_pw_aff(
+                lbound,
                 constants_only=False, prefer_constants=False)
         static_ubound = static_max_of_pw_aff(
-                kernel.cache_manager.dim_max(
-                    dom_and_slab, loop_iname_idx).coalesce(),
+                ubound,
                 constants_only=False, prefer_constants=False)
 
         # }}}
