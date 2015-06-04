@@ -277,7 +277,7 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
 
     from loopy.codegen.bounds import get_usable_inames_for_conditional
 
-    # Note: this does note include loop_iname itself!
+    # Note: this does not include loop_iname itself!
     usable_inames = get_usable_inames_for_conditional(kernel, sched_index)
     domain = kernel.get_inames_domain(loop_iname)
 
