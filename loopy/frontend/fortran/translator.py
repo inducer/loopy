@@ -464,10 +464,9 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.conditions.append(cond_name)
 
+        self.block_nest.append("if")
         for c in node.content:
             self.rec(c)
-
-        self.block_nest.append("if")
 
     def map_Else(self, node):
         cond_name = self.conditions.pop()
