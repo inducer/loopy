@@ -2,7 +2,7 @@
 
 # run this from the loopy root directory
 
-rm -Rf dist/loopy
+rm -Rf dist build
 
 pyinstaller \
   --workpath=build/pyinstaller \

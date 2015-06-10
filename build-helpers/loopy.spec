@@ -2,9 +2,10 @@
 
 single_file = True
 
+from os.path import expanduser
 
 a = Analysis(['bin/loopy'],
-             pathex=['/home/andreas/src/loopy'],
+             pathex=[expanduser('~/src/loopy')],
              hiddenimports=[],
              hookspath=None,
              runtime_hooks=None,
