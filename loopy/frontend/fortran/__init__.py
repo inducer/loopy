@@ -25,7 +25,7 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError
 
 
-def c_preprocess(source, defines=None, file_name="<floopy source>"):
+def c_preprocess(source, defines=None, filename="<floopy source>"):
     """
     :arg source: a string, possibly containing C preprocessor constructs
     :arg defines: a list of strings as they might occur after a
@@ -47,7 +47,7 @@ def c_preprocess(source, defines=None, file_name="<floopy source>"):
         for d in defines:
             p.define(d)
 
-    p.parse(source, file_name)
+    p.parse(source, filename)
 
     tokens = []
     while True:
