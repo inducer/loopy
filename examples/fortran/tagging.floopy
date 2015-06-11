@@ -14,11 +14,12 @@ subroutine fill(out, a, n)
   end do
 end
 
-!$loopy begin transform
-!
+!$loopy begin
+! fill, = lp.parse_fortran(SOURCE, FILENAME)
 ! fill = lp.split_iname(fill, "i", 128,
 !     outer_tag="g.0", inner_tag="l.0")
 ! fill = lp.split_iname(fill, "i_1", 128,
 !     outer_tag="g.0", inner_tag="l.0")
-!$loopy end transform
+! RESULT = [fill]
+!$loopy end
 ! vim:filetype=floopy

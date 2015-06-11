@@ -27,10 +27,12 @@ subroutine volumeKernel(elements, Nfields, Ngeo, Ndim, Dop, geo, Q, rhsQ  )
 
 end subroutine volumeKernel
 
-!$loopy begin transform
+!$loopy begin
 !
+! volumeKernel, = lp.parse_fortran(SOURCE, FILENAME)
 ! volumeKernel = lp.fix_parameters(volumeKernel,
 !     Nq=5, Ndim=3)
 ! volumeKernel = lp.tag_inames(volumeKernel, dict(i="l.0"))
+! RESULT = [volumeKernel]
 !
-!$loopy end transform
+!$loopy end

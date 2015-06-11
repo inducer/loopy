@@ -71,23 +71,23 @@ def main():
         with open(args.infile, "r") as infile_fd:
             infile_content = infile_fd.read()
 
-    # {{{ path wrangling
-
-    from os.path import dirname, abspath
-    from os import getcwd
-
-    infile_dirname = dirname(args.infile)
-    if infile_dirname:
-        infile_dirname = abspath(infile_dirname)
-    else:
-        infile_dirname = getcwd()
-
-    import sys
-    sys.path.append(infile_dirname)
-
-    # }}}
-
     if args.lang == "loopy":
+        # {{{ path wrangling
+
+        from os.path import dirname, abspath
+        from os import getcwd
+
+        infile_dirname = dirname(args.infile)
+        if infile_dirname:
+            infile_dirname = abspath(infile_dirname)
+        else:
+            infile_dirname = getcwd()
+
+        import sys
+        sys.path.append(infile_dirname)
+
+        # }}}
+
         data_dic = {}
         data_dic["lp"] = lp
         data_dic["np"] = np
@@ -131,9 +131,8 @@ def main():
                         defines_to_python_code(defines_fd.read())
                         + pre_transform_code)
 
-        from loopy.frontend.fortran import f2loopy
-        kernels = f2loopy(infile_content, pre_transform_code=pre_transform_code,
-                use_c_preprocessor=(args.lang == "fpp"))
+        kernels = lp.parse_transformed_fortran(
+                infile_content, pre_transform_code=pre_transform_code)
 
         if args.name is not None:
             kernels = [kernel for kernel in kernels

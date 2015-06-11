@@ -208,14 +208,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.kernels = []
 
-        # Flag to record whether 'loopy begin transform' comment
-        # has been seen.
-        self.in_transform_code = False
-
         self.instruction_tags = []
         self.conditions = []
-
-        self.transform_code_lines = []
 
         self.filename = filename
 
@@ -606,17 +600,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         faulty_loopy_pragma_match = self.faulty_loopy_pragma.match(
                 stripped_comment_line)
 
-        if stripped_comment_line == "$loopy begin transform":
-            if self.in_transform_code:
-                raise TranslationError("can't enter transform code twice")
-            self.in_transform_code = True
-
-        elif stripped_comment_line == "$loopy end transform":
-            if not self.in_transform_code:
-                raise TranslationError("can't leave transform code twice")
-            self.in_transform_code = False
-
-        elif begin_tag_match:
+        if begin_tag_match:
             tag = begin_tag_match.group(1)
             if tag in self.instruction_tags:
                 raise TranslationError("nested begin tag for tag '%s'" % tag)
@@ -629,9 +613,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
                         "end tag without begin tag for tag '%s'" % tag)
             self.instruction_tags.remove(tag)
 
-        elif self.in_transform_code:
-            self.transform_code_lines.append(node.content)
-
         elif faulty_loopy_pragma_match is not None:
             from warnings import warn
             warn("The comment line '%s' was not recognized as a loopy directive"
@@ -641,18 +622,12 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
     # }}}
 
-    def make_kernels(self, pre_transform_code=None, transform_code_context=None):
+    def make_kernels(self):
         kernel_names = [
                 sub.subprogram_name
                 for sub in self.kernels]
 
-        if transform_code_context is None:
-            proc_dict = {}
-        else:
-            proc_dict = transform_code_context.copy()
-
-        proc_dict["lp"] = lp
-        proc_dict["np"] = np
+        result = []
 
         for sub in self.kernels:
             # {{{ figure out arguments
@@ -704,25 +679,11 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             from loopy.loop import fuse_loop_domains
             knl = fuse_loop_domains(knl)
+            knl = lp.fold_constants(knl)
 
-            proc_dict[sub.subprogram_name] = lp.fold_constants(knl)
+            result.append(knl)
 
-        from loopy.tools import remove_common_indentation
-        transform_code = remove_common_indentation(
-                "\n".join(self.transform_code_lines),
-                require_leading_newline=False)
-
-        if pre_transform_code is not None:
-            proc_dict["_MODULE_SOURCE_CODE"] = pre_transform_code
-            exec(compile(pre_transform_code,
-                "<loopy pre-transform code>", "exec"), proc_dict)
-
-        proc_dict["_MODULE_SOURCE_CODE"] = transform_code
-        exec(compile(transform_code,
-            "<loopy transforms>", "exec"), proc_dict)
-
-        return [proc_dict[knl_name]
-                for knl_name in kernel_names]
+        return result
 
 # }}}
 

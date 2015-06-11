@@ -58,16 +58,20 @@ def test_fill(ctx_factory):
           end do
         end
 
-        !$loopy begin transform
+        !$loopy begin
         !
-        ! fill = lp.split_iname(fill, "i", 128,
+        ! fill, = lp.parse_fortran(SOURCE)
+        ! fill = lp.split_iname(fill, "i", split_amount,
         !     outer_tag="g.0", inner_tag="l.0")
+        ! RESULT = [fill]
         !
-        !$loopy end transform
+        !$loopy end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_transformed_fortran(fortran_src,
+            pre_transform_code="split_amount = 128")
+
+    assert "i_inner" in knl.all_inames()
 
     ctx = ctx_factory()
 
@@ -88,8 +92,7 @@ def test_fill_const(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ctx = ctx_factory()
 
@@ -112,8 +115,7 @@ def test_asterisk_in_shape(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -137,8 +139,7 @@ def test_temporary_to_subst(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -165,8 +166,7 @@ def test_temporary_to_subst_two_defs(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -194,8 +194,7 @@ def test_temporary_to_subst_indices(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     knl = lp.fix_parameters(knl, n=5)
 
@@ -232,8 +231,7 @@ def test_if(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -267,8 +265,7 @@ def test_tagged(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     assert sum(1 for insn in lp.find_instructions(knl, "*$input")) == 2
 
@@ -294,8 +291,7 @@ def test_matmul(ctx_factory, buffer_inames):
         end subroutine
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     assert len(knl.domains) == 1
 
@@ -357,8 +353,7 @@ def test_batched_sparse():
 
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     knl = lp.split_iname(knl, "i", 128)
     knl = lp.tag_inames(knl, {"i_outer": "g.0"})
@@ -393,12 +388,11 @@ def test_fuse_kernels(ctx_factory):
     xd_line = "result(e,i,j) = result(e,i,j) + d(i,k)*q(e,i,k)"
     yd_line = "result(e,i,j) = result(e,i,j) + d(i,k)*q(e,k,j)"
 
-    from loopy.frontend.fortran import f2loopy
-    xderiv, = f2loopy(
+    xderiv, = lp.parse_fortran(
             fortran_template.format(line=xd_line, name="xderiv"))
-    yderiv, = f2loopy(
+    yderiv, = lp.parse_fortran(
             fortran_template.format(line=yd_line, name="yderiv"))
-    xyderiv, = f2loopy(
+    xyderiv, = lp.parse_fortran(
             fortran_template.format(
                 line=(xd_line + "\n" + yd_line), name="xyderiv"))
 

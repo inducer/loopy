@@ -67,6 +67,8 @@ from loopy.codegen import generate_code, generate_body
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
+from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
+        parse_fortran)
 
 __all__ = [
         "TaggedVariable", "Reduction", "LinearSubscript",
@@ -107,6 +109,7 @@ __all__ = [
         "Options",
 
         "make_kernel",
+        "c_preprocess", "parse_transformed_fortran", "parse_fortran",
 
         # {{{ from this file
 

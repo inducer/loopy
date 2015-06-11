@@ -1,8 +1,3 @@
-!$loopy begin define
-! define("factor 4.0")
-! define("real_type real*8")
-!$loopy end define
-
 subroutine fill(out, a, n)
   implicit none
 
@@ -17,13 +12,19 @@ subroutine fill(out, a, n)
   end do
 end
 
-!$loopy begin transform
+!$loopy begin
 !
+! SOURCE = lp.c_preprocess(SOURCE, [
+!       "factor 4.0",
+!       "real_type real*8",
+!       ])
+! fill, = lp.parse_fortran(SOURCE, FILENAME)
 ! fill = lp.split_iname(fill, "i", 128,
 !     outer_tag="g.0", inner_tag="l.0")
 ! fill = lp.split_iname(fill, "i_1", 128,
 !     outer_tag="g.0", inner_tag="l.0")
+! RESULT = [fill]
 !
-!$loopy end transform
+!$loopy end
 
 ! vim:filetype=floopy
