@@ -83,7 +83,6 @@ def main():
         else:
             infile_dirname = getcwd()
 
-        import sys
         sys.path.append(infile_dirname)
 
         # }}}
