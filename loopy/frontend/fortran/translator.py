@@ -623,10 +623,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
     # }}}
 
     def make_kernels(self):
-        kernel_names = [
-                sub.subprogram_name
-                for sub in self.kernels]
-
         result = []
 
         for sub in self.kernels:
