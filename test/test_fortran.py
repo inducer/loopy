@@ -412,6 +412,43 @@ def test_fuse_kernels(ctx_factory):
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
 
 
+def test_parse_and_fuse_two_kernels():
+    fortran_src = """
+        subroutine fill(out, a, n)
+          implicit none
+
+          real*8 a, out(n)
+          integer n, i
+
+          do i = 1, n
+            out(i) = a
+          end do
+        end
+
+        subroutine twice(out, n)
+          implicit none
+
+          real*8 out(n)
+          integer n, i
+
+          do i = 1, n
+            out(i) = 2*out(i)
+          end do
+        end
+
+        !$loopy begin
+        !
+        ! fill, twice = lp.parse_fortran(SOURCE)
+        ! knl = lp.fuse_kernels((fill, twice))
+        ! print(knl)
+        ! RESULT = [knl]
+        !
+        !$loopy end
+        """
+
+    knl, = lp.parse_transformed_fortran(fortran_src)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
