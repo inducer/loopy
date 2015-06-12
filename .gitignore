@@ -16,3 +16,4 @@ distribute*tar.gz
 core
 .coverage
 htmlcov
+.ipynb_checkpoints
