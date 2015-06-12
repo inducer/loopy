@@ -372,12 +372,13 @@ def test_fuse_kernels(ctx_factory):
           real*8 result(nelements, ndofs, ndofs)
           real*8 q(nelements, ndofs, ndofs)
           real*8 d(ndofs, ndofs)
+          real*8 prev
 
           do e = 1,nelements
             do i = 1,ndofs
               do j = 1,ndofs
                 do k = 1,ndofs
-                  {line}
+                  {inner}
                 end do
               end do
             end do
@@ -385,19 +386,27 @@ def test_fuse_kernels(ctx_factory):
         end subroutine
         """
 
-    xd_line = "result(e,i,j) = result(e,i,j) + d(i,k)*q(e,i,k)"
-    yd_line = "result(e,i,j) = result(e,i,j) + d(i,k)*q(e,k,j)"
+    xd_line = """
+        prev = result(e,i,j)
+        result(e,i,j) = prev + d(i,k)*q(e,i,k)
+        """
+    yd_line = """
+        prev = result(e,i,j)
+        result(e,i,j) = prev + d(i,k)*q(e,k,j)
+        """
 
     xderiv, = lp.parse_fortran(
-            fortran_template.format(line=xd_line, name="xderiv"))
+            fortran_template.format(inner=xd_line, name="xderiv"))
     yderiv, = lp.parse_fortran(
-            fortran_template.format(line=yd_line, name="yderiv"))
+            fortran_template.format(inner=yd_line, name="yderiv"))
     xyderiv, = lp.parse_fortran(
             fortran_template.format(
-                line=(xd_line + "\n" + yd_line), name="xyderiv"))
+                inner=(xd_line + "\n" + yd_line), name="xyderiv"))
 
     knl = lp.fuse_kernels((xderiv, yderiv))
     knl = lp.set_loop_priority(knl, "e,i,j,k")
+
+    assert len(knl.temporary_variables) == 2
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
