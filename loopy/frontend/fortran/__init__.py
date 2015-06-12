@@ -219,6 +219,10 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True)
     tree = api.parse(source, isfree=free_form, isstrict=strict,
             analyze=False, ignore_comments=False)
 
+    if tree is None:
+        raise LoopyError("Fortran parser was unhappy with source code "
+                "and returned invalid data (Sorry!)")
+
     from loopy.frontend.fortran.translator import F2LoopyTranslator
     f2loopy = F2LoopyTranslator(filename)
     f2loopy(tree)
