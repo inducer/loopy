@@ -131,7 +131,8 @@ def main():
                         + pre_transform_code)
 
         kernels = lp.parse_transformed_fortran(
-                infile_content, pre_transform_code=pre_transform_code)
+                infile_content, pre_transform_code=pre_transform_code,
+                filename=args.infile)
 
         if args.name is not None:
             kernels = [kernel for kernel in kernels
