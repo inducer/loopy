@@ -15,7 +15,7 @@ class LoopyMagics(Magics):
             self.shell.user_ns[knl.name] = knl
 
     @cell_magic
-    def tfortran_kernel(self, line, cell):
+    def transformed_fortran_kernel(self, line, cell):
         result = lp.parse_transformed_fortran(
                 cell.encode(),
                 transform_code_context=self.shell.user_ns)
