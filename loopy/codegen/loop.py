@@ -329,10 +329,10 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
 
         static_lbound = static_min_of_pw_aff(
                 lbound,
-                constants_only=False, prefer_constants=False)
+                constants_only=False)
         static_ubound = static_max_of_pw_aff(
                 ubound,
-                constants_only=False, prefer_constants=False)
+                constants_only=False)
 
         # }}}
 
