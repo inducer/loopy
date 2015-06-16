@@ -22,8 +22,12 @@ import a few modules and set up a :class:`pyopencl.Context` and a
     >>> import pyopencl as cl
     >>> import pyopencl.array
     >>> import pyopencl.clrandom
+
     >>> import loopy as lp
-    >>> from pytools import StderrToStdout as IncludeWarningsInDoctest
+    >>> lp.set_caching_enabled(False)
+
+    >>> from warnings import filterwarnings, catch_warnings
+    >>> filterwarnings('error', category=lp.LoopyWarning)
 
     >>> ctx = cl.create_some_context(interactive=False)
     >>> queue = cl.CommandQueue(ctx)
@@ -97,9 +101,9 @@ always see loopy's view of a kernel by printing it.
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
     ARGUMENTS:
-    a: GlobalArg, type: <runtime>, shape: (n), dim_tags: (stride:1)
+    a: GlobalArg, type: <runtime>, shape: (n), dim_tags: (N0:stride:1)
     n: ValueArg, type: <runtime>
-    out: GlobalArg, type: <runtime>, shape: (n), dim_tags: (stride:1)
+    out: GlobalArg, type: <runtime>, shape: (n), dim_tags: (N0:stride:1)
     ---------------------------------------------------------------------------
     DOMAINS:
     [n] -> { [i] : i >= 0 and i <= -1 + n }
@@ -168,14 +172,13 @@ by passing :attr:`loopy.Options.write_cl`.
 
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
     <BLANKLINE>
-      for (int i = 0; i <= (-1 + n); ++i)
+      for (int i = 0; i <= -1 + n; ++i)
         out[i] = 2.0f * a[i];
     }
 
@@ -246,14 +249,13 @@ call :func:`loopy.generate_code`:
     >>> typed_knl = lp.get_one_scheduled_kernel(typed_knl)
     >>> code, _ = lp.generate_code(typed_knl)
     >>> print code
-    <BLANKLINE>
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
     <BLANKLINE>
-      for (int i = 0; i <= (-1 + n); ++i)
+      for (int i = 0; i <= -1 + n; ++i)
         out[i] = 2.0f * a[i];
     }
 
@@ -361,16 +363,16 @@ Let us take a look at the generated code for the above kernel:
 .. doctest::
 
     >>> knl = lp.set_options(knl, "write_cl")
+    >>> knl = lp.set_loop_priority(knl, "i,j")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
-    <BLANKLINE>
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
     <BLANKLINE>
-      for (int i = 0; i <= (-1 + n); ++i)
-        for (int j = 0; j <= (-1 + n); ++j)
+      for (int i = 0; i <= -1 + n; ++i)
+        for (int j = 0; j <= -1 + n; ++j)
         {
           out[n * j + i] = a[n * i + j];
           out[n * i + j] = 2.0f * out[n * i + j];
@@ -382,10 +384,8 @@ still not right:
 
 .. doctest::
 
-    >>> assert (out.get() == a_mat_dev.get().T*2).all()
-    Traceback (most recent call last):
-    ...
-    AssertionError
+    >>> print((out.get() == a_mat_dev.get().T*2).all())
+    False
 
 For the kernel to perform the desired computation, *all
 instances* (loop iterations) of the first instruction need to be completed,
@@ -406,6 +406,7 @@ with identical bounds, for the use of the transpose:
     ...     out[j,i] = a[i,j] {id=transpose}
     ...     out[ii,jj] = 2*out[ii,jj]  {dep=transpose}
     ...     """)
+    >>> knl = lp.set_loop_priority(knl, "i,j,ii,jj")
 
 :func:`loopy.duplicate_inames` can be used to achieve the same goal.
 Now the intended code is generated and our test passes.
@@ -414,18 +415,17 @@ Now the intended code is generated and our test passes.
 
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
-    <BLANKLINE>
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
     <BLANKLINE>
-      for (int i = 0; i <= (-1 + n); ++i)
-        for (int j = 0; j <= (-1 + n); ++j)
+      for (int i = 0; i <= -1 + n; ++i)
+        for (int j = 0; j <= -1 + n; ++j)
           out[n * j + i] = a[n * i + j];
-      for (int ii = 0; ii <= (-1 + n); ++ii)
-        for (int jj = 0; jj <= (-1 + n); ++jj)
+      for (int ii = 0; ii <= -1 + n; ++ii)
+        for (int jj = 0; jj <= -1 + n; ++jj)
           out[n * ii + jj] = 2.0f * out[n * ii + jj];
     }
     >>> assert (out.get() == a_mat_dev.get().T*2).all()
@@ -443,6 +443,10 @@ control is the nesting of loops. For example, should the *i* loop be nested
 around the *j* loop, or the other way around, in the following simple
 zero-fill kernel?
 
+It turns out that Loopy will typically choose a loop nesting for us, but it
+does not like doing so. In this tutorial (where we've turned Loopy's warnings
+into errors), we are told what is wrong in no uncertain terms::
+
 .. doctest::
 
     >>> knl = lp.make_kernel(
@@ -453,18 +457,9 @@ zero-fill kernel?
 
 
     >>> knl = lp.set_options(knl, "write_cl")
-    >>> with IncludeWarningsInDoctest():
-    ...     evt, (out,) = knl(queue, a=a_mat_dev)
-    <BLANKLINE>
+    >>> evt, (out,) = knl(queue, a=a_mat_dev)
+    Traceback (most recent call last):
     ...
-      for (int i = 0; i <= (-1 + n); ++i)
-        for (int j = 0; j <= (-1 + n); ++j)
-          a[n * i + j] = 0.0f;
-    ...
-
-Loopy has chosen a loop nesting for us, but it did not like doing so, as it
-also issued the following warning::
-
     LoopyWarning: kernel scheduling was ambiguous--more than one schedule found, ignoring
 
 This is easily resolved:
@@ -481,12 +476,11 @@ ambiguous.
 
 .. doctest::
 
-    >>> with IncludeWarningsInDoctest():
-    ...     evt, (out,) = knl(queue, a=a_mat_dev)
-    <BLANKLINE>
+    >>> evt, (out,) = knl(queue, a=a_mat_dev)
+    #define lid(N) ((int) get_local_id(N))
     ...
-      for (int j = 0; j <= (-1 + n); ++j)
-        for (int i = 0; i <= (-1 + n); ++i)
+      for (int j = 0; j <= -1 + n; ++j)
+        for (int i = 0; i <= -1 + n; ++i)
           a[n * i + j] = 0.0f;
     ...
 
@@ -536,15 +530,16 @@ Consider this example:
 
     >>> knl = lp.make_kernel(
     ...     "{ [i]: 0<=i<n }",
-    ...     "a[i] = 0", assumptions="n>=0")
+    ...     "a[i] = 0", assumptions="n>=1")
     >>> knl = lp.split_iname(knl, "i", 16)
+    >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_outer = 0; i_outer <= (-1 + ((15 + n) / 16)); ++i_outer)
+      for (int i_outer = 0; i_outer <= -1 + ((15 + n) / 16); ++i_outer)
         for (int i_inner = 0; i_inner <= 15; ++i_inner)
-          if ((-1 + -1 * i_inner + -16 * i_outer + n) >= 0)
+          if (-1 + -1 * i_inner + -16 * i_outer + n >= 0)
             a[i_inner + i_outer * 16] = 0.0f;
     ...
 
@@ -567,12 +562,11 @@ relation to loop nesting. For example, it's perfectly possible to request
 
     >>> knl = lp.set_loop_priority(knl, "i_inner,i_outer")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
       for (int i_inner = 0; i_inner <= 15; ++i_inner)
-        if ((-1 + n) >= 0)
-          for (int i_outer = 0; i_outer <= (-1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16)); ++i_outer)
-            a[i_inner + i_outer * 16] = 0.0f;
+        for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
+          a[i_inner + i_outer * 16] = 0.0f;
     ...
 
 Notice how loopy has automatically generated guard conditionals to make
@@ -593,10 +587,10 @@ commonly called 'loop tiling':
     >>> knl = lp.set_loop_priority(knl, "i_outer,j_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_outer = 0; i_outer <= (-1 + ((15 + n) / 16)); ++i_outer)
-        for (int j_outer = 0; j_outer <= (-1 + ((15 + n) / 16)); ++j_outer)
+      for (int i_outer = 0; i_outer <= ((-16 + n) / 16); ++i_outer)
+        for (int j_outer = 0; j_outer <= ((-16 + n) / 16); ++j_outer)
           for (int i_inner = 0; i_inner <= 15; ++i_inner)
             for (int j_inner = 0; j_inner <= 15; ++j_inner)
               out[n * (i_inner + i_outer * 16) + j_inner + j_outer * 16] = a[n * (j_inner + j_outer * 16) + i_inner + i_outer * 16];
@@ -632,11 +626,13 @@ loop's tag to ``"unr"``:
     >>> orig_knl = knl
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
+    >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define int_floor_div_pos_b(a,b) (                 ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b)                 )
+    #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
+      for (int i_outer = 0; i_outer <= int_floor_div_pos_b(-4 + n, 4); ++i_outer)
       {
         a[0 + i_outer * 4] = 0.0f;
         a[1 + i_outer * 4] = 0.0f;
@@ -708,12 +704,12 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     ...         outer_tag="g.0", inner_tag="l.0")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
     __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *restrict a, int const n)
     {
     <BLANKLINE>
-      if ((-1 + -128 * gid(0) + -1 * lid(0) + n) >= 0)
+      if (-1 + -128 * gid(0) + -1 * lid(0) + n >= 0)
         a[lid(0) + gid(0) * 128] = 0.0f;
     }
 
@@ -752,18 +748,19 @@ assumption:
     >>> orig_knl = knl
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
+    >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
-      for (int i_outer = 0; i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
+      for (int i_outer = 0; i_outer <= -1 + ((3 + n) / 4); ++i_outer)
       {
         a[0 + i_outer * 4] = 0.0f;
-        if ((-2 + -4 * i_outer + n) >= 0)
+        if (-2 + -4 * i_outer + n >= 0)
           a[1 + i_outer * 4] = 0.0f;
-        if ((-3 + -4 * i_outer + n) >= 0)
+        if (-3 + -4 * i_outer + n >= 0)
           a[2 + i_outer * 4] = 0.0f;
-        if ((-4 + -4 * i_outer + n) >= 0)
+        if (-4 + -4 * i_outer + n >= 0)
           a[3 + i_outer * 4] = 0.0f;
       }
     ...
@@ -781,11 +778,12 @@ enabling some cost savings:
     >>> knl = orig_knl
     >>> knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr")
     >>> knl = lp.set_options(knl, "write_cl")
+    >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
       /* bulk slab for 'i_outer' */
-      for (int i_outer = 0; i_outer <= (-2 + ((3 + n) / 4)); ++i_outer)
+      for (int i_outer = 0; i_outer <= -2 + ((3 + n) / 4); ++i_outer)
       {
         a[0 + i_outer * 4] = 0.0f;
         a[1 + i_outer * 4] = 0.0f;
@@ -793,15 +791,15 @@ enabling some cost savings:
         a[3 + i_outer * 4] = 0.0f;
       }
       /* final slab for 'i_outer' */
-      for (int i_outer = (-1 + n + -1 * (3 * n / 4)); i_outer <= (-1 + ((3 + n) / 4)); ++i_outer)
-        if ((-1 + n) >= 0)
+      for (int i_outer = -1 + n + -1 * (3 * n / 4); i_outer <= -1 + ((3 + n) / 4); ++i_outer)
+        if (-1 + n >= 0)
         {
           a[0 + i_outer * 4] = 0.0f;
-          if ((-2 + -4 * i_outer + n) >= 0)
+          if (-2 + -4 * i_outer + n >= 0)
             a[1 + i_outer * 4] = 0.0f;
-          if ((-3 + -4 * i_outer + n) >= 0)
+          if (-3 + -4 * i_outer + n >= 0)
             a[2 + i_outer * 4] = 0.0f;
-          if ((4 + 4 * i_outer + -1 * n) == 0)
+          if (4 + 4 * i_outer + -1 * n == 0)
             a[3 + i_outer * 4] = 0.0f;
         }
     ...
@@ -871,12 +869,12 @@ memory, local to each work item.
 
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out1, out2) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
     {
       float a_temp;
     <BLANKLINE>
-      for (int i = 0; i <= (-1 + n); ++i)
+      for (int i = 0; i <= -1 + n; ++i)
       {
         a_temp = sin(a[i]);
         out2[i] = sqrt(1.0f + -1.0f * a_temp * a_temp);
@@ -929,19 +927,19 @@ Consider the following example:
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
     {
       __local float a_temp[16];
       float acc_k;
     <BLANKLINE>
-      if ((-1 + -16 * gid(0) + -1 * lid(0) + n) >= 0)
+      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
         a_temp[lid(0)] = a[16 * gid(0) + lid(0)];
         acc_k = 0.0f;
       }
       barrier(CLK_LOCAL_MEM_FENCE) /* for a_temp (insn_0_k_update depends on insn) */;
-      if ((-1 + -16 * gid(0) + -1 * lid(0) + n) >= 0)
+      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
         for (int k = 0; k <= 15; ++k)
           acc_k = acc_k + a_temp[k];
@@ -992,7 +990,7 @@ transformation exists in :func:`loopy.add_prefetch`:
     >>> knl = lp.set_options(knl, "write_cl")
     >>> knl_pf = lp.add_prefetch(knl, "a")
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
         a_fetch_0 = a[16 * gid(0) + lid(0)];
         for (int k = 0; k <= 15; ++k)
@@ -1015,12 +1013,12 @@ earlier:
 
     >>> knl_pf = lp.add_prefetch(knl, "a", ["i_inner"])
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
-    <BLANKLINE>
+    #define lid(N) ((int) get_local_id(N))
     ...
-      if ((-1 + -16 * gid(0) + -1 * lid(0) + n) >= 0)
+      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
         a_fetch_0[lid(0)] = a[lid(0) + 16 * gid(0)];
       barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch_0 (insn_k_update depends on a_fetch) */;
-      if ((-1 + -16 * gid(0) + -1 * lid(0) + n) >= 0)
+      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
         for (int k = 0; k <= 15; ++k)
           acc_k = acc_k + a_fetch_0[lid(0)];
@@ -1145,18 +1143,20 @@ sign that something is amiss:
 
 .. doctest::
 
-    >>> with IncludeWarningsInDoctest():
-    ...     evt, (out,) = knl(queue, a=a_mat_dev)
-    /...: WriteRaceConditionWarning: instruction 'a_fetch' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch_0' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch)' to silenced_warnings kernel argument to disable)
-      warn(text, type)
+    >>> evt, (out,) = knl(queue, a=a_mat_dev)
+    Traceback (most recent call last):
+    ...
+    WriteRaceConditionWarning: instruction 'a_fetch' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch_0' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch)' to silenced_warnings kernel argument to disable)
 
 When we ask to see the code, the issue becomes apparent:
 
 .. doctest::
 
     >>> knl = lp.set_options(knl, "write_cl")
-    >>> evt, (out,) = knl(queue, a=a_mat_dev)
-    <BLANKLINE>
+    >>> from warnings import catch_warnings
+    >>> with catch_warnings():
+    ...     filterwarnings("always", category=lp.LoopyWarning)
+    ...     evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
