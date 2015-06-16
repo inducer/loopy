@@ -37,11 +37,11 @@ class LoopyAdvisory(LoopyWarningBase):
     pass
 
 
-class ParameterFinderWarning(LoopyWarningBase):
+class ParameterFinderWarning(LoopyWarning):
     pass
 
 
-class WriteRaceConditionWarning(LoopyWarningBase):
+class WriteRaceConditionWarning(LoopyWarning):
     pass
 
 # }}}

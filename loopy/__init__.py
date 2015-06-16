@@ -32,7 +32,7 @@ from islpy import dim_type
 from loopy.symbolic import (RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext,
         TaggedVariable, Reduction, LinearSubscript, )
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, LoopyWarning
 
 
 # {{{ imported user interface
@@ -110,6 +110,8 @@ __all__ = [
 
         "make_kernel",
         "c_preprocess", "parse_transformed_fortran", "parse_fortran",
+
+        "LoopyError", "LoopyWarning",
 
         # {{{ from this file
 
