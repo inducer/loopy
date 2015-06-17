@@ -334,7 +334,15 @@ function, which is responsible for creating kernels:
 
 .. autofunction:: make_kernel
 
+.. autofunction:: parse_fortran
+
+.. autofunction:: parse_transformed_fortran
+
 .. autofunction:: make_copy_kernel
+
+.. autofunction:: fuse_kernels
+
+.. autofunction:: c_preprocess
 
 Transforming Kernels
 --------------------
@@ -428,6 +436,8 @@ Manipulating Instructions
 .. autofunction:: add_dependency
 
 .. autofunction:: remove_instructions
+
+.. autofunction:: tag_instructions
 
 Library interface
 ^^^^^^^^^^^^^^^^^

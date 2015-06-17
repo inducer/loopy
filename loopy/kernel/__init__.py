@@ -1,10 +1,6 @@
 """Kernel object."""
 
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -28,6 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+from six.moves import range, zip
 
 import numpy as np
 from pytools import RecordWithoutPickling, Record, memoize_method

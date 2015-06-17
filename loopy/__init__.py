@@ -1,8 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -27,13 +23,16 @@ THE SOFTWARE.
 """
 
 
+import six
+from six.moves import range, zip
+
 import islpy as isl
 from islpy import dim_type
 
 from loopy.symbolic import (RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext,
         TaggedVariable, Reduction, LinearSubscript, )
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, LoopyWarning
 
 
 # {{{ imported user interface
@@ -58,6 +57,7 @@ from loopy.library.reduction import register_reduction_parser
 from loopy.subst import extract_subst, expand_subst, temporary_to_subst
 from loopy.precompute import precompute
 from loopy.buffer import buffer_array
+from loopy.fusion import fuse_kernels
 from loopy.padding import (split_arg_axis, find_padding_multiple,
         add_padding)
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
@@ -67,6 +67,8 @@ from loopy.codegen import generate_code, generate_body
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
+from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
+        parse_fortran)
 
 __all__ = [
         "TaggedVariable", "Reduction", "LinearSubscript",
@@ -88,6 +90,7 @@ __all__ = [
 
         "extract_subst", "expand_subst", "temporary_to_subst",
         "precompute", "buffer_array",
+        "fuse_kernels",
         "split_arg_axis", "find_padding_multiple", "add_padding",
 
         "get_dot_dependency_graph",
@@ -106,6 +109,9 @@ __all__ = [
         "Options",
 
         "make_kernel",
+        "c_preprocess", "parse_transformed_fortran", "parse_fortran",
+
+        "LoopyError", "LoopyWarning",
 
         # {{{ from this file
 
@@ -539,7 +545,7 @@ class _InameDuplicator(RuleAwareIdentityMapper):
             return var(new_name)
 
     def map_instruction(self, insn):
-        if not self.within(((insn.id, None),)):
+        if not self.within(((insn.id, insn.tags),)):
             return insn
 
         new_fid = frozenset(
@@ -1458,7 +1464,8 @@ def register_function_manglers(kernel, manglers):
 
 # {{{ cache control
 
-CACHING_ENABLED = True
+import os
+CACHING_ENABLED = "LOOPY_NO_CACHE" not in os.environ
 
 
 def set_caching_enabled(flag):
@@ -1778,6 +1785,25 @@ def fold_constants(kernel):
     return kernel.copy(
             instructions=new_insns,
             substitutions=new_substs)
+
+# }}}
+
+
+# {{{ tag_instructions
+
+def tag_instructions(kernel, new_tag, within=None):
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if within(((insn.id, insn.tags),)):
+            new_insns.append(
+                    insn.copy(tags=insn.tags + (new_tag,)))
+        else:
+            new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
 
 # }}}
 

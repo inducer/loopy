@@ -51,23 +51,27 @@ def test_fill(ctx_factory):
           implicit none
 
           real*8 a, out(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             out(i) = a
           end do
         end
 
-        !$loopy begin transform
+        !$loopy begin
         !
-        ! fill = lp.split_iname(fill, "i", 128,
+        ! fill, = lp.parse_fortran(SOURCE)
+        ! fill = lp.split_iname(fill, "i", split_amount,
         !     outer_tag="g.0", inner_tag="l.0")
+        ! RESULT = [fill]
         !
-        !$loopy end transform
+        !$loopy end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_transformed_fortran(fortran_src,
+            pre_transform_code="split_amount = 128")
+
+    assert "i_inner" in knl.all_inames()
 
     ctx = ctx_factory()
 
@@ -80,7 +84,7 @@ def test_fill_const(ctx_factory):
           implicit none
 
           real*8 a, out(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             out(i) = 3.45
@@ -88,8 +92,7 @@ def test_fill_const(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ctx = ctx_factory()
 
@@ -102,7 +105,7 @@ def test_asterisk_in_shape(ctx_factory):
           implicit none
 
           real*8 a, out(n), out2(n), inp(*)
-          integer n
+          integer n, i
 
           do i = 1, n
             a = inp(n)
@@ -112,8 +115,7 @@ def test_asterisk_in_shape(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -127,7 +129,7 @@ def test_temporary_to_subst(ctx_factory):
           implicit none
 
           real*8 a, out(n), out2(n), inp(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             a = inp(i)
@@ -137,8 +139,7 @@ def test_temporary_to_subst(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -154,7 +155,7 @@ def test_temporary_to_subst_two_defs(ctx_factory):
           implicit none
 
           real*8 a, out(n), out2(n), inp(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             a = inp(i)
@@ -165,8 +166,7 @@ def test_temporary_to_subst_two_defs(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -182,7 +182,7 @@ def test_temporary_to_subst_indices(ctx_factory):
           implicit none
 
           real*8 a(n), out(n), out2(n), inp(n)
-          integer n
+          integer n, i
 
           do i = 1, n
             a(i) = 6*inp(i)
@@ -194,8 +194,7 @@ def test_temporary_to_subst_indices(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     knl = lp.fix_parameters(knl, n=5)
 
@@ -215,7 +214,7 @@ def test_if(ctx_factory):
           implicit none
 
           real*8 a, b, out(n), out2(n), inp(n)
-          integer n
+          integer n, i, j
 
           do i = 1, n
             a = inp(i)
@@ -232,8 +231,7 @@ def test_if(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     ref_knl = knl
 
@@ -249,7 +247,7 @@ def test_tagged(ctx_factory):
           implicit none
           real*8 a, b, r, out(n), out2(n), inp(n), inp2(n)
           real*8 alpha
-          integer n
+          integer n, i
 
           do i = 1, n
             !$loopy begin tagged: input
@@ -267,8 +265,7 @@ def test_tagged(ctx_factory):
         end
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     assert sum(1 for insn in lp.find_instructions(knl, "*$input")) == 2
 
@@ -294,8 +291,7 @@ def test_matmul(ctx_factory, buffer_inames):
         end subroutine
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     assert len(knl.domains) == 1
 
@@ -321,12 +317,6 @@ def test_matmul(ctx_factory, buffer_inames):
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, l=128))
 
-    # # FIXME: Make r/w tests possible, reactivate the above
-    # knl = lp.preprocess_kernel(knl)
-    # for k in lp.generate_loop_schedules(knl):
-    #     code, _ = lp.generate_code(k)
-    #     print(code)
-
 
 @pytest.mark.xfail
 def test_batched_sparse():
@@ -339,6 +329,7 @@ def test_batched_sparse():
           real*8 x(n, nvecs), y(n, nvecs), rowsum(nvecs)
 
           integer m, n, rowstart, rowend, length, nvals, nvecs
+          integer i, j, k
 
           do i = 1, m
             rowstart = rowstarts(i)
@@ -362,8 +353,7 @@ def test_batched_sparse():
 
         """
 
-    from loopy.frontend.fortran import f2loopy
-    knl, = f2loopy(fortran_src)
+    knl, = lp.parse_fortran(fortran_src)
 
     knl = lp.split_iname(knl, "i", 128)
     knl = lp.tag_inames(knl, {"i_outer": "g.0"})
@@ -371,6 +361,92 @@ def test_batched_sparse():
     knl = lp.add_prefetch(knl, "values")
     knl = lp.add_prefetch(knl, "colindices")
     knl = lp.fix_parameters(knl, nvecs=4)
+
+
+def test_fuse_kernels(ctx_factory):
+    fortran_template = """
+        subroutine {name}(nelements, ndofs, result, d, q)
+          implicit none
+          integer e, i, j, k
+          integer nelements, ndofs
+          real*8 result(nelements, ndofs, ndofs)
+          real*8 q(nelements, ndofs, ndofs)
+          real*8 d(ndofs, ndofs)
+          real*8 prev
+
+          do e = 1,nelements
+            do i = 1,ndofs
+              do j = 1,ndofs
+                do k = 1,ndofs
+                  {inner}
+                end do
+              end do
+            end do
+          end do
+        end subroutine
+        """
+
+    xd_line = """
+        prev = result(e,i,j)
+        result(e,i,j) = prev + d(i,k)*q(e,i,k)
+        """
+    yd_line = """
+        prev = result(e,i,j)
+        result(e,i,j) = prev + d(i,k)*q(e,k,j)
+        """
+
+    xderiv, = lp.parse_fortran(
+            fortran_template.format(inner=xd_line, name="xderiv"))
+    yderiv, = lp.parse_fortran(
+            fortran_template.format(inner=yd_line, name="yderiv"))
+    xyderiv, = lp.parse_fortran(
+            fortran_template.format(
+                inner=(xd_line + "\n" + yd_line), name="xyderiv"))
+
+    knl = lp.fuse_kernels((xderiv, yderiv))
+    knl = lp.set_loop_priority(knl, "e,i,j,k")
+
+    assert len(knl.temporary_variables) == 2
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
+
+
+def test_parse_and_fuse_two_kernels():
+    fortran_src = """
+        subroutine fill(out, a, n)
+          implicit none
+
+          real*8 a, out(n)
+          integer n, i
+
+          do i = 1, n
+            out(i) = a
+          end do
+        end
+
+        subroutine twice(out, n)
+          implicit none
+
+          real*8 out(n)
+          integer n, i
+
+          do i = 1, n
+            out(i) = 2*out(i)
+          end do
+        end
+
+        !$loopy begin
+        !
+        ! fill, twice = lp.parse_fortran(SOURCE)
+        ! knl = lp.fuse_kernels((fill, twice))
+        ! print(knl)
+        ! RESULT = [knl]
+        !
+        !$loopy end
+        """
+
+    knl, = lp.parse_transformed_fortran(fortran_src)
 
 
 if __name__ == "__main__":

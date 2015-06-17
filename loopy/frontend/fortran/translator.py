@@ -35,6 +35,7 @@ from loopy.frontend.fortran.diagnostic import (
 import islpy as isl
 from islpy import dim_type
 from loopy.symbolic import IdentityMapper
+from loopy.diagnostic import LoopyError
 from pymbolic.primitives import Wildcard
 
 
@@ -193,24 +194,6 @@ class Scope(object):
 # }}}
 
 
-def remove_common_indentation(lines):
-    while lines and lines[0].strip() == "":
-        lines.pop(0)
-    while lines and lines[-1].strip() == "":
-        lines.pop(-1)
-
-    if lines:
-        base_indent = 0
-        while lines[0][base_indent] in " \t":
-            base_indent += 1
-
-        for line in lines[1:]:
-            if line[:base_indent].strip():
-                raise ValueError("inconsistent indentation")
-
-    return "\n".join(line[base_indent:] for line in lines)
-
-
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
@@ -225,16 +208,14 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.kernels = []
 
-        # Flag to record whether 'loopy begin transform' comment
-        # has been seen.
-        self.in_transform_code = False
-
         self.instruction_tags = []
         self.conditions = []
 
-        self.transform_code_lines = []
-
         self.filename = filename
+
+        self.index_dtype = None
+
+        self.block_nest = []
 
     def add_expression_instruction(self, lhs, rhs):
         scope = self.scope_stack[-1]
@@ -276,6 +257,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         scope = Scope(node.name, list(node.args))
         self.scope_stack.append(scope)
 
+        self.block_nest.append("sub")
         for c in node.content:
             self.rec(c)
 
@@ -284,6 +266,11 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.kernels.append(scope)
 
     def map_EndSubroutine(self, node):
+        if not self.block_nest:
+            raise TranslationError("no subroutine started at this point")
+        if self.block_nest.pop() != "sub":
+            raise TranslationError("mismatched end subroutine")
+
         return []
 
     def map_Implicit(self, node):
@@ -471,6 +458,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.conditions.append(cond_name)
 
+        self.block_nest.append("if")
         for c in node.content:
             self.rec(c)
 
@@ -479,100 +467,119 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.conditions.append("!" + cond_name)
 
     def map_EndIfThen(self, node):
+        if not self.block_nest:
+            raise TranslationError("no if block started at end do")
+        if self.block_nest.pop() != "if":
+            raise TranslationError("mismatched end if")
+
         self.conditions.pop()
 
     def map_Do(self, node):
         scope = self.scope_stack[-1]
 
-        if node.loopcontrol:
-            loop_var, loop_bounds = node.loopcontrol.split("=")
-            loop_var = loop_var.strip()
-            scope.use_name(loop_var)
-            loop_bounds = self.parse_expr(
-                    node,
-                    loop_bounds, min_precedence=self.expr_parser._PREC_FUNC_ARGS)
-
-            if len(loop_bounds) == 2:
-                start, stop = loop_bounds
-                step = 1
-            elif len(loop_bounds) == 3:
-                start, stop, step = loop_bounds
-            else:
-                raise RuntimeError("loop bounds not understood: %s"
-                        % node.loopcontrol)
-
-            if step != 1:
-                raise NotImplementedError(
-                        "do loops with non-unit stride")
-
-            if not isinstance(step, int):
-                raise TranslationError(
-                        "non-constant steps not supported: %s" % step)
-
-            from loopy.symbolic import get_dependencies
-            loop_bound_deps = (
-                    get_dependencies(start)
-                    | get_dependencies(stop)
-                    | get_dependencies(step))
-
-            # {{{ find a usable loopy-side loop name
-
-            loopy_loop_var = loop_var
-            loop_var_suffix = None
-            while True:
-                already_used = False
-                for iset in scope.index_sets:
-                    if loopy_loop_var in iset.get_var_dict(dim_type.set):
-                        already_used = True
-                        break
-
-                if not already_used:
-                    break
-
-                if loop_var_suffix is None:
-                    loop_var_suffix = 0
-
-                loop_var_suffix += 1
-                loopy_loop_var = loop_var + "_%d" % loop_var_suffix
-
-            # }}}
-
-            space = isl.Space.create_from_names(self.isl_context,
-                    set=[loopy_loop_var], params=list(loop_bound_deps))
-
-            from loopy.isl_helpers import iname_rel_aff
-            from loopy.symbolic import aff_from_expr
-            index_set = (
-                    isl.BasicSet.universe(space)
-                    .add_constraint(
-                        isl.Constraint.inequality_from_aff(
-                            iname_rel_aff(space,
-                                loopy_loop_var, ">=",
-                                aff_from_expr(space, 0))))
-                    .add_constraint(
-                        isl.Constraint.inequality_from_aff(
-                            iname_rel_aff(space,
-                                loopy_loop_var, "<=",
-                                aff_from_expr(space, stop-start)))))
-
-            from pymbolic import var
-            scope.active_iname_aliases[loop_var] = \
-                    var(loopy_loop_var) + start
-            scope.active_loopy_inames.add(loopy_loop_var)
-
-            scope.index_sets.append(index_set)
-
-            for c in node.content:
-                self.rec(c)
-
-            del scope.active_iname_aliases[loop_var]
-            scope.active_loopy_inames.remove(loopy_loop_var)
-
-        else:
+        if not node.loopcontrol:
             raise NotImplementedError("unbounded do loop")
 
+        loop_var, loop_bounds = node.loopcontrol.split("=")
+        loop_var = loop_var.strip()
+
+        iname_dtype = scope.get_type(loop_var)
+        if self.index_dtype is None:
+            self.index_dtype = iname_dtype
+        else:
+            if self.index_dtype != iname_dtype:
+                raise LoopyError("type of '%s' (%s) does not agree with prior "
+                        "index type (%s)"
+                        % (loop_var, iname_dtype, self.index_dtype))
+
+        scope.use_name(loop_var)
+        loop_bounds = self.parse_expr(
+                node,
+                loop_bounds, min_precedence=self.expr_parser._PREC_FUNC_ARGS)
+
+        if len(loop_bounds) == 2:
+            start, stop = loop_bounds
+            step = 1
+        elif len(loop_bounds) == 3:
+            start, stop, step = loop_bounds
+        else:
+            raise RuntimeError("loop bounds not understood: %s"
+                    % node.loopcontrol)
+
+        if step != 1:
+            raise NotImplementedError(
+                    "do loops with non-unit stride")
+
+        if not isinstance(step, int):
+            raise TranslationError(
+                    "non-constant steps not supported: %s" % step)
+
+        from loopy.symbolic import get_dependencies
+        loop_bound_deps = (
+                get_dependencies(start)
+                | get_dependencies(stop)
+                | get_dependencies(step))
+
+        # {{{ find a usable loopy-side loop name
+
+        loopy_loop_var = loop_var
+        loop_var_suffix = None
+        while True:
+            already_used = False
+            for iset in scope.index_sets:
+                if loopy_loop_var in iset.get_var_dict(dim_type.set):
+                    already_used = True
+                    break
+
+            if not already_used:
+                break
+
+            if loop_var_suffix is None:
+                loop_var_suffix = 0
+
+            loop_var_suffix += 1
+            loopy_loop_var = loop_var + "_%d" % loop_var_suffix
+
+        # }}}
+
+        space = isl.Space.create_from_names(self.isl_context,
+                set=[loopy_loop_var], params=list(loop_bound_deps))
+
+        from loopy.isl_helpers import iname_rel_aff
+        from loopy.symbolic import aff_from_expr
+        index_set = (
+                isl.BasicSet.universe(space)
+                .add_constraint(
+                    isl.Constraint.inequality_from_aff(
+                        iname_rel_aff(space,
+                            loopy_loop_var, ">=",
+                            aff_from_expr(space, 0))))
+                .add_constraint(
+                    isl.Constraint.inequality_from_aff(
+                        iname_rel_aff(space,
+                            loopy_loop_var, "<=",
+                            aff_from_expr(space, stop-start)))))
+
+        from pymbolic import var
+        scope.active_iname_aliases[loop_var] = \
+                var(loopy_loop_var) + start
+        scope.active_loopy_inames.add(loopy_loop_var)
+
+        scope.index_sets.append(index_set)
+
+        self.block_nest.append("do")
+
+        for c in node.content:
+            self.rec(c)
+
+        del scope.active_iname_aliases[loop_var]
+        scope.active_loopy_inames.remove(loopy_loop_var)
+
     def map_EndDo(self, node):
-        pass
+        if not self.block_nest:
+            raise TranslationError("no do loop started at end do")
+        if self.block_nest.pop() != "do":
+            raise TranslationError("mismatched end do")
 
     def map_Continue(self, node):
         raise NotImplementedError("continue")
@@ -593,17 +600,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         faulty_loopy_pragma_match = self.faulty_loopy_pragma.match(
                 stripped_comment_line)
 
-        if stripped_comment_line == "$loopy begin transform":
-            if self.in_transform_code:
-                raise TranslationError("can't enter transform code twice")
-            self.in_transform_code = True
-
-        elif stripped_comment_line == "$loopy end transform":
-            if not self.in_transform_code:
-                raise TranslationError("can't leave transform code twice")
-            self.in_transform_code = False
-
-        elif begin_tag_match:
+        if begin_tag_match:
             tag = begin_tag_match.group(1)
             if tag in self.instruction_tags:
                 raise TranslationError("nested begin tag for tag '%s'" % tag)
@@ -616,9 +613,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
                         "end tag without begin tag for tag '%s'" % tag)
             self.instruction_tags.remove(tag)
 
-        elif self.in_transform_code:
-            self.transform_code_lines.append(node.content)
-
         elif faulty_loopy_pragma_match is not None:
             from warnings import warn
             warn("The comment line '%s' was not recognized as a loopy directive"
@@ -628,18 +622,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
     # }}}
 
-    def make_kernels(self, pre_transform_code=None, pre_transform_code_context=None):
-        kernel_names = [
-                sub.subprogram_name
-                for sub in self.kernels]
-
-        if pre_transform_code_context is None:
-            proc_dict = {}
-        else:
-            proc_dict = pre_transform_code_context.copy()
-
-        proc_dict["lp"] = lp
-        proc_dict["np"] = np
+    def make_kernels(self):
+        result = []
 
         for sub in self.kernels:
             # {{{ figure out arguments
@@ -685,28 +669,17 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     sub.instructions,
                     kernel_data,
                     name=sub.subprogram_name,
-                    default_order="F"
+                    default_order="F",
+                    index_dtype=self.index_dtype,
                     )
 
             from loopy.loop import fuse_loop_domains
             knl = fuse_loop_domains(knl)
+            knl = lp.fold_constants(knl)
 
-            proc_dict[sub.subprogram_name] = lp.fold_constants(knl)
+            result.append(knl)
 
-        transform_code = remove_common_indentation(
-                self.transform_code_lines)
-
-        if pre_transform_code is not None:
-            proc_dict["_MODULE_SOURCE_CODE"] = pre_transform_code
-            exec(compile(pre_transform_code,
-                "<loopy transforms>", "exec"), proc_dict)
-
-        proc_dict["_MODULE_SOURCE_CODE"] = transform_code
-        exec(compile(transform_code,
-            "<loopy transforms>", "exec"), proc_dict)
-
-        return [proc_dict[knl_name]
-                for knl_name in kernel_names]
+        return result
 
 # }}}
 

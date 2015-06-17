@@ -137,8 +137,7 @@ def iname_rel_aff(space, iname, rel, aff):
         raise ValueError("unknown value of 'rel': %s" % rel)
 
 
-def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context,
-        prefer_constants):
+def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):
     if context is not None:
         context = isl.align_spaces(context, pw_aff.get_domain_space(),
                 obj_bigger_ok=True).params()
@@ -163,21 +162,12 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context,
                 .is_bounded())
 
     # put constant bounds with unbounded validity first
-    # FIXME: Heuristi-hack.
-    if prefer_constants:
-        order = [
-                (True, False),  # constant, unbounded validity
-                (False, False),  # nonconstant, unbounded validity
-                (True, True),  # constant, bounded validity
-                (False, True),  # nonconstant, bounded validity
-                ]
-    else:
-        order = [
-                (False, False),  # nonconstant, unbounded validity
-                (True, False),  # constant, unbounded validity
-                (False, True),  # nonconstant, bounded validity
-                (True, True),  # constant, bounded validity
-                ]
+    order = [
+            (True, False),  # constant, unbounded validity
+            (False, False),  # nonconstant, unbounded validity
+            (True, True),  # constant, bounded validity
+            (False, True),  # nonconstant, bounded validity
+            ]
 
     pieces = flatten([
             [(set, aff) for set, aff in pieces
@@ -209,22 +199,19 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context,
             % (what, pw_aff))
 
 
-def static_min_of_pw_aff(pw_aff, constants_only, context=None,
-        prefer_constants=True):
+def static_min_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.ge_set,
-            "minimum", context, prefer_constants)
+            "minimum", context)
 
 
-def static_max_of_pw_aff(pw_aff, constants_only, context=None,
-        prefer_constants=True):
+def static_max_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.le_set,
-            "maximum", context, prefer_constants)
+            "maximum", context)
 
 
-def static_value_of_pw_aff(pw_aff, constants_only, context=None,
-        prefer_constants=True):
+def static_value_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.eq_set,
-            "value", context, prefer_constants)
+            "value", context)
 
 
 def duplicate_axes(isl_obj, duplicate_inames, new_inames):
@@ -337,7 +324,7 @@ def boxify(cache_manager, domain, box_inames, context):
     domain = domain.move_dims(
             dim_type.param, n_old_parameters, dim_type.set, 0, n_nonbox_inames)
 
-    result = domain.universe_like()
+    result = domain.universe(domain.space)
     zero = isl.Aff.zero_on_domain(result.space)
 
     for i in range(len(box_iname_indices)):

@@ -1,6 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2015 James Stevens"
 
@@ -24,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+
 import loopy as lp
 import warnings
 from islpy import dim_type
@@ -35,17 +35,20 @@ class TypeToOpCountMap:
 
     def __init__(self, init_dict=None):
         if init_dict is None:
-            self.dict = {}
-        else:
-            self.dict = init_dict
+            init_dict = {}
+
+        self.dict = init_dict
 
     def __add__(self, other):
-        return TypeToOpCountMap(dict(self.dict.items() + other.dict.items()
-                                     + [(k, self.dict[k] + other.dict[k])
-                                     for k in set(self.dict) & set(other.dict)]))
+        result = self.dict.copy()
+
+        for k, v in six.iteritems(other.dict):
+            result[k] = self.dict.get(k, 0) + v
+
+        return TypeToOpCountMap(result)
 
     def __radd__(self, other):
-        if (other != 0):
+        if other != 0:
             raise ValueError("TypeToOpCountMap: Attempted to add TypeToOpCountMap "
                                 "to {} {}. TypeToOpCountMap may only be added to "
                                 "0 and other TypeToOpCountMap objects."
@@ -81,7 +84,7 @@ class ExpressionOpCounter(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
-        from loopy.codegen.expression import TypeInferenceMapper
+        from loopy.expression import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
     def combine(self, values):
@@ -263,6 +266,36 @@ localid 0 is threadidx.x
 '''
 
 
+def count(kernel, bset):
+    try:
+        return bset.card()
+    except AttributeError:
+        pass
+
+    if not bset.is_box():
+        from loopy.diagnostic import warn
+        warn(kernel, "count_overestimate",
+                "Barvinok wrappers are not installed. "
+                "Counting routines may overestimate the "
+                "number of integer points in your loop "
+                "domain.")
+
+    result = None
+
+    for i in range(bset.dim(isl.dim_type.set)):
+        dmax = bset.dim_max(i)
+        dmin = bset.dim_min(i)
+
+        length = isl.PwQPolynomial.from_pw_aff(dmax - dmin + 1)
+
+        if result is None:
+            result = length
+        else:
+            result = result * length
+
+    return result
+
+
 # to evaluate poly: poly.eval_with_dict(dictionary)
 def get_op_poly(knl):
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
@@ -278,7 +311,7 @@ def get_op_poly(knl):
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
         ops = op_counter(insn.expression)
-        op_poly = op_poly + ops*domain.card()
+        op_poly = op_poly + ops*count(knl, domain)
     return op_poly
 
 
@@ -290,6 +323,5 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-        poly += subscript_counter(insn.expression) * domain.card()
+        poly += subscript_counter(insn.expression) * count(knl, domain)
     return poly
-

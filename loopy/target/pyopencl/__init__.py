@@ -125,15 +125,15 @@ def adjust_local_temp_var_storage(kernel, device):
 def check_sizes(kernel, device):
     import loopy as lp
 
+    from loopy.diagnostic import LoopyAdvisory, LoopyError
+
     if device is None:
         from loopy.diagnostic import warn
         warn(kernel, "no_device_in_pre_codegen_checks",
                 "No device parameter was passed to the PyOpenCLTarget. "
                 "Perhaps you want to pass a device to benefit from "
-                "additional checking.")
+                "additional checking.", LoopyAdvisory)
         return
-
-    from loopy.diagnostic import LoopyAdvisory, LoopyError
 
     parameters = {}
     for arg in kernel.args:

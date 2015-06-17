@@ -25,46 +25,209 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError
 
 
-def f2loopy(source, free_form=True, strict=True,
-        pre_transform_code=None, pre_transform_code_context=None,
-        use_c_preprocessor=False,
-        file_name="<floopy code>"):
-    if use_c_preprocessor:
-        try:
-            import ply.lex as lex
-            import ply.cpp as cpp
-        except ImportError:
-            raise LoopyError("Using the C preprocessor requires PLY to be installed")
+def c_preprocess(source, defines=None, filename="<floopy source>"):
+    """
+    :arg source: a string, possibly containing C preprocessor constructs
+    :arg defines: a list of strings as they might occur after a
+        C-style ``#define`` directive, for example ``deg2rad(x) (x/180d0 * 3.14d0)``.
+    :return: a string
+    """
+    try:
+        import ply.lex as lex
+        import ply.cpp as cpp
+    except ImportError:
+        raise LoopyError("Using the C preprocessor requires PLY to be installed")
 
-        lexer = lex.lex(cpp)
+    lexer = lex.lex(cpp)
 
-        from ply.cpp import Preprocessor
-        p = Preprocessor(lexer)
-        p.parse(source, file_name)
+    from ply.cpp import Preprocessor
+    p = Preprocessor(lexer)
 
-        tokens = []
-        while True:
-            tok = p.token()
+    if defines:
+        for d in defines:
+            p.define(d)
 
-            if not tok:
-                break
+    p.parse(source, filename)
 
-            if tok.type == "CPP_COMMENT":
-                continue
+    tokens = []
+    while True:
+        tok = p.token()
 
-            tokens.append(tok.value)
+        if not tok:
+            break
 
-        source = "".join(tokens)
+        if tok.type == "CPP_COMMENT":
+            continue
 
+        tokens.append(tok.value)
+
+    return "".join(tokens)
+
+
+def _extract_loopy_lines(source):
+    lines = source.split("\n")
+
+    import re
+    comment_re = re.compile(r"^\s*\!(.*)$")
+
+    remaining_lines = []
+    loopy_lines = []
+
+    in_loopy_code = False
+    for l in lines:
+        comment_match = comment_re.match(l)
+
+        if comment_match is None:
+            if in_loopy_code:
+                raise LoopyError("non-comment source line in loopy block")
+
+            remaining_lines.append(l)
+            continue
+
+        cmt = comment_match.group(1)
+        cmt_stripped = cmt.strip()
+
+        if cmt_stripped == "$loopy begin":
+            if in_loopy_code:
+                raise LoopyError("can't enter loopy block twice")
+            in_loopy_code = True
+
+        elif cmt_stripped == "$loopy end":
+            if not in_loopy_code:
+                raise LoopyError("can't leave loopy block twice")
+            in_loopy_code = False
+
+        elif in_loopy_code:
+            loopy_lines.append(cmt)
+
+        else:
+            remaining_lines.append(l)
+
+    return "\n".join(remaining_lines), "\n".join(loopy_lines)
+
+
+def parse_transformed_fortran(source, free_form=True, strict=True,
+        pre_transform_code=None, transform_code_context=None,
+        filename="<floopy code>"):
+    """
+    :arg source: a string of Fortran source code which must include
+        a snippet of transform code as described below.
+    :arg pre_transform_code: code that is run in the same context
+        as the transform
+
+    *source* may contain snippets of loopy transform code between markers::
+
+        !$loopy begin
+        ! ...
+        !$loopy end
+
+    Within the transform code, the following symbols are predefined:
+
+    * ``lp``: a reference to the :mod:`loopy` package
+    * ``np``: a reference to the :mod:`numpy` package
+    * ``SOURCE``: the source code surrounding the transform block.
+      This may be processed using :func:`c_preprocess` and
+      :func:`parse_fortran`.
+    * ``FILENAME``: the file name of the code being processed
+
+    The transform code must define ``RESULT``, conventionally a list of
+    kernels, which is returned from this function unmodified.
+
+    An example of *source* may look as follows::
+
+        subroutine fill(out, a, n)
+          implicit none
+
+          real*8 a, out(n)
+          integer n, i
+
+          do i = 1, n
+            out(i) = a
+          end do
+        end
+
+        !$loopy begin
+        !
+        ! fill, = lp.parse_fortran(SOURCE, FILENAME)
+        ! fill = lp.split_iname(fill, "i", split_amount,
+        !     outer_tag="g.0", inner_tag="l.0")
+        ! RESULT = [fill]
+        !
+        !$loopy end
+    """
+
+    source, transform_code = _extract_loopy_lines(source)
+    if not transform_code:
+        raise LoopyError("no transform code found")
+
+    from loopy.tools import remove_common_indentation
+    transform_code = remove_common_indentation(
+            transform_code,
+            require_leading_newline=False)
+
+    if transform_code_context is None:
+        proc_dict = {}
+    else:
+        proc_dict = transform_code_context.copy()
+
+    import loopy as lp
+    import numpy as np
+
+    proc_dict["lp"] = lp
+    proc_dict["np"] = np
+
+    proc_dict["SOURCE"] = source
+    proc_dict["FILENAME"] = filename
+
+    from os.path import dirname, abspath
+    from os import getcwd
+
+    infile_dirname = dirname(filename)
+    if infile_dirname:
+        infile_dirname = abspath(infile_dirname)
+    else:
+        infile_dirname = getcwd()
+
+    import sys
+    prev_sys_path = sys.path
+    try:
+        if infile_dirname:
+            sys.path = prev_sys_path + [infile_dirname]
+
+        if pre_transform_code is not None:
+            proc_dict["_MODULE_SOURCE_CODE"] = pre_transform_code
+            exec(compile(pre_transform_code,
+                "<loopy pre-transform code>", "exec"), proc_dict)
+
+        proc_dict["_MODULE_SOURCE_CODE"] = transform_code
+        exec(compile(transform_code, filename, "exec"), proc_dict)
+
+    finally:
+        sys.path = prev_sys_path
+
+    if "RESULT" not in proc_dict:
+        raise LoopyError("transform code did not set RESULT")
+
+    return proc_dict["RESULT"]
+
+
+def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True):
+    """
+    :returns: a list of :class:`loopy.LoopKernel` objects
+    """
     from fparser import api
     tree = api.parse(source, isfree=free_form, isstrict=strict,
             analyze=False, ignore_comments=False)
 
+    if tree is None:
+        raise LoopyError("Fortran parser was unhappy with source code "
+                "and returned invalid data (Sorry!)")
+
     from loopy.frontend.fortran.translator import F2LoopyTranslator
-    f2loopy = F2LoopyTranslator(file_name)
+    f2loopy = F2LoopyTranslator(filename)
     f2loopy(tree)
 
-    return f2loopy.make_kernels(pre_transform_code=pre_transform_code,
-            pre_transform_code_context=pre_transform_code_context)
+    return f2loopy.make_kernels()
+
 
 # vim: foldmethod=marker
