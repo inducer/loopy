@@ -26,7 +26,8 @@ import sys
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
-from loopy.statistics import *  # noqa
+import loopy as lp
+from loopy.statistics import get_op_poly  # noqa
 import numpy as np
 
 
