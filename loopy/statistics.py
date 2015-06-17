@@ -217,6 +217,51 @@ class SubscriptCounter(CombineMapper):
     def map_variable(self, expr):
         return 0
 
+'''
+class AccessCounter(CombineMapper):
+    def map_subscript(self, expr):
+        name = expr.aggregate.name
+        if name in self.kernel.arg_dict:
+            array = self.kernel.arg_dict[name]
+        else:
+            ...
+            # recurse and return
+
+        if not isinstance(array, lp.GlobalArg):
+            # recurse and return
+
+        index = expr.index # could be tuple or scalar index
+
+        if not isinstance(index, tuple):
+            index = (index,)
+
+        from loopy.symbolic import get_dependencies
+        my_inames = get_dependencies(index) & self.kernel.all_inames()
+
+        for iname in my_inames:
+            # find local id0 through self.kernel.index_to_tag
+
+        # If you don't have a local id0
+        # -> not stride1 (for now)
+
+        for dim_tag, axis_index in zip(index, array.dim_tags):
+            # check if he contains the lid 0 guy
+
+            # determine if stride 1
+
+            # find coefficient
+'''
+
+#TODO find stride looking in ArrayBase.dim tag
+'''
+for each instruction, find which iname is associated with local id0 (iname_to_tag)
+then for each array axis in that instruction, run through all axes and see if local id0 iname occurs
+for each axis where this occurs, see if stride=1 (using coefficient collecter)
+
+variable has dimTags (one for each axis), 
+localid 0 is threadidx.x
+'''
+
 
 # to evaluate poly: poly.eval_with_dict(dictionary)
 def get_op_poly(knl):
