@@ -373,7 +373,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                 # This made it through type 'guessing' above, and it
                 # was concluded above (search for COMPLEX_GUESS_LOGIC),
                 # that nothing was lost by using single precision.
-                cast_type = "cfloat_t"
+                cast_type = "cfloat"
             else:
                 if dtype == np.complex128:
                     cast_type = "cdouble"
