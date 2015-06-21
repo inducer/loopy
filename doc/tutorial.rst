@@ -474,6 +474,7 @@ ambiguous.
 
 .. doctest::
 
+    >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
