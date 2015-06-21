@@ -444,8 +444,7 @@ around the *j* loop, or the other way around, in the following simple
 zero-fill kernel?
 
 It turns out that Loopy will typically choose a loop nesting for us, but it
-does not like doing so. In this tutorial (where we've turned Loopy's warnings
-into errors), we are told what is wrong in no uncertain terms::
+does not like doing so. Loo.py will react to the following code
 
 .. doctest::
 
@@ -455,14 +454,13 @@ into errors), we are told what is wrong in no uncertain terms::
     ...     a[i,j] = 0
     ...     """)
 
+By saying::
 
-    >>> knl = lp.set_options(knl, "write_cl")
-    >>> evt, (out,) = knl(queue, a=a_mat_dev)
-    Traceback (most recent call last):
-    ...
     LoopyWarning: kernel scheduling was ambiguous--more than one schedule found, ignoring
 
-This is easily resolved:
+And by picking one of the possible loop orderings at random.
+
+The warning (and the nondeterminism it warns about) is easily resolved:
 
 .. doctest::
 
