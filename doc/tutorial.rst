@@ -96,7 +96,7 @@ always see loopy's view of a kernel by printing it.
 
 .. doctest::
 
-    >>> print knl
+    >>> print(knl)
     ---------------------------------------------------------------------------
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ call :func:`loopy.generate_code`:
     >>> typed_knl = lp.preprocess_kernel(typed_knl, device=ctx.devices[0])
     >>> typed_knl = lp.get_one_scheduled_kernel(typed_knl)
     >>> code, _ = lp.generate_code(typed_knl)
-    >>> print code
+    >>> print(code)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
@@ -316,7 +316,7 @@ that these dependencies show up there, too:
 
 .. doctest::
 
-    >>> print knl
+    >>> print(knl)
     ---------------------------------------------------------------------------
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
@@ -673,7 +673,7 @@ Iname implementation tags are also printed along with the entire kernel:
 
 .. doctest::
 
-    >>> print knl
+    >>> print(knl)
     ---------------------------------------------------------------------------
     ...
     INAME IMPLEMENTATION TAGS:
@@ -723,9 +723,9 @@ those for us:
 .. doctest::
 
     >>> glob, loc = knl.get_grid_sizes()
-    >>> print glob
+    >>> print(glob)
     (Aff("[n] -> { [(floor((127 + n)/128))] }"),)
-    >>> print loc
+    >>> print(loc)
     (Aff("[n] -> { [(128)] }"),)
 
 Note that this functionality returns internal objects and is not really
