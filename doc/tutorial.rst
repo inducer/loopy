@@ -849,8 +849,8 @@ variable, as one might do in C or another programming language:
     ...     "{ [i]: 0<=i<n }",
     ...     """
     ...     <float32> a_temp = sin(a[i])
-    ...     out1[i] = a_temp
-    ...     out2[i] = sqrt(1-a_temp*a_temp)
+    ...     out1[i] = a_temp {id=out1}
+    ...     out2[i] = sqrt(1-a_temp*a_temp) {dep=out1}
     ...     """)
 
 The angle brackets ``<>`` denote the creation of a temporary. The name of
@@ -860,6 +860,9 @@ understood by the type registry :mod:`pyopencl.array`. To first order,
 the conventional :mod:`numpy` scalar types (:class:`numpy.int16`,
 :class:`numpy.complex128`) will work. (Yes, :mod:`loopy` supports and
 generates correct code for complex arithmetic.)
+
+(If you're wondering, the dependencies above were added to make the doctest
+produce predictable output.)
 
 The generated code places this variable into what OpenCL calls 'private'
 memory, local to each work item.
@@ -876,8 +879,8 @@ memory, local to each work item.
       for (int i = 0; i <= -1 + n; ++i)
       {
         a_temp = sin(a[i]);
-        out2[i] = sqrt(1.0f + -1.0f * a_temp * a_temp);
         out1[i] = a_temp;
+        out2[i] = sqrt(1.0f + -1.0f * a_temp * a_temp);
       }
     }
 
