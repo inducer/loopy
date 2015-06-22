@@ -902,43 +902,54 @@ class LoopKernel(RecordWithoutPickling):
     def __str__(self):
         lines = []
 
+        from loopy.preprocess import add_default_dependencies
+        kernel = add_default_dependencies(self)
+
         sep = 75*"-"
         lines.append(sep)
-        lines.append("KERNEL: " + self.name)
+        lines.append("KERNEL: " + kernel.name)
         lines.append(sep)
         lines.append("ARGUMENTS:")
-        for arg_name in sorted(self.arg_dict):
-            lines.append(str(self.arg_dict[arg_name]))
+        for arg_name in sorted(kernel.arg_dict):
+            lines.append(str(kernel.arg_dict[arg_name]))
         lines.append(sep)
         lines.append("DOMAINS:")
-        for dom, parents in zip(self.domains, self.all_parents_per_domain()):
+        for dom, parents in zip(kernel.domains, kernel.all_parents_per_domain()):
             lines.append(len(parents)*"  " + str(dom))
 
         lines.append(sep)
         lines.append("INAME IMPLEMENTATION TAGS:")
-        for iname in sorted(self.all_inames()):
-            line = "%s: %s" % (iname, self.iname_to_tag.get(iname))
+        for iname in sorted(kernel.all_inames()):
+            line = "%s: %s" % (iname, kernel.iname_to_tag.get(iname))
             lines.append(line)
 
-        if self.temporary_variables:
+        if kernel.temporary_variables:
             lines.append(sep)
             lines.append("TEMPORARIES:")
-            for tv in sorted(six.itervalues(self.temporary_variables),
+            for tv in sorted(six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
                 lines.append(str(tv))
 
-        if self.substitutions:
+        if kernel.substitutions:
             lines.append(sep)
             lines.append("SUBSTIUTION RULES:")
-            for rule_name in sorted(six.iterkeys(self.substitutions)):
-                lines.append(str(self.substitutions[rule_name]))
+            for rule_name in sorted(six.iterkeys(kernel.substitutions)):
+                lines.append(str(kernel.substitutions[rule_name]))
 
         lines.append(sep)
         lines.append("INSTRUCTIONS:")
         loop_list_width = 35
 
-        import loopy as lp
-        for insn in self.instructions:
+        printed_insn_ids = set()
+
+        def print_insn(insn):
+            if insn.id in printed_insn_ids:
+                return
+            printed_insn_ids.add(insn.id)
+
+            for dep_id in insn.insn_deps:
+                print_insn(kernel.id_to_insn[dep_id])
+
             if isinstance(insn, lp.ExpressionInstruction):
                 lhs = str(insn.assignee)
                 rhs = str(insn.expression)
@@ -952,7 +963,7 @@ class LoopKernel(RecordWithoutPickling):
 
                 trailing = ["    "+l for l in insn.code.split("\n")]
 
-            loop_list = ",".join(sorted(self.insn_inames(insn)))
+            loop_list = ",".join(sorted(kernel.insn_inames(insn)))
 
             options = [insn.id]
             if insn.priority:
@@ -975,8 +986,12 @@ class LoopKernel(RecordWithoutPickling):
             if insn.predicates:
                 lines.append(10*" " + "if (%s)" % " && ".join(insn.predicates))
 
+        import loopy as lp
+        for insn in kernel.instructions:
+            print_insn(insn)
+
         dep_lines = []
-        for insn in self.instructions:
+        for insn in kernel.instructions:
             if insn.insn_deps:
                 dep_lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
         if dep_lines:
@@ -987,10 +1002,10 @@ class LoopKernel(RecordWithoutPickling):
 
         lines.append(sep)
 
-        if self.schedule is not None:
+        if kernel.schedule is not None:
             lines.append("SCHEDULE:")
             from loopy.schedule import dump_schedule
-            lines.append(dump_schedule(self.schedule))
+            lines.append(dump_schedule(kernel.schedule))
             lines.append(sep)
 
         return "\n".join(lines)
