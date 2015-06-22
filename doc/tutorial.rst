@@ -923,7 +923,7 @@ Consider the following example:
     ...     "{ [i_outer,i_inner, k]:  "
     ...          "0<= 16*i_outer + i_inner <n and 0<= i_inner,k <16}",
     ...     """
-    ...     <> a_temp[i_inner] = a[16*i_outer + i_inner]
+    ...     <> a_temp[i_inner] = a[16*i_outer + i_inner] {priority=10}
     ...     out[16*i_outer + i_inner] = sum(k, a_temp[k])
     ...     """)
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
@@ -953,6 +953,9 @@ Observe that *a_temp* was automatically placed in local memory, because
 it is written in parallel across values of the group-local iname
 *i_inner*. In addition, :mod:`loopy` has emitted a barrier instruction to
 achieve the :ref:`ordering` specified by the instruction dependencies.
+
+(The ``priority=10`` attribute was added to make the output of the test
+deterministic.)
 
 .. note::
 
