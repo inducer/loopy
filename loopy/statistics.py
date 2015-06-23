@@ -1,4 +1,4 @@
-from __future__ import division, absolute_import
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2015 James Stevens"
 
@@ -72,9 +72,6 @@ class TypeToOpCountMap:
             return self.dict[index]
         except KeyError:
             return isl.PwQPolynomial('{ 0 }')
-
-    def __setitem__(self, index, value):
-        self.dict[index] = value
 
     def __str__(self):
         return str(self.dict)
