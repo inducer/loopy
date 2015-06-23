@@ -131,21 +131,27 @@ def test_op_counter_bitwise():
             [
                 """
                 c[i, j, k] = (a[i,j,k] | 1) + (b[i,j,k] & 1)
-                e[i, k] = (g[i,k] ^ k)*(~h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
+                e[i, k] = (g[i,k] ^ k)*~(h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
                 """
             ],
             name="bitwise", assumptions="n,m,l >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.int32, b=np.int32, g=np.int64, h=np.int64))
+    knl = lp.add_and_infer_dtypes(
+            knl, dict(
+                a=np.int32, b=np.int32,
+                g=np.int64, h=np.int64))
     poly = get_op_poly(knl)
-    n = 512
-    m = 256
-    l = 128
-    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    print(poly.dict[np.dtype(np.int32)])
-    not_there = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert i32 == 3*n*m+n*m*l
+
+    n = 10
+    m = 10
+    l = 10
+    param_values = {'n': n, 'm': m, 'l': l}
+    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict(param_values)
+    i64 = poly.dict[np.dtype(np.int64)].eval_with_dict(param_values)
+    not_there = poly[np.dtype(np.float64)].eval_with_dict(param_values)
+    print(poly.dict)
+    assert i32 == n*m + n*m*l
+    assert i64 == 2*n*m
     assert not_there == 0
 
 
