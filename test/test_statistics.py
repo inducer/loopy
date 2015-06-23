@@ -138,15 +138,17 @@ def test_op_counter_bitwise():
             name="bitwise", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.int32, b=np.int32, g=np.int64, h=np.int64))
+                        dict(
+                            a=np.int32, b=np.int32,
+                            g=np.int64, h=np.int64))
     poly = get_op_poly(knl)
-    n = 512
-    m = 256
-    l = 128
+    n = 10
+    m = 10
+    l = 10
     i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    print(poly.dict[np.dtype(np.int32)])
+    print(poly.dict)
     not_there = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert i32 == 3*n*m+n*m*l
+    assert i32 == 3*n*m + n*m*l
     assert not_there == 0
 
 
