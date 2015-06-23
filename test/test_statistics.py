@@ -140,21 +140,19 @@ def test_op_counter_bitwise():
     knl = lp.add_and_infer_dtypes(
             knl, dict(
                 a=np.int32, b=np.int32,
-                g=np.int64, h=np.int64))
+                g=np.int32, h=np.int32))
 
     poly = get_op_poly(knl)
-
-    n = 10
-    m = 10
-    l = 10
-    param_values = {'n': n, 'm': m, 'l': l}
-    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict(param_values)
-    i64 = poly.dict[np.dtype(np.int64)].eval_with_dict(param_values)
-    not_there = poly[np.dtype(np.float64)].eval_with_dict(param_values)
+    n = 512
+    m = 256
+    l = 128
+    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    # i64 = poly.dict[np.dtype(np.int64)].eval_with_dict({'n': n, 'm': m, 'l': l})  # noqa
     print(poly.dict)
-    assert i32 == n*m + n*m*l
-    assert i64 == 2*n*m
-    assert not_there == 0
+    f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert i32 == 7*n*m+3*n*m*l
+    assert f64 == 0
+    # TODO test bitwise operations on int64
 
 
 def test_op_counter_triangular_domain():
