@@ -51,7 +51,10 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
 
     def map_variable(self, expr, expn_state):
         result = None
-        if expr.name == self.var_name and self.within(expn_state):
+        if expr.name == self.var_name and self.within(
+                expn_state.kernel,
+                expn_state.instruction,
+                expn_state.stack):
             result = self.map_array_access((), expn_state)
 
         if result is None:
@@ -62,7 +65,10 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
 
     def map_subscript(self, expr, expn_state):
         result = None
-        if expr.aggregate.name == self.var_name and self.within(expn_state):
+        if expr.aggregate.name == self.var_name and self.within(
+                expn_state.kernel,
+                expn_state.instruction,
+                expn_state.stack):
             result = self.map_array_access(expr.index, expn_state)
 
         if result is None:
@@ -172,7 +178,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     access_descriptors = []
     for insn in kernel.instructions:
-        if not within((insn.id, insn.tags)):
+        if not within(kernel, insn.id, ()):
             continue
 
         for assignee, index in insn.assignees_and_indices():

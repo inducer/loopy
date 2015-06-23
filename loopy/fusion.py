@@ -170,11 +170,13 @@ def _fuse_two_kernels(knla, knlb):
             SubstitutionRuleMappingContext,
             RuleAwareSubstitutionMapper)
     from pymbolic.mapper.substitutor import make_subst_func
+    from loopy.context_matching import parse_stack_match
 
     srmc = SubstitutionRuleMappingContext(
             knlb.substitutions, knlb.get_var_name_generator())
     subst_map = RuleAwareSubstitutionMapper(
-            srmc, make_subst_func(b_var_renames), within=lambda stack: True)
+            srmc, make_subst_func(b_var_renames),
+            within=parse_stack_match(None))
     knlb = subst_map.map_kernel(knlb)
 
     # }}}

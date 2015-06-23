@@ -356,7 +356,7 @@ TODO: Matching instruction tags
 
 .. automodule:: loopy.context_matching
 
-.. autofunction:: parse_id_match
+.. autofunction:: parse_match
 
 .. autofunction:: parse_stack_match
 

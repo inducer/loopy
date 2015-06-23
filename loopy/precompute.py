@@ -81,7 +81,10 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
         if self.subst_tag is not None and self.subst_tag != tag:
             process_me = False
 
-        process_me = process_me and self.within(expn_state.stack)
+        process_me = process_me and self.within(
+                expn_state.kernel,
+                expn_state.instruction,
+                expn_state.stack)
 
         if not process_me:
             return super(RuleInvocationGatherer, self).map_substitution(
@@ -151,7 +154,10 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
     def map_substitution(self, name, tag, arguments, expn_state):
         if not (
                 name == self.subst_name
-                and self.within(expn_state.stack)
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)
                 and (self.subst_tag is None or self.subst_tag == tag)):
             return super(RuleInvocationReplacer, self).map_substitution(
                     name, tag, arguments, expn_state)
@@ -387,8 +393,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         import loopy as lp
         for insn in kernel.instructions:
             if isinstance(insn, lp.ExpressionInstruction):
-                invg(insn.assignee, insn.id, insn.tags)
-                invg(insn.expression, insn.id, insn.tags)
+                invg(insn.assignee, kernel, insn)
+                invg(insn.expression, kernel, insn)
 
         access_descriptors = invg.access_descriptors
         if not access_descriptors:
@@ -614,13 +620,13 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
 
-    from loopy.context_matching import AllStackMatch
+    from loopy.context_matching import parse_stack_match
     expr_subst_map = RuleAwareSubstitutionMapper(
             rule_mapping_context,
             make_subst_func(storage_axis_subst_dict),
-            within=AllStackMatch())
+            within=parse_stack_match(None))
 
-    compute_expression = expr_subst_map(subst.expression, None, None)
+    compute_expression = expr_subst_map(subst.expression, kernel, None)
 
     # }}}
 

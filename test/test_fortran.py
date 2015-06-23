@@ -267,7 +267,7 @@ def test_tagged(ctx_factory):
 
     knl, = lp.parse_fortran(fortran_src)
 
-    assert sum(1 for insn in lp.find_instructions(knl, "*$input")) == 2
+    assert sum(1 for insn in lp.find_instructions(knl, "tag:input")) == 2
 
 
 @pytest.mark.parametrize("buffer_inames", [

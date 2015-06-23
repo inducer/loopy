@@ -152,7 +152,10 @@ class _InameSplitter(RuleAwareIdentityMapper):
     def map_reduction(self, expr, expn_state):
         if (self.split_iname in expr.inames
                 and self.split_iname not in expn_state.arg_context
-                and self.within(expn_state.stack)):
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)):
             new_inames = list(expr.inames)
             new_inames.remove(self.split_iname)
             new_inames.extend([self.outer_iname, self.inner_iname])
@@ -166,7 +169,10 @@ class _InameSplitter(RuleAwareIdentityMapper):
     def map_variable(self, expr, expn_state):
         if (expr.name == self.split_iname
                 and self.split_iname not in expn_state.arg_context
-                and self.within(expn_state.stack)):
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)):
             return self.replacement_index
         else:
             return super(_InameSplitter, self).map_variable(expr, expn_state)
@@ -318,7 +324,10 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
         expr_inames = set(expr.inames)
         overlap = (self.join_inames & expr_inames
                 - set(expn_state.arg_context))
-        if overlap and self.within(expn_state.stack):
+        if overlap and self.within(
+                expn_state.kernel,
+                expn_state.instruction,
+                expn_state.stack):
             if overlap != expr_inames:
                 raise LoopyError(
                         "Cannot join inames '%s' if there is a reduction "
@@ -520,7 +529,10 @@ class _InameDuplicator(RuleAwareIdentityMapper):
 
     def map_reduction(self, expr, expn_state):
         if (set(expr.inames) & self.old_inames_set
-                and self.within(expn_state.stack)):
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)):
             new_inames = tuple(
                     self.old_to_new.get(iname, iname)
                     if iname not in expn_state.arg_context
@@ -538,14 +550,17 @@ class _InameDuplicator(RuleAwareIdentityMapper):
 
         if (new_name is None
                 or expr.name in expn_state.arg_context
-                or not self.within(expn_state.stack)):
+                or not self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)):
             return super(_InameDuplicator, self).map_variable(expr, expn_state)
         else:
             from pymbolic import var
             return var(new_name)
 
-    def map_instruction(self, insn):
-        if not self.within(((insn.id, insn.tags),)):
+    def map_instruction(self, kernel, insn):
+        if not self.within(kernel, insn, ()):
             return insn
 
         new_fid = frozenset(
@@ -1050,7 +1065,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # If the rule survived past precompute() (i.e. some accesses fell outside
     # the footprint), get rid of it before moving on.
     if rule_name in new_kernel.substitutions:
-        return expand_subst(new_kernel, rule_name)
+        return expand_subst(new_kernel, "id:"+rule_name)
     else:
         return new_kernel
 
@@ -1060,19 +1075,19 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 # {{{ instruction processing
 
 def find_instructions(kernel, insn_match):
-    from loopy.context_matching import parse_id_match
-    match = parse_id_match(insn_match)
-    return [insn for insn in kernel.instructions if match(insn.id, insn.tags)]
+    from loopy.context_matching import parse_match
+    match = parse_match(insn_match)
+    return [insn for insn in kernel.instructions if match(kernel, insn)]
 
 
 def map_instructions(kernel, insn_match, f):
-    from loopy.context_matching import parse_id_match
-    match = parse_id_match(insn_match)
+    from loopy.context_matching import parse_match
+    match = parse_match(insn_match)
 
     new_insns = []
 
     for insn in kernel.instructions:
-        if match(insn.id, None):
+        if match(kernel, insn):
             new_insns.append(f(insn))
         else:
             new_insns.append(insn)
@@ -1084,7 +1099,7 @@ def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
     *insn_match* may be any instruction id match understood by
-    :func:`loopy.context_matching.parse_id_match`.
+    :func:`loopy.context_matching.parse_match`.
     """
 
     def set_prio(insn):
@@ -1098,7 +1113,7 @@ def add_dependency(kernel, insn_match, dependency):
     by *insn_match*.
 
     *insn_match* may be any instruction id match understood by
-    :func:`loopy.context_matching.parse_id_match`.
+    :func:`loopy.context_matching.parse_match`.
     """
 
     def add_dep(insn):
@@ -1220,7 +1235,11 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
             # FIXME
             raise NotImplementedError()
 
-        if self.inames <= set(expr.inames) and self.within(expn_state.stack):
+        if (self.inames <= set(expr.inames)
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)):
             leftover_inames = set(expr.inames) - self.inames
 
             from loopy.symbolic import Reduction
@@ -1659,10 +1678,12 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     var_name_gen = kernel.get_var_name_generator()
 
     from pymbolic.mapper.substitutor import make_subst_func
+    from loopy.context_matching import parse_stack_match
+
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
     old_to_new = RuleAwareSubstitutionMapper(rule_mapping_context,
-            make_subst_func(subst_dict), within=lambda stack: True)
+            make_subst_func(subst_dict), within=parse_stack_match(None))
 
     kernel = (
             rule_mapping_context.finish_kernel(
@@ -1792,12 +1813,12 @@ def fold_constants(kernel):
 # {{{ tag_instructions
 
 def tag_instructions(kernel, new_tag, within=None):
-    from loopy.context_matching import parse_stack_match
-    within = parse_stack_match(within)
+    from loopy.context_matching import parse_match
+    within = parse_match(within)
 
     new_insns = []
     for insn in kernel.instructions:
-        if within(((insn.id, insn.tags),)):
+        if within(kernel, insn):
             new_insns.append(
                     insn.copy(tags=insn.tags + (new_tag,)))
         else:

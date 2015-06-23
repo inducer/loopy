@@ -398,11 +398,13 @@ def parse_tagged_name(expr):
 
 class ExpansionState(Record):
     """
+    .. attribute:: kernel
+    .. attribute:: instruction
+
     .. attribute:: stack
 
         a tuple representing the current expansion stack, as a tuple
-        of (name, tag) pairs. At the top level, this should be initialized to a
-        tuple with the id of the calling instruction.
+        of (name, tag) pairs.
 
     .. attribute:: arg_context
 
@@ -411,7 +413,7 @@ class ExpansionState(Record):
 
     @property
     def insn_id(self):
-        return self.stack[0][0]
+        return self.instruction.id
 
     def apply_arg_context(self, expr):
         from pymbolic.mapper.substitutor import make_subst_func
@@ -625,16 +627,18 @@ class RuleAwareIdentityMapper(IdentityMapper):
         else:
             return sym
 
-    def __call__(self, expr, insn_id, insn_tags):
-        if insn_id is not None:
-            stack = ((insn_id, insn_tags),)
-        else:
-            stack = ()
+    def __call__(self, expr, kernel, insn):
+        from loopy.kernel.data import InstructionBase
+        assert insn is None or isinstance(insn, InstructionBase)
 
-        return IdentityMapper.__call__(self, expr, ExpansionState(
-            stack=stack, arg_context={}))
+        return IdentityMapper.__call__(self, expr,
+                ExpansionState(
+                    kernel=kernel,
+                    instruction=insn,
+                    stack=(),
+                    arg_context={}))
 
-    def map_instruction(self, insn):
+    def map_instruction(self, kernel, insn):
         return insn
 
     def map_kernel(self, kernel):
@@ -642,8 +646,8 @@ class RuleAwareIdentityMapper(IdentityMapper):
                 # While subst rules are not allowed in assignees, the mapper
                 # may perform tasks entirely unrelated to subst rules, so
                 # we must map assignees, too.
-                self.map_instruction(
-                    insn.with_transformed_expressions(self, insn.id, insn.tags))
+                self.map_instruction(kernel,
+                    insn.with_transformed_expressions(self, kernel, insn))
                 for insn in kernel.instructions]
 
         return kernel.copy(instructions=new_insns)
@@ -658,7 +662,8 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
 
     def map_variable(self, expr, expn_state):
         if (expr.name in expn_state.arg_context
-                or not self.within(expn_state.stack)):
+                or not self.within(
+                    expn_state.kernel, expn_state.instruction, expn_state.stack)):
             return super(RuleAwareSubstitutionMapper, self).map_variable(
                     expr, expn_state)
 
@@ -685,7 +690,7 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper):
 
         new_stack = expn_state.stack + ((name, tags),)
 
-        if self.within(new_stack):
+        if self.within(expn_state.kernel, expn_state.instruction, new_stack):
             # expand
             rule = self.rules[name]
 
