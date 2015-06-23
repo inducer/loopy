@@ -26,7 +26,8 @@ import sys
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
-from loopy.statistics import *  # noqa
+import loopy as lp
+from loopy.statistics import get_op_poly  # noqa
 import numpy as np
 
 
@@ -131,7 +132,7 @@ def test_op_counter_bitwise():
             [
                 """
                 c[i, j, k] = (a[i,j,k] | 1) + (b[i,j,k] & 1)
-                e[i, k] = (g[i,k] ^ k)*~(h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
+                e[i, k] = (g[i,k] ^ k)*(~h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
                 """
             ],
             name="bitwise", assumptions="n,m,l >= 1")
@@ -140,6 +141,7 @@ def test_op_counter_bitwise():
             knl, dict(
                 a=np.int32, b=np.int32,
                 g=np.int64, h=np.int64))
+
     poly = get_op_poly(knl)
 
     n = 10
@@ -192,3 +194,4 @@ if __name__ == "__main__":
     else:
         from py.test.cmdline import main
         main([__file__])
+

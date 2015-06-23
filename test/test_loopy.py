@@ -65,7 +65,7 @@ def test_complicated_subst(ctx_factory):
                 a[i] = h$one(i) * h$two(i)
                 """)
 
-    knl = lp.expand_subst(knl, "g$two < h$two")
+    knl = lp.expand_subst(knl, "... > id:h and tag:two > id:g and tag:two")
 
     print(knl)
 

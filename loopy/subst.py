@@ -258,7 +258,10 @@ class TemporaryToSubstChanger(RuleAwareIdentityMapper):
 
         my_def_id = self.usage_to_definition[my_insn_id]
 
-        if not self.within(expn_state.stack):
+        if not self.within(
+                expn_state.kernel,
+                expn_state.instruction,
+                expn_state.stack):
             self.saw_unmatched_usage_sites[my_def_id] = True
             return None
 

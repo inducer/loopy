@@ -1,4 +1,4 @@
-from __future__ import division, absolute_import
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2012-15 Andreas Kloeckner"
 
@@ -79,9 +79,9 @@ class TypeInferenceMapper(CombineMapper):
         while dtypes:
             other = dtypes.pop()
 
-            if result.isbuiltin and other.isbuiltin:
+            if result.fields is None and other.fields is None:
                 if (result, other) in [
-                        (np.int32, np.float32), (np.int32, np.float32)]:
+                        (np.int32, np.float32), (np.float32, np.int32)]:
                     # numpy makes this a double. I disagree.
                     result = np.dtype(np.float32)
                 else:
@@ -89,11 +89,14 @@ class TypeInferenceMapper(CombineMapper):
                             np.empty(0, dtype=result)
                             + np.empty(0, dtype=other)
                             ).dtype
-            elif result.isbuiltin and not other.isbuiltin:
+
+            elif result.fields is None and other.fields is not None:
                 # assume the non-native type takes over
+                # (This is used for vector types.)
                 result = other
-            elif not result.isbuiltin and other.isbuiltin:
+            elif result.fields is not None and other.fields is None:
                 # assume the non-native type takes over
+                # (This is used for vector types.)
                 pass
             else:
                 if result is not other:

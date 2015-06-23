@@ -39,7 +39,7 @@ def test_tim2d(ctx_factory):
     n = 8
 
     from pymbolic import var
-    K_sym = var("K")
+    K_sym = var("K")  # noqa
 
     field_shape = (K_sym, n, n)
 
@@ -70,8 +70,8 @@ def test_tim2d(ctx_factory):
                 ],
             name="semlap2D", assumptions="K>=1")
 
-    knl = lp.duplicate_inames(knl, "o", within="ur")
-    knl = lp.duplicate_inames(knl, "o", within="us")
+    knl = lp.duplicate_inames(knl, "o", within="id:ur")
+    knl = lp.duplicate_inames(knl, "o", within="id:us")
 
     seq_knl = knl
 
@@ -93,13 +93,13 @@ def test_tim2d(ctx_factory):
         knl = lp.tag_inames(knl, dict(o="unr"))
         knl = lp.tag_inames(knl, dict(m="unr"))
 
-        knl = lp.set_instruction_priority(knl, "D_fetch", 5)
+        knl = lp.set_instruction_priority(knl, "id:D_fetch", 5)
         print(knl)
 
         return knl
 
     for variant in [variant_orig]:
-        K = 1000
+        K = 1000  # noqa
         lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[K*(n*n*n*2*2 + n*n*2*3 + n**3 * 2*2)/1e9],
                 op_label=["GFlops"],

@@ -1,10 +1,6 @@
 """UI for kernel creation."""
 
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -35,6 +31,9 @@ from loopy.kernel.data import (
         InstructionBase, ExpressionInstruction, SubstitutionRule)
 import islpy as isl
 from islpy import dim_type
+
+import six
+from six.moves import range, zip
 
 import re
 import sys
@@ -904,9 +903,10 @@ def guess_arg_shape_if_requested(kernel, default_order):
                                         armap.access_range, i) + 1,
                                     constants_only=False)))
                     except:
-                        print>>sys.stderr, "While trying to find shape axis %d of "\
-                                "argument '%s', the following " \
-                                "exception occurred:" % (i, arg.name)
+                        print("While trying to find shape axis %d of "
+                                "argument '%s', the following "
+                                "exception occurred:" % (i, arg.name),
+                                file=sys.stderr)
                         raise
 
                 shape = tuple(shape)

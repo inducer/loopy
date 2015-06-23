@@ -96,7 +96,7 @@ always see loopy's view of a kernel by printing it.
 
 .. doctest::
 
-    >>> print knl
+    >>> print(knl)
     ---------------------------------------------------------------------------
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ call :func:`loopy.generate_code`:
     >>> typed_knl = lp.preprocess_kernel(typed_knl, device=ctx.devices[0])
     >>> typed_knl = lp.get_one_scheduled_kernel(typed_knl)
     >>> code, _ = lp.generate_code(typed_knl)
-    >>> print code
+    >>> print(code)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
@@ -316,7 +316,7 @@ that these dependencies show up there, too:
 
 .. doctest::
 
-    >>> print knl
+    >>> print(knl)
     ---------------------------------------------------------------------------
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
@@ -444,8 +444,7 @@ around the *j* loop, or the other way around, in the following simple
 zero-fill kernel?
 
 It turns out that Loopy will typically choose a loop nesting for us, but it
-does not like doing so. In this tutorial (where we've turned Loopy's warnings
-into errors), we are told what is wrong in no uncertain terms::
+does not like doing so. Loo.py will react to the following code
 
 .. doctest::
 
@@ -455,14 +454,13 @@ into errors), we are told what is wrong in no uncertain terms::
     ...     a[i,j] = 0
     ...     """)
 
+By saying::
 
-    >>> knl = lp.set_options(knl, "write_cl")
-    >>> evt, (out,) = knl(queue, a=a_mat_dev)
-    Traceback (most recent call last):
-    ...
     LoopyWarning: kernel scheduling was ambiguous--more than one schedule found, ignoring
 
-This is easily resolved:
+And by picking one of the possible loop orderings at random.
+
+The warning (and the nondeterminism it warns about) is easily resolved:
 
 .. doctest::
 
@@ -476,6 +474,7 @@ ambiguous.
 
 .. doctest::
 
+    >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -673,7 +672,7 @@ Iname implementation tags are also printed along with the entire kernel:
 
 .. doctest::
 
-    >>> print knl
+    >>> print(knl)
     ---------------------------------------------------------------------------
     ...
     INAME IMPLEMENTATION TAGS:
@@ -723,9 +722,9 @@ those for us:
 .. doctest::
 
     >>> glob, loc = knl.get_grid_sizes()
-    >>> print glob
+    >>> print(glob)
     (Aff("[n] -> { [(floor((127 + n)/128))] }"),)
-    >>> print loc
+    >>> print(loc)
     (Aff("[n] -> { [(128)] }"),)
 
 Note that this functionality returns internal objects and is not really
@@ -850,8 +849,8 @@ variable, as one might do in C or another programming language:
     ...     "{ [i]: 0<=i<n }",
     ...     """
     ...     <float32> a_temp = sin(a[i])
-    ...     out1[i] = a_temp
-    ...     out2[i] = sqrt(1-a_temp*a_temp)
+    ...     out1[i] = a_temp {id=out1}
+    ...     out2[i] = sqrt(1-a_temp*a_temp) {dep=out1}
     ...     """)
 
 The angle brackets ``<>`` denote the creation of a temporary. The name of
@@ -861,6 +860,9 @@ understood by the type registry :mod:`pyopencl.array`. To first order,
 the conventional :mod:`numpy` scalar types (:class:`numpy.int16`,
 :class:`numpy.complex128`) will work. (Yes, :mod:`loopy` supports and
 generates correct code for complex arithmetic.)
+
+(If you're wondering, the dependencies above were added to make the doctest
+produce predictable output.)
 
 The generated code places this variable into what OpenCL calls 'private'
 memory, local to each work item.
@@ -877,8 +879,8 @@ memory, local to each work item.
       for (int i = 0; i <= -1 + n; ++i)
       {
         a_temp = sin(a[i]);
-        out2[i] = sqrt(1.0f + -1.0f * a_temp * a_temp);
         out1[i] = a_temp;
+        out2[i] = sqrt(1.0f + -1.0f * a_temp * a_temp);
       }
     }
 
@@ -921,7 +923,7 @@ Consider the following example:
     ...     "{ [i_outer,i_inner, k]:  "
     ...          "0<= 16*i_outer + i_inner <n and 0<= i_inner,k <16}",
     ...     """
-    ...     <> a_temp[i_inner] = a[16*i_outer + i_inner]
+    ...     <> a_temp[i_inner] = a[16*i_outer + i_inner] {priority=10}
     ...     out[16*i_outer + i_inner] = sum(k, a_temp[k])
     ...     """)
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
@@ -951,6 +953,9 @@ Observe that *a_temp* was automatically placed in local memory, because
 it is written in parallel across values of the group-local iname
 *i_inner*. In addition, :mod:`loopy` has emitted a barrier instruction to
 achieve the :ref:`ordering` specified by the instruction dependencies.
+
+(The ``priority=10`` attribute was added to make the output of the test
+deterministic.)
 
 .. note::
 

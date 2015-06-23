@@ -267,7 +267,7 @@ def test_tagged(ctx_factory):
 
     knl, = lp.parse_fortran(fortran_src)
 
-    assert sum(1 for insn in lp.find_instructions(knl, "*$input")) == 2
+    assert sum(1 for insn in lp.find_instructions(knl, "tag:input")) == 2
 
 
 @pytest.mark.parametrize("buffer_inames", [
@@ -407,6 +407,10 @@ def test_fuse_kernels(ctx_factory):
     knl = lp.set_loop_priority(knl, "e,i,j,k")
 
     assert len(knl.temporary_variables) == 2
+
+    # This is needed for correctness, otherwise ordering could foul things up.
+    knl = lp.temporary_to_subst(knl, "prev")
+    knl = lp.temporary_to_subst(knl, "prev_0")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))

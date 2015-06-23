@@ -373,17 +373,17 @@ class LoopyCCodeMapper(RecursiveMapper):
                 # This made it through type 'guessing' above, and it
                 # was concluded above (search for COMPLEX_GUESS_LOGIC),
                 # that nothing was lost by using single precision.
-                cast_type = "cfloat_t"
+                cast_type = "cfloat"
             else:
                 if dtype == np.complex128:
-                    cast_type = "cdouble_t"
+                    cast_type = "cdouble"
                 elif dtype == np.complex64:
-                    cast_type = "cfloat_t"
+                    cast_type = "cfloat"
                 else:
                     raise RuntimeError("unsupported complex type in expression "
                             "generation: %s" % type(expr))
 
-            return "(%s) (%s, %s)" % (cast_type, repr(expr.real), repr(expr.imag))
+            return "%s_new(%s, %s)" % (cast_type, repr(expr.real), repr(expr.imag))
         else:
             if type_context == "f":
                 return repr(float(expr))+"f"
@@ -490,11 +490,20 @@ class LoopyCCodeMapper(RecursiveMapper):
                     if 'c' == self.infer_type(child).kind]
 
             real_sum = self.join_rec(" + ", reals, PREC_SUM, type_context)
-            complex_sum = self.join_rec(
-                    " + ", complexes, PREC_SUM, type_context, tgt_dtype)
+
+            if len(complexes) == 1:
+                myprec = PREC_SUM
+            else:
+                myprec = PREC_NONE
+
+            complex_sum = self.rec(complexes[0], myprec, type_context, tgt_dtype)
+            for child in complexes[1:]:
+                complex_sum = "%s_add(%s, %s)" % (
+                        tgt_name, complex_sum,
+                        self.rec(child, PREC_NONE, type_context, tgt_dtype))
 
             if real_sum:
-                result = "%s_fromreal(%s) + %s" % (tgt_name, real_sum, complex_sum)
+                result = "%s_radd(%s, %s)" % (tgt_name, real_sum, complex_sum)
             else:
                 result = complex_sum
 
@@ -545,8 +554,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                         self.rec(child, PREC_NONE, type_context, tgt_dtype))
 
             if real_prd:
-                # elementwise semantics are correct
-                result = "%s*%s" % (real_prd, complex_prd)
+                result = "%s_rmul(%s, %s)" % (tgt_name, real_prd, complex_prd)
             else:
                 result = complex_prd
 
@@ -591,9 +599,10 @@ class LoopyCCodeMapper(RecursiveMapper):
         if not (n_complex or d_complex):
             return base_impl(expr, enclosing_prec, type_context)
         elif n_complex and not d_complex:
-            # elementwise semantics are correct
-            return base_impl(expr, enclosing_prec, type_context,
-                    num_tgt_dtype=tgt_dtype)
+            return "%s_divider(%s, %s)" % (
+                    self.complex_type_name(tgt_dtype),
+                    self.rec(expr.numerator, PREC_NONE, type_context, tgt_dtype),
+                    self.rec(expr.denominator, PREC_NONE, type_context))
         elif not n_complex and d_complex:
             return "%s_rdivide(%s, %s)" % (
                     self.complex_type_name(tgt_dtype),
