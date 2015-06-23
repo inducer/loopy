@@ -81,7 +81,7 @@ class TypeInferenceMapper(CombineMapper):
 
             if result.isbuiltin and other.isbuiltin:
                 if (result, other) in [
-                        (np.int32, np.float32), (np.int32, np.float32)]:
+                        (np.int32, np.float32), (np.float32, np.int32)]:
                     # numpy makes this a double. I disagree.
                     result = np.dtype(np.float32)
                 else:
