@@ -408,6 +408,10 @@ def test_fuse_kernels(ctx_factory):
 
     assert len(knl.temporary_variables) == 2
 
+    # This is needed for correctness, otherwise ordering could foul things up.
+    knl = lp.temporary_to_subst(knl, "prev")
+    knl = lp.temporary_to_subst(knl, "prev_0")
+
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
 
