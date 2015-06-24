@@ -28,6 +28,7 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 import loopy as lp
 from loopy.statistics import get_op_poly  # noqa
+from loopy.statistics import get_DRAM_access_poly  # noqa
 import numpy as np
 
 
@@ -185,6 +186,150 @@ def test_op_counter_triangular_domain():
     else:
         assert flops == 78
 
+
+def test_DRAM_access_counter_basic():
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+                e[i, k] = g[i,k]*h[i,k+1]
+                """
+            ],
+            name="weird", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    poly = get_DRAM_access_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f32 == 3*n*m*l
+    assert f64 == 2*n*m
+
+
+def test_DRAM_access_counter_reduction():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+            ],
+            name="matmul", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    poly = get_DRAM_access_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f32 == 2*n*m*l
+
+
+def test_DRAM_access_counter_logic():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                e[i,k] = if(not(k<l-2) and k>6 or k/2==l, g[i,k]*2, g[i,k]+h[i,k]/2)
+                """
+            ],
+            name="logic", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
+    poly = get_DRAM_access_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f32 == 2*n*m
+    assert f64 == n*m
+
+
+def test_DRAM_access_counter_specialops():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = (2*a[i,j,k])%(2+b[i,j,k]/3.0)
+                e[i, k] = (1+g[i,k])**(1+h[i,k+1])
+                """
+            ],
+            name="specialops", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    poly = get_DRAM_access_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f32 == 2*n*m*l
+    assert f64 == 2*n*m
+
+
+def test_DRAM_access_counter_bitwise():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = (a[i,j,k] | 1) + (b[i,j,k] & 1)
+                e[i, k] = (g[i,k] ^ k)*(~h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
+                """
+            ],
+            name="bitwise", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(
+            knl, dict(
+                a=np.int32, b=np.int32,
+                g=np.int32, h=np.int32))
+
+    poly = get_DRAM_access_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert i32 == 4*n*m+2*n*m*l
+
+'''
+def test_DRAM_access_counter_triangular_domain():
+
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i<n and 0<=j<m and i<j}",
+            """
+            a[i, j] = b[i,j] * 2
+            """,
+            name="triangle", assumptions="n,m >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+            dict(b=np.float64))
+
+    expect_fallback = False
+    import islpy as isl
+    try:
+        isl.BasicSet.cardz
+    except AttributeError:
+        expect_fallback = True
+    else:
+        expect_fallback = False
+
+    poly = get_DRAM_access_poly(knl)[np.dtype(np.float64)]
+    value_dict = dict(m=13, n=200)
+    subscripts = poly.eval_with_dict(value_dict)
+
+    if expect_fallback:
+        assert subscripts == 144
+    else:
+        assert subscripts == 78  # TODO figure out why this test is broken
+'''
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

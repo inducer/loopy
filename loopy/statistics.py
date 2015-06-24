@@ -218,27 +218,68 @@ class SubscriptCounter(CombineMapper):
     map_call = map_constant
 
     def map_subscript(self, expr):
-        name = expr.aggregate.name
-        arg = self.knl.arg_dict.get(name)
+        name = expr.aggregate.name  # name of array
+
+        if name in self.knl.arg_dict:
+            array = self.knl.arg_dict[name]
+        else:
+            print("Why would this happen?")  # TODO
+            # recurse and return
+            return
+
+        if not isinstance(array, lp.GlobalArg):
+            print("Why would this happen?")  # TODO
+            # recurse and return
+            return
+
+        index = expr.index  # could be tuple or scalar index
+        if not isinstance(index, tuple):
+            index = (index,)
+
+        from loopy.symbolic import get_dependencies
+        my_inames = get_dependencies(index) & self.knl.all_inames()
+        # TODO when would dependencies not be a subset of all inames?
+
+        #print("my_inames: ", my_inames)
+        #print("iname_to_tag: ", self.knl.iname_to_tag)
+        for iname in my_inames:
+            # find local id0 through self.knl.index_to_tag
+            #print("iname: ", iname, "; tag: ", self.knl.iname_to_tag.get(iname))
+            # TODO why are there no tags?
+            pass
+
+        """
+        for dim_tag, axis_index in zip(index, array.dim_tags):
+            # check if he contains the lid 0 guy
+
+            # determine if stride 1
+
+            # find coefficient
+        """
+
         tv = self.knl.temporary_variables.get(name)
-        if arg is not None:
-            if isinstance(arg, lp.GlobalArg):
+
+        #print("\n")
+
+        if array is not None:
+            if isinstance(array, lp.GlobalArg):
                 # It's global memory
                 pass
         elif tv is not None:
             if tv.is_local:
                 # It's shared memory
                 pass
-        #return 1 + self.rec(expr.index)
+
         return TypeToOpCountMap(
                         {self.type_inf(expr): 1}
                         ) + self.rec(expr.index)
+        # TODO what about duplicate accesses that are sitting in registers?
 
     '''
     def map_subscript(self, expr):
         name = expr.aggregate.name
-        if name in self.kernel.arg_dict:
-            array = self.kernel.arg_dict[name]
+        if name in self.knl.arg_dict:
+            array = self.knl.arg_dict[name]
         else:
             ...
             # recurse and return
@@ -252,10 +293,10 @@ class SubscriptCounter(CombineMapper):
             index = (index,)
 
         from loopy.symbolic import get_dependencies
-        my_inames = get_dependencies(index) & self.kernel.all_inames()
+        my_inames = get_dependencies(index) & self.knl.all_inames()
 
         for iname in my_inames:
-            # find local id0 through self.kernel.index_to_tag
+            # find local id0 through self.knl.index_to_tag
 
         # If you don't have a local id0
         # -> not stride1 (for now)
