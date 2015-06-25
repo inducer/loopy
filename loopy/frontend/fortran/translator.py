@@ -197,8 +197,10 @@ class Scope(object):
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
-    def __init__(self, filename):
+    def __init__(self, filename, auto_dependencies):
         FTreeWalkerBase.__init__(self)
+
+        self.auto_dependencies = auto_dependencies
 
         self.scope_stack = []
         self.isl_context = isl.Context()
@@ -223,7 +225,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         new_id = "insn%d" % self.insn_id_counter
         self.insn_id_counter += 1
 
-        if scope.previous_instruction_id:
+        if self.auto_dependencies and scope.previous_instruction_id:
             insn_deps = frozenset([scope.previous_instruction_id])
         else:
             insn_deps = frozenset()
