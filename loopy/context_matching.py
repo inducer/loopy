@@ -251,11 +251,21 @@ def parse_match(expr_str):
 
         return left_query
 
-    from pytools.lex import LexIterator, lex
-    pstate = LexIterator(
-        [(tag, s, idx, matchobj)
-         for (tag, s, idx, matchobj) in lex(_LEX_TABLE, expr_str, match_objects=True)
-         if tag is not _whitespace], expr_str)
+    from pytools.lex import LexIterator, lex, InvalidTokenError
+    try:
+        pstate = LexIterator(
+            [(tag, s, idx, matchobj)
+             for (tag, s, idx, matchobj) in lex(_LEX_TABLE, expr_str,
+                 match_objects=True)
+             if tag is not _whitespace], expr_str)
+    except InvalidTokenError as e:
+        from loopy.diagnostic import LoopyError
+        raise LoopyError(
+                "invalid match expression: '{match_expr}' ({err_type}: {err_str})"
+                .format(
+                    match_expr=expr_str,
+                    err_type=type(e).__name__,
+                    err_str=str(e)))
 
     if pstate.is_at_end():
         pstate.raise_parse_error("unexpected end of input")
