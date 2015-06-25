@@ -218,7 +218,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, temporary_name=None, precompute_inames=None,
         storage_axis_to_tag={}, default_tag="l.auto", dtype=None,
-        fetch_bounding_box=False, temporary_is_local=None):
+        fetch_bounding_box=False, temporary_is_local=None,
+        insn_id=None):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -278,6 +279,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         If the specified inames do not already exist, they will be
         created. If they do already exist, their loop domain is verified
         against the one required for this precomputation.
+    :arg insn_id: The ID of the instruction performing the precomputation.
 
     If `storage_axes` is not specified, it defaults to the arrangement
     `<direct sweep axes><arguments>` with the direct sweep axes being the
@@ -631,9 +633,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     # }}}
 
     from loopy.kernel.data import ExpressionInstruction
-    compute_insn_id = kernel.make_unique_instruction_id(based_on=c_subst_name)
+    if insn_id is None:
+        insn_id = kernel.make_unique_instruction_id(based_on=c_subst_name)
+
     compute_insn = ExpressionInstruction(
-            id=compute_insn_id,
+            id=insn_id,
             assignee=assignee,
             expression=compute_expression)
 
