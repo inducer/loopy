@@ -132,14 +132,14 @@ class ExpressionOpCounter(CombineMapper):
                                 + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):  # implemented in CombineMapper
-        return TypeToOpCountMap({self.type_inf(expr.shiftee): 1}) \
+        return TypeToOpCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
     map_right_shift = map_left_shift
 
     def map_bitwise_not(self, expr):  # implemented in CombineMapper
-        return TypeToOpCountMap({self.type_inf(expr.child): 1}) \
+        return TypeToOpCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
@@ -223,14 +223,12 @@ class SubscriptCounter(CombineMapper):
         if name in self.knl.arg_dict:
             array = self.knl.arg_dict[name]
         else:
-            print("Why would this happen?")  # TODO
-            # recurse and return
-            return
+            # this is a temporary variable
+            return self.rec(expr.index)
 
         if not isinstance(array, lp.GlobalArg):
-            print("Why would this happen?")  # TODO
-            # recurse and return
-            return
+            # this array is not in global memory
+            return self.rec(expr.index)
 
         index = expr.index  # could be tuple or scalar index
         if not isinstance(index, tuple):
@@ -238,14 +236,12 @@ class SubscriptCounter(CombineMapper):
 
         from loopy.symbolic import get_dependencies
         my_inames = get_dependencies(index) & self.knl.all_inames()
-        # TODO when would dependencies not be a subset of all inames?
 
         #print("my_inames: ", my_inames)
         #print("iname_to_tag: ", self.knl.iname_to_tag)
         for iname in my_inames:
             # find local id0 through self.knl.index_to_tag
-            #print("iname: ", iname, "; tag: ", self.knl.iname_to_tag.get(iname))
-            # TODO why are there no tags?
+            print("iname: ", iname, "; tag: ", self.knl.iname_to_tag.get(iname))
             pass
 
         """
@@ -273,7 +269,6 @@ class SubscriptCounter(CombineMapper):
         return TypeToOpCountMap(
                         {self.type_inf(expr): 1}
                         ) + self.rec(expr.index)
-        # TODO what about duplicate accesses that are sitting in registers?
 
     '''
     def map_subscript(self, expr):
