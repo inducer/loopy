@@ -669,7 +669,7 @@ def rename_iname(knl, old_iname, new_iname, within):
         raise ValueError("iname '%s' conflicts with an existing identifier"
                 "--cannot rename" % new_iname)
 
-    knl = duplicate_inames([old_iname], within, [new_iname])
+    knl = duplicate_inames(knl, [old_iname], within=within, new_inames=[new_iname])
     knl = remove_unused_inames(knl, [old_iname])
 
     return knl
@@ -1116,8 +1116,19 @@ def add_dependency(kernel, insn_match, dependency):
     :func:`loopy.context_matching.parse_match`.
     """
 
+    if dependency not in kernel.id_to_insn:
+        raise LoopyError("cannot add dependency on non-existent instruction ID '%s'"
+                % dependency)
+
     def add_dep(insn):
-        return insn.copy(insn_deps=insn.insn_deps + [dependency])
+        new_deps = insn.insn_deps
+        added_deps = frozenset([dependency])
+        if new_deps is None:
+            new_deps = added_deps
+        else:
+            new_deps = new_deps | added_deps
+
+        return insn.copy(insn_deps=new_deps)
 
     return map_instructions(kernel, insn_match, add_dep)
 
