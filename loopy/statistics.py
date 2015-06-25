@@ -239,12 +239,24 @@ class SubscriptCounter(CombineMapper):
 
         #print("my_inames: ", my_inames)
         #print("iname_to_tag: ", self.knl.iname_to_tag)
+        from loopy.kernel.data import LocalIndexTag
+        local_id0 = None  # TODO can there be two?
         for iname in my_inames:
             # find local id0 through self.knl.index_to_tag
-            print("iname: ", iname, "; tag: ", self.knl.iname_to_tag.get(iname))
-            pass
+            tag = self.knl.iname_to_tag.get(iname)
+            if isinstance(tag, LocalIndexTag):
+                local_id0 = iname
+
+        if local_id0 is None:
+            print("TESTING: no local id found, assume sequential access")
+            # TODO assume sequential for now?
+        else:
+            print("TESTING: local id found: ", local_id0)
 
         """
+        # If you don't have a local id0
+        # -> not stride1 (for now)
+
         for dim_tag, axis_index in zip(index, array.dim_tags):
             # check if he contains the lid 0 guy
 
