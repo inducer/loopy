@@ -27,7 +27,7 @@ import six
 import loopy as lp
 import warnings
 from islpy import dim_type
-import islpy._isl as isl
+import islpy as isl
 from pymbolic.mapper import CombineMapper
 
 
