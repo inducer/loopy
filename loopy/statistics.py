@@ -253,10 +253,11 @@ class ExpressionSubscriptCounter(CombineMapper):
                 local_id0 = iname
 
         if local_id0 is None:
+            # TODO assume non-consecutive access for now?
             #warnings.warn("ExpressionSubscriptCounter did not find iname tags in ",
             #              "expression: \n", expr,
             #              "\n, counting DRAM accesses as non-consecutive.")
-            # TODO assume non-consecutive for now?
+
             if self.consecutive is False:
                 # count this subscript
                 return TypeToOpCountMap(
@@ -266,76 +267,47 @@ class ExpressionSubscriptCounter(CombineMapper):
                 # do NOT count this subscript
                 return self.rec(expr.index)
 
-        # need to check coefficient
-        print("local_id0: ", local_id0)
-        print("index: ", index, "\narray.dim_tags: ", array.dim_tags)
-        print("( dim_tag,  axis_index )")
-        for dim_tag, axis_index in zip(index, array.dim_tags):
-            print("( ", dim_tag, ",  ", axis_index, " )")
+        # check coefficient of local_id0 for each axis
+        from loopy.symbolic import CoefficientCollector
+        from pymbolic.primitives import Variable
+        print("="*40)
+        print("TESTING: expression: ", expr)
+        for idx, axis_tag in zip(index, array.dim_tags):
+            print("...........")
+            print("TESTING: ( ", idx, ",  ", axis_tag, " )")
+            #notes... idx type: pymbolic.primitives.Variable
+            #.... axis_tag type: loopy.kernel.array.FixedStrideArrayDimTag
+
+            coeffs = CoefficientCollector()(idx)
             # check if he contains the lid 0 guy
+            try:
+                coeff_id0 = coeffs[Variable(local_id0)]
+                print("TESTING: coefficient of local_id0 found: ", coeff_id0)
+            except KeyError:
+                # does not contain local_id0
+                print("TESTING: key not found, continuing")
+                continue
 
-            # determine if stride 1
+            # TODO assuming only one idx contains id0, could more than one?
+            if coeff_id0 is not 1:
+                # non-consecutive access
+                print("TESTING: coeff is not 1, returning")
+                if self.consecutive is False:
+                    # count this subscript
+                    return TypeToOpCountMap(
+                                {self.type_inf(expr): 1}
+                                ) + self.rec(expr.index)
+                else:
+                    # do NOT count this subscript
+                    return self.rec(expr.index)
 
-            # find coefficient
+            print("TESTING: coefficient of id0 is 1, now check stride...")
 
-        tv = self.knl.temporary_variables.get(name)
-
-        if array is not None:
-            if isinstance(array, lp.GlobalArg):
-                # It's global memory
-                pass
-        elif tv is not None:
-            if tv.is_local:
-                # It's shared memory
-                pass
-
-        return TypeToOpCountMap(
-                        {self.type_inf(expr): 1}
-                        ) + self.rec(expr.index)
-
-    '''
-    def map_subscript(self, expr):
-        name = expr.aggregate.name
-        if name in self.knl.arg_dict:
-            array = self.knl.arg_dict[name]
-        else:
-            ...
-            # recurse and return
-
-        if not isinstance(array, lp.GlobalArg):
-            # recurse and return
-
-        index = expr.index # could be tuple or scalar index
-
-        if not isinstance(index, tuple):
-            index = (index,)
-
-        from loopy.symbolic import get_dependencies
-        my_inames = get_dependencies(index) & self.knl.all_inames()
-
-        for iname in my_inames:
-            # find local id0 through self.knl.index_to_tag
-
-        # If you don't have a local id0
-        # -> not stride1 (for now)
-
-        for dim_tag, axis_index in zip(index, array.dim_tags):
-            # check if he contains the lid 0 guy
-
-            # determine if stride 1
-
-            # find coefficient
-    '''
-
-    #TODO find stride looking in ArrayBase.dim tag
-    '''
-    for each instruction, find which iname is associated with local id0 (iname_to_tag)
-    then for each array axis in that instruction, run through all axes and see if local id0 iname occurs
-    for each axis where this occurs, see if stride=1 (using coefficient collecter)
-
-    variable has dimTags (one for each axis),
-    localid 0 is threadidx.x
-    '''
+            # TODO coefficient is 1, now determine if stride is 1
+            # for now, just count it
+            return TypeToOpCountMap(
+                            {self.type_inf(expr): 1}
+                            ) + self.rec(expr.index)
 
     def map_sum(self, expr):
         if expr.children:

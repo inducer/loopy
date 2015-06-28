@@ -300,6 +300,26 @@ def test_DRAM_access_counter_bitwise():
     i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert i32 == 4*n*m+2*n*m*l
 
+
+def test_DRAM_access_counter_weird():
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+            c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+            e[i, k] = g[i,k]*(2+h[i,k])
+            """
+            ],
+            name="weird", assumptions="n,m,l >= 1")
+    knl = lp.add_and_infer_dtypes(knl, dict(
+                a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    knl = lp.split_iname(knl, "j", 16)
+    knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
+
+    poly = get_DRAM_access_poly(knl, consecutive=True)  # noqa
+    # TODO assertions
+
 '''
 def test_DRAM_access_counter_triangular_domain():
 
