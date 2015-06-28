@@ -203,7 +203,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.auto_dependencies = auto_dependencies
 
         self.scope_stack = []
-        self.isl_context = isl.Context()
 
         self.insn_id_counter = 0
         self.condition_id_counter = 0
@@ -544,7 +543,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         # }}}
 
-        space = isl.Space.create_from_names(self.isl_context,
+        space = isl.Space.create_from_names(isl.DEFAULT_CONTEXT,
                 set=[loopy_loop_var], params=list(loop_bound_deps))
 
         from loopy.isl_helpers import iname_rel_aff

@@ -266,6 +266,9 @@ class LoopKernel(RecordWithoutPickling):
                 ]:
             raise ValueError("invalid value for 'state'")
 
+        assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
+        assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
+
         RecordWithoutPickling.__init__(self,
                 domains=domains,
                 instructions=instructions,

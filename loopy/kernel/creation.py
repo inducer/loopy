@@ -362,7 +362,7 @@ def _find_existentially_quantified_inames(dom_str):
     return set(ex_quant.group(1) for ex_quant in EX_QUANT_RE.finditer(dom_str))
 
 
-def parse_domains(ctx, domains, defines):
+def parse_domains(domains, defines):
     if isinstance(domains, str):
         domains = [domains]
 
@@ -381,7 +381,7 @@ def parse_domains(ctx, domains, defines):
                 dom = "[%s] -> %s" % (",".join(parameters), dom)
 
             try:
-                dom = isl.BasicSet.read_from_str(ctx, dom)
+                dom = isl.BasicSet.read_from_str(isl.DEFAULT_CONTEXT, dom)
             except:
                 print("failed to parse domain '%s'" % dom)
                 raise
@@ -1149,16 +1149,13 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # {{{ find/create isl_context
 
-    isl_context = None
     for domain in domains:
         if isinstance(domain, isl.BasicSet):
-            isl_context = domain.get_ctx()
-    if isl_context is None:
-        isl_context = isl.Context()
+            assert domain.get_ctx() == isl.DEFAULT_CONTEXT
 
     # }}}
 
-    domains = parse_domains(isl_context, domains, defines)
+    domains = parse_domains(domains, defines)
 
     arg_guesser = ArgumentGuesser(domains, instructions,
             temporary_variables, substitutions,
