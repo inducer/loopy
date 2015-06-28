@@ -1,4 +1,3 @@
-numpy
 git+git://github.com/inducer/pytools
 git+git://github.com/inducer/islpy
 cgen
