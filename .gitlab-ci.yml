@@ -35,4 +35,3 @@ PyPy AMD CPU:
   - amd-cl-cpu
   except:
   - tags
-  - master
