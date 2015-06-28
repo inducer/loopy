@@ -166,12 +166,12 @@ class ExpressionOpCounter(CombineMapper):
     map_logical_and = map_logical_or
 
     def map_if(self, expr):  # implemented in CombineMapper, recurses
-        warnings.warn("OpCounter counting DRAM accesses as "
+        warnings.warn("ExpressionOpCounter counting DRAM accesses as "
                       "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
 
     def map_if_positive(self, expr):  # implemented in FlopCounter
-        warnings.warn("OpCounter counting DRAM accesses as "
+        warnings.warn("ExpressionOpCounter counting DRAM accesses as "
                       "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
@@ -181,29 +181,31 @@ class ExpressionOpCounter(CombineMapper):
     map_max = map_min  # implemented in CombineMapper, maps to map_sum;  # TODO test
 
     def map_common_subexpression(self, expr):
-        raise NotImplementedError("OpCounter encountered common_subexpression, "
+        raise NotImplementedError("ExpressionOpCounter encountered "
+                                  "common_subexpression, "
                                   "map_common_subexpression not implemented.")
         return 0
 
     def map_substitution(self, expr):
-        raise NotImplementedError("OpCounter encountered substitution, "
+        raise NotImplementedError("ExpressionOpCounter encountered substitution, "
                                   "map_substitution not implemented.")
         return 0
 
     def map_derivative(self, expr):
-        raise NotImplementedError("OpCounter encountered derivative, "
+        raise NotImplementedError("ExpressionOpCounter encountered derivative, "
                                   "map_derivative not implemented.")
         return 0
 
     def map_slice(self, expr):
-        raise NotImplementedError("OpCounter encountered slice, "
+        raise NotImplementedError("ExpressionOpCounter encountered slice, "
                                   "map_slice not implemented.")
         return 0
 
 
-class SubscriptCounter(CombineMapper):
-    def __init__(self, knl):
+class ExpressionSubscriptCounter(CombineMapper):
+    def __init__(self, knl, consecutive):
         self.knl = knl
+        self.consecutive = consecutive
         from loopy.expression import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
@@ -230,44 +232,53 @@ class SubscriptCounter(CombineMapper):
             # this array is not in global memory
             return self.rec(expr.index)
 
+        if self.consecutive is None:
+            # count this subscript whether consecutive or not
+            return TypeToOpCountMap(
+                        {self.type_inf(expr): 1}
+                        ) + self.rec(expr.index)
+
         index = expr.index  # could be tuple or scalar index
         if not isinstance(index, tuple):
             index = (index,)
 
         from loopy.symbolic import get_dependencies
-        my_inames = get_dependencies(index) & self.knl.all_inames()
-
-        #print("my_inames: ", my_inames)
-        #print("iname_to_tag: ", self.knl.iname_to_tag)
         from loopy.kernel.data import LocalIndexTag
+        my_inames = get_dependencies(index) & self.knl.all_inames()
         local_id0 = None  # TODO can there be two?
         for iname in my_inames:
-            # find local id0 through self.knl.index_to_tag
+            # find local id0
             tag = self.knl.iname_to_tag.get(iname)
             if isinstance(tag, LocalIndexTag):
                 local_id0 = iname
 
         if local_id0 is None:
-            print("TESTING: no local id found, assume sequential access")
-            # TODO assume sequential for now?
-        else:
-            print("TESTING: local id found: ", local_id0)
+            #warnings.warn("ExpressionSubscriptCounter did not find iname tags in ",
+            #              "expression: \n", expr,
+            #              "\n, counting DRAM accesses as non-consecutive.")
+            # TODO assume non-consecutive for now?
+            if self.consecutive is False:
+                # count this subscript
+                return TypeToOpCountMap(
+                            {self.type_inf(expr): 1}
+                            ) + self.rec(expr.index)
+            else:
+                # do NOT count this subscript
+                return self.rec(expr.index)
 
-        """
-        # If you don't have a local id0
-        # -> not stride1 (for now)
-
+        # need to check coefficient
+        print("local_id0: ", local_id0)
+        print("index: ", index, "\narray.dim_tags: ", array.dim_tags)
+        print("( dim_tag,  axis_index )")
         for dim_tag, axis_index in zip(index, array.dim_tags):
+            print("( ", dim_tag, ",  ", axis_index, " )")
             # check if he contains the lid 0 guy
 
             # determine if stride 1
 
             # find coefficient
-        """
 
         tv = self.knl.temporary_variables.get(name)
-
-        #print("\n")
 
         if array is not None:
             if isinstance(array, lp.GlobalArg):
@@ -365,12 +376,12 @@ class SubscriptCounter(CombineMapper):
     map_logical_and = map_logical_or
 
     def map_if(self, expr):
-        warnings.warn("SubscriptCounter counting DRAM accesses as "
+        warnings.warn("ExpressionSubscriptCounter counting DRAM accesses as "
                       "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("SubscriptCounter counting DRAM accesses as "
+        warnings.warn("ExpressionSubscriptCounter counting DRAM accesses as "
                       "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
@@ -378,23 +389,25 @@ class SubscriptCounter(CombineMapper):
     map_max = map_min
 
     def map_common_subexpression(self, expr):
-        raise NotImplementedError("SubscriptCounter encountered "
+        raise NotImplementedError("ExpressionSubscriptCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
         return 0
 
     def map_substitution(self, expr):
-        raise NotImplementedError("SubscriptCounter encountered substitution, "
+        raise NotImplementedError("ExpressionSubscriptCounter encountered "
+                                  "substitution, "
                                   "map_substitution not implemented.")
         return 0
 
     def map_derivative(self, expr):
-        raise NotImplementedError("SubscriptCounter encountered derivative, "
+        raise NotImplementedError("ExpressionSubscriptCounter encountered "
+                                  "derivative, "
                                   "map_derivative not implemented.")
         return 0
 
     def map_slice(self, expr):
-        raise NotImplementedError("SubscriptCounter encountered slice, "
+        raise NotImplementedError("ExpressionSubscriptCounter encountered slice, "
                                   "map_slice not implemented.")
         return 0
 
@@ -448,14 +461,14 @@ def get_op_poly(knl):
     return op_poly
 
 
-def get_DRAM_access_poly(knl):  # for now just counting subscripts
+def get_DRAM_access_poly(knl, consecutive=None):  # for now just counting subscripts
     # raise NotImplementedError("get_DRAM_access_poly not yet implemented.")
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
     subs_poly = 0
-    subscript_counter = SubscriptCounter(knl)
+    subscript_counter = ExpressionSubscriptCounter(knl, consecutive)
     for insn in knl.instructions:
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
