@@ -82,6 +82,9 @@ def _extract_loopy_lines(source):
                 raise LoopyError("non-comment source line in loopy block")
 
             remaining_lines.append(l)
+
+            # Preserves line numbers in loopy code, for debuggability
+            loopy_lines.append("# "+l)
             continue
 
         cmt = comment_match.group(1)
@@ -102,6 +105,9 @@ def _extract_loopy_lines(source):
 
         else:
             remaining_lines.append(l)
+
+            # Preserves line numbers in loopy code, for debuggability
+            loopy_lines.append("# "+l)
 
     return "\n".join(remaining_lines), "\n".join(loopy_lines)
 
