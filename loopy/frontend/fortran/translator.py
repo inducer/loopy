@@ -308,7 +308,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             ("integer", ""): np.int32,
             ("integer", "4"): np.int32,
-            ("complex", "8"): np.int64,
+            ("integer", "8"): np.int64,
             }
 
     def dtype_from_stmt(self, stmt):
