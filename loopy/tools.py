@@ -164,7 +164,8 @@ class PicklableDtype(object):
 
 # {{{ remove common indentation
 
-def remove_common_indentation(code, require_leading_newline=True):
+def remove_common_indentation(code, require_leading_newline=True,
+        ignore_lines_starting_with=None, strip_empty_lines=True):
     if "\n" not in code:
         return code
 
@@ -175,21 +176,43 @@ def remove_common_indentation(code, require_leading_newline=True):
         return code
 
     lines = code.split("\n")
-    while lines[0].strip() == "":
-        lines.pop(0)
-    while lines[-1].strip() == "":
-        lines.pop(-1)
 
-    if lines:
-        base_indent = 0
-        while lines[0][base_indent] in " \t":
+    if strip_empty_lines:
+        while lines[0].strip() == "":
+            lines.pop(0)
+        while lines[-1].strip() == "":
+            lines.pop(-1)
+
+    test_line = None
+    if ignore_lines_starting_with:
+        for l in lines:
+            strip_l = l.lstrip()
+            if (strip_l
+                    and not strip_l.startswith(ignore_lines_starting_with)):
+                test_line = l
+                break
+
+    else:
+        test_line = lines[0]
+
+    base_indent = 0
+    if test_line:
+        while test_line[base_indent] in " \t":
             base_indent += 1
 
-        for line in lines[1:]:
-            if line[:base_indent].strip():
-                raise ValueError("inconsistent indentation")
+    new_lines = []
+    for line in lines:
+        if (ignore_lines_starting_with
+                and line.lstrip().startswith(ignore_lines_starting_with)):
+            new_lines.append(line)
+            continue
 
-    return "\n".join(line[base_indent:] for line in lines)
+        if line[:base_indent].strip():
+            raise ValueError("inconsistent indentation: '%s'" % line)
+
+        new_lines.append(line[base_indent:])
+
+    return "\n".join(new_lines)
 
 # }}}
 
