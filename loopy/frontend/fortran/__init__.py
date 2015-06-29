@@ -82,6 +82,9 @@ def _extract_loopy_lines(source):
                 raise LoopyError("non-comment source line in loopy block")
 
             remaining_lines.append(l)
+
+            # Preserves line numbers in loopy code, for debuggability
+            loopy_lines.append("# "+l)
             continue
 
         cmt = comment_match.group(1)
@@ -92,16 +95,25 @@ def _extract_loopy_lines(source):
                 raise LoopyError("can't enter loopy block twice")
             in_loopy_code = True
 
+            # Preserves line numbers in loopy code, for debuggability
+            loopy_lines.append("# "+l)
+
         elif cmt_stripped == "$loopy end":
             if not in_loopy_code:
                 raise LoopyError("can't leave loopy block twice")
             in_loopy_code = False
+
+            # Preserves line numbers in loopy code, for debuggability
+            loopy_lines.append("# "+l)
 
         elif in_loopy_code:
             loopy_lines.append(cmt)
 
         else:
             remaining_lines.append(l)
+
+            # Preserves line numbers in loopy code, for debuggability
+            loopy_lines.append("# "+l)
 
     return "\n".join(remaining_lines), "\n".join(loopy_lines)
 
@@ -163,7 +175,9 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
     from loopy.tools import remove_common_indentation
     transform_code = remove_common_indentation(
             transform_code,
-            require_leading_newline=False)
+            require_leading_newline=False,
+            ignore_lines_starting_with="#")
+    print(transform_code)
 
     if transform_code_context is None:
         proc_dict = {}

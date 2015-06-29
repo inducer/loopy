@@ -203,7 +203,6 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.auto_dependencies = auto_dependencies
 
         self.scope_stack = []
-        self.isl_context = isl.Context()
 
         self.insn_id_counter = 0
         self.condition_id_counter = 0
@@ -301,16 +300,18 @@ class F2LoopyTranslator(FTreeWalkerBase):
     TYPE_MAP = {
             ("real", "4"): np.float32,
             ("real", "8"): np.float64,
-            ("real", "16"): np.float128,
 
             ("complex", "8"): np.complex64,
             ("complex", "16"): np.complex128,
-            ("complex", "32"): np.complex256,
 
             ("integer", ""): np.int32,
             ("integer", "4"): np.int32,
-            ("complex", "8"): np.int64,
+            ("integer", "8"): np.int64,
             }
+    if hasattr(np, "float128"):
+        TYPE_MAP[("real", "16")] = np.float128
+    if hasattr(np, "complex256"):
+        TYPE_MAP[("complex", "32")] = np.complex256
 
     def dtype_from_stmt(self, stmt):
         length, kind = stmt.selector
@@ -544,7 +545,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         # }}}
 
-        space = isl.Space.create_from_names(self.isl_context,
+        space = isl.Space.create_from_names(isl.DEFAULT_CONTEXT,
                 set=[loopy_loop_var], params=list(loop_bound_deps))
 
         from loopy.isl_helpers import iname_rel_aff
