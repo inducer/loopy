@@ -25,6 +25,11 @@ VERSION = (2014, 1)
 VERSION_STATUS = ""
 VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
 
-import islpy.version
+try:
+    import islpy.version
+except ImportError:
+    _islpy_version = "_UNKNOWN_"
+else:
+    _islpy_version = islpy.version.VERSION_TEXT
 
-DATA_MODEL_VERSION = "v9-islpy%s" % islpy.version.VERSION_TEXT
+DATA_MODEL_VERSION = "v9-islpy%s" % _islpy_version
