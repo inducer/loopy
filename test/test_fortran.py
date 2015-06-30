@@ -453,6 +453,49 @@ def test_parse_and_fuse_two_kernels():
     knl, = lp.parse_transformed_fortran(fortran_src)
 
 
+def test_precompute_some_exist(ctx_factory):
+    fortran_src = """
+        subroutine dgemm(m,n,l,a,b,c)
+          implicit none
+          real*8 a(m,l),b(l,n),c(m,n)
+          integer m,n,k,i,j,l
+
+          do j = 1,n
+            do i = 1,m
+              do k = 1,l
+                c(i,j) = c(i,j) + b(k,j)*a(i,k)
+              end do
+            end do
+          end do
+        end subroutine
+        """
+
+    knl, = lp.parse_fortran(fortran_src)
+
+    assert len(knl.domains) == 1
+
+    knl = lp.split_iname(knl, "i", 8,
+            outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", 8,
+            outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 8)
+    knl = lp.assume(knl, "n mod 8 = 0")
+    knl = lp.assume(knl, "m mod 8 = 0")
+    knl = lp.assume(knl, "l mod 8 = 0")
+
+    knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
+    knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
+    knl = lp.precompute(knl, "a_acc", "k_inner,i_inner",
+            precompute_inames="ktemp,itemp")
+    knl = lp.precompute(knl, "b_acc", "j_inner,k_inner",
+            precompute_inames="itemp,k2temp")
+
+    ref_knl = knl
+
+    ctx = ctx_factory()
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, l=128))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
