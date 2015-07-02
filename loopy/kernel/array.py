@@ -876,7 +876,7 @@ class ArrayBase(Record):
 
     def decl_info(self, target, is_written, index_dtype):
         """Return a list of :class:`loopy.codegen.ImplementedDataInfo`
-        instances corresponding to the argume
+        instances corresponding to the array.
         """
 
         from loopy.codegen import ImplementedDataInfo
@@ -1094,22 +1094,31 @@ class AccessInfo(Record):
     """
 
 
-def get_access_info(target, ary, index, eval_expr):
+def get_access_info(target, ary, index, eval_expr, vectorization_info):
     """
     :arg ary: an object of type :class:`ArrayBase`
     :arg index: a tuple of indices representing a subscript into ary
+    :arg vectorization_info: an instance of :class:`loopy.codegen.VectorizationInfo`,
+        or *None*.
     """
 
-    def eval_expr_wrapper(i, expr):
+    def eval_expr_assert_integer_constant(i, expr):
         from pymbolic.mapper.evaluator import UnknownVariableError
         try:
-            return eval_expr(expr)
+            result = eval_expr(expr)
         except UnknownVariableError as e:
             raise LoopyError("When trying to index the array '%s' along axis "
                     "%d (tagged '%s'), the index was not a compile-time "
                     "constant (but it has to be in order for code to be "
                     "generated). You likely want to unroll the iname(s) '%s'."
                     % (ary.name, i, ary.dim_tags[i], str(e)))
+
+        if not is_integer(result):
+            raise LoopyError("subscript '%s[%s]' has non-constant "
+                    "index for separate-array axis %d (0-based)" % (
+                        ary.name, index, i))
+
+        return result
 
     if not isinstance(index, tuple):
         index = (index,)
@@ -1142,11 +1151,7 @@ def get_access_info(target, ary, index, eval_expr):
 
     for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
         if isinstance(dim_tag, SeparateArrayArrayDimTag):
-            idx = eval_expr_wrapper(i, idx)
-            if not is_integer(idx):
-                raise LoopyError("subscript '%s[%s]' has non-constant "
-                        "index for separate-array axis %d (0-based)" % (
-                            ary.name, index, i))
+            idx = eval_expr_assert_integer_constant(i, idx)
             array_name += "_s%d" % idx
 
     # }}}
@@ -1176,14 +1181,19 @@ def get_access_info(target, ary, index, eval_expr):
             pass
 
         elif isinstance(dim_tag, VectorArrayDimTag):
-            idx = eval_expr_wrapper(i, idx)
+            from pymbolic.primitives import Variable
+            if (vectorization_info is not None
+                    and isinstance(index[i], Variable)
+                    and index[i].name == vectorization_info.iname):
+                # We'll do absolutely nothing here, which will result
+                # in the vector being returned.
+                pass
 
-            if not is_integer(idx):
-                raise LoopyError("subscript '%s[%s]' has non-constant "
-                        "index for separate-array axis %d (0-based)" % (
-                            ary.name, index, i))
-            assert vector_index is None
-            vector_index = idx
+            else:
+                idx = eval_expr_assert_integer_constant(i, idx)
+
+                assert vector_index is None
+                vector_index = idx
 
         else:
             raise LoopyError("unsupported array dim implementation tag '%s' "

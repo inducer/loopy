@@ -519,7 +519,7 @@ def realize_reduction(kernel, insn_id_filter=None):
 # }}}
 
 
-# {{{ duplicate private vars for ilp
+# {{{ duplicate private vars for ilp and vec
 
 from loopy.symbolic import IdentityMapper
 
@@ -550,12 +550,12 @@ class ExtraInameIndexInserter(IdentityMapper):
             return expr.index(new_idx)
 
 
-def duplicate_private_temporaries_for_ilp(kernel):
+def duplicate_private_temporaries_for_ilp_and_vec(kernel):
     logger.debug("%s: duplicate temporaries for ilp" % kernel.name)
 
     wmap = kernel.writer_map()
 
-    from loopy.kernel.data import IlpBaseTag
+    from loopy.kernel.data import IlpBaseTag, VectorizeTag
 
     var_to_new_ilp_inames = {}
 
@@ -566,7 +566,9 @@ def duplicate_private_temporaries_for_ilp(kernel):
             writer_insn = kernel.id_to_insn[writer_insn_id]
             ilp_inames = frozenset(iname
                     for iname in kernel.insn_inames(writer_insn)
-                    if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
+                    if isinstance(
+                        kernel.iname_to_tag.get(iname),
+                        (IlpBaseTag, VectorizeTag)))
 
             referenced_ilp_inames = (ilp_inames
                     & writer_insn.write_dependency_names())
@@ -618,10 +620,15 @@ def duplicate_private_temporaries_for_ilp(kernel):
         if shape is None:
             shape = ()
 
+        dim_tags = ["c"] * (len(shape) + len(extra_shape))
+        for i, iname in enumerate(inames):
+            if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag):
+                dim_tags[len(shape) + i] = "vec"
+
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,
                 # Forget what you knew about data layout,
                 # create from scratch.
-                dim_tags=None)
+                dim_tags=dim_tags)
 
     # }}}
 
@@ -1074,7 +1081,7 @@ def preprocess_kernel(kernel, device=None):
     # duplicate_private_temporaries_for_ilp because reduction accumulators
     # need to be duplicated by this.
 
-    kernel = duplicate_private_temporaries_for_ilp(kernel)
+    kernel = duplicate_private_temporaries_for_ilp_and_vec(kernel)
     kernel = mark_local_temporaries(kernel)
     kernel = assign_automatic_axes(kernel)
     kernel = find_boostability(kernel)

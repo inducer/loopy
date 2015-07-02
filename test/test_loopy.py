@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+from six.moves import range
 
 import sys
 import numpy as np
@@ -181,7 +180,7 @@ def test_simple_side_effect(ctx_factory):
     for gen_knl in kernel_gen:
         print(gen_knl)
         compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.code)
+        print(compiled.get_code())
 
 
 def test_nonsense_reduction(ctx_factory):
@@ -218,7 +217,7 @@ def test_owed_barriers(ctx_factory):
 
     for gen_knl in kernel_gen:
         compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.code)
+        print(compiled.get_code())
 
 
 def test_wg_too_small(ctx_factory):
@@ -312,7 +311,7 @@ def test_multi_cse(ctx_factory):
 
     for gen_knl in kernel_gen:
         compiled = lp.CompiledKernel(ctx, gen_knl)
-        print(compiled.code)
+        print(compiled.get_code())
 
 
 def test_stencil(ctx_factory):
@@ -356,7 +355,7 @@ def test_stencil(ctx_factory):
 
     for variant in [variant_1, variant_2]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
-                fills_entire_output=False, print_ref_code=False,
+                print_ref_code=False,
                 op_count=[n*n], op_label=["cells"])
 
 
@@ -397,7 +396,7 @@ def test_stencil_with_overfetch(ctx_factory):
     for variant in [variant_overfetch]:
         n = 200
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
-                fills_entire_output=False, print_ref_code=False,
+                print_ref_code=False,
                 op_count=[n*n], parameters=dict(n=n), op_label=["cells"])
 
 
@@ -553,7 +552,7 @@ def test_fuzz_code_generator(ctx_factory):
             print("true=%r" % true_value)
             print("loopy=%r" % lp_value)
             print(80*"-")
-            print(ck.code)
+            print(ck.get_code())
             print(80*"-")
             print(var_values)
             print(80*"-")
@@ -643,7 +642,7 @@ def test_multi_nested_dependent_reduction(ctx_factory):
             assumptions="ntgts>=1")
 
     cknl = lp.CompiledKernel(ctx, knl)
-    print(cknl.code)
+    print(cknl.get_code())
     # FIXME: Actually test functionality.
 
 
@@ -871,8 +870,7 @@ def test_equality_constraints(ctx_factory):
     #print(knl.domains[0].detect_equalities())
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n), print_ref_code=True,
-            fills_entire_output=False)
+            parameters=dict(n=n), print_ref_code=True)
 
 
 def test_stride(ctx_factory):
@@ -898,7 +896,7 @@ def test_stride(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n), fills_entire_output=False)
+            parameters=dict(n=n))
 
 
 def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
@@ -926,8 +924,7 @@ def test_domain_dependency_via_existentially_quantified_variable(ctx_factory):
     seq_knl = knl
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
-            parameters=dict(n=n),
-            fills_entire_output=False)
+            parameters=dict(n=n))
 
 
 def test_double_sum(ctx_factory):
@@ -1581,8 +1578,7 @@ def test_vector_types(ctx_factory, vec_len):
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             parameters=dict(
                 n=20000
-                ),
-            fills_entire_output=False)
+                ))
 
 
 def test_tag_data_axes(ctx_factory):
@@ -2063,6 +2059,33 @@ def test_precompute_with_preexisting_inames_fail():
         lp.precompute(knl, "D2_subst", "i,k", default_tag="for",
                 precompute_inames="ii,jj")
 
+
+def test_vectorize(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        """
+        <> temp = 2*b[i]
+        a[i] = temp
+        """)
+    knl = lp.add_and_infer_dtypes(knl, dict(b=np.float32))
+    knl = lp.split_arg_axis(knl, [("a", 0), ("b", 0)], 4,
+            split_kwargs=dict(slabs=(0, 1)))
+
+    knl = lp.tag_data_axes(knl, "a,b", "c,vec")
+    ref_knl = knl
+    ref_knl = lp.tag_inames(ref_knl, {"i_inner": "unr"})
+
+    knl = lp.tag_inames(knl, {"i_inner": "vec"})
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    code, inf = lp.generate_code(knl)
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(n=30))
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

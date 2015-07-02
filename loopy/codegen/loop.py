@@ -25,6 +25,7 @@ THE SOFTWARE.
 """
 
 
+from loopy.diagnostic import warn, LoopyError
 from loopy.codegen import gen_code_block
 import islpy as isl
 from islpy import dim_type
@@ -125,8 +126,14 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
             static_max_of_pw_aff, static_value_of_pw_aff)
     from loopy.symbolic import pw_aff_to_expr
 
-    length = int(pw_aff_to_expr(
-        static_max_of_pw_aff(bounds.size, constants_only=True)))
+    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
+
+    if not length_aff.is_cst():
+        raise LoopyError(
+                "length of unrolled loop '%s' is not a constant, "
+                "cannot unroll")
+
+    length = int(pw_aff_to_expr(length_aff))
 
     try:
         lower_bound_aff = static_value_of_pw_aff(
@@ -144,6 +151,63 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
                 build_loop_nest(kernel, sched_index+1, new_codegen_state))
 
     return gen_code_block(result)
+
+# }}}
+
+
+# {{{ vectorized loops
+
+def generate_vectorize_loop(kernel, sched_index, codegen_state):
+    iname = kernel.schedule[sched_index].iname
+
+    bounds = kernel.get_iname_bounds(iname, constants_only=True)
+
+    from loopy.isl_helpers import (
+            static_max_of_pw_aff, static_value_of_pw_aff)
+    from loopy.symbolic import pw_aff_to_expr
+
+    length_aff = static_max_of_pw_aff(bounds.size, constants_only=True)
+
+    if not length_aff.is_cst():
+        warn(kernel, "vec_upper_not_const",
+                "upper bound for vectorized loop '%s' is not a constant, "
+                "cannot vectorize--unrolling instead")
+        return generate_unroll_loop(kernel, sched_index, codegen_state)
+
+    length = int(pw_aff_to_expr(length_aff))
+
+    try:
+        lower_bound_aff = static_value_of_pw_aff(
+                bounds.lower_bound_pw_aff.coalesce(),
+                constants_only=False)
+    except Exception as e:
+        raise type(e)("while finding lower bound of '%s': " % iname)
+
+    if not lower_bound_aff.plain_is_zero():
+        warn(kernel, "vec_lower_not_0",
+                "lower bound for vectorized loop '%s' is not zero, "
+                "cannot vectorize--unrolling instead")
+        return generate_unroll_loop(kernel, sched_index, codegen_state)
+
+    # {{{ 'implement' vectorization bounds
+
+    domain = kernel.get_inames_domain(iname)
+
+    from loopy.isl_helpers import make_slab
+    slab = make_slab(domain.get_space(), iname,
+            lower_bound_aff, lower_bound_aff+length)
+    codegen_state = codegen_state.intersect(slab)
+
+    # }}}
+
+    from loopy.codegen import VectorizationInfo
+    new_codegen_state = codegen_state.copy(
+            vectorization_info=VectorizationInfo(
+                iname=iname,
+                length=length,
+                space=length_aff.space))
+
+    return build_loop_nest(kernel, sched_index+1, new_codegen_state)
 
 # }}}
 
@@ -249,10 +313,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
         # Have the conditional infrastructure generate the
         # slabbing conditionals.
         slabbed_kernel = intersect_kernel_with_slab(kernel, slab, iname)
-        new_codegen_state = codegen_state.copy(
-                expression_to_code_mapper=(
-                    codegen_state.expression_to_code_mapper.copy_and_assign(
-                        iname, hw_axis_expr)))
+        new_codegen_state = codegen_state.copy_and_assign(iname, hw_axis_expr)
 
         inner = set_up_hw_parallel_loops(
                 slabbed_kernel, sched_index,

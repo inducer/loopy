@@ -371,4 +371,17 @@ def project_out(set, inames):
 
     return set
 
+
+def obj_involves_variable(obj, var_name):
+    loc = obj.get_var_dict().get(var_name)
+    if loc is not None:
+        if not obj.get_coefficient_val(*loc).is_zero():
+            return True
+
+    for idiv in obj.dim(dim_type.div):
+        if obj_involves_variable(obj.get_div(idiv)):
+            return True
+
+    return False
+
 # vim: foldmethod=marker
