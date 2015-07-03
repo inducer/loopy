@@ -258,9 +258,9 @@ class ExpressionSubscriptCounter(CombineMapper):
             # TODO assume non-consecutive access for now?
             # if no local id 0, 1, etc..., 3rd class of access
             # if no local id0, but find local id1, nonconsec
-            #warnings.warn("ExpressionSubscriptCounter did not find iname tags in ",
-            #              "expression: \n", expr,
-            #              "\n, counting DRAM accesses as non-consecutive.")
+            warnings.warn('ExpressionSubscriptCounter did not find iname tags in '
+                          'expression:\n%s,\n'
+                          ' counting DRAM accesses as non-consecutive.' % (expr))
 
             if self.consecutive is False:
                 # count this subscript
@@ -279,8 +279,6 @@ class ExpressionSubscriptCounter(CombineMapper):
         for idx, axis_tag in zip(index, array.dim_tags):
             print("...........")
             print("TESTING: ( ", idx, ",  ", axis_tag, " )")
-            #notes... idx type: pymbolic.primitives.Variable
-            #.... axis_tag type: loopy.kernel.array.FixedStrideArrayDimTag
 
             coeffs = CoefficientCollector()(idx)
             # check if he contains the lid 0 guy
@@ -292,7 +290,6 @@ class ExpressionSubscriptCounter(CombineMapper):
                 print("TESTING: key not found, continuing")
                 continue
 
-            # TODO assuming only one idx contains id0, could more than one? yes, and largest coeff counts
             if coeff_id0 != 1:
                 # non-consecutive access
                 print("TESTING: coeff is not 1, returning")
@@ -314,23 +311,32 @@ class ExpressionSubscriptCounter(CombineMapper):
             else:
                 continue
 
-            print("TESTING: stride = ", stride)
-            if (stride == 1 and self.consecutive) or \
-               (stride != 1 and not self.consecutive):
-                # count this subscript
-                return TypeToOpCountMap(
-                            {self.type_inf(expr): 1}
-                            ) + self.rec(expr.index)
-            else:
-                # do NOT count this subscript
-                return self.rec(expr.index)
+            print("TESTING: stride == ", stride)
+            if stride != 1:
+                # non-consecutive
+                if not self.consecutive:
+                    # count this subscript
+                    return TypeToOpCountMap(
+                                {self.type_inf(expr): 1}
+                                ) + self.rec(expr.index)
+                else:
+                    # do NOT count this subscript
+                    return self.rec(expr.index)
 
-            '''
-            # for now, just count it
+            # else, stride == 1, continue since another idx could contain id0
+            print("TESTING: stride is 1, now check next idx...")
+
+        # loop finished without returning, stride = 1 for every instance of local_id0
+        # TODO what if key was never found?
+        print("TESTING: loop finished, stride is 1.")
+        if self.consecutive:
+            # count this subscript
             return TypeToOpCountMap(
-                            {self.type_inf(expr): 1}
-                            ) + self.rec(expr.index)
-            '''
+                        {self.type_inf(expr): 1}
+                        ) + self.rec(expr.index)
+        else:
+            # do NOT count this subscript
+            return self.rec(expr.index)
 
     def map_sum(self, expr):
         if expr.children:
