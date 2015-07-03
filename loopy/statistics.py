@@ -203,6 +203,8 @@ class ExpressionOpCounter(CombineMapper):
 
 
 class ExpressionSubscriptCounter(CombineMapper):
+    # TODO  return mapping of (type, consec/nonconsec/uniform)
+    # TODO  count barriers: get_one_scheduled_kernel(k).schedule (list) then look for instanceOf barrier
     def __init__(self, knl, consecutive):
         self.knl = knl
         self.consecutive = consecutive
@@ -245,15 +247,17 @@ class ExpressionSubscriptCounter(CombineMapper):
         from loopy.symbolic import get_dependencies
         from loopy.kernel.data import LocalIndexTag
         my_inames = get_dependencies(index) & self.knl.all_inames()
-        local_id0 = None  # TODO can there be two?
+        local_id0 = None  # TODO can there be two? no
         for iname in my_inames:
             # find local id0
             tag = self.knl.iname_to_tag.get(iname)
-            if isinstance(tag, LocalIndexTag):
+            if isinstance(tag, LocalIndexTag) and tag.axis == 0:
                 local_id0 = iname
 
         if local_id0 is None:
             # TODO assume non-consecutive access for now?
+            # if no local id 0, 1, etc..., 3rd class of access
+            # if no local id0, but find local id1, nonconsec
             #warnings.warn("ExpressionSubscriptCounter did not find iname tags in ",
             #              "expression: \n", expr,
             #              "\n, counting DRAM accesses as non-consecutive.")
@@ -288,11 +292,11 @@ class ExpressionSubscriptCounter(CombineMapper):
                 print("TESTING: key not found, continuing")
                 continue
 
-            # TODO assuming only one idx contains id0, could more than one?
-            if coeff_id0 is not 1:
+            # TODO assuming only one idx contains id0, could more than one? yes, and largest coeff counts
+            if coeff_id0 != 1:
                 # non-consecutive access
                 print("TESTING: coeff is not 1, returning")
-                if self.consecutive is False:
+                if not self.consecutive:
                     # count this subscript
                     return TypeToOpCountMap(
                                 {self.type_inf(expr): 1}
@@ -301,13 +305,32 @@ class ExpressionSubscriptCounter(CombineMapper):
                     # do NOT count this subscript
                     return self.rec(expr.index)
 
+            # coefficient is 1, now determine if stride is 1
             print("TESTING: coefficient of id0 is 1, now check stride...")
 
-            # TODO coefficient is 1, now determine if stride is 1
+            from loopy.kernel.array import FixedStrideArrayDimTag
+            if isinstance(axis_tag, FixedStrideArrayDimTag):
+                stride = axis_tag.stride
+            else:
+                continue
+
+            print("TESTING: stride = ", stride)
+            if (stride == 1 and self.consecutive) or \
+               (stride != 1 and not self.consecutive):
+                # count this subscript
+                return TypeToOpCountMap(
+                            {self.type_inf(expr): 1}
+                            ) + self.rec(expr.index)
+            else:
+                # do NOT count this subscript
+                return self.rec(expr.index)
+
+            '''
             # for now, just count it
             return TypeToOpCountMap(
                             {self.type_inf(expr): 1}
                             ) + self.rec(expr.index)
+            '''
 
     def map_sum(self, expr):
         if expr.children:
