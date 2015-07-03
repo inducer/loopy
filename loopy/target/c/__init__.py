@@ -54,11 +54,9 @@ class CTarget(TargetBase):
     def dtype_to_typename(self, dtype):
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
-    def get_expression_to_code_mapper(self, kernel,
-            seen_dtypes, seen_functions, allow_complex):
+    def get_expression_to_code_mapper(self, codegen_state):
         from loopy.target.c.codegen.expression import LoopyCCodeMapper
-        return (LoopyCCodeMapper(kernel, seen_dtypes, seen_functions,
-            allow_complex=allow_complex))
+        return LoopyCCodeMapper(codegen_state)
 
     # {{{ code generation
 

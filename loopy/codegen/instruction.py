@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 from six.moves import range
 import islpy as isl
-from loopy.codegen import GeneratedInstruction
+from loopy.codegen import GeneratedInstruction, Unvectorizable
 from pymbolic.mapper.stringifier import PREC_NONE
 
 
@@ -90,13 +90,30 @@ def generate_instruction_code(kernel, insn, codegen_state):
 def generate_expr_instruction_code(kernel, insn, codegen_state):
     ecm = codegen_state.expression_to_code_mapper
 
+    from loopy.expression import dtype_to_type_context, VectorizabilityChecker
+
+    if codegen_state.vectorization_info:
+        vinfo = codegen_state.vectorization_info
+        vcheck = VectorizabilityChecker(
+                kernel, vinfo.iname, vinfo.length)
+        rhs_is_vector = vcheck(insn.assignee)
+        lhs_is_vector = vcheck(insn.expression)
+
+        if lhs_is_vector != rhs_is_vector:
+            raise Unvectorizable(
+                    "LHS and RHS disagree on whether they are vectors")
+
+        is_vector = lhs_is_vector
+
+        del lhs_is_vector
+        del rhs_is_vector
+
     expr = insn.expression
 
     (assignee_var_name, assignee_indices), = insn.assignees_and_indices()
     target_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
     from cgen import Assign
-    from loopy.expression import dtype_to_type_context
     lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
     result = Assign(
             lhs_code,
@@ -105,6 +122,9 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
                 needed_dtype=target_dtype))
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
+        if codegen_state.vectorization_info and is_vector:
+            raise Unvectorizable("tracing does not support vectorization")
+
         from cgen import Statement as S  # noqa
 
         gs, ls = kernel.get_grid_sizes()
@@ -160,6 +180,9 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
 
 
 def generate_c_instruction_code(kernel, insn, codegen_state):
+    if codegen_state.vectorization_info is not None:
+        raise Unvectorizable("C instructions cannot be vectorized")
+
     ecm = codegen_state.expression_to_code_mapper
 
     body = []

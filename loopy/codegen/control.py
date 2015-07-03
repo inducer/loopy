@@ -61,12 +61,15 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
 
         from loopy.codegen.loop import (
                 generate_unroll_loop,
+                generate_vectorize_loop,
                 generate_sequential_loop_dim_code)
 
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag, ForceSequentialTag,
-                LoopedIlpTag)
+                LoopedIlpTag, VectorizeTag)
         if isinstance(tag, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
+        elif isinstance(tag, VectorizeTag):
+            func = generate_vectorize_loop
         elif tag is None or isinstance(tag, (LoopedIlpTag, ForceSequentialTag)):
             func = generate_sequential_loop_dim_code
         else:
@@ -92,7 +95,9 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
         insn = kernel.id_to_insn[sched_item.insn_id]
 
         from loopy.codegen.instruction import generate_instruction_code
-        return generate_instruction_code(kernel, insn, codegen_state)
+        return codegen_state.try_vectorized(
+                "instruction %s" % insn.id,
+                lambda inner_cgs: generate_instruction_code(kernel, insn, inner_cgs))
 
     else:
         raise RuntimeError("unexpected schedule item type: %s"
@@ -346,27 +351,67 @@ def build_loop_nest(kernel, sched_index, codegen_state):
         else:
             if group_length == 1:
                 # group only contains starting schedule item
-                result = [generate_code_for_sched_index(
-                    kernel, sched_index, new_codegen_state)]
-                if result == [None]:
-                    result = []
+                def gen_code(inner_codegen_state):
+                    inner = generate_code_for_sched_index(
+                        kernel, sched_index, inner_codegen_state)
+
+                    if inner is None:
+                        return []
+                    else:
+                        return [inner]
+
             else:
                 # recurse with a bigger done_group_lengths
-                result = build_insn_group(
-                        sched_index_info_entries[0:group_length],
-                        new_codegen_state,
-                        done_group_lengths=done_group_lengths | set([group_length]))
+                def gen_code(inner_codegen_state):
+                    return build_insn_group(
+                            sched_index_info_entries[0:group_length],
+                            inner_codegen_state,
+                            done_group_lengths=(
+                                done_group_lengths | set([group_length])))
+
+            # gen_code returns a list
 
             if bounds_checks or pred_checks:
                 from loopy.codegen import wrap_in_if
                 from loopy.codegen.bounds import constraint_to_code
 
-                conditionals = [
-                        constraint_to_code(
-                            codegen_state.expression_to_code_mapper, cns)
-                        for cns in bounds_checks] + list(pred_checks)
+                prev_gen_code = gen_code
 
-                result = [wrap_in_if(conditionals, gen_code_block(result))]
+                def gen_code(inner_codegen_state):
+                    conditionals = [
+                            constraint_to_code(
+                                inner_codegen_state.expression_to_code_mapper, cns)
+                            for cns in bounds_checks] + list(pred_checks)
+
+                    prev_result = prev_gen_code(inner_codegen_state)
+
+                    return [wrap_in_if(
+                             conditionals,
+                             gen_code_block(prev_result))]
+
+                cannot_vectorize = False
+                if new_codegen_state.vectorization_info is not None:
+                    from loopy.isl_helpers import obj_involves_variable
+                    for cond in bounds_checks:
+                        if obj_involves_variable(
+                                cond,
+                                new_codegen_state.vectorization_info.iname):
+                            cannot_vectorize = True
+                            break
+
+                if cannot_vectorize:
+                    def gen_code_wrapper(inner_codegen_state):
+                        # gen_code returns a list, but this needs to return a
+                        # GeneratedCode instance.
+
+                        return gen_code_block(gen_code(inner_codegen_state))
+
+                    result = [new_codegen_state.unvectorize(gen_code_wrapper)]
+                else:
+                    result = gen_code(new_codegen_state)
+
+            else:
+                result = gen_code(new_codegen_state)
 
         return result + build_insn_group(
                 sched_index_info_entries[group_length:], codegen_state)

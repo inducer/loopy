@@ -53,6 +53,15 @@ class IndexTag(Record):
 
         return key_builder.rec(key_hash, self.key)
 
+    @property
+    def key(self):
+        """Return a hashable, comparable value that is used to ensure
+        per-instruction uniqueness of this unique iname tag.
+
+        Also used for persistent hash construction.
+        """
+        return type(self).__name__
+
 
 class ParallelTag(IndexTag):
     pass
@@ -63,9 +72,7 @@ class HardwareParallelTag(ParallelTag):
 
 
 class UniqueTag(IndexTag):
-    @property
-    def key(self):
-        return type(self).__name__
+    pass
 
 
 class AxisTag(UniqueTag):
@@ -107,10 +114,10 @@ class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
         return "l.auto"
 
 
+# {{{ ilp-like
+
 class IlpBaseTag(ParallelTag):
-    @property
-    def key(self):
-        return type(self).__name__
+    pass
 
 
 class UnrolledIlpTag(IlpBaseTag):
@@ -122,23 +129,22 @@ class LoopedIlpTag(IlpBaseTag):
     def __str__(self):
         return "ilp.seq"
 
+# }}}
+
+
+class VectorizeTag(UniqueTag):
+    def __str__(self):
+        return "vec"
+
 
 class UnrollTag(IndexTag):
     def __str__(self):
         return "unr"
 
-    @property
-    def key(self):
-        return type(self).__name__
-
 
 class ForceSequentialTag(IndexTag):
     def __str__(self):
         return "forceseq"
-
-    @property
-    def key(self):
-        return type(self).__name__
 
 
 def parse_tag(tag):
@@ -155,6 +161,8 @@ def parse_tag(tag):
         return None
     elif tag in ["unr"]:
         return UnrollTag()
+    elif tag in ["vec"]:
+        return VectorizeTag()
     elif tag in ["ilp", "ilp.unr"]:
         return UnrolledIlpTag()
     elif tag == "ilp.seq":
@@ -347,10 +355,10 @@ class TemporaryVariable(ArrayBase):
         from loopy.codegen import POD  # uses the correct complex type
         from cgen.opencl import CLLocal
 
-        temp_var_decl = POD(target, self.dtype, self.name)
+        temp_var_decl = POD(target, dtype, self.name)
 
         # FIXME take into account storage_shape, or something like it
-        storage_shape = self.shape
+        storage_shape = shape
 
         if storage_shape:
             temp_var_decl = ArrayOf(temp_var_decl,

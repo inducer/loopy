@@ -25,10 +25,13 @@ THE SOFTWARE.
 
 import numpy as np
 
-from pymbolic.mapper import CombineMapper
+from pymbolic.mapper import CombineMapper, RecursiveMapper
 
 from loopy.tools import is_integer
-from loopy.diagnostic import TypeInferenceFailure, DependencyTypeInferenceFailure
+from loopy.codegen import Unvectorizable
+from loopy.diagnostic import (
+        LoopyError,
+        TypeInferenceFailure, DependencyTypeInferenceFailure)
 
 
 # type_context may be:
@@ -254,6 +257,131 @@ class TypeInferenceMapper(CombineMapper):
     def map_reduction(self, expr):
         return expr.operation.result_dtype(
                 self.kernel.target, self.rec(expr.expr), expr.inames)
+
+# }}}
+
+
+# {{{ vetorizability checker
+
+class VectorizabilityChecker(RecursiveMapper):
+    """The return value from this mapper is a :class:`bool` indicating whether
+    the result of the expression is vectorized along :attr:`vec_iname`.
+    If the expression is not vectorizable, the mapper raises :class:`Unvectorizable`.
+
+    .. attribute:: vec_iname
+    """
+
+    def __init__(self, kernel, vec_iname, vec_iname_length):
+        self.kernel = kernel
+        self.vec_iname = vec_iname
+        self.vec_iname_length = vec_iname_length
+
+    @staticmethod
+    def combine(vectorizabilities):
+        from functools import reduce
+        from operator import and_
+        return reduce(and_, vectorizabilities)
+
+    def map_sum(self, expr):
+        return any(self.rec(child) for child in expr.children)
+
+    map_product = map_sum
+
+    def map_quotient(self, expr):
+        return (self.rec(expr.numerator)
+                or
+                self.rec(expr.denominator))
+
+    def map_linear_subscript(self, expr):
+        return False
+
+    def map_call(self, expr):
+        # FIXME: Should implement better vectorization check for function calls
+
+        rec_pars = [
+                self.rec(child) for child in expr.parameters]
+        if any(rec_pars):
+            raise Unvectorizable("fucntion calls cannot yet be vectorized")
+
+        return False
+
+    def map_subscript(self, expr):
+        name = expr.aggregate.name
+
+        var = self.kernel.arg_dict.get(name)
+        if var is None:
+            var = self.kernel.temporary_variables.get(name)
+
+        if var is None:
+            raise LoopyError("unknown array variable in subscript: %s"
+                    % name)
+
+        from loopy.kernel.array import ArrayBase
+        if not isinstance(var, ArrayBase):
+            raise LoopyError("non-array subscript '%s'" % expr)
+
+        index = expr.index
+        if not isinstance(index, tuple):
+            index = (index,)
+
+        from loopy.symbolic import get_dependencies
+        from loopy.kernel.array import VectorArrayDimTag
+        from pymbolic.primitives import Variable
+
+        possible = None
+        for i in range(len(var.shape)):
+            if (
+                    isinstance(var.dim_tags[i], VectorArrayDimTag)
+                    and isinstance(index[i], Variable)
+                    and index[i].name == self.vec_iname):
+                if var.shape[i] != self.vec_iname_length:
+                    raise Unvectorizable("vector length was mismatched")
+
+                if possible is None:
+                    possible = True
+
+            else:
+                if self.vec_iname in get_dependencies(index[i]):
+                    raise Unvectorizable("other vectorization iname "
+                            "dependencies in subscript")
+                    break
+
+        return bool(possible)
+
+    def map_constant(self, expr):
+        return False
+
+    def map_variable(self, expr):
+        if expr.name == self.vec_iname:
+            # Technically, this is doable. But we're not going there.
+            raise Unvectorizable()
+
+        # A single variable is always a scalar.
+        return False
+
+    map_tagged_variable = map_variable
+
+    def map_lookup(self, expr):
+        if self.rec(expr.aggregate):
+            raise Unvectorizable()
+
+        return False
+
+    def map_comparison(self, expr):
+        # FIXME: These actually can be vectorized:
+        # https://www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/relationalFunctions.html
+
+        raise Unvectorizable()
+
+    def map_logical_not(self, expr):
+        raise Unvectorizable()
+
+    map_logical_and = map_logical_not
+    map_logical_or = map_logical_not
+
+    def map_reduction(self, expr):
+        # FIXME: Do this more carefully
+        raise Unvectorizable()
 
 # }}}
 

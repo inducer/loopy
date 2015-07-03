@@ -41,7 +41,8 @@ class ArgAxisSplitHelper(RuleAwareIdentityMapper):
             return super(ArgAxisSplitHelper, self).map_subscript(expr, expn_state)
 
 
-def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True):
+def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
+        split_kwargs=None):
     """
     :arg args_and_axes: a list of tuples *(arg, axis_nr)* indicating
         that the index in *axis_nr* should be split. The tuples may
@@ -54,6 +55,7 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True):
     :arg count: The group size to use in the split.
     :arg auto_split_inames: Whether to automatically split inames
         encountered in the specified indices.
+    :arg split_kwargs: arguments to pass to :func:`loopy.split_inames`
 
     Note that splits on the corresponding inames are carried out implicitly.
     The inames may *not* be split beforehand. (There's no *really* good reason
@@ -62,6 +64,9 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True):
 
     if count == 1:
         return kernel
+
+    if split_kwargs is None:
+        split_kwargs = {}
 
     # {{{ process input into arg_to_rest
 
@@ -177,7 +182,7 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True):
                         "beforehand? If so, you shouldn't.)"
                         % (expr, axis_nr))
 
-            split_iname = expr.index[axis_nr].name
+            split_iname = idx[axis_nr].name
             assert split_iname in kernel.all_inames()
 
             try:
@@ -213,10 +218,12 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True):
 
     kernel = kernel.copy(args=new_args)
 
-    from loopy import split_iname
-    for iname, (outer_iname, inner_iname) in six.iteritems(split_vars):
-        kernel = split_iname(kernel, iname, count,
-                outer_iname=outer_iname, inner_iname=inner_iname)
+    if auto_split_inames:
+        from loopy import split_iname
+        for iname, (outer_iname, inner_iname) in six.iteritems(split_vars):
+            kernel = split_iname(kernel, iname, count,
+                    outer_iname=outer_iname, inner_iname=inner_iname,
+                    **split_kwargs)
 
     return kernel
 

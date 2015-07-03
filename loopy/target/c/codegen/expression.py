@@ -49,52 +49,18 @@ def get_opencl_vec_member(idx):
 # {{{ C code mapper
 
 class LoopyCCodeMapper(RecursiveMapper):
-    def __init__(self, kernel, seen_dtypes, seen_functions, var_subst_map={},
-            allow_complex=False):
-        """
-        :arg seen_dtypes: set of dtypes that were encountered
-        :arg seen_functions: set of tuples (name, c_name, arg_types) indicating
-            functions that were encountered.
-        """
+    def __init__(self, codegen_state):
+        self.kernel = codegen_state.kernel
+        self.codegen_state = codegen_state
 
-        self.kernel = kernel
-        self.seen_dtypes = seen_dtypes
-        self.seen_functions = seen_functions
-
-        self.type_inf_mapper = TypeInferenceMapper(kernel)
-        self.allow_complex = allow_complex
-
-        self.var_subst_map = var_subst_map.copy()
-
-    # {{{ copy helpers
-
-    def copy(self, var_subst_map=None):
-        if var_subst_map is None:
-            var_subst_map = self.var_subst_map
-        return LoopyCCodeMapper(self.kernel, self.seen_dtypes, self.seen_functions,
-                var_subst_map=var_subst_map,
-                allow_complex=self.allow_complex)
-
-    def copy_and_assign(self, name, value):
-        """Make a copy of self with variable *name* fixed to *value*."""
-        var_subst_map = self.var_subst_map.copy()
-        var_subst_map[name] = value
-        return self.copy(var_subst_map=var_subst_map)
-
-    def copy_and_assign_many(self, assignments):
-        """Make a copy of self with *assignments* included."""
-
-        var_subst_map = self.var_subst_map.copy()
-        var_subst_map.update(assignments)
-        return self.copy(var_subst_map=var_subst_map)
-
-    # }}}
+        self.type_inf_mapper = TypeInferenceMapper(self.kernel)
+        self.allow_complex = codegen_state.allow_complex
 
     # {{{ helpers
 
     def infer_type(self, expr):
         result = self.type_inf_mapper(expr)
-        self.seen_dtypes.add(result)
+        self.codegen_state.seen_dtypes.add(result)
         return result
 
     def join_rec(self, joiner, iterable, prec, type_context, needed_dtype=None):
@@ -133,14 +99,14 @@ class LoopyCCodeMapper(RecursiveMapper):
                 "entry to loopy")
 
     def map_variable(self, expr, enclosing_prec, type_context):
-        if expr.name in self.var_subst_map:
+        if expr.name in self.codegen_state.var_subst_map:
             if self.kernel.options.annotate_inames:
                 return " /* %s */ %s" % (
                         expr.name,
-                        self.rec(self.var_subst_map[expr.name],
+                        self.rec(self.codegen_state.var_subst_map[expr.name],
                             enclosing_prec, type_context))
             else:
-                return str(self.rec(self.var_subst_map[expr.name],
+                return str(self.rec(self.codegen_state.var_subst_map[expr.name],
                     enclosing_prec, type_context))
         elif expr.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.name]
@@ -201,7 +167,8 @@ class LoopyCCodeMapper(RecursiveMapper):
         from pymbolic import evaluate
 
         access_info = get_access_info(self.kernel.target, ary, expr.index,
-                lambda expr: evaluate(expr, self.var_subst_map))
+                lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
+                self.codegen_state.vectorization_info)
 
         vec_member = get_opencl_vec_member(access_info.vector_index)
 
@@ -310,7 +277,8 @@ class LoopyCCodeMapper(RecursiveMapper):
         def seen_func(name):
             idt = self.kernel.index_dtype
             from loopy.codegen import SeenFunction
-            self.seen_functions.add(SeenFunction(name, name, (idt, idt)))
+            self.codegen_state.seen_functions.add(
+                    SeenFunction(name, name, (idt, idt)))
 
         if den_nonneg:
             if num_nonneg:
@@ -432,7 +400,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                         % identifier)
 
         from loopy.codegen import SeenFunction
-        self.seen_functions.add(SeenFunction(identifier, c_name, par_dtypes))
+        self.codegen_state.seen_functions.add(
+                SeenFunction(identifier, c_name, par_dtypes))
         if str_parameters is None:
             # /!\ FIXME For some functions (e.g. 'sin'), it makes sense to
             # propagate the type context here. But for many others, it does

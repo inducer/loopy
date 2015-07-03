@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 import six
 
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, warn
 from pytools import Record
 import islpy as isl
 
@@ -167,8 +167,26 @@ class SeenFunction(Record):
 
 # {{{ code generation state
 
+class Unvectorizable(Exception):
+    pass
+
+
+class VectorizationInfo(object):
+    """
+    .. attribute:: iname
+    .. attribute:: length
+    .. attribute:: space
+    """
+
+    def __init__(self, iname, length, space):
+        self.iname = iname
+        self.length = length
+        self.space = space
+
+
 class CodeGenerationState(object):
     """
+    .. attribute:: kernel
     .. attribute:: implemented_domain
 
         The entire implemented domain (as an :class:`islpy.Set`)
@@ -179,26 +197,79 @@ class CodeGenerationState(object):
         A :class:`frozenset` of predicates for which checks have been
         implemented.
 
-    .. attribute:: expression_to_code_mapper
+    .. attribute:: seen_dtypes
 
-        A :class:`loopy.codegen.expression.CCodeMapper` that does not take
-        per-ILP assignments into account.
+        set of dtypes that were encountered
+
+    .. attribute:: seen_functions
+
+        set of :class:`SeenFunction` instances
+
+    .. attribute:: var_subst_map
+
+    .. attribute:: allow_complex
+
+    .. attribute:: vectorization_info
+
+        None or an instance of :class:`VectorizationInfo`
     """
-    def __init__(self, implemented_domain, implemented_predicates,
-            expression_to_code_mapper):
+
+    def __init__(self, kernel, implemented_domain, implemented_predicates,
+            seen_dtypes, seen_functions, var_subst_map,
+            allow_complex,
+            vectorization_info=None):
+        self.kernel = kernel
         self.implemented_domain = implemented_domain
         self.implemented_predicates = implemented_predicates
-        self.expression_to_code_mapper = expression_to_code_mapper
+        self.seen_dtypes = seen_dtypes
+        self.seen_functions = seen_functions
+        self.var_subst_map = var_subst_map.copy()
+        self.allow_complex = allow_complex
+        self.vectorization_info = vectorization_info
+
+    # {{{ copy helpers
 
     def copy(self, implemented_domain=None, implemented_predicates=frozenset(),
-            expression_to_code_mapper=None):
+            var_subst_map=None, vectorization_info=None):
+
+        if vectorization_info is False:
+            vectorization_info = None
+
+        elif vectorization_info is None:
+            vectorization_info = self.vectorization_info
+
         return CodeGenerationState(
+                kernel=self.kernel,
                 implemented_domain=implemented_domain or self.implemented_domain,
                 implemented_predicates=(
                     implemented_predicates or self.implemented_predicates),
-                expression_to_code_mapper=(
-                    expression_to_code_mapper
-                    or self.expression_to_code_mapper))
+                seen_dtypes=self.seen_dtypes,
+                seen_functions=self.seen_functions,
+                var_subst_map=var_subst_map or self.var_subst_map,
+                allow_complex=self.allow_complex,
+                vectorization_info=vectorization_info)
+
+    def copy_and_assign(self, name, value):
+        """Make a copy of self with variable *name* fixed to *value*."""
+        var_subst_map = self.var_subst_map.copy()
+        var_subst_map[name] = value
+        return self.copy(var_subst_map=var_subst_map)
+
+    def copy_and_assign_many(self, assignments):
+        """Make a copy of self with *assignments* included."""
+
+        var_subst_map = self.var_subst_map.copy()
+        var_subst_map.update(assignments)
+        return self.copy(var_subst_map=var_subst_map)
+
+    # }}}
+
+    @property
+    def expression_to_code_mapper(self):
+        # It's kind of unfortunate that this is here, but it's an accident
+        # of history for now.
+
+        return self.kernel.target.get_expression_to_code_mapper(self)
 
     def intersect(self, other):
         new_impl, new_other = isl.align_two(self.implemented_domain, other)
@@ -225,11 +296,43 @@ class CodeGenerationState(object):
         expr = pw_aff_to_expr(aff)
 
         new_impl_domain = new_impl_domain.add_constraint(cns)
-        return self.copy(
-                implemented_domain=new_impl_domain,
-                expression_to_code_mapper=(
-                    self.expression_to_code_mapper.copy_and_assign(iname, expr)))
+        return self.copy_and_assign(iname, expr).copy(
+                implemented_domain=new_impl_domain)
 
+    def try_vectorized(self, what, func):
+        """If *self* is in a vectorizing state (:attr:`vectorization_info` is
+        not None), tries to call func (which must be a callable accepting a
+        single :class:`CodeGenerationState` argument). If this fails with
+        :exc:`Unvectorizable`, it unrolls the vectorized loop instead.
+
+        *func* should return a :class:`GeneratedCode` instance.
+
+        :returns: :class:`GeneratedCode`
+        """
+
+        if self.vectorization_info is None:
+            return func(self)
+
+        try:
+            return func(self)
+        except Unvectorizable as e:
+            warn(self.kernel, "vectorize_failed",
+                    "Vectorization of '%s' failed because '%s'"
+                    % (what, e))
+
+            return self.unvectorize(func)
+
+    def unvectorize(self, func):
+        vinf = self.vectorization_info
+        result = []
+        novec_self = self.copy(vectorization_info=False)
+
+        for i in range(vinf.length):
+            idx_aff = isl.Aff.zero_on_domain(vinf.space.params()) + i
+            new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
+            result.append(func(new_codegen_state))
+
+        return gen_code_block(result)
 # }}}
 
 
@@ -431,10 +534,13 @@ def generate_code(kernel, device=None):
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(
+            kernel=kernel,
             implemented_domain=initial_implemented_domain,
             implemented_predicates=frozenset(),
-            expression_to_code_mapper=kernel.target.get_expression_to_code_mapper(
-                kernel, seen_dtypes, seen_functions, allow_complex))
+            seen_dtypes=seen_dtypes,
+            seen_functions=seen_functions,
+            var_subst_map={},
+            allow_complex=allow_complex)
 
     code_str, implemented_domains = kernel.target.generate_code(
             kernel, codegen_state, impl_arg_info)
@@ -517,10 +623,13 @@ def generate_body(kernel):
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(
+            kernel=kernel,
             implemented_domain=initial_implemented_domain,
             implemented_predicates=frozenset(),
-            expression_to_code_mapper=kernel.target.get_expression_to_code_mapper(
-                kernel, seen_dtypes, seen_functions, allow_complex))
+            seen_dtypes=seen_dtypes,
+            seen_functions=seen_functions,
+            var_subst_map={},
+            allow_complex=allow_complex)
 
     code_str, implemented_domains = kernel.target.generate_body(
             kernel, codegen_state)

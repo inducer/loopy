@@ -593,21 +593,37 @@ def generate_loop_schedules_internal(sched_state, loop_priority, schedule=[],
         useful_and_desired = useful_loops_set & loop_priority_set
 
         if useful_and_desired:
-            priority_tiers = [[iname]
+            priority_tiers = [
+                    [iname]
                     for iname in loop_priority
                     if iname in useful_and_desired
-                    and iname not in sched_state.lowest_priority_inames]
+                    and iname not in sched_state.ilp_inames
+                    and iname not in sched_state.vec_inames
+                    ]
 
             priority_tiers.append(
                     useful_loops_set
                     - loop_priority_set
-                    - sched_state.lowest_priority_inames)
+                    - sched_state.ilp_inames
+                    - sched_state.vec_inames
+                    )
         else:
-            priority_tiers = [useful_loops_set - sched_state.lowest_priority_inames]
+            priority_tiers = [
+                    useful_loops_set
+                    - sched_state.ilp_inames
+                    - sched_state.vec_inames
+                    ]
+
+        # vectorization must be the absolute innermost loop
+        priority_tiers.extend([
+            [iname]
+            for iname in sched_state.ilp_inames
+            if iname in useful_loops_set
+            ])
 
         priority_tiers.extend([
             [iname]
-            for iname in sched_state.lowest_priority_inames
+            for iname in sched_state.vec_inames
             if iname in useful_loops_set
             ])
 
@@ -1029,11 +1045,15 @@ def generate_loop_schedules(kernel, debug_args={}):
 
     debug = ScheduleDebugger(**debug_args)
 
-    from loopy.kernel.data import IlpBaseTag, ParallelTag
+    from loopy.kernel.data import IlpBaseTag, ParallelTag, VectorizeTag
     ilp_inames = set(
             iname
             for iname in kernel.all_inames()
             if isinstance(kernel.iname_to_tag.get(iname), IlpBaseTag))
+    vec_inames = set(
+            iname
+            for iname in kernel.all_inames()
+            if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag))
     parallel_inames = set(
             iname for iname in kernel.all_inames()
             if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
@@ -1042,9 +1062,10 @@ def generate_loop_schedules(kernel, debug_args={}):
             kernel=kernel,
             loop_nest_map=loop_nest_map(kernel),
             breakable_inames=ilp_inames,
-            lowest_priority_inames=ilp_inames,
-            # ILP is not parallel for the purposes of the scheduler
-            parallel_inames=parallel_inames - ilp_inames)
+            ilp_inames=ilp_inames,
+            vec_inames=vec_inames,
+            # ilp and vec are not parallel for the purposes of the scheduler
+            parallel_inames=parallel_inames - ilp_inames - vec_inames)
 
     generators = [
             generate_loop_schedules_internal(sched_state, loop_priority,
