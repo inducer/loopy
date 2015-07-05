@@ -422,6 +422,10 @@ def test_magma_fermi_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
+    if (not ctx.devices[0].image_support
+            or ctx.devices[0].platform.name == "Portable Computing Language"):
+        pytest.skip("crashes on pocl")
+
     image_format = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
     if image_format not in cl.get_supported_image_formats(
             ctx, cl.mem_flags.READ_ONLY, cl.mem_object_type.IMAGE2D):
@@ -469,6 +473,10 @@ def test_image_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
 
+    if (not ctx.devices[0].image_support
+            or ctx.devices[0].platform.name == "Portable Computing Language"):
+        pytest.skip("crashes on pocl")
+
     image_format = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
     if image_format not in cl.get_supported_image_formats(
             ctx, cl.mem_flags.READ_ONLY, cl.mem_object_type.IMAGE2D):
@@ -504,6 +512,10 @@ def test_image_matrix_mul_ilp(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
+
+    if (not ctx.devices[0].image_support
+            or ctx.devices[0].platform.name == "Portable Computing Language"):
+        pytest.skip("crashes on pocl")
 
     image_format = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
     if image_format not in cl.get_supported_image_formats(

@@ -43,10 +43,10 @@ def test_dg_volume(ctx_factory):
 
     order = "F"
 
-    N = 3
-    Np = (N+1)*(N+2)*(N+3)//6
+    N = 3  # noqa
+    Np = (N+1)*(N+2)*(N+3)//6  # noqa
 
-    K = 10000
+    K = 10000  # noqa
 
     knl = lp.make_kernel([
             "{[n,m,k]: 0<= n,m < Np and 0<= k < K}",
@@ -146,16 +146,21 @@ def test_dg_volume(ctx_factory):
 
     parameters_dict = dict(K=K)
 
-    for variant in [
+    variants = [
             variant_basic,
             variant_more_per_work_group,
-            variant_image_d,
             variant_prefetch_d,
             variant_prefetch_fields,
             variant_k_ilp,
             variant_simple_padding,
             variant_fancy_padding
-            ]:
+            ]
+
+    if (ctx.devices[0].image_support
+            and ctx.devices[0].platform.name != "Portable Computing Language"):
+        variants.append(variant_image_d)
+
+    for variant in variants:
         lp.auto_test_vs_ref(
                 seq_knl, ctx, variant(knl), parameters=parameters_dict,
                 #codegen_kwargs=dict(with_annotation=True)
@@ -169,12 +174,12 @@ def no_test_dg_surface(ctx_factory):
 
     order = "F"
 
-    N = 3
-    Np = (N+1)*(N+2)*(N+3)//6
-    Nfp = (N+1)*(N+2)//2
-    Nfaces = 4
+    N = 3  # noqa
+    Np = (N+1)*(N+2)*(N+3)//6  # noqa
+    Nfp = (N+1)*(N+2)//2  # noqa
+    Nfaces = 4  # noqa
 
-    K = 10000
+    K = 10000  # noqa
 
     knl = lp.make_kernel(
             [
