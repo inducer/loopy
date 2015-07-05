@@ -31,7 +31,7 @@ import islpy as isl
 from pymbolic.mapper import CombineMapper
 
 
-class TypeToOpCountMap:
+class TypeToCountMap:
 
     def __init__(self, init_dict=None):
         if init_dict is None:
@@ -45,24 +45,24 @@ class TypeToOpCountMap:
         for k, v in six.iteritems(other.dict):
             result[k] = self.dict.get(k, 0) + v
 
-        return TypeToOpCountMap(result)
+        return TypeToCountMap(result)
 
     def __radd__(self, other):
         if other != 0:
-            raise ValueError("TypeToOpCountMap: Attempted to add TypeToOpCountMap "
-                                "to {} {}. TypeToOpCountMap may only be added to "
-                                "0 and other TypeToOpCountMap objects."
+            raise ValueError("TypeToCountMap: Attempted to add TypeToCountMap "
+                                "to {} {}. TypeToCountMap may only be added to "
+                                "0 and other TypeToCountMap objects."
                                 .format(type(other), other))
             return
         return self
 
     def __mul__(self, other):
         if isinstance(other, isl.PwQPolynomial):
-            return TypeToOpCountMap({index: self.dict[index]*other
+            return TypeToCountMap({index: self.dict[index]*other
                                      for index in self.dict.keys()})
         else:
-            raise ValueError("TypeToOpCountMap: Attempted to multiply "
-                                "TypeToOpCountMap by {} {}."
+            raise ValueError("TypeToCountMap: Attempted to multiply "
+                                "TypeToCountMap by {} {}."
                                 .format(type(other), other))
 
     __rmul__ = __mul__
@@ -88,7 +88,7 @@ class ExpressionOpCounter(CombineMapper):
         return sum(values)
 
     def map_constant(self, expr):
-        return TypeToOpCountMap()
+        return TypeToCountMap()
 
     map_tagged_variable = map_constant
     map_variable = map_constant
@@ -110,16 +110,16 @@ class ExpressionOpCounter(CombineMapper):
 
     def map_sum(self, expr):
         if expr.children:
-            return TypeToOpCountMap(
+            return TypeToCountMap(
                         {self.type_inf(expr): len(expr.children)-1}
                         ) + sum(self.rec(child) for child in expr.children)
         else:
-            return TypeToOpCountMap()
+            return TypeToCountMap()
 
     map_product = map_sum
 
     def map_quotient(self, expr, *args):
-        return TypeToOpCountMap({self.type_inf(expr): 1}) \
+        return TypeToCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
 
@@ -127,24 +127,24 @@ class ExpressionOpCounter(CombineMapper):
     map_remainder = map_quotient  # implemented in CombineMapper
 
     def map_power(self, expr):
-        return TypeToOpCountMap({self.type_inf(expr): 1}) \
+        return TypeToCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):  # implemented in CombineMapper
-        return TypeToOpCountMap({self.type_inf(expr): 1}) \
+        return TypeToCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
     map_right_shift = map_left_shift
 
     def map_bitwise_not(self, expr):  # implemented in CombineMapper
-        return TypeToOpCountMap({self.type_inf(expr): 1}) \
+        return TypeToCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
         # implemented in CombineMapper, maps to map_sum;
-        return TypeToOpCountMap(
+        return TypeToCountMap(
                         {self.type_inf(expr): len(expr.children)-1}
                         ) + sum(self.rec(child) for child in expr.children)
 
@@ -203,11 +203,11 @@ class ExpressionOpCounter(CombineMapper):
 
 
 class ExpressionSubscriptCounter(CombineMapper):
-    # TODO  return mapping of (type, consec/nonconsec/uniform)
+    # TODO  return mapping of (type, consec/nonconsec/uniform): count
     # TODO  count barriers: get_one_scheduled_kernel(k).schedule (list) then look for instanceOf barrier
-    def __init__(self, knl, consecutive):
+    # TODO just use single map class
+    def __init__(self, knl):
         self.knl = knl
-        self.consecutive = consecutive
         from loopy.expression import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
@@ -215,7 +215,7 @@ class ExpressionSubscriptCounter(CombineMapper):
         return sum(values)
 
     def map_constant(self, expr):
-        return TypeToOpCountMap()
+        return TypeToCountMap()
 
     map_tagged_variable = map_constant
     map_variable = map_constant
@@ -234,12 +234,6 @@ class ExpressionSubscriptCounter(CombineMapper):
             # this array is not in global memory
             return self.rec(expr.index)
 
-        if self.consecutive is None:
-            # count this subscript whether consecutive or not
-            return TypeToOpCountMap(
-                        {self.type_inf(expr): 1}
-                        ) + self.rec(expr.index)
-
         index = expr.index  # could be tuple or scalar index
         if not isinstance(index, tuple):
             index = (index,)
@@ -247,29 +241,32 @@ class ExpressionSubscriptCounter(CombineMapper):
         from loopy.symbolic import get_dependencies
         from loopy.kernel.data import LocalIndexTag
         my_inames = get_dependencies(index) & self.knl.all_inames()
-        local_id0 = None  # TODO can there be two? no
+        local_id0 = None
+        local_id_found = False
         for iname in my_inames:
             # find local id0
             tag = self.knl.iname_to_tag.get(iname)
-            if isinstance(tag, LocalIndexTag) and tag.axis == 0:
-                local_id0 = iname
+            if isinstance(tag, LocalIndexTag):
+                local_id_found = True
+                if tag.axis == 0:
+                    local_id0 = iname
+                    break  # there will be only one local_id0
+
+        if not local_id_found:
+            # count as uniform access
+            warnings.warn("ExpressionSubscriptCounter did not find "
+                          "local iname tags in expression:\n {},\n"
+                          "considering these DRAM accesses uniform."
+                          .format(expr))
+            return TypeToCountMap(
+                    {(self.type_inf(expr), 'uniform'): 1}
+                    ) + self.rec(expr.index)
 
         if local_id0 is None:
-            # TODO assume non-consecutive access for now?
-            # if no local id 0, 1, etc..., 3rd class of access
-            # if no local id0, but find local id1, nonconsec
-            warnings.warn('ExpressionSubscriptCounter did not find iname tags in '
-                          'expression:\n%s,\n'
-                          ' counting DRAM accesses as non-consecutive.' % (expr))
-
-            if self.consecutive is False:
-                # count this subscript
-                return TypeToOpCountMap(
-                            {self.type_inf(expr): 1}
-                            ) + self.rec(expr.index)
-            else:
-                # do NOT count this subscript
-                return self.rec(expr.index)
+            # only non-zero local id(s) found, assume non-consecutive access
+            return TypeToCountMap(
+                    {(self.type_inf(expr), 'nonconsecutive'): 1}
+                    ) + self.rec(expr.index)
 
         # check coefficient of local_id0 for each axis
         from loopy.symbolic import CoefficientCollector
@@ -293,14 +290,9 @@ class ExpressionSubscriptCounter(CombineMapper):
             if coeff_id0 != 1:
                 # non-consecutive access
                 print("TESTING: coeff is not 1, returning")
-                if not self.consecutive:
-                    # count this subscript
-                    return TypeToOpCountMap(
-                                {self.type_inf(expr): 1}
-                                ) + self.rec(expr.index)
-                else:
-                    # do NOT count this subscript
-                    return self.rec(expr.index)
+                return TypeToCountMap(
+                        {(self.type_inf(expr), 'nonconsecutive'): 1}
+                        ) + self.rec(expr.index)
 
             # coefficient is 1, now determine if stride is 1
             print("TESTING: coefficient of id0 is 1, now check stride...")
@@ -314,35 +306,25 @@ class ExpressionSubscriptCounter(CombineMapper):
             print("TESTING: stride == ", stride)
             if stride != 1:
                 # non-consecutive
-                if not self.consecutive:
-                    # count this subscript
-                    return TypeToOpCountMap(
-                                {self.type_inf(expr): 1}
-                                ) + self.rec(expr.index)
-                else:
-                    # do NOT count this subscript
-                    return self.rec(expr.index)
+                return TypeToCountMap(
+                        {(self.type_inf(expr), 'nonconsecutive'): 1}
+                        ) + self.rec(expr.index)
 
             # else, stride == 1, continue since another idx could contain id0
             print("TESTING: stride is 1, now check next idx...")
 
-        # loop finished without returning, stride = 1 for every instance of local_id0
+        # loop finished without returning, stride==1 for every instance of local_id0
         # TODO what if key was never found?
         print("TESTING: loop finished, stride is 1.")
-        if self.consecutive:
-            # count this subscript
-            return TypeToOpCountMap(
-                        {self.type_inf(expr): 1}
-                        ) + self.rec(expr.index)
-        else:
-            # do NOT count this subscript
-            return self.rec(expr.index)
+        return TypeToCountMap(
+                {(self.type_inf(expr), 'consecutive'): 1}
+                ) + self.rec(expr.index)
 
     def map_sum(self, expr):
         if expr.children:
             return sum(self.rec(child) for child in expr.children)
         else:
-            return TypeToOpCountMap()
+            return TypeToCountMap()
 
     map_product = map_sum
 
@@ -462,14 +444,14 @@ def get_op_poly(knl):
     return op_poly
 
 
-def get_DRAM_access_poly(knl, consecutive=None):  # for now just counting subscripts
+def get_DRAM_access_poly(knl):  # for now just counting subscripts
     # raise NotImplementedError("get_DRAM_access_poly not yet implemented.")
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
     subs_poly = 0
-    subscript_counter = ExpressionSubscriptCounter(knl, consecutive)
+    subscript_counter = ExpressionSubscriptCounter(knl)
     for insn in knl.instructions:
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)

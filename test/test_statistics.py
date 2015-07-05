@@ -206,8 +206,8 @@ def test_DRAM_access_counter_basic():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly.dict[(np.dtype(np.float32), 'uniform')].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly.dict[(np.dtype(np.float64), 'uniform')].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 3*n*m*l
     assert f64 == 2*n*m
 
@@ -226,7 +226,9 @@ def test_DRAM_access_counter_reduction():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly.dict[
+                    (np.dtype(np.float32), 'uniform')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 2*n*m*l
 
 
@@ -246,8 +248,12 @@ def test_DRAM_access_counter_logic():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly.dict[
+                    (np.dtype(np.float32), 'uniform')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly.dict[
+                    (np.dtype(np.float64), 'uniform')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 2*n*m
     assert f64 == n*m
 
@@ -270,8 +276,12 @@ def test_DRAM_access_counter_specialops():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly.dict[
+                    (np.dtype(np.float32), 'uniform')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly.dict[
+                    (np.dtype(np.float64), 'uniform')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 2*n*m*l
     assert f64 == 2*n*m
 
@@ -297,7 +307,9 @@ def test_DRAM_access_counter_bitwise():
     n = 512
     m = 256
     l = 128
-    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    i32 = poly.dict[
+                    (np.dtype(np.int32), 'uniform')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert i32 == 4*n*m+2*n*m*l
 
 
@@ -317,7 +329,7 @@ def test_DRAM_access_counter_weird():
     knl = lp.split_iname(knl, "j", 16)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
-    poly = get_DRAM_access_poly(knl, consecutive=True)  # noqa
+    poly = get_DRAM_access_poly(knl)  # noqa
     # TODO assertions
 
 '''
