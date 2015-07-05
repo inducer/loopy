@@ -9,7 +9,7 @@ a = Analysis(['bin/loopy'],
              hiddenimports=[],
              hookspath=None,
              runtime_hooks=None,
-             excludes=["hedge", "meshpy", "pyopencl", "pycparser", "PIL"]
+             excludes=["hedge", "meshpy", "pyopencl", "PIL"]
              )
 pyz = PYZ(a.pure)
 
