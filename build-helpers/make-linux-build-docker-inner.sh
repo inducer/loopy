@@ -8,7 +8,7 @@ cd /tmp/build
 
 useradd -d /home/user -m -s /bin/bash user
 
-yum install -y git python-devel tar gcc gcc-c++ mercurial numpy
+yum install -y git python-devel tar gcc gcc-c++ mercurial numpy libffi-devel
 
 VENV_VERSION="virtualenv-1.9.1"
 rm -Rf "$VENV_VERSION"
