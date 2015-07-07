@@ -27,8 +27,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 import loopy as lp
-from loopy.statistics import get_op_poly  # noqa
-from loopy.statistics import get_DRAM_access_poly  # noqa
+from loopy.statistics import get_op_poly, get_DRAM_access_poly, get_barrier_poly
 import numpy as np
 
 
@@ -363,6 +362,30 @@ def test_DRAM_access_counter_triangular_domain():
     else:
         assert subscripts == 78  # TODO figure out why this test is broken
 '''
+
+
+def test_barrier_counter_basic():
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+                e[i, k] = g[i,k]*h[i,k+1]
+                """
+            ],
+            name="weird", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    poly = get_barrier_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    barrier_count = poly.eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert barrier_count == 0
+    # TODO test kernels with barriers
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

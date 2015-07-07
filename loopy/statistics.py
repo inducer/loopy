@@ -203,9 +203,7 @@ class ExpressionOpCounter(CombineMapper):
 
 
 class ExpressionSubscriptCounter(CombineMapper):
-    # TODO  return mapping of (type, consec/nonconsec/uniform): count
     # TODO  count barriers: get_one_scheduled_kernel(k).schedule (list) then look for instanceOf barrier
-    # TODO just use single map class
     def __init__(self, knl):
         self.knl = knl
         from loopy.expression import TypeInferenceMapper
@@ -255,9 +253,8 @@ class ExpressionSubscriptCounter(CombineMapper):
         if not local_id_found:
             # count as uniform access
             warnings.warn("ExpressionSubscriptCounter did not find "
-                          "local iname tags in expression:\n {},\n"
-                          "considering these DRAM accesses uniform."
-                          .format(expr))
+                          "local iname tags in expression:\n %s,\n"
+                          "considering these DRAM accesses uniform." % expr)
             return TypeToCountMap(
                     {(self.type_inf(expr), 'uniform'): 1}
                     ) + self.rec(expr.index)
@@ -271,39 +268,29 @@ class ExpressionSubscriptCounter(CombineMapper):
         # check coefficient of local_id0 for each axis
         from loopy.symbolic import CoefficientCollector
         from pymbolic.primitives import Variable
-        print("="*40)
-        print("TESTING: expression: ", expr)
         for idx, axis_tag in zip(index, array.dim_tags):
-            print("...........")
-            print("TESTING: ( ", idx, ",  ", axis_tag, " )")
 
             coeffs = CoefficientCollector()(idx)
             # check if he contains the lid 0 guy
             try:
                 coeff_id0 = coeffs[Variable(local_id0)]
-                print("TESTING: coefficient of local_id0 found: ", coeff_id0)
             except KeyError:
                 # does not contain local_id0
-                print("TESTING: key not found, continuing")
                 continue
 
             if coeff_id0 != 1:
                 # non-consecutive access
-                print("TESTING: coeff is not 1, returning")
                 return TypeToCountMap(
                         {(self.type_inf(expr), 'nonconsecutive'): 1}
                         ) + self.rec(expr.index)
 
             # coefficient is 1, now determine if stride is 1
-            print("TESTING: coefficient of id0 is 1, now check stride...")
-
             from loopy.kernel.array import FixedStrideArrayDimTag
             if isinstance(axis_tag, FixedStrideArrayDimTag):
                 stride = axis_tag.stride
             else:
                 continue
 
-            print("TESTING: stride == ", stride)
             if stride != 1:
                 # non-consecutive
                 return TypeToCountMap(
@@ -311,11 +298,9 @@ class ExpressionSubscriptCounter(CombineMapper):
                         ) + self.rec(expr.index)
 
             # else, stride == 1, continue since another idx could contain id0
-            print("TESTING: stride is 1, now check next idx...")
 
         # loop finished without returning, stride==1 for every instance of local_id0
         # TODO what if key was never found?
-        print("TESTING: loop finished, stride is 1.")
         return TypeToCountMap(
                 {(self.type_inf(expr), 'consecutive'): 1}
                 ) + self.rec(expr.index)
@@ -445,7 +430,6 @@ def get_op_poly(knl):
 
 
 def get_DRAM_access_poly(knl):  # for now just counting subscripts
-    # raise NotImplementedError("get_DRAM_access_poly not yet implemented.")
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
@@ -459,3 +443,45 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
         subs = subscript_counter(insn.expression)
         subs_poly = subs_poly + subs*count(knl, domain)
     return subs_poly
+
+
+def get_barrier_poly(knl):
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+
+    knl = lp.get_one_scheduled_kernel(knl)
+    loop_iters = [1]  # [isl.PwQPolynomial('[]->{ 1 }')]
+    barrier_poly = 0  # isl.PwQPolynomial('[]->{ 0 }')
+    from loopy.schedule import EnterLoop, LeaveLoop, Barrier
+    from operator import mul
+    print("TESTING... kernel sched: \n", knl.schedule)
+    for sched_item in knl.schedule:
+        print("TESTING... sched_item: ", sched_item)
+        if isinstance(sched_item, EnterLoop):
+            print("TESTING... iname: ", sched_item.iname)
+            ct = count(knl, (
+                            knl.get_inames_domain(sched_item.iname).
+                            project_out_except(sched_item.iname, [dim_type.set])
+                            ))
+            if ct is not None:
+                loop_iters.append(ct)
+        elif isinstance(sched_item, LeaveLoop):
+            print("TESTING... iname: ", sched_item.iname)
+            ct = count(knl, (
+                            knl.get_inames_domain(sched_item.iname).
+                            project_out_except(sched_item.iname, [dim_type.set])
+                            ))
+            if ct is not None:
+                loop_iters.pop()
+        elif isinstance(sched_item, Barrier):
+            print("TESTING... I FOUND A BARRIER!!!")
+            barrier_poly += reduce(mul, loop_iters)
+        print("TESTING... current iter list: \n", loop_iters)
+        print("TESTING... current iter product: \n", reduce(mul, loop_iters))
+    if not isinstance(barrier_poly, isl.PwQPolynomial):
+        # TODO figure out how to fix this
+        string = "{"+str(barrier_poly)+"}"
+        return isl.PwQPolynomial(string)
+    return barrier_poly
+
