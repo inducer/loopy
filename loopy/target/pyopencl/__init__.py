@@ -272,8 +272,13 @@ class PyOpenCLTarget(OpenCLTarget):
         return vec.types[base, count]
 
     def alignment_requirement(self, type_decl):
-        import pyopencl._pvt_struct as _struct
-        return _struct.calcsize(type_decl.struct_format())
+        import struct
+
+        fmt = (type_decl.struct_format()
+                .replace("F", "ff")
+                .replace("D", "dd"))
+
+        return struct.calcsize(fmt)
 
 # }}}
 

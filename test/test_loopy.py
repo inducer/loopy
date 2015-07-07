@@ -379,6 +379,10 @@ def test_stencil_with_overfetch(ctx_factory):
                 ],
             assumptions="n>=1")
 
+    if ctx.devices[0].platform.name == "Portable Computing Language":
+        # https://github.com/pocl/pocl/issues/205
+        pytest.skip("takes very long to compile on pocl")
+
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
 
     ref_knl = knl

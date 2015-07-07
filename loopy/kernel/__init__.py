@@ -635,6 +635,37 @@ class LoopKernel(RecordWithoutPickling):
 
         return result
 
+    @memoize_method
+    def remove_inames_for_shared_hw_axes(self, cond_inames):
+        """
+        See if cond_inames contains references to two (or more) inames that
+        boil down to the same tag. If so, exclude them. (We shouldn't be writing
+        conditionals for such inames because we would be implicitly restricting
+        the other inames as well.)
+        """
+
+        tag_key_uses = {}
+
+        from loopy.kernel.data import HardwareParallelTag
+
+        for iname in cond_inames:
+            tag = self.iname_to_tag.get(iname)
+
+            if isinstance(tag, HardwareParallelTag):
+                tag_key_uses.setdefault(tag.key, []).append(iname)
+
+        multi_use_keys = set(
+                key for key, user_inames in six.iteritems(tag_key_uses)
+                if len(user_inames) > 1)
+
+        multi_use_inames = set()
+        for iname in cond_inames:
+            tag = self.iname_to_tag.get(iname)
+            if isinstance(tag, HardwareParallelTag) and tag.key in multi_use_keys:
+                multi_use_inames.add(iname)
+
+        return frozenset(cond_inames - multi_use_inames)
+
     # }}}
 
     # {{{ dependency wrangling

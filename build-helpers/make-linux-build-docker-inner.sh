@@ -8,7 +8,7 @@ cd /tmp/build
 
 useradd -d /home/user -m -s /bin/bash user
 
-yum install -y git python-devel tar gcc gcc-c++ mercurial numpy
+yum install -y git python-devel tar gcc gcc-c++ mercurial numpy libffi-devel
 
 VENV_VERSION="virtualenv-1.9.1"
 rm -Rf "$VENV_VERSION"
@@ -20,7 +20,7 @@ $VENV_VERSION/virtualenv.py --system-site-packages --no-setuptools .env
 source .env/bin/activate
 
 curl -k https://ssl.tiker.net/software/ez_setup.py | python -
-curl http://git.tiker.net/pip/blob_plain/77f959a3ce9cc506efbf3a17290d387d0a6624f5:/contrib/get-pip.py | python -
+curl -k https://gitlab.tiker.net/inducer/pip/raw/7.0.3/contrib/get-pip.py | python -
 
 pip install pyinstaller
 git clone --recursive git://github.com/inducer/loopy

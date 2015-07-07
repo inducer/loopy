@@ -1495,7 +1495,10 @@ def register_function_manglers(kernel, manglers):
 # {{{ cache control
 
 import os
-CACHING_ENABLED = "LOOPY_NO_CACHE" not in os.environ
+CACHING_ENABLED = (
+    "LOOPY_NO_CACHE" not in os.environ
+    and
+    "CG_NO_CACHE" not in os.environ)
 
 
 def set_caching_enabled(flag):

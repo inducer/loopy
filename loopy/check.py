@@ -450,10 +450,26 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
 
     from islpy import align_two
 
+    last_idomains = None
+    last_insn_inames = None
+
     for insn_id, idomains in six.iteritems(implemented_domains):
         insn = kernel.id_to_insn[insn_id]
 
         assert idomains
+
+        insn_inames = kernel.insn_inames(insn)
+
+        # {{{ if we've checked the same thing before, no need to check it again
+
+        if last_idomains is not None and last_insn_inames is not None:
+            if idomains == last_idomains and insn_inames == last_insn_inames:
+                continue
+
+        last_idomains = idomains
+        last_insn_inames = insn_inames
+
+        # }}}
 
         insn_impl_domain = idomains[0]
         for idomain in idomains[1:]:
@@ -463,13 +479,12 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 assumption_non_param, insn_impl_domain)
         insn_impl_domain = (
                 (insn_impl_domain & assumptions)
-                .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
+                .project_out_except(insn_inames, [dim_type.set]))
 
-        insn_inames = kernel.insn_inames(insn)
         insn_domain = kernel.get_inames_domain(insn_inames)
         assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
         desired_domain = ((insn_domain & assumptions)
-            .project_out_except(kernel.insn_inames(insn), [dim_type.set]))
+            .project_out_except(insn_inames, [dim_type.set]))
 
         insn_impl_domain, desired_domain = align_two(
                 insn_impl_domain, desired_domain)
@@ -483,13 +498,18 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                     for i in range(insn_domain.dim(dim_type.param)))
 
             lines = []
-            for kind, diff_set in [
-                    ("implemented, but not desired", i_minus_d),
-                    ("desired, but not implemented", d_minus_i)]:
+            for kind, diff_set, gist_domain in [
+                    ("implemented, but not desired", i_minus_d,
+                        desired_domain.gist(insn_impl_domain)),
+                    ("desired, but not implemented", d_minus_i,
+                        insn_impl_domain.gist(desired_domain))]:
+
+                if diff_set.is_empty():
+                    continue
+
                 diff_set = diff_set.coalesce()
                 pt = diff_set.sample_point()
-                if pt.is_void():
-                    continue
+                assert not pt.is_void()
 
                 #pt_set = isl.Set.from_point(pt)
                 #lines.append("point implemented: %s" % (pt_set <= insn_impl_domain))
@@ -503,7 +523,9 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                         iname, pt.get_coordinate_val(tp, dim).to_python()))
 
                 lines.append(
-                        "sample point %s: %s" % (kind, ", ".join(point_axes)))
+                        "sample point in %s: %s" % (kind, ", ".join(point_axes)))
+                lines.append(
+                        "gist of %s: %s" % (kind, gist_domain))
 
             if code is not None:
                 print(79*"-")
