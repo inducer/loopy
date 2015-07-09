@@ -575,6 +575,9 @@ def duplicate_private_temporaries_for_ilp_and_vec(kernel):
 
             new_ilp_inames = ilp_inames - referenced_ilp_inames
 
+            if not new_ilp_inames:
+                break
+
             if tv.name in var_to_new_ilp_inames:
                 if new_ilp_inames != set(var_to_new_ilp_inames[tv.name]):
                     raise LoopyError("instruction '%s' requires adding "
