@@ -1088,7 +1088,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         kernel_data = kernel_data.split(",")
 
     kernel_args = []
-    temporary_variables = {}
+    temporary_variables = kwargs.pop("temporary_variables", {}).copy()
     for dat in kernel_data:
         if dat is Ellipsis or isinstance(dat, str):
             kernel_args.append(dat)

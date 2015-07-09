@@ -177,7 +177,6 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
             transform_code,
             require_leading_newline=False,
             ignore_lines_starting_with="#")
-    print(transform_code)
 
     if transform_code_context is None:
         proc_dict = {}
