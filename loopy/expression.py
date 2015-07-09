@@ -342,8 +342,10 @@ class VectorizabilityChecker(RecursiveMapper):
 
             else:
                 if self.vec_iname in get_dependencies(index[i]):
-                    raise Unvectorizable("other vectorization iname "
-                            "dependencies in subscript")
+                    raise Unvectorizable("vectorizing iname '%s' occurs in "
+                            "unvectorized subscript axis %d (1-based) of "
+                            "expression '%s'"
+                            % (self.vec_iname, i+1, expr))
                     break
 
         return bool(possible)
