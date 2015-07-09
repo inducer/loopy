@@ -203,7 +203,7 @@ class ExpressionOpCounter(CombineMapper):
 
 
 class ExpressionSubscriptCounter(CombineMapper):
-    # TODO  count barriers: get_one_scheduled_kernel(k).schedule (list) then look for instanceOf barrier
+
     def __init__(self, knl):
         self.knl = knl
         from loopy.expression import TypeInferenceMapper

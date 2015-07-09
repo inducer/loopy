@@ -148,12 +148,10 @@ def test_op_counter_bitwise():
     l = 128
     i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
     i64 = poly.dict[np.dtype(np.int64)].eval_with_dict({'n': n, 'm': m, 'l': l})  # noqa
-    print(poly.dict)
     f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert i32 == n*m+3*n*m*l
     assert i64 == 6*n*m
     assert f64 == 0
-    # TODO test bitwise operations on int64
 
 
 def test_op_counter_triangular_domain():
@@ -329,7 +327,49 @@ def test_DRAM_access_counter_weird():
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
     poly = get_DRAM_access_poly(knl)  # noqa
-    # TODO assertions
+    n = 512
+    m = 256
+    l = 128
+    f64uniform = poly.dict[
+                    (np.dtype(np.float64), 'uniform')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32nonconsec = poly.dict[
+                    (np.dtype(np.float32), 'nonconsecutive')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f64uniform == 2*n*m
+    assert f32nonconsec == 3*n*m*l
+
+
+def test_DRAM_access_counter_nonconsec():
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+            c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+            e[i, k] = g[i,k]*(2+h[i,k])
+            """
+            ],
+            name="nonconsec", assumptions="n,m,l >= 1")
+    knl = lp.add_and_infer_dtypes(knl, dict(
+                a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    knl = lp.split_iname(knl, "i", 16)
+    knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
+
+    poly = get_DRAM_access_poly(knl)  # noqa
+    n = 512
+    m = 256
+    l = 128
+    f64nonconsec = poly.dict[
+                    (np.dtype(np.float64), 'nonconsecutive')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32nonconsec = poly.dict[
+                    (np.dtype(np.float32), 'nonconsecutive')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f64nonconsec == 2*n*m
+    assert f32nonconsec == 3*n*m*l
+
+    #TODO more consec/nonconsec tests
 
 '''
 def test_DRAM_access_counter_triangular_domain():
