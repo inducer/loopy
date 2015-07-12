@@ -424,7 +424,32 @@ def test_barrier_counter_basic():
     l = 128
     barrier_count = poly.eval_with_dict({'n': n, 'm': m, 'l': l})
     assert barrier_count == 0
-    # TODO test kernels with barriers
+
+
+def test_barrier_counter():
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<50 and 1<=k<98 and 0<=j<10}",
+            [
+                """
+            c[i,j,k] = 2*a[i,j,k] {id=first}
+            e[i,j,k] = c[i,j,k+1]+c[i,j,k-1] {dep=first}
+            """
+            ], [
+                lp.TemporaryVariable("c", lp.auto, shape=(50, 10, 99)),
+                "..."
+            ],
+            name="weird2",
+            )
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
+    knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
+    poly = get_barrier_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    barrier_count = poly.eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert barrier_count == 1000
+    # TODO more barrier counting tests
 
 
 if __name__ == "__main__":

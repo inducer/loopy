@@ -447,41 +447,35 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
 
 def get_barrier_poly(knl):
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-
-    knl = lp.get_one_scheduled_kernel(knl)
-    loop_iters = [1]  # [isl.PwQPolynomial('[]->{ 1 }')]
-    barrier_poly = 0  # isl.PwQPolynomial('[]->{ 0 }')
     from loopy.schedule import EnterLoop, LeaveLoop, Barrier
     from operator import mul
-    print("TESTING... kernel sched: \n", knl.schedule)
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    iname_list = []
+    barrier_poly = isl.PwQPolynomial('{ 0 }')  # 0
+
     for sched_item in knl.schedule:
-        print("TESTING... sched_item: ", sched_item)
         if isinstance(sched_item, EnterLoop):
-            print("TESTING... iname: ", sched_item.iname)
-            ct = count(knl, (
-                            knl.get_inames_domain(sched_item.iname).
-                            project_out_except(sched_item.iname, [dim_type.set])
-                            ))
-            if ct is not None:
-                loop_iters.append(ct)
+            if sched_item.iname:  # (if not empty)
+                iname_list.append(sched_item.iname)
         elif isinstance(sched_item, LeaveLoop):
-            print("TESTING... iname: ", sched_item.iname)
-            ct = count(knl, (
-                            knl.get_inames_domain(sched_item.iname).
-                            project_out_except(sched_item.iname, [dim_type.set])
-                            ))
-            if ct is not None:
-                loop_iters.pop()
+            if sched_item.iname:  # (if not empty)
+                iname_list.pop()
         elif isinstance(sched_item, Barrier):
-            print("TESTING... I FOUND A BARRIER!!!")
-            barrier_poly += reduce(mul, loop_iters)
-        print("TESTING... current iter list: \n", loop_iters)
-        print("TESTING... current iter product: \n", reduce(mul, loop_iters))
+            if iname_list:  # (if iname_list is not empty)
+                ct = (count(knl, (
+                                knl.get_inames_domain(iname_list).
+                                project_out_except(iname_list, [dim_type.set])
+                                )), )
+                barrier_poly += reduce(mul, ct)
+            else:
+                barrier_poly += isl.PwQPolynomial('{ 1 }')
+    '''
     if not isinstance(barrier_poly, isl.PwQPolynomial):
-        # TODO figure out how to fix this
+        #TODO figure out better fix for this
         string = "{"+str(barrier_poly)+"}"
         return isl.PwQPolynomial(string)
+    '''
     return barrier_poly
 
