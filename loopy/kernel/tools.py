@@ -257,10 +257,10 @@ class SetOperationCacheManager:
         return result
 
     def dim_min(self, set, *args):
-        return self.op(set, "dim_min", isl.dim_min_projected, args)
+        return self.op(set, "dim_min", isl.dim_min_with_elimination, args)
 
     def dim_max(self, set, *args):
-        return self.op(set, "dim_max", isl.dim_max_projected, args)
+        return self.op(set, "dim_max", isl.dim_max_with_elimination, args)
 
     def base_index_and_length(self, set, iname, context=None):
         if not isinstance(iname, int):
