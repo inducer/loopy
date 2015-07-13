@@ -426,9 +426,10 @@ def _find_aff_dims(aff, dim_types_and_gen_dim_types):
     result = set(result)
 
     for i in range(aff.dim(dim_type.div)):
-        result.update(_find_aff_dims(
-            aff.get_div(i),
-            dim_types_and_gen_dim_types))
+        if not aff.get_coefficient_val(dim_type.div, i).is_zero():
+            result.update(_find_aff_dims(
+                aff.get_div(i),
+                dim_types_and_gen_dim_types))
 
     return result
 
