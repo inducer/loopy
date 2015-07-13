@@ -484,6 +484,7 @@ def _find_noninteracting_dims(obj, dt, idx, other_dt, stop_at=6):
 
 
 def _eliminate_noninteracting(obj, dt, idx, other_dt):
+    obj = obj.compute_divs()
     try:
         nonint = _find_noninteracting_dims(obj, dt, idx, other_dt)
 
