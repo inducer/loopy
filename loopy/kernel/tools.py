@@ -28,7 +28,6 @@ THE SOFTWARE.
 
 
 import numpy as np
-import islpy as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError
 
@@ -257,10 +256,12 @@ class SetOperationCacheManager:
         return result
 
     def dim_min(self, set, *args):
-        return self.op(set, "dim_min", isl.dim_min_with_elimination, args)
+        from loopy.isl_helpers import dim_min_with_elimination
+        return self.op(set, "dim_min", dim_min_with_elimination, args)
 
     def dim_max(self, set, *args):
-        return self.op(set, "dim_max", isl.dim_max_with_elimination, args)
+        from loopy.isl_helpers import dim_max_with_elimination
+        return self.op(set, "dim_max", dim_max_with_elimination, args)
 
     def base_index_and_length(self, set, iname, context=None):
         if not isinstance(iname, int):
