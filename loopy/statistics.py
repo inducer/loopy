@@ -32,7 +32,8 @@ from pymbolic.mapper import CombineMapper
 from functools import reduce
 
 
-class TypeToCountMap:
+class ToCountMap:
+    """Maps any type of key to an arithmetic type."""
 
     def __init__(self, init_dict=None):
         if init_dict is None:
@@ -46,24 +47,24 @@ class TypeToCountMap:
         for k, v in six.iteritems(other.dict):
             result[k] = self.dict.get(k, 0) + v
 
-        return TypeToCountMap(result)
+        return ToCountMap(result)
 
     def __radd__(self, other):
         if other != 0:
-            raise ValueError("TypeToCountMap: Attempted to add TypeToCountMap "
-                                "to {} {}. TypeToCountMap may only be added to "
-                                "0 and other TypeToCountMap objects."
+            raise ValueError("ToCountMap: Attempted to add ToCountMap "
+                                "to {} {}. ToCountMap may only be added to "
+                                "0 and other ToCountMap objects."
                                 .format(type(other), other))
             return
         return self
 
     def __mul__(self, other):
         if isinstance(other, isl.PwQPolynomial):
-            return TypeToCountMap({index: self.dict[index]*other
+            return ToCountMap({index: self.dict[index]*other
                                      for index in self.dict.keys()})
         else:
-            raise ValueError("TypeToCountMap: Attempted to multiply "
-                                "TypeToCountMap by {} {}."
+            raise ValueError("ToCountMap: Attempted to multiply "
+                                "ToCountMap by {} {}."
                                 .format(type(other), other))
 
     __rmul__ = __mul__
@@ -77,6 +78,9 @@ class TypeToCountMap:
     def __str__(self):
         return str(self.dict)
 
+    def __repr__(self):
+        return repr(self.dict)
+
 
 class ExpressionOpCounter(CombineMapper):
 
@@ -89,7 +93,7 @@ class ExpressionOpCounter(CombineMapper):
         return sum(values)
 
     def map_constant(self, expr):
-        return TypeToCountMap()
+        return ToCountMap()
 
     map_tagged_variable = map_constant
     map_variable = map_constant
@@ -111,16 +115,16 @@ class ExpressionOpCounter(CombineMapper):
 
     def map_sum(self, expr):
         if expr.children:
-            return TypeToCountMap(
+            return ToCountMap(
                         {self.type_inf(expr): len(expr.children)-1}
                         ) + sum(self.rec(child) for child in expr.children)
         else:
-            return TypeToCountMap()
+            return ToCountMap()
 
     map_product = map_sum
 
     def map_quotient(self, expr, *args):
-        return TypeToCountMap({self.type_inf(expr): 1}) \
+        return ToCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
 
@@ -128,24 +132,24 @@ class ExpressionOpCounter(CombineMapper):
     map_remainder = map_quotient  # implemented in CombineMapper
 
     def map_power(self, expr):
-        return TypeToCountMap({self.type_inf(expr): 1}) \
+        return ToCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):  # implemented in CombineMapper
-        return TypeToCountMap({self.type_inf(expr): 1}) \
+        return ToCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
     map_right_shift = map_left_shift
 
     def map_bitwise_not(self, expr):  # implemented in CombineMapper
-        return TypeToCountMap({self.type_inf(expr): 1}) \
+        return ToCountMap({self.type_inf(expr): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
         # implemented in CombineMapper, maps to map_sum;
-        return TypeToCountMap(
+        return ToCountMap(
                         {self.type_inf(expr): len(expr.children)-1}
                         ) + sum(self.rec(child) for child in expr.children)
 
@@ -210,7 +214,7 @@ class ExpressionSubscriptCounter(CombineMapper):
         return sum(values)
 
     def map_constant(self, expr):
-        return TypeToCountMap()
+        return ToCountMap()
 
     map_tagged_variable = map_constant
     map_variable = map_constant
@@ -249,13 +253,13 @@ class ExpressionSubscriptCounter(CombineMapper):
 
         if not local_id_found:
             # count as uniform access
-            return TypeToCountMap(
+            return ToCountMap(
                     {(self.type_inf(expr), 'uniform'): 1}
                     ) + self.rec(expr.index)
 
         if local_id0 is None:
             # only non-zero local id(s) found, assume non-consecutive access
-            return TypeToCountMap(
+            return ToCountMap(
                     {(self.type_inf(expr), 'nonconsecutive'): 1}
                     ) + self.rec(expr.index)
 
@@ -274,7 +278,7 @@ class ExpressionSubscriptCounter(CombineMapper):
 
             if coeff_id0 != 1:
                 # non-consecutive access
-                return TypeToCountMap(
+                return ToCountMap(
                         {(self.type_inf(expr), 'nonconsecutive'): 1}
                         ) + self.rec(expr.index)
 
@@ -287,14 +291,14 @@ class ExpressionSubscriptCounter(CombineMapper):
 
             if stride != 1:
                 # non-consecutive
-                return TypeToCountMap(
+                return ToCountMap(
                         {(self.type_inf(expr), 'nonconsecutive'): 1}
                         ) + self.rec(expr.index)
 
             # else, stride == 1, continue since another idx could contain id0
 
         # loop finished without returning, stride==1 for every instance of local_id0
-        return TypeToCountMap(
+        return ToCountMap(
                 {(self.type_inf(expr), 'consecutive'): 1}
                 ) + self.rec(expr.index)
 
@@ -302,7 +306,7 @@ class ExpressionSubscriptCounter(CombineMapper):
         if expr.children:
             return sum(self.rec(child) for child in expr.children)
         else:
-            return TypeToCountMap()
+            return ToCountMap()
 
     map_product = map_sum
 
@@ -413,7 +417,7 @@ def get_op_poly(knl):
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-        ops = op_counter(insn.expression)
+        ops = op_counter(insn.assignee) + op_counter(insn.expression)
         op_poly = op_poly + ops*count(knl, domain)
     return op_poly
 
@@ -429,8 +433,18 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-        subs = subscript_counter(insn.expression)
-        subs_poly = subs_poly + subs*count(knl, domain)
+
+        subs_expr = subscript_counter(insn.expression)
+        subs_expr = ToCountMap(dict(
+            (key + ("load",), val)
+            for key, val in six.iteritems(subs_expr.dict)))
+
+        subs_assignee = subscript_counter(insn.assignee)
+        subs_assignee = ToCountMap(dict(
+            (key + ("store",), val)
+            for key, val in six.iteritems(subs_assignee.dict)))
+
+        subs_poly = subs_poly + (subs_expr + subs_assignee)*count(knl, domain)
     return subs_poly
 
 
