@@ -29,6 +29,7 @@ import warnings
 from islpy import dim_type
 import islpy as isl
 from pymbolic.mapper import CombineMapper
+from functools import reduce
 
 
 class TypeToCountMap:
