@@ -633,6 +633,19 @@ def auto_test_vs_ref(
 
     # }}}
 
+    result_dict = {}
+    result_dict["elapsed"] = elapsed
+    result_dict["elapsed_evt_2"] = elapsed_evt_2
+    result_dict["elapsed_wall"] = elapsed_wall
+    result_dict["timing_rounds"] = timing_rounds
+    result_dict["rates"] = rates
+    result_dict["ref_elapsed"] = elapsed
+    result_dict["ref_elapsed_wall"] = elapsed_wall
+    result_dict["ref_rates"] = ref_rates
+
+    return result_dict
+
+
 # }}}
 
 # vim: foldmethod=marker
