@@ -413,7 +413,7 @@ def get_op_poly(knl):
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-        ops = op_counter(insn.expression)
+        ops = op_counter(insn.expression) + op_counter(insn.assignee)
         op_poly = op_poly + ops*count(knl, domain)
     return op_poly
 
@@ -429,7 +429,7 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-        subs = subscript_counter(insn.expression)
+        subs = subscript_counter(insn.expression) + subscript_counter(insn.assignee)
         subs_poly = subs_poly + subs*count(knl, domain)
     return subs_poly
 
