@@ -300,7 +300,6 @@ class ExpressionSubscriptCounter(CombineMapper):
             # else, stride == 1, continue since another idx could contain id0
 
         # loop finished without returning, stride==1 for every instance of local_id0
-        # TODO what if key was never found?
         return TypeToCountMap(
                 {(self.type_inf(expr), 'consecutive'): 1}
                 ) + self.rec(expr.index)
@@ -471,11 +470,6 @@ def get_barrier_poly(knl):
                 barrier_poly += reduce(mul, ct)
             else:
                 barrier_poly += isl.PwQPolynomial('{ 1 }')
-    '''
-    if not isinstance(barrier_poly, isl.PwQPolynomial):
-        #TODO figure out better fix for this
-        string = "{"+str(barrier_poly)+"}"
-        return isl.PwQPolynomial(string)
-    '''
+
     return barrier_poly
 

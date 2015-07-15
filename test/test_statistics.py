@@ -41,7 +41,7 @@ def test_op_counter_basic():
                 e[i, k] = g[i,k]*h[i,k+1]
                 """
             ],
-            name="weird", assumptions="n,m,l >= 1")
+            name="basic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
@@ -64,7 +64,7 @@ def test_op_counter_reduction():
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
             ],
-            name="matmul", assumptions="n,m,l >= 1")
+            name="matmul_serial", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
     poly = get_op_poly(knl)
@@ -195,7 +195,7 @@ def test_DRAM_access_counter_basic():
                 e[i, k] = g[i,k]*h[i,k+1]
                 """
             ],
-            name="weird", assumptions="n,m,l >= 1")
+            name="basic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
@@ -203,8 +203,12 @@ def test_DRAM_access_counter_basic():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[(np.dtype(np.float32), 'uniform')].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[(np.dtype(np.float64), 'uniform')].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly.dict[
+                    (np.dtype(np.float32), 'uniform')
+                   ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly.dict[
+                    (np.dtype(np.float64), 'uniform')
+                   ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 3*n*m*l
     assert f64 == 2*n*m
 
@@ -310,7 +314,7 @@ def test_DRAM_access_counter_bitwise():
     assert i32 == 4*n*m+2*n*m*l
 
 
-def test_DRAM_access_counter_weird():
+def test_DRAM_access_counter_mixed():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -320,7 +324,7 @@ def test_DRAM_access_counter_weird():
             e[i, k] = g[i,k]*(2+h[i,k])
             """
             ],
-            name="weird", assumptions="n,m,l >= 1")
+            name="mixed", assumptions="n,m,l >= 1")
     knl = lp.add_and_infer_dtypes(knl, dict(
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     knl = lp.split_iname(knl, "j", 16)
@@ -369,42 +373,38 @@ def test_DRAM_access_counter_nonconsec():
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
-    #TODO more consec/nonconsec tests
 
-'''
-def test_DRAM_access_counter_triangular_domain():
+def test_DRAM_access_counter_consec():
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i<n and 0<=j<m and i<j}",
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+            c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+            e[i, k] = g[i,k]*(2+h[i,k])
             """
-            a[i, j] = b[i,j] * 2
-            """,
-            name="triangle", assumptions="n,m >= 1")
+            ],
+            name="consec", assumptions="n,m,l >= 1")
+    knl = lp.add_and_infer_dtypes(knl, dict(
+                a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
-    knl = lp.add_and_infer_dtypes(knl,
-            dict(b=np.float64))
-
-    expect_fallback = False
-    import islpy as isl
-    try:
-        isl.BasicSet.cardz
-    except AttributeError:
-        expect_fallback = True
-    else:
-        expect_fallback = False
-
-    poly = get_DRAM_access_poly(knl)[np.dtype(np.float64)]
-    value_dict = dict(m=13, n=200)
-    subscripts = poly.eval_with_dict(value_dict)
-
-    if expect_fallback:
-        assert subscripts == 144
-    else:
-        assert subscripts == 78  # TODO figure out why this test is broken
-'''
+    poly = get_DRAM_access_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    print(poly)
+    f64consec = poly.dict[
+                    (np.dtype(np.float64), 'consecutive')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32consec = poly.dict[
+                    (np.dtype(np.float32), 'consecutive')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f64consec == 2*n*m
+    assert f32consec == 3*n*m*l
 
 
-def test_barrier_counter_basic():
+def test_barrier_counter_nobarriers():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -414,7 +414,7 @@ def test_barrier_counter_basic():
                 e[i, k] = g[i,k]*h[i,k+1]
                 """
             ],
-            name="weird", assumptions="n,m,l >= 1")
+            name="basic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
@@ -426,7 +426,7 @@ def test_barrier_counter_basic():
     assert barrier_count == 0
 
 
-def test_barrier_counter():
+def test_barrier_counter_barriers():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<50 and 1<=k<98 and 0<=j<10}",
@@ -448,8 +448,48 @@ def test_barrier_counter():
     m = 256
     l = 128
     barrier_count = poly.eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert barrier_count == 1000
-    # TODO more barrier counting tests
+    assert barrier_count == 50*10*2
+
+
+def test_all_counters_parallel_matmul():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+            ],
+            name="matmul", assumptions="n,m,l >= 1")
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
+    knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
+
+    n = 512
+    m = 256
+    l = 128
+
+    barrier_count = get_barrier_poly(knl).eval_with_dict({'n': n, 'm': n, 'l': n})
+
+    op_map = get_op_poly(knl)
+    f32ops = op_map.dict[
+                        np.dtype(np.float32)
+                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    i32ops = op_map.dict[
+                        np.dtype(np.int32)
+                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+
+    subscript_map = get_DRAM_access_poly(knl)
+    f32uncoal = subscript_map.dict[
+                        (np.dtype(np.float32), 'nonconsecutive')
+                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32coal = subscript_map.dict[
+                        (np.dtype(np.float32), 'consecutive')
+                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+
+    assert barrier_count == 0
+    assert f32ops == n*m*l*2
+    assert i32ops == n*m*l*4
+    assert f32uncoal == n*m*l
+    assert f32coal == n*m*l
 
 
 if __name__ == "__main__":
