@@ -184,22 +184,18 @@ class ExpressionOpCounter(CombineMapper):
         raise NotImplementedError("ExpressionOpCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
-        return 0
 
     def map_substitution(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered substitution, "
                                   "map_substitution not implemented.")
-        return 0
 
     def map_derivative(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered derivative, "
                                   "map_derivative not implemented.")
-        return 0
 
     def map_slice(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered slice, "
                                   "map_slice not implemented.")
-        return 0
 
 
 class ExpressionSubscriptCounter(CombineMapper):
@@ -252,9 +248,6 @@ class ExpressionSubscriptCounter(CombineMapper):
 
         if not local_id_found:
             # count as uniform access
-            warnings.warn("ExpressionSubscriptCounter did not find "
-                          "local iname tags in expression:\n %s,\n"
-                          "considering these DRAM accesses uniform." % expr)
             return TypeToCountMap(
                     {(self.type_inf(expr), 'uniform'): 1}
                     ) + self.rec(expr.index)
@@ -359,24 +352,20 @@ class ExpressionSubscriptCounter(CombineMapper):
         raise NotImplementedError("ExpressionSubscriptCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
-        return 0
 
     def map_substitution(self, expr):
         raise NotImplementedError("ExpressionSubscriptCounter encountered "
                                   "substitution, "
                                   "map_substitution not implemented.")
-        return 0
 
     def map_derivative(self, expr):
         raise NotImplementedError("ExpressionSubscriptCounter encountered "
                                   "derivative, "
                                   "map_derivative not implemented.")
-        return 0
 
     def map_slice(self, expr):
         raise NotImplementedError("ExpressionSubscriptCounter encountered slice, "
                                   "map_slice not implemented.")
-        return 0
 
 
 def count(kernel, bset):
@@ -472,4 +461,3 @@ def get_barrier_poly(knl):
                 barrier_poly += isl.PwQPolynomial('{ 1 }')
 
     return barrier_poly
-

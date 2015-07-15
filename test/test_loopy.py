@@ -353,7 +353,10 @@ def test_stencil(ctx_factory):
         knl = lp.set_loop_priority(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
-    for variant in [variant_1, variant_2]:
+    for variant in [
+            #variant_1,
+            variant_2,
+            ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
                 print_ref_code=False,
                 op_count=[n*n], op_label=["cells"])

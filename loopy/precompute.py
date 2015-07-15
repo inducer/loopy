@@ -572,7 +572,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 new_var_aff = isl.Aff.var_on_domain(mod_domain.space, dt, dim_idx)
 
                 mod_domain = mod_domain.add_constraint(
-                        isl.Constraint.inequality_from_aff(new_var_aff - saxis_aff))
+                        isl.Constraint.equality_from_aff(new_var_aff - saxis_aff))
 
                 # project out the new one
                 mod_domain = mod_domain.project_out(dt, dim_idx, 1)
