@@ -38,7 +38,7 @@ def test_op_counter_basic():
             [
                 """
                 c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
-                e[i, k] = g[i,k]*h[i,k+1]
+                e[i, k+1] = g[i,k]*h[i,k+1]
                 """
             ],
             name="basic", assumptions="n,m,l >= 1")
@@ -54,7 +54,7 @@ def test_op_counter_basic():
     i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 3*n*m*l
     assert f64 == n*m
-    assert i32 == n*m
+    assert i32 == n*m*2
 
 
 def test_op_counter_reduction():
@@ -209,8 +209,8 @@ def test_DRAM_access_counter_basic():
     f64 = poly.dict[
                     (np.dtype(np.float64), 'uniform')
                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert f32 == 3*n*m*l
-    assert f64 == 2*n*m
+    assert f32 == 4*n*m*l
+    assert f64 == 3*n*m
 
 
 def test_DRAM_access_counter_reduction():
@@ -230,7 +230,7 @@ def test_DRAM_access_counter_reduction():
     f32 = poly.dict[
                     (np.dtype(np.float32), 'uniform')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert f32 == 2*n*m*l
+    assert f32 == 2*n*m*l+n*l
 
 
 def test_DRAM_access_counter_logic():
@@ -256,7 +256,7 @@ def test_DRAM_access_counter_logic():
                     (np.dtype(np.float64), 'uniform')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 2*n*m
-    assert f64 == n*m
+    assert f64 == 2*n*m
 
 
 def test_DRAM_access_counter_specialops():
@@ -283,8 +283,8 @@ def test_DRAM_access_counter_specialops():
     f64 = poly.dict[
                     (np.dtype(np.float64), 'uniform')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert f32 == 2*n*m*l
-    assert f64 == 2*n*m
+    assert f32 == 3*n*m*l
+    assert f64 == 3*n*m
 
 
 def test_DRAM_access_counter_bitwise():
@@ -311,7 +311,7 @@ def test_DRAM_access_counter_bitwise():
     i32 = poly.dict[
                     (np.dtype(np.int32), 'uniform')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert i32 == 4*n*m+2*n*m*l
+    assert i32 == 5*n*m+3*n*m*l
 
 
 def test_DRAM_access_counter_mixed():
@@ -340,8 +340,8 @@ def test_DRAM_access_counter_mixed():
     f32nonconsec = poly.dict[
                     (np.dtype(np.float32), 'nonconsecutive')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert f64uniform == 2*n*m
-    assert f32nonconsec == 3*n*m*l
+    assert f64uniform == 3*n*m
+    assert f32nonconsec == 4*n*m*l
 
 
 def test_DRAM_access_counter_nonconsec():
@@ -370,8 +370,8 @@ def test_DRAM_access_counter_nonconsec():
     f32nonconsec = poly.dict[
                     (np.dtype(np.float32), 'nonconsecutive')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert f64nonconsec == 2*n*m
-    assert f32nonconsec == 3*n*m*l
+    assert f64nonconsec == 3*n*m
+    assert f32nonconsec == 4*n*m*l
 
 
 def test_DRAM_access_counter_consec():
@@ -400,8 +400,8 @@ def test_DRAM_access_counter_consec():
     f32consec = poly.dict[
                     (np.dtype(np.float32), 'consecutive')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    assert f64consec == 2*n*m
-    assert f32consec == 3*n*m*l
+    assert f64consec == 3*n*m
+    assert f32consec == 4*n*m*l
 
 
 def test_barrier_counter_nobarriers():
@@ -487,9 +487,9 @@ def test_all_counters_parallel_matmul():
 
     assert barrier_count == 0
     assert f32ops == n*m*l*2
-    assert i32ops == n*m*l*4
+    assert i32ops == n*m*l*4+l*n*4
     assert f32uncoal == n*m*l
-    assert f32coal == n*m*l
+    assert f32coal == n*m*l+n*l
 
 
 if __name__ == "__main__":
