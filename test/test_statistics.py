@@ -527,7 +527,7 @@ def test_all_counters_parallel_matmul():
     m = 256
     l = 128
 
-    barrier_count = get_barrier_poly(knl).eval_with_dict({'n': n, 'm': n, 'l': n})
+    barrier_count = get_barrier_poly(knl).eval_with_dict({'n': n, 'm': m, 'l': l})
     assert barrier_count == 0
 
     op_map = get_op_poly(knl)
