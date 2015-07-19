@@ -781,10 +781,11 @@ class _CLKernelInfo(Record):
 class CompiledKernel:
     def __init__(self, context, kernel):
         """
-        :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
-            (a warning will be issued if more than one is returned). If the
-            kernel has not yet been loop-scheduled, that is done, too, with no
+        :arg kernel: may be a loopy.LoopKernel, a generator returning kernels \
+            (a warning will be issued if more than one is returned). If the \
+            kernel has not yet been loop-scheduled, that is done, too, with no \
             specific arguments.
+
         """
 
         self.context = context

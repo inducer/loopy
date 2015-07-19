@@ -514,4 +514,13 @@ Controlling caching
 
 .. autoclass:: CacheMode
 
+Obtaining Kernel Statistics
+---------------------------
+
+.. autofunction:: get_op_poly
+
+.. autofunction:: get_DRAM_access_poly
+
+.. autofunction:: get_barrier_poly
+
 .. vim: tw=75:spell
