@@ -1245,24 +1245,11 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 Counting array accesses
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-:func:`loopy.get_DRAM_access_poly` provides information on the number and type of array loads and stores being performed in a kernel. To demonstrate this, we'll continue using the kernel from the previous example.
-
-:func:`loopy.get_DRAM_access_poly` returns a mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **,** :class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**.
-
-- The :class:`numpy.dtype` specifies the type of the data being accessed.
-
-- The first string in the map key specifies the DRAM access type as *consecutive*, *nonconsecutive*, or *uniform*.
-
-- The second string in the map key specifies the DRAM access type as a *load*, or a *store*.
-
-- The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses with the characteristics specified in the key (in terms of the :class:`loopy.LoopKernel` *inames*).
-
-We will call :func:`loopy.get_DRAM_access_poly` on our example kernel now:
+:func:`loopy.get_DRAM_access_poly` provides information on the number and type of array loads and stores being performed in a kernel. To demonstrate this, we'll continue using the kernel from the previous example:
 
 .. doctest::
 
     >>> from loopy.statistics import get_DRAM_access_poly
-
     >>> load_store_map = get_DRAM_access_poly(knl)
     >>> for key in load_store_map.dict.keys():
     ...     print("%s : %s" % (key, load_store_map.dict[key]))
@@ -1270,6 +1257,102 @@ We will call :func:`loopy.get_DRAM_access_poly` on our example kernel now:
     (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float64'), 'uniform', 'store') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
+
+:func:`loopy.get_DRAM_access_poly` returns a mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **,** :class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**.
+
+- The :class:`numpy.dtype` specifies the type of the data being accessed.
+
+- The first string in the map key specifies the DRAM access type as *consecutive*, *nonconsecutive*, or *uniform*. *Consecutive* memory accesses occur when consecutive threads access consecutive array elements in memory, *nonconsecutive* accesses occur when consecutive threads access nonconsecutive array elements in memory, and *uniform* accesses occur when consecutive threads access the *same* element in memory.
+
+- The second string in the map key specifies the DRAM access type as a *load*, or a *store*.
+
+- The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses with the characteristics specified in the key (in terms of the :class:`loopy.LoopKernel` *inames*).
+
+We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
+
+.. doctest::
+
+    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "uniform", "load")].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "uniform", "store")].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "uniform", "load")].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "uniform", "store")].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" % (f32ld, f32st, f64ld, f64st))
+    f32 load: 1572864
+    f32 store: 524288
+    f64 load: 131072
+    f64 store: 65536
+
+~~~~~~~~~~~
+
+Since we have not tagged any of the inames or parallelized the kernel across threads (which would have produced iname tags), :func:`loopy.get_DRAM_access_poly` considers the array accesses *uniform*. Now we'll parallelize the kernel and count the array accesses again:
+
+.. doctest::
+
+    >>> knl_consec = lp.split_iname(knl, "k", 128, outer_tag="l.1", inner_tag="l.0")
+    >>> load_store_map = get_DRAM_access_poly(knl_consec)
+    >>> for key in load_store_map.dict.keys():
+    ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
+    (dtype('float32'), 'consecutive', 'load') :
+    [n, m, l] -> { (3 * n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (384 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+
+    (dtype('float64'), 'consecutive', 'store') :
+    [n, m, l] -> { (n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+
+    (dtype('float64'), 'consecutive', 'load') :
+    [n, m, l] -> { (2 * n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (256 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+
+    (dtype('float32'), 'consecutive', 'store') :
+    [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+
+With this parallelization, consecutive threads will access consecutive array elements in memory. The polynomials are a bit more complicated now due to the parallelization, but when we evaluate them, we see that the total number of array accesses has not changed:
+
+.. doctest::
+
+    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "consecutive", "load")].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "consecutive", "store")].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "consecutive", "load")].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "consecutive", "store")].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" % (f32ld, f32st, f64ld, f64st))
+    f32 load: 1572864
+    f32 store: 524288
+    f64 load: 131072
+    f64 store: 65536
+
+~~~~~~~~~~~
+
+To produce *nonconsecutive* array accesses, we'll switch the inner and outer tags in our parallization of the kernel:
+
+.. doctest::
+
+    >>> knl_nonconsec = lp.split_iname(knl, "k", 128, outer_tag="l.0", inner_tag="l.1")
+    >>> load_store_map = get_DRAM_access_poly(knl_nonconsec)
+    >>> for key in load_store_map.dict.keys():
+    ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
+    (dtype('float32'), 'nonconsecutive', 'store') :
+    [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+
+    (dtype('float64'), 'nonconsecutive', 'load') :
+    [n, m, l] -> { (2 * n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (256 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+
+    (dtype('float64'), 'nonconsecutive', 'store') :
+    [n, m, l] -> { (n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+
+    (dtype('float32'), 'nonconsecutive', 'load') :
+    [n, m, l] -> { (3 * n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (384 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+
+With this parallelization, consecutive threads will access *nonconsecutive* array elements in memory. The total number of array accesses has not changed:
+
+.. doctest::
+
+    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "nonconsecutive", "load")].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "nonconsecutive", "store")].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "nonconsecutive", "load")].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "nonconsecutive", "store")].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" % (f32ld, f32st, f64ld, f64st))
+    f32 load: 1572864
+    f32 store: 524288
+    f64 load: 131072
+    f64 store: 65536
 
 .. }}}
 
