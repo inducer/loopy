@@ -1183,6 +1183,94 @@ across the remaining axis of the workgroup would emerge.
 
 TODO
 
+Gathering kernel statistics
+---------------------------
+
+Operations, array access, and barriers can all be counted, which may facilitate performance prediction and optimization of a :mod:`loopy` kernel.
+
+.. note::
+
+    The functions used in the following examples may produce warnings. If you have already made the filterwarnings and catch_warnings calls used in the examples above, you may need to reset these before continuing:
+
+    .. doctest::
+
+        >>> from warnings import resetwarnings
+        >>> resetwarnings()
+
+Counting operations
+~~~~~~~~~~~~~~~~~~~
+
+:func:`loopy.get_op_poly` provides information on the number and type of operations being performed in a kernel. To demonstrate this, we'll create an example kernel that performs several operations on arrays containing different types of data:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(
+    ...     "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+    ...     """
+    ...     c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+    ...     e[i, k] = g[i,k]*(2+h[i,k+1])
+    ...     """)
+    >>> knl = lp.add_and_infer_dtypes(knl,
+                    dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+
+Note that loopy will infer the data types for arrays c and e from the information provided. Now we will count the operations:
+
+.. doctest::
+
+    >>> op_map = get_op_poly(knl)
+
+:func:`loopy.get_op_poly` returns a mapping of **{** :class:`numpy.dtype` **:** :class:`islpy.PwQPolynomial` **}**. The :class:`islpy.PwQPolynomial` holds the number of operations for the :class:`numpy.dtype` specified in the key (in terms of the :class:`loopy.LoopKernel` *inames*). We'll print this map now:
+
+.. doctest::
+
+    >>> for key in op_map.dict.keys():
+    ...     print("%s : %s" % (key, op_map.dict[key]))
+    float64 : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
+    int32 : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    float32 : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
+
+We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
+
+.. doctest::
+
+    >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
+    >>> i32ops = op_map.dict[np.dtype(np.int32)].eval_with_dict(param_dict)
+    >>> f32ops = op_map.dict[np.dtype(np.float32)].eval_with_dict(param_dict)
+    >>> f64ops = op_map.dict[np.dtype(np.float64)].eval_with_dict(param_dict)
+    >>> print("integer ops: %i\nfloat32 ops: %i\nfloat64 ops: %i" % (i32ops, f32ops, f64ops))
+    integer ops: 65536
+    float32 ops: 1572864
+    float64 ops: 131072
+
+Counting array accesses
+~~~~~~~~~~~~~~~~~~~~~~~
+
+:func:`loopy.get_DRAM_access_poly` provides information on the number and type of array loads and stores being performed in a kernel. To demonstrate this, we'll continue using the kernel from the previous example.
+
+:func:`loopy.get_DRAM_access_poly` returns a mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **,** :class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**.
+
+- The :class:`numpy.dtype` specifies the type of the data being accessed.
+
+- The first string in the map key specifies the DRAM access type as *consecutive*, *nonconsecutive*, or *uniform*.
+
+- The second string in the map key specifies the DRAM access type as a *load*, or a *store*.
+
+- The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses with the characteristics specified in the key (in terms of the :class:`loopy.LoopKernel` *inames*).
+
+We will call :func:`loopy.get_DRAM_access_poly` on our example kernel now:
+
+.. doctest::
+
+    >>> from loopy.statistics import get_DRAM_access_poly
+
+    >>> load_store_map = get_DRAM_access_poly(knl)
+    >>> for key in load_store_map.dict.keys():
+    ...     print("%s : %s" % (key, load_store_map.dict[key]))
+    (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float64'), 'uniform', 'store') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
+
 .. }}}
 
 .. vim: tw=75:spell:foldmethod=marker
