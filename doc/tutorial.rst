@@ -835,7 +835,7 @@ The loopy kernels we have seen thus far have consisted only of assignments
 from one global-memory storage location to another. Sometimes, computation
 results obviously get reused, so that recomputing them or even just
 re-fetching them from global memory becomes uneconomical. Loopy has
-a number of different ways of adressing this need.
+a number of different ways of addressing this need.
 
 Explicit private temporaries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1320,7 +1320,7 @@ With this parallelization, consecutive threads will access consecutive array ele
 
 ~~~~~~~~~~~
 
-To produce *nonconsecutive* array accesses, we'll switch the inner and outer tags in our parallization of the kernel:
+To produce *nonconsecutive* array accesses, we'll switch the inner and outer tags in our parallelization of the kernel:
 
 .. doctest::
 
