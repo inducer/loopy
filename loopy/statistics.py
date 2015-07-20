@@ -418,20 +418,14 @@ def get_op_poly(knl):
 
     Example usage::
 
-        # first create loopy kernel and specify array data types
+        # (first create loopy kernel and specify array data types)
 
         poly = get_op_poly(knl)
+        params = {'n': 512, 'm': 256, 'l': 128}
+        float32_op_ct = poly.dict[np.dtype(np.float32)].eval_with_dict(params)
+        float64_op_ct = poly.dict[np.dtype(np.float64)].eval_with_dict(params)
 
-        n = 512
-        m = 256
-        l = 128
-
-        float32_op_ct = poly.dict[np.dtype(np.float32)].eval_with_dict(
-                                            {'n': n, 'm': m, 'l': l})
-        float64_op_ct = poly.dict[np.dtype(np.float64)].eval_with_dict(
-                                            {'n': n, 'm': m, 'l': l})
-
-        # now use these counts to predict performance
+        # (now use these counts to predict performance)
 
     """
 
@@ -478,21 +472,22 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
 
     Example usage::
 
-        # first create loopy kernel and specify array data types
+        # (first create loopy kernel and specify array data types)
 
         subscript_map = get_DRAM_access_poly(knl)
+        params = {'n': 512, 'm': 256, 'l': 128}
 
         f32_uncoalesced_load = subscript_map.dict[
                             (np.dtype(np.float32), 'nonconsecutive', 'load')
-                            ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                            ].eval_with_dict(params)
         f32_coalesced_load = subscript_map.dict[
                             (np.dtype(np.float32), 'consecutive', 'load')
-                            ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                            ].eval_with_dict(params)
         f32_coalesced_store = subscript_map.dict[
                             (np.dtype(np.float32), 'consecutive', 'store')
-                            ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                            ].eval_with_dict(params)
 
-        # now use these counts to predict performance
+        # (now use these counts to predict performance)
 
     """
 
@@ -532,17 +527,13 @@ def get_barrier_poly(knl):
 
     Example usage::
 
-        # first create loopy kernel and specify array data types
+        # (first create loopy kernel and specify array data types)
 
         barrier_poly = get_barrier_poly(knl)
+        params = {'n': 512, 'm': 256, 'l': 128}
+        barrier_count = barrier_poly.eval_with_dict(params)
 
-        n = 512
-        m = 256
-        l = 128
-
-        barrier_count = barrier_poly.eval_with_dict({'n': n, 'm': m, 'l': l})
-
-        # now use this count to predict performance
+        # (now use this count to predict performance)
 
     """
 
