@@ -1354,6 +1354,74 @@ With this parallelization, consecutive threads will access *nonconsecutive* arra
     f64 load: 131072
     f64 store: 65536
 
+Counting barriers
+~~~~~~~~~~~~~~~~~
+
+:func:`loopy.get_barrier_poly` counts the number of barriers in a kernel. First, we'll call this function on the kernel from the previous example:
+
+.. doctest::
+
+    >>> from loopy.statistics import get_barrier_poly
+    >>> barrier_poly = get_barrier_poly(knl)
+    >>> print("Barrier polynomial: %s" % barrier_poly)
+    Barrier polynomial: { 0 }
+
+We can evaluate this polynomial using :func:`islpy.eval_with_dict`:
+
+.. doctest::
+
+    >>> barrier_count = barrier_poly.eval_with_dict(param_dict)
+    >>> print("Barrier count: %s" % barrier_count)
+    Barrier count: 0
+
+Now to make things more interesting, we'll create a kernel with barriers:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(
+    ...     "[] -> {[i,k,j]: 0<=i<50 and 1<=k<98 and 0<=j<10}",
+    ...     [
+    ...     """
+    ...     c[i,j,k] = 2*a[i,j,k]
+    ...     e[i,j,k] = c[i,j,k+1]+c[i,j,k-1]
+    ...     """
+    ...     ], [
+    ...     lp.TemporaryVariable("c", lp.auto, shape=(50, 10, 99)),
+    ...     "..."
+    ...     ])
+    >>> knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
+    >>> knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
+    >>> code, _ = lp.generate_code(lp.preprocess_kernel(knl))
+    >>> print(code)
+    #define lid(N) ((int) get_local_id(N))
+    #define gid(N) ((int) get_group_id(N))
+
+    __kernel void __attribute__ ((reqd_work_group_size(97, 1, 1))) loopy_kernel(__global int const *restrict a, __global int *restrict e)
+    {
+      __local int c[50 * 10 * 99];
+
+      for (int i = 0; i <= 49; ++i)
+        for (int j = 0; j <= 9; ++j)
+        {
+          barrier(CLK_LOCAL_MEM_FENCE) /* for c (first rev-depends on insn) */;
+          c[990 * i + 99 * j + lid(0) + 1 + gid(0) * 128] = 2 * a[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128];
+          barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn depends on first) */;
+          e[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128] = c[990 * i + 99 * j + 1 + lid(0) + 1 + gid(0) * 128] + c[990 * i + 99 * j + -1 + lid(0) + 1 + gid(0) * 128];
+        }
+    }
+
+In this kernel, when a thread performs the second instruction it uses data produced by *different* threads during the first instruction. For correct execution barriers are required, so loopy inserts them. Now we'll count the barriers using :func:`loopy.get_barrier_poly`:
+
+.. doctest::
+
+    >>> barrier_poly = get_barrier_poly(knl)
+    >>> barrier_count = barrier_poly.eval_with_dict({})
+    >>> print("Barrier polynomial: %s\nBarrier count: %i" % (barrier_poly, barrier_count))
+    Barrier polynomial: { 1000 }
+    Barrier count: 1000
+
+Based on the kernel code printed above, we would expect to find 50x10x2 barriers, and we do. In this case, the number of barriers does not depend on any inames, so we can pass an empty dictionary to :func:`islpy.eval_with_dict`.
+
 .. }}}
 
 .. vim: tw=75:spell:foldmethod=marker
