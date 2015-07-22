@@ -76,7 +76,10 @@ class ToCountMap:
             return isl.PwQPolynomial('{ 0 }')
 
     def __str__(self):
-        return str(self.dict)
+        result = ""
+        for key in self.dict.keys():
+            result += ("%s : %s\n" % (key, self.dict[key]))
+        return result
 
     def __repr__(self):
         return repr(self.dict)

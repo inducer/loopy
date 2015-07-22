@@ -1223,8 +1223,7 @@ Note that loopy will infer the data types for arrays c and e from the informatio
 
 .. doctest::
 
-    >>> for key in op_map.dict.keys():
-    ...     print("%s : %s" % (key, op_map.dict[key]))
+    >>> print(op_map)
     float64 : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
     int32 : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
     float32 : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
@@ -1251,8 +1250,7 @@ Counting array accesses
 
     >>> from loopy.statistics import get_DRAM_access_poly
     >>> load_store_map = get_DRAM_access_poly(knl)
-    >>> for key in load_store_map.dict.keys():
-    ...     print("%s : %s" % (key, load_store_map.dict[key]))
+    >>> print(load_store_map)
     (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float64'), 'uniform', 'store') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
@@ -1284,7 +1282,7 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 
 ~~~~~~~~~~~
 
-Since we have not tagged any of the inames or parallelized the kernel across threads (which would have produced iname tags), :func:`loopy.get_DRAM_access_poly` considers the array accesses *uniform*. Now we'll parallelize the kernel and count the array accesses again:
+Since we have not tagged any of the inames or parallelized the kernel across threads (which would have produced iname tags), :func:`loopy.get_DRAM_access_poly` considers the array accesses *uniform*. Now we'll parallelize the kernel and count the array accesses again. The resulting :class:`islpy.PwQPolynomial` will be more complicated this time, so we'll print the mapping manually to make it more legible:
 
 .. doctest::
 
