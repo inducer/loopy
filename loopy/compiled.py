@@ -310,13 +310,18 @@ def generate_value_arg_setup(gen, kernel, cl_kernel, impl_arg_info, options):
     work_around_arg_count_bug = False
     warn_about_arg_count_bug = False
 
-    from pyopencl.characterize import has_struct_arg_count_bug
-
     devices = cl_kernel.context.devices
 
-    count_bug_per_dev = [
-            has_struct_arg_count_bug(dev)
-            for dev in devices]
+    try:
+        from pyopencl.characterize import has_struct_arg_count_bug
+
+    except ImportError:
+        count_bug_per_dev = [False]*len(devices)
+
+    else:
+        count_bug_per_dev = [
+                has_struct_arg_count_bug(dev)
+                for dev in devices]
 
     if any(count_bug_per_dev):
         if all(count_bug_per_dev):
