@@ -1217,7 +1217,8 @@ different types of data:
     ...     c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
     ...     e[i, k] = g[i,k]*(2+h[i,k+1])
     ...     """)
-    >>> knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    >>> knl = lp.add_and_infer_dtypes(knl,
+    ...     dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
 
 Note that loopy will infer the data types for arrays c and e from the
 information provided. Now we will count the operations:
@@ -1246,10 +1247,14 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 .. doctest::
 
     >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
-    >>> i32ops = op_map.dict[np.dtype(np.int32)].eval_with_dict(param_dict)
-    >>> f32ops = op_map.dict[np.dtype(np.float32)].eval_with_dict(param_dict)
-    >>> f64ops = op_map.dict[np.dtype(np.float64)].eval_with_dict(param_dict)
-    >>> print("integer ops: %i\nfloat32 ops: %i\nfloat64 ops: %i" % (i32ops, f32ops, f64ops))
+    >>> i32ops = op_map.dict[
+    ...     np.dtype(np.int32)].eval_with_dict(param_dict)
+    >>> f32ops = op_map.dict[
+    ...     np.dtype(np.float32)].eval_with_dict(param_dict)
+    >>> f64ops = op_map.dict[
+    ...     np.dtype(np.float64)].eval_with_dict(param_dict)
+    >>> print("integer ops: %i\nfloat32 ops: %i\nfloat64 ops: %i" %
+    ...     (i32ops, f32ops, f64ops))
     integer ops: 65536
     float32 ops: 1572864
     float64 ops: 131072
@@ -1296,11 +1301,20 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 
 .. doctest::
 
-    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "uniform", "load")].eval_with_dict(param_dict)
-    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "uniform", "store")].eval_with_dict(param_dict)
-    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "uniform", "load")].eval_with_dict(param_dict)
-    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "uniform", "store")].eval_with_dict(param_dict)
-    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" % (f32ld, f32st, f64ld, f64st))
+    >>> f64ld = load_store_map.dict[
+    ...     (np.dtype(np.float64), "uniform", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[
+    ...     (np.dtype(np.float64), "uniform", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[
+    ...     (np.dtype(np.float32), "uniform", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[
+    ...     (np.dtype(np.float32), "uniform", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %
+    ...     (f32ld, f32st, f64ld, f64st))
     f32 load: 1572864
     f32 store: 524288
     f64 load: 131072
@@ -1317,7 +1331,8 @@ so we'll print the mapping manually to make it more legible:
 
 .. doctest::
 
-    >>> knl_consec = lp.split_iname(knl, "k", 128, outer_tag="l.1", inner_tag="l.0")
+    >>> knl_consec = lp.split_iname(knl, "k", 128,
+    ...     outer_tag="l.1", inner_tag="l.0")
     >>> load_store_map = get_DRAM_access_poly(knl_consec)
     >>> for key in load_store_map.dict.keys():
     ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
@@ -1341,11 +1356,20 @@ total number of array accesses has not changed:
 
 .. doctest::
 
-    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "consecutive", "load")].eval_with_dict(param_dict)
-    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "consecutive", "store")].eval_with_dict(param_dict)
-    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "consecutive", "load")].eval_with_dict(param_dict)
-    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "consecutive", "store")].eval_with_dict(param_dict)
-    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" % (f32ld, f32st, f64ld, f64st))
+    >>> f64ld = load_store_map.dict[
+    ...     (np.dtype(np.float64), "consecutive", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[
+    ...     (np.dtype(np.float64), "consecutive", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[
+    ...     (np.dtype(np.float32), "consecutive", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[
+    ...     (np.dtype(np.float32), "consecutive", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %
+    ...     (f32ld, f32st, f64ld, f64st))
     f32 load: 1572864
     f32 store: 524288
     f64 load: 131072
@@ -1358,7 +1382,8 @@ outer tags in our parallelization of the kernel:
 
 .. doctest::
 
-    >>> knl_nonconsec = lp.split_iname(knl, "k", 128, outer_tag="l.0", inner_tag="l.1")
+    >>> knl_nonconsec = lp.split_iname(knl, "k", 128,
+    ...     outer_tag="l.0", inner_tag="l.1")
     >>> load_store_map = get_DRAM_access_poly(knl_nonconsec)
     >>> for key in load_store_map.dict.keys():
     ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
@@ -1381,11 +1406,20 @@ changed:
 
 .. doctest::
 
-    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "nonconsecutive", "load")].eval_with_dict(param_dict)
-    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "nonconsecutive", "store")].eval_with_dict(param_dict)
-    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "nonconsecutive", "load")].eval_with_dict(param_dict)
-    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "nonconsecutive", "store")].eval_with_dict(param_dict)
-    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" % (f32ld, f32st, f64ld, f64st))
+    >>> f64ld = load_store_map.dict[
+    ...     (np.dtype(np.float64), "nonconsecutive", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[
+    ...     (np.dtype(np.float64), "nonconsecutive", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[
+    ...     (np.dtype(np.float32), "nonconsecutive", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[
+    ...     (np.dtype(np.float32), "nonconsecutive", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %
+    ...     (f32ld, f32st, f64ld, f64st))
     f32 load: 1572864
     f32 store: 524288
     f64 load: 131072
@@ -1428,7 +1462,8 @@ Now to make things more interesting, we'll create a kernel with barriers:
     ...     "..."
     ...     ])
     >>> knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
-    >>> knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
+    >>> knl = lp.split_iname(knl, "k", 128, 
+    ...     outer_tag="g.0", inner_tag="l.0")
     >>> code, _ = lp.generate_code(lp.preprocess_kernel(knl))
     >>> print(code)
     #define lid(N) ((int) get_local_id(N))
@@ -1458,7 +1493,8 @@ barriers using :func:`loopy.get_barrier_poly`:
 
     >>> barrier_poly = get_barrier_poly(knl)
     >>> barrier_count = barrier_poly.eval_with_dict({})
-    >>> print("Barrier polynomial: %s\nBarrier count: %i" % (barrier_poly, barrier_count))
+    >>> print("Barrier polynomial: %s\nBarrier count: %i" %
+    ...     (barrier_poly, barrier_count))
     Barrier polynomial: { 1000 }
     Barrier count: 1000
 
