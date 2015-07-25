@@ -412,12 +412,12 @@ def get_op_poly(knl):
 
     :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
-    :return: A mapping of **{** :class:`numpy.dtype` \
-             **:** :class:`islpy.PwQPolynomial` **}**.
+    :return: A mapping of **{** :class:`numpy.dtype` **:**
+             :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`islpy.PwQPolynomial` holds the number of operations for \
-             the :class:`numpy.dtype` specified in the key (in terms of \
-             the :class:`loopy.LoopKernel` *inames*).
+             - The :class:`islpy.PwQPolynomial` holds the number of operations for
+               the :class:`numpy.dtype` specified in the key (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
 
     Example usage::
 
@@ -453,25 +453,24 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
 
     """Count the number of DRAM accesses in a loopy kernel.
 
-    :parameter knl: A :class:`loopy.LoopKernel` \
-                    whose DRAM accesses are to be counted.
+    :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
+                    counted.
 
-    :return: A mapping of **{(** \
-             :class:`numpy.dtype` **,** :class:`string` **,** :class:`string` \
-             **)** **:** :class:`islpy.PwQPolynomial` **}**.
+    :return: A mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **,**
+             :class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`numpy.dtype` specifies \
-                the type of the data being accessed.
+             - The :class:`numpy.dtype` specifies the type of the data being
+               accessed.
 
-             - The first string in the map key specifies the DRAM access type as \
-                *consecutive*, *nonconsecutive*, or *uniform*.
+             - The first string in the map key specifies the DRAM access type as
+               *consecutive*, *nonconsecutive*, or *uniform*.
 
-             - The second string in the map key specifies the DRAM access type as \
-                a *load*, or a *store*.
+             - The second string in the map key specifies the DRAM access type as a
+               *load*, or a *store*.
 
-             - The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses \
-                with the characteristics specified in the key (in terms of the \
-                :class:`loopy.LoopKernel` *inames*).
+             - The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses
+               with the characteristics specified in the key (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
 
     Example usage::
 
@@ -520,12 +519,11 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
 
 def get_barrier_poly(knl):
 
-    """Count the number of barriers in a loopy kernel.
+    """Count the number of barriers each thread encounters in a loopy kernel.
 
-    :parameter knl: A :class:`loopy.LoopKernel` \
-                    whose barriers are to be counted.
+    :parameter knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
-    :return: An :class:`islpy.PwQPolynomial` holding the number of barrier calls \
+    :return: An :class:`islpy.PwQPolynomial` holding the number of barrier calls
              made (in terms of the :class:`loopy.LoopKernel` *inames*).
 
     Example usage::
