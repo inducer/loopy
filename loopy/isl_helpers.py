@@ -324,10 +324,12 @@ def boxify(cache_manager, domain, box_inames, context):
     domain = domain.move_dims(
             dim_type.param, n_old_parameters, dim_type.set, 0, n_nonbox_inames)
 
-    result = domain.universe(domain.space)
+    result = domain
     zero = isl.Aff.zero_on_domain(result.space)
 
     for i in range(len(box_iname_indices)):
+        result = result.eliminate(dim_type.set, i, 1)
+
         iname_aff = zero.add_coefficient_val(dim_type.in_, i, 1)
 
         def add_in_dims(aff):
