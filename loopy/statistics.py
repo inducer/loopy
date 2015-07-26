@@ -76,7 +76,10 @@ class ToCountMap:
             return isl.PwQPolynomial('{ 0 }')
 
     def __str__(self):
-        return str(self.dict)
+        result = ""
+        for key in self.dict.keys():
+            result += ("%s : %s\n" % (key, self.dict[key]))
+        return result
 
     def __repr__(self):
         return repr(self.dict)
@@ -403,8 +406,32 @@ def count(kernel, bset):
     return result
 
 
-# to evaluate poly: poly.eval_with_dict(dictionary)
 def get_op_poly(knl):
+
+    """Count the number of operations in a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
+
+    :return: A mapping of **{** :class:`numpy.dtype` **:**
+             :class:`islpy.PwQPolynomial` **}**.
+
+             - The :class:`islpy.PwQPolynomial` holds the number of operations for
+               the :class:`numpy.dtype` specified in the key (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        poly = get_op_poly(knl)
+        params = {'n': 512, 'm': 256, 'l': 128}
+        float32_op_ct = poly.dict[np.dtype(np.float32)].eval_with_dict(params)
+        float64_op_ct = poly.dict[np.dtype(np.float64)].eval_with_dict(params)
+
+        # (now use these counts to predict performance)
+
+    """
+
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
@@ -423,6 +450,49 @@ def get_op_poly(knl):
 
 
 def get_DRAM_access_poly(knl):  # for now just counting subscripts
+
+    """Count the number of DRAM accesses in a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
+                    counted.
+
+    :return: A mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **,**
+             :class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**.
+
+             - The :class:`numpy.dtype` specifies the type of the data being
+               accessed.
+
+             - The first string in the map key specifies the DRAM access type as
+               *consecutive*, *nonconsecutive*, or *uniform*.
+
+             - The second string in the map key specifies the DRAM access type as a
+               *load*, or a *store*.
+
+             - The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses
+               with the characteristics specified in the key (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        subscript_map = get_DRAM_access_poly(knl)
+        params = {'n': 512, 'm': 256, 'l': 128}
+
+        f32_uncoalesced_load = subscript_map.dict[
+                            (np.dtype(np.float32), 'nonconsecutive', 'load')
+                            ].eval_with_dict(params)
+        f32_coalesced_load = subscript_map.dict[
+                            (np.dtype(np.float32), 'consecutive', 'load')
+                            ].eval_with_dict(params)
+        f32_coalesced_store = subscript_map.dict[
+                            (np.dtype(np.float32), 'consecutive', 'store')
+                            ].eval_with_dict(params)
+
+        # (now use these counts to predict performance)
+
+    """
+
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
@@ -433,7 +503,6 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-
         subs_expr = subscript_counter(insn.expression)
         subs_expr = ToCountMap(dict(
             (key + ("load",), val)
@@ -449,6 +518,26 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
 
 
 def get_barrier_poly(knl):
+
+    """Count the number of barriers each thread encounters in a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
+
+    :return: An :class:`islpy.PwQPolynomial` holding the number of barrier calls
+             made (in terms of the :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        barrier_poly = get_barrier_poly(knl)
+        params = {'n': 512, 'm': 256, 'l': 128}
+        barrier_count = barrier_poly.eval_with_dict(params)
+
+        # (now use this count to predict performance)
+
+    """
+
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     from loopy.schedule import EnterLoop, LeaveLoop, Barrier
     from operator import mul

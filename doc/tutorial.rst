@@ -835,7 +835,7 @@ The loopy kernels we have seen thus far have consisted only of assignments
 from one global-memory storage location to another. Sometimes, computation
 results obviously get reused, so that recomputing them or even just
 re-fetching them from global memory becomes uneconomical. Loopy has
-a number of different ways of adressing this need.
+a number of different ways of addressing this need.
 
 Explicit private temporaries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1182,6 +1182,307 @@ to make use of parallelism in prefetching, it discovers that a write race
 across the remaining axis of the workgroup would emerge.
 
 TODO
+
+Gathering kernel statistics
+---------------------------
+
+Operations, array access, and barriers can all be counted, which may facilitate
+performance prediction and optimization of a :mod:`loopy` kernel.
+
+.. note::
+
+    The functions used in the following examples may produce warnings. If you have
+    already made the filterwarnings and catch_warnings calls used in the examples
+    above, you may need to reset these before continuing:
+
+    .. doctest::
+
+        >>> from warnings import resetwarnings
+        >>> resetwarnings()
+
+Counting operations
+~~~~~~~~~~~~~~~~~~~
+
+:func:`loopy.get_op_poly` provides information on the number and type of operations
+being performed in a kernel. To demonstrate this, we'll create an example kernel
+that performs several operations on arrays containing different types of data:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(
+    ...     "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+    ...     """
+    ...     c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+    ...     e[i, k] = g[i,k]*(2+h[i,k+1])
+    ...     """)
+    >>> knl = lp.add_and_infer_dtypes(knl,
+    ...     dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+
+Note that loopy will infer the data types for arrays c and e from the
+information provided. Now we will count the operations:
+
+.. doctest::
+
+    >>> from loopy.statistics import get_op_poly
+    >>> op_map = get_op_poly(knl)
+
+:func:`loopy.get_op_poly` returns a mapping of **{** :class:`numpy.dtype` **:**
+:class:`islpy.PwQPolynomial` **}**. The :class:`islpy.PwQPolynomial` holds the
+number of operations for the :class:`numpy.dtype` specified in the key (in terms of
+the :class:`loopy.LoopKernel` *inames*). We'll print this map now:
+
+.. doctest::
+
+    >>> print(op_map)
+    float64 : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
+    int32 : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    float32 : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
+    <BLANKLINE>
+
+We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
+
+.. doctest::
+
+    >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
+    >>> i32ops = op_map.dict[np.dtype(np.int32)].eval_with_dict(param_dict)
+    >>> f32ops = op_map.dict[np.dtype(np.float32)].eval_with_dict(param_dict)
+    >>> f64ops = op_map.dict[np.dtype(np.float64)].eval_with_dict(param_dict)
+    >>> print("integer ops: %i\nfloat32 ops: %i\nfloat64 ops: %i" %
+    ...     (i32ops, f32ops, f64ops))
+    integer ops: 65536
+    float32 ops: 1572864
+    float64 ops: 131072
+
+Counting array accesses
+~~~~~~~~~~~~~~~~~~~~~~~
+
+:func:`loopy.get_DRAM_access_poly` provides information on the number and type of
+array loads and stores being performed in a kernel. To demonstrate this, we'll
+continue using the kernel from the previous example:
+
+.. doctest::
+
+    >>> from loopy.statistics import get_DRAM_access_poly
+    >>> load_store_map = get_DRAM_access_poly(knl)
+    >>> print(load_store_map)
+    (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float64'), 'uniform', 'store') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
+    <BLANKLINE>
+
+:func:`loopy.get_DRAM_access_poly` returns a mapping of **{(**
+:class:`numpy.dtype` **,** :class:`string` **,** :class:`string` **)**
+**:** :class:`islpy.PwQPolynomial` **}**.
+
+- The :class:`numpy.dtype` specifies the type of the data being accessed.
+
+- The first string in the map key specifies the DRAM access type as *consecutive*,
+  *nonconsecutive*, or *uniform*. *Consecutive* memory accesses occur when
+  consecutive threads access consecutive array elements in memory, *nonconsecutive*
+  accesses occur when consecutive threads access nonconsecutive array elements in
+  memory, and *uniform* accesses occur when consecutive threads access the *same*
+  element in memory.
+
+- The second string in the map key specifies the DRAM access type as a *load*, or a
+  *store*.
+
+- The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses with the
+  characteristics specified in the key (in terms of the :class:`loopy.LoopKernel`
+  *inames*).
+
+We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
+
+.. doctest::
+
+    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "uniform", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "uniform", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "uniform", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "uniform", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %
+    ...     (f32ld, f32st, f64ld, f64st))
+    f32 load: 1572864
+    f32 store: 524288
+    f64 load: 131072
+    f64 store: 65536
+
+~~~~~~~~~~~
+
+Since we have not tagged any of the inames or parallelized the kernel across threads
+(which would have produced iname tags), :func:`loopy.get_DRAM_access_poly` considers
+the array accesses *uniform*. Now we'll parallelize the kernel and count the array
+accesses again. The resulting :class:`islpy.PwQPolynomial` will be more complicated
+this time, so we'll print the mapping manually to make it more legible:
+
+.. doctest::
+
+    >>> knl_consec = lp.split_iname(knl, "k", 128, outer_tag="l.1", inner_tag="l.0")
+    >>> load_store_map = get_DRAM_access_poly(knl_consec)
+    >>> for key in load_store_map.dict.keys():
+    ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
+    (dtype('float32'), 'consecutive', 'load') :
+    [n, m, l] -> { (3 * n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (384 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    <BLANKLINE>
+    (dtype('float64'), 'consecutive', 'store') :
+    [n, m, l] -> { (n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    <BLANKLINE>
+    (dtype('float64'), 'consecutive', 'load') :
+    [n, m, l] -> { (2 * n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (256 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    <BLANKLINE>
+    (dtype('float32'), 'consecutive', 'store') :
+    [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    <BLANKLINE>
+
+With this parallelization, consecutive threads will access consecutive array
+elements in memory. The polynomials are a bit more complicated now due to the
+parallelization, but when we evaluate them, we see that the total number of array
+accesses has not changed:
+
+.. doctest::
+
+    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "consecutive", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "consecutive", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "consecutive", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "consecutive", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %
+    ...     (f32ld, f32st, f64ld, f64st))
+    f32 load: 1572864
+    f32 store: 524288
+    f64 load: 131072
+    f64 store: 65536
+
+~~~~~~~~~~~
+
+To produce *nonconsecutive* array accesses, we'll switch the inner and outer tags in
+our parallelization of the kernel:
+
+.. doctest::
+
+    >>> knl_nonconsec = lp.split_iname(knl, "k", 128, outer_tag="l.0", inner_tag="l.1")
+    >>> load_store_map = get_DRAM_access_poly(knl_nonconsec)
+    >>> for key in load_store_map.dict.keys():
+    ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
+    (dtype('float32'), 'nonconsecutive', 'store') :
+    [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    <BLANKLINE>
+    (dtype('float64'), 'nonconsecutive', 'load') :
+    [n, m, l] -> { (2 * n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (256 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    <BLANKLINE>
+    (dtype('float64'), 'nonconsecutive', 'store') :
+    [n, m, l] -> { (n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    <BLANKLINE>
+    (dtype('float32'), 'nonconsecutive', 'load') :
+    [n, m, l] -> { (3 * n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (384 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    <BLANKLINE>
+
+With this parallelization, consecutive threads will access *nonconsecutive* array
+elements in memory. The total number of array accesses has not changed:
+
+.. doctest::
+
+    >>> f64ld = load_store_map.dict[
+    ...     (np.dtype(np.float64), "nonconsecutive", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f64st = load_store_map.dict[
+    ...     (np.dtype(np.float64), "nonconsecutive", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32ld = load_store_map.dict[
+    ...     (np.dtype(np.float32), "nonconsecutive", "load")
+    ...     ].eval_with_dict(param_dict)
+    >>> f32st = load_store_map.dict[
+    ...     (np.dtype(np.float32), "nonconsecutive", "store")
+    ...     ].eval_with_dict(param_dict)
+    >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %
+    ...     (f32ld, f32st, f64ld, f64st))
+    f32 load: 1572864
+    f32 store: 524288
+    f64 load: 131072
+    f64 store: 65536
+
+Counting barriers
+~~~~~~~~~~~~~~~~~
+
+:func:`loopy.get_barrier_poly` counts the number of barriers per **thread** in a
+kernel. First, we'll call this function on the kernel from the previous example:
+
+.. doctest::
+
+    >>> from loopy.statistics import get_barrier_poly
+    >>> barrier_poly = get_barrier_poly(knl)
+    >>> print("Barrier polynomial: %s" % barrier_poly)
+    Barrier polynomial: { 0 }
+
+We can evaluate this polynomial using :func:`islpy.eval_with_dict`:
+
+.. doctest::
+
+    >>> barrier_count = barrier_poly.eval_with_dict(param_dict)
+    >>> print("Barrier count: %s" % barrier_count)
+    Barrier count: 0
+
+Now to make things more interesting, we'll create a kernel with barriers:
+
+.. doctest::
+
+    >>> knl = lp.make_kernel(
+    ...     "[] -> {[i,k,j]: 0<=i<50 and 1<=k<98 and 0<=j<10}",
+    ...     [
+    ...     """
+    ...     c[i,j,k] = 2*a[i,j,k]
+    ...     e[i,j,k] = c[i,j,k+1]+c[i,j,k-1]
+    ...     """
+    ...     ], [
+    ...     lp.TemporaryVariable("c", lp.auto, shape=(50, 10, 99)),
+    ...     "..."
+    ...     ])
+    >>> knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
+    >>> knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
+    >>> code, _ = lp.generate_code(lp.preprocess_kernel(knl))
+    >>> print(code)
+    #define lid(N) ((int) get_local_id(N))
+    #define gid(N) ((int) get_group_id(N))
+    <BLANKLINE>
+    __kernel void __attribute__ ((reqd_work_group_size(97, 1, 1))) loopy_kernel(__global int const *restrict a, __global int *restrict e)
+    {
+      __local int c[50 * 10 * 99];
+    <BLANKLINE>
+      for (int i = 0; i <= 49; ++i)
+        for (int j = 0; j <= 9; ++j)
+        {
+          barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
+          c[990 * i + 99 * j + lid(0) + 1 + gid(0) * 128] = 2 * a[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128];
+          barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
+          e[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128] = c[990 * i + 99 * j + 1 + lid(0) + 1 + gid(0) * 128] + c[990 * i + 99 * j + -1 + lid(0) + 1 + gid(0) * 128];
+        }
+    }
+
+
+In this kernel, when a thread performs the second instruction it uses data produced
+by *different* threads during the first instruction. For correct execution barriers
+are required, so loopy inserts them. Now we'll count the barriers using
+:func:`loopy.get_barrier_poly`:
+
+.. doctest::
+
+    >>> barrier_poly = get_barrier_poly(knl)
+    >>> barrier_count = barrier_poly.eval_with_dict({})
+    >>> print("Barrier polynomial: %s\nBarrier count: %i" %
+    ...     (barrier_poly, barrier_count))
+    Barrier polynomial: { 1000 }
+    Barrier count: 1000
+
+Based on the kernel code printed above, we would expect each thread to encounter
+50x10x2 barriers, which matches the result from :func:`loopy.get_barrier_poly`. In
+this case, the number of barriers does not depend on any inames, so we can pass an
+empty dictionary to :func:`islpy.eval_with_dict`.
 
 .. }}}
 

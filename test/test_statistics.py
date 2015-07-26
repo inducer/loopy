@@ -415,6 +415,15 @@ def test_DRAM_access_counter_nonconsec():
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
+    f64nonconsec = poly.dict[
+                    (np.dtype(np.float64), 'nonconsecutive', 'store')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32nonconsec = poly.dict[
+                    (np.dtype(np.float32), 'nonconsecutive', 'store')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f64nonconsec == n*m
+    assert f32nonconsec == n*m*l
+
 
 def test_DRAM_access_counter_consec():
 
@@ -435,7 +444,7 @@ def test_DRAM_access_counter_consec():
     n = 512
     m = 256
     l = 128
-    print(poly)
+
     f64consec = poly.dict[
                     (np.dtype(np.float64), 'consecutive', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
@@ -444,6 +453,15 @@ def test_DRAM_access_counter_consec():
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f64consec == 2*n*m
     assert f32consec == 3*n*m*l
+
+    f64consec = poly.dict[
+                    (np.dtype(np.float64), 'consecutive', 'store')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32consec = poly.dict[
+                    (np.dtype(np.float32), 'consecutive', 'store')
+                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert f64consec == n*m
+    assert f32consec == n*m*l
 
 
 def test_barrier_counter_nobarriers():
@@ -509,7 +527,7 @@ def test_all_counters_parallel_matmul():
     m = 256
     l = 128
 
-    barrier_count = get_barrier_poly(knl).eval_with_dict({'n': n, 'm': n, 'l': n})
+    barrier_count = get_barrier_poly(knl).eval_with_dict({'n': n, 'm': m, 'l': l})
     assert barrier_count == 0
 
     op_map = get_op_poly(knl)
@@ -539,6 +557,7 @@ def test_all_counters_parallel_matmul():
                         ].eval_with_dict({'n': n, 'm': m, 'l': l})
 
     assert f32coal == n*l
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
