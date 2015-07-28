@@ -1466,9 +1466,9 @@ Now to make things more interesting, we'll create a kernel with barriers:
 
 
 In this kernel, when a thread performs the second instruction it uses data produced
-by *different* threads during the first instruction. For correct execution barriers
-are required, so loopy inserts them. Now we'll count the barriers using
-:func:`loopy.get_barrier_poly`:
+by *different* threads during the first instruction. Because of this, barriers are
+required for correct execution, so loopy inserts them. Now we'll count the barriers
+using :func:`loopy.get_barrier_poly`:
 
 .. doctest::
 
