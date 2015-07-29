@@ -1183,7 +1183,7 @@ across the remaining axis of the workgroup would emerge.
 
 TODO
 
-Obtaining kernel statistics
+Obtaining Kernel Statistics
 ---------------------------
 
 Operations, array access, and barriers can all be counted, which may facilitate
