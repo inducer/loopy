@@ -199,7 +199,7 @@ For convenience, loopy kernels also directly accept :mod:`numpy` arrays:
     >>> evt, (out,) = knl(queue, a=x_vec_host)
     >>> assert (out == (2*x_vec_host)).all()
 
-Notice how both *out* nor *a* are :mod:`numpy` arrays, but neither needed
+Notice how both *out* and *a* are :mod:`numpy` arrays, but neither needed
 to be transferred to or from the device.  Checking for numpy arrays and
 transferring them if needed comes at a potential performance cost.  If you
 would like to make sure that you avoid this cost, pass
