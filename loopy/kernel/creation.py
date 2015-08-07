@@ -191,6 +191,8 @@ def parse_insn(insn):
     if insn_match is not None:
         insn_deps = None
         insn_deps_is_final = False
+        insn_groups = None
+        conflicts_with_groups = None
         insn_id = None
         inames_to_dup = []
         priority = 0
@@ -236,6 +238,16 @@ def parse_insn(insn):
                     insn_deps = frozenset(dep.strip() for dep in opt_value.split(":")
                             if dep.strip())
 
+                elif opt_key == "groups":
+                    insn_groups = frozenset(
+                            grp.strip() for grp in opt_value.split(":")
+                            if grp.strip())
+
+                elif opt_key == "conflicts":
+                    conflicts_with_groups = frozenset(
+                            grp.strip() for grp in opt_value.split(":")
+                            if grp.strip())
+
                 elif opt_key == "inames":
                     if opt_value.startswith("+"):
                         forced_iname_deps_is_final = False
@@ -275,6 +287,8 @@ def parse_insn(insn):
                     id=insn_id,
                     insn_deps=insn_deps,
                     insn_deps_is_final=insn_deps_is_final,
+                    groups=insn_groups,
+                    conflicts_with_groups=conflicts_with_groups,
                     forced_iname_deps_is_final=forced_iname_deps_is_final,
                     forced_iname_deps=forced_iname_deps,
                     assignee=lhs, expression=rhs,

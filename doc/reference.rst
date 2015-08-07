@@ -20,7 +20,6 @@ Domain Tree
 Inames
 ^^^^^^
 
-
 Loops are (by default) entered exactly once. This is necessary to preserve
 dependency semantics--otherwise e.g. a fetch could happen inside one loop nest,
 and then the instruction using that fetch could be inside a wholly different
@@ -191,6 +190,8 @@ Instructions
 
 .. autoclass:: UniqueName
 
+.. autoclass:: InstructionBase
+
 .. _assignments:
 
 Assignments
@@ -299,8 +300,16 @@ These are usually key-value pairs. The following attributes are recognized:
 * ``tags=tag1:tag2`` Apply tags to this instruction that can then be used
   for :ref:`context-matching`.
 
-.. autoclass:: ExpressionInstruction
+* ``groups=group1:group2`` Make this instruction part of the given
+  instruction groups. See :class:`InstructionBase.groups`.
 
+* ``conflicts_grp=group1:group2`` Make this instruction conflict with the
+  given instruction groups. See
+  :class:`InstructionBase.conflicts_with_groups`.
+
+Assignment instructions are expressed as instances of the following class:
+
+.. autoclass:: ExpressionInstruction
 
 .. _expression-syntax:
 

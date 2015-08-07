@@ -447,6 +447,19 @@ class InstructionBase(Record):
 
         Defaults to *False*.
 
+    .. attribute:: groups
+
+        A :class:`frozenset` of strings indicating the names of 'instruction
+        groups' of which this instruction is a part. An instruction group is
+        considered 'active' as long as one (but not all) instructions of the
+        group have been executed.
+
+    .. attribute:: conflicts_with_groups
+
+        A :class:`frozenset` of strings indicating which instruction groups
+        (see :class:`InstructionBase.groups`) may not be active when this
+        instruction is scheduled.
+
     .. attribute:: predicates
 
         a :class:`frozenset` of variable names the conjunction (logical and) of
@@ -488,13 +501,22 @@ class InstructionBase(Record):
         of statements.
     """
 
-    fields = set("id insn_deps insn_deps_is_final predicates "
+    fields = set("id insn_deps insn_deps_is_final "
+            "groups conflicts_with_groups "
+            "predicates "
             "forced_iname_deps_is_final forced_iname_deps "
             "priority boostable boostable_into".split())
 
     def __init__(self, id, insn_deps, insn_deps_is_final,
+            groups, conflicts_with_groups,
             forced_iname_deps_is_final, forced_iname_deps, priority,
             boostable, boostable_into, predicates, tags):
+
+        if groups is None:
+            groups = frozenset()
+
+        if conflicts_with_groups is None:
+            conflicts_with_groups = frozenset()
 
         if forced_iname_deps_is_final is None:
             forced_iname_deps_is_final = False
@@ -511,11 +533,14 @@ class InstructionBase(Record):
 
         assert isinstance(forced_iname_deps, frozenset)
         assert isinstance(insn_deps, frozenset) or insn_deps is None
+        assert isinstance(groups, frozenset)
+        assert isinstance(conflicts_with_groups, frozenset)
 
         Record.__init__(self,
                 id=id,
                 insn_deps=insn_deps,
                 insn_deps_is_final=insn_deps_is_final,
+                groups=groups, conflicts_with_groups=conflicts_with_groups,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 priority=priority,
@@ -586,6 +611,10 @@ class InstructionBase(Record):
 
         if self.insn_deps:
             result.append("deps="+":".join(self.insn_deps))
+        if self.groups:
+            result.append("groups=%s" % ":".join(self.groups))
+        if self.conflicts_with_groups:
+            result.append("conflicts=%s" % ":".join(self.conflicts_with_groups))
         if self.priority:
             result.append("priority=%d" % self.priority)
         if self.tags:
@@ -664,19 +693,23 @@ class ExpressionInstruction(InstructionBase):
     def __init__(self,
             assignee, expression,
             id=None,
-            forced_iname_deps_is_final=None,
-            forced_iname_deps=frozenset(),
             insn_deps=None,
             insn_deps_is_final=None,
+            groups=None,
+            conflicts_with_groups=None,
+            forced_iname_deps_is_final=None,
+            forced_iname_deps=frozenset(),
             boostable=None, boostable_into=None, tags=None,
             temp_var_type=None, priority=0, predicates=frozenset()):
 
         InstructionBase.__init__(self,
                 id=id,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps,
                 insn_deps_is_final=insn_deps_is_final,
+                groups=groups,
+                conflicts_with_groups=conflicts_with_groups,
+                forced_iname_deps_is_final=forced_iname_deps_is_final,
+                forced_iname_deps=forced_iname_deps,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
@@ -808,6 +841,7 @@ class CInstruction(InstructionBase):
             iname_exprs, code,
             read_variables=frozenset(), assignees=frozenset(),
             id=None, insn_deps=None, insn_deps_is_final=None,
+            groups=None, conflicts_with_groups=None,
             forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset(), tags=None):
@@ -823,10 +857,11 @@ class CInstruction(InstructionBase):
 
         InstructionBase.__init__(self,
                 id=id,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
                 insn_deps=insn_deps,
                 insn_deps_is_final=insn_deps_is_final,
+                groups=groups, conflicts_with_groups=conflicts_with_groups,
+                forced_iname_deps_is_final=forced_iname_deps_is_final,
+                forced_iname_deps=forced_iname_deps,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority, predicates=predicates, tags=tags)
