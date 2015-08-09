@@ -77,7 +77,7 @@ class ToCountMap:
 
     def __str__(self):
         result = ""
-        for key in self.dict.keys():
+        for key in sorted(self.dict.keys(), key=lambda k: str(k)):
             result += ("%s : %s\n" % (key, self.dict[key]))
         return result
 

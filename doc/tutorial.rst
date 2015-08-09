@@ -1234,9 +1234,9 @@ the :class:`loopy.LoopKernel` *inames*). We'll print this map now:
 .. doctest::
 
     >>> print(op_map)
+    float32 : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     float64 : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
     int32 : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
-    float32 : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
 
 We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
@@ -1265,10 +1265,10 @@ continue using the kernel from the previous example:
     >>> from loopy.statistics import get_DRAM_access_poly
     >>> load_store_map = get_DRAM_access_poly(knl)
     >>> print(load_store_map)
+    (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float64'), 'uniform', 'store') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
 
 :func:`loopy.get_DRAM_access_poly` returns a mapping of **{(**
@@ -1322,20 +1322,21 @@ this time, so we'll print the mapping manually to make it more legible:
 
     >>> knl_consec = lp.split_iname(knl, "k", 128, outer_tag="l.1", inner_tag="l.0")
     >>> load_store_map = get_DRAM_access_poly(knl_consec)
-    >>> for key in load_store_map.dict.keys():
+    >>> for key in sorted(load_store_map.dict.keys(), key=lambda k: str(k)):
     ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
     (dtype('float32'), 'consecutive', 'load') :
-    [n, m, l] -> { (3 * n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (384 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
-    <BLANKLINE>
-    (dtype('float64'), 'consecutive', 'store') :
-    [n, m, l] -> { (n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
-    <BLANKLINE>
-    (dtype('float64'), 'consecutive', 'load') :
-    [n, m, l] -> { (2 * n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (256 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    [n, m, l] -> { (((192 * n + -3 * n * m) * l * floor((m)/128) + 192 * n * l * floor((m)/128)^2) + (192 * n + 3 * n * m) * l * floor((127 + m)/128) + -192 * n * l * floor((127 + m)/128)^2) : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
     (dtype('float32'), 'consecutive', 'store') :
-    [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    [n, m, l] -> { (((64 * n + -n * m) * l * floor((m)/128) + 64 * n * l * floor((m)/128)^2) + (64 * n + n * m) * l * floor((127 + m)/128) + -64 * n * l * floor((127 + m)/128)^2) : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
+    (dtype('float64'), 'consecutive', 'load') :
+    [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
+    <BLANKLINE>
+    (dtype('float64'), 'consecutive', 'store') :
+    [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    <BLANKLINE>
+
 
 With this parallelization, consecutive threads will access consecutive array
 elements in memory. The polynomials are a bit more complicated now due to the
@@ -1368,20 +1369,21 @@ our parallelization of the kernel:
 
     >>> knl_nonconsec = lp.split_iname(knl, "k", 128, outer_tag="l.0", inner_tag="l.1")
     >>> load_store_map = get_DRAM_access_poly(knl_nonconsec)
-    >>> for key in load_store_map.dict.keys():
+    >>> for key in sorted(load_store_map.dict.keys(), key=lambda k: str(k)):
     ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
+    (dtype('float32'), 'nonconsecutive', 'load') :
+    [n, m, l] -> { (((192 * n + -3 * n * m) * l * floor((m)/128) + 192 * n * l * floor((m)/128)^2) + (192 * n + 3 * n * m) * l * floor((127 + m)/128) + -192 * n * l * floor((127 + m)/128)^2) : n >= 1 and m >= 1 and l >= 1 }
+    <BLANKLINE>
     (dtype('float32'), 'nonconsecutive', 'store') :
-    [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    [n, m, l] -> { (((64 * n + -n * m) * l * floor((m)/128) + 64 * n * l * floor((m)/128)^2) + (64 * n + n * m) * l * floor((127 + m)/128) + -64 * n * l * floor((127 + m)/128)^2) : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
     (dtype('float64'), 'nonconsecutive', 'load') :
-    [n, m, l] -> { (2 * n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (256 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
     (dtype('float64'), 'nonconsecutive', 'store') :
-    [n, m, l] -> { (n * m * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (128 * n * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
+    [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
-    (dtype('float32'), 'nonconsecutive', 'load') :
-    [n, m, l] -> { (3 * n * m * l * floor((127 + m)/128)) : n >= 1 and m <= 127 and m >= 1 and l >= 1; (384 * n * l * floor((127 + m)/128)) : n >= 1 and m >= 128 and l >= 1 }
-    <BLANKLINE>
+
 
 With this parallelization, consecutive threads will access *nonconsecutive* array
 elements in memory. The total number of array accesses has not changed:
