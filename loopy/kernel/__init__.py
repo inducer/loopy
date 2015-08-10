@@ -1004,6 +1004,10 @@ class LoopKernel(RecordWithoutPickling):
                 options.append("priority=%d" % insn.priority)
             if insn.tags:
                 options.append("tags=%s" % ":".join(insn.tags))
+            if insn.groups:
+                options.append("groups=%s" % ":".join(insn.groups))
+            if insn.conflicts_with_groups:
+                options.append("conflicts=%s" % ":".join(insn.conflicts_with_groups))
 
             if len(loop_list) > loop_list_width:
                 lines.append("[%s]" % loop_list)

@@ -43,7 +43,7 @@ from loopy.library.function import (
 from loopy.kernel.data import (
         auto,
         ValueArg, GlobalArg, ConstantArg, ImageArg,
-        ExpressionInstruction, CInstruction,
+        InstructionBase, ExpressionInstruction, CInstruction,
         TemporaryVariable)
 
 from loopy.kernel import LoopKernel
@@ -81,7 +81,7 @@ __all__ = [
         "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
         "TemporaryVariable",
 
-        "ExpressionInstruction", "CInstruction",
+        "InstructionBase", "ExpressionInstruction", "CInstruction",
 
         "default_function_mangler", "single_arg_function_mangler",
 
