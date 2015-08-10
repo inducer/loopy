@@ -1331,10 +1331,10 @@ this time, so we'll print the mapping manually to make it more legible:
     [n, m, l] -> { ... }
     <BLANKLINE>
     (dtype('float64'), 'consecutive', 'load') :
-    [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
+    [n, m, l] -> { ... }
     <BLANKLINE>
     (dtype('float64'), 'consecutive', 'store') :
-    [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    [n, m, l] -> { ... }
     <BLANKLINE>
 
 
