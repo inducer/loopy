@@ -1325,10 +1325,10 @@ this time, so we'll print the mapping manually to make it more legible:
     >>> for key in sorted(load_store_map.dict.keys(), key=lambda k: str(k)):
     ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
     (dtype('float32'), 'consecutive', 'load') :
-    [n, m, l] -> { (((192 * n + -3 * n * m) * l * floor((m)/128) + 192 * n * l * floor((m)/128)^2) + (192 * n + 3 * n * m) * l * floor((127 + m)/128) + -192 * n * l * floor((127 + m)/128)^2) : n >= 1 and m >= 1 and l >= 1 }
+    [n, m, l] -> { ... }
     <BLANKLINE>
     (dtype('float32'), 'consecutive', 'store') :
-    [n, m, l] -> { (((64 * n + -n * m) * l * floor((m)/128) + 64 * n * l * floor((m)/128)^2) + (64 * n + n * m) * l * floor((127 + m)/128) + -64 * n * l * floor((127 + m)/128)^2) : n >= 1 and m >= 1 and l >= 1 }
+    [n, m, l] -> { ... }
     <BLANKLINE>
     (dtype('float64'), 'consecutive', 'load') :
     [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
