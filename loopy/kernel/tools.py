@@ -204,7 +204,7 @@ def find_all_insn_inames(kernel):
                     # current inames refer to.
 
                     if par in kernel.all_inames():
-                        inames_new.add(par)
+                        inames_new.add(intern(par))
 
                     # If something writes the bounds of a loop in which I'm
                     # sitting, I had better be in the inames that the writer is

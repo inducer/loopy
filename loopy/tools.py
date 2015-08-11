@@ -30,6 +30,7 @@ from loopy.symbolic import WalkMapper as LoopyWalkMapper
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
 import six  # noqa
+from six.moves import intern
 
 
 if six.PY2:
@@ -215,5 +216,14 @@ def remove_common_indentation(code, require_leading_newline=True,
     return "\n".join(new_lines)
 
 # }}}
+
+
+def is_interned(s):
+    return s is None or intern(s) is s
+
+
+def intern_frozenset_of_ids(fs):
+    return frozenset(intern(s) for s in fs)
+
 
 # vim: foldmethod=marker

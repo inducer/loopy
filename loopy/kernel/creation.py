@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 
 import numpy as np
+from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
         InstructionBase, ExpressionInstruction, SubstitutionRule)
@@ -33,7 +34,7 @@ import islpy as isl
 from islpy import dim_type
 
 import six
-from six.moves import range, zip
+from six.moves import range, zip, intern
 
 import re
 import sys
@@ -216,7 +217,7 @@ def parse_insn(insn):
                     opt_value = option[equal_idx+1:].strip()
 
                 if opt_key == "id":
-                    insn_id = opt_value
+                    insn_id = intern(opt_value)
                 elif opt_key == "id_prefix":
                     insn_id = UniqueName(opt_value)
                 elif opt_key == "priority":
@@ -235,17 +236,18 @@ def parse_insn(insn):
                         insn_deps_is_final = True
                         opt_value = (opt_value[1:]).strip()
 
-                    insn_deps = frozenset(dep.strip() for dep in opt_value.split(":")
+                    insn_deps = frozenset(
+                            intern(dep.strip()) for dep in opt_value.split(":")
                             if dep.strip())
 
                 elif opt_key == "groups":
                     insn_groups = frozenset(
-                            grp.strip() for grp in opt_value.split(":")
+                            intern(grp.strip()) for grp in opt_value.split(":")
                             if grp.strip())
 
                 elif opt_key == "conflicts":
                     conflicts_with_groups = frozenset(
-                            grp.strip() for grp in opt_value.split(":")
+                            intern(grp.strip()) for grp in opt_value.split(":")
                             if grp.strip())
 
                 elif opt_key == "inames":
@@ -255,10 +257,10 @@ def parse_insn(insn):
                     else:
                         forced_iname_deps_is_final = True
 
-                    forced_iname_deps = frozenset(opt_value.split(":"))
+                    forced_iname_deps = intern_frozenset_of_ids(opt_value.split(":"))
 
                 elif opt_key == "if":
-                    predicates = frozenset(opt_value.split(":"))
+                    predicates = intern_frozenset_of_ids(opt_value.split(":"))
 
                 elif opt_key == "tags":
                     tags = tuple(
@@ -284,7 +286,10 @@ def parse_insn(insn):
                     "be variable or subscript" % lhs)
 
         return ExpressionInstruction(
-                    id=insn_id,
+                    id=(
+                        intern(insn_id)
+                        if not isinstance(insn_id, (type(None), UniqueName))
+                        else None),
                     insn_deps=insn_deps,
                     insn_deps_is_final=insn_deps_is_final,
                     groups=insn_groups,
@@ -326,7 +331,17 @@ def parse_insn(insn):
 
 def parse_if_necessary(insn, defines):
     if isinstance(insn, InstructionBase):
-        yield insn, []
+        yield insn.copy(
+                id=intern(insn.id) if insn.id is not None else None,
+                insn_deps=frozenset(intern(dep) for dep in insn.insn_deps),
+                groups=frozenset(intern(grp) for grp in insn.groups),
+                conflicts_with_groups=frozenset(
+                    intern(grp) for grp in insn.conflicts_with_groups),
+                forced_iname_deps=frozenset(
+                    intern(iname) for iname in insn.forced_iname_deps),
+                predicates=frozenset(
+                    intern(pred) for pred in insn.predicates),
+                ), []
         return
     elif not isinstance(insn, str):
         raise TypeError("Instructions must be either an Instruction "

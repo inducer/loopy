@@ -25,6 +25,7 @@ THE SOFTWARE.
 import re
 
 import six
+from six.moves import intern
 
 import loopy as lp
 import numpy as np
@@ -221,7 +222,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
     def add_expression_instruction(self, lhs, rhs):
         scope = self.scope_stack[-1]
 
-        new_id = "insn%d" % self.insn_id_counter
+        new_id = intern("insn%d" % self.insn_id_counter)
         self.insn_id_counter += 1
 
         if self.auto_dependencies and scope.previous_instruction_id:
@@ -447,7 +448,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
     def map_IfThen(self, node):
         scope = self.scope_stack[-1]
 
-        cond_name = "loopy_cond%d" % self.condition_id_counter
+        cond_name = intern("loopy_cond%d" % self.condition_id_counter)
         self.condition_id_counter += 1
         assert cond_name not in scope.type_map
 
@@ -542,6 +543,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             loop_var_suffix += 1
             loopy_loop_var = loop_var + "_%d" % loop_var_suffix
+
+        loopy_loop_var = intern(loopy_loop_var)
 
         # }}}
 

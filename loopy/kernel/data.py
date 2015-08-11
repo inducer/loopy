@@ -25,6 +25,7 @@ THE SOFTWARE.
 """
 
 
+from six.moves import intern
 import numpy as np
 from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
@@ -185,6 +186,8 @@ def parse_tag(tag):
 
 class KernelArgument(Record):
     def __init__(self, **kwargs):
+        kwargs["name"] = intern(kwargs.pop("name"))
+
         dtype = kwargs.pop("dtype", None)
 
         if isinstance(dtype, np.dtype):
@@ -339,7 +342,7 @@ class TemporaryVariable(ArrayBase):
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
-        ArrayBase.__init__(self, name=name,
+        ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, order="C",
                 base_indices=base_indices, is_local=is_local,
@@ -512,6 +515,9 @@ class InstructionBase(Record):
             forced_iname_deps_is_final, forced_iname_deps, priority,
             boostable, boostable_into, predicates, tags):
 
+        if insn_deps is None:
+            insn_deps = frozenset()
+
         if groups is None:
             groups = frozenset()
 
@@ -530,6 +536,17 @@ class InstructionBase(Record):
 
         if tags is None:
             tags = ()
+
+        # Periodically reenable these and run the tests to ensure all
+        # performance-relevant identifiers are interned.
+        #
+        # from loopy.tools import is_interned
+        # assert is_interned(id)
+        # assert all(is_interned(dep) for dep in insn_deps)
+        # assert all(is_interned(grp) for grp in groups)
+        # assert all(is_interned(grp) for grp in conflicts_with_groups)
+        # assert all(is_interned(iname) for iname in forced_iname_deps)
+        # assert all(is_interned(pred) for pred in predicates)
 
         assert isinstance(forced_iname_deps, frozenset)
         assert isinstance(insn_deps, frozenset) or insn_deps is None
@@ -649,6 +666,21 @@ class InstructionBase(Record):
             key_builder.rec(key_hash, getattr(self, field_name))
 
     # }}}
+
+    def __setstate__(self, val):
+        super(InstructionBase, self).__setstate__(val)
+
+        from loopy.tools import intern_frozenset_of_ids
+
+        self.id = intern(self.id)
+        self.insn_deps = intern_frozenset_of_ids(self.insn_deps)
+        self.groups = intern_frozenset_of_ids(self.groups)
+        self.conflicts_with_groups = (
+                intern_frozenset_of_ids(self.conflicts_with_groups))
+        self.forced_iname_deps = (
+                intern_frozenset_of_ids(self.forced_iname_deps))
+        self.predicates = (
+                intern_frozenset_of_ids(self.predicates))
 
 # }}}
 

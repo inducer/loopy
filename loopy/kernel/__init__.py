@@ -351,7 +351,18 @@ class LoopKernel(RecordWithoutPickling):
 
         for id_str in generate_unique_names(based_on):
             if id_str not in used_ids:
-                return id_str
+                return intern(id_str)
+
+    def all_group_names(self):
+        result = set()
+        for insn in self.instructions:
+            result.update(insn.groups)
+            result.update(insn.conflicts_with_groups)
+
+        return frozenset(result)
+
+    def get_group_name_generator(self):
+        return _UniqueVarNameGenerator(self.all_group_names())
 
     def get_var_descriptor(self, name):
         try:
@@ -577,7 +588,8 @@ class LoopKernel(RecordWithoutPickling):
     def all_inames(self):
         result = set()
         for dom in self.domains:
-            result.update(dom.get_var_names(dim_type.set))
+            result.update(
+                    intern(n) for n in dom.get_var_names(dim_type.set))
         return frozenset(result)
 
     @memoize_method
@@ -588,7 +600,8 @@ class LoopKernel(RecordWithoutPickling):
         for dom in self.domains:
             result.update(set(dom.get_var_names(dim_type.param)) - all_inames)
 
-        return frozenset(result)
+        from loopy.tools import intern_frozenset_of_ids
+        return intern_frozenset_of_ids(result)
 
     def outer_params(self, domains=None):
         if domains is None:
@@ -600,7 +613,8 @@ class LoopKernel(RecordWithoutPickling):
             all_inames.update(dom.get_var_names(dim_type.set))
             all_params.update(dom.get_var_names(dim_type.param))
 
-        return all_params-all_inames
+        from loopy.tools import intern_frozenset_of_ids
+        return intern_frozenset_of_ids(all_params-all_inames)
 
     @memoize_method
     def all_insn_inames(self):
