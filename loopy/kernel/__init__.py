@@ -25,7 +25,7 @@ THE SOFTWARE.
 """
 
 import six
-from six.moves import range, zip
+from six.moves import range, zip, intern
 
 import numpy as np
 from pytools import RecordWithoutPickling, Record, memoize_method
