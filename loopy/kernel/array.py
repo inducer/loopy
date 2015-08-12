@@ -766,11 +766,9 @@ class ArrayBase(Record):
         info_entries.append("type: %s" % type_str)
 
         if self.shape is None:
-            pass
+            info_entries.append("shape: unknown")
         elif self.shape is lp.auto:
             info_entries.append("shape: auto")
-        elif self.shape == ():
-            pass
         else:
             info_entries.append("shape: (%s)"
                     % ", ".join(str(i) for i in self.shape))
