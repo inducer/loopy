@@ -218,9 +218,9 @@ def _fuse_two_kernels(knla, knlb):
     assump_a, assump_b = isl.align_two(assump_a, assump_b)
 
     shared_param_names = list(
-            set(dom_a.get_var_dict(dim_type.set))
+            set(assump_a.get_var_dict(dim_type.set))
             &
-            set(dom_b.get_var_dict(dim_type.set)))
+            set(assump_b.get_var_dict(dim_type.set)))
 
     assump_a_s = assump_a.project_out_except(shared_param_names, [dim_type.param])
     assump_b_s = assump_a.project_out_except(shared_param_names, [dim_type.param])
