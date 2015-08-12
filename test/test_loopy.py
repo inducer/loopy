@@ -2127,6 +2127,22 @@ def test_alias_temporaries(ctx_factory):
             parameters=dict(n=30))
 
 
+def test_fusion():
+    exp_kernel = lp.make_kernel(
+         ''' { [i]: 0<=i<n } ''',
+         ''' exp[i] = pow(E, z[i])''',
+         assumptions="n>0")
+
+    sum_kernel = lp.make_kernel(
+        '{ [j]: 0<=j<n }',
+        'out2 = sum(j, exp[j])',
+        assumptions='n>0')
+
+    knl = lp.fuse_kernels([exp_kernel, sum_kernel])
+
+    print(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
