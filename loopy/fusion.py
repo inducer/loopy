@@ -143,8 +143,12 @@ def _fuse_two_kernels(knla, knlb):
         else:
             if b_arg != knla.arg_dict[b_arg.name]:
                 raise LoopyError(
-                        "argument '%s' has inconsistent definition between "
-                        "the two kernels being merged" % b_arg.name)
+                        "argument '{arg_name}' has inconsistent definition between "
+                        "the two kernels being merged ({arg_a} <-> {arg_b})"
+                        .format(
+                            arg_name=b_arg.name,
+                            arg_a=str(knla.arg_dict[b_arg.name]),
+                            arg_b=str(b_arg)))
 
     # }}}
 
