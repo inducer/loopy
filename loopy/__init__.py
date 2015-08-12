@@ -1845,4 +1845,73 @@ def tag_instructions(kernel, new_tag, within=None):
 
 # }}}
 
+
+# {{{ alias_temporaries
+
+def alias_temporaries(knl, names, base_name_prefix=None):
+    """Sets all temporaries given by *names* to be backed by a single piece of
+    storage. Also introduces ordering structures ("groups") to prevent the
+    usage of each temporary to interfere with another.
+
+    :arg base_name_prefix: an identifier to be used for the common storage
+        area
+    """
+    gng = knl.get_group_name_generator()
+    group_names = [gng("tmpgrp_"+name) for name in names]
+
+    if base_name_prefix is None:
+        base_name_prefix = "temp_storage"
+
+    vng = knl.get_var_name_generator()
+    base_name = vng(base_name_prefix)
+
+    names_set = set(names)
+
+    new_insns = []
+    for insn in knl.instructions:
+        temp_deps = insn.dependency_names() & names_set
+
+        if not temp_deps:
+            new_insns.append(insn)
+            continue
+
+        if len(temp_deps) > 1:
+            raise LoopyError("Instruction {insn} refers to multiple of the "
+                    "temporaries being aliased, namely '{temps}'. Cannot alias."
+                    .format(
+                        insn=insn.id,
+                        temps=", ".join(temp_deps)))
+
+        temp_name, = temp_deps
+        temp_idx = names.index(temp_name)
+        group_name = group_names[temp_idx]
+        other_group_names = (
+                frozenset(group_names[:temp_idx])
+                | frozenset(group_names[temp_idx+1:]))
+
+        new_insns.append(
+                insn.copy(
+                    groups=insn.groups | frozenset([group_name]),
+                    conflicts_with_groups=(
+                        insn.conflicts_with_groups | other_group_names)))
+
+    new_temporary_variables = {}
+    for tv in six.itervalues(knl.temporary_variables):
+        if tv.name in names_set:
+            if tv.base_storage is not None:
+                raise LoopyError("temporary variable '{tv}' already has "
+                        "a defined storage array -- cannot alias"
+                        .format(tv=tv.name))
+
+            new_temporary_variables[tv.name] = \
+                    tv.copy(base_storage=base_name)
+        else:
+            new_temporary_variables[tv.name] = tv
+
+    return knl.copy(
+            instructions=new_insns,
+            temporary_variables=new_temporary_variables)
+
+# }}}
+
 # vim: foldmethod=marker

@@ -315,6 +315,11 @@ class TemporaryVariable(ArrayBase):
         Whether this is temporary lives in ``local`` memory.
         May be *True*, *False*, or :class:`loopy.auto` if this is
         to be automatically determined.
+
+    .. attribute:: base_storage
+
+        The name of a storage array that is to be used to actually
+        hold the data in this temporary.
     """
 
     min_target_axes = 0
@@ -323,12 +328,14 @@ class TemporaryVariable(ArrayBase):
     allowed_extra_kwargs = [
             "storage_shape",
             "base_indices",
-            "is_local"
+            "is_local",
+            "base_storage"
             ]
 
     def __init__(self, name, dtype=None, shape=(), is_local=auto,
             dim_tags=None, offset=0, strides=None, order=None,
-            base_indices=None, storage_shape=None):
+            base_indices=None, storage_shape=None,
+            base_storage=None):
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -346,31 +353,25 @@ class TemporaryVariable(ArrayBase):
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, order="C",
                 base_indices=base_indices, is_local=is_local,
-                storage_shape=storage_shape)
+                storage_shape=storage_shape,
+                base_storage=base_storage)
 
     @property
     def nbytes(self):
+        shape = self.shape
+        if self.storage_shape is not None:
+            shape = self.storage_shape
+
         from pytools import product
-        return product(si for si in self.shape)*self.dtype.itemsize
+        return product(si for si in shape)*self.dtype.itemsize
+
+    def decl_info(self, target, index_dtype):
+        return super(TemporaryVariable, self).decl_info(
+                target, is_written=True, index_dtype=index_dtype,
+                shape_override=self.storage_shape)
 
     def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        from cgen import ArrayOf
-        from loopy.codegen import POD  # uses the correct complex type
-        from cgen.opencl import CLLocal
-
-        temp_var_decl = POD(target, dtype, self.name)
-
-        # FIXME take into account storage_shape, or something like it
-        storage_shape = shape
-
-        if storage_shape:
-            temp_var_decl = ArrayOf(temp_var_decl,
-                    " * ".join(str(s) for s in storage_shape))
-
-        if self.is_local:
-            temp_var_decl = CLLocal(temp_var_decl)
-
-        return temp_var_decl
+        return None
 
     def __str__(self):
         return self.stringify(include_typename=False)

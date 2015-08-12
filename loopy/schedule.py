@@ -497,7 +497,7 @@ def generate_loop_schedules_internal(
 
                     else:
                         new_active_group_counts[grp] = (
-                                sched_state.group_insn_counts[grp])
+                                sched_state.group_insn_counts[grp] - 1)
 
             else:
                 new_active_group_counts = sched_state.active_group_counts
@@ -603,6 +603,9 @@ def generate_loop_schedules_internal(
         print("active inames :", ",".join(sched_state.active_inames))
         print("inames entered so far :", ",".join(sched_state.entered_inames))
         print("reachable insns:", ",".join(reachable_insn_ids))
+        print("active groups (with insn counts):", ",".join(
+            "%s: %d" % (grp, c)
+            for grp, c in six.iteritems(sched_state.active_group_counts)))
         print(75*"-")
 
     if needed_inames:
@@ -795,6 +798,11 @@ class DependencyRecord(Record):
 
         A :class:`loopy.InstructionBase` instance.
 
+    .. attribute:: dep_descr
+
+        A string containing a phrase describing the dependency. The variables
+        '{src}' and '{tgt}' will be replaced by their respective instruction IDs.
+
     .. attribute:: variable
 
         A string, the name of the variable that caused the dependency to arise.
@@ -802,23 +810,15 @@ class DependencyRecord(Record):
     .. attribute:: var_kind
 
         "global" or "local"
-
-    .. attribute:: is_forward
-
-        A :class:`bool` indicating whether this is a forward or reverse
-        dependency.
-
-        In a 'forward' dependency, the target depends on the source.
-        In a 'reverse' dependency, the source depends on the target.
     """
 
-    def __init__(self, source, target, variable, var_kind, is_forward):
+    def __init__(self, source, target, dep_descr, variable, var_kind):
         Record.__init__(self,
                 source=source,
                 target=target,
+                dep_descr=dep_descr,
                 variable=variable,
-                var_kind=var_kind,
-                is_forward=is_forward)
+                var_kind=var_kind)
 
 
 def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
@@ -827,7 +827,7 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     at least one write), then the function will return a tuple
     ``(target, source, var_name)``. Otherwise, it will return *None*.
 
-    This function finds  direct or indirect instruction dependencies, but does
+    This function finds direct or indirect instruction dependencies, but does
     not attempt to guess dependencies that exist based on common access to
     variables.
 
@@ -847,10 +847,29 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     if reverse:
         source, target = target, source
 
-    # Check that a dependency exists.
+    # {{{ check that a dependency exists
+
+    dep_descr = None
+
     target_deps = kernel.recursive_insn_dep_map()[target.id]
-    if source.id not in target_deps:
+    if source.id in target_deps:
+        if reverse:
+            dep_descr = "{src} rev-depends on {tgt}"
+        else:
+            dep_descr = "{tgt} depends on {src}"
+
+    grps = source.groups & target.conflicts_with_groups
+    if grps:
+        dep_descr = "{src} conflicts with {tgt} (via '%s')" % ", ".join(grps)
+
+    grps = target.groups & source.conflicts_with_groups
+    if grps:
+        dep_descr = "{src} conflicts with {tgt} (via '%s')" % ", ".join(grps)
+
+    if not dep_descr:
         return None
+
+    # }}}
 
     if var_kind == "local":
         relevant_vars = kernel.local_var_names()
@@ -859,11 +878,27 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     else:
         raise ValueError("unknown 'var_kind': %s" % var_kind)
 
-    tgt_write = set(target.assignee_var_names()) & relevant_vars
-    tgt_read = target.read_dependency_names() & relevant_vars
+    temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
 
-    src_write = set(source.assignee_var_names()) & relevant_vars
-    src_read = source.read_dependency_names() & relevant_vars
+    def map_to_base_storage(var_names):
+        result = set(var_names)
+
+        for name in var_names:
+            bs = temp_to_base_storage.get(name)
+            if bs is not None:
+                result.add(bs)
+
+        return result
+
+    tgt_write = map_to_base_storage(
+            set(target.assignee_var_names()) & relevant_vars)
+    tgt_read = map_to_base_storage(
+            target.read_dependency_names() & relevant_vars)
+
+    src_write = map_to_base_storage(
+            set(source.assignee_var_names()) & relevant_vars)
+    src_read = map_to_base_storage(
+            source.read_dependency_names() & relevant_vars)
 
     waw = tgt_write & src_write
     raw = tgt_read & src_write
@@ -873,9 +908,9 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
         return DependencyRecord(
                 source=source,
                 target=target,
+                dep_descr=dep_descr,
                 variable=var_name,
-                var_kind=var_kind,
-                is_forward=not reverse)
+                var_kind=var_kind)
 
     if source is target:
         return None
@@ -884,9 +919,9 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
         return DependencyRecord(
                 source=source,
                 target=target,
+                dep_descr=dep_descr,
                 variable=var_name,
-                var_kind=var_kind,
-                is_forward=not reverse)
+                var_kind=var_kind)
 
     return None
 
@@ -998,12 +1033,9 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
 
         comment = None
         if dep is not None:
-            if dep.is_forward:
-                comment = "for %s (%s depends on %s)" % (
-                        dep.variable, dep.target.id, dep.source.id)
-            else:
-                comment = "for %s (%s rev-depends on %s)" % (
-                        dep.variable, dep.source.id, dep.target.id)
+            comment = "for %s (%s)" % (
+                    dep.variable, dep.dep_descr.format(
+                        tgt=dep.target.id, src=dep.source.id))
 
         result.append(Barrier(comment=comment, kind=dep.var_kind))
 
@@ -1047,10 +1079,6 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
             # (for leading (before-first-barrier) bit of loop body)
             for insn_id in insn_ids_from_schedule(subresult[:first_barrier_index]):
                 search_set = candidates
-                if not reverse:
-                    # can limit search set in case of forward dep
-                    search_set = search_set \
-                            & kernel.recursive_insn_dep_map()[insn_id]
 
                 for dep_src_insn_id in search_set:
                     dep = get_barrier_needing_dependency(
@@ -1090,10 +1118,6 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
             i += 1
 
             search_set = candidates
-            if not reverse:
-                # can limit search set in case of forward dep
-                search_set = search_set \
-                        & kernel.recursive_insn_dep_map()[sched_item.insn_id]
 
             for dep_src_insn_id in search_set:
                 dep = get_barrier_needing_dependency(
@@ -1190,10 +1214,15 @@ def generate_loop_schedules(kernel, debug_args={}):
             #         raise LoopyError("kernel requires a global barrier %s"
             #                 % sched_item.comment)
 
+            debug.stop()
+
+            logger.info("%s: barrier insertion: start" % kernel.name)
+
             gen_sched = insert_barriers(kernel, gen_sched,
                     reverse=False, kind="local")
 
-            debug.stop()
+            logger.info("%s: barrier insertion: done" % kernel.name)
+
             yield kernel.copy(
                     schedule=gen_sched,
                     state=kernel_state.SCHEDULED)

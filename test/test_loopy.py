@@ -2094,6 +2094,39 @@ def test_vectorize(ctx_factory):
             ref_knl, ctx, knl,
             parameters=dict(n=30))
 
+
+def test_alias_temporaries(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        """
+        times2(i) := 2*a[i]
+        times3(i) := 3*a[i]
+        times4(i) := 4*a[i]
+
+        x[i] = times2(i)
+        y[i] = times3(i)
+        z[i] = times4(i)
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
+
+    knl = lp.precompute(knl, "times2", "i_inner")
+    knl = lp.precompute(knl, "times3", "i_inner")
+    knl = lp.precompute(knl, "times4", "i_inner")
+
+    knl = lp.alias_temporaries(knl, ["times2_0", "times3_0", "times4_0"])
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(n=30))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -335,6 +335,9 @@ class LoopKernel(RecordWithoutPickling):
     def all_variable_names(self):
         return (
                 set(six.iterkeys(self.temporary_variables))
+                | set(tv.base_storage
+                    for tv in six.itervalues(self.temporary_variables)
+                    if tv.base_storage is not None)
                 | set(six.iterkeys(self.substitutions))
                 | set(arg.name for arg in self.args)
                 | set(self.all_inames()))
@@ -362,7 +365,7 @@ class LoopKernel(RecordWithoutPickling):
         return frozenset(result)
 
     def get_group_name_generator(self):
-        return _UniqueVarNameGenerator(self.all_group_names())
+        return _UniqueVarNameGenerator(set(self.all_group_names()))
 
     def get_var_descriptor(self, name):
         try:
@@ -760,6 +763,15 @@ class LoopKernel(RecordWithoutPickling):
                 var_name
                 for insn in self.instructions
                 for var_name, _ in insn.assignees_and_indices())
+
+    @memoize_method
+    def get_temporary_to_base_storage_map(self):
+        result = {}
+        for tv in six.itervalues(self.temporary_variables):
+            if tv.base_storage:
+                result[tv.name] = tv.base_storage
+
+        return result
 
     # }}}
 

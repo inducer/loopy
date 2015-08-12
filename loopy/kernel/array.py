@@ -874,10 +874,14 @@ class ArrayBase(Record):
 
         return 1
 
-    def decl_info(self, target, is_written, index_dtype):
+    def decl_info(self, target, is_written, index_dtype, shape_override=None):
         """Return a list of :class:`loopy.codegen.ImplementedDataInfo`
         instances corresponding to the array.
         """
+
+        array_shape = self.shape
+        if shape_override is not None:
+            array_shape = shape_override
 
         from loopy.codegen import ImplementedDataInfo
         from loopy.kernel.data import ValueArg
@@ -978,10 +982,10 @@ class ArrayBase(Record):
             dim_tag = self.dim_tags[user_axis]
 
             if isinstance(dim_tag, FixedStrideArrayDimTag):
-                if self.shape is None:
+                if array_shape is None:
                     new_shape_axis = None
                 else:
-                    new_shape_axis = self.shape[user_axis]
+                    new_shape_axis = array_shape[user_axis]
 
                 import loopy as lp
                 if dim_tag.stride is lp.auto:
@@ -1004,7 +1008,7 @@ class ArrayBase(Record):
                     yield res
 
             elif isinstance(dim_tag, SeparateArrayArrayDimTag):
-                shape_i = self.shape[user_axis]
+                shape_i = array_shape[user_axis]
                 if not is_integer(shape_i):
                     raise LoopyError("shape of '%s' has non-constant "
                             "integer axis %d (0-based)" % (
@@ -1018,7 +1022,7 @@ class ArrayBase(Record):
                         yield res
 
             elif isinstance(dim_tag, VectorArrayDimTag):
-                shape_i = self.shape[user_axis]
+                shape_i = array_shape[user_axis]
                 if not is_integer(shape_i):
                     raise LoopyError("shape of '%s' has non-constant "
                             "integer axis %d (0-based)" % (
