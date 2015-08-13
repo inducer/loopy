@@ -212,6 +212,35 @@ def loop_nest_map(kernel):
     return result
 
 
+def loop_insn_dep_map(kernel):
+    """Returns a dictionary mapping inames to other instruction ids that need to
+    be scheduled before the iname should be eligible for scheduling.
+    """
+
+    result = {}
+
+    from loopy.kernel.data import ParallelTag
+    for insn in kernel.instructions:
+        for iname in kernel.insn_inames(insn):
+            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag):
+                continue
+
+            for dep_insn_id in insn.insn_deps:
+                dep_insn = kernel.id_to_insn[dep_insn_id]
+                dep_insn_inames = kernel.insn_inames(dep_insn)
+
+                if iname in dep_insn_inames:
+                    # Nothing to be learened, dependency is in loop over iname.
+                    continue
+
+                result.setdefault(iname, set()).add(dep_insn_id)
+
+    for k, v in six.iteritems(result):
+        print(k, v)
+
+    return result
+
+
 def group_insn_counts(kernel):
     result = {}
 
@@ -623,6 +652,13 @@ def generate_loop_schedules_internal(
             if not sched_state.loop_nest_map[iname] <= currently_accessible_inames:
                 if debug_mode:
                     print("scheduling %s prohibited by loop nest map" % iname)
+                continue
+
+            if (
+                    not sched_state.loop_insn_dep_map.get(iname, set())
+                    <= sched_state.scheduled_insn_ids):
+                if debug_mode:
+                    print("scheduling %s prohibited by loop dependency map" % iname)
                 continue
 
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
@@ -1183,6 +1219,7 @@ def generate_loop_schedules(kernel, debug_args={}):
     sched_state = SchedulerState(
             kernel=kernel,
             loop_nest_map=loop_nest_map(kernel),
+            loop_insn_dep_map=loop_insn_dep_map(kernel),
             breakable_inames=ilp_inames,
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
