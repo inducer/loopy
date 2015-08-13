@@ -123,7 +123,7 @@ def test_asterisk_in_shape(ctx_factory):
     knl(queue, inp=np.array([1, 2, 3.]), n=3)
 
 
-def test_temporary_to_subst(ctx_factory):
+def test_assignment_to_subst(ctx_factory):
     fortran_src = """
         subroutine fill(out, out2, inp, n)
           implicit none
@@ -143,13 +143,13 @@ def test_temporary_to_subst(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.temporary_to_subst(knl, "a", "i")
+    knl = lp.assignment_to_subst(knl, "a", "i")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-def test_temporary_to_subst_two_defs(ctx_factory):
+def test_assignment_to_subst_two_defs(ctx_factory):
     fortran_src = """
         subroutine fill(out, out2, inp, n)
           implicit none
@@ -170,13 +170,13 @@ def test_temporary_to_subst_two_defs(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.temporary_to_subst(knl, "a")
+    knl = lp.assignment_to_subst(knl, "a")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-def test_temporary_to_subst_indices(ctx_factory):
+def test_assignment_to_subst_indices(ctx_factory):
     fortran_src = """
         subroutine fill(out, out2, inp, n)
           implicit none
@@ -201,7 +201,7 @@ def test_temporary_to_subst_indices(ctx_factory):
     ref_knl = knl
 
     assert "a" in knl.temporary_variables
-    knl = lp.temporary_to_subst(knl, "a")
+    knl = lp.assignment_to_subst(knl, "a")
     assert "a" not in knl.temporary_variables
 
     ctx = ctx_factory()
@@ -235,7 +235,7 @@ def test_if(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.temporary_to_subst(knl, "a")
+    knl = lp.assignment_to_subst(knl, "a")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
@@ -409,8 +409,8 @@ def test_fuse_kernels(ctx_factory):
     assert len(knl.temporary_variables) == 2
 
     # This is needed for correctness, otherwise ordering could foul things up.
-    knl = lp.temporary_to_subst(knl, "prev")
-    knl = lp.temporary_to_subst(knl, "prev_0")
+    knl = lp.assignment_to_subst(knl, "prev")
+    knl = lp.assignment_to_subst(knl, "prev_0")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))

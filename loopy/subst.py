@@ -198,16 +198,16 @@ def extract_subst(kernel, subst_name, template, parameters=()):
             substitutions=new_substs)
 
 
-# {{{ temporary_to_subst
+# {{{ assignment_to_subst
 
-class TemporaryToSubstChanger(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, temp_name, definition_insn_ids,
+class AssignmentToSubstChanger(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, lhs_name, definition_insn_ids,
             usage_to_definition, extra_arguments, within):
         self.var_name_gen = rule_mapping_context.make_unique_var_name
 
-        super(TemporaryToSubstChanger, self).__init__(rule_mapping_context)
+        super(AssignmentToSubstChanger, self).__init__(rule_mapping_context)
 
-        self.temp_name = temp_name
+        self.lhs_name = lhs_name
         self.definition_insn_ids = definition_insn_ids
         self.usage_to_definition = usage_to_definition
 
@@ -226,28 +226,28 @@ class TemporaryToSubstChanger(RuleAwareIdentityMapper):
         try:
             return self.definition_insn_id_to_subst_name[def_insn_id]
         except KeyError:
-            subst_name = self.var_name_gen(self.temp_name+"_subst")
+            subst_name = self.var_name_gen(self.lhs_name+"_subst")
             self.definition_insn_id_to_subst_name[def_insn_id] = subst_name
             return subst_name
 
     def map_variable(self, expr, expn_state):
-        if (expr.name == self.temp_name
+        if (expr.name == self.lhs_name
                 and expr.name not in expn_state.arg_context):
             result = self.transform_access(None, expn_state)
             if result is not None:
                 return result
 
-        return super(TemporaryToSubstChanger, self).map_variable(
+        return super(AssignmentToSubstChanger, self).map_variable(
                 expr, expn_state)
 
     def map_subscript(self, expr, expn_state):
-        if (expr.aggregate.name == self.temp_name
+        if (expr.aggregate.name == self.lhs_name
                 and expr.aggregate.name not in expn_state.arg_context):
             result = self.transform_access(expr.index, expn_state)
             if result is not None:
                 return result
 
-        return super(TemporaryToSubstChanger, self).map_subscript(
+        return super(AssignmentToSubstChanger, self).map_subscript(
                 expr, expn_state)
 
     def transform_access(self, index, expn_state):
@@ -280,26 +280,29 @@ class TemporaryToSubstChanger(RuleAwareIdentityMapper):
             return var(subst_name)(*index)
 
 
-def temporary_to_subst(kernel, temp_name, extra_arguments=(), within=None):
-    """Extract an assignment to a temporary variable
+def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
+        force_retain_argument=False):
+    """Extract an assignment (to a temporary variable or an argument)
     as a :ref:`substituiton-rule`. The temporary may be an array, in
     which case the array indices will become arguments to the substitution
     rule.
 
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
+    :arg force_retain_argument: If True and if *lhs_name* is an argument, it is
+        kept even if it is no longer referenced.
 
     This operation will change all usage sites
-    of *temp_name* matched by *within*. If there
-    are further usage sites of *temp_name*, then
-    the original assignment to *temp_name* as well
+    of *lhs_name* matched by *within*. If there
+    are further usage sites of *lhs_name*, then
+    the original assignment to *lhs_name* as well
     as the temporary variable is left in place.
     """
 
     if isinstance(extra_arguments, str):
         extra_arguments = tuple(s.strip() for s in extra_arguments.split(","))
 
-    # {{{ establish the relevant definition of temp_name for each usage site
+    # {{{ establish the relevant definition of lhs_name for each usage site
 
     dep_kernel = expand_subst(kernel)
     from loopy.preprocess import add_default_dependencies
@@ -313,11 +316,11 @@ def temporary_to_subst(kernel, temp_name, extra_arguments=(), within=None):
         def_id = set()
         for dep_id in insn.insn_deps:
             dep_insn = id_to_insn[dep_id]
-            if temp_name in dep_insn.write_dependency_names():
-                if temp_name in dep_insn.read_dependency_names():
+            if lhs_name in dep_insn.write_dependency_names():
+                if lhs_name in dep_insn.read_dependency_names():
                     raise LoopyError("instruction '%s' both reads *and* "
                             "writes '%s'--cannot transcribe to substitution "
-                            "rule" % (dep_id, temp_name))
+                            "rule" % (dep_id, lhs_name))
 
                 def_id.add(dep_id)
             else:
@@ -329,7 +332,7 @@ def temporary_to_subst(kernel, temp_name, extra_arguments=(), within=None):
             raise LoopyError("more than one write to '%s' found in "
                     "depdendencies of '%s'--definition cannot be resolved "
                     "(writer instructions ids: %s)"
-                    % (temp_name, usage_insn_id, ", ".join(def_id)))
+                    % (lhs_name, usage_insn_id, ", ".join(def_id)))
 
         if not def_id:
             return None
@@ -341,20 +344,20 @@ def temporary_to_subst(kernel, temp_name, extra_arguments=(), within=None):
     usage_to_definition = {}
 
     for insn in kernel.instructions:
-        if temp_name not in insn.read_dependency_names():
+        if lhs_name not in insn.read_dependency_names():
             continue
 
         def_id = get_relevant_definition_insn_id(insn.id)
         if def_id is None:
             raise LoopyError("no write to '%s' found in dependency tree "
                     "of '%s'--definition cannot be resolved"
-                    % (temp_name, insn.id))
+                    % (lhs_name, insn.id))
 
         usage_to_definition[insn.id] = def_id
 
     definition_insn_ids = set()
     for insn in kernel.instructions:
-        if temp_name in insn.write_dependency_names():
+        if lhs_name in insn.write_dependency_names():
             definition_insn_ids.add(insn.id)
 
     # }}}
@@ -364,8 +367,8 @@ def temporary_to_subst(kernel, temp_name, extra_arguments=(), within=None):
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
-    tts = TemporaryToSubstChanger(rule_mapping_context,
-            temp_name, definition_insn_ids,
+    tts = AssignmentToSubstChanger(rule_mapping_context,
+            lhs_name, definition_insn_ids,
             usage_to_definition, extra_arguments, within)
 
     kernel = rule_mapping_context.finish_kernel(tts.map_kernel(kernel))
@@ -401,13 +404,28 @@ def temporary_to_subst(kernel, temp_name, extra_arguments=(), within=None):
 
     # {{{ delete temporary variable if possible
 
+    # (copied below if modified)
     new_temp_vars = kernel.temporary_variables
-    if not any(six.itervalues(tts.saw_unmatched_usage_sites)):
-        # All usage sites matched--they're now substitution rules.
-        # We can get rid of the variable.
+    new_args = kernel.args
 
-        new_temp_vars = new_temp_vars.copy()
-        del new_temp_vars[temp_name]
+    if lhs_name in kernel.temporary_variables:
+        if not any(six.itervalues(tts.saw_unmatched_usage_sites)):
+            # All usage sites matched--they're now substitution rules.
+            # We can get rid of the variable.
+
+            new_temp_vars = new_temp_vars.copy()
+            del new_temp_vars[lhs_name]
+
+    if lhs_name in kernel.arg_dict and not force_retain_argument:
+        if not any(six.itervalues(tts.saw_unmatched_usage_sites)):
+            # All usage sites matched--they're now substitution rules.
+            # We can get rid of the argument
+
+            new_args = new_args[:]
+            for i in range(len(new_args)):
+                if new_args[i].name == lhs_name:
+                    del new_args[i]
+                    break
 
     # }}}
 
@@ -423,6 +441,7 @@ def temporary_to_subst(kernel, temp_name, extra_arguments=(), within=None):
     return kernel.copy(
             substitutions=new_substs,
             temporary_variables=new_temp_vars,
+            args=new_args,
             )
 
 # }}}

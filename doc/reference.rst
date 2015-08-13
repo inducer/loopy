@@ -408,7 +408,7 @@ Dealing with Substitution Rules
 
 .. autofunction:: extract_subst
 
-.. autofunction:: temporary_to_subst
+.. autofunction:: assignment_to_subst
 
 .. autofunction:: expand_subst
 

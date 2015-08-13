@@ -54,7 +54,7 @@ from loopy.kernel.tools import (
         add_and_infer_dtypes)
 from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
-from loopy.subst import extract_subst, expand_subst, temporary_to_subst
+from loopy.subst import extract_subst, expand_subst, assignment_to_subst
 from loopy.precompute import precompute
 from loopy.buffer import buffer_array
 from loopy.fusion import fuse_kernels
@@ -89,7 +89,7 @@ __all__ = [
 
         "register_reduction_parser",
 
-        "extract_subst", "expand_subst", "temporary_to_subst",
+        "extract_subst", "expand_subst", "assignment_to_subst",
         "precompute", "buffer_array",
         "fuse_kernels",
         "split_arg_axis", "find_padding_multiple", "add_padding",
