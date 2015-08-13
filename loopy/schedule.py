@@ -422,9 +422,12 @@ def generate_loop_schedules_internal(
     reachable_insn_ids = set()
     active_groups = frozenset(sched_state.active_group_counts)
 
+    def insn_sort_key(insn_id):
+        insn = kernel.id_to_insn[insn_id]
+        return (insn.priority, len(active_groups & insn.groups))
+
     for insn_id in sorted(sched_state.unscheduled_insn_ids,
-            key=lambda insn_id: kernel.id_to_insn[insn_id].priority,
-            reverse=True):
+            key=insn_sort_key, reverse=True):
 
         insn = kernel.id_to_insn[insn_id]
 
