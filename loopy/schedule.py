@@ -1207,43 +1207,9 @@ def generate_loop_schedules(kernel, debug_args={}):
                 debug=debug, allow_boost=None),
             generate_loop_schedules_internal(sched_state,
                 debug=debug)]
-    for gen in generators:
-        for gen_sched in gen:
-            # gen_sched = insert_barriers(kernel, gen_sched,
-            #         reverse=False, kind="global")
 
-            # for sched_item in gen_sched:
-            #     if isinstance(sched_item, Barrier) and sched_item.kind == "global":
-            #         raise LoopyError("kernel requires a global barrier %s"
-            #                 % sched_item.comment)
-
-            debug.stop()
-
-            logger.info("%s: barrier insertion: start" % kernel.name)
-
-            gen_sched = insert_barriers(kernel, gen_sched,
-                    reverse=False, kind="local")
-
-            logger.info("%s: barrier insertion: done" % kernel.name)
-
-            yield kernel.copy(
-                    schedule=gen_sched,
-                    state=kernel_state.SCHEDULED)
-            debug.start()
-
-            schedule_count += 1
-
-        # if no-boost mode yielded a viable schedule, stop now
-        if schedule_count:
-            break
-
-    debug.done_scheduling()
-
-    if not schedule_count:
+    def print_longest_dead_end():
         if debug.interactive:
-            print(75*"-")
-            print("ERROR: Sorry--loo.py did not find a schedule for your kernel.")
-            print(75*"-")
             print("Loo.py will now show you the scheduler state at the point")
             print("where the longest (dead-end) schedule was generated, in the")
             print("the hope that some of this makes sense and helps you find")
@@ -1262,6 +1228,50 @@ def generate_loop_schedules(kernel, debug_args={}):
                     debug=debug):
                 pass
 
+    try:
+        for gen in generators:
+            for gen_sched in gen:
+                # gen_sched = insert_barriers(kernel, gen_sched,
+                #         reverse=False, kind="global")
+
+                # for sched_item in gen_sched:
+                #     if isinstance(sched_item, Barrier) and sched_item.kind == "global":
+                #         raise LoopyError("kernel requires a global barrier %s"
+                #                 % sched_item.comment)
+
+                debug.stop()
+
+                logger.info("%s: barrier insertion: start" % kernel.name)
+
+                gen_sched = insert_barriers(kernel, gen_sched,
+                        reverse=False, kind="local")
+
+                logger.info("%s: barrier insertion: done" % kernel.name)
+
+                yield kernel.copy(
+                        schedule=gen_sched,
+                        state=kernel_state.SCHEDULED)
+                debug.start()
+
+                schedule_count += 1
+
+            # if no-boost mode yielded a viable schedule, stop now
+            if schedule_count:
+                break
+
+    except KeyboardInterrupt:
+        print(75*"-")
+        print("Interrupted during scheduling")
+        print(75*"-")
+        print_longest_dead_end()
+        raise
+
+    debug.done_scheduling()
+    if not schedule_count:
+        print(75*"-")
+        print("ERROR: Sorry--loo.py did not find a schedule for your kernel.")
+        print(75*"-")
+        print_longest_dead_end()
         raise RuntimeError("no valid schedules found")
 
     logger.info("%s: schedule done" % kernel.name)
