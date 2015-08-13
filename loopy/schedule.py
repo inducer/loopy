@@ -235,9 +235,6 @@ def loop_insn_dep_map(kernel):
 
                 result.setdefault(iname, set()).add(dep_insn_id)
 
-    for k, v in six.iteritems(result):
-        print(k, v)
-
     return result
 
 
