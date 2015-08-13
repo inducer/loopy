@@ -554,40 +554,6 @@ def test_image_matrix_mul_ilp(ctx_factory):
             parameters={})
 
 
-@pytest.mark.skipif("sys.version_info < (2,6)")
-def test_ilp_race_matmul(ctx_factory):
-    dtype = np.float32
-    order = "C"
-
-    n = 9
-
-    knl = lp.make_kernel(
-            "{[i,j,k]: 0<=i,j,k<%d}" % n,
-            [
-                "c[i, j] = sum(k, a[i, k]*b[k, j])"
-                ],
-            [
-                lp.ImageArg("a", dtype, shape=(n, n)),
-                lp.ImageArg("b", dtype, shape=(n, n)),
-                lp.GlobalArg("c", dtype, shape=(n, n), order=order),
-                ],
-            name="matmul")
-
-    knl = lp.split_iname(knl, "j", 2, outer_tag="ilp", inner_tag="l.0")
-    knl = lp.split_iname(knl, "k", 2)
-    knl = lp.add_prefetch(knl, 'b', ["k_inner"])
-
-    with lp.CacheMode(False):
-        from loopy.diagnostic import WriteRaceConditionWarning
-        from warnings import catch_warnings
-        with catch_warnings(record=True) as warn_list:
-            knl = lp.preprocess_kernel(knl)
-            list(lp.generate_loop_schedules(knl))
-
-            assert any(isinstance(w.message, WriteRaceConditionWarning)
-                    for w in warn_list)
-
-
 def test_fancy_matrix_mul(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
