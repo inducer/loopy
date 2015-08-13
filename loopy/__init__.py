@@ -660,22 +660,92 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 # }}}
 
 
-def rename_iname(knl, old_iname, new_iname, within):
+# {{{ rename_inames
+
+def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
     """
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
+    :arg existing_ok: execute even if *new_iname* already exists
     """
 
     var_name_gen = knl.get_var_name_generator()
 
-    if var_name_gen.is_name_conflicting(new_iname):
+    does_exist = var_name_gen.is_name_conflicting(new_iname)
+
+    if does_exist and not existing_ok:
         raise ValueError("iname '%s' conflicts with an existing identifier"
                 "--cannot rename" % new_iname)
 
-    knl = duplicate_inames(knl, [old_iname], within=within, new_inames=[new_iname])
+    if does_exist:
+        # {{{ check that the domains match up
+
+        dom = knl.get_inames_domain(frozenset((old_iname, new_iname)))
+
+        var_dict = dom.get_var_dict()
+        _, old_idx = var_dict[old_iname]
+        _, new_idx = var_dict[new_iname]
+
+        par_idx = dom.dim(dim_type.param)
+        dom_old = dom.move_dims(
+                dim_type.param, par_idx, dim_type.set, old_idx, 1)
+        dom_old = dom_old.move_dims(
+                dim_type.set, dom_old.dim(dim_type.set), dim_type.param, par_idx, 1)
+        dom_old = dom_old.project_out(
+                dim_type.set, new_idx if new_idx < old_idx else new_idx - 1, 1)
+
+        par_idx = dom.dim(dim_type.param)
+        dom_new = dom.move_dims(
+                dim_type.param, par_idx, dim_type.set, new_idx, 1)
+        dom_new = dom_new.move_dims(
+                dim_type.set, dom_new.dim(dim_type.set), dim_type.param, par_idx, 1)
+        dom_new = dom_new.project_out(
+                dim_type.set, old_idx if old_idx < new_idx else old_idx - 1, 1)
+
+        if not (dom_old <= dom_new and dom_new <= dom_old):
+            raise LoopyError(
+                    "inames {old} and {new} do not iterate over the same domain"
+                    .format(old=old_iname, new=new_iname))
+
+        # }}}
+
+        from pymbolic import var
+        subst_dict = {old_iname: var(new_iname)}
+
+        from loopy.context_matching import parse_stack_match
+        within = parse_stack_match(within)
+
+        from pymbolic.mapper.substitutor import make_subst_func
+        rule_mapping_context = SubstitutionRuleMappingContext(
+                knl.substitutions, var_name_gen)
+        ijoin = RuleAwareSubstitutionMapper(rule_mapping_context,
+                        make_subst_func(subst_dict), within)
+
+        knl = rule_mapping_context.finish_kernel(
+                ijoin.map_kernel(knl))
+
+        new_instructions = []
+        for insn in knl.instructions:
+            if (old_iname in insn.forced_iname_deps
+                    and within(knl, insn, ())):
+                insn = insn.copy(
+                        forced_iname_deps=(
+                            (insn.forced_iname_deps - frozenset([old_iname]))
+                            | frozenset([new_iname])))
+
+            new_instructions.append(insn)
+
+        knl = knl.copy(instructions=new_instructions)
+
+    else:
+        knl = duplicate_inames(
+                knl, [old_iname], within=within, new_inames=[new_iname])
+
     knl = remove_unused_inames(knl, [old_iname])
 
     return knl
+
+# }}}
 
 
 # {{{ link inames
