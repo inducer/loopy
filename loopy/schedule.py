@@ -655,7 +655,16 @@ def generate_loop_schedules_internal(
                     not sched_state.loop_insn_dep_map.get(iname, set())
                     <= sched_state.scheduled_insn_ids):
                 if debug_mode:
-                    print("scheduling %s prohibited by loop dependency map" % iname)
+                    print(
+                            "scheduling {iname} prohibited by loop dependency map "
+                            "(needs '{needed_insns})'"
+                            .format(
+                                iname=iname,
+                                needed_insns=", ".join(
+                                    sched_state.loop_insn_dep_map.get(iname, set())
+                                    -
+                                    sched_state.scheduled_insn_ids)))
+
                 continue
 
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
@@ -1269,7 +1278,9 @@ def generate_loop_schedules(kernel, debug_args={}):
                 #         reverse=False, kind="global")
 
                 # for sched_item in gen_sched:
-                #     if isinstance(sched_item, Barrier) and sched_item.kind == "global":
+                #     if (
+                #             isinstance(sched_item, Barrier)
+                #             and sched_item.kind == "global"):
                 #         raise LoopyError("kernel requires a global barrier %s"
                 #                 % sched_item.comment)
 
