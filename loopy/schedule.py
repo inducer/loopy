@@ -552,8 +552,6 @@ def generate_loop_schedules_internal(
                     allow_insn=True):
                 yield sub_sched
 
-            return
-
     # }}}
 
     # {{{ see if we're ready to leave the innermost loop
