@@ -452,9 +452,10 @@ def generate_loop_schedules_internal(
         insn = kernel.id_to_insn[insn_id]
         return (insn.priority, len(active_groups & insn.groups))
 
-    for insn_id in sorted(sched_state.unscheduled_insn_ids,
-            key=insn_sort_key, reverse=True):
+    insn_ids_to_try = sorted(sched_state.unscheduled_insn_ids,
+            key=insn_sort_key, reverse=True)
 
+    for insn_id in insn_ids_to_try:
         insn = kernel.id_to_insn[insn_id]
 
         is_ready = insn.insn_deps <= sched_state.scheduled_insn_ids
@@ -550,8 +551,6 @@ def generate_loop_schedules_internal(
                     allow_boost=rec_allow_boost, debug=debug,
                     allow_insn=True):
                 yield sub_sched
-
-            return
 
     # }}}
 
