@@ -552,6 +552,11 @@ def generate_loop_schedules_internal(
                     allow_insn=True):
                 yield sub_sched
 
+            if not sched_state.group_insn_counts:
+                # No groups: We won't need to backtrack on scheduling
+                # instructions.
+                return
+
     # }}}
 
     # {{{ see if we're ready to leave the innermost loop
