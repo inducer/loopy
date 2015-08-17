@@ -214,17 +214,13 @@ class OpenCLTarget(CTarget):
 
     @memoize_method
     def get_dtype_registry(self):
-        from loopy.target.c.compyte.dtypes import DTypeRegistry, fill_with_registry_with_c_types
+        from loopy.target.c.compyte.dtypes import (DTypeRegistry,
+                fill_registry_with_opencl_types)
+
         result = DTypeRegistry()
-        fill_with_registry_with_c_types(result, respect_windows=False)
+        fill_registry_with_opencl_types()
 
-        # complex number support left out
-
-        # CL defines 'long' as 64-bit
-        result.get_or_register_dtype(
-                ["unsigned long", "unsigned long int"], np.uint64)
-        result.get_or_register_dtype(
-                ["signed long", "signed long int", "long int"], np.int64)
+        # no complex number support--needs PyOpenCLTarget
 
         _register_vector_types(result)
 

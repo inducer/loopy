@@ -36,9 +36,9 @@ class CTarget(TargetBase):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_with_registry_with_c_types)
+                DTypeRegistry, fill_registry_with_c_types)
         result = DTypeRegistry()
-        fill_with_registry_with_c_types(result, respect_windows=False,
+        fill_registry_with_c_types(result, respect_windows=False,
                 include_bool=True)
         return result
 
