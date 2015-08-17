@@ -35,6 +35,19 @@ Python 2.7 POCL:
   - pocl
   except:
   - tags
+Python 2.7 old PyOpenCL:
+  script:
+  - export PY_EXE=python2.7
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="numpy mako"
+  - export REQUIREMENTS_TXT="requirements-old-pyopencl.txt"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - python2.7
+  - pocl
+  except:
+  - tags
 # PyPy AMD CPU:
 #   script:
 #   - export PY_EXE=pypy
