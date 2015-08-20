@@ -2143,6 +2143,21 @@ def test_fusion():
     print(knl)
 
 
+def test_sci_notation_literal(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    set_kernel = lp.make_kernel(
+         ''' { [i]: 0<=i<12 } ''',
+         ''' out[i] = 1e-12''')
+
+    set_kernel = lp.set_options(set_kernel, write_cl=True)
+
+    evt, (out,) = set_kernel(queue)
+
+    assert (np.abs(out.get() - 1e-12) < 1e-20).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
