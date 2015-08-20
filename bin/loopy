@@ -52,7 +52,7 @@ def main():
 
     parser.add_argument("infile")
     parser.add_argument("outfile")
-    parser.add_argument("--lang", default="loopy")
+    parser.add_argument("--lang")
     parser.add_argument("--target")
     parser.add_argument("--name")
     parser.add_argument("--transform")
@@ -65,13 +65,28 @@ def main():
         from warnings import warn
         warn("--target option is deprecated and ignored")
 
+    lang = None
     if args.infile == "-":
         infile_content = sys.stdin.read()
     else:
+        from os.path import splitext
+        _, ext = splitext(args.infile)
+
+        lang = {
+                ".loopy": "loopy",
+                ".floopy": "fortran",
+                }
         with open(args.infile, "r") as infile_fd:
             infile_content = infile_fd.read()
 
-    if args.lang == "loopy":
+    if args.lang is not None:
+        lang = args.lang
+
+    if lang is None:
+        raise RuntimeError("unable to deduce input language "
+                "(wrong input file extension? --lang flag?)")
+
+    if lang == "loopy":
         # {{{ path wrangling
 
         from os.path import dirname, abspath
