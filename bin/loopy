@@ -52,7 +52,7 @@ def main():
 
     parser.add_argument("infile")
     parser.add_argument("outfile")
-    parser.add_argument("--lang")
+    parser.add_argument("--lang", metavar="LANGUAGE", help="loopy|fortran")
     parser.add_argument("--target")
     parser.add_argument("--name")
     parser.add_argument("--transform")
@@ -75,7 +75,9 @@ def main():
         lang = {
                 ".loopy": "loopy",
                 ".floopy": "fortran",
-                }
+                ".f90": "fortran",
+                ".fpp": "fortran",
+                }.get(ext)
         with open(args.infile, "r") as infile_fd:
             infile_content = infile_fd.read()
 
@@ -130,7 +132,7 @@ def main():
 
         kernels = [kernel]
 
-    elif args.lang in ["fortran", "floopy", "fpp"]:
+    elif lang in ["fortran", "floopy", "fpp"]:
         pre_transform_code = None
         if args.transform:
             with open(args.transform, "r") as xform_fd:
