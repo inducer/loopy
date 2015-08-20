@@ -60,8 +60,9 @@ class ToCountMap:
 
     def __mul__(self, other):
         if isinstance(other, isl.PwQPolynomial):
-            return ToCountMap({index: self.dict[index]*other
-                                     for index in self.dict.keys()})
+            return ToCountMap(dict(
+                (index, self.dict[index]*other)
+                for index in self.dict.keys()))
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
                                 "ToCountMap by {} {}."
