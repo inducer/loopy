@@ -91,8 +91,9 @@ class CTarget(TargetBase):
 
         base_storage_sizes = {}
         base_storage_to_is_local = {}
+        base_storage_to_align_bytes = {}
 
-        from cgen import ArrayOf, Pointer, Initializer
+        from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute
         from loopy.codegen import POD  # uses the correct complex type
         from cgen.opencl import CLLocal
 
@@ -123,6 +124,16 @@ class CTarget(TargetBase):
                         tv.nbytes)
                 base_storage_to_is_local.setdefault(tv.base_storage, []).append(
                         tv.is_local)
+
+                align_size = tv.dtype.itemsize
+
+                from loopy.kernel.array import VectorArrayDimTag
+                for dim_tag, axis_len in zip(tv.dim_tags, tv.shape):
+                    if isinstance(dim_tag, VectorArrayDimTag):
+                        align_size *= axis_len
+
+                base_storage_to_align_bytes.setdefault(tv.base_storage, []).append(
+                        align_size)
 
                 for idi in decl_info:
                     cast_decl = POD(self, idi.dtype, "")
@@ -161,6 +172,9 @@ class CTarget(TargetBase):
                 bs_var_decl = CLLocal(bs_var_decl)
 
             bs_var_decl = ArrayOf(bs_var_decl, max(bs_sizes))
+
+            alignment = max(base_storage_to_align_bytes[bs_name])
+            bs_var_decl = AlignedAttribute(alignment, bs_var_decl)
 
             body.append(bs_var_decl)
 
