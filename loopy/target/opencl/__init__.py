@@ -215,10 +215,10 @@ class OpenCLTarget(CTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (DTypeRegistry,
-                fill_registry_with_opencl_types)
+                fill_registry_with_opencl_c_types)
 
         result = DTypeRegistry()
-        fill_registry_with_opencl_types()
+        fill_registry_with_opencl_c_types(result)
 
         # no complex number support--needs PyOpenCLTarget
 
