@@ -2158,6 +2158,22 @@ def test_sci_notation_literal(ctx_factory):
     assert (np.abs(out.get() - 1e-12) < 1e-20).all()
 
 
+def test_to_batched(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+         ''' { [i,j]: 0<=i,j<n } ''',
+         ''' out[i] = sum(j, a[i,j]*x[j])''')
+
+    bknl = lp.to_batched(knl, "nbatches", "out,x")
+
+    a = np.random.randn(5, 5)
+    x = np.random.randn(7, 5)
+
+    bknl(queue, a=a, x=x)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -472,6 +472,11 @@ Arguments
 
 .. autofunction:: add_and_infer_dtypes
 
+Batching
+^^^^^^^^
+
+.. autofunction:: to_batched
+
 Finishing up
 ^^^^^^^^^^^^
 
