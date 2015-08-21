@@ -94,10 +94,20 @@ class MatchExpressionBase(object):
     def __call__(self, kernel, matchable):
         raise NotImplementedError
 
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
 
 class AllMatchExpression(MatchExpressionBase):
     def __call__(self, kernel, matchable):
         return True
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, "all_match_expr")
+
+    def __eq__(self, other):
+        return (type(self) == type(other))
 
 
 class AndMatchExpression(MatchExpressionBase):
@@ -110,6 +120,14 @@ class AndMatchExpression(MatchExpressionBase):
     def __str__(self):
         return "(%s)" % (" and ".join(str(ch) for ch in self.children))
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, "and_match_expr")
+        key_builder.rec(key_hash, self.children)
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.children == other.children)
+
 
 class OrMatchExpression(MatchExpressionBase):
     def __init__(self, children):
@@ -121,6 +139,14 @@ class OrMatchExpression(MatchExpressionBase):
     def __str__(self):
         return "(%s)" % (" or ".join(str(ch) for ch in self.children))
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, "or_match_expr")
+        key_builder.rec(key_hash, self.children)
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.children == other.children)
+
 
 class NotMatchExpression(MatchExpressionBase):
     def __init__(self, child):
@@ -131,6 +157,14 @@ class NotMatchExpression(MatchExpressionBase):
 
     def __str__(self):
         return "(not %s)" % str(self.child)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, "not_match_expr")
+        key_builder.rec(key_hash, self.child)
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.child == other.child)
 
 
 class GlobMatchExpressionBase(MatchExpressionBase):
@@ -145,6 +179,14 @@ class GlobMatchExpressionBase(MatchExpressionBase):
         descr = type(self).__name__
         descr = descr[:descr.find("Match")]
         return descr.lower() + ":" + self.glob
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, type(self).__name__)
+        key_builder.rec(key_hash, self.glob)
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.glob == other.glob)
 
 
 class IdMatchExpression(GlobMatchExpressionBase):
@@ -284,17 +326,30 @@ def parse_match(expr_str):
 # {{{ stack match objects
 
 class StackMatchComponent(object):
-    pass
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
 
 class StackAllMatchComponent(StackMatchComponent):
     def __call__(self, kernel, stack):
         return True
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, "all_match")
+
+    def __eq__(self, other):
+        return (type(self) == type(other))
+
 
 class StackBottomMatchComponent(StackMatchComponent):
     def __call__(self, kernel, stack):
         return not stack
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, "bottom_match")
+
+    def __eq__(self, other):
+        return (type(self) == type(other))
 
 
 class StackItemMatchComponent(StackMatchComponent):
@@ -311,6 +366,16 @@ class StackItemMatchComponent(StackMatchComponent):
             return False
 
         return self.inner_match(kernel, stack[1:])
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, "item_match")
+        key_builder.rec(key_hash, self.match_expr)
+        key_builder.rec(key_hash, self.inner_match)
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.match_expr == other.match_expr
+                and self.inner_match == other.inner_match)
 
 
 class StackWildcardMatchComponent(StackMatchComponent):
@@ -347,6 +412,18 @@ class RuleInvocationMatchable(object):
 class StackMatch(object):
     def __init__(self, root_component):
         self.root_component = root_component
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, self.root_component)
+
+    def __eq__(self, other):
+        return (
+                type(self) == type(other)
+                and
+                self.root_component == other.root_component)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
 
     def __call__(self, kernel, insn, rule_stack):
         """
