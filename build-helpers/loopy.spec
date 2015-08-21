@@ -1,6 +1,12 @@
 # -*- mode: python -*-
 
+from os.path import basename, dirname, join
+from glob import glob
+
 single_file = True
+
+# This makes the executable spew debug info.
+debug = False
 
 from os.path import expanduser
 
@@ -11,6 +17,19 @@ a = Analysis(['bin/loopy'],
              runtime_hooks=None,
              excludes=["hedge", "meshpy", "pyopencl", "PIL"]
              )
+
+import ply.lex
+import ply.yacc
+
+
+a.datas += [
+  (join("py-src", "ply", "lex", basename(fn)), fn, "DATA")
+  for fn in glob(join(dirname(ply.lex.__file__), "*.py"))
+  ] + [
+  (join("py-src", "ply", "yacc", basename(fn)), fn, "DATA")
+  for fn in glob(join(dirname(ply.yacc.__file__), "*.py"))
+  ]
+
 pyz = PYZ(a.pure)
 
 if single_file:
@@ -20,7 +39,7 @@ if single_file:
               a.zipfiles,
               a.datas,
               name='loopy',
-              debug=False,
+              debug=debug,
               strip=None,
               upx=True,
               console=True)
@@ -29,7 +48,7 @@ else:
               a.scripts,
               exclude_binaries=True,
               name='loopy',
-              debug=False,
+              debug=debug,
               strip=None,
               upx=True,
               console=True)
