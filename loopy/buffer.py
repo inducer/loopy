@@ -29,6 +29,9 @@ from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, SubstitutionRuleMappingContext,
         SubstitutionMapper)
 from pymbolic.mapper.substitutor import make_subst_func
+from pytools.persistent_dict import PersistentDict
+from loopy.tools import LoopyKeyBuilder
+from loopy.version import DATA_MODEL_VERSION
 
 from pymbolic import var
 
@@ -117,6 +120,11 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
 # }}}
 
 
+buffer_array_cache = PersistentDict("loopy-buffer-array-cachee"+DATA_MODEL_VERSION,
+        key_builder=LoopyKeyBuilder())
+
+
+# Adding an argument? also add something to the cache_key below.
 def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         store_expression=None, within=None, default_tag="l.auto",
         temporary_is_local=None, fetch_bounding_box=False):
@@ -170,6 +178,22 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     if temporary_is_local is None:
         import loopy as lp
         temporary_is_local = lp.auto
+
+    # }}}
+
+    # {{{ caching
+
+    from loopy import CACHING_ENABLED
+
+    cache_key = (kernel, var_name, tuple(buffer_inames),
+            init_expression, store_expression, within,
+            default_tag, temporary_is_local, fetch_bounding_box)
+
+    if CACHING_ENABLED:
+        try:
+            return buffer_array_cache[cache_key]
+        except KeyError:
+            pass
 
     # }}}
 
@@ -412,6 +436,10 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     from loopy import tag_inames
     kernel = tag_inames(kernel, new_iname_to_tag)
+
+    if 0 and CACHING_ENABLED:
+        from loopy.preprocess import prepare_for_caching
+        buffer_array_cache[cache_key] = prepare_for_caching(kernel)
 
     return kernel
 
