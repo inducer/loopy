@@ -96,6 +96,21 @@ class LoopyKeyBuilder(KeyBuilderBase):
         else:
             PersistentHashWalkMapper(key_hash)(key)
 
+
+class PymbolicExpressionHashWrapper(object):
+    def __init__(self, expression):
+        self.expression = expression
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.expression == other.expression)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.update_for_pymbolic_expression(key_hash, self.expression)
+
 # }}}
 
 

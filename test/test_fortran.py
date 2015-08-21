@@ -275,6 +275,8 @@ def test_tagged(ctx_factory):
     "i_inner,j_inner",
     ])
 def test_matmul(ctx_factory, buffer_inames):
+    logging.basicConfig(level=logging.INFO)
+
     fortran_src = """
         subroutine dgemm(m,n,l,a,b,c)
           implicit none

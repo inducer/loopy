@@ -30,10 +30,13 @@ from loopy.symbolic import (get_dependencies,
         SubstitutionMapper)
 from pymbolic.mapper.substitutor import make_subst_func
 from pytools.persistent_dict import PersistentDict
-from loopy.tools import LoopyKeyBuilder
+from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
 
 from pymbolic import var
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 # {{{ replace array access
@@ -186,12 +189,15 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     from loopy import CACHING_ENABLED
 
     cache_key = (kernel, var_name, tuple(buffer_inames),
-            init_expression, store_expression, within,
+            PymbolicExpressionHashWrapper(init_expression),
+            PymbolicExpressionHashWrapper(store_expression), within,
             default_tag, temporary_is_local, fetch_bounding_box)
 
     if CACHING_ENABLED:
         try:
-            return buffer_array_cache[cache_key]
+            result = buffer_array_cache[cache_key]
+            logger.info("%s: buffer_array cache hit" % kernel.name)
+            return result
         except KeyError:
             pass
 
@@ -437,7 +443,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     from loopy import tag_inames
     kernel = tag_inames(kernel, new_iname_to_tag)
 
-    if 0 and CACHING_ENABLED:
+    if CACHING_ENABLED:
         from loopy.preprocess import prepare_for_caching
         buffer_array_cache[cache_key] = prepare_for_caching(kernel)
 
