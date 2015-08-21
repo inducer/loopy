@@ -50,8 +50,9 @@ def main():
 
     parser = ArgumentParser(description="Stand-alone loopy frontend")
 
-    parser.add_argument("infile")
-    parser.add_argument("outfile")
+    parser.add_argument("infile", metavar="INPUT_FILE")
+    parser.add_argument("outfile", default="-", metavar="OUTPUT_FILE",
+            help="Defaults to stdout ('-').", nargs='?')
     parser.add_argument("--lang", metavar="LANGUAGE", help="loopy|fortran")
     parser.add_argument("--target")
     parser.add_argument("--name")
@@ -185,10 +186,15 @@ def main():
         code, impl_arg_info = generate_code(kernel)
         codes.append(code)
 
-    if args.outfile == "-":
+    if args.outfile:
+        outfile, = args.outfile
+    else:
+        outfile = "-"
+
+    if outfile == "-":
         sys.stdout.write("\n\n".join(codes))
     else:
-        with open(args.outfile, "w") as outfile_fd:
+        with open(outfile, "w") as outfile_fd:
             outfile_fd.write("\n\n".join(codes))
 
 
