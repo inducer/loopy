@@ -288,8 +288,8 @@ def parse_insn(insn):
         return ExpressionInstruction(
                     id=(
                         intern(insn_id)
-                        if not isinstance(insn_id, (type(None), UniqueName))
-                        else None),
+                        if isinstance(insn_id, str)
+                        else insn_id),
                     insn_deps=insn_deps,
                     insn_deps_is_final=insn_deps_is_final,
                     groups=insn_groups,
@@ -332,7 +332,7 @@ def parse_insn(insn):
 def parse_if_necessary(insn, defines):
     if isinstance(insn, InstructionBase):
         yield insn.copy(
-                id=intern(insn.id) if insn.id is not None else None,
+                id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
                 insn_deps=frozenset(intern(dep) for dep in insn.insn_deps),
                 groups=frozenset(intern(grp) for grp in insn.groups),
                 conflicts_with_groups=frozenset(
