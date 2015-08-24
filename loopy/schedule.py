@@ -171,7 +171,7 @@ def find_used_inames_within(kernel, sched_index):
     return result
 
 
-def loop_nest_map(kernel):
+def find_loop_nest_map(kernel):
     """Returns a dictionary mapping inames to other inames that are
     always nested around them.
     """
@@ -208,6 +208,49 @@ def loop_nest_map(kernel):
 
             for inner_iname in dom.get_var_names(isl.dim_type.set):
                 result[inner_iname].add(outer_iname)
+
+    return result
+
+
+def find_loop_insn_dep_map(kernel, loop_nest_map):
+    """Returns a dictionary mapping inames to other instruction ids that need to
+    be scheduled before the iname should be eligible for scheduling.
+    """
+
+    result = {}
+
+    from loopy.kernel.data import ParallelTag
+    for insn in kernel.instructions:
+        for iname in kernel.insn_inames(insn):
+            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag):
+                continue
+
+            for dep_insn_id in insn.insn_deps:
+                dep_insn = kernel.id_to_insn[dep_insn_id]
+                dep_insn_inames = kernel.insn_inames(dep_insn)
+
+                if iname in dep_insn_inames:
+                    # Nothing to be learned, dependency is in loop over iname
+                    # already.
+                    continue
+
+                # To make sure dep_insn belongs outside of iname, we must prove
+                # (via loop_nest_map) that all inames that dep_insn will be
+                # executed inside are nested *around* iname.
+                if not dep_insn_inames <= loop_nest_map[iname]:
+                    continue
+
+                iname_dep = result.setdefault(iname, set())
+                if dep_insn_id not in iname_dep:
+                    logger.debug("{knl}: loop dependency map: iname '{iname}' "
+                            "depends on '{dep_insn}' via '{insn}'"
+                            .format(
+                                knl=kernel.name,
+                                iname=iname,
+                                dep_insn=dep_insn_id,
+                                insn=insn.id))
+
+                    iname_dep.add(dep_insn_id)
 
     return result
 
@@ -422,10 +465,14 @@ def generate_loop_schedules_internal(
     reachable_insn_ids = set()
     active_groups = frozenset(sched_state.active_group_counts)
 
-    for insn_id in sorted(sched_state.unscheduled_insn_ids,
-            key=lambda insn_id: kernel.id_to_insn[insn_id].priority,
-            reverse=True):
+    def insn_sort_key(insn_id):
+        insn = kernel.id_to_insn[insn_id]
+        return (insn.priority, len(active_groups & insn.groups))
 
+    insn_ids_to_try = sorted(sched_state.unscheduled_insn_ids,
+            key=insn_sort_key, reverse=True)
+
+    for insn_id in insn_ids_to_try:
         insn = kernel.id_to_insn[insn_id]
 
         is_ready = insn.insn_deps <= sched_state.scheduled_insn_ids
@@ -497,7 +544,7 @@ def generate_loop_schedules_internal(
 
                     else:
                         new_active_group_counts[grp] = (
-                                sched_state.group_insn_counts[grp])
+                                sched_state.group_insn_counts[grp] - 1)
 
             else:
                 new_active_group_counts = sched_state.active_group_counts
@@ -522,7 +569,10 @@ def generate_loop_schedules_internal(
                     allow_insn=True):
                 yield sub_sched
 
-            return
+            if not sched_state.group_insn_counts:
+                # No groups: We won't need to backtrack on scheduling
+                # instructions.
+                return
 
     # }}}
 
@@ -603,6 +653,9 @@ def generate_loop_schedules_internal(
         print("active inames :", ",".join(sched_state.active_inames))
         print("inames entered so far :", ",".join(sched_state.entered_inames))
         print("reachable insns:", ",".join(reachable_insn_ids))
+        print("active groups (with insn counts):", ",".join(
+            "%s: %d" % (grp, c)
+            for grp, c in six.iteritems(sched_state.active_group_counts)))
         print(75*"-")
 
     if needed_inames:
@@ -617,6 +670,22 @@ def generate_loop_schedules_internal(
             if not sched_state.loop_nest_map[iname] <= currently_accessible_inames:
                 if debug_mode:
                     print("scheduling %s prohibited by loop nest map" % iname)
+                continue
+
+            if (
+                    not sched_state.loop_insn_dep_map.get(iname, set())
+                    <= sched_state.scheduled_insn_ids):
+                if debug_mode:
+                    print(
+                            "scheduling {iname} prohibited by loop dependency map "
+                            "(needs '{needed_insns})'"
+                            .format(
+                                iname=iname,
+                                needed_insns=", ".join(
+                                    sched_state.loop_insn_dep_map.get(iname, set())
+                                    -
+                                    sched_state.scheduled_insn_ids)))
+
                 continue
 
             iname_home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
@@ -795,6 +864,11 @@ class DependencyRecord(Record):
 
         A :class:`loopy.InstructionBase` instance.
 
+    .. attribute:: dep_descr
+
+        A string containing a phrase describing the dependency. The variables
+        '{src}' and '{tgt}' will be replaced by their respective instruction IDs.
+
     .. attribute:: variable
 
         A string, the name of the variable that caused the dependency to arise.
@@ -802,23 +876,15 @@ class DependencyRecord(Record):
     .. attribute:: var_kind
 
         "global" or "local"
-
-    .. attribute:: is_forward
-
-        A :class:`bool` indicating whether this is a forward or reverse
-        dependency.
-
-        In a 'forward' dependency, the target depends on the source.
-        In a 'reverse' dependency, the source depends on the target.
     """
 
-    def __init__(self, source, target, variable, var_kind, is_forward):
+    def __init__(self, source, target, dep_descr, variable, var_kind):
         Record.__init__(self,
                 source=source,
                 target=target,
+                dep_descr=dep_descr,
                 variable=variable,
-                var_kind=var_kind,
-                is_forward=is_forward)
+                var_kind=var_kind)
 
 
 def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
@@ -827,7 +893,7 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     at least one write), then the function will return a tuple
     ``(target, source, var_name)``. Otherwise, it will return *None*.
 
-    This function finds  direct or indirect instruction dependencies, but does
+    This function finds direct or indirect instruction dependencies, but does
     not attempt to guess dependencies that exist based on common access to
     variables.
 
@@ -847,10 +913,29 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     if reverse:
         source, target = target, source
 
-    # Check that a dependency exists.
+    # {{{ check that a dependency exists
+
+    dep_descr = None
+
     target_deps = kernel.recursive_insn_dep_map()[target.id]
-    if source.id not in target_deps:
+    if source.id in target_deps:
+        if reverse:
+            dep_descr = "{src} rev-depends on {tgt}"
+        else:
+            dep_descr = "{tgt} depends on {src}"
+
+    grps = source.groups & target.conflicts_with_groups
+    if grps:
+        dep_descr = "{src} conflicts with {tgt} (via '%s')" % ", ".join(grps)
+
+    grps = target.groups & source.conflicts_with_groups
+    if grps:
+        dep_descr = "{src} conflicts with {tgt} (via '%s')" % ", ".join(grps)
+
+    if not dep_descr:
         return None
+
+    # }}}
 
     if var_kind == "local":
         relevant_vars = kernel.local_var_names()
@@ -859,11 +944,27 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     else:
         raise ValueError("unknown 'var_kind': %s" % var_kind)
 
-    tgt_write = set(target.assignee_var_names()) & relevant_vars
-    tgt_read = target.read_dependency_names() & relevant_vars
+    temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
 
-    src_write = set(source.assignee_var_names()) & relevant_vars
-    src_read = source.read_dependency_names() & relevant_vars
+    def map_to_base_storage(var_names):
+        result = set(var_names)
+
+        for name in var_names:
+            bs = temp_to_base_storage.get(name)
+            if bs is not None:
+                result.add(bs)
+
+        return result
+
+    tgt_write = map_to_base_storage(
+            set(target.assignee_var_names()) & relevant_vars)
+    tgt_read = map_to_base_storage(
+            target.read_dependency_names() & relevant_vars)
+
+    src_write = map_to_base_storage(
+            set(source.assignee_var_names()) & relevant_vars)
+    src_read = map_to_base_storage(
+            source.read_dependency_names() & relevant_vars)
 
     waw = tgt_write & src_write
     raw = tgt_read & src_write
@@ -873,9 +974,9 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
         return DependencyRecord(
                 source=source,
                 target=target,
+                dep_descr=dep_descr,
                 variable=var_name,
-                var_kind=var_kind,
-                is_forward=not reverse)
+                var_kind=var_kind)
 
     if source is target:
         return None
@@ -884,9 +985,9 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
         return DependencyRecord(
                 source=source,
                 target=target,
+                dep_descr=dep_descr,
                 variable=var_name,
-                var_kind=var_kind,
-                is_forward=not reverse)
+                var_kind=var_kind)
 
     return None
 
@@ -998,12 +1099,9 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
 
         comment = None
         if dep is not None:
-            if dep.is_forward:
-                comment = "for %s (%s depends on %s)" % (
-                        dep.variable, dep.target.id, dep.source.id)
-            else:
-                comment = "for %s (%s rev-depends on %s)" % (
-                        dep.variable, dep.source.id, dep.target.id)
+            comment = "for %s (%s)" % (
+                    dep.variable, dep.dep_descr.format(
+                        tgt=dep.target.id, src=dep.source.id))
 
         result.append(Barrier(comment=comment, kind=dep.var_kind))
 
@@ -1047,10 +1145,6 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
             # (for leading (before-first-barrier) bit of loop body)
             for insn_id in insn_ids_from_schedule(subresult[:first_barrier_index]):
                 search_set = candidates
-                if not reverse:
-                    # can limit search set in case of forward dep
-                    search_set = search_set \
-                            & kernel.recursive_insn_dep_map()[insn_id]
 
                 for dep_src_insn_id in search_set:
                     dep = get_barrier_needing_dependency(
@@ -1090,10 +1184,6 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
             i += 1
 
             search_set = candidates
-            if not reverse:
-                # can limit search set in case of forward dep
-                search_set = search_set \
-                        & kernel.recursive_insn_dep_map()[sched_item.insn_id]
 
             for dep_src_insn_id in search_set:
                 dep = get_barrier_needing_dependency(
@@ -1153,9 +1243,11 @@ def generate_loop_schedules(kernel, debug_args={}):
             iname for iname in kernel.all_inames()
             if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
 
+    loop_nest_map = find_loop_nest_map(kernel)
     sched_state = SchedulerState(
             kernel=kernel,
-            loop_nest_map=loop_nest_map(kernel),
+            loop_nest_map=loop_nest_map,
+            loop_insn_dep_map=find_loop_insn_dep_map(kernel, loop_nest_map),
             breakable_inames=ilp_inames,
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
@@ -1180,38 +1272,9 @@ def generate_loop_schedules(kernel, debug_args={}):
                 debug=debug, allow_boost=None),
             generate_loop_schedules_internal(sched_state,
                 debug=debug)]
-    for gen in generators:
-        for gen_sched in gen:
-            # gen_sched = insert_barriers(kernel, gen_sched,
-            #         reverse=False, kind="global")
 
-            # for sched_item in gen_sched:
-            #     if isinstance(sched_item, Barrier) and sched_item.kind == "global":
-            #         raise LoopyError("kernel requires a global barrier %s"
-            #                 % sched_item.comment)
-
-            gen_sched = insert_barriers(kernel, gen_sched,
-                    reverse=False, kind="local")
-
-            debug.stop()
-            yield kernel.copy(
-                    schedule=gen_sched,
-                    state=kernel_state.SCHEDULED)
-            debug.start()
-
-            schedule_count += 1
-
-        # if no-boost mode yielded a viable schedule, stop now
-        if schedule_count:
-            break
-
-    debug.done_scheduling()
-
-    if not schedule_count:
+    def print_longest_dead_end():
         if debug.interactive:
-            print(75*"-")
-            print("ERROR: Sorry--loo.py did not find a schedule for your kernel.")
-            print(75*"-")
             print("Loo.py will now show you the scheduler state at the point")
             print("where the longest (dead-end) schedule was generated, in the")
             print("the hope that some of this makes sense and helps you find")
@@ -1230,6 +1293,52 @@ def generate_loop_schedules(kernel, debug_args={}):
                     debug=debug):
                 pass
 
+    try:
+        for gen in generators:
+            for gen_sched in gen:
+                # gen_sched = insert_barriers(kernel, gen_sched,
+                #         reverse=False, kind="global")
+
+                # for sched_item in gen_sched:
+                #     if (
+                #             isinstance(sched_item, Barrier)
+                #             and sched_item.kind == "global"):
+                #         raise LoopyError("kernel requires a global barrier %s"
+                #                 % sched_item.comment)
+
+                debug.stop()
+
+                logger.info("%s: barrier insertion: start" % kernel.name)
+
+                gen_sched = insert_barriers(kernel, gen_sched,
+                        reverse=False, kind="local")
+
+                logger.info("%s: barrier insertion: done" % kernel.name)
+
+                yield kernel.copy(
+                        schedule=gen_sched,
+                        state=kernel_state.SCHEDULED)
+                debug.start()
+
+                schedule_count += 1
+
+            # if no-boost mode yielded a viable schedule, stop now
+            if schedule_count:
+                break
+
+    except KeyboardInterrupt:
+        print(75*"-")
+        print("Interrupted during scheduling")
+        print(75*"-")
+        print_longest_dead_end()
+        raise
+
+    debug.done_scheduling()
+    if not schedule_count:
+        print(75*"-")
+        print("ERROR: Sorry--loo.py did not find a schedule for your kernel.")
+        print(75*"-")
+        print_longest_dead_end()
         raise RuntimeError("no valid schedules found")
 
     logger.info("%s: schedule done" % kernel.name)

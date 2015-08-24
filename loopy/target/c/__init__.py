@@ -36,9 +36,9 @@ class CTarget(TargetBase):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_with_registry_with_c_types)
+                DTypeRegistry, fill_registry_with_c_types)
         result = DTypeRegistry()
-        fill_with_registry_with_c_types(result, respect_windows=False,
+        fill_registry_with_c_types(result, respect_windows=False,
                 include_bool=True)
         return result
 
@@ -85,14 +85,100 @@ class CTarget(TargetBase):
         from cgen import Block
         body = Block()
 
+        temp_decls = []
+
         # {{{ declare temporaries
 
-        body.extend(
-                idi.cgen_declarator
-                for tv in six.itervalues(kernel.temporary_variables)
-                for idi in tv.decl_info(
-                    kernel.target,
-                    is_written=True, index_dtype=kernel.index_dtype))
+        base_storage_sizes = {}
+        base_storage_to_is_local = {}
+        base_storage_to_align_bytes = {}
+
+        from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute
+        from loopy.codegen import POD  # uses the correct complex type
+        from cgen.opencl import CLLocal
+
+        class ConstRestrictPointer(Pointer):
+            def get_decl_pair(self):
+                sub_tp, sub_decl = self.subdecl.get_decl_pair()
+                return sub_tp, ("*const restrict %s" % sub_decl)
+
+        for tv in six.itervalues(kernel.temporary_variables):
+            decl_info = tv.decl_info(self, index_dtype=kernel.index_dtype)
+
+            if not tv.base_storage:
+                for idi in decl_info:
+                    temp_var_decl = POD(self, idi.dtype, idi.name)
+
+                    if idi.shape:
+                        temp_var_decl = ArrayOf(temp_var_decl,
+                                " * ".join(str(s) for s in idi.shape))
+
+                    if tv.is_local:
+                        temp_var_decl = CLLocal(temp_var_decl)
+
+                    temp_decls.append(temp_var_decl)
+
+            else:
+                offset = 0
+                base_storage_sizes.setdefault(tv.base_storage, []).append(
+                        tv.nbytes)
+                base_storage_to_is_local.setdefault(tv.base_storage, []).append(
+                        tv.is_local)
+
+                align_size = tv.dtype.itemsize
+
+                from loopy.kernel.array import VectorArrayDimTag
+                for dim_tag, axis_len in zip(tv.dim_tags, tv.shape):
+                    if isinstance(dim_tag, VectorArrayDimTag):
+                        align_size *= axis_len
+
+                base_storage_to_align_bytes.setdefault(tv.base_storage, []).append(
+                        align_size)
+
+                for idi in decl_info:
+                    cast_decl = POD(self, idi.dtype, "")
+                    temp_var_decl = POD(self, idi.dtype, idi.name)
+
+                    if tv.is_local:
+                        cast_decl = CLLocal(cast_decl)
+                        temp_var_decl = CLLocal(temp_var_decl)
+
+                    # The 'restrict' part of this is a complete lie--of course
+                    # all these temporaries are aliased. But we're promising to
+                    # not use them to shovel data from one representation to the
+                    # other. That counts, right?
+
+                    cast_decl = ConstRestrictPointer(cast_decl)
+                    temp_var_decl = ConstRestrictPointer(temp_var_decl)
+
+                    cast_tp, cast_d = cast_decl.get_decl_pair()
+                    temp_var_decl = Initializer(
+                            temp_var_decl,
+                            "(%s %s) (%s + %s)" % (
+                                " ".join(cast_tp), cast_d,
+                                tv.base_storage,
+                                offset))
+
+                    temp_decls.append(temp_var_decl)
+
+                    from pytools import product
+                    offset += (
+                            idi.dtype.itemsize
+                            * product(si for si in idi.shape))
+
+        for bs_name, bs_sizes in six.iteritems(base_storage_sizes):
+            bs_var_decl = POD(self, np.int8, bs_name)
+            if base_storage_to_is_local[bs_name]:
+                bs_var_decl = CLLocal(bs_var_decl)
+
+            bs_var_decl = ArrayOf(bs_var_decl, max(bs_sizes))
+
+            alignment = max(base_storage_to_align_bytes[bs_name])
+            bs_var_decl = AlignedAttribute(alignment, bs_var_decl)
+
+            body.append(bs_var_decl)
+
+        body.extend(temp_decls)
 
         # }}}
 

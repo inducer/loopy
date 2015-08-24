@@ -30,6 +30,7 @@ from loopy.symbolic import WalkMapper as LoopyWalkMapper
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
 import six  # noqa
+from six.moves import intern
 
 
 if six.PY2:
@@ -94,6 +95,21 @@ class LoopyKeyBuilder(KeyBuilderBase):
             self.update_for_NoneType(key_hash, key)
         else:
             PersistentHashWalkMapper(key_hash)(key)
+
+
+class PymbolicExpressionHashWrapper(object):
+    def __init__(self, expression):
+        self.expression = expression
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.expression == other.expression)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.update_for_pymbolic_expression(key_hash, self.expression)
 
 # }}}
 
@@ -215,5 +231,14 @@ def remove_common_indentation(code, require_leading_newline=True,
     return "\n".join(new_lines)
 
 # }}}
+
+
+def is_interned(s):
+    return s is None or intern(s) is s
+
+
+def intern_frozenset_of_ids(fs):
+    return frozenset(intern(s) for s in fs)
+
 
 # vim: foldmethod=marker

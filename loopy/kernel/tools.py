@@ -1,8 +1,6 @@
 """Operations on the kernel object."""
 
-from __future__ import division
-from __future__ import absolute_import
-import six
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -26,6 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+from six.moves import intern
 
 import numpy as np
 from islpy import dim_type
@@ -204,7 +204,7 @@ def find_all_insn_inames(kernel):
                     # current inames refer to.
 
                     if par in kernel.all_inames():
-                        inames_new.add(par)
+                        inames_new.add(intern(par))
 
                     # If something writes the bounds of a loop in which I'm
                     # sitting, I had better be in the inames that the writer is

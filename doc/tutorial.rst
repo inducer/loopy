@@ -1256,14 +1256,14 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 Counting array accesses
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-:func:`loopy.get_DRAM_access_poly` provides information on the number and type of
+:func:`loopy.get_gmem_access_poly` provides information on the number and type of
 array loads and stores being performed in a kernel. To demonstrate this, we'll
 continue using the kernel from the previous example:
 
 .. doctest::
 
-    >>> from loopy.statistics import get_DRAM_access_poly
-    >>> load_store_map = get_DRAM_access_poly(knl)
+    >>> from loopy.statistics import get_gmem_access_poly
+    >>> load_store_map = get_gmem_access_poly(knl)
     >>> print(load_store_map)
     (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
@@ -1271,7 +1271,7 @@ continue using the kernel from the previous example:
     (dtype('float64'), 'uniform', 'store') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
 
-:func:`loopy.get_DRAM_access_poly` returns a mapping of **{(**
+:func:`loopy.get_gmem_access_poly` returns a mapping of **{(**
 :class:`numpy.dtype` **,** :class:`string` **,** :class:`string` **)**
 **:** :class:`islpy.PwQPolynomial` **}**.
 
@@ -1313,7 +1313,7 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 ~~~~~~~~~~~
 
 Since we have not tagged any of the inames or parallelized the kernel across threads
-(which would have produced iname tags), :func:`loopy.get_DRAM_access_poly` considers
+(which would have produced iname tags), :func:`loopy.get_gmem_access_poly` considers
 the array accesses *uniform*. Now we'll parallelize the kernel and count the array
 accesses again. The resulting :class:`islpy.PwQPolynomial` will be more complicated
 this time, so we'll print the mapping manually to make it more legible:
@@ -1321,7 +1321,7 @@ this time, so we'll print the mapping manually to make it more legible:
 .. doctest::
 
     >>> knl_consec = lp.split_iname(knl, "k", 128, outer_tag="l.1", inner_tag="l.0")
-    >>> load_store_map = get_DRAM_access_poly(knl_consec)
+    >>> load_store_map = get_gmem_access_poly(knl_consec)
     >>> for key in sorted(load_store_map.dict.keys(), key=lambda k: str(k)):
     ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
     (dtype('float32'), 'consecutive', 'load') :
@@ -1368,7 +1368,7 @@ our parallelization of the kernel:
 .. doctest::
 
     >>> knl_nonconsec = lp.split_iname(knl, "k", 128, outer_tag="l.0", inner_tag="l.1")
-    >>> load_store_map = get_DRAM_access_poly(knl_nonconsec)
+    >>> load_store_map = get_gmem_access_poly(knl_nonconsec)
     >>> for key in sorted(load_store_map.dict.keys(), key=lambda k: str(k)):
     ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
     (dtype('float32'), 'nonconsecutive', 'load') :

@@ -27,7 +27,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 import loopy as lp
-from loopy.statistics import get_op_poly, get_DRAM_access_poly, get_barrier_poly
+from loopy.statistics import get_op_poly, get_gmem_access_poly, get_barrier_poly
 import numpy as np
 
 
@@ -185,7 +185,7 @@ def test_op_counter_triangular_domain():
         assert flops == 78
 
 
-def test_DRAM_access_counter_basic():
+def test_gmem_access_counter_basic():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -199,7 +199,7 @@ def test_DRAM_access_counter_basic():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_DRAM_access_poly(knl)
+    poly = get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -222,7 +222,7 @@ def test_DRAM_access_counter_basic():
     assert f64 == n*m
 
 
-def test_DRAM_access_counter_reduction():
+def test_gmem_access_counter_reduction():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -232,7 +232,7 @@ def test_DRAM_access_counter_reduction():
             name="matmul", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    poly = get_DRAM_access_poly(knl)
+    poly = get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -247,7 +247,7 @@ def test_DRAM_access_counter_reduction():
     assert f32 == n*l
 
 
-def test_DRAM_access_counter_logic():
+def test_gmem_access_counter_logic():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -259,7 +259,7 @@ def test_DRAM_access_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = get_DRAM_access_poly(knl)
+    poly = get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -278,7 +278,7 @@ def test_DRAM_access_counter_logic():
     assert f64 == n*m
 
 
-def test_DRAM_access_counter_specialops():
+def test_gmem_access_counter_specialops():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -292,7 +292,7 @@ def test_DRAM_access_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_DRAM_access_poly(knl)
+    poly = get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -315,7 +315,7 @@ def test_DRAM_access_counter_specialops():
     assert f64 == n*m
 
 
-def test_DRAM_access_counter_bitwise():
+def test_gmem_access_counter_bitwise():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -332,7 +332,7 @@ def test_DRAM_access_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int32, h=np.int32))
 
-    poly = get_DRAM_access_poly(knl)
+    poly = get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -347,7 +347,7 @@ def test_DRAM_access_counter_bitwise():
     assert i32 == n*m+n*m*l
 
 
-def test_DRAM_access_counter_mixed():
+def test_gmem_access_counter_mixed():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -363,7 +363,7 @@ def test_DRAM_access_counter_mixed():
     knl = lp.split_iname(knl, "j", 16)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
-    poly = get_DRAM_access_poly(knl)  # noqa
+    poly = get_gmem_access_poly(knl)  # noqa
     n = 512
     m = 256
     l = 128
@@ -386,7 +386,7 @@ def test_DRAM_access_counter_mixed():
     assert f32nonconsec == n*m*l
 
 
-def test_DRAM_access_counter_nonconsec():
+def test_gmem_access_counter_nonconsec():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -402,7 +402,7 @@ def test_DRAM_access_counter_nonconsec():
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
 
-    poly = get_DRAM_access_poly(knl)  # noqa
+    poly = get_gmem_access_poly(knl)  # noqa
     n = 512
     m = 256
     l = 128
@@ -425,7 +425,7 @@ def test_DRAM_access_counter_nonconsec():
     assert f32nonconsec == n*m*l
 
 
-def test_DRAM_access_counter_consec():
+def test_gmem_access_counter_consec():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -440,7 +440,7 @@ def test_DRAM_access_counter_consec():
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
-    poly = get_DRAM_access_poly(knl)
+    poly = get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -541,7 +541,7 @@ def test_all_counters_parallel_matmul():
     assert f32ops == n*m*l*2
     assert i32ops == n*m*l*4 + l*n*4
 
-    subscript_map = get_DRAM_access_poly(knl)
+    subscript_map = get_gmem_access_poly(knl)
     f32uncoal = subscript_map.dict[
                         (np.dtype(np.float32), 'nonconsecutive', 'load')
                         ].eval_with_dict({'n': n, 'm': m, 'l': l})

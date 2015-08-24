@@ -2094,6 +2094,86 @@ def test_vectorize(ctx_factory):
             ref_knl, ctx, knl,
             parameters=dict(n=30))
 
+
+def test_alias_temporaries(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        """
+        times2(i) := 2*a[i]
+        times3(i) := 3*a[i]
+        times4(i) := 4*a[i]
+
+        x[i] = times2(i)
+        y[i] = times3(i)
+        z[i] = times4(i)
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.0")
+
+    knl = lp.precompute(knl, "times2", "i_inner")
+    knl = lp.precompute(knl, "times3", "i_inner")
+    knl = lp.precompute(knl, "times4", "i_inner")
+
+    knl = lp.alias_temporaries(knl, ["times2_0", "times3_0", "times4_0"])
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl,
+            parameters=dict(n=30))
+
+
+def test_fusion():
+    exp_kernel = lp.make_kernel(
+         ''' { [i]: 0<=i<n } ''',
+         ''' exp[i] = pow(E, z[i])''',
+         assumptions="n>0")
+
+    sum_kernel = lp.make_kernel(
+        '{ [j]: 0<=j<n }',
+        'out2 = sum(j, exp[j])',
+        assumptions='n>0')
+
+    knl = lp.fuse_kernels([exp_kernel, sum_kernel])
+
+    print(knl)
+
+
+def test_sci_notation_literal(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    set_kernel = lp.make_kernel(
+         ''' { [i]: 0<=i<12 } ''',
+         ''' out[i] = 1e-12''')
+
+    set_kernel = lp.set_options(set_kernel, write_cl=True)
+
+    evt, (out,) = set_kernel(queue)
+
+    assert (np.abs(out.get() - 1e-12) < 1e-20).all()
+
+
+def test_to_batched(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+         ''' { [i,j]: 0<=i,j<n } ''',
+         ''' out[i] = sum(j, a[i,j]*x[j])''')
+
+    bknl = lp.to_batched(knl, "nbatches", "out,x")
+
+    a = np.random.randn(5, 5)
+    x = np.random.randn(7, 5)
+
+    bknl(queue, a=a, x=x)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

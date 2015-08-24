@@ -25,6 +25,7 @@ THE SOFTWARE.
 """
 
 
+from six.moves import intern
 import numpy as np
 from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
@@ -185,6 +186,8 @@ def parse_tag(tag):
 
 class KernelArgument(Record):
     def __init__(self, **kwargs):
+        kwargs["name"] = intern(kwargs.pop("name"))
+
         dtype = kwargs.pop("dtype", None)
 
         if isinstance(dtype, np.dtype):
@@ -312,6 +315,11 @@ class TemporaryVariable(ArrayBase):
         Whether this is temporary lives in ``local`` memory.
         May be *True*, *False*, or :class:`loopy.auto` if this is
         to be automatically determined.
+
+    .. attribute:: base_storage
+
+        The name of a storage array that is to be used to actually
+        hold the data in this temporary.
     """
 
     min_target_axes = 0
@@ -320,12 +328,14 @@ class TemporaryVariable(ArrayBase):
     allowed_extra_kwargs = [
             "storage_shape",
             "base_indices",
-            "is_local"
+            "is_local",
+            "base_storage"
             ]
 
     def __init__(self, name, dtype=None, shape=(), is_local=auto,
             dim_tags=None, offset=0, strides=None, order=None,
-            base_indices=None, storage_shape=None):
+            base_indices=None, storage_shape=None,
+            base_storage=None):
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -339,35 +349,29 @@ class TemporaryVariable(ArrayBase):
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
-        ArrayBase.__init__(self, name=name,
+        ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, order="C",
                 base_indices=base_indices, is_local=is_local,
-                storage_shape=storage_shape)
+                storage_shape=storage_shape,
+                base_storage=base_storage)
 
     @property
     def nbytes(self):
+        shape = self.shape
+        if self.storage_shape is not None:
+            shape = self.storage_shape
+
         from pytools import product
-        return product(si for si in self.shape)*self.dtype.itemsize
+        return product(si for si in shape)*self.dtype.itemsize
+
+    def decl_info(self, target, index_dtype):
+        return super(TemporaryVariable, self).decl_info(
+                target, is_written=True, index_dtype=index_dtype,
+                shape_override=self.storage_shape)
 
     def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        from cgen import ArrayOf
-        from loopy.codegen import POD  # uses the correct complex type
-        from cgen.opencl import CLLocal
-
-        temp_var_decl = POD(target, dtype, self.name)
-
-        # FIXME take into account storage_shape, or something like it
-        storage_shape = shape
-
-        if storage_shape:
-            temp_var_decl = ArrayOf(temp_var_decl,
-                    " * ".join(str(s) for s in storage_shape))
-
-        if self.is_local:
-            temp_var_decl = CLLocal(temp_var_decl)
-
-        return temp_var_decl
+        return None
 
     def __str__(self):
         return self.stringify(include_typename=False)
@@ -512,6 +516,9 @@ class InstructionBase(Record):
             forced_iname_deps_is_final, forced_iname_deps, priority,
             boostable, boostable_into, predicates, tags):
 
+        if insn_deps is None:
+            insn_deps = frozenset()
+
         if groups is None:
             groups = frozenset()
 
@@ -530,6 +537,17 @@ class InstructionBase(Record):
 
         if tags is None:
             tags = ()
+
+        # Periodically reenable these and run the tests to ensure all
+        # performance-relevant identifiers are interned.
+        #
+        # from loopy.tools import is_interned
+        # assert is_interned(id)
+        # assert all(is_interned(dep) for dep in insn_deps)
+        # assert all(is_interned(grp) for grp in groups)
+        # assert all(is_interned(grp) for grp in conflicts_with_groups)
+        # assert all(is_interned(iname) for iname in forced_iname_deps)
+        # assert all(is_interned(pred) for pred in predicates)
 
         assert isinstance(forced_iname_deps, frozenset)
         assert isinstance(insn_deps, frozenset) or insn_deps is None
@@ -649,6 +667,21 @@ class InstructionBase(Record):
             key_builder.rec(key_hash, getattr(self, field_name))
 
     # }}}
+
+    def __setstate__(self, val):
+        super(InstructionBase, self).__setstate__(val)
+
+        from loopy.tools import intern_frozenset_of_ids
+
+        self.id = intern(self.id)
+        self.insn_deps = intern_frozenset_of_ids(self.insn_deps)
+        self.groups = intern_frozenset_of_ids(self.groups)
+        self.conflicts_with_groups = (
+                intern_frozenset_of_ids(self.conflicts_with_groups))
+        self.forced_iname_deps = (
+                intern_frozenset_of_ids(self.forced_iname_deps))
+        self.predicates = (
+                intern_frozenset_of_ids(self.predicates))
 
 # }}}
 

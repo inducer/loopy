@@ -233,6 +233,18 @@ def pyopencl_preamble_generator(target, seen_dtypes, seen_functions):
 
 # {{{ pyopencl tools
 
+class _LegacyTypeRegistryStub(object):
+    """Adapts legacy PyOpenCL type registry to be usable with PyOpenCLTarget."""
+
+    def get_or_register_dtype(self, names, dtype=None):
+        from pyopencl.compyte.dtypes import get_or_register_dtype
+        return get_or_register_dtype(names, dtype)
+
+    def dtype_to_ctype(self, dtype):
+        from pyopencl.compyte.dtypes import dtype_to_ctype
+        return dtype_to_ctype(dtype)
+
+
 class PyOpenCLTarget(OpenCLTarget):
     def __init__(self, device=None):
         super(PyOpenCLTarget, self).__init__()
@@ -260,8 +272,12 @@ class PyOpenCLTarget(OpenCLTarget):
         check_sizes(kernel, self.device)
 
     def get_dtype_registry(self):
-        from pyopencl.compyte.dtypes import TYPE_REGISTRY
-        return TYPE_REGISTRY
+        try:
+            from pyopencl.compyte.dtypes import TYPE_REGISTRY
+        except ImportError:
+            return _LegacyTypeRegistryStub()
+        else:
+            return TYPE_REGISTRY
 
     def is_vector_dtype(self, dtype):
         from pyopencl.array import vec

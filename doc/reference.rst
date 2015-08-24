@@ -408,7 +408,7 @@ Dealing with Substitution Rules
 
 .. autofunction:: extract_subst
 
-.. autofunction:: temporary_to_subst
+.. autofunction:: assignment_to_subst
 
 .. autofunction:: expand_subst
 
@@ -420,6 +420,8 @@ Caching, Precomputation and Prefetching
 .. autofunction:: add_prefetch
 
 .. autofunction:: buffer_array
+
+.. autofunction:: alias_temporaries
 
 Influencing data access
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -469,6 +471,11 @@ Arguments
 .. autofunction:: infer_unknown_types
 
 .. autofunction:: add_and_infer_dtypes
+
+Batching
+^^^^^^^^
+
+.. autofunction:: to_batched
 
 Finishing up
 ^^^^^^^^^^^^
@@ -528,7 +535,7 @@ Obtaining Kernel Statistics
 
 .. autofunction:: get_op_poly
 
-.. autofunction:: get_DRAM_access_poly
+.. autofunction:: get_gmem_access_poly
 
 .. autofunction:: get_barrier_poly
 

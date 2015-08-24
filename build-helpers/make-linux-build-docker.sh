@@ -1,5 +1,7 @@
 #! /bin/bash
 
+# should be run in this directory (build-helpers)
+
 set -e
 set -x
 

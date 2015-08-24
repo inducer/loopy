@@ -25,7 +25,7 @@ THE SOFTWARE.
 """
 
 import six
-from six.moves import range, zip
+from six.moves import range, zip, intern
 
 import numpy as np
 from pytools import RecordWithoutPickling, Record, memoize_method
@@ -335,6 +335,9 @@ class LoopKernel(RecordWithoutPickling):
     def all_variable_names(self):
         return (
                 set(six.iterkeys(self.temporary_variables))
+                | set(tv.base_storage
+                    for tv in six.itervalues(self.temporary_variables)
+                    if tv.base_storage is not None)
                 | set(six.iterkeys(self.substitutions))
                 | set(arg.name for arg in self.args)
                 | set(self.all_inames()))
@@ -351,7 +354,18 @@ class LoopKernel(RecordWithoutPickling):
 
         for id_str in generate_unique_names(based_on):
             if id_str not in used_ids:
-                return id_str
+                return intern(id_str)
+
+    def all_group_names(self):
+        result = set()
+        for insn in self.instructions:
+            result.update(insn.groups)
+            result.update(insn.conflicts_with_groups)
+
+        return frozenset(result)
+
+    def get_group_name_generator(self):
+        return _UniqueVarNameGenerator(set(self.all_group_names()))
 
     def get_var_descriptor(self, name):
         try:
@@ -577,7 +591,8 @@ class LoopKernel(RecordWithoutPickling):
     def all_inames(self):
         result = set()
         for dom in self.domains:
-            result.update(dom.get_var_names(dim_type.set))
+            result.update(
+                    intern(n) for n in dom.get_var_names(dim_type.set))
         return frozenset(result)
 
     @memoize_method
@@ -588,7 +603,8 @@ class LoopKernel(RecordWithoutPickling):
         for dom in self.domains:
             result.update(set(dom.get_var_names(dim_type.param)) - all_inames)
 
-        return frozenset(result)
+        from loopy.tools import intern_frozenset_of_ids
+        return intern_frozenset_of_ids(result)
 
     def outer_params(self, domains=None):
         if domains is None:
@@ -600,7 +616,8 @@ class LoopKernel(RecordWithoutPickling):
             all_inames.update(dom.get_var_names(dim_type.set))
             all_params.update(dom.get_var_names(dim_type.param))
 
-        return all_params-all_inames
+        from loopy.tools import intern_frozenset_of_ids
+        return intern_frozenset_of_ids(all_params-all_inames)
 
     @memoize_method
     def all_insn_inames(self):
@@ -746,6 +763,15 @@ class LoopKernel(RecordWithoutPickling):
                 var_name
                 for insn in self.instructions
                 for var_name, _ in insn.assignees_and_indices())
+
+    @memoize_method
+    def get_temporary_to_base_storage_map(self):
+        result = {}
+        for tv in six.itervalues(self.temporary_variables):
+            if tv.base_storage:
+                result[tv.name] = tv.base_storage
+
+        return result
 
     # }}}
 

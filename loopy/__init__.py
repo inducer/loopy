@@ -54,7 +54,7 @@ from loopy.kernel.tools import (
         add_and_infer_dtypes)
 from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
-from loopy.subst import extract_subst, expand_subst, temporary_to_subst
+from loopy.subst import extract_subst, expand_subst, assignment_to_subst
 from loopy.precompute import precompute
 from loopy.buffer import buffer_array
 from loopy.fusion import fuse_kernels
@@ -63,7 +63,8 @@ from loopy.padding import (split_arg_axis, find_padding_multiple,
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         infer_unknown_types)
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import get_op_poly, get_DRAM_access_poly, get_barrier_poly
+from loopy.statistics import (get_op_poly, get_gmem_access_poly,
+        get_DRAM_access_poly, get_barrier_poly)
 from loopy.codegen import generate_code, generate_body
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
@@ -89,7 +90,7 @@ __all__ = [
 
         "register_reduction_parser",
 
-        "extract_subst", "expand_subst", "temporary_to_subst",
+        "extract_subst", "expand_subst", "assignment_to_subst",
         "precompute", "buffer_array",
         "fuse_kernels",
         "split_arg_axis", "find_padding_multiple", "add_padding",
@@ -103,7 +104,8 @@ __all__ = [
         "generate_loop_schedules", "get_one_scheduled_kernel",
         "generate_code", "generate_body",
 
-        "get_op_poly", "get_DRAM_access_poly", "get_barrier_poly",
+        "get_op_poly", "get_gmem_access_poly", "get_DRAM_access_poly",
+        "get_barrier_poly",
 
         "CompiledKernel",
 
@@ -660,22 +662,92 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 # }}}
 
 
-def rename_iname(knl, old_iname, new_iname, within):
+# {{{ rename_inames
+
+def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
     """
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
+    :arg existing_ok: execute even if *new_iname* already exists
     """
 
     var_name_gen = knl.get_var_name_generator()
 
-    if var_name_gen.is_name_conflicting(new_iname):
+    does_exist = var_name_gen.is_name_conflicting(new_iname)
+
+    if does_exist and not existing_ok:
         raise ValueError("iname '%s' conflicts with an existing identifier"
                 "--cannot rename" % new_iname)
 
-    knl = duplicate_inames(knl, [old_iname], within=within, new_inames=[new_iname])
+    if does_exist:
+        # {{{ check that the domains match up
+
+        dom = knl.get_inames_domain(frozenset((old_iname, new_iname)))
+
+        var_dict = dom.get_var_dict()
+        _, old_idx = var_dict[old_iname]
+        _, new_idx = var_dict[new_iname]
+
+        par_idx = dom.dim(dim_type.param)
+        dom_old = dom.move_dims(
+                dim_type.param, par_idx, dim_type.set, old_idx, 1)
+        dom_old = dom_old.move_dims(
+                dim_type.set, dom_old.dim(dim_type.set), dim_type.param, par_idx, 1)
+        dom_old = dom_old.project_out(
+                dim_type.set, new_idx if new_idx < old_idx else new_idx - 1, 1)
+
+        par_idx = dom.dim(dim_type.param)
+        dom_new = dom.move_dims(
+                dim_type.param, par_idx, dim_type.set, new_idx, 1)
+        dom_new = dom_new.move_dims(
+                dim_type.set, dom_new.dim(dim_type.set), dim_type.param, par_idx, 1)
+        dom_new = dom_new.project_out(
+                dim_type.set, old_idx if old_idx < new_idx else old_idx - 1, 1)
+
+        if not (dom_old <= dom_new and dom_new <= dom_old):
+            raise LoopyError(
+                    "inames {old} and {new} do not iterate over the same domain"
+                    .format(old=old_iname, new=new_iname))
+
+        # }}}
+
+        from pymbolic import var
+        subst_dict = {old_iname: var(new_iname)}
+
+        from loopy.context_matching import parse_stack_match
+        within = parse_stack_match(within)
+
+        from pymbolic.mapper.substitutor import make_subst_func
+        rule_mapping_context = SubstitutionRuleMappingContext(
+                knl.substitutions, var_name_gen)
+        ijoin = RuleAwareSubstitutionMapper(rule_mapping_context,
+                        make_subst_func(subst_dict), within)
+
+        knl = rule_mapping_context.finish_kernel(
+                ijoin.map_kernel(knl))
+
+        new_instructions = []
+        for insn in knl.instructions:
+            if (old_iname in insn.forced_iname_deps
+                    and within(knl, insn, ())):
+                insn = insn.copy(
+                        forced_iname_deps=(
+                            (insn.forced_iname_deps - frozenset([old_iname]))
+                            | frozenset([new_iname])))
+
+            new_instructions.append(insn)
+
+        knl = knl.copy(instructions=new_instructions)
+
+    else:
+        knl = duplicate_inames(
+                knl, [old_iname], within=within, new_inames=[new_iname])
+
     knl = remove_unused_inames(knl, [old_iname])
 
     return knl
+
+# }}}
 
 
 # {{{ link inames
@@ -1842,6 +1914,178 @@ def tag_instructions(kernel, new_tag, within=None):
             new_insns.append(insn)
 
     return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
+# {{{ alias_temporaries
+
+def alias_temporaries(knl, names, base_name_prefix=None):
+    """Sets all temporaries given by *names* to be backed by a single piece of
+    storage. Also introduces ordering structures ("groups") to prevent the
+    usage of each temporary to interfere with another.
+
+    :arg base_name_prefix: an identifier to be used for the common storage
+        area
+    """
+    gng = knl.get_group_name_generator()
+    group_names = [gng("tmpgrp_"+name) for name in names]
+
+    if base_name_prefix is None:
+        base_name_prefix = "temp_storage"
+
+    vng = knl.get_var_name_generator()
+    base_name = vng(base_name_prefix)
+
+    names_set = set(names)
+
+    new_insns = []
+    for insn in knl.instructions:
+        temp_deps = insn.dependency_names() & names_set
+
+        if not temp_deps:
+            new_insns.append(insn)
+            continue
+
+        if len(temp_deps) > 1:
+            raise LoopyError("Instruction {insn} refers to multiple of the "
+                    "temporaries being aliased, namely '{temps}'. Cannot alias."
+                    .format(
+                        insn=insn.id,
+                        temps=", ".join(temp_deps)))
+
+        temp_name, = temp_deps
+        temp_idx = names.index(temp_name)
+        group_name = group_names[temp_idx]
+        other_group_names = (
+                frozenset(group_names[:temp_idx])
+                | frozenset(group_names[temp_idx+1:]))
+
+        new_insns.append(
+                insn.copy(
+                    groups=insn.groups | frozenset([group_name]),
+                    conflicts_with_groups=(
+                        insn.conflicts_with_groups | other_group_names)))
+
+    new_temporary_variables = {}
+    for tv in six.itervalues(knl.temporary_variables):
+        if tv.name in names_set:
+            if tv.base_storage is not None:
+                raise LoopyError("temporary variable '{tv}' already has "
+                        "a defined storage array -- cannot alias"
+                        .format(tv=tv.name))
+
+            new_temporary_variables[tv.name] = \
+                    tv.copy(base_storage=base_name)
+        else:
+            new_temporary_variables[tv.name] = tv
+
+    return knl.copy(
+            instructions=new_insns,
+            temporary_variables=new_temporary_variables)
+
+# }}}
+
+
+# {{{ to_batched
+
+class _BatchVariableChanger(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, kernel, batch_varying_args,
+            batch_iname_expr):
+        super(_BatchVariableChanger, self).__init__(rule_mapping_context)
+
+        self.kernel = kernel
+        self.batch_varying_args = batch_varying_args
+        self.batch_iname_expr = batch_iname_expr
+
+    def needs_batch_subscript(self, name):
+        return (
+                name in self.kernel.temporary_variables
+                or
+                name in self.batch_varying_args)
+
+    def map_subscript(self, expr, expn_state):
+        if not self.needs_batch_subscript(expr.aggregate.name):
+            return super(_BatchVariableChanger, self).map_subscript(expr, expn_state)
+
+        idx = expr.index
+        if not isinstance(idx, tuple):
+            idx = (idx,)
+
+        return type(expr)(expr.aggregate, (self.batch_iname_expr,) + idx)
+
+    def map_variable(self, expr, expn_state):
+        if not self.needs_batch_subscript(expr.name):
+            return super(_BatchVariableChanger, self).map_variable(expr, expn_state)
+
+        return expr.aggregate[self.batch_iname_expr]
+
+
+def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch"):
+    """Takes in a kernel that carries out an operation and returns a kernel
+    that carries out a batch of these operations.
+
+    :arg nbatches: the number of batches. May be a constant non-negative
+        integer or a string, which will be added as an integer argument.
+    :arg batch_varying_args: a list of argument names that depend vary per-batch.
+        Each such variable will have a batch index added.
+    """
+
+    from pymbolic import var
+
+    vng = knl.get_var_name_generator()
+    batch_iname = vng(batch_iname_prefix)
+    batch_iname_expr = var(batch_iname)
+
+    new_args = []
+
+    batch_dom_str = "{[%(iname)s]: 0 <= %(iname)s < %(nbatches)s}" % {
+            "iname": batch_iname,
+            "nbatches": nbatches,
+            }
+
+    if not isinstance(nbatches, int):
+        batch_dom_str = "[%s] -> " % nbatches + batch_dom_str
+        new_args.append(ValueArg(nbatches, dtype=knl.index_dtype))
+
+        nbatches_expr = var(nbatches)
+    else:
+        nbatches_expr = nbatches
+
+    batch_domain = isl.BasicSet(batch_dom_str)
+    new_domains = [batch_domain] + knl.domains
+
+    for arg in knl.args:
+        if arg.name in batch_varying_args:
+            if isinstance(arg, ValueArg):
+                arg = GlobalArg(arg.name, arg.dtype, shape=(nbatches_expr,),
+                        dim_tags="c")
+            else:
+                arg = arg.copy(
+                        shape=(nbatches_expr,) + arg.shape,
+                        dim_tags=("c",) * (len(arg.shape) + 1))
+
+        new_args.append(arg)
+
+    new_temps = {}
+
+    for temp in six.itervalues(knl.temporary_variables):
+        new_temps[temp.name] = temp.copy(
+                shape=(nbatches_expr,) + temp.shape,
+                dim_tags=("c",) * (len(arg.shape) + 1))
+
+    knl = knl.copy(
+            domains=new_domains,
+            args=new_args,
+            temporary_variables=new_temps)
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            knl.substitutions, vng)
+    bvc = _BatchVariableChanger(rule_mapping_context,
+            knl, batch_varying_args, batch_iname_expr)
+    return rule_mapping_context.finish_kernel(
+            bvc.map_kernel(knl))
+
 
 # }}}
 

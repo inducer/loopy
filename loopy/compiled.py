@@ -35,6 +35,9 @@ from pytools.py_codegen import (
         Indentation, PythonFunctionGenerator)
 from loopy.diagnostic import LoopyError
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # {{{ object array argument packing
 
@@ -716,11 +719,15 @@ def generate_invoker(kernel, cl_kernel, impl_arg_info, options):
     if not lsize_expr:
         lsize_expr = (1,)
 
+    def strify_tuple(t):
+        return "(%s,)" % (
+                ", ".join("int(%s)" % strify(t_i) for t_i in t))
+
     gen("_lpy_evt = _lpy_cl.enqueue_nd_range_kernel(queue, cl_kernel, "
             "%(gsize)s, %(lsize)s,  wait_for=wait_for, g_times_l=True)"
             % dict(
-                gsize=strify(gsize_expr),
-                lsize=strify(lsize_expr)))
+                gsize=strify_tuple(gsize_expr),
+                lsize=strify_tuple(lsize_expr)))
     gen("")
 
     # }}}
@@ -858,10 +865,13 @@ class CompiledKernel:
             code = invoke_editor(code, "code.cl")
 
         import pyopencl as cl
+
+        logger.info("%s: opencl compilation start" % self.kernel.name)
         cl_program = cl.Program(self.context, code)
         cl_kernel = getattr(
                 cl_program.build(options=kernel.options.cl_build_options),
                 kernel.name)
+        logger.info("%s: opencl compilation done" % self.kernel.name)
 
         return _CLKernelInfo(
                 kernel=kernel,

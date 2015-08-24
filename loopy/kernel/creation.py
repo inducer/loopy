@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 
 import numpy as np
+from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
         InstructionBase, ExpressionInstruction, SubstitutionRule)
@@ -33,7 +34,7 @@ import islpy as isl
 from islpy import dim_type
 
 import six
-from six.moves import range, zip
+from six.moves import range, zip, intern
 
 import re
 import sys
@@ -216,7 +217,7 @@ def parse_insn(insn):
                     opt_value = option[equal_idx+1:].strip()
 
                 if opt_key == "id":
-                    insn_id = opt_value
+                    insn_id = intern(opt_value)
                 elif opt_key == "id_prefix":
                     insn_id = UniqueName(opt_value)
                 elif opt_key == "priority":
@@ -235,17 +236,18 @@ def parse_insn(insn):
                         insn_deps_is_final = True
                         opt_value = (opt_value[1:]).strip()
 
-                    insn_deps = frozenset(dep.strip() for dep in opt_value.split(":")
+                    insn_deps = frozenset(
+                            intern(dep.strip()) for dep in opt_value.split(":")
                             if dep.strip())
 
                 elif opt_key == "groups":
                     insn_groups = frozenset(
-                            grp.strip() for grp in opt_value.split(":")
+                            intern(grp.strip()) for grp in opt_value.split(":")
                             if grp.strip())
 
                 elif opt_key == "conflicts":
                     conflicts_with_groups = frozenset(
-                            grp.strip() for grp in opt_value.split(":")
+                            intern(grp.strip()) for grp in opt_value.split(":")
                             if grp.strip())
 
                 elif opt_key == "inames":
@@ -255,10 +257,10 @@ def parse_insn(insn):
                     else:
                         forced_iname_deps_is_final = True
 
-                    forced_iname_deps = frozenset(opt_value.split(":"))
+                    forced_iname_deps = intern_frozenset_of_ids(opt_value.split(":"))
 
                 elif opt_key == "if":
-                    predicates = frozenset(opt_value.split(":"))
+                    predicates = intern_frozenset_of_ids(opt_value.split(":"))
 
                 elif opt_key == "tags":
                     tags = tuple(
@@ -284,7 +286,10 @@ def parse_insn(insn):
                     "be variable or subscript" % lhs)
 
         return ExpressionInstruction(
-                    id=insn_id,
+                    id=(
+                        intern(insn_id)
+                        if isinstance(insn_id, str)
+                        else insn_id),
                     insn_deps=insn_deps,
                     insn_deps_is_final=insn_deps_is_final,
                     groups=insn_groups,
@@ -326,7 +331,17 @@ def parse_insn(insn):
 
 def parse_if_necessary(insn, defines):
     if isinstance(insn, InstructionBase):
-        yield insn, []
+        yield insn.copy(
+                id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
+                insn_deps=frozenset(intern(dep) for dep in insn.insn_deps),
+                groups=frozenset(intern(grp) for grp in insn.groups),
+                conflicts_with_groups=frozenset(
+                    intern(grp) for grp in insn.conflicts_with_groups),
+                forced_iname_deps=frozenset(
+                    intern(iname) for iname in insn.forced_iname_deps),
+                predicates=frozenset(
+                    intern(pred) for pred in insn.predicates),
+                ), []
         return
     elif not isinstance(insn, str):
         raise TypeError("Instructions must be either an Instruction "
@@ -692,7 +707,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             return var
 
 
-def expand_cses(knl):
+def expand_cses(instructions, cse_prefix="cse_expr"):
     def add_assignment(base_name, expr, dtype):
         if base_name is None:
             base_name = "var"
@@ -706,16 +721,15 @@ def expand_cses(knl):
             dtype = np.dtype(dtype)
 
         from loopy.kernel.data import TemporaryVariable
-        new_temp_vars[new_var_name] = TemporaryVariable(
+        new_temp_vars.append(TemporaryVariable(
                 name=new_var_name,
                 dtype=dtype,
                 is_local=lp.auto,
-                shape=())
+                shape=()))
 
         from pymbolic.primitives import Variable
         new_insn = ExpressionInstruction(
-                id=knl.make_unique_instruction_id(
-                    extra_used_ids=newly_created_insn_ids),
+                id=None,
                 assignee=Variable(new_var_name), expression=expr,
                 predicates=insn.predicates)
         newly_created_insn_ids.add(new_insn.id)
@@ -727,20 +741,19 @@ def expand_cses(knl):
 
     new_insns = []
 
-    var_name_gen = knl.get_var_name_generator()
+    from pytools import UniqueNameGenerator
+    var_name_gen = UniqueNameGenerator(forced_prefix=cse_prefix)
 
     newly_created_insn_ids = set()
-    new_temp_vars = knl.temporary_variables.copy()
+    new_temp_vars = []
 
-    for insn in knl.instructions:
+    for insn in instructions:
         if isinstance(insn, ExpressionInstruction):
             new_insns.append(insn.copy(expression=cseam(insn.expression)))
         else:
             new_insns.append(insn)
 
-    return knl.copy(
-            instructions=new_insns,
-            temporary_variables=new_temp_vars)
+    return (new_insns, new_temp_vars)
 
 # }}}
 
@@ -1169,6 +1182,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # }}}
 
+    instructions, cse_temp_vars = expand_cses(instructions)
+    for tv in cse_temp_vars:
+        temporary_variables[tv.name] = tv
+    del cse_temp_vars
+
     domains = parse_domains(domains, defines)
 
     arg_guesser = ArgumentGuesser(domains, instructions,
@@ -1194,10 +1212,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     check_for_nonexistent_iname_deps(knl)
 
-    knl = tag_reduction_inames_as_sequential(knl)
     knl = create_temporaries(knl, default_order)
     knl = determine_shapes_of_temporaries(knl)
-    knl = expand_cses(knl)
+    knl = tag_reduction_inames_as_sequential(knl)
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
