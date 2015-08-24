@@ -35,6 +35,9 @@ from pytools.py_codegen import (
         Indentation, PythonFunctionGenerator)
 from loopy.diagnostic import LoopyError
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # {{{ object array argument packing
 
@@ -862,10 +865,13 @@ class CompiledKernel:
             code = invoke_editor(code, "code.cl")
 
         import pyopencl as cl
+
+        logger.info("%s: opencl compilation start" % self.kernel.name)
         cl_program = cl.Program(self.context, code)
         cl_kernel = getattr(
                 cl_program.build(options=kernel.options.cl_build_options),
                 kernel.name)
+        logger.info("%s: opencl compilation done" % self.kernel.name)
 
         return _CLKernelInfo(
                 kernel=kernel,
