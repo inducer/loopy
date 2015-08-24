@@ -707,7 +707,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             return var
 
 
-def expand_cses(knl):
+def expand_cses(instructions, cse_prefix="cse_expr"):
     def add_assignment(base_name, expr, dtype):
         if base_name is None:
             base_name = "var"
@@ -721,16 +721,15 @@ def expand_cses(knl):
             dtype = np.dtype(dtype)
 
         from loopy.kernel.data import TemporaryVariable
-        new_temp_vars[new_var_name] = TemporaryVariable(
+        new_temp_vars.append(TemporaryVariable(
                 name=new_var_name,
                 dtype=dtype,
                 is_local=lp.auto,
-                shape=())
+                shape=()))
 
         from pymbolic.primitives import Variable
         new_insn = ExpressionInstruction(
-                id=knl.make_unique_instruction_id(
-                    extra_used_ids=newly_created_insn_ids),
+                id=None,
                 assignee=Variable(new_var_name), expression=expr,
                 predicates=insn.predicates)
         newly_created_insn_ids.add(new_insn.id)
@@ -742,20 +741,19 @@ def expand_cses(knl):
 
     new_insns = []
 
-    var_name_gen = knl.get_var_name_generator()
+    from pytools import UniqueNameGenerator
+    var_name_gen = UniqueNameGenerator(forced_prefix=cse_prefix)
 
     newly_created_insn_ids = set()
-    new_temp_vars = knl.temporary_variables.copy()
+    new_temp_vars = []
 
-    for insn in knl.instructions:
+    for insn in instructions:
         if isinstance(insn, ExpressionInstruction):
             new_insns.append(insn.copy(expression=cseam(insn.expression)))
         else:
             new_insns.append(insn)
 
-    return knl.copy(
-            instructions=new_insns,
-            temporary_variables=new_temp_vars)
+    return (new_insns, new_temp_vars)
 
 # }}}
 
@@ -1184,6 +1182,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # }}}
 
+    instructions, cse_temp_vars = expand_cses(instructions)
+    for tv in cse_temp_vars:
+        temporary_variables[tv.name] = tv
+    del cse_temp_vars
+
     domains = parse_domains(domains, defines)
 
     arg_guesser = ArgumentGuesser(domains, instructions,
@@ -1209,10 +1212,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     check_for_nonexistent_iname_deps(knl)
 
-    knl = tag_reduction_inames_as_sequential(knl)
     knl = create_temporaries(knl, default_order)
     knl = determine_shapes_of_temporaries(knl)
-    knl = expand_cses(knl)
+    knl = tag_reduction_inames_as_sequential(knl)
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
