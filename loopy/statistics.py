@@ -55,7 +55,7 @@ class ToCountMap:
                                 "to {} {}. ToCountMap may only be added to "
                                 "0 and other ToCountMap objects."
                                 .format(type(other), other))
-            return
+
         return self
 
     def __mul__(self, other):
@@ -207,7 +207,7 @@ class ExpressionOpCounter(CombineMapper):
                                   "map_slice not implemented.")
 
 
-class ExpressionSubscriptCounter(CombineMapper):
+class GlobalSubscriptCounter(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
@@ -345,12 +345,12 @@ class ExpressionSubscriptCounter(CombineMapper):
     map_logical_and = map_logical_or
 
     def map_if(self, expr):
-        warnings.warn("ExpressionSubscriptCounter counting DRAM accesses as "
+        warnings.warn("GlobalSubscriptCounter counting DRAM accesses as "
                       "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("ExpressionSubscriptCounter counting DRAM accesses as "
+        warnings.warn("GlobalSubscriptCounter counting DRAM accesses as "
                       "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
@@ -358,22 +358,22 @@ class ExpressionSubscriptCounter(CombineMapper):
     map_max = map_min
 
     def map_common_subexpression(self, expr):
-        raise NotImplementedError("ExpressionSubscriptCounter encountered "
+        raise NotImplementedError("GlobalSubscriptCounter encountered "
                                   "common_subexpression, "
                                   "map_common_subexpression not implemented.")
 
     def map_substitution(self, expr):
-        raise NotImplementedError("ExpressionSubscriptCounter encountered "
+        raise NotImplementedError("GlobalSubscriptCounter encountered "
                                   "substitution, "
                                   "map_substitution not implemented.")
 
     def map_derivative(self, expr):
-        raise NotImplementedError("ExpressionSubscriptCounter encountered "
+        raise NotImplementedError("GlobalSubscriptCounter encountered "
                                   "derivative, "
                                   "map_derivative not implemented.")
 
     def map_slice(self, expr):
-        raise NotImplementedError("ExpressionSubscriptCounter encountered slice, "
+        raise NotImplementedError("GlobalSubscriptCounter encountered slice, "
                                   "map_slice not implemented.")
 
 
@@ -450,9 +450,8 @@ def get_op_poly(knl):
     return op_poly
 
 
-def get_DRAM_access_poly(knl):  # for now just counting subscripts
-
-    """Count the number of DRAM accesses in a loopy kernel.
+def get_gmem_access_poly(knl):  # for now just counting subscripts
+    """Count the number of global memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
                     counted.
@@ -477,7 +476,7 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
 
         # (first create loopy kernel and specify array data types)
 
-        subscript_map = get_DRAM_access_poly(knl)
+        subscript_map = get_gmem_access_poly(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
 
         f32_uncoalesced_load = subscript_map.dict[
@@ -499,7 +498,7 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
     knl = preprocess_kernel(knl)
 
     subs_poly = 0
-    subscript_counter = ExpressionSubscriptCounter(knl)
+    subscript_counter = GlobalSubscriptCounter(knl)
     for insn in knl.instructions:
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
@@ -516,6 +515,13 @@ def get_DRAM_access_poly(knl):  # for now just counting subscripts
 
         subs_poly = subs_poly + (subs_expr + subs_assignee)*count(knl, domain)
     return subs_poly
+
+
+def get_DRAM_access_poly(knl):
+    from warnings import warn
+    warn("get_DRAM_access_poly is deprecated. Use get_gmem_access_poly instead",
+            DeprecationWarning, stacklevel=2)
+    return get_gmem_access_poly(knl)
 
 
 def get_barrier_poly(knl):

@@ -63,7 +63,8 @@ from loopy.padding import (split_arg_axis, find_padding_multiple,
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         infer_unknown_types)
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import get_op_poly, get_DRAM_access_poly, get_barrier_poly
+from loopy.statistics import (get_op_poly, get_gmem_access_poly,
+        get_DRAM_access_poly, get_barrier_poly)
 from loopy.codegen import generate_code, generate_body
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
@@ -103,7 +104,8 @@ __all__ = [
         "generate_loop_schedules", "get_one_scheduled_kernel",
         "generate_code", "generate_body",
 
-        "get_op_poly", "get_DRAM_access_poly", "get_barrier_poly",
+        "get_op_poly", "get_gmem_access_poly", "get_DRAM_access_poly",
+        "get_barrier_poly",
 
         "CompiledKernel",
 
