@@ -1233,7 +1233,7 @@ the :class:`loopy.LoopKernel` *inames*). We'll print this map now:
 
 .. doctest::
 
-    >>> print(op_map)
+    >>> print(lp.stringify_stats_mapping(op_map))
     float32 : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     float64 : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
     int32 : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }

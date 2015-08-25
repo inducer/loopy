@@ -49,9 +49,9 @@ def test_op_counter_basic():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 3*n*m*l
     assert f64 == n*m
     assert i32 == n*m*2
@@ -71,7 +71,7 @@ def test_op_counter_reduction():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 2*n*m*l
 
 
@@ -91,9 +91,9 @@ def test_op_counter_logic():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == n*m
     assert f64 == 3*n*m
     assert i32 == n*m
@@ -117,9 +117,9 @@ def test_op_counter_specialops():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f32 = poly[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 4*n*m*l
     assert f64 == 3*n*m
     assert i32 == n*m
@@ -146,8 +146,8 @@ def test_op_counter_bitwise():
     n = 512
     m = 256
     l = 128
-    i32 = poly.dict[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i64 = poly.dict[np.dtype(np.int64)].eval_with_dict({'n': n, 'm': m, 'l': l})  # noqa
+    i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    i64 = poly[np.dtype(np.int64)].eval_with_dict({'n': n, 'm': m, 'l': l})  # noqa
     f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert i32 == n*m+3*n*m*l
     assert i64 == 6*n*m
@@ -203,19 +203,19 @@ def test_gmem_access_counter_basic():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[
+    f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'load')
                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[
+    f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 3*n*m*l
     assert f64 == 2*n*m
 
-    f32 = poly.dict[
+    f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'store')
                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[
+    f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'store')
                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == n*m*l
@@ -236,12 +236,12 @@ def test_gmem_access_counter_reduction():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[
+    f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 2*n*m*l
 
-    f32 = poly.dict[
+    f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == n*l
@@ -263,16 +263,16 @@ def test_gmem_access_counter_logic():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[
+    f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[
+    f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 2*n*m
     assert f64 == n*m
 
-    f64 = poly.dict[
+    f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f64 == n*m
@@ -296,19 +296,19 @@ def test_gmem_access_counter_specialops():
     n = 512
     m = 256
     l = 128
-    f32 = poly.dict[
+    f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[
+    f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == 2*n*m*l
     assert f64 == 2*n*m
 
-    f32 = poly.dict[
+    f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly.dict[
+    f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f32 == n*m*l
@@ -336,12 +336,12 @@ def test_gmem_access_counter_bitwise():
     n = 512
     m = 256
     l = 128
-    i32 = poly.dict[
+    i32 = poly[
                     (np.dtype(np.int32), 'uniform', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert i32 == 4*n*m+2*n*m*l
 
-    i32 = poly.dict[
+    i32 = poly[
                     (np.dtype(np.int32), 'uniform', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert i32 == n*m+n*m*l
@@ -367,19 +367,19 @@ def test_gmem_access_counter_mixed():
     n = 512
     m = 256
     l = 128
-    f64uniform = poly.dict[
+    f64uniform = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f32nonconsec = poly.dict[
+    f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f64uniform == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
-    f64uniform = poly.dict[
+    f64uniform = poly[
                     (np.dtype(np.float64), 'uniform', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f32nonconsec = poly.dict[
+    f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f64uniform == n*m
@@ -406,19 +406,19 @@ def test_gmem_access_counter_nonconsec():
     n = 512
     m = 256
     l = 128
-    f64nonconsec = poly.dict[
+    f64nonconsec = poly[
                     (np.dtype(np.float64), 'nonconsecutive', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f32nonconsec = poly.dict[
+    f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
-    f64nonconsec = poly.dict[
+    f64nonconsec = poly[
                     (np.dtype(np.float64), 'nonconsecutive', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f32nonconsec = poly.dict[
+    f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f64nonconsec == n*m
@@ -445,19 +445,19 @@ def test_gmem_access_counter_consec():
     m = 256
     l = 128
 
-    f64consec = poly.dict[
+    f64consec = poly[
                     (np.dtype(np.float64), 'consecutive', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f32consec = poly.dict[
+    f32consec = poly[
                     (np.dtype(np.float32), 'consecutive', 'load')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f64consec == 2*n*m
     assert f32consec == 3*n*m*l
 
-    f64consec = poly.dict[
+    f64consec = poly[
                     (np.dtype(np.float64), 'consecutive', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f32consec = poly.dict[
+    f32consec = poly[
                     (np.dtype(np.float32), 'consecutive', 'store')
                     ].eval_with_dict({'n': n, 'm': m, 'l': l})
     assert f64consec == n*m
@@ -531,10 +531,10 @@ def test_all_counters_parallel_matmul():
     assert barrier_count == 0
 
     op_map = get_op_poly(knl)
-    f32ops = op_map.dict[
+    f32ops = op_map[
                         np.dtype(np.float32)
                         ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i32ops = op_map.dict[
+    i32ops = op_map[
                         np.dtype(np.int32)
                         ].eval_with_dict({'n': n, 'm': m, 'l': l})
 
@@ -542,17 +542,17 @@ def test_all_counters_parallel_matmul():
     assert i32ops == n*m*l*4 + l*n*4
 
     subscript_map = get_gmem_access_poly(knl)
-    f32uncoal = subscript_map.dict[
+    f32uncoal = subscript_map[
                         (np.dtype(np.float32), 'nonconsecutive', 'load')
                         ].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f32coal = subscript_map.dict[
+    f32coal = subscript_map[
                         (np.dtype(np.float32), 'consecutive', 'load')
                         ].eval_with_dict({'n': n, 'm': m, 'l': l})
 
     assert f32uncoal == n*m*l
     assert f32coal == n*m*l
 
-    f32coal = subscript_map.dict[
+    f32coal = subscript_map[
                         (np.dtype(np.float32), 'consecutive', 'store')
                         ].eval_with_dict({'n': n, 'm': m, 'l': l})
 
