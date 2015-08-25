@@ -437,7 +437,7 @@ def get_op_poly(knl):
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
-    op_poly = 0
+    op_poly = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
         # how many times is this instruction executed?
@@ -447,6 +447,7 @@ def get_op_poly(knl):
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
         ops = op_counter(insn.assignee) + op_counter(insn.expression)
         op_poly = op_poly + ops*count(knl, domain)
+
     return op_poly
 
 
@@ -497,7 +498,7 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
-    subs_poly = 0
+    subs_poly = ToCountMap()
     subscript_counter = GlobalSubscriptCounter(knl)
     for insn in knl.instructions:
         insn_inames = knl.insn_inames(insn)
@@ -514,6 +515,7 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
             for key, val in six.iteritems(subs_assignee.dict)))
 
         subs_poly = subs_poly + (subs_expr + subs_assignee)*count(knl, domain)
+
     return subs_poly
 
 
@@ -552,7 +554,7 @@ def get_barrier_poly(knl):
     knl = preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
     iname_list = []
-    barrier_poly = isl.PwQPolynomial('{ 0 }')  # 0
+    barrier_poly = isl.PwQPolynomial('{ 0 }')
 
     for sched_item in knl.schedule:
         if isinstance(sched_item, EnterLoop):
