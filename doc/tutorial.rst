@@ -1264,7 +1264,7 @@ continue using the kernel from the previous example:
 
     >>> from loopy.statistics import get_gmem_access_poly
     >>> load_store_map = get_gmem_access_poly(knl)
-    >>> print(load_store_map)
+    >>> print(lp.stringify_stats_mapping(load_store_map))
     (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }

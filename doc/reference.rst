@@ -537,6 +537,8 @@ Obtaining Kernel Statistics
 
 .. autofunction:: get_gmem_access_poly
 
+.. autofunction:: sum_mem_access_to_bytes
+
 .. autofunction:: get_barrier_poly
 
 .. vim: tw=75:spell
