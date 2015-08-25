@@ -148,10 +148,9 @@ def test_op_counter_bitwise():
     l = 128
     i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
     i64 = poly[np.dtype(np.int64)].eval_with_dict({'n': n, 'm': m, 'l': l})  # noqa
-    f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    assert np.dtype(np.float64) not in poly
     assert i32 == n*m+3*n*m*l
     assert i64 == 6*n*m
-    assert f64 == 0
 
 
 def test_op_counter_triangular_domain():

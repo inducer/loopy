@@ -595,4 +595,4 @@ def get_barrier_poly(knl):
             else:
                 barrier_poly += isl.PwQPolynomial('{ 1 }')
 
-    return barrier_poly.dict
+    return barrier_poly
