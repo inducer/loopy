@@ -41,7 +41,7 @@ setup(name="loo.py",
           "pymbolic>=2015.2.1",
           "cgen>=2013.1.2",
           "islpy>=2014.2",
-          "six",
+          "six>=1.8.0",
           ],
 
       scripts=["bin/loopy"],
