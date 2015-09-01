@@ -430,6 +430,8 @@ Influencing data access
 
 .. autofunction:: tag_data_axes
 
+.. autofunction:: remove_unused_arguments
+
 Padding
 ^^^^^^^
 

@@ -2090,4 +2090,22 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch"):
 
 # }}}
 
+
+# {{{ remove_unused_arguments
+
+def remove_unused_arguments(knl):
+    new_args = []
+
+    refd_vars = set(knl.all_params())
+    for insn in knl.instructions:
+        refd_vars.update(insn.dependency_names())
+
+    for arg in knl.args:
+        if arg.name in refd_vars:
+            new_args.append(arg)
+
+    return knl.copy(args=new_args)
+
+# }}}
+
 # vim: foldmethod=marker
