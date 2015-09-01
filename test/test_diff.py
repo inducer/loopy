@@ -61,11 +61,6 @@ def test_diff(ctx_factory):
 
     knl = lp.fix_parameters(knl, n=50)
 
-    knl = lp.add_and_infer_dtypes(knl, {
-        "x": np.float64,
-        "y": np.float64,
-        })
-
     from loopy.diff import diff_kernel
     dknl, diff_map = diff_kernel(knl, "z", "x")
     dknl = lp.remove_unused_arguments(dknl)
