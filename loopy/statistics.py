@@ -76,14 +76,15 @@ class ToCountMap:
         except KeyError:
             return isl.PwQPolynomial('{ 0 }')
 
-    def __str__(self):
-        result = ""
-        for key in sorted(self.dict.keys(), key=lambda k: str(k)):
-            result += ("%s : %s\n" % (key, self.dict[key]))
-        return result
-
     def __repr__(self):
         return repr(self.dict)
+
+
+def stringify_stats_mapping(m):
+    result = ""
+    for key in sorted(m.keys(), key=lambda k: str(k)):
+        result += ("%s : %s\n" % (key, m[key]))
+    return result
 
 
 class ExpressionOpCounter(CombineMapper):
@@ -447,8 +448,7 @@ def get_op_poly(knl):
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
         ops = op_counter(insn.assignee) + op_counter(insn.expression)
         op_poly = op_poly + ops*count(knl, domain)
-
-    return op_poly
+    return op_poly.dict
 
 
 def get_gmem_access_poly(knl):  # for now just counting subscripts
@@ -463,10 +463,12 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
              - The :class:`numpy.dtype` specifies the type of the data being
                accessed.
 
-             - The first string in the map key specifies the DRAM access type as
+             - The first string in the map key specifies the global memory
+               access type as
                *consecutive*, *nonconsecutive*, or *uniform*.
 
-             - The second string in the map key specifies the DRAM access type as a
+             - The second string in the map key specifies the global memory
+               access type as a
                *load*, or a *store*.
 
              - The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses
@@ -515,8 +517,7 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
             for key, val in six.iteritems(subs_assignee.dict)))
 
         subs_poly = subs_poly + (subs_expr + subs_assignee)*count(knl, domain)
-
-    return subs_poly
+    return subs_poly.dict
 
 
 def get_DRAM_access_poly(knl):
@@ -524,6 +525,27 @@ def get_DRAM_access_poly(knl):
     warn("get_DRAM_access_poly is deprecated. Use get_gmem_access_poly instead",
             DeprecationWarning, stacklevel=2)
     return get_gmem_access_poly(knl)
+
+
+def sum_mem_access_to_bytes(m):
+    """Sum the mapping returned by :func:`get_gmem_access_poly` to a mapping
+
+    **{(** :class:`string` **,** :class:`string` **)**
+    **:** :class:`islpy.PwQPolynomial` **}**
+
+    i.e., aggregate the transfer numbers for all types into a single byte count.
+    """
+
+    result = {}
+    for (dtype, kind, direction), v in m.items():
+        new_key = (kind, direction)
+        bytes_transferred = int(dtype.itemsize) * v
+        if new_key in result:
+            result[new_key] += bytes_transferred
+        else:
+            result[new_key] = bytes_transferred
+
+    return result
 
 
 def get_barrier_poly(knl):

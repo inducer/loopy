@@ -17,3 +17,5 @@ core
 .coverage
 htmlcov
 .ipynb_checkpoints
+lextab.py
+yacctab.py

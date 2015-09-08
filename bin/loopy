@@ -186,8 +186,8 @@ def main():
         code, impl_arg_info = generate_code(kernel)
         codes.append(code)
 
-    if args.outfile:
-        outfile, = args.outfile
+    if args.outfile is not None:
+        outfile = args.outfile
     else:
         outfile = "-"
 

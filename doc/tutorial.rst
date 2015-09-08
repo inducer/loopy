@@ -1233,7 +1233,7 @@ the :class:`loopy.LoopKernel` *inames*). We'll print this map now:
 
 .. doctest::
 
-    >>> print(op_map)
+    >>> print(lp.stringify_stats_mapping(op_map))
     float32 : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     float64 : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
     int32 : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
@@ -1244,9 +1244,9 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 .. doctest::
 
     >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
-    >>> i32ops = op_map.dict[np.dtype(np.int32)].eval_with_dict(param_dict)
-    >>> f32ops = op_map.dict[np.dtype(np.float32)].eval_with_dict(param_dict)
-    >>> f64ops = op_map.dict[np.dtype(np.float64)].eval_with_dict(param_dict)
+    >>> i32ops = op_map[np.dtype(np.int32)].eval_with_dict(param_dict)
+    >>> f32ops = op_map[np.dtype(np.float32)].eval_with_dict(param_dict)
+    >>> f64ops = op_map[np.dtype(np.float64)].eval_with_dict(param_dict)
     >>> print("integer ops: %i\nfloat32 ops: %i\nfloat64 ops: %i" %
     ...     (i32ops, f32ops, f64ops))
     integer ops: 65536
@@ -1264,7 +1264,7 @@ continue using the kernel from the previous example:
 
     >>> from loopy.statistics import get_gmem_access_poly
     >>> load_store_map = get_gmem_access_poly(knl)
-    >>> print(load_store_map)
+    >>> print(lp.stringify_stats_mapping(load_store_map))
     (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
     (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
@@ -1295,13 +1295,13 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 
 .. doctest::
 
-    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "uniform", "load")
+    >>> f64ld = load_store_map[(np.dtype(np.float64), "uniform", "load")
     ...     ].eval_with_dict(param_dict)
-    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "uniform", "store")
+    >>> f64st = load_store_map[(np.dtype(np.float64), "uniform", "store")
     ...     ].eval_with_dict(param_dict)
-    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "uniform", "load")
+    >>> f32ld = load_store_map[(np.dtype(np.float32), "uniform", "load")
     ...     ].eval_with_dict(param_dict)
-    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "uniform", "store")
+    >>> f32st = load_store_map[(np.dtype(np.float32), "uniform", "store")
     ...     ].eval_with_dict(param_dict)
     >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %
     ...     (f32ld, f32st, f64ld, f64st))
@@ -1322,8 +1322,8 @@ this time, so we'll print the mapping manually to make it more legible:
 
     >>> knl_consec = lp.split_iname(knl, "k", 128, outer_tag="l.1", inner_tag="l.0")
     >>> load_store_map = get_gmem_access_poly(knl_consec)
-    >>> for key in sorted(load_store_map.dict.keys(), key=lambda k: str(k)):
-    ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
+    >>> for key in sorted(load_store_map.keys(), key=lambda k: str(k)):
+    ...     print("%s :\n%s\n" % (key, load_store_map[key]))
     (dtype('float32'), 'consecutive', 'load') :
     [n, m, l] -> { ... }
     <BLANKLINE>
@@ -1345,13 +1345,13 @@ accesses has not changed:
 
 .. doctest::
 
-    >>> f64ld = load_store_map.dict[(np.dtype(np.float64), "consecutive", "load")
+    >>> f64ld = load_store_map[(np.dtype(np.float64), "consecutive", "load")
     ...     ].eval_with_dict(param_dict)
-    >>> f64st = load_store_map.dict[(np.dtype(np.float64), "consecutive", "store")
+    >>> f64st = load_store_map[(np.dtype(np.float64), "consecutive", "store")
     ...     ].eval_with_dict(param_dict)
-    >>> f32ld = load_store_map.dict[(np.dtype(np.float32), "consecutive", "load")
+    >>> f32ld = load_store_map[(np.dtype(np.float32), "consecutive", "load")
     ...     ].eval_with_dict(param_dict)
-    >>> f32st = load_store_map.dict[(np.dtype(np.float32), "consecutive", "store")
+    >>> f32st = load_store_map[(np.dtype(np.float32), "consecutive", "store")
     ...     ].eval_with_dict(param_dict)
     >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %
     ...     (f32ld, f32st, f64ld, f64st))
@@ -1369,8 +1369,8 @@ our parallelization of the kernel:
 
     >>> knl_nonconsec = lp.split_iname(knl, "k", 128, outer_tag="l.0", inner_tag="l.1")
     >>> load_store_map = get_gmem_access_poly(knl_nonconsec)
-    >>> for key in sorted(load_store_map.dict.keys(), key=lambda k: str(k)):
-    ...     print("%s :\n%s\n" % (key, load_store_map.dict[key]))
+    >>> for key in sorted(load_store_map.keys(), key=lambda k: str(k)):
+    ...     print("%s :\n%s\n" % (key, load_store_map[key]))
     (dtype('float32'), 'nonconsecutive', 'load') :
     [n, m, l] -> { ... }
     <BLANKLINE>
@@ -1390,16 +1390,16 @@ elements in memory. The total number of array accesses has not changed:
 
 .. doctest::
 
-    >>> f64ld = load_store_map.dict[
+    >>> f64ld = load_store_map[
     ...     (np.dtype(np.float64), "nonconsecutive", "load")
     ...     ].eval_with_dict(param_dict)
-    >>> f64st = load_store_map.dict[
+    >>> f64st = load_store_map[
     ...     (np.dtype(np.float64), "nonconsecutive", "store")
     ...     ].eval_with_dict(param_dict)
-    >>> f32ld = load_store_map.dict[
+    >>> f32ld = load_store_map[
     ...     (np.dtype(np.float32), "nonconsecutive", "load")
     ...     ].eval_with_dict(param_dict)
-    >>> f32st = load_store_map.dict[
+    >>> f32st = load_store_map[
     ...     (np.dtype(np.float32), "nonconsecutive", "store")
     ...     ].eval_with_dict(param_dict)
     >>> print("f32 load: %i\nf32 store: %i\nf64 load: %i\nf64 store: %i" %

@@ -373,6 +373,8 @@ def pre_schedule_checks(kernel):
         check_write_destinations(kernel)
 
         logger.info("pre-schedule check %s: done" % kernel.name)
+    except KeyboardInterrupt:
+        raise
     except:
         print(75*"=")
         print("failing kernel during pre-schedule check:")

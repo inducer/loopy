@@ -345,6 +345,11 @@ class LoopKernel(RecordWithoutPickling):
     def get_var_name_generator(self):
         return _UniqueVarNameGenerator(self.all_variable_names())
 
+    def get_instruction_id_generator(self, based_on="insn"):
+        used_ids = set(insn.id for insn in self.instructions)
+
+        return UniqueNameGenerator(used_ids)
+
     def make_unique_instruction_id(self, insns=None, based_on="insn",
             extra_used_ids=set()):
         if insns is None:
