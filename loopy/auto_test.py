@@ -350,7 +350,7 @@ def _enumerate_cl_devices_for_ref_test():
 # {{{ main automatic testing entrypoint
 
 def auto_test_vs_ref(
-        ref_knl, ctx, test_knl, op_count=[], op_label=[], parameters={},
+        ref_knl, ctx, test_knl=None, op_count=[], op_label=[], parameters={},
         print_ref_code=False, print_code=True, warmup_rounds=2,
         dump_binary=False,
         fills_entire_output=None, do_check=True, check_result=None,
@@ -366,6 +366,10 @@ def auto_test_vs_ref(
     """
 
     import pyopencl as cl
+
+    if test_knl is None:
+        test_knl = ref_knl
+        do_check = False
 
     if len(ref_knl.args) != len(test_knl.args):
         raise LoopyError("ref_knl and test_knl do not have the same number "
@@ -647,8 +651,10 @@ def auto_test_vs_ref(
     result_dict["elapsed_event_marker"] = elapsed_event_marker
     result_dict["elapsed_wall"] = elapsed_wall
     result_dict["timing_rounds"] = timing_rounds
-    result_dict["ref_elapsed_event"] = ref_elapsed_event
-    result_dict["ref_elapsed_wall"] = ref_elapsed_wall
+
+    if do_check:
+        result_dict["ref_elapsed_event"] = ref_elapsed_event
+        result_dict["ref_elapsed_wall"] = ref_elapsed_wall
 
     return result_dict
 

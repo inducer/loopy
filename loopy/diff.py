@@ -343,8 +343,6 @@ class DifferentiationContext(object):
 
         return new_var_name
 
-    # }}}
-
 # }}}
 
 
