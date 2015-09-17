@@ -28,6 +28,7 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 import loopy as lp
 from loopy.statistics import get_op_poly, get_gmem_access_poly, get_barrier_poly
+from loopy.statistics import get_regs_per_thread
 import numpy as np
 
 
@@ -510,6 +511,92 @@ def test_barrier_counter_barriers():
     assert barrier_count == 50*10*2
 
 
+def test_reg_counter_basic():
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+                e[i, k+1] = g[i,k]*h[i,k+1]
+                """
+            ],
+            name="basic", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    regs = get_regs_per_thread(knl)
+    assert regs == 8
+
+
+def test_reg_counter_reduction():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+            ],
+            name="matmul_serial", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    regs = get_regs_per_thread(knl)
+    assert regs == 8
+
+
+def test_reg_counter_logic():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                e[i,k] = if(not(k<l-2) and k>6 or k/2==l, g[i,k]*2, g[i,k]+h[i,k]/2)
+                """
+            ],
+            name="logic", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
+    regs = get_regs_per_thread(knl)
+    assert regs == 14
+
+
+def test_reg_counter_specialops():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = (2*a[i,j,k])%(2+b[i,j,k]/3.0)
+                e[i, k] = (1+g[i,k])**(1+h[i,k+1])
+                """
+            ],
+            name="specialops", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    regs = get_regs_per_thread(knl)
+    assert regs == 11
+
+
+def test_reg_counter_bitwise():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = (a[i,j,k] | 1) + (b[i,j,k] & 1)
+                e[i, k] = (g[i,k] ^ k)*(~h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
+                """
+            ],
+            name="bitwise", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(
+            knl, dict(
+                a=np.int32, b=np.int32,
+                g=np.int64, h=np.int64))
+    regs = get_regs_per_thread(knl)
+    assert regs == 12
+
+
 def test_all_counters_parallel_matmul():
 
     knl = lp.make_kernel(
@@ -556,6 +643,9 @@ def test_all_counters_parallel_matmul():
                         ].eval_with_dict({'n': n, 'm': m, 'l': l})
 
     assert f32coal == n*l
+
+    regs = get_regs_per_thread(knl)
+    assert regs == 8
 
 
 if __name__ == "__main__":

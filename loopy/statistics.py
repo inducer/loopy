@@ -377,6 +377,108 @@ class GlobalSubscriptCounter(CombineMapper):
         raise NotImplementedError("GlobalSubscriptCounter encountered slice, "
                                   "map_slice not implemented.")
 
+class RegisterUsageEstimator(CombineMapper):
+
+    def __init__(self, knl):
+        self.knl = knl
+        from loopy.expression import TypeInferenceMapper
+        self.type_inf = TypeInferenceMapper(knl)
+
+    def combine(self, values):
+        return sum(values)
+
+    def map_constant(self, expr):
+        return 1
+
+    map_tagged_variable = map_constant
+    map_variable = map_constant
+    map_call = map_constant  # TODO what is this?
+
+    def map_subscript(self, expr):
+        name = expr.aggregate.name  # name of array
+
+        if name in self.knl.arg_dict:
+            array = self.knl.arg_dict[name]
+        else:
+            # this is a temporary variable
+            return 1  # TODO +self.rec(expr.index)?
+
+        if not isinstance(array, lp.GlobalArg):
+            # this array is not in global memory
+            return 0  # TODO is this right? recurse on index?
+
+        # this is a global mem access
+        return 1  # TODO +self.rec(expr.index)?
+
+    def map_sum(self, expr):
+        if expr.children:
+            return sum(self.rec(child) for child in expr.children)
+        else:
+            return 0  # TODO when does this happen?
+
+    map_product = map_sum
+
+    def map_quotient(self, expr, *args):
+        return self.rec(expr.numerator) + self.rec(expr.denominator)
+
+    map_floor_div = map_quotient
+    map_remainder = map_quotient
+
+    def map_power(self, expr):
+        return self.rec(expr.base) + self.rec(expr.exponent)
+
+    def map_left_shift(self, expr):
+        return self.rec(expr.shiftee)+self.rec(expr.shift)
+
+    map_right_shift = map_left_shift
+
+    def map_bitwise_not(self, expr):
+        return self.rec(expr.child)
+
+    def map_bitwise_or(self, expr):
+        return sum(self.rec(child) for child in expr.children)
+
+    map_bitwise_xor = map_bitwise_or
+    map_bitwise_and = map_bitwise_or
+
+    def map_comparison(self, expr):
+        return self.rec(expr.left)+self.rec(expr.right)
+
+    map_logical_not = map_bitwise_not
+    map_logical_or = map_bitwise_or
+    map_logical_and = map_logical_or
+
+    def map_if(self, expr):
+        warnings.warn("RegisterUsageEstimator counting register usage as "
+                      "sum of if-statement branches.")
+        return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
+
+    def map_if_positive(self, expr):
+        warnings.warn("RegisterUsageEstimator counting register usage as "
+                      "sum of if_pos-statement branches.")
+        return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
+
+    map_min = map_bitwise_or
+    map_max = map_min
+
+    def map_common_subexpression(self, expr):
+        raise NotImplementedError("GlobalSubscriptCounter encountered "
+                                  "common_subexpression, "
+                                  "map_common_subexpression not implemented.")
+
+    def map_substitution(self, expr):
+        raise NotImplementedError("GlobalSubscriptCounter encountered "
+                                  "substitution, "
+                                  "map_substitution not implemented.")
+
+    def map_derivative(self, expr):
+        raise NotImplementedError("GlobalSubscriptCounter encountered "
+                                  "derivative, "
+                                  "map_derivative not implemented.")
+
+    def map_slice(self, expr):
+        raise NotImplementedError("GlobalSubscriptCounter encountered slice, "
+                                  "map_slice not implemented.")
 
 def count(kernel, bset):
     try:
@@ -596,3 +698,26 @@ def get_barrier_poly(knl):
                 barrier_poly += isl.PwQPolynomial('{ 1 }')
 
     return barrier_poly
+
+
+def get_regs_per_thread(knl):
+
+    """Estimate registers per thread usage by a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
+
+    """
+
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    from loopy.schedule import RunInstruction
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    regs = 0
+    reg_counter = RegisterUsageEstimator(knl)
+    for sched_item in knl.schedule:
+        if isinstance(sched_item, RunInstruction):
+            insn = knl.id_to_insn[sched_item.insn_id]
+            regs += reg_counter(insn.expression) 
+            regs += reg_counter(insn.assignee) 
+    return regs
