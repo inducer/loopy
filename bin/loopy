@@ -197,7 +197,10 @@ def main():
     import os
     edit_kernel_env = os.environ.get("LOOPY_EDIT_KERNEL")
     if (args.edit_code
-            or any(edit_kernel_env.lower() in k.name.lower() for k in kernels)):
+            or (
+                edit_kernel_env is not None
+                and
+                any(edit_kernel_env.lower() in k.name.lower() for k in kernels))):
         from pytools import invoke_editor
         code = invoke_editor(code, filename="edit.cl")
 
