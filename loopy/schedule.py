@@ -343,6 +343,11 @@ class ScheduleDebugger:
     def start(self):
         from time import time
         self.start_time = time()
+
+
+class ScheduleDebugInput(Exception):
+    pass
+
 # }}}
 
 
@@ -450,7 +455,9 @@ def generate_loop_schedules_internal(
         for iname, val in six.iteritems(sched_state.loop_nest_map):
             print("%s : %s" % (iname, ", ".join(val)))
         print(75*"=")
-        print("WHY IS THIS A DEAD-END SCHEDULE?")
+
+        if debug.debug_length == len(debug.longest_rejected_schedule):
+            print("WHY IS THIS A DEAD-END SCHEDULE?")
 
     #if len(schedule) == 2:
         #from pudb import set_trace; set_trace()
@@ -525,10 +532,10 @@ def generate_loop_schedules_internal(
 
         # }}}
 
-        if is_ready and allow_insn:
-            if debug_mode:
-                print("scheduling '%s'" % insn.id)
+        if is_ready and debug_mode:
+            print("ready to schedule '%s'" % insn.id)
 
+        if is_ready and allow_insn and not debug_mode:
             iid_set = frozenset([insn.id])
 
             # {{{ update active group counts for added instruction
@@ -618,7 +625,7 @@ def generate_loop_schedules_internal(
                             can_leave = True
                         break
 
-            if can_leave:
+            if can_leave and not debug_mode:
                 for sub_sched in generate_loop_schedules_internal(
                         sched_state.copy(
                             schedule=(
@@ -790,37 +797,42 @@ def generate_loop_schedules_internal(
 
         if debug_mode:
             print("useful inames: %s" % ",".join(useful_loops_set))
+        else:
+            for tier in priority_tiers:
+                found_viable_schedule = False
 
-        for tier in priority_tiers:
-            found_viable_schedule = False
+                for iname in sorted(tier,
+                        key=lambda iname: iname_to_usefulness.get(iname, 0),
+                        reverse=True):
 
-            for iname in sorted(tier,
-                    key=lambda iname: iname_to_usefulness.get(iname, 0),
-                    reverse=True):
+                    for sub_sched in generate_loop_schedules_internal(
+                            sched_state.copy(
+                                schedule=(
+                                    sched_state.schedule
+                                    + (EnterLoop(iname=iname),)),
+                                active_inames=(
+                                    sched_state.active_inames + (iname,)),
+                                entered_inames=(
+                                    sched_state.entered_inames
+                                    | frozenset((iname,))),
+                                ),
+                            allow_boost=rec_allow_boost,
+                            debug=debug):
+                        found_viable_schedule = True
+                        yield sub_sched
 
-                for sub_sched in generate_loop_schedules_internal(
-                        sched_state.copy(
-                            schedule=(
-                                sched_state.schedule
-                                + (EnterLoop(iname=iname),)),
-                            active_inames=(
-                                sched_state.active_inames + (iname,)),
-                            entered_inames=(
-                                sched_state.entered_inames | frozenset((iname,))),
-                            ),
-                        allow_boost=rec_allow_boost,
-                        debug=debug):
-                    found_viable_schedule = True
-                    yield sub_sched
-
-            if found_viable_schedule:
-                return
+                if found_viable_schedule:
+                    return
 
     # }}}
 
     if debug_mode:
         print(75*"=")
-        six.moves.input("Hit Enter for next schedule:")
+        inp = six.moves.input("Hit Enter for next schedule, "
+                "or enter a number to examine schedules of a "
+                "different length:")
+        if inp:
+            raise ScheduleDebugInput(inp)
 
     if not sched_state.active_inames and not sched_state.unscheduled_insn_ids:
         # if done, yield result
@@ -1289,9 +1301,17 @@ def generate_loop_schedules(kernel, debug_args={}):
             print()
 
             debug.debug_length = len(debug.longest_rejected_schedule)
-            for _ in generate_loop_schedules_internal(sched_state,
-                    debug=debug):
-                pass
+            while True:
+                try:
+                    for _ in generate_loop_schedules_internal(sched_state,
+                            debug=debug):
+                        pass
+
+                except ScheduleDebugInput as e:
+                    debug.debug_length = int(str(e))
+                    continue
+
+                break
 
     try:
         for gen in generators:
@@ -1327,6 +1347,7 @@ def generate_loop_schedules(kernel, debug_args={}):
                 break
 
     except KeyboardInterrupt:
+        print()
         print(75*"-")
         print("Interrupted during scheduling")
         print(75*"-")
