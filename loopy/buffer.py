@@ -188,7 +188,9 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     from loopy import CACHING_ENABLED
 
-    cache_key = (kernel, var_name, tuple(buffer_inames),
+    from loopy.preprocess import prepare_for_caching
+    key_kernel = prepare_for_caching(kernel)
+    cache_key = (key_kernel, var_name, tuple(buffer_inames),
             PymbolicExpressionHashWrapper(init_expression),
             PymbolicExpressionHashWrapper(store_expression), within,
             default_tag, temporary_is_local, fetch_bounding_box)

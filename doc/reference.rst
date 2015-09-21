@@ -412,6 +412,10 @@ Dealing with Substitution Rules
 
 .. autofunction:: expand_subst
 
+.. autofunction:: find_rules_matching
+
+.. autofunction:: find_one_rule_matching
+
 Caching, Precomputation and Prefetching
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

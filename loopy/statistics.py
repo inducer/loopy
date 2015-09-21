@@ -126,7 +126,23 @@ class ExpressionOpCounter(CombineMapper):
         else:
             return ToCountMap()
 
-    map_product = map_sum
+    def map_product(self, expr):
+        from pymbolic.primitives import is_zero
+        if expr.children:
+            return ToCountMap(
+                        {self.type_inf(expr): len(expr.children)-1}
+                        ) + sum(
+                                self.rec(child)
+                                for child in expr.children
+
+                                # Do not count '(-1)* ' (as produced by
+                                # subtraction in pymbolic): Assume this
+                                # gets implemented as a sign flip or
+                                # as subtraction. (Confirmed to be true on
+                                # at least Nvidia 352.30.)
+                                if not is_zero(child - 1))
+        else:
+            return ToCountMap()
 
     def map_quotient(self, expr, *args):
         return ToCountMap({self.type_inf(expr): 1}) \

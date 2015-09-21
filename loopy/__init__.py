@@ -2108,4 +2108,31 @@ def remove_unused_arguments(knl):
 
 # }}}
 
+
+# {{{ find substitution rules by glob patterns
+
+def find_rules_matching(knl, pattern):
+    """
+    :pattern: A shell-style glob pattern.
+    """
+
+    from loopy.context_matching import re_from_glob
+    pattern = re_from_glob(pattern)
+
+    return [r for r in knl.substitutions if pattern.match(r)]
+
+
+def find_one_rule_matching(knl, pattern):
+    rules = find_rules_matching(knl, pattern)
+
+    if len(rules) > 1:
+        raise ValueError("more than one substitution rule matched '%s'"
+                % pattern)
+    if not rules:
+        raise ValueError("no substitution rule matched '%s'" % pattern)
+
+    return rules[0]
+
+# }}}
+
 # vim: foldmethod=marker
