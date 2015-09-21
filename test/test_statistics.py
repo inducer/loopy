@@ -39,7 +39,7 @@ def test_op_counter_basic():
             [
                 """
                 c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
-                e[i, k+1] = g[i,k]*h[i,k+1]
+                e[i, k+1] = -g[i,k]*h[i,k+1]
                 """
             ],
             name="basic", assumptions="n,m,l >= 1")
