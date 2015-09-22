@@ -1023,7 +1023,8 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 
 
 def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
-        default_tag="l.auto", rule_name=None, footprint_subscripts=None,
+        default_tag="l.auto", rule_name=None, temporary_name=None,
+        footprint_subscripts=None,
         fetch_bounding_box=False):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
@@ -1082,7 +1083,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     var_name_gen = kernel.get_var_name_generator()
 
     if rule_name is None:
-        rule_name = var_name_gen("%s_fetch" % c_name)
+        rule_name = var_name_gen("%s_fetch_rule" % c_name)
+    if temporary_name is None:
+        temporary_name = var_name_gen("%s_fetch" % c_name)
 
     arg = kernel.arg_dict[var_name]
 
@@ -1119,7 +1122,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     new_kernel = precompute(kernel, subst_use, sweep_inames,
             precompute_inames=dim_arg_names,
             default_tag=default_tag, dtype=arg.dtype,
-            fetch_bounding_box=fetch_bounding_box)
+            fetch_bounding_box=fetch_bounding_box,
+            temporary_name=temporary_name)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
