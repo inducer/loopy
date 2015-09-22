@@ -1154,7 +1154,7 @@ sign that something is amiss:
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     Traceback (most recent call last):
     ...
-    WriteRaceConditionWarning: instruction 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch)' to silenced_warnings kernel argument to disable)
+    WriteRaceConditionWarning: instruction 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch_rule)' to silenced_warnings kernel argument to disable)
 
 When we ask to see the code, the issue becomes apparent:
 
