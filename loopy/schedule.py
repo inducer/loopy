@@ -171,7 +171,33 @@ def find_used_inames_within(kernel, sched_index):
     return result
 
 
-def find_loop_nest_map(kernel):
+def find_loop_nest_with_map(kernel):
+    """Returns a dictionary mapping inames to other inames that are
+    always nested with them.
+    """
+    result = {}
+
+    from loopy.kernel.data import ParallelTag, IlpBaseTag, VectorizeTag
+
+    all_nonpar_inames = set([
+            iname
+            for iname in kernel.all_inames()
+            if not isinstance(kernel.iname_to_tag.get(iname),
+                (ParallelTag, IlpBaseTag, VectorizeTag))])
+
+    iname_to_insns = kernel.iname_to_insns()
+
+    for iname in all_nonpar_inames:
+        result[iname] = set([
+            other_iname
+            for insn in iname_to_insns[iname]
+            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames
+            ])
+
+    return result
+
+
+def find_loop_nest_around_map(kernel):
     """Returns a dictionary mapping inames to other inames that are
     always nested around them.
     """
@@ -212,20 +238,26 @@ def find_loop_nest_map(kernel):
     return result
 
 
-def find_loop_insn_dep_map(kernel, loop_nest_map):
+def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
     """Returns a dictionary mapping inames to other instruction ids that need to
     be scheduled before the iname should be eligible for scheduling.
     """
 
     result = {}
 
-    from loopy.kernel.data import ParallelTag
+    from loopy.kernel.data import ParallelTag, IlpBaseTag, VectorizeTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
             if isinstance(kernel.iname_to_tag.get(iname), ParallelTag):
                 continue
 
+            iname_dep = result.setdefault(iname, set())
+
             for dep_insn_id in insn.insn_deps:
+                if dep_insn_id in iname_dep:
+                    # already depending, nothing to check
+                    continue
+
                 dep_insn = kernel.id_to_insn[dep_insn_id]
                 dep_insn_inames = kernel.insn_inames(dep_insn)
 
@@ -235,22 +267,43 @@ def find_loop_insn_dep_map(kernel, loop_nest_map):
                     continue
 
                 # To make sure dep_insn belongs outside of iname, we must prove
-                # (via loop_nest_map) that all inames that dep_insn will be
-                # executed inside are nested *around* iname.
-                if not dep_insn_inames <= loop_nest_map[iname]:
+                # that all inames that dep_insn will be executed in nest
+                # outside of the loop over *iname*. (i.e. nested around, or
+                # before).
+
+                may_add_to_loop_dep_map = True
+                for dep_insn_iname in dep_insn_inames:
+                    if dep_insn_iname in loop_nest_around_map[iname]:
+                        # dep_insn_iname is guaranteed to nest outside of iname
+                        # -> safe.
+                        continue
+
+                    tag = kernel.iname_to_tag.get(dep_insn_iname)
+                    if isinstance(tag, (ParallelTag, IlpBaseTag, VectorizeTag)):
+                        # Parallel tags don't really nest, so we'll disregard
+                        # them here.
+                        continue
+
+                    if dep_insn_iname not in loop_nest_with_map.get(iname, []):
+                        # dep_insn_iname does not nest with iname, so its nest
+                        # must occur outside.
+                        continue
+
+                    may_add_to_loop_dep_map = False
+                    break
+
+                if not may_add_to_loop_dep_map:
                     continue
 
-                iname_dep = result.setdefault(iname, set())
-                if dep_insn_id not in iname_dep:
-                    logger.debug("{knl}: loop dependency map: iname '{iname}' "
-                            "depends on '{dep_insn}' via '{insn}'"
-                            .format(
-                                knl=kernel.name,
-                                iname=iname,
-                                dep_insn=dep_insn_id,
-                                insn=insn.id))
+                logger.debug("{knl}: loop dependency map: iname '{iname}' "
+                        "depends on '{dep_insn}' via '{insn}'"
+                        .format(
+                            knl=kernel.name,
+                            iname=iname,
+                            dep_insn=dep_insn_id,
+                            insn=insn.id))
 
-                    iname_dep.add(dep_insn_id)
+                iname_dep.add(dep_insn_id)
 
     return result
 
@@ -357,11 +410,11 @@ class SchedulerState(Record):
     """
     .. attribute:: kernel
 
-    .. attribute:: loop_nest_map
+    .. attribute:: loop_nest_around_map
 
     .. attribute:: loop_priority
 
-        See :func:`loop_nest_map`.
+        See :func:`loop_nest_around_map`.
 
     .. attribute:: breakable_inames
 
@@ -414,7 +467,7 @@ class SchedulerState(Record):
 
 
 def generate_loop_schedules_internal(
-        sched_state, allow_boost=False, allow_insn=False, debug=None):
+        sched_state, allow_boost=False, debug=None):
     # allow_insn is set to False initially and after entering each loop
     # to give loops containing high-priority instructions a chance.
 
@@ -452,7 +505,7 @@ def generate_loop_schedules_internal(
         #print("boost allowed:", allow_boost)
         print(75*"=")
         print("LOOP NEST MAP:")
-        for iname, val in six.iteritems(sched_state.loop_nest_map):
+        for iname, val in six.iteritems(sched_state.loop_nest_around_map):
             print("%s : %s" % (iname, ", ".join(val)))
         print(75*"=")
 
@@ -535,7 +588,7 @@ def generate_loop_schedules_internal(
         if is_ready and debug_mode:
             print("ready to schedule '%s'" % insn.id)
 
-        if is_ready and allow_insn and not debug_mode:
+        if is_ready and not debug_mode:
             iid_set = frozenset([insn.id])
 
             # {{{ update active group counts for added instruction
@@ -572,8 +625,7 @@ def generate_loop_schedules_internal(
 
             for sub_sched in generate_loop_schedules_internal(
                     new_sched_state,
-                    allow_boost=rec_allow_boost, debug=debug,
-                    allow_insn=True):
+                    allow_boost=rec_allow_boost, debug=debug):
                 yield sub_sched
 
             if not sched_state.group_insn_counts:
@@ -632,8 +684,7 @@ def generate_loop_schedules_internal(
                                 sched_state.schedule
                                 + (LeaveLoop(iname=last_entered_loop),)),
                             active_inames=sched_state.active_inames[:-1]),
-                        allow_boost=rec_allow_boost, debug=debug,
-                        allow_insn=allow_insn):
+                        allow_boost=rec_allow_boost, debug=debug):
                     yield sub_sched
 
                 return
@@ -674,9 +725,11 @@ def generate_loop_schedules_internal(
 
             currently_accessible_inames = (
                     active_inames_set | sched_state.parallel_inames)
-            if not sched_state.loop_nest_map[iname] <= currently_accessible_inames:
+            if (
+                    not sched_state.loop_nest_around_map[iname]
+                    <= currently_accessible_inames):
                 if debug_mode:
-                    print("scheduling %s prohibited by loop nest map" % iname)
+                    print("scheduling %s prohibited by loop nest-around map" % iname)
                 continue
 
             if (
@@ -701,7 +754,7 @@ def generate_loop_schedules_internal(
                     iname_home_domain.get_var_names(dim_type.param))
 
             # The previous check should have ensured this is true, because
-            # the loop_nest_map takes the domain dependency graph into
+            # the loop_nest_around_map takes the domain dependency graph into
             # consideration.
             assert (iname_home_domain_params & kernel.all_inames()
                     <= currently_accessible_inames)
@@ -841,20 +894,11 @@ def generate_loop_schedules_internal(
         yield sched_state.schedule
 
     else:
-        if not allow_insn:
-            # try again with boosting allowed
-            for sub_sched in generate_loop_schedules_internal(
-                    sched_state,
-                    allow_boost=allow_boost, debug=debug,
-                    allow_insn=True):
-                yield sub_sched
-
         if not allow_boost and allow_boost is not None:
             # try again with boosting allowed
             for sub_sched in generate_loop_schedules_internal(
                     sched_state,
-                    allow_boost=True, debug=debug,
-                    allow_insn=allow_insn):
+                    allow_boost=True, debug=debug):
                 yield sub_sched
         else:
             # dead end
@@ -1255,11 +1299,15 @@ def generate_loop_schedules(kernel, debug_args={}):
             iname for iname in kernel.all_inames()
             if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
 
-    loop_nest_map = find_loop_nest_map(kernel)
+    loop_nest_with_map = find_loop_nest_with_map(kernel)
+    loop_nest_around_map = find_loop_nest_around_map(kernel)
     sched_state = SchedulerState(
             kernel=kernel,
-            loop_nest_map=loop_nest_map,
-            loop_insn_dep_map=find_loop_insn_dep_map(kernel, loop_nest_map),
+            loop_nest_around_map=loop_nest_around_map,
+            loop_insn_dep_map=find_loop_insn_dep_map(
+                kernel,
+                loop_nest_with_map=loop_nest_with_map,
+                loop_nest_around_map=loop_nest_around_map),
             breakable_inames=ilp_inames,
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
