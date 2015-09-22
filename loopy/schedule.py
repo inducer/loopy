@@ -491,8 +491,6 @@ def generate_loop_schedules_internal(
     else:
         rec_allow_boost = False
 
-    assert not allow_boost
-
     active_inames_set = frozenset(sched_state.active_inames)
 
     # {{{ decide about debug mode
