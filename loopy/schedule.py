@@ -322,21 +322,34 @@ def group_insn_counts(kernel):
 
 # {{{ debug help
 
-def dump_schedule(schedule):
-    entries = []
+def dump_schedule(kernel, schedule):
+    lines = []
+    indent = ""
+
+    from loopy.kernel.data import ExpressionInstruction
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
-            entries.append("<%s>" % sched_item.iname)
+            lines.append(indent + "LOOP %s" % sched_item.iname)
+            indent += "    "
         elif isinstance(sched_item, LeaveLoop):
-            entries.append("</%s>" % sched_item.iname)
+            indent = indent[:-4]
+            lines.append(indent + "ENDLOOP %s" % sched_item.iname)
         elif isinstance(sched_item, RunInstruction):
-            entries.append(sched_item.insn_id)
+            insn = kernel.id_to_insn[sched_item.insn_id]
+            if isinstance(insn, ExpressionInstruction):
+                insn_str = "[%s] %s <- %s" % (
+                        insn.id, str(insn.assignee), str(insn.expression))
+            else:
+                insn_str = sched_item.insn_id
+            lines.append(indent + insn_str)
         elif isinstance(sched_item, Barrier):
-            entries.append("|")
+            lines.append(indent + "---BARRIER---")
         else:
             assert False
 
-    return " ".join(entries)
+    return "\n".join(
+            "% 4d: %s" % (i, line)
+            for i, line in enumerate(lines))
 
 
 class ScheduleDebugger:
@@ -478,6 +491,8 @@ def generate_loop_schedules_internal(
     else:
         rec_allow_boost = False
 
+    assert not allow_boost
+
     active_inames_set = frozenset(sched_state.active_inames)
 
     # {{{ decide about debug mode
@@ -497,11 +512,7 @@ def generate_loop_schedules_internal(
         print(kernel)
         print(75*"=")
         print("CURRENT SCHEDULE:")
-        print("%s (length: %d)" % (
-            dump_schedule(sched_state.schedule),
-            len(sched_state.schedule)))
-        print("(LEGEND: entry into loop: <iname>, exit from loop: </iname>, "
-                "instructions w/ no delimiters)")
+        print(dump_schedule(sched_state.kernel, sched_state.schedule))
         #print("boost allowed:", allow_boost)
         print(75*"=")
         print("LOOP NEST MAP:")
