@@ -1074,7 +1074,7 @@ class LoopKernel(RecordWithoutPickling):
         if kernel.schedule is not None:
             lines.append("SCHEDULE:")
             from loopy.schedule import dump_schedule
-            lines.append(dump_schedule(kernel.schedule))
+            lines.append(dump_schedule(kernel, kernel.schedule))
             lines.append(sep)
 
         return "\n".join(lines)
