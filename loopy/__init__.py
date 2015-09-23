@@ -944,6 +944,18 @@ def _add_kernel_axis(kernel, axis_name, start, stop, base_inames):
             .insert_dims(dim_type.set, new_dim_idx, 1)
             .set_dim_name(dim_type.set, new_dim_idx, axis_name))
 
+    from loopy.symbolic import get_dependencies
+    deps = get_dependencies(start) | get_dependencies(stop)
+    assert deps <= kernel.all_params()
+
+    param_names = domain.get_var_names(dim_type.param)
+    for dep in deps:
+        if dep not in param_names:
+            new_dim_idx = domain.dim(dim_type.param)
+            domain = (domain
+                    .insert_dims(dim_type.param, new_dim_idx, 1)
+                    .set_dim_name(dim_type.param, new_dim_idx, dep))
+
     from loopy.isl_helpers import make_slab
     slab = make_slab(domain.get_space(), axis_name, start, stop)
 
@@ -1023,7 +1035,8 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 
 
 def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
-        default_tag="l.auto", rule_name=None, temporary_name=None,
+        default_tag="l.auto", rule_name=None,
+        temporary_name=None, temporary_is_local=None,
         footprint_subscripts=None,
         fetch_bounding_box=False):
     """Prefetch all accesses to the variable *var_name*, with all accesses
@@ -1123,7 +1136,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             precompute_inames=dim_arg_names,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
-            temporary_name=temporary_name)
+            temporary_name=temporary_name,
+            temporary_is_local=temporary_is_local)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
