@@ -396,16 +396,35 @@ class RegisterUsageEstimator(CombineMapper):
         self.knl = knl
         from loopy.expression import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
+        self.vars_found = []
+        self.subs_found = []
 
     def combine(self, values):
         return sum(values)
+
+    def forget_prev_vars(self):
+        del self.vars_found[:]
+
+    def forget_prev_subs(self):
+        del self.subs_found[:]
 
     def map_constant(self, expr):
         return 0
 
     def map_tagged_variable(self, expr):
-        return 1
-    map_variable = map_tagged_variable
+        print("tagged_var found, what to do here? ", expr) #TODO
+        return 0
+
+    def map_variable(self, expr):
+        #print("var: ", expr)
+        if expr in self.vars_found:
+            #print("var already in list") #TODO delete all these print statements
+            return 0
+        else:
+            self.vars_found.append(expr)
+            return 1
+
+    #map_variable = map_tagged_variable
     map_call = map_constant  # TODO what is this?
 
     def map_subscript(self, expr):
@@ -415,14 +434,29 @@ class RegisterUsageEstimator(CombineMapper):
             array = self.knl.arg_dict[name]
         else:
             # this is a temporary variable
-            return 1  # TODO +self.rec(expr.index)?
+            #print("subscript, temp var found: ", expr, expr.index, expr.aggregate)
+            #print((expr.index, expr.aggregate) in self.subs_found)
+            return 0
+            # TODO if this is not in shared, count it
+            if (expr.index, expr.aggregate) in self.subs_found:
+                return 0
+            else:
+                self.subs_found.append((expr.index, expr.aggregate))
+                return 1  # TODO +self.rec(expr.index)?
 
         if not isinstance(array, lp.GlobalArg):
             # this array is not in global memory
             return 0  # TODO is this right? recurse on index?
 
         # this is a global mem access
-        return 1  # TODO +self.rec(expr.index)?
+        #print("subscript, global var found: ", expr, expr.index, expr.aggregate)
+        #print((expr.index, expr.aggregate) in self.subs_found)
+        #self.subs_found.append((expr.index, expr.aggregate))
+        if (expr.index, expr.aggregate) in self.subs_found:
+            return 0
+        else:
+            self.subs_found.append((expr.index, expr.aggregate))
+            return 1  # TODO +self.rec(expr.index)?
 
     def map_sum(self, expr):
         if expr.children:
@@ -714,31 +748,12 @@ def get_barrier_poly(knl):
     return barrier_poly
 
 
-'''
 def get_regs_per_thread(knl):
+    return get_regs_per_thread4(knl)
 
-    """Estimate registers per thread usage by a loopy kernel.
 
-    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
-
-    """
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.schedule import RunInstruction
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-    regs = 0
-    reg_counter = RegisterUsageEstimator(knl)
-    for sched_item in knl.schedule:
-        if isinstance(sched_item, RunInstruction):
-            insn = knl.id_to_insn[sched_item.insn_id]
-            regs += reg_counter(insn.expression) 
-            regs += reg_counter(insn.assignee) 
-    return regs
-'''
-
-def get_regs_per_thread(knl):
+# map_var and map_tagged_var returned 1, no checking for any duplication
+def get_regs_per_thread1(knl):
 
     """Estimate registers per thread usage by a loopy kernel.
 
@@ -752,6 +767,7 @@ def get_regs_per_thread(knl):
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
+
     max_regs = 0
     current_loop_indices = 0
     reg_counter = RegisterUsageEstimator(knl)
@@ -763,13 +779,13 @@ def get_regs_per_thread(knl):
             # if counting by blocks, check current blk total vs max, save if bigger
             if sched_item.iname:  # (if not empty)
                 current_loop_indices += 1  # TODO assumes all loops add 1 new index
-                print("enter loop: ", sched_item)
+                #print("enter loop: ", sched_item)
         elif isinstance(sched_item, LeaveLoop):
             # need to subtract indices from index count
             # if counting by blocks, check current blk total vs max, save if bigger
             if sched_item.iname:  # (if not empty)
                 current_loop_indices -= 1  # TODO assumes all loops add 1 new index
-                print("leave loop: ", sched_item)
+                #print("leave loop: ", sched_item)
         elif isinstance(sched_item, RunInstruction):
             # count regs for this instruction
             # if counting by blocks, add to current block total
@@ -780,10 +796,168 @@ def get_regs_per_thread(knl):
                    reg_counter(insn.expression)
             if regs > max_regs:
                 max_regs = regs
-            print("RunInstruction, regs, max_regs ", sched_item, regs, max_regs)
+            #print("RunInstruction, regs, max_regs ", sched_item, regs, max_regs)
             # TODO check for iname reuse
             # TODO don't count variables if they are loop indices?
 
     return max_regs
 
+# no duplicate vars, subs
+def get_regs_per_thread2(knl):
 
+    """Estimate registers per thread usage by a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
+
+    """
+
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction
+    from operator import mul
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    #print(knl)
+    max_regs = 0
+    current_loop_indices = 0
+    reg_counter = RegisterUsageEstimator(knl)
+
+    #TODO test blocks vs lines
+    for sched_item in knl.schedule:
+        reg_counter.forget_prev_vars()
+        reg_counter.forget_prev_subs()
+        if isinstance(sched_item, EnterLoop):
+            # need to add indices to index count
+            # if counting by blocks, check current blk total vs max, save if bigger
+            if sched_item.iname:  # (if not empty)
+                current_loop_indices += 1  # TODO assumes all loops add 1 new index
+                #print("enter loop: ", sched_item)
+        elif isinstance(sched_item, LeaveLoop):
+            # need to subtract indices from index count
+            # if counting by blocks, check current blk total vs max, save if bigger
+            if sched_item.iname:  # (if not empty)
+                current_loop_indices -= 1  # TODO assumes all loops add 1 new index
+                #print("leave loop: ", sched_item)
+        elif isinstance(sched_item, RunInstruction):
+            # count regs for this instruction
+            # if counting by blocks, add to current block total
+            # if counting by lines, check current line total vs max, save if bigger
+            insn = knl.id_to_insn[sched_item.insn_id]
+            regs = current_loop_indices + \
+                   reg_counter(insn.assignee) + \
+                   reg_counter(insn.expression)
+            if regs > max_regs:
+                max_regs = regs
+            #print("RunInstruction, regs, max_regs ", sched_item, regs, max_regs)
+            # TODO check for iname reuse
+            # TODO don't count variables if they are loop indices?
+
+    return max_regs
+
+def get_regs_per_thread3(knl):
+
+    """Estimate registers per thread usage by a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
+
+    """
+
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction
+    from operator import mul
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    #print(knl)
+    max_regs = 0
+    current_loop_indices = 0
+    block_reg_totals = [0]
+    reg_counters = [RegisterUsageEstimator(knl)]
+    # multiple counters to track nested sets of previously used iname+index combinations
+
+    for sched_item in knl.schedule:
+        if isinstance(sched_item, EnterLoop):
+            if sched_item.iname:  # (if not empty)
+                #print("entering loop, totals: \n", block_reg_totals, max_regs) 
+                current_loop_indices += 1  # TODO assumes all loops add 1 new index
+                # start a new block total
+                block_reg_totals.append(current_loop_indices)
+                # start a new estimator
+                reg_counters.append(RegisterUsageEstimator(knl))
+                #print("entered loop, totals: \n", block_reg_totals, max_regs) 
+            else:
+                print("Error, how does this happen?")
+                1/0
+
+        elif isinstance(sched_item, LeaveLoop):
+            if sched_item.iname:  # (if not empty)
+                #print("leaving loop, totals: \n", block_reg_totals, max_regs) 
+                current_loop_indices -= 1  # TODO assumes all loops add 1 new index
+                if block_reg_totals[-1] > max_regs:
+                    max_regs = block_reg_totals[-1]
+                # pop to resume previous total
+                #block_reg_totals[-2] += block_reg_totals[-1]
+                block_reg_totals.pop()
+                reg_counters.pop()
+                #print("left loop, totals: \n", block_reg_totals, max_regs) 
+            else:
+                print("Error, how does this happen?")
+                1/0
+        elif isinstance(sched_item, RunInstruction):
+            insn = knl.id_to_insn[sched_item.insn_id]
+            #print("instruction found: ", insn) 
+            #print("pre insn totals: \n", block_reg_totals, max_regs) 
+            block_reg_totals[-1] += reg_counters[-1](insn.assignee) + \
+                                    reg_counters[-1](insn.expression)
+            #print("post insn totals: \n", block_reg_totals, max_regs) 
+            # TODO don't count variables if they are loop indices? (also try this with ctr2)
+
+    #print("finished schedule, totals: \n", block_reg_totals, max_regs)
+    # finished looping, check outer block
+    if block_reg_totals[-1] > max_regs:
+        max_regs = block_reg_totals[-1]
+    #print("final, totals: \n", block_reg_totals, max_regs)
+
+    return max_regs
+
+#add all sub blocks to containing block
+def get_regs_per_thread4(knl):
+
+    """Estimate registers per thread usage by a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
+
+    """
+
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction
+    from operator import mul
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    #print(knl)
+
+    regs = 0
+    max_loop_indices = 0
+    current_loop_indices = 0
+    reg_counter = RegisterUsageEstimator(knl)
+
+    for sched_item in knl.schedule:
+        if isinstance(sched_item, EnterLoop):
+            if sched_item.iname:  # (if not empty)
+                current_loop_indices += 1  # TODO assumes all loops add 1 new index
+                if current_loop_indices > max_loop_indices:
+                    max_loop_indices = current_loop_indices
+                #print("enter loop: ", sched_item)
+        elif isinstance(sched_item, LeaveLoop):
+            # need to subtract indices from index count
+            if sched_item.iname:  # (if not empty)
+                current_loop_indices -= 1  # TODO assumes all loops add 1 new index
+                #print("leave loop: ", sched_item)
+        elif isinstance(sched_item, RunInstruction):
+            # count regs for this instruction
+            insn = knl.id_to_insn[sched_item.insn_id]
+            regs += reg_counter(insn.assignee) + \
+                   reg_counter(insn.expression)
+
+    return regs+max_loop_indices
