@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
-from six.moves import range
+from __future__ import absolute_import, division, print_function
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,28 +22,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+from six.moves import range
 
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
 from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn
-from loopy.tools import is_integer
 
 import logging
 logger = logging.getLogger(__name__)
 
 
 # {{{ sanity checks run pre-scheduling
-
-def check_temp_variable_shapes_are_constant(kernel):
-    for tv in six.itervalues(kernel.temporary_variables):
-        if any(not is_integer(s_i) for s_i in tv.shape):
-            raise LoopyError("shape of temporary variable '%s' is not "
-                    "constant (but has to be since the size of "
-                    "the temporary needs to be known at build time). "
-                    "Use loopy.fix_parameters to set variables to "
-                    "constant values." % tv.name)
-
 
 def check_insn_attributes(kernel):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
@@ -360,7 +348,6 @@ def pre_schedule_checks(kernel):
     try:
         logger.info("pre-schedule check %s: start" % kernel.name)
 
-        check_temp_variable_shapes_are_constant(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
         check_insn_attributes(kernel)
@@ -484,10 +471,14 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 .project_out_except(insn_inames, [dim_type.set]))
 
         insn_domain = kernel.get_inames_domain(insn_inames)
+        insn_parameters = frozenset(insn_domain.get_var_names(dim_type.param))
         assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
         desired_domain = ((insn_domain & assumptions)
-            .project_out_except(insn_inames, [dim_type.set]))
+            .project_out_except(insn_inames, [dim_type.set])
+            .project_out_except(insn_parameters, [dim_type.param]))
 
+        insn_impl_domain = (insn_impl_domain
+                .project_out_except(insn_parameters, [dim_type.param]))
         insn_impl_domain, desired_domain = align_two(
                 insn_impl_domain, desired_domain)
 

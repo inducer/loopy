@@ -997,9 +997,10 @@ transformation exists in :func:`loopy.add_prefetch`:
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-        a_fetch_0 = a[16 * gid(0) + lid(0)];
+        a_fetch = a[16 * gid(0) + lid(0)];
+        acc_k = 0.0f;
         for (int k = 0; k <= 15; ++k)
-          acc_k = acc_k + a_fetch_0;
+          acc_k = acc_k + a_fetch;
         out[16 * gid(0) + lid(0)] = acc_k;
     ...
 
@@ -1021,12 +1022,14 @@ earlier:
     #define lid(N) ((int) get_local_id(N))
     ...
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
-        a_fetch_0[lid(0)] = a[lid(0) + 16 * gid(0)];
-      barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch_0 (insn_k_update depends on a_fetch) */;
+        a_fetch[lid(0)] = a[lid(0) + 16 * gid(0)];
+      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
+        acc_k = 0.0f;
+      barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch (insn_k_update depends on a_fetch_rule) */;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
         for (int k = 0; k <= 15; ++k)
-          acc_k = acc_k + a_fetch_0[lid(0)];
+          acc_k = acc_k + a_fetch[lid(0)];
         out[16 * gid(0) + lid(0)] = acc_k;
       }
     ...
@@ -1151,7 +1154,7 @@ sign that something is amiss:
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     Traceback (most recent call last):
     ...
-    WriteRaceConditionWarning: instruction 'a_fetch' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch_0' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch)' to silenced_warnings kernel argument to disable)
+    WriteRaceConditionWarning: instruction 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch_rule)' to silenced_warnings kernel argument to disable)
 
 When we ask to see the code, the issue becomes apparent:
 
@@ -1167,17 +1170,17 @@ When we ask to see the code, the issue becomes apparent:
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(16, 16, 1))) transpose(__global float const *restrict a, int const n, __global float *restrict out)
     {
-      float a_fetch_0[16];
+      float a_fetch[16];
     <BLANKLINE>
       ...
-          a_fetch_0[lid(0)] = a[n * (lid(0) + 16 * gid(1)) + lid(1) + 16 * gid(0)];
+          a_fetch[lid(0)] = a[n * (lid(0) + 16 * gid(1)) + lid(1) + 16 * gid(0)];
       ...
-          out[n * (lid(1) + gid(0) * 16) + lid(0) + gid(1) * 16] = a_fetch_0[lid(0)];
+          out[n * (lid(1) + gid(0) * 16) + lid(0) + gid(1) * 16] = a_fetch[lid(0)];
       ...
     }
 
 Loopy has a 2D workgroup to use for prefetching of a 1D array. When it
-considers making *a_fetch_0* ``local`` (in the OpenCL memory sense of the word)
+considers making *a_fetch* ``local`` (in the OpenCL memory sense of the word)
 to make use of parallelism in prefetching, it discovers that a write race
 across the remaining axis of the workgroup would emerge.
 

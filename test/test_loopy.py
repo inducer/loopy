@@ -2174,6 +2174,23 @@ def test_to_batched(ctx_factory):
     bknl(queue, a=a, x=x)
 
 
+def test_variable_size_temporary():
+    knl = lp.make_kernel(
+         ''' { [i,j]: 0<=i,j<n } ''',
+         ''' out[i] = sum(j, a[i,j])''')
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+
+    knl = lp.add_prefetch(
+            knl, "a[:,:]", default_tag=None)
+
+    # Make sure that code generation succeeds even if
+    # there are variable-length arrays.
+    knl = lp.preprocess_kernel(knl)
+    for k in lp.generate_loop_schedules(knl):
+        lp.generate_code(k)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
