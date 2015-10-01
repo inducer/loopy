@@ -25,7 +25,7 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError
 
 
-def c_preprocess(source, defines=None, filename="<floopy source>"):
+def c_preprocess(source, defines=None, filename=None, include_paths=None):
     """
     :arg source: a string, possibly containing C preprocessor constructs
     :arg defines: a list of strings as they might occur after a
@@ -38,10 +38,22 @@ def c_preprocess(source, defines=None, filename="<floopy source>"):
     except ImportError:
         raise LoopyError("Using the C preprocessor requires PLY to be installed")
 
+    input_dirname = None
+    if filename is None:
+        filename = "<floopy source>"
+    else:
+        from os.path import dirname
+        input_dirname = dirname(filename)
+
     lexer = lex.lex(cpp)
 
     from ply.cpp import Preprocessor
     p = Preprocessor(lexer)
+    if input_dirname is not None:
+        p.add_path(input_dirname)
+    if include_paths:
+        for inc_path in include_paths:
+            p.add_path(inc_path)
 
     if defines:
         for d in defines:
