@@ -229,7 +229,7 @@ class OpenCLTarget(CTarget):
     def is_vector_dtype(self, dtype):
         return list(vec.types.values())
 
-    def get_vector_dtype(self, base, count):
+    def vector_dtype(self, base, count):
         return vec.types[base, count]
 
     def wrap_function_declaration(self, kernel, fdecl):
