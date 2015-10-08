@@ -306,8 +306,8 @@ def parse_array_dim_tags(dim_tags, use_increasing_target_axes=False):
                     raise LoopyError("may not mix C/F dim_tag specifications with "
                             "explicit specification of layout nesting levels")
             else:
-                target_axis_to_has_explicit_nesting_level[parsed_dim_tag.target_axis] = \
-                        has_explicit_nesting_level
+                target_axis_to_has_explicit_nesting_level[
+                        parsed_dim_tag.target_axis] = has_explicit_nesting_level
 
             # }}}
 

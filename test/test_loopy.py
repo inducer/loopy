@@ -2191,6 +2191,43 @@ def test_variable_size_temporary():
         lp.generate_code(k)
 
 
+def test_indexof(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+         ''' { [i,j]: 0<=i,j<5 } ''',
+         ''' out[i,j] = indexof(out[i,j])''')
+
+    knl = lp.set_options(knl, write_cl=True)
+
+    (evt, (out,)) = knl(queue)
+    out = out.get()
+
+    assert np.array_equal(out.ravel(order="C"), np.arange(25))
+
+
+def test_indexof_vec(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    if ctx.devices[0].platform.name.startswith("Portable"):
+        # Accurate as of 2015-10-08
+        pytest.skip("POCL miscompiles vector code")
+
+    knl = lp.make_kernel(
+         ''' { [i,j,k]: 0<=i,j,k<4 } ''',
+         ''' out[i,j,k] = indexof_vec(out[i,j,k])''')
+
+    knl = lp.tag_inames(knl, {"i": "vec"})
+    knl = lp.tag_data_axes(knl, "out", "vec,c,c")
+    knl = lp.set_options(knl, write_cl=True)
+
+    (evt, (out,)) = knl(queue)
+    #out = out.get()
+    #assert np.array_equal(out.ravel(order="C"), np.arange(25))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

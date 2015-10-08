@@ -39,6 +39,7 @@ Loopy's expressions are a slight superset of the expressions supported by
     * duplication of reduction inames
 * complex-valued arithmetic
 * tagging of array access and substitution rule use ("$")
+* ``indexof``, ``indexof_vec``
 
 .. _types:
 
