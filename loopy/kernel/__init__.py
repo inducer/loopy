@@ -302,7 +302,7 @@ class LoopKernel(RecordWithoutPickling):
         manglers = self.target.function_manglers() + self.function_manglers
 
         for mangler in manglers:
-            mangle_result = mangler(self.target, identifier, arg_dtypes)
+            mangle_result = mangler(self, identifier, arg_dtypes)
             if mangle_result is not None:
                 return mangle_result
 
@@ -316,7 +316,7 @@ class LoopKernel(RecordWithoutPickling):
         manglers = self.target.symbol_manglers() + self.symbol_manglers
 
         for mangler in manglers:
-            result = mangler(self.target, identifier)
+            result = mangler(self, identifier)
             if result is not None:
                 return result
 

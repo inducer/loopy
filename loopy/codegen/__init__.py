@@ -561,7 +561,7 @@ def generate_code(kernel, device=None):
     preamble_generators = (kernel.preamble_generators
             + kernel.target.preamble_generators())
     for prea_gen in preamble_generators:
-        preambles.extend(prea_gen(kernel.target, seen_dtypes, seen_functions))
+        preambles.extend(prea_gen(kernel, seen_dtypes, seen_functions))
 
     seen_preamble_tags = set()
     dedup_preambles = []
