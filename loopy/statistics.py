@@ -416,6 +416,7 @@ class RegisterUsageEstimator(CombineMapper):
             return 0
         else:
             self.vars_found.append(expr)
+            print("new var found: ", expr)
             if "_dim_" in str(expr): #TODO how to remove block/thread size/id vars?
                 return 0
             else:

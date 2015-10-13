@@ -526,6 +526,7 @@ def test_reg_counter_basic():
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     regs = get_regs_per_thread(knl)
+    #1/0
     assert regs == 6
 
 
