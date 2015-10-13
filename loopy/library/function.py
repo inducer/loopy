@@ -23,19 +23,19 @@ THE SOFTWARE.
 """
 
 
-def default_function_mangler(target, name, arg_dtypes):
+def default_function_mangler(kernel, name, arg_dtypes):
     from loopy.library.reduction import reduction_function_mangler
 
     manglers = [reduction_function_mangler]
     for mangler in manglers:
-        result = mangler(target, name, arg_dtypes)
+        result = mangler(kernel, name, arg_dtypes)
         if result is not None:
             return result
 
     return None
 
 
-def single_arg_function_mangler(target, name, arg_dtypes):
+def single_arg_function_mangler(kernel, name, arg_dtypes):
     if len(arg_dtypes) == 1:
         dtype, = arg_dtypes
         return dtype, name

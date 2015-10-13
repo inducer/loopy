@@ -997,8 +997,8 @@ transformation exists in :func:`loopy.add_prefetch`:
     >>> evt, (out,) = knl_pf(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-        a_fetch = a[16 * gid(0) + lid(0)];
         acc_k = 0.0f;
+        a_fetch = a[16 * gid(0) + lid(0)];
         for (int k = 0; k <= 15; ++k)
           acc_k = acc_k + a_fetch;
         out[16 * gid(0) + lid(0)] = acc_k;
@@ -1022,9 +1022,9 @@ earlier:
     #define lid(N) ((int) get_local_id(N))
     ...
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
-        a_fetch[lid(0)] = a[lid(0) + 16 * gid(0)];
-      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
         acc_k = 0.0f;
+      if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
+        a_fetch[lid(0)] = a[lid(0) + 16 * gid(0)];
       barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch (insn_k_update depends on a_fetch_rule) */;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
@@ -1459,8 +1459,8 @@ Now to make things more interesting, we'll create a kernel with barriers:
     {
       __local int c[50 * 10 * 99];
     <BLANKLINE>
-      for (int i = 0; i <= 49; ++i)
-        for (int j = 0; j <= 9; ++j)
+      for (int j = 0; j <= 9; ++j)
+        for (int i = 0; i <= 49; ++i)
         {
           barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
           c[990 * i + 99 * j + lid(0) + 1 + gid(0) * 128] = 2 * a[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128];

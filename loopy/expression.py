@@ -184,6 +184,9 @@ class TypeInferenceMapper(CombineMapper):
         if isinstance(identifier, Variable):
             identifier = identifier.name
 
+        if identifier in ["indexof", "indexof_vec"]:
+            return self.kernel.index_dtype
+
         arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
 
         mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)

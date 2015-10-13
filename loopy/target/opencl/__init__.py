@@ -105,7 +105,7 @@ def _register_vector_types(dtype_registry):
 
 # {{{ function mangler
 
-def opencl_function_mangler(target, name, arg_dtypes):
+def opencl_function_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
 
@@ -134,7 +134,7 @@ def opencl_function_mangler(target, name, arg_dtypes):
 
 # {{{ symbol mangler
 
-def opencl_symbol_mangler(target, name):
+def opencl_symbol_mangler(kernel, name):
     # FIXME: should be more picky about exact names
     if name.startswith("FLT_"):
         return np.dtype(np.float32), name
@@ -155,7 +155,7 @@ def opencl_symbol_mangler(target, name):
 
 # {{{ preamble generator
 
-def opencl_preamble_generator(target, seen_dtypes, seen_functions):
+def opencl_preamble_generator(kernel, seen_dtypes, seen_functions):
     has_double = False
 
     for dtype in seen_dtypes:
@@ -229,7 +229,7 @@ class OpenCLTarget(CTarget):
     def is_vector_dtype(self, dtype):
         return list(vec.types.values())
 
-    def get_vector_dtype(self, base, count):
+    def vector_dtype(self, base, count):
         return vec.types[base, count]
 
     def wrap_function_declaration(self, kernel, fdecl):

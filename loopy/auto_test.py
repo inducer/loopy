@@ -320,10 +320,6 @@ def _enumerate_cl_devices_for_ref_test():
     cpu_devs = []
 
     for pf in cl.get_platforms():
-        if pf.name == "Portable Computing Language":
-            # pocl not mature enough yet, sadly
-            continue
-
         for dev in pf.get_devices():
             if dev.type & cl.device_type.CPU:
                 cpu_devs.append(dev)

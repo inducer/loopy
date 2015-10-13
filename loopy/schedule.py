@@ -440,9 +440,6 @@ class SchedulerState(Record):
         *Note:* ``ilp`` and ``vec`` are not 'parallel' for the purposes of the
         scheduler.  See :attr:`ilp_inames`, :attr:`vec_inames`.
 
-    .. attribute:: loop_priority
-
-
     .. rubric:: Time-varying scheduler state
 
     .. attribute:: active_inames
@@ -536,7 +533,10 @@ def generate_loop_schedules_internal(
 
     def insn_sort_key(insn_id):
         insn = kernel.id_to_insn[insn_id]
-        return (insn.priority, len(active_groups & insn.groups))
+
+        # Sort by insn.id as a last criterion to achieve deterministic
+        # schedule generation order.
+        return (insn.priority, len(active_groups & insn.groups), insn.id)
 
     insn_ids_to_try = sorted(sched_state.unscheduled_insn_ids,
             key=insn_sort_key, reverse=True)
@@ -864,7 +864,11 @@ def generate_loop_schedules_internal(
                 found_viable_schedule = False
 
                 for iname in sorted(tier,
-                        key=lambda iname: iname_to_usefulness.get(iname, 0),
+                        key=lambda iname: (
+                            iname_to_usefulness.get(iname, 0),
+                            # Sort by iname to achieve deterministic
+                            # ordering of generated schedules.
+                            iname),
                         reverse=True):
 
                     for sub_sched in generate_loop_schedules_internal(

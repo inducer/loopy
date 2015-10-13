@@ -24,6 +24,15 @@ def to_python_literal(value):
         # It's a float
         return repr(float(value))
 
+    if value.endswith("f"):
+        try:
+            float(value[:-1])
+        except ValueError:
+            pass
+        else:
+            # It's a float
+            return repr(float(value[:-1]))
+
     return repr(value)
 
 
