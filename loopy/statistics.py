@@ -220,6 +220,144 @@ class ExpressionOpCounter(CombineMapper):
         raise NotImplementedError("ExpressionOpCounter encountered slice, "
                                   "map_slice not implemented.")
 
+class ExpressionOpCounter2(CombineMapper):
+
+    def __init__(self, knl):
+        self.knl = knl
+        from loopy.expression import TypeInferenceMapper
+        self.type_inf = TypeInferenceMapper(knl)
+
+    def combine(self, values):
+        return sum(values)
+
+    def map_constant(self, expr):
+        return ToCountMap()
+
+    map_tagged_variable = map_constant
+    map_variable = map_constant
+
+    #def map_wildcard(self, expr):
+    #    return 0,0
+
+    #def map_function_symbol(self, expr):
+    #    return 0,0
+
+    map_call = map_constant
+
+    # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
+
+    def map_subscript(self, expr):  # implemented in CombineMapper
+        return self.rec(expr.index)
+
+    # def map_lookup(self, expr):  # implemented in CombineMapper
+
+    def map_sum(self, expr):
+        if expr.children:
+            return ToCountMap(
+                        {(self.type_inf(expr), 'add'): len(expr.children)-1}
+                        ) + sum(self.rec(child) for child in expr.children)
+        else:
+            return ToCountMap() #TODO when does this happen?
+
+    def map_product(self, expr):
+        from pymbolic.primitives import is_zero
+        if expr.children:
+            # Do not count '(-1)* ' (as produced by
+            # subtraction in pymbolic): Assume this
+            # gets implemented as a sign flip or
+            # as subtraction. (Confirmed to be true on
+            # at least Nvidia 352.30.)
+            return sum(ToCountMap({(self.type_inf(expr), 'mul'): 1})
+                       + self.rec(child)
+                       for child in expr.children
+                       if not is_zero(child + 1)) + \
+                       ToCountMap({(self.type_inf(expr), 'mul'): -1})
+        else:
+            return ToCountMap() #TODO when does this happen?
+
+    def map_quotient(self, expr, *args):
+        return ToCountMap({(self.type_inf(expr), 'div'): 1}) \
+                                + self.rec(expr.numerator) \
+                                + self.rec(expr.denominator)
+
+    map_floor_div = map_quotient
+    map_remainder = map_quotient  # implemented in CombineMapper
+
+    def map_power(self, expr):
+        return ToCountMap({(self.type_inf(expr), 'pow'): 1}) \
+                                + self.rec(expr.base) \
+                                + self.rec(expr.exponent)
+
+    def map_left_shift(self, expr):  # implemented in CombineMapper
+        return ToCountMap({(self.type_inf(expr), 'shift'): 1}) \
+                                + self.rec(expr.shiftee) \
+                                + self.rec(expr.shift)
+
+    map_right_shift = map_left_shift
+
+    def map_bitwise_not(self, expr):  # implemented in CombineMapper
+        return ToCountMap({(self.type_inf(expr), 'bw'): 1}) \
+                                + self.rec(expr.child)
+
+    def map_bitwise_or(self, expr):
+        # implemented in CombineMapper, maps to map_sum;
+        return ToCountMap(
+                        {(self.type_inf(expr), 'bw'): len(expr.children)-1}
+                        ) + sum(self.rec(child) for child in expr.children)
+
+    map_bitwise_xor = map_bitwise_or
+    # implemented in CombineMapper, maps to map_sum;
+
+    map_bitwise_and = map_bitwise_or
+    # implemented in CombineMapper, maps to map_sum;
+
+    def map_comparison(self, expr):  # implemented in CombineMapper
+        return self.rec(expr.left)+self.rec(expr.right)
+
+    def map_logical_not(self, expr):
+        return self.rec(expr.child)
+
+    def map_logical_or(self, expr):
+        return sum(self.rec(child) for child in expr.children)
+
+    map_logical_and = map_logical_or
+
+    def map_if(self, expr):  # implemented in CombineMapper, recurses
+        warnings.warn("ExpressionOpCounter counting DRAM accesses as "
+                      "sum of if-statement branches.")
+        return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
+
+    def map_if_positive(self, expr):  # implemented in FlopCounter
+        warnings.warn("ExpressionOpCounter counting DRAM accesses as "
+                      "sum of if_pos-statement branches.")
+        return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
+
+    def map_min(self, expr):
+        # implemented in CombineMapper, maps to map_sum;
+        return ToCountMap(
+                        {(self.type_inf(expr), 'maxmin'): len(expr.children)-1}
+                        ) + sum(self.rec(child) for child in expr.children)
+    # implemented in CombineMapper, maps to map_sum;  # TODO test
+
+    map_max = map_min  # implemented in CombineMapper, maps to map_sum;  # TODO test
+
+    def map_common_subexpression(self, expr):
+        raise NotImplementedError("ExpressionOpCounter encountered "
+                                  "common_subexpression, "
+                                  "map_common_subexpression not implemented.")
+
+    def map_substitution(self, expr):
+        raise NotImplementedError("ExpressionOpCounter encountered substitution, "
+                                  "map_substitution not implemented.")
+
+    def map_derivative(self, expr):
+        raise NotImplementedError("ExpressionOpCounter encountered derivative, "
+                                  "map_derivative not implemented.")
+
+    def map_slice(self, expr):
+        raise NotImplementedError("ExpressionOpCounter encountered slice, "
+                                  "map_slice not implemented.")
+
 
 class GlobalSubscriptCounter(CombineMapper):
 
@@ -417,6 +555,14 @@ class RegisterUsageEstimator(CombineMapper):
         else:
             self.vars_found.append(expr)
             print("new var found: ", expr)
+            print("knl.temp_vars: \n", self.knl.temporary_variables)
+            print("found in temp_vars? ", expr.name in self.knl.temporary_variables)
+            print("found in inames? ", expr.name in self.knl.all_inames)
+            #print("knl.vars: \n", self.knl.variables)
+            if expr.name in self.knl.temporary_variables:
+                print("local? ", self.knl.temporary_variables[expr.name].is_local)
+                
+            #print("local? ", self.knl.temporary_variables[expr.name].is_local)
             if "_dim_" in str(expr): #TODO how to remove block/thread size/id vars?
                 return 0
             else:
@@ -591,6 +737,24 @@ def get_op_poly(knl):
 
     op_poly = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
+    for insn in knl.instructions:
+        # how many times is this instruction executed?
+        # check domain size:
+        insn_inames = knl.insn_inames(insn)
+        inames_domain = knl.get_inames_domain(insn_inames)
+        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+        ops = op_counter(insn.assignee) + op_counter(insn.expression)
+        op_poly = op_poly + ops*count(knl, domain)
+    return op_poly.dict
+
+
+def get_op_poly2(knl):
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+
+    op_poly = ToCountMap()
+    op_counter = ExpressionOpCounter2(knl)
     for insn in knl.instructions:
         # how many times is this instruction executed?
         # check domain size:

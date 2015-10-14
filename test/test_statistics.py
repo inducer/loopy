@@ -28,7 +28,7 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 import loopy as lp
 from loopy.statistics import get_op_poly, get_gmem_access_poly, get_barrier_poly
-from loopy.statistics import get_regs_per_thread
+from loopy.statistics import get_op_poly2, get_regs_per_thread
 import numpy as np
 
 
@@ -50,9 +50,10 @@ def test_op_counter_basic():
     n = 512
     m = 256
     l = 128
-    f32 = poly[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    params = {'n': n, 'm': m, 'l': l}
+    f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
+    f64 = poly[np.dtype(np.float64)].eval_with_dict(params)
+    i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
     assert f32 == 3*n*m*l
     assert f64 == n*m
     assert i32 == n*m*2
@@ -72,7 +73,8 @@ def test_op_counter_reduction():
     n = 512
     m = 256
     l = 128
-    f32 = poly[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    params = {'n': n, 'm': m, 'l': l}
+    f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
     assert f32 == 2*n*m*l
 
 
@@ -92,9 +94,10 @@ def test_op_counter_logic():
     n = 512
     m = 256
     l = 128
-    f32 = poly[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    params = {'n': n, 'm': m, 'l': l}
+    f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
+    f64 = poly[np.dtype(np.float64)].eval_with_dict(params)
+    i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
     assert f32 == n*m
     assert f64 == 3*n*m
     assert i32 == n*m
@@ -118,9 +121,10 @@ def test_op_counter_specialops():
     n = 512
     m = 256
     l = 128
-    f32 = poly[np.dtype(np.float32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    f64 = poly[np.dtype(np.float64)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
+    params = {'n': n, 'm': m, 'l': l}
+    f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
+    f64 = poly[np.dtype(np.float64)].eval_with_dict(params)
+    i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
     assert f32 == 4*n*m*l
     assert f64 == 3*n*m
     assert i32 == n*m
@@ -147,8 +151,9 @@ def test_op_counter_bitwise():
     n = 512
     m = 256
     l = 128
-    i32 = poly[np.dtype(np.int32)].eval_with_dict({'n': n, 'm': m, 'l': l})
-    i64 = poly[np.dtype(np.int64)].eval_with_dict({'n': n, 'm': m, 'l': l})  # noqa
+    params = {'n': n, 'm': m, 'l': l}
+    i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
+    i64 = poly[np.dtype(np.int64)].eval_with_dict(params)  # noqa
     assert np.dtype(np.float64) not in poly
     assert i32 == n*m+3*n*m*l
     assert i64 == 6*n*m
@@ -185,6 +190,152 @@ def test_op_counter_triangular_domain():
         assert flops == 78
 
 
+def test_op_counter2_basic():
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+                e[i, k+1] = -g[i,k]*h[i,k+1]
+                """
+            ],
+            name="basic", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    poly = get_op_poly2(knl)
+    n = 512
+    m = 256
+    l = 128
+    params = {'n': n, 'm': m, 'l': l}
+    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
+    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    f32div = poly[(np.dtype(np.float32), 'div')].eval_with_dict(params)
+    f64mul = poly[(np.dtype(np.float64), 'mul')].eval_with_dict(params)
+    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    assert f32add == f32mul == f32div == n*m*l
+    assert f64mul == n*m
+    assert i32add == n*m*2
+
+
+def test_op_counter2_reduction():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j])"
+            ],
+            name="matmul_serial", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+    poly = get_op_poly2(knl)
+    n = 512
+    m = 256
+    l = 128
+    params = {'n': n, 'm': m, 'l': l}
+    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
+    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    assert f32add == f32mul == n*m*l
+
+
+def test_op_counter2_logic():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                e[i,k] = if(not(k<l-2) and k>6 or k/2==l, g[i,k]*2, g[i,k]+h[i,k]/2)
+                """
+            ],
+            name="logic", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
+    poly = get_op_poly2(knl)
+    n = 512
+    m = 256
+    l = 128
+    params = {'n': n, 'm': m, 'l': l}
+    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    f64add = poly[(np.dtype(np.float64), 'add')].eval_with_dict(params)
+    f64div = poly[(np.dtype(np.float64), 'div')].eval_with_dict(params)
+    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    #f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
+    #f64 = poly[np.dtype(np.float64)].eval_with_dict(params)
+    #i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
+    assert f32mul == n*m
+    #assert f64 == 3*n*m
+    assert f64div == 2*n*m  #TODO why?
+    assert f64add == n*m
+    assert i32add == n*m
+
+
+def test_op_counter2_specialops():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = (2*a[i,j,k])%(2+b[i,j,k]/3.0)
+                e[i, k] = (1+g[i,k])**(1+h[i,k+1])
+                """
+            ],
+            name="specialops", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    poly = get_op_poly2(knl)
+    n = 512
+    m = 256
+    l = 128
+    params = {'n': n, 'm': m, 'l': l}
+    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    f32div = poly[(np.dtype(np.float32), 'div')].eval_with_dict(params)
+    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
+    f64pow = poly[(np.dtype(np.float64), 'pow')].eval_with_dict(params)
+    f64add = poly[(np.dtype(np.float64), 'add')].eval_with_dict(params)
+    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    assert f32div == 2*n*m*l
+    assert f32mul == f32add == n*m*l
+    assert f64add == 2*n*m
+    assert f64pow == i32add == n*m
+
+
+def test_op_counter2_bitwise():
+
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = (a[i,j,k] | 1) + (b[i,j,k] & 1)
+                e[i, k] = (g[i,k] ^ k)*(~h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
+                """
+            ],
+            name="bitwise", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(
+            knl, dict(
+                a=np.int32, b=np.int32,
+                g=np.int64, h=np.int64))
+
+    poly = get_op_poly2(knl)
+    n = 512
+    m = 256
+    l = 128
+    params = {'n': n, 'm': m, 'l': l}
+    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    i32bw = poly[(np.dtype(np.int32), 'bw')].eval_with_dict(params)
+    i64bw = poly[(np.dtype(np.int64), 'bw')].eval_with_dict(params)
+    i64mul = poly[(np.dtype(np.int64), 'mul')].eval_with_dict(params)
+    i64add = poly[(np.dtype(np.int64), 'add')].eval_with_dict(params)
+    i64shift = poly[(np.dtype(np.int64), 'shift')].eval_with_dict(params)
+    assert i32add == n*m+n*m*l
+    assert i32bw == 2*n*m*l
+    assert i64bw == 2*n*m
+    assert i64add == i64mul == n*m
+    assert i64shift == 2*n*m
+
+
 def test_gmem_access_counter_basic():
 
     knl = lp.make_kernel(
@@ -203,21 +354,22 @@ def test_gmem_access_counter_basic():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
     f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'load')
-                   ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                   ].eval_with_dict(params)
     f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
-                   ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                   ].eval_with_dict(params)
     assert f32 == 3*n*m*l
     assert f64 == 2*n*m
 
     f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'store')
-                   ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                   ].eval_with_dict(params)
     f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'store')
-                   ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                   ].eval_with_dict(params)
     assert f32 == n*m*l
     assert f64 == n*m
 
@@ -236,14 +388,15 @@ def test_gmem_access_counter_reduction():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
     f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f32 == 2*n*m*l
 
     f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f32 == n*l
 
 
@@ -263,18 +416,19 @@ def test_gmem_access_counter_logic():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
     f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f32 == 2*n*m
     assert f64 == n*m
 
     f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f64 == n*m
 
 
@@ -296,21 +450,22 @@ def test_gmem_access_counter_specialops():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
     f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f32 == 2*n*m*l
     assert f64 == 2*n*m
 
     f32 = poly[
                     (np.dtype(np.float32), 'uniform', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f64 = poly[
                     (np.dtype(np.float64), 'uniform', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f32 == n*m*l
     assert f64 == n*m
 
@@ -336,14 +491,15 @@ def test_gmem_access_counter_bitwise():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
     i32 = poly[
                     (np.dtype(np.int32), 'uniform', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert i32 == 4*n*m+2*n*m*l
 
     i32 = poly[
                     (np.dtype(np.int32), 'uniform', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert i32 == n*m+n*m*l
 
 
@@ -367,21 +523,22 @@ def test_gmem_access_counter_mixed():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
     f64uniform = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f64uniform == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
     f64uniform = poly[
                     (np.dtype(np.float64), 'uniform', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f64uniform == n*m
     assert f32nonconsec == n*m*l
 
@@ -406,21 +563,22 @@ def test_gmem_access_counter_nonconsec():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
     f64nonconsec = poly[
                     (np.dtype(np.float64), 'nonconsecutive', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
     f64nonconsec = poly[
                     (np.dtype(np.float64), 'nonconsecutive', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f64nonconsec == n*m
     assert f32nonconsec == n*m*l
 
@@ -444,22 +602,23 @@ def test_gmem_access_counter_consec():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
 
     f64consec = poly[
                     (np.dtype(np.float64), 'consecutive', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f32consec = poly[
                     (np.dtype(np.float32), 'consecutive', 'load')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f64consec == 2*n*m
     assert f32consec == 3*n*m*l
 
     f64consec = poly[
                     (np.dtype(np.float64), 'consecutive', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     f32consec = poly[
                     (np.dtype(np.float32), 'consecutive', 'store')
-                    ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                    ].eval_with_dict(params)
     assert f64consec == n*m
     assert f32consec == n*m*l
 
@@ -482,7 +641,8 @@ def test_barrier_counter_nobarriers():
     n = 512
     m = 256
     l = 128
-    barrier_count = poly.eval_with_dict({'n': n, 'm': m, 'l': l})
+    params = {'n': n, 'm': m, 'l': l}
+    barrier_count = poly.eval_with_dict(params)
     assert barrier_count == 0
 
 
@@ -507,10 +667,11 @@ def test_barrier_counter_barriers():
     n = 512
     m = 256
     l = 128
-    barrier_count = poly.eval_with_dict({'n': n, 'm': m, 'l': l})
+    params = {'n': n, 'm': m, 'l': l}
+    barrier_count = poly.eval_with_dict(params)
     assert barrier_count == 50*10*2
 
-
+'''
 def test_reg_counter_basic():
 
     knl = lp.make_kernel(
@@ -526,7 +687,7 @@ def test_reg_counter_basic():
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     regs = get_regs_per_thread(knl)
-    #1/0
+    1/0
     assert regs == 6
 
 
@@ -596,7 +757,7 @@ def test_reg_counter_bitwise():
                 g=np.int64, h=np.int64))
     regs = get_regs_per_thread(knl)
     assert regs == 6
-
+'''
 
 def test_all_counters_parallel_matmul():
 
@@ -613,17 +774,18 @@ def test_all_counters_parallel_matmul():
     n = 512
     m = 256
     l = 128
+    params = {'n': n, 'm': m, 'l': l}
 
-    barrier_count = get_barrier_poly(knl).eval_with_dict({'n': n, 'm': m, 'l': l})
+    barrier_count = get_barrier_poly(knl).eval_with_dict(params)
     assert barrier_count == 0
 
     op_map = get_op_poly(knl)
     f32ops = op_map[
                         np.dtype(np.float32)
-                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                        ].eval_with_dict(params)
     i32ops = op_map[
                         np.dtype(np.int32)
-                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                        ].eval_with_dict(params)
 
     assert f32ops == n*m*l*2
     assert i32ops == n*m*l*4 + l*n*4
@@ -631,17 +793,17 @@ def test_all_counters_parallel_matmul():
     subscript_map = get_gmem_access_poly(knl)
     f32uncoal = subscript_map[
                         (np.dtype(np.float32), 'nonconsecutive', 'load')
-                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                        ].eval_with_dict(params)
     f32coal = subscript_map[
                         (np.dtype(np.float32), 'consecutive', 'load')
-                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                        ].eval_with_dict(params)
 
     assert f32uncoal == n*m*l
     assert f32coal == n*m*l
 
     f32coal = subscript_map[
                         (np.dtype(np.float32), 'consecutive', 'store')
-                        ].eval_with_dict({'n': n, 'm': m, 'l': l})
+                        ].eval_with_dict(params)
 
     assert f32coal == n*l
     '''
