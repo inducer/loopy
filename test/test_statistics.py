@@ -671,7 +671,7 @@ def test_barrier_counter_barriers():
     barrier_count = poly.eval_with_dict(params)
     assert barrier_count == 50*10*2
 
-'''
+
 def test_reg_counter_basic():
 
     knl = lp.make_kernel(
@@ -687,7 +687,6 @@ def test_reg_counter_basic():
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     regs = get_regs_per_thread(knl)
-    1/0
     assert regs == 6
 
 
@@ -757,7 +756,7 @@ def test_reg_counter_bitwise():
                 g=np.int64, h=np.int64))
     regs = get_regs_per_thread(knl)
     assert regs == 6
-'''
+
 
 def test_all_counters_parallel_matmul():
 
