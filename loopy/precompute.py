@@ -477,7 +477,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                         "storage_axes to uniquely determine the meaning "
                         "of the given precompute_inames. (%d storage_axes "
                         "needed)" % len(precompute_inames))
-            storage_axes.extend(extra_storage_axes)
+            storage_axes.extend(sorted(extra_storage_axes))
 
         storage_axes.extend(range(len(subst.arguments)))
 
@@ -836,7 +836,13 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
+    print(new_iname_to_tag)
     from loopy import tag_inames
-    return tag_inames(kernel, new_iname_to_tag)
+    kernel = tag_inames(kernel, new_iname_to_tag)
+
+    from loopy.kernel.tools import assign_automatic_axes
+    kernel = assign_automatic_axes(kernel)
+
+    return kernel
 
 # vim: foldmethod=marker
