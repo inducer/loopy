@@ -102,7 +102,9 @@ class CTarget(TargetBase):
                 sub_tp, sub_decl = self.subdecl.get_decl_pair()
                 return sub_tp, ("*const restrict %s" % sub_decl)
 
-        for tv in six.itervalues(kernel.temporary_variables):
+        for tv in sorted(
+                six.itervalues(kernel.temporary_variables),
+                key=lambda tv: tv.name):
             decl_info = tv.decl_info(self, index_dtype=kernel.index_dtype)
 
             if not tv.base_storage:
@@ -166,7 +168,7 @@ class CTarget(TargetBase):
                             idi.dtype.itemsize
                             * product(si for si in idi.shape))
 
-        for bs_name, bs_sizes in six.iteritems(base_storage_sizes):
+        for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
             bs_var_decl = POD(self, np.int8, bs_name)
             if base_storage_to_is_local[bs_name]:
                 bs_var_decl = CLLocal(bs_var_decl)
