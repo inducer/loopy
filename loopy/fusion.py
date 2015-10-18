@@ -311,9 +311,9 @@ def _fuse_two_kernels(knla, knlb):
 
 def fuse_kernels(kernels, suffixes=None):
     kernels = list(kernels)
-    suffixes = list(suffixes)
 
     if suffixes:
+        suffixes = list(suffixes)
         if len(suffixes) != len(kernels):
             raise ValueError("length of 'suffixes' must match "
                     "length of 'kernels'")
