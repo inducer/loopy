@@ -3,6 +3,7 @@ Python 2.7 AMD CPU:
   - export PY_EXE=python2.7
   - export PYOPENCL_TEST=amd:pu
   - export EXTRA_INSTALL="numpy mako"
+  - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
@@ -15,6 +16,7 @@ Python 2.6 AMD CPU:
   - export PY_EXE=python2.6
   - export PYOPENCL_TEST=amd:pu
   - export EXTRA_INSTALL="numpy mako"
+  - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
@@ -28,6 +30,7 @@ Python 3.4 AMD CPU:
   - export PYOPENCL_TEST=amd:pu
   - export EXTRA_INSTALL="numpy mako"
   - export NO_DOCTESTS=1
+  - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
@@ -40,6 +43,7 @@ Python 2.7 POCL:
   - export PY_EXE=python2.7
   - export PYOPENCL_TEST=portable
   - export EXTRA_INSTALL="numpy mako"
+  - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
@@ -53,6 +57,7 @@ Python 2.7 with legacy PyOpenCL:
   - export PYOPENCL_TEST=amd:pu
   - export EXTRA_INSTALL="numpy mako"
   - export REQUIREMENTS_TXT="requirements-old-pyopencl.txt"
+  - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
