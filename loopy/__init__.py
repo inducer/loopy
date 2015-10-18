@@ -1159,7 +1159,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # If the rule survived past precompute() (i.e. some accesses fell outside
     # the footprint), get rid of it before moving on.
     if rule_name in new_kernel.substitutions:
-        return expand_subst(new_kernel, "id:"+rule_name)
+        return expand_subst(new_kernel, "... > id:"+rule_name)
     else:
         return new_kernel
 
