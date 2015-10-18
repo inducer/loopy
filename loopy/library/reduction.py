@@ -300,27 +300,27 @@ def parse_reduction_op(name):
 # }}}
 
 
-def reduction_function_mangler(target, func_id, arg_dtypes):
+def reduction_function_mangler(kernel, func_id, arg_dtypes):
     if isinstance(func_id, ArgExtFunction):
         from loopy.target.opencl import OpenCLTarget
-        if not isinstance(target, OpenCLTarget):
+        if not isinstance(kernel.target, OpenCLTarget):
             raise LoopyError("only OpenCL supported for now")
 
         op = func_id.reduction_op
-        return (op.result_dtype(target, func_id.scalar_dtype, func_id.inames),
+        return (op.result_dtype(kernel.target, func_id.scalar_dtype, func_id.inames),
                 "%s_%s" % (op.prefix(func_id.scalar_dtype), func_id.name))
 
     return None
 
 
-def reduction_preamble_generator(target, seen_dtypes, seen_functions):
+def reduction_preamble_generator(kernel, seen_dtypes, seen_functions):
     from loopy.target.opencl import OpenCLTarget
 
     for func in seen_functions:
         if isinstance(func.name, ArgExtFunction):
-            if not isinstance(target, OpenCLTarget):
+            if not isinstance(kernel.target, OpenCLTarget):
                 raise LoopyError("only OpenCL supported for now")
 
-            yield get_argext_preamble(target, func.name)
+            yield get_argext_preamble(kernel.target, func.name)
 
 # vim: fdm=marker
