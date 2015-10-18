@@ -98,7 +98,6 @@ class MatchExpressionBase(object):
         return not self.__eq__(other)
 
 
-
 class AllMatchExpression(MatchExpressionBase):
     def __call__(self, kernel, matchable):
         return True
