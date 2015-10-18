@@ -836,7 +836,6 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
-    print(new_iname_to_tag)
     from loopy import tag_inames
     kernel = tag_inames(kernel, new_iname_to_tag)
 
