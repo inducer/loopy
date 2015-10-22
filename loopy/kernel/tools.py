@@ -686,7 +686,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
             aggregate_strides[iname] = aggregate_strides.get(iname, 0) + stride
 
     if aggregate_strides:
-        very_large_stride = np.iinfo(np.int32).max
+        very_large_stride = int(np.iinfo(np.int32).max)
 
         return sorted((iname for iname in kernel.insn_inames(insn)),
                 key=lambda iname: (
@@ -824,7 +824,9 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             #  numbered "valid" passes--assign the remainder by length.
 
             # assign longest auto axis inames first
-            auto_axis_inames.sort(key=kernel.get_constant_iname_length, reverse=True)
+            auto_axis_inames.sort(
+                            key=lambda iname: (kernel.get_constant_iname_length(iname), iname),
+                            reverse=True)
 
             if auto_axis_inames:
                 return assign_axis(axis, auto_axis_inames.pop())
