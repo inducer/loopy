@@ -199,7 +199,7 @@ For convenience, loopy kernels also directly accept :mod:`numpy` arrays:
     >>> evt, (out,) = knl(queue, a=x_vec_host)
     >>> assert (out == (2*x_vec_host)).all()
 
-Notice how both *out* nor *a* are :mod:`numpy` arrays, but neither needed
+Notice how both *out* and *a* are :mod:`numpy` arrays, but neither needed
 to be transferred to or from the device.  Checking for numpy arrays and
 transferring them if needed comes at a potential performance cost.  If you
 would like to make sure that you avoid this cost, pass
@@ -1186,7 +1186,7 @@ across the remaining axis of the workgroup would emerge.
 
 TODO
 
-Gathering kernel statistics
+Obtaining Kernel Statistics
 ---------------------------
 
 Operations, array access, and barriers can all be counted, which may facilitate
@@ -1229,17 +1229,21 @@ information provided. Now we will count the operations:
     >>> from loopy.statistics import get_op_poly
     >>> op_map = get_op_poly(knl)
 
-:func:`loopy.get_op_poly` returns a mapping of **{** :class:`numpy.dtype` **:**
-:class:`islpy.PwQPolynomial` **}**. The :class:`islpy.PwQPolynomial` holds the
-number of operations for the :class:`numpy.dtype` specified in the key (in terms of
-the :class:`loopy.LoopKernel` *inames*). We'll print this map now:
+:func:`loopy.get_op_poly` returns a mapping of **{(** :class:`numpy.dtype` **,** 
+:class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**. The 
+:class:`islpy.PwQPolynomial` holds the number of operations for the type specified 
+in the key (in terms of the :class:`loopy.LoopKernel` *inames*). We'll print this 
+map now:
 
 .. doctest::
 
     >>> print(lp.stringify_stats_mapping(op_map))
-    float32 : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
-    float64 : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
-    int32 : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float32'), 'add') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float32'), 'div') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float32'), 'mul') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float64'), 'add') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float64'), 'mul') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('int32'), 'add') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
     <BLANKLINE>
 
 We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
@@ -1247,14 +1251,20 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 .. doctest::
 
     >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
-    >>> i32ops = op_map[np.dtype(np.int32)].eval_with_dict(param_dict)
-    >>> f32ops = op_map[np.dtype(np.float32)].eval_with_dict(param_dict)
-    >>> f64ops = op_map[np.dtype(np.float64)].eval_with_dict(param_dict)
-    >>> print("integer ops: %i\nfloat32 ops: %i\nfloat64 ops: %i" %
-    ...     (i32ops, f32ops, f64ops))
-    integer ops: 65536
-    float32 ops: 1572864
-    float64 ops: 131072
+    >>> f32add = op_map[(np.dtype(np.float32), 'add')].eval_with_dict(param_dict)
+    >>> f32div = op_map[(np.dtype(np.float32), 'div')].eval_with_dict(param_dict)
+    >>> f32mul = op_map[(np.dtype(np.float32), 'mul')].eval_with_dict(param_dict)
+    >>> f64add = op_map[(np.dtype(np.float64), 'add')].eval_with_dict(param_dict)
+    >>> f64mul = op_map[(np.dtype(np.float64), 'mul')].eval_with_dict(param_dict)
+    >>> i32add = op_map[(np.dtype(np.int32), 'add')].eval_with_dict(param_dict)
+    >>> print("%i\n%i\n%i\n%i\n%i\n%i" % 
+    ...     (f32add, f32div, f32mul, f64add, f64mul, i32add))
+    524288
+    524288
+    524288
+    65536
+    65536
+    65536
 
 Counting array accesses
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -1471,9 +1481,9 @@ Now to make things more interesting, we'll create a kernel with barriers:
 
 
 In this kernel, when a thread performs the second instruction it uses data produced
-by *different* threads during the first instruction. For correct execution barriers
-are required, so loopy inserts them. Now we'll count the barriers using
-:func:`loopy.get_barrier_poly`:
+by *different* threads during the first instruction. Because of this, barriers are
+required for correct execution, so loopy inserts them. Now we'll count the barriers
+using :func:`loopy.get_barrier_poly`:
 
 .. doctest::
 

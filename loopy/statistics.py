@@ -38,15 +38,12 @@ class ToCountMap:
     def __init__(self, init_dict=None):
         if init_dict is None:
             init_dict = {}
-
         self.dict = init_dict
 
     def __add__(self, other):
         result = self.dict.copy()
-
         for k, v in six.iteritems(other.dict):
             result[k] = self.dict.get(k, 0) + v
-
         return ToCountMap(result)
 
     def __radd__(self, other):
@@ -55,7 +52,6 @@ class ToCountMap:
                                 "to {} {}. ToCountMap may only be added to "
                                 "0 and other ToCountMap objects."
                                 .format(type(other), other))
-
         return self
 
     def __mul__(self, other):
@@ -109,7 +105,8 @@ class ExpressionOpCounter(CombineMapper):
     #def map_function_symbol(self, expr):
     #    return 0,0
 
-    map_call = map_constant
+    def map_call(self, expr):
+        return self.rec(expr.parameters)
 
     # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
 
@@ -119,66 +116,53 @@ class ExpressionOpCounter(CombineMapper):
     # def map_lookup(self, expr):  # implemented in CombineMapper
 
     def map_sum(self, expr):
-        if expr.children:
-            return ToCountMap(
-                        {self.type_inf(expr): len(expr.children)-1}
-                        ) + sum(self.rec(child) for child in expr.children)
-        else:
-            return ToCountMap()
+        assert expr.children
+        return ToCountMap(
+                    {(self.type_inf(expr), 'add'): len(expr.children)-1}
+                    ) + sum(self.rec(child) for child in expr.children)
 
     def map_product(self, expr):
         from pymbolic.primitives import is_zero
-        if expr.children:
-            return sum(ToCountMap({self.type_inf(expr): 1}) + self.rec(child)
-                       for child in expr.children
-                       # Do not count '(-1)* ' (as produced by
-                       # subtraction in pymbolic): Assume this
-                       # gets implemented as a sign flip or
-                       # as subtraction. (Confirmed to be true on
-                       # at least Nvidia 352.30.)
-                       if not is_zero(child + 1)) + \
-                       ToCountMap({self.type_inf(expr): -1})
-
-        else:
-            return ToCountMap()
+        assert expr.children
+        return sum(ToCountMap({(self.type_inf(expr), 'mul'): 1})
+                   + self.rec(child)
+                   for child in expr.children
+                   if not is_zero(child + 1)) + \
+                   ToCountMap({(self.type_inf(expr), 'mul'): -1})
 
     def map_quotient(self, expr, *args):
-        return ToCountMap({self.type_inf(expr): 1}) \
+        return ToCountMap({(self.type_inf(expr), 'div'): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
 
     map_floor_div = map_quotient
-    map_remainder = map_quotient  # implemented in CombineMapper
+    map_remainder = map_quotient
 
     def map_power(self, expr):
-        return ToCountMap({self.type_inf(expr): 1}) \
+        return ToCountMap({(self.type_inf(expr), 'pow'): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
-    def map_left_shift(self, expr):  # implemented in CombineMapper
-        return ToCountMap({self.type_inf(expr): 1}) \
+    def map_left_shift(self, expr):
+        return ToCountMap({(self.type_inf(expr), 'shift'): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
     map_right_shift = map_left_shift
 
-    def map_bitwise_not(self, expr):  # implemented in CombineMapper
-        return ToCountMap({self.type_inf(expr): 1}) \
+    def map_bitwise_not(self, expr):
+        return ToCountMap({(self.type_inf(expr), 'bw'): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
-        # implemented in CombineMapper, maps to map_sum;
         return ToCountMap(
-                        {self.type_inf(expr): len(expr.children)-1}
+                        {(self.type_inf(expr), 'bw'): len(expr.children)-1}
                         ) + sum(self.rec(child) for child in expr.children)
 
     map_bitwise_xor = map_bitwise_or
-    # implemented in CombineMapper, maps to map_sum;
-
     map_bitwise_and = map_bitwise_or
-    # implemented in CombineMapper, maps to map_sum;
 
-    def map_comparison(self, expr):  # implemented in CombineMapper
+    def map_comparison(self, expr):
         return self.rec(expr.left)+self.rec(expr.right)
 
     def map_logical_not(self, expr):
@@ -189,20 +173,22 @@ class ExpressionOpCounter(CombineMapper):
 
     map_logical_and = map_logical_or
 
-    def map_if(self, expr):  # implemented in CombineMapper, recurses
-        warnings.warn("ExpressionOpCounter counting DRAM accesses as "
+    def map_if(self, expr):
+        warnings.warn("ExpressionOpCounter counting ops as "
                       "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
 
-    def map_if_positive(self, expr):  # implemented in FlopCounter
-        warnings.warn("ExpressionOpCounter counting DRAM accesses as "
+    def map_if_positive(self, expr):
+        warnings.warn("ExpressionOpCounter counting ops as "
                       "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
-    map_min = map_bitwise_or
-    # implemented in CombineMapper, maps to map_sum;  # TODO test
+    def map_min(self, expr):
+        return ToCountMap(
+                        {(self.type_inf(expr), 'maxmin'): len(expr.children)-1}
+                        ) + sum(self.rec(child) for child in expr.children)
 
-    map_max = map_min  # implemented in CombineMapper, maps to map_sum;  # TODO test
+    map_max = map_min
 
     def map_common_subexpression(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered "
@@ -237,7 +223,9 @@ class GlobalSubscriptCounter(CombineMapper):
 
     map_tagged_variable = map_constant
     map_variable = map_constant
-    map_call = map_constant
+
+    def map_call(self, expr):
+        return self.rec(expr.parameters)
 
     def map_subscript(self, expr):
         name = expr.aggregate.name  # name of array
@@ -360,12 +348,12 @@ class GlobalSubscriptCounter(CombineMapper):
     map_logical_and = map_logical_or
 
     def map_if(self, expr):
-        warnings.warn("GlobalSubscriptCounter counting DRAM accesses as "
+        warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
                       "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("GlobalSubscriptCounter counting DRAM accesses as "
+        warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
                       "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
@@ -428,11 +416,17 @@ def get_op_poly(knl):
 
     :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
-    :return: A mapping of **{** :class:`numpy.dtype` **:**
-             :class:`islpy.PwQPolynomial` **}**.
+    :return: A mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **)**
+             **:** :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`islpy.PwQPolynomial` holds the number of operations for
-               the :class:`numpy.dtype` specified in the key (in terms of the
+             - The :class:`numpy.dtype` specifies the type of the data being
+               operated on.
+
+             - The string specifies the operation type as
+               *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
+
+             - The :class:`islpy.PwQPolynomial` holds the number of operations of
+               the kind specified in the key (in terms of the
                :class:`loopy.LoopKernel` *inames*).
 
     Example usage::
@@ -441,8 +435,8 @@ def get_op_poly(knl):
 
         poly = get_op_poly(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        float32_op_ct = poly.dict[np.dtype(np.float32)].eval_with_dict(params)
-        float64_op_ct = poly.dict[np.dtype(np.float64)].eval_with_dict(params)
+        f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
+        f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -452,7 +446,7 @@ def get_op_poly(knl):
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
-    op_poly = 0
+    op_poly = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
         # how many times is this instruction executed?
@@ -466,6 +460,7 @@ def get_op_poly(knl):
 
 
 def get_gmem_access_poly(knl):  # for now just counting subscripts
+
     """Count the number of global memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
@@ -514,7 +509,7 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
-    subs_poly = 0
+    subs_poly = ToCountMap()
     subscript_counter = GlobalSubscriptCounter(knl)
     for insn in knl.instructions:
         insn_inames = knl.insn_inames(insn)
@@ -590,7 +585,7 @@ def get_barrier_poly(knl):
     knl = preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
     iname_list = []
-    barrier_poly = isl.PwQPolynomial('{ 0 }')  # 0
+    barrier_poly = isl.PwQPolynomial('{ 0 }')
 
     for sched_item in knl.schedule:
         if isinstance(sched_item, EnterLoop):
@@ -610,3 +605,4 @@ def get_barrier_poly(knl):
                 barrier_poly += isl.PwQPolynomial('{ 1 }')
 
     return barrier_poly
+
