@@ -560,50 +560,8 @@ def count(kernel, bset):
     return result
 
 
-def get_op_poly_old(knl):
-
-    """Count the number of operations in a loopy kernel.
-
-    :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
-
-    :return: A mapping of **{** :class:`numpy.dtype` **:**
-             :class:`islpy.PwQPolynomial` **}**.
-
-             - The :class:`islpy.PwQPolynomial` holds the number of operations for
-               the :class:`numpy.dtype` specified in the key (in terms of the
-               :class:`loopy.LoopKernel` *inames*).
-
-    Example usage::
-
-        # (first create loopy kernel and specify array data types)
-
-        poly = get_op_poly(knl)
-        params = {'n': 512, 'm': 256, 'l': 128}
-        float32_op_ct = poly.dict[np.dtype(np.float32)].eval_with_dict(params)
-        float64_op_ct = poly.dict[np.dtype(np.float64)].eval_with_dict(params)
-
-        # (now use these counts to predict performance)
-
-    """
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-
-    op_poly = ToCountMap()
-    op_counter = ExpressionOpCounter(knl)
-    for insn in knl.instructions:
-        # how many times is this instruction executed?
-        # check domain size:
-        insn_inames = knl.insn_inames(insn)
-        inames_domain = knl.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-        ops = op_counter(insn.assignee) + op_counter(insn.expression)
-        op_poly = op_poly + ops*count(knl, domain)
-    return op_poly.dict
-
-
 def get_op_poly(knl):
+
     """Count the number of operations in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
@@ -633,6 +591,7 @@ def get_op_poly(knl):
         # (now use these counts to predict performance)
 
     """
+
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
