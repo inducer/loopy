@@ -1039,7 +1039,7 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     raw = tgt_read & src_write
     war = tgt_write & src_read
 
-    for var_name in raw | war:
+    for var_name in sorted(raw | war):
         return DependencyRecord(
                 source=source,
                 target=target,
@@ -1050,7 +1050,7 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     if source is target:
         return None
 
-    for var_name in waw:
+    for var_name in sorted(waw):
         return DependencyRecord(
                 source=source,
                 target=target,
@@ -1213,7 +1213,7 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
 
             # (for leading (before-first-barrier) bit of loop body)
             for insn_id in insn_ids_from_schedule(subresult[:first_barrier_index]):
-                search_set = candidates
+                search_set = sorted(candidates)
 
                 for dep_src_insn_id in search_set:
                     dep = get_barrier_needing_dependency(
@@ -1252,7 +1252,7 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
         elif isinstance(sched_item, RunInstruction):
             i += 1
 
-            search_set = candidates
+            search_set = sorted(candidates)
 
             for dep_src_insn_id in search_set:
                 dep = get_barrier_needing_dependency(

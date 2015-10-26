@@ -1,6 +1,4 @@
 from __future__ import division, absolute_import, print_function
-import six
-from six.moves import range, zip
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,6 +23,8 @@ THE SOFTWARE.
 """
 
 
+import six
+from six.moves import range, zip
 import islpy as isl
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
@@ -296,9 +296,14 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         (such as size, type) are checked (and updated, if possible) to match
         its use.
     :arg precompute_inames:
+        A tuple of inames to be used to carry out the precomputation.
         If the specified inames do not already exist, they will be
         created. If they do already exist, their loop domain is verified
-        against the one required for this precomputation.
+        against the one required for this precomputation. This tuple may
+        be shorter than the (provided or automatically found) *storage_axes*
+        tuple, in which case names will be automatically created.
+        May also equivalently be a comma-separated string.
+
     :arg compute_insn_id: The ID of the instruction performing the precomputation.
 
     If `storage_axes` is not specified, it defaults to the arrangement
@@ -440,7 +445,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     # {{{ use given / find new storage_axes
 
     # extra axes made necessary because they don't occur in the arguments
-    extra_storage_axes = sweep_inames_set - expanding_usage_arg_deps
+    extra_storage_axes = set(sweep_inames_set - expanding_usage_arg_deps)
 
     from loopy.symbolic import SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(kernel.substitutions)
@@ -456,9 +461,27 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     new_iname_to_tag = {}
 
     if storage_axes is None:
-        storage_axes = (
-                list(extra_storage_axes)
-                + list(range(len(subst.arguments))))
+        storage_axes = []
+
+        # Add sweep_inames (in given--rather than arbitrary--order) to
+        # storage_axes *if* they are part of extra_storage_axes.
+        for iname in sweep_inames:
+            if iname in extra_storage_axes:
+                extra_storage_axes.remove(iname)
+                storage_axes.append(iname)
+
+        if extra_storage_axes:
+            if (precompute_inames is not None
+                    and len(storage_axes) < len(precompute_inames)):
+                raise LoopyError("must specify a sufficient number of "
+                        "storage_axes to uniquely determine the meaning "
+                        "of the given precompute_inames. (%d storage_axes "
+                        "needed)" % len(precompute_inames))
+            storage_axes.extend(sorted(extra_storage_axes))
+
+        storage_axes.extend(range(len(subst.arguments)))
+
+    del extra_storage_axes
 
     prior_storage_axis_name_dict = {}
 
@@ -814,6 +837,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     # }}}
 
     from loopy import tag_inames
-    return tag_inames(kernel, new_iname_to_tag)
+    kernel = tag_inames(kernel, new_iname_to_tag)
+
+    from loopy.kernel.tools import assign_automatic_axes
+    kernel = assign_automatic_axes(kernel)
+
+    return kernel
 
 # vim: foldmethod=marker

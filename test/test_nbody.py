@@ -74,17 +74,17 @@ def test_nbody(ctx_factory):
                 outer_tag="g.0", inner_tag="l.0")
         knl = lp.split_iname(knl, "j", 256)
         knl = lp.add_prefetch(knl, "x[j,k]", ["j_inner", "k"],
-                ["x_fetch_j", "x_fetch_k"])
+                ["x_fetch_j", "x_fetch_k"], default_tag=None)
+        knl = lp.tag_inames(knl, dict(x_fetch_k="unr", x_fetch_j="l.0"))
         knl = lp.add_prefetch(knl, "x[i,k]", ["k"], default_tag=None)
-        knl = lp.tag_inames(knl, dict(x_fetch_k="unr"))
         knl = lp.set_loop_priority(knl, ["j_outer", "j_inner"])
         return knl
 
     n = 3000
 
     for variant in [
-            variant_1,
-            variant_cpu,
+            #variant_1,
+            #variant_cpu,
             variant_gpu
             ]:
         variant_knl = variant(knl)

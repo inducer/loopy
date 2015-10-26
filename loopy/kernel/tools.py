@@ -578,4 +578,271 @@ def is_domain_dependent_on_inames(kernel, domain_index, inames):
 # }}}
 
 
+# {{{ assign automatic axes
+
+# {{{ rank inames by stride
+
+def get_auto_axis_iname_ranking_by_stride(kernel, insn):
+    from loopy.kernel.data import ImageArg, ValueArg
+
+    approximate_arg_values = {}
+    for arg in kernel.args:
+        if isinstance(arg, ValueArg):
+            if arg.approximately is not None:
+                approximate_arg_values[arg.name] = arg.approximately
+            else:
+                raise LoopyError("No approximate arg value specified for '%s'"
+                        % arg.name)
+
+    # {{{ find all array accesses in insn
+
+    from loopy.symbolic import ArrayAccessFinder
+    ary_acc_exprs = list(ArrayAccessFinder()(insn.expression))
+
+    from pymbolic.primitives import Subscript
+
+    if isinstance(insn.assignee, Subscript):
+        ary_acc_exprs.append(insn.assignee)
+
+    # }}}
+
+    # {{{ filter array accesses to only the global ones
+
+    global_ary_acc_exprs = []
+
+    for aae in ary_acc_exprs:
+        ary_name = aae.aggregate.name
+        arg = kernel.arg_dict.get(ary_name)
+        if arg is None:
+            continue
+
+        if isinstance(arg, ImageArg):
+            continue
+
+        global_ary_acc_exprs.append(aae)
+
+    # }}}
+
+    # {{{ figure out automatic-axis inames
+
+    from loopy.kernel.data import AutoLocalIndexTagBase
+    auto_axis_inames = set(
+            iname
+            for iname in kernel.insn_inames(insn)
+            if isinstance(kernel.iname_to_tag.get(iname),
+                AutoLocalIndexTagBase))
+
+    # }}}
+
+    # {{{ figure out which iname should get mapped to local axis 0
+
+    # maps inames to "aggregate stride"
+    aggregate_strides = {}
+
+    from loopy.symbolic import CoefficientCollector
+    from pymbolic.primitives import Variable
+
+    for aae in global_ary_acc_exprs:
+        index_expr = aae.index
+        if not isinstance(index_expr, tuple):
+            index_expr = (index_expr,)
+
+        ary_name = aae.aggregate.name
+        arg = kernel.arg_dict.get(ary_name)
+
+        if arg.dim_tags is None:
+            from warnings import warn
+            warn("Strides for '%s' are not known. Local axis assignment "
+                    "is likely suboptimal." % arg.name)
+            ary_strides = [1] * len(index_expr)
+        else:
+            ary_strides = []
+            from loopy.kernel.array import FixedStrideArrayDimTag
+            for dim_tag in arg.dim_tags:
+                if isinstance(dim_tag, FixedStrideArrayDimTag):
+                    ary_strides.append(dim_tag.stride)
+
+        # {{{ construct iname_to_stride_expr
+
+        iname_to_stride_expr = {}
+        for iexpr_i, stride in zip(index_expr, ary_strides):
+            if stride is None:
+                continue
+            coeffs = CoefficientCollector()(iexpr_i)
+            for var, coeff in six.iteritems(coeffs):
+                if (isinstance(var, Variable)
+                        and var.name in auto_axis_inames):
+                    # excludes '1', i.e.  the constant
+                    new_stride = coeff*stride
+                    old_stride = iname_to_stride_expr.get(var.name, None)
+                    if old_stride is None or new_stride < old_stride:
+                        iname_to_stride_expr[var.name] = new_stride
+
+        # }}}
+
+        from pymbolic import evaluate
+        for iname, stride_expr in six.iteritems(iname_to_stride_expr):
+            stride = evaluate(stride_expr, approximate_arg_values)
+            aggregate_strides[iname] = aggregate_strides.get(iname, 0) + stride
+
+    if aggregate_strides:
+        very_large_stride = int(np.iinfo(np.int32).max)
+
+        return sorted((iname for iname in kernel.insn_inames(insn)),
+                key=lambda iname: (
+                    aggregate_strides.get(iname, very_large_stride),
+                    iname))
+    else:
+        return None
+
+    # }}}
+
+# }}}
+
+
+def assign_automatic_axes(kernel, axis=0, local_size=None):
+    logger.debug("%s: assign automatic axes" % kernel.name)
+
+    from loopy.kernel.data import (AutoLocalIndexTagBase, LocalIndexTag)
+
+    # Realize that at this point in time, axis lengths are already
+    # fixed. So we compute them once and pass them to our recursive
+    # copies.
+
+    if local_size is None:
+        _, local_size = kernel.get_grid_sizes_as_exprs(
+                ignore_auto=True)
+
+    # {{{ axis assignment helper function
+
+    def assign_axis(recursion_axis, iname, axis=None):
+        """Assign iname to local axis *axis* and start over by calling
+        the surrounding function assign_automatic_axes.
+
+        If *axis* is None, find a suitable axis automatically.
+        """
+        desired_length = kernel.get_constant_iname_length(iname)
+
+        if axis is None:
+            # {{{ find a suitable axis
+
+            shorter_possible_axes = []
+            test_axis = 0
+            while True:
+                if test_axis >= len(local_size):
+                    break
+                if test_axis in assigned_local_axes:
+                    test_axis += 1
+                    continue
+
+                if local_size[test_axis] < desired_length:
+                    shorter_possible_axes.append(test_axis)
+                    test_axis += 1
+                    continue
+                else:
+                    axis = test_axis
+                    break
+
+            # The loop above will find an unassigned local axis
+            # that has enough 'room' for the iname. In the same traversal,
+            # it also finds theoretically assignable axes that are shorter,
+            # in the variable shorter_possible_axes.
+
+            if axis is None and shorter_possible_axes:
+                # sort as longest first
+                shorter_possible_axes.sort(key=lambda ax: local_size[ax])
+                axis = shorter_possible_axes[0]
+
+            # }}}
+
+        if axis is None:
+            new_tag = None
+        else:
+            new_tag = LocalIndexTag(axis)
+            if desired_length > local_size[axis]:
+                from loopy import split_iname
+
+                # Don't be tempted to switch the outer tag to unroll--this may
+                # generate tons of code on some examples.
+
+                return assign_automatic_axes(
+                        split_iname(kernel, iname, inner_length=local_size[axis],
+                            outer_tag=None, inner_tag=new_tag,
+                            do_tagged_check=False),
+                        axis=recursion_axis, local_size=local_size)
+
+        if not isinstance(kernel.iname_to_tag.get(iname), AutoLocalIndexTagBase):
+            raise LoopyError("trying to reassign '%s'" % iname)
+
+        new_iname_to_tag = kernel.iname_to_tag.copy()
+        new_iname_to_tag[iname] = new_tag
+        return assign_automatic_axes(kernel.copy(iname_to_tag=new_iname_to_tag),
+                axis=recursion_axis, local_size=local_size)
+
+    # }}}
+
+    # {{{ main assignment loop
+
+    # assignment proceeds in one phase per axis, each time assigning the
+    # smallest-stride available iname to the current axis
+
+    import loopy as lp
+
+    for insn in kernel.instructions:
+        if not isinstance(insn, lp.ExpressionInstruction):
+            continue
+
+        auto_axis_inames = [
+                iname
+                for iname in kernel.insn_inames(insn)
+                if isinstance(kernel.iname_to_tag.get(iname),
+                    AutoLocalIndexTagBase)]
+
+        if not auto_axis_inames:
+            continue
+
+        assigned_local_axes = set()
+
+        for iname in kernel.insn_inames(insn):
+            tag = kernel.iname_to_tag.get(iname)
+            if isinstance(tag, LocalIndexTag):
+                assigned_local_axes.add(tag.axis)
+
+        if axis < len(local_size):
+            # "valid" pass: try to assign a given axis
+
+            if axis not in assigned_local_axes:
+                iname_ranking = get_auto_axis_iname_ranking_by_stride(kernel, insn)
+                if iname_ranking is not None:
+                    for iname in iname_ranking:
+                        prev_tag = kernel.iname_to_tag.get(iname)
+                        if isinstance(prev_tag, AutoLocalIndexTagBase):
+                            return assign_axis(axis, iname, axis)
+
+        else:
+            # "invalid" pass: There are still unassigned axis after the
+            #  numbered "valid" passes--assign the remainder by length.
+
+            # assign longest auto axis inames first
+            auto_axis_inames.sort(
+                            key=lambda iname: (kernel.get_constant_iname_length(iname), iname),
+                            reverse=True)
+
+            if auto_axis_inames:
+                return assign_axis(axis, auto_axis_inames.pop())
+
+    # }}}
+
+    # We've seen all instructions and not punted to recursion/restart because
+    # of a new axis assignment.
+
+    if axis >= len(local_size):
+        return kernel
+    else:
+        return assign_automatic_axes(kernel, axis=axis+1,
+                local_size=local_size)
+
+# }}}
+
+
 # vim: foldmethod=marker

@@ -1012,7 +1012,7 @@ class LoopKernel(RecordWithoutPickling):
                 return
             printed_insn_ids.add(insn.id)
 
-            for dep_id in insn.insn_deps:
+            for dep_id in sorted(insn.insn_deps):
                 print_insn(kernel.id_to_insn[dep_id])
 
             if isinstance(insn, lp.ExpressionInstruction):

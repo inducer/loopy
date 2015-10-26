@@ -449,6 +449,9 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         from loopy.preprocess import prepare_for_caching
         buffer_array_cache[cache_key] = prepare_for_caching(kernel)
 
+    from loopy.kernel.tools import assign_automatic_axes
+    kernel = assign_automatic_axes(kernel)
+
     return kernel
 
 # vim: foldmethod=marker
