@@ -548,6 +548,4 @@ Obtaining Kernel Statistics
 
 .. autofunction:: get_barrier_poly
 
-.. autofunction:: estimate_regs_per_thread
-
 .. vim: tw=75:spell
