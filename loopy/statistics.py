@@ -38,15 +38,12 @@ class ToCountMap:
     def __init__(self, init_dict=None):
         if init_dict is None:
             init_dict = {}
-
         self.dict = init_dict
 
     def __add__(self, other):
         result = self.dict.copy()
-
         for k, v in six.iteritems(other.dict):
             result[k] = self.dict.get(k, 0) + v
-
         return ToCountMap(result)
 
     def __radd__(self, other):
@@ -55,7 +52,6 @@ class ToCountMap:
                                 "to {} {}. ToCountMap may only be added to "
                                 "0 and other ToCountMap objects."
                                 .format(type(other), other))
-
         return self
 
     def __mul__(self, other):
@@ -87,7 +83,7 @@ def stringify_stats_mapping(m):
     return result
 
 
-class ExpressionOpCounter(CombineMapper):
+class ExpressionOpCounter_Old(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
@@ -109,7 +105,8 @@ class ExpressionOpCounter(CombineMapper):
     #def map_function_symbol(self, expr):
     #    return 0,0
 
-    map_call = map_constant
+    def map_call(self, expr):
+        return self.rec(expr.parameters)
 
     # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
 
@@ -131,11 +128,6 @@ class ExpressionOpCounter(CombineMapper):
         if expr.children:
             return sum(ToCountMap({self.type_inf(expr): 1}) + self.rec(child)
                        for child in expr.children
-                       # Do not count '(-1)* ' (as produced by
-                       # subtraction in pymbolic): Assume this
-                       # gets implemented as a sign flip or
-                       # as subtraction. (Confirmed to be true on
-                       # at least Nvidia 352.30.)
                        if not is_zero(child + 1)) + \
                        ToCountMap({self.type_inf(expr): -1})
         else:
@@ -199,9 +191,7 @@ class ExpressionOpCounter(CombineMapper):
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
     map_min = map_bitwise_or
-    # implemented in CombineMapper, maps to map_sum;  # TODO test
-
-    map_max = map_min  # implemented in CombineMapper, maps to map_sum;  # TODO test
+    map_max = map_min
 
     def map_common_subexpression(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered "
@@ -220,7 +210,8 @@ class ExpressionOpCounter(CombineMapper):
         raise NotImplementedError("ExpressionOpCounter encountered slice, "
                                   "map_slice not implemented.")
 
-class ExpressionOpCounter2(CombineMapper):
+
+class ExpressionOpCounter(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
@@ -242,7 +233,8 @@ class ExpressionOpCounter2(CombineMapper):
     #def map_function_symbol(self, expr):
     #    return 0,0
 
-    map_call = map_constant
+    def map_call(self, expr):
+        return self.rec(expr.parameters)
 
     # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
 
@@ -252,28 +244,19 @@ class ExpressionOpCounter2(CombineMapper):
     # def map_lookup(self, expr):  # implemented in CombineMapper
 
     def map_sum(self, expr):
-        if expr.children:
-            return ToCountMap(
-                        {(self.type_inf(expr), 'add'): len(expr.children)-1}
-                        ) + sum(self.rec(child) for child in expr.children)
-        else:
-            return ToCountMap() #TODO when does this happen?
+        assert expr.children
+        return ToCountMap(
+                    {(self.type_inf(expr), 'add'): len(expr.children)-1}
+                    ) + sum(self.rec(child) for child in expr.children)
 
     def map_product(self, expr):
         from pymbolic.primitives import is_zero
-        if expr.children:
-            # Do not count '(-1)* ' (as produced by
-            # subtraction in pymbolic): Assume this
-            # gets implemented as a sign flip or
-            # as subtraction. (Confirmed to be true on
-            # at least Nvidia 352.30.)
-            return sum(ToCountMap({(self.type_inf(expr), 'mul'): 1})
-                       + self.rec(child)
-                       for child in expr.children
-                       if not is_zero(child + 1)) + \
-                       ToCountMap({(self.type_inf(expr), 'mul'): -1})
-        else:
-            return ToCountMap() #TODO when does this happen?
+        assert expr.children
+        return sum(ToCountMap({(self.type_inf(expr), 'mul'): 1})
+                   + self.rec(child)
+                   for child in expr.children
+                   if not is_zero(child + 1)) + \
+                   ToCountMap({(self.type_inf(expr), 'mul'): -1})
 
     def map_quotient(self, expr, *args):
         return ToCountMap({(self.type_inf(expr), 'div'): 1}) \
@@ -281,37 +264,33 @@ class ExpressionOpCounter2(CombineMapper):
                                 + self.rec(expr.denominator)
 
     map_floor_div = map_quotient
-    map_remainder = map_quotient  # implemented in CombineMapper
+    map_remainder = map_quotient
 
     def map_power(self, expr):
         return ToCountMap({(self.type_inf(expr), 'pow'): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
-    def map_left_shift(self, expr):  # implemented in CombineMapper
+    def map_left_shift(self, expr):
         return ToCountMap({(self.type_inf(expr), 'shift'): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
     map_right_shift = map_left_shift
 
-    def map_bitwise_not(self, expr):  # implemented in CombineMapper
+    def map_bitwise_not(self, expr):
         return ToCountMap({(self.type_inf(expr), 'bw'): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
-        # implemented in CombineMapper, maps to map_sum;
         return ToCountMap(
                         {(self.type_inf(expr), 'bw'): len(expr.children)-1}
                         ) + sum(self.rec(child) for child in expr.children)
 
     map_bitwise_xor = map_bitwise_or
-    # implemented in CombineMapper, maps to map_sum;
-
     map_bitwise_and = map_bitwise_or
-    # implemented in CombineMapper, maps to map_sum;
 
-    def map_comparison(self, expr):  # implemented in CombineMapper
+    def map_comparison(self, expr):
         return self.rec(expr.left)+self.rec(expr.right)
 
     def map_logical_not(self, expr):
@@ -322,24 +301,22 @@ class ExpressionOpCounter2(CombineMapper):
 
     map_logical_and = map_logical_or
 
-    def map_if(self, expr):  # implemented in CombineMapper, recurses
-        warnings.warn("ExpressionOpCounter counting DRAM accesses as "
+    def map_if(self, expr):
+        warnings.warn("ExpressionOpCounter counting ops as "
                       "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
 
-    def map_if_positive(self, expr):  # implemented in FlopCounter
-        warnings.warn("ExpressionOpCounter counting DRAM accesses as "
+    def map_if_positive(self, expr):
+        warnings.warn("ExpressionOpCounter counting ops as "
                       "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
     def map_min(self, expr):
-        # implemented in CombineMapper, maps to map_sum;
         return ToCountMap(
                         {(self.type_inf(expr), 'maxmin'): len(expr.children)-1}
                         ) + sum(self.rec(child) for child in expr.children)
-    # implemented in CombineMapper, maps to map_sum;  # TODO test
 
-    map_max = map_min  # implemented in CombineMapper, maps to map_sum;  # TODO test
+    map_max = map_min
 
     def map_common_subexpression(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered "
@@ -374,7 +351,9 @@ class GlobalSubscriptCounter(CombineMapper):
 
     map_tagged_variable = map_constant
     map_variable = map_constant
-    map_call = map_constant
+
+    def map_call(self, expr):
+        return self.rec(expr.parameters)
 
     def map_subscript(self, expr):
         name = expr.aggregate.name  # name of array
@@ -497,12 +476,12 @@ class GlobalSubscriptCounter(CombineMapper):
     map_logical_and = map_logical_or
 
     def map_if(self, expr):
-        warnings.warn("GlobalSubscriptCounter counting DRAM accesses as "
+        warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
                       "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("GlobalSubscriptCounter counting DRAM accesses as "
+        warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
                       "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
@@ -528,6 +507,7 @@ class GlobalSubscriptCounter(CombineMapper):
         raise NotImplementedError("GlobalSubscriptCounter encountered slice, "
                                   "map_slice not implemented.")
 
+
 class RegisterUsageEstimator(CombineMapper):
 
     def __init__(self, knl):
@@ -548,7 +528,7 @@ class RegisterUsageEstimator(CombineMapper):
 
     def map_constant(self, expr):
         return 0
-    #'''
+
     def map_variable(self, expr):
         name = expr.name
         if expr in self.vars_found:
@@ -557,15 +537,15 @@ class RegisterUsageEstimator(CombineMapper):
         self.vars_found.append(expr)
         if name in self.knl.temporary_variables:
             if self.knl.temporary_variables[name].is_local:
-                print("found temp var with local tag, not counting: ", expr) #TODO remove after debug
                 return 0
             else:
                 return 1
         elif name in self.knl.all_inames():
-            from loopy.kernel.data import AxisTag
-            if (self.knl.iname_to_tag.get(name) is None or
-                    not isinstance(self.knl.iname_to_tag.get(name), AxisTag)):
-                #TODO use more specific positive instead of negative
+            from loopy.kernel.data import AxisTag, VectorizeTag, UnrollTag
+            tag = self.knl.iname_to_tag.get(name)
+            if (tag is None or not(isinstance(tag, AxisTag)
+                                   or isinstance(tag, VectorizeTag)
+                                   or isinstance(tag, UnrollTag))):
                 return 1
             else:
                 return 0
@@ -574,8 +554,8 @@ class RegisterUsageEstimator(CombineMapper):
 
     map_tagged_variable = map_variable
 
-    #map_variable = map_tagged_variable
-    map_call = map_constant  # TODO what is this?
+    def map_call(self, expr):
+        return self.rec(expr.parameters)
 
     def map_subscript(self, expr):
         name = expr.aggregate.name  # name of array
@@ -597,10 +577,10 @@ class RegisterUsageEstimator(CombineMapper):
         # expr is not a temporary variable
 
         if not isinstance(array, lp.GlobalArg):
-            print("debug... When does this happen? ", expr, array)
-            1/0
-            # this array is not in global memory
-            return 1 + self.rec(expr.index)  # TODO
+            # This array is not in global memory, and is not a temporary variable
+            # TODO how should we count arrays in const/texture mem? ImageArg?
+            # Ignore for now
+            return self.rec(expr.index)
 
         # this is a global mem access
         if (expr.index, expr.aggregate) in self.subs_found:
@@ -610,10 +590,8 @@ class RegisterUsageEstimator(CombineMapper):
             return 1 + self.rec(expr.index)
 
     def map_sum(self, expr):
-        if expr.children:
-            return sum(self.rec(child) for child in expr.children)
-        else:
-            return 0  # TODO when does this happen?
+        assert expr.children
+        return sum(self.rec(child) for child in expr.children)
 
     map_product = map_sum
 
@@ -679,6 +657,7 @@ class RegisterUsageEstimator(CombineMapper):
         raise NotImplementedError("GlobalSubscriptCounter encountered slice, "
                                   "map_slice not implemented.")
 
+
 def count(kernel, bset):
     try:
         return bset.card()
@@ -709,7 +688,7 @@ def count(kernel, bset):
     return result
 
 
-def get_op_poly(knl):
+def get_op_poly_old(knl):
 
     """Count the number of operations in a loopy kernel.
 
@@ -752,13 +731,42 @@ def get_op_poly(knl):
     return op_poly.dict
 
 
-def get_op_poly2(knl):
+def get_op_poly(knl):
+    """Count the number of operations in a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
+
+    :return: A mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **)**
+             **:** :class:`islpy.PwQPolynomial` **}**.
+
+             - The :class:`numpy.dtype` specifies the type of the data being
+               operated on.
+
+             - The string specifies the operation type as
+               *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
+
+             - The :class:`islpy.PwQPolynomial` holds the number of operations of
+               the kind specified in the key (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        poly = get_op_poly(knl)
+        params = {'n': 512, 'm': 256, 'l': 128}
+        f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
+        f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+
+        # (now use these counts to predict performance)
+
+    """
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
     op_poly = ToCountMap()
-    op_counter = ExpressionOpCounter2(knl)
+    op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
         # how many times is this instruction executed?
         # check domain size:
@@ -771,6 +779,7 @@ def get_op_poly2(knl):
 
 
 def get_gmem_access_poly(knl):  # for now just counting subscripts
+
     """Count the number of global memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
@@ -917,49 +926,41 @@ def get_barrier_poly(knl):
     return barrier_poly
 
 
-def get_regs_per_thread(knl):
-    return get_regs_per_thread3_2(knl)
-
-
-def get_regs_per_thread3_2(knl):
+def estimate_regs_per_thread(knl):
 
     """Estimate registers per thread usage by a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
 
+    :return: An :class:`integer` holding an estimate for the number of registers
+             used per thread. This number will most likely be too low, but will
+             hopefully be consistantly too low by the same constant factor.
+
     """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction
-    from operator import mul
+    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction  # noqa
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
     max_regs = 0
     block_reg_totals = [0]
+    # counters to track nested sets of previously used iname+index combinations
     reg_counters = [RegisterUsageEstimator(knl)]
-    # multiple counters to track nested sets of previously used iname+index combinations
 
     for sched_item in knl.schedule:
         if isinstance(sched_item, EnterLoop):
-            if sched_item.iname:  # (if not empty)
-                block_reg_totals.append(0)
-                # start a new estimator
-                reg_counters.append(RegisterUsageEstimator(knl))
-            else:
-                print("Error, how does this happen?") #TODO
-                1/0
+            block_reg_totals.append(0)
+            # start a new estimator
+            reg_counters.append(RegisterUsageEstimator(knl))
 
         elif isinstance(sched_item, LeaveLoop):
-            if sched_item.iname:  # (if not empty)
-                if block_reg_totals[-1] > max_regs:
-                    max_regs = block_reg_totals[-1]
-                # pop to resume previous total
-                block_reg_totals.pop()
-                reg_counters.pop()
-            else:
-                print("Error, how does this happen?") #TODO
-                1/0
+            if block_reg_totals[-1] > max_regs:
+                max_regs = block_reg_totals[-1]
+            # pop to resume previous total
+            block_reg_totals.pop()
+            reg_counters.pop()
+
         elif isinstance(sched_item, RunInstruction):
             insn = knl.id_to_insn[sched_item.insn_id]
             block_reg_totals[-1] += reg_counters[-1](insn.assignee) + \
@@ -971,217 +972,4 @@ def get_regs_per_thread3_2(knl):
 
     return max_regs
 
-'''
-# map_var and map_tagged_var returned 1, no checking for any duplication
-def get_regs_per_thread1(knl):
 
-    """Estimate registers per thread usage by a loopy kernel.
-
-    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
-
-    """
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction
-    from operator import mul
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-
-    max_regs = 0
-    current_loop_indices = 0
-    reg_counter = RegisterUsageEstimator(knl)
-
-    #TODO test blocks vs lines
-    for sched_item in knl.schedule:
-        if isinstance(sched_item, EnterLoop):
-            # need to add indices to index count
-            # if counting by blocks, check current blk total vs max, save if bigger
-            if sched_item.iname:  # (if not empty)
-                current_loop_indices += 1  # TODO assumes all loops add 1 new index
-                #print("enter loop: ", sched_item)
-        elif isinstance(sched_item, LeaveLoop):
-            # need to subtract indices from index count
-            # if counting by blocks, check current blk total vs max, save if bigger
-            if sched_item.iname:  # (if not empty)
-                current_loop_indices -= 1  # TODO assumes all loops add 1 new index
-                #print("leave loop: ", sched_item)
-        elif isinstance(sched_item, RunInstruction):
-            # count regs for this instruction
-            # if counting by blocks, add to current block total
-            # if counting by lines, check current line total vs max, save if bigger
-            insn = knl.id_to_insn[sched_item.insn_id]
-            regs = current_loop_indices + \
-                   reg_counter(insn.assignee) + \
-                   reg_counter(insn.expression)
-            if regs > max_regs:
-                max_regs = regs
-            #print("RunInstruction, regs, max_regs ", sched_item, regs, max_regs)
-            # TODO check for iname reuse
-            # TODO don't count variables if they are loop indices?
-
-    return max_regs
-
-# no duplicate vars, subs
-def get_regs_per_thread2(knl):
-
-    """Estimate registers per thread usage by a loopy kernel.
-
-    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
-
-    """
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction
-    from operator import mul
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-    #print(knl)
-    max_regs = 0
-    current_loop_indices = 0
-    reg_counter = RegisterUsageEstimator(knl)
-
-    #TODO test blocks vs lines
-    for sched_item in knl.schedule:
-        reg_counter.forget_prev_vars()
-        reg_counter.forget_prev_subs()
-        if isinstance(sched_item, EnterLoop):
-            # need to add indices to index count
-            # if counting by blocks, check current blk total vs max, save if bigger
-            if sched_item.iname:  # (if not empty)
-                current_loop_indices += 1  # TODO assumes all loops add 1 new index
-                #print("enter loop: ", sched_item)
-        elif isinstance(sched_item, LeaveLoop):
-            # need to subtract indices from index count
-            # if counting by blocks, check current blk total vs max, save if bigger
-            if sched_item.iname:  # (if not empty)
-                current_loop_indices -= 1  # TODO assumes all loops add 1 new index
-                #print("leave loop: ", sched_item)
-        elif isinstance(sched_item, RunInstruction):
-            # count regs for this instruction
-            # if counting by blocks, add to current block total
-            # if counting by lines, check current line total vs max, save if bigger
-            insn = knl.id_to_insn[sched_item.insn_id]
-            regs = current_loop_indices + \
-                   reg_counter(insn.assignee) + \
-                   reg_counter(insn.expression)
-            if regs > max_regs:
-                max_regs = regs
-            #print("RunInstruction, regs, max_regs ", sched_item, regs, max_regs)
-            # TODO check for iname reuse
-            # TODO don't count variables if they are loop indices?
-
-    return max_regs
-
-def get_regs_per_thread3(knl):
-
-    """Estimate registers per thread usage by a loopy kernel.
-
-    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
-
-    """
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction
-    from operator import mul
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-    #print(knl)
-    max_regs = 0
-    current_loop_indices = 0
-    block_reg_totals = [0]
-    reg_counters = [RegisterUsageEstimator(knl)]
-    # multiple counters to track nested sets of previously used iname+index combinations
-
-    for sched_item in knl.schedule:
-        if isinstance(sched_item, EnterLoop):
-            if sched_item.iname:  # (if not empty)
-                #print("entering loop, totals: \n", block_reg_totals, max_regs) 
-                current_loop_indices += 1  # TODO assumes all loops add 1 new index
-                # start a new block total
-                block_reg_totals.append(current_loop_indices)
-                # start a new estimator
-                reg_counters.append(RegisterUsageEstimator(knl))
-                #print("entered loop, totals: \n", block_reg_totals, max_regs) 
-            else:
-                print("Error, how does this happen?")
-                1/0
-
-        elif isinstance(sched_item, LeaveLoop):
-            if sched_item.iname:  # (if not empty)
-                #print("leaving loop, totals: \n", block_reg_totals, max_regs) 
-                current_loop_indices -= 1  # TODO assumes all loops add 1 new index
-                if block_reg_totals[-1] > max_regs:
-                    max_regs = block_reg_totals[-1]
-                # pop to resume previous total
-                #block_reg_totals[-2] += block_reg_totals[-1]
-                block_reg_totals.pop()
-                reg_counters.pop()
-                #print("left loop, totals: \n", block_reg_totals, max_regs) 
-            else:
-                print("Error, how does this happen?")
-                1/0
-        elif isinstance(sched_item, RunInstruction):
-            insn = knl.id_to_insn[sched_item.insn_id]
-            #print("instruction found: ", insn) 
-            #print("pre insn totals: \n", block_reg_totals, max_regs) 
-            block_reg_totals[-1] += reg_counters[-1](insn.assignee) + \
-                                    reg_counters[-1](insn.expression)
-            #print("post insn totals: \n", block_reg_totals, max_regs) 
-            # TODO don't count variables if they are loop indices? (also try this with ctr2)
-
-    #print("finished schedule, totals: \n", block_reg_totals, max_regs)
-    # finished looping, check outer block
-    if block_reg_totals[-1] > max_regs:
-        max_regs = block_reg_totals[-1]
-    #print("final, totals: \n", block_reg_totals, max_regs)
-
-    return max_regs
-'''
-
-'''
-#add all sub blocks to containing block
-#aka add everything together
-def get_regs_per_thread4(knl):
-
-    """Estimate registers per thread usage by a loopy kernel.
-
-    :parameter knl: A :class:`loopy.LoopKernel` whose reg usage will be estimated.
-
-    """
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.schedule import EnterLoop, LeaveLoop, Barrier, RunInstruction
-    from operator import mul
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
-    #print(knl)
-
-    regs = 0
-    max_loop_indices = 0
-    current_loop_indices = 0
-    reg_counter = RegisterUsageEstimator(knl)
-
-    for sched_item in knl.schedule:
-        if isinstance(sched_item, EnterLoop):
-            if sched_item.iname:  # (if not empty)
-                current_loop_indices += 1  # TODO assumes all loops add 1 new index
-                if current_loop_indices > max_loop_indices:
-                    max_loop_indices = current_loop_indices
-                #print("enter loop: ", sched_item)
-        elif isinstance(sched_item, LeaveLoop):
-            # need to subtract indices from index count
-            if sched_item.iname:  # (if not empty)
-                current_loop_indices -= 1  # TODO assumes all loops add 1 new index
-                #print("leave loop: ", sched_item)
-        elif isinstance(sched_item, RunInstruction):
-            # count regs for this instruction
-            insn = knl.id_to_insn[sched_item.insn_id]
-            regs += reg_counter(insn.assignee) + \
-                   reg_counter(insn.expression)
-
-    return regs+max_loop_indices
-'''

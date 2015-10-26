@@ -28,7 +28,7 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 import loopy as lp
 from loopy.statistics import get_op_poly, get_gmem_access_poly, get_barrier_poly
-from loopy.statistics import get_op_poly2, get_regs_per_thread
+from loopy.statistics import estimate_regs_per_thread
 import numpy as np
 
 
@@ -51,12 +51,14 @@ def test_op_counter_basic():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
-    f64 = poly[np.dtype(np.float64)].eval_with_dict(params)
-    i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
-    assert f32 == 3*n*m*l
-    assert f64 == n*m
-    assert i32 == n*m*2
+    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
+    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    f32div = poly[(np.dtype(np.float32), 'div')].eval_with_dict(params)
+    f64mul = poly[(np.dtype(np.float64), 'mul')].eval_with_dict(params)
+    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    assert f32add == f32mul == f32div == n*m*l
+    assert f64mul == n*m
+    assert i32add == n*m*2
 
 
 def test_op_counter_reduction():
@@ -74,8 +76,9 @@ def test_op_counter_reduction():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
-    assert f32 == 2*n*m*l
+    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
+    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    assert f32add == f32mul == n*m*l
 
 
 def test_op_counter_logic():
@@ -95,12 +98,14 @@ def test_op_counter_logic():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
-    f64 = poly[np.dtype(np.float64)].eval_with_dict(params)
-    i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
-    assert f32 == n*m
-    assert f64 == 3*n*m
-    assert i32 == n*m
+    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    f64add = poly[(np.dtype(np.float64), 'add')].eval_with_dict(params)
+    f64div = poly[(np.dtype(np.float64), 'div')].eval_with_dict(params)
+    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    assert f32mul == n*m
+    assert f64div == 2*n*m  # TODO why?
+    assert f64add == n*m
+    assert i32add == n*m
 
 
 def test_op_counter_specialops():
@@ -122,12 +127,16 @@ def test_op_counter_specialops():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
-    f64 = poly[np.dtype(np.float64)].eval_with_dict(params)
-    i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
-    assert f32 == 4*n*m*l
-    assert f64 == 3*n*m
-    assert i32 == n*m
+    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    f32div = poly[(np.dtype(np.float32), 'div')].eval_with_dict(params)
+    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
+    f64pow = poly[(np.dtype(np.float64), 'pow')].eval_with_dict(params)
+    f64add = poly[(np.dtype(np.float64), 'add')].eval_with_dict(params)
+    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    assert f32div == 2*n*m*l
+    assert f32mul == f32add == n*m*l
+    assert f64add == 2*n*m
+    assert f64pow == i32add == n*m
 
 
 def test_op_counter_bitwise():
@@ -152,11 +161,17 @@ def test_op_counter_bitwise():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
-    i64 = poly[np.dtype(np.int64)].eval_with_dict(params)  # noqa
-    assert np.dtype(np.float64) not in poly
-    assert i32 == n*m+3*n*m*l
-    assert i64 == 6*n*m
+    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    i32bw = poly[(np.dtype(np.int32), 'bw')].eval_with_dict(params)
+    i64bw = poly[(np.dtype(np.int64), 'bw')].eval_with_dict(params)
+    i64mul = poly[(np.dtype(np.int64), 'mul')].eval_with_dict(params)
+    i64add = poly[(np.dtype(np.int64), 'add')].eval_with_dict(params)
+    i64shift = poly[(np.dtype(np.int64), 'shift')].eval_with_dict(params)
+    assert i32add == n*m+n*m*l
+    assert i32bw == 2*n*m*l
+    assert i64bw == 2*n*m
+    assert i64add == i64mul == n*m
+    assert i64shift == 2*n*m
 
 
 def test_op_counter_triangular_domain():
@@ -180,7 +195,7 @@ def test_op_counter_triangular_domain():
     else:
         expect_fallback = False
 
-    poly = get_op_poly(knl)[np.dtype(np.float64)]
+    poly = get_op_poly(knl)[(np.dtype(np.float64), 'mul')]
     value_dict = dict(m=13, n=200)
     flops = poly.eval_with_dict(value_dict)
 
@@ -188,152 +203,6 @@ def test_op_counter_triangular_domain():
         assert flops == 144
     else:
         assert flops == 78
-
-
-def test_op_counter2_basic():
-
-    knl = lp.make_kernel(
-            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
-            [
-                """
-                c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
-                e[i, k+1] = -g[i,k]*h[i,k+1]
-                """
-            ],
-            name="basic", assumptions="n,m,l >= 1")
-
-    knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_op_poly2(knl)
-    n = 512
-    m = 256
-    l = 128
-    params = {'n': n, 'm': m, 'l': l}
-    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
-    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
-    f32div = poly[(np.dtype(np.float32), 'div')].eval_with_dict(params)
-    f64mul = poly[(np.dtype(np.float64), 'mul')].eval_with_dict(params)
-    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
-    assert f32add == f32mul == f32div == n*m*l
-    assert f64mul == n*m
-    assert i32add == n*m*2
-
-
-def test_op_counter2_reduction():
-
-    knl = lp.make_kernel(
-            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
-            [
-                "c[i, j] = sum(k, a[i, k]*b[k, j])"
-            ],
-            name="matmul_serial", assumptions="n,m,l >= 1")
-
-    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    poly = get_op_poly2(knl)
-    n = 512
-    m = 256
-    l = 128
-    params = {'n': n, 'm': m, 'l': l}
-    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
-    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
-    assert f32add == f32mul == n*m*l
-
-
-def test_op_counter2_logic():
-
-    knl = lp.make_kernel(
-            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
-            [
-                """
-                e[i,k] = if(not(k<l-2) and k>6 or k/2==l, g[i,k]*2, g[i,k]+h[i,k]/2)
-                """
-            ],
-            name="logic", assumptions="n,m,l >= 1")
-
-    knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = get_op_poly2(knl)
-    n = 512
-    m = 256
-    l = 128
-    params = {'n': n, 'm': m, 'l': l}
-    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
-    f64add = poly[(np.dtype(np.float64), 'add')].eval_with_dict(params)
-    f64div = poly[(np.dtype(np.float64), 'div')].eval_with_dict(params)
-    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
-    #f32 = poly[np.dtype(np.float32)].eval_with_dict(params)
-    #f64 = poly[np.dtype(np.float64)].eval_with_dict(params)
-    #i32 = poly[np.dtype(np.int32)].eval_with_dict(params)
-    assert f32mul == n*m
-    #assert f64 == 3*n*m
-    assert f64div == 2*n*m  #TODO why?
-    assert f64add == n*m
-    assert i32add == n*m
-
-
-def test_op_counter2_specialops():
-
-    knl = lp.make_kernel(
-            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
-            [
-                """
-                c[i, j, k] = (2*a[i,j,k])%(2+b[i,j,k]/3.0)
-                e[i, k] = (1+g[i,k])**(1+h[i,k+1])
-                """
-            ],
-            name="specialops", assumptions="n,m,l >= 1")
-
-    knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_op_poly2(knl)
-    n = 512
-    m = 256
-    l = 128
-    params = {'n': n, 'm': m, 'l': l}
-    f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
-    f32div = poly[(np.dtype(np.float32), 'div')].eval_with_dict(params)
-    f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
-    f64pow = poly[(np.dtype(np.float64), 'pow')].eval_with_dict(params)
-    f64add = poly[(np.dtype(np.float64), 'add')].eval_with_dict(params)
-    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
-    assert f32div == 2*n*m*l
-    assert f32mul == f32add == n*m*l
-    assert f64add == 2*n*m
-    assert f64pow == i32add == n*m
-
-
-def test_op_counter2_bitwise():
-
-    knl = lp.make_kernel(
-            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
-            [
-                """
-                c[i, j, k] = (a[i,j,k] | 1) + (b[i,j,k] & 1)
-                e[i, k] = (g[i,k] ^ k)*(~h[i,k+1]) + (g[i, k] << (h[i,k] >> k))
-                """
-            ],
-            name="bitwise", assumptions="n,m,l >= 1")
-
-    knl = lp.add_and_infer_dtypes(
-            knl, dict(
-                a=np.int32, b=np.int32,
-                g=np.int64, h=np.int64))
-
-    poly = get_op_poly2(knl)
-    n = 512
-    m = 256
-    l = 128
-    params = {'n': n, 'm': m, 'l': l}
-    i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
-    i32bw = poly[(np.dtype(np.int32), 'bw')].eval_with_dict(params)
-    i64bw = poly[(np.dtype(np.int64), 'bw')].eval_with_dict(params)
-    i64mul = poly[(np.dtype(np.int64), 'mul')].eval_with_dict(params)
-    i64add = poly[(np.dtype(np.int64), 'add')].eval_with_dict(params)
-    i64shift = poly[(np.dtype(np.int64), 'shift')].eval_with_dict(params)
-    assert i32add == n*m+n*m*l
-    assert i32bw == 2*n*m*l
-    assert i64bw == 2*n*m
-    assert i64add == i64mul == n*m
-    assert i64shift == 2*n*m
 
 
 def test_gmem_access_counter_basic():
@@ -686,7 +555,7 @@ def test_reg_counter_basic():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    regs = get_regs_per_thread(knl)
+    regs = estimate_regs_per_thread(knl)
     assert regs == 6
 
 
@@ -700,7 +569,7 @@ def test_reg_counter_reduction():
             name="matmul_serial", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    regs = get_regs_per_thread(knl)
+    regs = estimate_regs_per_thread(knl)
     assert regs == 6
 
 
@@ -716,7 +585,7 @@ def test_reg_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    regs = get_regs_per_thread(knl)
+    regs = estimate_regs_per_thread(knl)
     assert regs == 6
 
 
@@ -734,7 +603,7 @@ def test_reg_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    regs = get_regs_per_thread(knl)
+    regs = estimate_regs_per_thread(knl)
     assert regs == 6
 
 
@@ -754,7 +623,7 @@ def test_reg_counter_bitwise():
             knl, dict(
                 a=np.int32, b=np.int32,
                 g=np.int64, h=np.int64))
-    regs = get_regs_per_thread(knl)
+    regs = estimate_regs_per_thread(knl)
     assert regs == 6
 
 
@@ -779,14 +648,20 @@ def test_all_counters_parallel_matmul():
     assert barrier_count == 0
 
     op_map = get_op_poly(knl)
-    f32ops = op_map[
-                        np.dtype(np.float32)
+    f32mul = op_map[
+                        (np.dtype(np.float32), 'mul')
+                        ].eval_with_dict(params)
+    f32add = op_map[
+                        (np.dtype(np.float32), 'add')
                         ].eval_with_dict(params)
     i32ops = op_map[
-                        np.dtype(np.int32)
+                        (np.dtype(np.int32), 'add')
+                        ].eval_with_dict(params)
+    i32ops += op_map[
+                        (np.dtype(np.int32), 'mul')
                         ].eval_with_dict(params)
 
-    assert f32ops == n*m*l*2
+    assert f32mul+f32add == n*m*l*2
     assert i32ops == n*m*l*4 + l*n*4
 
     subscript_map = get_gmem_access_poly(knl)
@@ -805,10 +680,9 @@ def test_all_counters_parallel_matmul():
                         ].eval_with_dict(params)
 
     assert f32coal == n*l
-    '''
-    regs = get_regs_per_thread(knl)
-    assert regs == 8
-    '''
+
+    regs = estimate_regs_per_thread(knl)
+    assert regs == 4
 
 
 if __name__ == "__main__":
