@@ -276,6 +276,8 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
         from pymbolic import var
         if index is None:
             return var(subst_name)
+        elif not isinstance(index, tuple):
+            return var(subst_name)(index)
         else:
             return var(subst_name)(*index)
 

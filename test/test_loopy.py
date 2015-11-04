@@ -29,6 +29,7 @@ import sys
 import numpy as np
 import loopy as lp
 import pyopencl as cl
+import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
 import pytest
 
@@ -2226,6 +2227,67 @@ def test_indexof_vec(ctx_factory):
     (evt, (out,)) = knl(queue)
     #out = out.get()
     #assert np.array_equal(out.ravel(order="C"), np.arange(25))
+
+
+def test_finite_difference_expr_subst(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    grid = np.linspace(0, 2*np.pi, 2048, endpoint=False)
+    h = grid[1] - grid[0]
+    u = cl.clmath.sin(cl.array.to_device(queue, grid))
+
+    fin_diff_knl = lp.make_kernel(
+        "{[i]: 1<=i<=n}",
+        "out[i] = -(f[i+1] - f[i-1])/h",
+        [lp.GlobalArg("out", shape="n+2"), "..."])
+
+    flux_knl = lp.make_kernel(
+        "{[j]: 1<=j<=n}",
+        "f[j] = u[j]**2/2",
+        [
+            lp.GlobalArg("f", shape="n+2"),
+            lp.GlobalArg("u", shape="n+2"),
+            ])
+
+    fused_knl = lp.fuse_kernels([fin_diff_knl, flux_knl])
+
+    fused_knl = lp.set_options(fused_knl, write_cl=True)
+    evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
+
+    fused_knl = lp.assignment_to_subst(fused_knl, "f")
+
+    fused_knl = lp.set_options(fused_knl, write_cl=True)
+
+    # This is the real test here: The automatically generated
+    # shape expressions are '2+n' and the ones above are 'n+2'.
+    # Is loopy smart enough to understand that these are equal?
+    evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
+
+    fused0_knl = lp.affine_map_inames(fused_knl, "i", "inew", "inew+1=i")
+
+    gpu_knl = lp.split_iname(
+            fused0_knl, "inew", 128, outer_tag="g.0", inner_tag="l.0")
+
+    precomp_knl = lp.precompute(
+            gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True)
+
+    precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
+    precomp_knl = lp.set_options(precomp_knl, return_dict=True)
+    evt, _ = precomp_knl(queue, u=u, h=h)
+
+
+def test_is_expression_equal():
+    from loopy.symbolic import is_expression_equal
+    from pymbolic import var
+
+    x = var("x")
+    y = var("y")
+
+    assert is_expression_equal(x+2, 2+x)
+
+    assert is_expression_equal((x+2)**2, x**2 + 4*x + 4)
+    assert is_expression_equal((x+y)**2, x**2 + 2*x*y + y**2)
 
 
 if __name__ == "__main__":

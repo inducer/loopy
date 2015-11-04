@@ -732,6 +732,23 @@ class ArrayBase(Record):
                 order=order,
                 **kwargs)
 
+    def __eq__(self, other):
+        from loopy.symbolic import (
+                is_tuple_of_expressions_equal as istoee,
+                is_expression_equal as isee)
+        return (
+                type(self) == type(other)
+                and self.name == other.name
+                and self.picklable_dtype == other.picklable_dtype
+                and istoee(self.shape, other.shape)
+                and self.dim_tags == other.dim_tags
+                and isee(self.offset, other.offset)
+                and self.order == other.order
+                )
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     @property
     def dtype(self):
         from loopy.tools import PicklableDtype

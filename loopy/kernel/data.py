@@ -376,6 +376,14 @@ class TemporaryVariable(ArrayBase):
     def __str__(self):
         return self.stringify(include_typename=False)
 
+    def __eq__(self, other):
+        return (
+                super(TemporaryVariable, self).__eq__(other)
+                and self.storage_shape == other.storage_shape
+                and self.base_indices == other.base_indices
+                and self.is_local == other.is_local
+                and self.base_storage == other.base_storage)
+
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.

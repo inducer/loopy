@@ -1186,4 +1186,47 @@ class AccessRangeMapper(WalkMapper):
 
 # }}}
 
+
+# {{{ is_expression_equal
+
+def is_expression_equal(a, b):
+    if a == b:
+        return True
+
+    from pymbolic.primitives import Expression
+    if isinstance(a, Expression) or isinstance(b, Expression):
+        if a is None or b is None:
+            return False
+
+        maybe_zero = a - b
+        from pymbolic import distribute
+
+        d_result = distribute(maybe_zero)
+        return d_result == 0
+
+    else:
+        return False
+
+
+def is_tuple_of_expressions_equal(a, b):
+    if a is None or b is None:
+        if a is None and b is None:
+            return True
+        return False
+
+    if not isinstance(a, tuple):
+        a = (a,)
+
+    if not isinstance(b, tuple):
+        b = (b,)
+
+    if len(a) != len(b):
+        return False
+
+    return all(
+        is_expression_equal(ai, bi)
+        for ai, bi in zip(a, b))
+
+# }}}
+
 # vim: foldmethod=marker
