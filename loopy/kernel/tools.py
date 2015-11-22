@@ -43,6 +43,22 @@ def add_dtypes(knl, dtype_dict):
     :arg dtype_dict: a mapping from variable names to :class:`numpy.dtype`
         instances
     """
+    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(knl, dtype_dict)
+
+    if dtype_dict_remainder:
+        raise RuntimeError("unused argument dtypes: %s"
+                % ", ".join(dtype_dict_remainder))
+
+    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
+
+
+def _add_dtypes_overdetermined(knl, dtype_dict):
+    dtype_dict_remainder, new_args, new_temp_vars = _add_dtypes(knl, dtype_dict)
+    # do not throw error for unused args
+    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
+
+
+def _add_dtypes(knl, dtype_dict):
     dtype_dict = dtype_dict.copy()
     new_args = []
 
@@ -76,11 +92,7 @@ def add_dtypes(knl, dtype_dict):
 
             new_temp_vars[tv_name] = tv.copy(dtype=new_dtype)
 
-    if dtype_dict:
-        raise RuntimeError("unused argument dtypes: %s"
-                % ", ".join(dtype_dict))
-
-    return knl.copy(args=new_args, temporary_variables=new_temp_vars)
+    return dtype_dict, new_args, new_temp_vars
 
 
 def get_arguments_with_incomplete_dtype(knl):
@@ -90,6 +102,12 @@ def get_arguments_with_incomplete_dtype(knl):
 
 def add_and_infer_dtypes(knl, dtype_dict):
     knl = add_dtypes(knl, dtype_dict)
+
+    from loopy.preprocess import infer_unknown_types
+    return infer_unknown_types(knl, expect_completion=True)
+
+def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
+    knl = _add_dtypes_overdetermined(knl, dtype_dict)
 
     from loopy.preprocess import infer_unknown_types
     return infer_unknown_types(knl, expect_completion=True)
