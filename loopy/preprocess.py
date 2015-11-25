@@ -518,138 +518,6 @@ def realize_reduction(kernel, insn_id_filter=None):
 # }}}
 
 
-# {{{ duplicate private vars for ilp and vec
-
-from loopy.symbolic import IdentityMapper
-
-
-class ExtraInameIndexInserter(IdentityMapper):
-    def __init__(self, var_to_new_inames):
-        self.var_to_new_inames = var_to_new_inames
-
-    def map_subscript(self, expr):
-        try:
-            new_idx = self.var_to_new_inames[expr.aggregate.name]
-        except KeyError:
-            return IdentityMapper.map_subscript(self, expr)
-        else:
-            index = expr.index
-            if not isinstance(index, tuple):
-                index = (index,)
-            index = tuple(self.rec(i) for i in index)
-
-            return expr.aggregate.index(index + new_idx)
-
-    def map_variable(self, expr):
-        try:
-            new_idx = self.var_to_new_inames[expr.name]
-        except KeyError:
-            return expr
-        else:
-            return expr.index(new_idx)
-
-
-def duplicate_private_temporaries_for_ilp_and_vec(kernel):
-    logger.debug("%s: duplicate temporaries for ilp" % kernel.name)
-
-    wmap = kernel.writer_map()
-
-    from loopy.kernel.data import IlpBaseTag, VectorizeTag
-
-    var_to_new_ilp_inames = {}
-
-    # {{{ find variables that need extra indices
-
-    for tv in six.itervalues(kernel.temporary_variables):
-        for writer_insn_id in wmap.get(tv.name, []):
-            writer_insn = kernel.id_to_insn[writer_insn_id]
-            ilp_inames = frozenset(iname
-                    for iname in kernel.insn_inames(writer_insn)
-                    if isinstance(
-                        kernel.iname_to_tag.get(iname),
-                        (IlpBaseTag, VectorizeTag)))
-
-            referenced_ilp_inames = (ilp_inames
-                    & writer_insn.write_dependency_names())
-
-            new_ilp_inames = ilp_inames - referenced_ilp_inames
-
-            if not new_ilp_inames:
-                break
-
-            if tv.name in var_to_new_ilp_inames:
-                if new_ilp_inames != set(var_to_new_ilp_inames[tv.name]):
-                    raise LoopyError("instruction '%s' requires adding "
-                            "indices for ILP inames '%s' on var '%s', but previous "
-                            "instructions required inames '%s'"
-                            % (writer_insn_id, ", ".join(new_ilp_inames),
-                                ", ".join(var_to_new_ilp_inames[tv.name])))
-
-                continue
-
-            var_to_new_ilp_inames[tv.name] = set(new_ilp_inames)
-
-    # }}}
-
-    # {{{ find ilp iname lengths
-
-    from loopy.isl_helpers import static_max_of_pw_aff
-    from loopy.symbolic import pw_aff_to_expr
-
-    ilp_iname_to_length = {}
-    for ilp_inames in six.itervalues(var_to_new_ilp_inames):
-        for iname in ilp_inames:
-            if iname in ilp_iname_to_length:
-                continue
-
-            bounds = kernel.get_iname_bounds(iname, constants_only=True)
-            ilp_iname_to_length[iname] = int(pw_aff_to_expr(
-                        static_max_of_pw_aff(bounds.size, constants_only=True)))
-
-            assert static_max_of_pw_aff(
-                    bounds.lower_bound_pw_aff, constants_only=True).plain_is_zero()
-
-    # }}}
-
-    # {{{ change temporary variables
-
-    new_temp_vars = kernel.temporary_variables.copy()
-    for tv_name, inames in six.iteritems(var_to_new_ilp_inames):
-        tv = new_temp_vars[tv_name]
-        extra_shape = tuple(ilp_iname_to_length[iname] for iname in inames)
-
-        shape = tv.shape
-        if shape is None:
-            shape = ()
-
-        dim_tags = ["c"] * (len(shape) + len(extra_shape))
-        for i, iname in enumerate(inames):
-            if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag):
-                dim_tags[len(shape) + i] = "vec"
-
-        new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,
-                # Forget what you knew about data layout,
-                # create from scratch.
-                dim_tags=dim_tags)
-
-    # }}}
-
-    from pymbolic import var
-    eiii = ExtraInameIndexInserter(
-            dict((var_name, tuple(var(iname) for iname in inames))
-                for var_name, inames in six.iteritems(var_to_new_ilp_inames)))
-
-    new_insns = [
-            insn.with_transformed_expressions(eiii)
-            for insn in kernel.instructions]
-
-    return kernel.copy(
-        temporary_variables=new_temp_vars,
-        instructions=new_insns)
-
-# }}}
-
-
 # {{{ find boostability of instructions
 
 def find_boostability(kernel):
@@ -828,10 +696,12 @@ def preprocess_kernel(kernel, device=None):
     kernel = realize_reduction(kernel)
 
     # Ordering restriction:
-    # duplicate_private_temporaries_for_ilp because reduction accumulators
+    # add_axes_to_temporaries_for_ilp because reduction accumulators
     # need to be duplicated by this.
 
-    kernel = duplicate_private_temporaries_for_ilp_and_vec(kernel)
+    from loopy.ilp import add_axes_to_temporaries_for_ilp_and_vec
+    kernel = add_axes_to_temporaries_for_ilp_and_vec(kernel)
+
     kernel = mark_local_temporaries(kernel)
     kernel = find_boostability(kernel)
     kernel = limit_boostability(kernel)

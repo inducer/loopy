@@ -397,6 +397,8 @@ Wrangling inames
 
 .. autofunction:: affine_map_inames
 
+.. autofunction:: realize_ilp
+
 Dealing with Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^
 
