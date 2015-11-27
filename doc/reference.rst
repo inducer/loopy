@@ -54,25 +54,25 @@ and related functions.
 For a string representation of types, all numpy types (e.g. ``float32`` etc.)
 are accepted, in addition to what is registered in :mod:`pyopencl`.
 
-.. _tags:
+.. _iname-tags:
 
 Iname Implementation Tags
 -------------------------
 
-===================== ====================================================
-Tag                   Meaning
-===================== ====================================================
-`None` | `"for"`      Sequential loop
-`"l.N"`               Local (intra-group) axis N
-`"g.N"`               Group-number axis N
-`"unr"`               Unroll
-`"ilp"` | `"ilp.unr"` Unroll using instruction-level parallelism
-`"ilp.seq"`           Realize parallel iname as innermost loop
-===================== ====================================================
+========================= ====================================================
+Tag                       Meaning
+========================= ====================================================
+``None`` | ``"for"``      Sequential loop
+``"l.N"``                 Local (intra-group) axis N
+``"g.N"``                 Group-number axis N
+``"unr"``                 Unroll
+``"ilp"`` | ``"ilp.unr"`` Unroll using instruction-level parallelism
+``"ilp.seq"``             Realize parallel iname as innermost loop
+========================= ====================================================
 
 .. "l.auto" intentionally undocumented
 
-(Throughout this table, `N` must be replaced by an actual number.)
+(Throughout this table, `N` must be replaced by an actual, zero-based number.)
 
 "ILP" does three things:
 
