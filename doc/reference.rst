@@ -81,25 +81,6 @@ Tag                   Meaning
 * Causes a loop (unrolled or not) to be opened/generated for each
   involved instruction
 
-.. _automatic-axes:
-
-Automatic Axis Assignment
-^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Automatic local axes are chosen as follows:
-
-#. For each instruction containing `"l.auto"` inames:
-    #. Find the lowest-numbered unused axis. If none exists,
-        use sequential unrolling instead.
-    #. Find the iname that has the smallest stride in any global
-        array access occurring in the instruction.
-    #. Assign the low-stride iname to the available axis, splitting
-        the iname if it is too long for the available axis size.
-
-If you need different behavior, use :func:`tag_inames` and
-:func:`split_iname` to change the assignment of `"l.auto"` axes
-manually.
-
 .. _creating-kernels:
 
 Creating Kernels
