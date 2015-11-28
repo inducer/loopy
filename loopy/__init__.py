@@ -1127,6 +1127,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
     if isinstance(sweep_inames, str):
         sweep_inames = [s.strip() for s in sweep_inames.split(",")]
+    else:
+        # copy, standardize to list
+        sweep_inames = list(sweep_inames)
 
     kernel, subst_use, sweep_inames, inames_to_be_removed = \
             _process_footprint_subscripts(
