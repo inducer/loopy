@@ -1297,6 +1297,7 @@ def tag_data_axes(knl, ary_names, dim_tags):
 
         from loopy.kernel.array import parse_array_dim_tags
         new_dim_tags = parse_array_dim_tags(dim_tags,
+                n_axes=ary.num_user_axes(),
                 use_increasing_target_axes=ary.max_target_axes > 1)
 
         ary = ary.copy(dim_tags=tuple(new_dim_tags))
@@ -1636,13 +1637,15 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
 
     from loopy.kernel.array import (parse_array_dim_tags,
             SeparateArrayArrayDimTag, VectorArrayDimTag)
-    new_dim_tags = parse_array_dim_tags(new_dim_tags)
+    new_dim_tags = parse_array_dim_tags(new_dim_tags, n_axes=None)
 
     rank = len(new_dim_tags)
     if old_dim_tags is None:
-        old_dim_tags = parse_array_dim_tags(",".join(rank * ["c"]))
+        old_dim_tags = parse_array_dim_tags(
+                ",".join(rank * ["c"]), n_axes=None)
     elif isinstance(old_dim_tags, str):
-        old_dim_tags = parse_array_dim_tags(old_dim_tags)
+        old_dim_tags = parse_array_dim_tags(
+                old_dim_tags, n_axes=None)
 
     indices = ["i%d" % i for i in range(rank)]
     shape = ["n%d" % i for i in range(rank)]

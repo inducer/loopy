@@ -181,26 +181,31 @@ class VectorArrayDimTag(ArrayDimImplementationTag):
         return self
 
 
-NESTING_LEVEL_RE = re.compile(r"^N([0-9]+)(?::(.*)|)$")
+NESTING_LEVEL_RE = re.compile(r"^N([-0-9]+)(?::(.*)|)$")
 PADDED_STRIDE_TAG_RE = re.compile(r"^([a-zA-Z]*)\(pad=(.*)\)$")
 TARGET_AXIS_RE = re.compile(r"->([0-9])$")
 
 
 def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
     if isinstance(tag, ArrayDimImplementationTag):
-        return False, tag
+        return False, False, tag
 
     if not isinstance(tag, str):
         raise TypeError("arg dimension implementation tag must be "
                 "string or tag object")
 
     tag = tag.strip()
+    is_optional = False
+    if tag.endswith("?"):
+        tag = tag[:-1]
+        is_optional = True
+
     orig_tag = tag
 
     if tag == "sep":
-        return False, SeparateArrayArrayDimTag()
+        return False, is_optional, SeparateArrayArrayDimTag()
     elif tag == "vec":
-        return False, VectorArrayDimTag()
+        return False, is_optional, VectorArrayDimTag()
 
     nesting_level_match = NESTING_LEVEL_RE.match(tag)
 
@@ -228,14 +233,18 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
         fixed_stride_descr = tag[7:]
         if fixed_stride_descr.strip() == "auto":
             import loopy as lp
-            return has_explicit_nesting_level, FixedStrideArrayDimTag(
-                    lp.auto, target_axis,
-                    layout_nesting_level=nesting_level)
+            return (
+                    has_explicit_nesting_level, is_optional,
+                    FixedStrideArrayDimTag(
+                        lp.auto, target_axis,
+                        layout_nesting_level=nesting_level))
         else:
             from loopy.symbolic import parse
-            return has_explicit_nesting_level, FixedStrideArrayDimTag(
+            return (
+                has_explicit_nesting_level, is_optional,
+                FixedStrideArrayDimTag(
                     parse(fixed_stride_descr), target_axis,
-                    layout_nesting_level=nesting_level)
+                    layout_nesting_level=nesting_level))
 
     else:
         padded_stride_match = PADDED_STRIDE_TAG_RE.match(tag)
@@ -274,11 +283,13 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
         else:
             raise LoopyError("invalid dim tag: '%s'" % orig_tag)
 
-        return has_explicit_nesting_level, ComputedStrideArrayDimTag(
-                nesting_level, pad_to=pad_to, target_axis=target_axis)
+        return (
+                has_explicit_nesting_level, is_optional,
+                ComputedStrideArrayDimTag(
+                    nesting_level, pad_to=pad_to, target_axis=target_axis))
 
 
-def parse_array_dim_tags(dim_tags, use_increasing_target_axes=False):
+def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False):
     if isinstance(dim_tags, str):
         dim_tags = dim_tags.split(",")
 
@@ -291,9 +302,15 @@ def parse_array_dim_tags(dim_tags, use_increasing_target_axes=False):
 
     target_axis_to_has_explicit_nesting_level = {}
 
-    for dim_tag in dim_tags:
-        has_explicit_nesting_level, parsed_dim_tag = _parse_array_dim_tag(
-            dim_tag, default_target_axis, nesting_levels)
+    for iaxis, dim_tag in enumerate(dim_tags):
+        has_explicit_nesting_level, is_optional, parsed_dim_tag = (
+                _parse_array_dim_tag(
+                    dim_tag, default_target_axis, nesting_levels))
+
+        if (is_optional
+                and n_axes is not None
+                and len(result) + (len(dim_tags) - iaxis) > n_axes):
+            continue
 
         if isinstance(parsed_dim_tag, _StrideArrayDimTagBase):
             # {{{ check for C/F mixed with explicit layout nesting level specs
@@ -513,9 +530,7 @@ class ArrayBase(Record):
 
     .. attribute:: dim_tags
 
-        a list of :class:`ArrayDimImplementationTag` instances.
-        or a list of strings that :func:`parse_array_dim_tag` understands,
-        or a comma-separated string of such tags.
+        See :ref:`data-dim-tags`.
 
     .. attribute:: offset
 
@@ -644,6 +659,7 @@ class ArrayBase(Record):
 
         if dim_tags is not None:
             dim_tags = parse_array_dim_tags(dim_tags,
+                    n_axes=(len(shape) if shape_known else None),
                     use_increasing_target_axes=self.max_target_axes > 1)
 
         # {{{ determine number of user axes
@@ -675,6 +691,7 @@ class ArrayBase(Record):
 
         if dim_tags is None and num_user_axes is not None and order is not None:
             dim_tags = parse_array_dim_tags(num_user_axes*[order],
+                    n_axes=num_user_axes,
                     use_increasing_target_axes=self.max_target_axes > 1)
             order = None
 

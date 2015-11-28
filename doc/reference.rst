@@ -81,6 +81,66 @@ Tag                       Meaning
 * Causes a loop (unrolled or not) to be opened/generated for each
   involved instruction
 
+.. _data-dim-tags:
+
+Data Axis Tags
+--------------
+
+Data axis tags specify how a multi-dimensional array (which is loopy's
+main way of storing data) is represented in (linear, 1D) computer
+memory. This storage format is given as a number of "tags", as listed
+in the table below. Each axis of an array has a tag corresponding to it.
+In the user interface, array dim tags are specified as a tuple of these
+tags or a comma-separated string containing them, such as the following::
+
+    c,vec,sep,c
+
+The interpretation of these tags is order-dependent, they are read
+from left to right.
+
+===================== ====================================================
+Tag                   Meaning
+===================== ====================================================
+``c``                 Nest current axis around the ones that follow
+``f``                 Nest current axis inside the ones that follow
+``N0`` ... ``N9``     Specify an explicit nesting level for this axis
+``stride:EXPR``       A fixed stride
+``sep``               Implement this axis by mapping to separate arrays
+``vec``               Implement this axis as entries in a vector
+===================== ====================================================
+
+``sep`` and ``vec`` obviously require the number of entries
+in the array along their respective axis to be known at code
+generation time.
+
+When the above speaks about 'nesting levels', this means that axes
+"nested inside" others are "faster-moving" when viewed from linear
+memory.
+
+In addition, each tag may be followed by a question mark (``?``),
+which indicates that if there are more dimension tags specified
+than array axes present, that this axis should be omitted. Axes
+with question marks are omitted in a left-first manner until the correct
+number of dimension tags is achieved.
+
+Some examples follow, all of which use a three-dimensional array of shape
+*(3, M, 4)*. For simplicity, we assume that array entries have size one.
+
+*   ``c,c,c``: The axes will have strides *(M*4, 4, 1)*,
+    leading to a C-like / row-major layout.
+
+*   ``f,f,f``: The axes will have strides *(1, 3, 3*M)*,
+    leading to a Fortran-like / row-major layout.
+
+*   ``sep,c,c``: The array will be mapped to three arrays of
+    shape *(M, 4)*, each with strides *(4, 1)*.
+
+*   ``c,c,vec``: The array will be mapped to an array of
+    ``float4`` vectors, with (``float4``-based) strides of
+    *(M, 1)*.
+
+*   ``N1,N0,N2``: The axes will have strides *(M, 1, 3*M)*.
+
 .. _creating-kernels:
 
 Creating Kernels
