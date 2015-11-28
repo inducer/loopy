@@ -1042,9 +1042,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
-    :ivar dim_arg_names: List of names representing each fetch axis.
-    :ivar rule_name: base name of the generated temporary variable.
-    :ivar footprint_subscripts: A list of tuples indicating the index (i.e.
+    :arg dim_arg_names: List of names representing each fetch axis.
+    :arg rule_name: base name of the generated temporary variable.
+    :arg footprint_subscripts: A list of tuples indicating the index (i.e.
         subscript) tuples used to generate the footprint.
 
         If only one such set of indices is desired, this may also be specified
