@@ -839,8 +839,14 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     from loopy import tag_inames
     kernel = tag_inames(kernel, new_iname_to_tag)
 
-    from loopy.kernel.tools import assign_automatic_axes
-    kernel = assign_automatic_axes(kernel)
+    from loopy.kernel.data import AutoFitLocalIndexTag
+    has_automatic_axes = any(
+            isinstance(tag, AutoFitLocalIndexTag)
+            for tag in new_iname_to_tag.values())
+
+    if has_automatic_axes:
+        from loopy.kernel.tools import assign_automatic_axes
+        kernel = assign_automatic_axes(kernel)
 
     return kernel
 
