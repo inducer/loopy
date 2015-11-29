@@ -1,9 +1,6 @@
 """isl helpers"""
 
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -27,6 +24,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+
+from six.moves import range, zip
+
+from loopy.diagnostic import StaticValueFindingError
 
 import islpy as isl
 from islpy import dim_type
