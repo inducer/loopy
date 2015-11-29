@@ -133,6 +133,20 @@ __all__ = [
         "register_symbol_manglers",
         "register_function_manglers",
 
+        "set_caching_enabled",
+        "CacheMode",
+        "make_copy_kernel",
+        "set_argument_order",
+        "affine_map_inames",
+        "fold_constants",
+        "tag_instructions",
+        "alias_temporaries",
+        "to_batched",
+        "remove_unused_arguments",
+        "find_rules_matching",
+        "find_one_rule_matching",
+        "realize_ilp",
+
         # }}}
         ]
 
