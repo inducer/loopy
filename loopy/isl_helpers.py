@@ -196,7 +196,7 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
 
     # }}}
 
-    raise ValueError("a static %s was not found for PwAff '%s'"
+    raise StaticValueFindingError("a static %s was not found for PwAff '%s'"
             % (what, pw_aff))
 
 

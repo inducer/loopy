@@ -292,20 +292,48 @@ class SetOperationCacheManager:
         lower_bound_pw_aff = self.dim_min(set, idx)
         upper_bound_pw_aff = self.dim_max(set, idx)
 
-        from loopy.isl_helpers import static_max_of_pw_aff, static_value_of_pw_aff
+        from loopy.diagnostic import StaticValueFindingError
+        from loopy.isl_helpers import (
+                static_max_of_pw_aff,
+                static_min_of_pw_aff,
+                static_value_of_pw_aff)
         from loopy.symbolic import pw_aff_to_expr
 
-        size = pw_aff_to_expr(static_max_of_pw_aff(
-                upper_bound_pw_aff - lower_bound_pw_aff + 1, constants_only=False,
-                context=context))
+        # {{{ first: try to find static lower bound value
+
         try:
-            base_index = pw_aff_to_expr(
-                    static_value_of_pw_aff(lower_bound_pw_aff, constants_only=False,
-                        context=context))
-        except Exception as e:
-            raise type(e)("while finding lower bound of '%s': %s" % (iname, str(e)))
+            base_index_aff = static_value_of_pw_aff(
+                    lower_bound_pw_aff, constants_only=False,
+                    context=context)
+        except StaticValueFindingError:
+            base_index_aff = None
+
+        if base_index_aff is not None:
+            base_index = pw_aff_to_expr(base_index_aff)
+
+            size = pw_aff_to_expr(static_max_of_pw_aff(
+                    upper_bound_pw_aff - base_index_aff + 1, constants_only=False,
+                    context=context))
+
+            return base_index, size
+
+        # }}}
+
+        # {{{ if that didn't work, try finding a lower bound
+
+        base_index_aff = static_min_of_pw_aff(
+                lower_bound_pw_aff, constants_only=False,
+                context=context)
+
+        base_index = pw_aff_to_expr(base_index_aff)
+
+        size = pw_aff_to_expr(static_max_of_pw_aff(
+                upper_bound_pw_aff - base_index_aff + 1, constants_only=False,
+                context=context))
 
         return base_index, size
+
+        # }}}
 
 # }}}
 
