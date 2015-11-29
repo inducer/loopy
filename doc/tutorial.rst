@@ -1088,7 +1088,7 @@ Attempting to create this kernel results in an error:
     ... # While trying to find shape axis 0 of argument 'out', the following exception occurred:
     Traceback (most recent call last):
     ...
-    ValueError: a static maximum was not found for PwAff '[n] -> { [(1)] : n = 1; [(n)] : n >= 2; [(1)] : n <= 0 }'
+    StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [(1)] : n = 1; [(n)] : n >= 2; [(1)] : n <= 0 }'
 
 The problem is that loopy cannot find a simple, universally valid expression
 for the length of *out* in this case. Notice how the kernel accesses both the
