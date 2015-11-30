@@ -23,7 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-from loopy.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
+from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, SubstitutionRuleMappingContext,

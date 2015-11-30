@@ -139,7 +139,7 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     unexpanded_kernel = kernel
     if kernel.substitutions:
-        from loopy.subst import expand_subst
+        from loopy.transform.subst import expand_subst
         kernel = expand_subst(kernel)
 
     new_temp_vars = kernel.temporary_variables.copy()
@@ -673,7 +673,7 @@ def preprocess_kernel(kernel, device=None):
 
     # }}}
 
-    from loopy.subst import expand_subst
+    from loopy.transform.subst import expand_subst
     kernel = expand_subst(kernel)
 
     # Ordering restriction:
@@ -699,7 +699,7 @@ def preprocess_kernel(kernel, device=None):
     # add_axes_to_temporaries_for_ilp because reduction accumulators
     # need to be duplicated by this.
 
-    from loopy.ilp import add_axes_to_temporaries_for_ilp_and_vec
+    from loopy.transform.ilp import add_axes_to_temporaries_for_ilp_and_vec
     kernel = add_axes_to_temporaries_for_ilp_and_vec(kernel)
 
     kernel = mark_local_temporaries(kernel)

@@ -35,7 +35,7 @@ import numpy as np
 
 from pymbolic import var
 
-from loopy.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
+from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
 
 

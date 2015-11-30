@@ -129,7 +129,7 @@ def find_all_insn_inames(kernel):
     all_read_deps = {}
     all_write_deps = {}
 
-    from loopy.subst import expand_subst
+    from loopy.transform.subst import expand_subst
     kernel = expand_subst(kernel)
 
     for insn in kernel.instructions:

@@ -61,7 +61,7 @@ def test_diff(ctx_factory):
 
     knl = lp.fix_parameters(knl, n=50)
 
-    from loopy.diff import diff_kernel
+    from loopy.transform.diff import diff_kernel
     dknl, diff_map = diff_kernel(knl, "z", "x")
     dknl = lp.remove_unused_arguments(dknl)
 
