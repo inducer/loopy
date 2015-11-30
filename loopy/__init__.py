@@ -88,6 +88,7 @@ from loopy.transform.padding import (
 
 from loopy.transform.ilp import realize_ilp
 from loopy.transform.batch import to_batched
+from loopy.transform.parameter import fix_parameters
 
 # }}}
 
