@@ -1059,15 +1059,20 @@ class LoopKernel(RecordWithoutPickling):
         for insn in kernel.instructions:
             print_insn(insn)
 
-        dep_lines = []
-        for insn in kernel.instructions:
-            if insn.insn_deps:
-                dep_lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
-        if dep_lines:
+        if 0:
+            dep_lines = []
+            for insn in kernel.instructions:
+                if insn.insn_deps:
+                    dep_lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
+            if dep_lines:
+                lines.append(sep)
+                lines.append("DEPENDENCIES: "
+                        "(use loopy.show_dependency_graph to visualize)")
+                lines.extend(dep_lines)
+        else:
             lines.append(sep)
             lines.append("DEPENDENCIES: "
-                    "(use loopy.show_dependency_graph to visualize)")
-            lines.extend(dep_lines)
+                    "use loopy.show_dependency_graph to visualize")
 
         lines.append(sep)
 
