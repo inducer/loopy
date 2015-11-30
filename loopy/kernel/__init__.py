@@ -964,7 +964,7 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ pretty-printing
 
-    def __str__(self):
+    def stringify(self, with_dependencies=False):
         lines = []
 
         from loopy.preprocess import add_default_dependencies
@@ -1066,8 +1066,9 @@ class LoopKernel(RecordWithoutPickling):
         if dep_lines:
             lines.append(sep)
             lines.append("DEPENDENCIES: "
-                    "use loopy.show_dependency_graph to visualize")
-            #lines.extend(dep_lines)
+                    "(use loopy.show_dependency_graph to visualize)")
+            if with_dependencies:
+                lines.extend(dep_lines)
 
         lines.append(sep)
 
@@ -1078,6 +1079,9 @@ class LoopKernel(RecordWithoutPickling):
             lines.append(sep)
 
         return "\n".join(lines)
+
+    def __str__(self):
+        return self.stringify()
 
     # }}}
 

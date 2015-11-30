@@ -316,7 +316,7 @@ that these dependencies show up there, too:
 
 .. doctest::
 
-    >>> print(knl)
+    >>> print(knl.stringify(with_dependencies=True))
     ---------------------------------------------------------------------------
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
