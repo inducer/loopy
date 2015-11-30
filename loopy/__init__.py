@@ -487,7 +487,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
 # {{{ tag inames
 
-def tag_inames(kernel, iname_to_tag, force=False):
+def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     from loopy.kernel.data import parse_tag
 
     iname_to_tag = dict((iname, parse_tag(tag))
@@ -499,7 +499,10 @@ def tag_inames(kernel, iname_to_tag, force=False):
     new_iname_to_tag = kernel.iname_to_tag.copy()
     for iname, new_tag in six.iteritems(iname_to_tag):
         if iname not in kernel.all_inames():
-            raise LoopyError("iname '%s' does not exist" % iname)
+            if ignore_nonexistent:
+                continue
+            else:
+                raise LoopyError("iname '%s' does not exist" % iname)
 
         old_tag = kernel.iname_to_tag.get(iname)
 
