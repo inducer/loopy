@@ -96,12 +96,12 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
         vinfo = codegen_state.vectorization_info
         vcheck = VectorizabilityChecker(
                 kernel, vinfo.iname, vinfo.length)
-        rhs_is_vector = vcheck(insn.assignee)
-        lhs_is_vector = vcheck(insn.expression)
+        lhs_is_vector = vcheck(insn.assignee)
+        rhs_is_vector = vcheck(insn.expression)
 
-        if lhs_is_vector != rhs_is_vector:
+        if not lhs_is_vector and rhs_is_vector:
             raise Unvectorizable(
-                    "LHS and RHS disagree on whether they are vectors")
+                    "LHS is scalar, RHS is vector, cannot assign")
 
         is_vector = lhs_is_vector
 
