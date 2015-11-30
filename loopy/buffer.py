@@ -123,7 +123,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
 # }}}
 
 
-buffer_array_cache = PersistentDict("loopy-buffer-array-cachee"+DATA_MODEL_VERSION,
+buffer_array_cache = PersistentDict("loopy-buffer-array-cache-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
