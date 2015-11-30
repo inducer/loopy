@@ -173,4 +173,29 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
 
 # }}}
 
+
+# {{{ realize_ilp
+
+def realize_ilp(kernel, iname):
+    """Instruction-level parallelism (as realized by the loopy iname
+    tag ``"ilp"``) provides the illusion that multiple concurrent
+    program instances execute in lockstep within a single instruction
+    stream.
+
+    To do so, storage that is private to each instruction stream needs to be
+    duplicated so that each program instance receives its own copy.  Storage
+    that is written to in an instruction using an ILP iname but whose left-hand
+    side indices do not contain said ILP iname is marked for duplication.
+
+    This storage duplication is carried out automatically at code generation
+    time, but, using this function, can also be carried out ahead of time
+    on a per-iname basis (so that, for instance, data layout of the duplicated
+    storage can be controlled explicitly.
+    """
+    from loopy.ilp import add_axes_to_temporaries_for_ilp_and_vec
+    return add_axes_to_temporaries_for_ilp_and_vec(kernel, iname)
+
+# }}}
+
+
 # vim: foldmethod=marker
