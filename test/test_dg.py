@@ -140,7 +140,7 @@ def test_dg_volume(ctx_factory):
                 for name in ["u", "v", "w", "p"]
                 for prefix in ["", "rhs"]]
 
-        knl = lp.split_arg_axis(knl, [(nm, 0) for nm in arg_names], pad_mult)
+        knl = lp.split_array_dim(knl, [(nm, 0) for nm in arg_names], pad_mult)
 
         return knl
 

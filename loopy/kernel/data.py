@@ -333,7 +333,7 @@ class TemporaryVariable(ArrayBase):
             ]
 
     def __init__(self, name, dtype=None, shape=(), is_local=auto,
-            dim_tags=None, offset=0, strides=None, order=None,
+            dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
             base_storage=None):
         """
@@ -351,7 +351,8 @@ class TemporaryVariable(ArrayBase):
 
         ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
-                dim_tags=dim_tags, order="C",
+                dim_tags=dim_tags, offset=offset, dim_names=dim_names,
+                order="C",
                 base_indices=base_indices, is_local=is_local,
                 storage_shape=storage_shape,
                 base_storage=base_storage)

@@ -58,7 +58,7 @@ from loopy.subst import extract_subst, expand_subst, assignment_to_subst
 from loopy.precompute import precompute
 from loopy.buffer import buffer_array
 from loopy.fusion import fuse_kernels
-from loopy.padding import (split_arg_axis, find_padding_multiple,
+from loopy.padding import (split_array_dim, split_arg_axis, find_padding_multiple,
         add_padding)
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         infer_unknown_types)
@@ -94,7 +94,8 @@ __all__ = [
         "extract_subst", "expand_subst", "assignment_to_subst",
         "precompute", "buffer_array",
         "fuse_kernels",
-        "split_arg_axis", "find_padding_multiple", "add_padding",
+        "split_array_dim", "split_arg_axis", "find_padding_multiple",
+        "add_padding",
 
         "get_dot_dependency_graph",
         "show_dependency_graph",
@@ -146,6 +147,7 @@ __all__ = [
         "find_rules_matching",
         "find_one_rule_matching",
         "realize_ilp",
+        "set_array_dim_names",
 
         # }}}
         ]
@@ -1121,6 +1123,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     parameters = []
     for i in range(arg.num_user_axes()):
         based_on = "%s_dim_%d" % (c_name, i)
+        if arg.dim_names is not None:
+            based_on = "%s_dim_%s" % (c_name, arg.dim_names[i])
         if dim_arg_names is not None and i < len(dim_arg_names):
             based_on = dim_arg_names[i]
 
@@ -1303,14 +1307,14 @@ def change_arg_to_image(knl, name):
 # {{{ tag data axes
 
 def tag_data_axes(knl, ary_names, dim_tags):
-    for ary_name in ary_names.split(","):
-        ary_name = ary_name.strip()
-        if ary_name in knl.temporary_variables:
-            ary = knl.temporary_variables[ary_name]
-        elif ary_name in knl.arg_dict:
-            ary = knl.arg_dict[ary_name]
-        else:
-            raise NameError("array '%s' was not found" % ary_name)
+    from loopy.kernel.tools import ArrayChanger
+
+    if isinstance(ary_names, str):
+        ary_names = ary_names.split(",")
+
+    for ary_name in ary_names:
+        achng = ArrayChanger(knl, ary_name)
+        ary = achng.get()
 
         from loopy.kernel.array import parse_array_dim_tags
         new_dim_tags = parse_array_dim_tags(dim_tags,
@@ -1319,23 +1323,7 @@ def tag_data_axes(knl, ary_names, dim_tags):
 
         ary = ary.copy(dim_tags=tuple(new_dim_tags))
 
-        if ary_name in knl.temporary_variables:
-            new_tv = knl.temporary_variables.copy()
-            new_tv[ary_name] = ary
-            knl = knl.copy(temporary_variables=new_tv)
-
-        elif ary_name in knl.arg_dict:
-            new_args = []
-            for arg in knl.args:
-                if arg.name == ary_name:
-                    new_args.append(ary)
-                else:
-                    new_args.append(arg)
-
-            knl = knl.copy(args=new_args)
-
-        else:
-            raise NameError("array '%s' was not found" % ary_name)
+        knl = achng.with_changed_array(ary)
 
     return knl
 
@@ -2194,6 +2182,29 @@ def realize_ilp(kernel, iname):
     """
     from loopy.ilp import add_axes_to_temporaries_for_ilp_and_vec
     return add_axes_to_temporaries_for_ilp_and_vec(kernel, iname)
+
+# }}}
+
+
+# {{{ set_array_dim_names
+
+def set_array_dim_names(kernel, ary_names, dim_names):
+    from loopy.kernel.tools import ArrayChanger
+    if isinstance(ary_names, str):
+        ary_names = ary_names.split(",")
+
+    if isinstance(dim_names, str):
+        dim_names = tuple(dim_names.split(","))
+
+    for ary_name in ary_names:
+        achng = ArrayChanger(kernel, ary_name)
+        ary = achng.get()
+
+        ary = ary.copy(dim_names=dim_names)
+
+        kernel = achng.with_changed_array(ary)
+
+    return kernel
 
 # }}}
 

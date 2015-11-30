@@ -25,12 +25,13 @@ THE SOFTWARE.
 """
 
 
+from pytools import MovedFunctionDeprecationWrapper
 from loopy.symbolic import RuleAwareIdentityMapper, SubstitutionRuleMappingContext
 
 
-class ArgAxisSplitHelper(RuleAwareIdentityMapper):
+class ArrayAxisSplitHelper(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, arg_names, handler):
-        super(ArgAxisSplitHelper, self).__init__(rule_mapping_context)
+        super(ArrayAxisSplitHelper, self).__init__(rule_mapping_context)
         self.arg_names = arg_names
         self.handler = handler
 
@@ -38,18 +39,20 @@ class ArgAxisSplitHelper(RuleAwareIdentityMapper):
         if expr.aggregate.name in self.arg_names:
             return self.handler(expr)
         else:
-            return super(ArgAxisSplitHelper, self).map_subscript(expr, expn_state)
+            return super(ArrayAxisSplitHelper, self).map_subscript(expr, expn_state)
 
 
-def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
+def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
         split_kwargs=None):
     """
-    :arg args_and_axes: a list of tuples *(arg, axis_nr)* indicating
+    :arg arrays_and_axes: a list of tuples *(array, axis_nr)* indicating
         that the index in *axis_nr* should be split. The tuples may
-        also be *(arg, axis_nr, "F")*, indicating that the index will
+        also be *(array, axis_nr, "F")*, indicating that the index will
         be split as it would be according to Fortran order.
 
-        If *args_and_axes* is a :class:`tuple`, it is automatically
+        *array* may name a temporary variable or an argument.
+
+        If *arrays_and_axes* is a :class:`tuple`, it is automatically
         wrapped in a list, to make single splits easier.
 
     :arg count: The group size to use in the split.
@@ -68,7 +71,7 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
     if split_kwargs is None:
         split_kwargs = {}
 
-    # {{{ process input into arg_to_rest
+    # {{{ process input into array_to_rest
 
     # where "rest" is the non-argument-name part of the input tuples
     # in args_and_axes
@@ -80,38 +83,32 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
         else:
             raise RuntimeError("split instruction '%s' not understood" % rest)
 
-    if isinstance(args_and_axes, tuple):
-        args_and_axes = [args_and_axes]
+    if isinstance(arrays_and_axes, tuple):
+        arrays_and_axes = [arrays_and_axes]
 
-    arg_to_rest = dict((tup[0], normalize_rest(tup[1:])) for tup in args_and_axes)
+    array_to_rest = dict(
+            (tup[0], normalize_rest(tup[1:])) for tup in arrays_and_axes)
 
-    if len(args_and_axes) != len(arg_to_rest):
+    if len(arrays_and_axes) != len(array_to_rest):
         raise RuntimeError("cannot split multiple axes of the same variable")
 
-    del args_and_axes
+    del arrays_and_axes
 
     # }}}
 
-    from loopy.kernel.data import GlobalArg
-    for arg_name in arg_to_rest:
-        if not isinstance(kernel.arg_dict[arg_name], GlobalArg):
-            raise RuntimeError("only GlobalArg axes may be split")
+    # {{{ adjust arrays
 
-    arg_to_idx = dict((arg.name, i) for i, arg in enumerate(kernel.args))
+    from loopy.kernel.tools import ArrayChanger
 
-    # {{{ adjust args
-
-    new_args = kernel.args[:]
-    for arg_name, (axis, order) in six.iteritems(arg_to_rest):
-        arg_idx = arg_to_idx[arg_name]
-
-        arg = new_args[arg_idx]
+    for array_name, (axis, order) in six.iteritems(array_to_rest):
+        achng = ArrayChanger(kernel, array_name)
+        ary = achng.get()
 
         from pytools import div_ceil
 
         # {{{ adjust shape
 
-        new_shape = arg.shape
+        new_shape = ary.shape
         if new_shape is not None:
             new_shape = list(new_shape)
             axis_len = new_shape[axis]
@@ -130,16 +127,16 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
 
         # {{{ adjust dim tags
 
-        if arg.dim_tags is None:
-            raise RuntimeError("dim_tags of '%s' are not known" % arg.name)
-        new_dim_tags = list(arg.dim_tags)
+        if ary.dim_tags is None:
+            raise RuntimeError("dim_tags of '%s' are not known" % array_name)
+        new_dim_tags = list(ary.dim_tags)
 
-        old_dim_tag = arg.dim_tags[axis]
+        old_dim_tag = ary.dim_tags[axis]
 
         from loopy.kernel.array import FixedStrideArrayDimTag
         if not isinstance(old_dim_tag, FixedStrideArrayDimTag):
             raise RuntimeError("axis %d of '%s' is not tagged fixed-stride"
-                    % (axis, arg.name))
+                    % (axis, array_name))
 
         old_stride = old_dim_tag.stride
         outer_stride = count*old_stride
@@ -155,7 +152,27 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
 
         # }}}
 
-        new_args[arg_idx] = arg.copy(shape=new_shape, dim_tags=new_dim_tags)
+        # {{{ adjust dim_names
+
+        new_dim_names = ary.dim_names
+        if new_dim_names is not None:
+            new_dim_names = list(new_dim_names)
+            existing_name = new_dim_names[axis]
+            new_dim_names[axis] = existing_name + "_inner"
+            outer_name = existing_name + "_outer"
+
+            if order == "F":
+                new_dim_names.insert(axis+1, outer_name)
+            elif order == "C":
+                new_dim_names.insert(axis, outer_name)
+            else:
+                raise RuntimeError("order '%s' not understood" % order)
+            new_dim_names = tuple(new_dim_names)
+
+        # }}}
+
+        kernel = achng.with_changed_array(ary.copy(
+            shape=new_shape, dim_tags=new_dim_tags, dim_names=new_dim_names))
 
     # }}}
 
@@ -164,7 +181,7 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
     var_name_gen = kernel.get_var_name_generator()
 
     def split_access_axis(expr):
-        axis_nr, order = arg_to_rest[expr.aggregate.name]
+        axis_nr, order = array_to_rest[expr.aggregate.name]
 
         idx = expr.index
         if not isinstance(idx, tuple):
@@ -212,11 +229,9 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
-    aash = ArgAxisSplitHelper(rule_mapping_context,
-            set(six.iterkeys(arg_to_rest)), split_access_axis)
+    aash = ArrayAxisSplitHelper(rule_mapping_context,
+            set(six.iterkeys(array_to_rest)), split_access_axis)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
-
-    kernel = kernel.copy(args=new_args)
 
     if auto_split_inames:
         from loopy import split_iname
@@ -226,6 +241,8 @@ def split_arg_axis(kernel, args_and_axes, count, auto_split_inames=True,
                     **split_kwargs)
 
     return kernel
+
+split_arg_axis = MovedFunctionDeprecationWrapper(split_array_dim)
 
 
 def find_padding_multiple(kernel, variable, axis, align_bytes, allowed_waste=0.1):

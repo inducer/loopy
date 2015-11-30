@@ -613,7 +613,7 @@ def test_small_batched_matvec(ctx_factory):
     align_bytes = 64
     knl = lp.add_prefetch(knl, 'd[:,:]')
     pad_mult = lp.find_padding_multiple(knl, "f", 0, align_bytes)
-    knl = lp.split_arg_axis(knl, ("f", 0), pad_mult)
+    knl = lp.split_array_dim(knl, ("f", 0), pad_mult)
     knl = lp.add_padding(knl, "f", 0, align_bytes)
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,

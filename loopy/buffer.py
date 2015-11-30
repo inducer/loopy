@@ -230,8 +230,12 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     new_iname_to_tag = {}
 
     for i in range(len(var_shape)):
-        init_iname = var_name_gen("%s_init_%d" % (var_name, i))
-        store_iname = var_name_gen("%s_store_%d" % (var_name, i))
+        dim_name = str(i)
+        if isinstance(var_descr, ArrayBase) and var_descr.dim_names is not None:
+            dim_name = var_descr.dim_names[i]
+
+        init_iname = var_name_gen("%s_init_%s" % (var_name, dim_name))
+        store_iname = var_name_gen("%s_store_%s" % (var_name, dim_name))
 
         new_iname_to_tag[init_iname] = default_tag
         new_iname_to_tag[store_iname] = default_tag

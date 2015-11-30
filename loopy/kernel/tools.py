@@ -893,4 +893,45 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 # }}}
 
 
+# {{{ array modifier
+
+class ArrayChanger(object):
+    def __init__(self, kernel, array_name):
+        self.kernel = kernel
+        self.array_name = array_name
+
+    def get(self):
+        ary_name = self.array_name
+        if ary_name in self.kernel.temporary_variables:
+            return self.kernel.temporary_variables[ary_name]
+        elif ary_name in self.kernel.arg_dict:
+            return self.kernel.arg_dict[ary_name]
+        else:
+            raise NameError("array '%s' was not found" % ary_name)
+
+    def with_changed_array(self, new_array):
+        knl = self.kernel
+        ary_name = self.array_name
+
+        if ary_name in knl.temporary_variables:
+            new_tv = knl.temporary_variables.copy()
+            new_tv[ary_name] = new_array
+            return knl.copy(temporary_variables=new_tv)
+
+        elif ary_name in knl.arg_dict:
+            new_args = []
+            for arg in knl.args:
+                if arg.name == ary_name:
+                    new_args.append(new_array)
+                else:
+                    new_args.append(arg)
+
+            return knl.copy(args=new_args)
+
+        else:
+            raise NameError("array '%s' was not found" % ary_name)
+
+# }}}
+
+
 # vim: foldmethod=marker

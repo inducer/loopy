@@ -2078,7 +2078,8 @@ def test_vectorize(ctx_factory):
         a[i] = temp
         """)
     knl = lp.add_and_infer_dtypes(knl, dict(b=np.float32))
-    knl = lp.split_arg_axis(knl, [("a", 0), ("b", 0)], 4,
+    knl = lp.set_array_dim_names(knl, "a,b", "i")
+    knl = lp.split_array_dim(knl, [("a", 0), ("b", 0)], 4,
             split_kwargs=dict(slabs=(0, 1)))
 
     knl = lp.tag_data_axes(knl, "a,b", "c,vec")

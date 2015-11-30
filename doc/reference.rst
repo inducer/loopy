@@ -480,10 +480,12 @@ Influencing data access
 
 .. autofunction:: remove_unused_arguments
 
+.. autofunction:: set_array_dim_names
+
 Padding
 ^^^^^^^
 
-.. autofunction:: split_arg_axis
+.. autofunction:: split_array_dim
 
 .. autofunction:: find_padding_multiple
 

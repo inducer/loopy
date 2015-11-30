@@ -534,6 +534,15 @@ class ArrayBase(Record):
 
     .. attribute:: offset
 
+    .. attribute:: dim_names
+
+        A tuple of strings providing names for the array axes, or *None*.
+        If given, must have the same number of entries as :attr:`dim_tags`
+        and :attr:`dim_tags`. These do not live in any particular namespace
+        (i.e. collide with no other names) and serve a purely
+        informational/documentational purpose. On occasion, they are used
+        to generate more informative names than could be achieved by
+        axis numbers.
     """
 
     # Note that order may also wind up in attributes, if the
@@ -542,7 +551,7 @@ class ArrayBase(Record):
     allowed_extra_kwargs = []
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
-            strides=None, order=None, **kwargs):
+            dim_names=None, strides=None, order=None, **kwargs):
         """
         All of the following are optional. Specify either strides or shape.
 
@@ -646,6 +655,19 @@ class ArrayBase(Record):
         if shape_known:
             shape = _parse_shape_or_strides(shape)
 
+        # {{{ check dim_names
+
+        if dim_names is not None:
+            if len(dim_names) != len(set(dim_names)):
+                raise LoopyError("dim_names are not unique")
+
+            for n in dim_names:
+                if not isinstance(n, str):
+                    raise LoopyError("found non-string '%s' in dim_names"
+                            % type(n).__name__)
+
+        # }}}
+
         # {{{ convert strides to dim_tags (Note: strides override order)
 
         if dim_tags is not None and strides_known:
@@ -667,18 +689,20 @@ class ArrayBase(Record):
         num_user_axes = None
         if shape_known:
             num_user_axes = len(shape)
-        if dim_tags is not None:
-            new_num_user_axes = len(dim_tags)
+        for dim_iterable in [dim_tags, dim_names]:
+            if dim_iterable is not None:
+                new_num_user_axes = len(dim_iterable)
 
-            if num_user_axes is None:
-                num_user_axes = new_num_user_axes
-            else:
-                if new_num_user_axes != num_user_axes:
-                    raise LoopyError("contradictory values for number of dimensions "
-                            "of array '%s' from shape, strides, or dim_tags"
-                            % name)
+                if num_user_axes is None:
+                    num_user_axes = new_num_user_axes
+                else:
+                    if new_num_user_axes != num_user_axes:
+                        raise LoopyError("contradictory values for number of "
+                                "dimensions of array '%s' from shape, strides, "
+                                "dim_tags, or dim_names"
+                                % name)
 
-            del new_num_user_axes
+                del new_num_user_axes
 
         # }}}
 
@@ -746,6 +770,7 @@ class ArrayBase(Record):
                 shape=shape,
                 dim_tags=dim_tags,
                 offset=offset,
+                dim_names=dim_names,
                 order=order,
                 **kwargs)
 
@@ -760,6 +785,7 @@ class ArrayBase(Record):
                 and istoee(self.shape, other.shape)
                 and self.dim_tags == other.dim_tags
                 and isee(self.offset, other.offset)
+                and self.dim_names == other.dim_names
                 and self.order == other.order
                 )
 
@@ -804,8 +830,15 @@ class ArrayBase(Record):
         elif self.shape is lp.auto:
             info_entries.append("shape: auto")
         else:
-            info_entries.append("shape: (%s)"
-                    % ", ".join(str(i) for i in self.shape))
+            # shape is iterable
+            if self.dim_names is not None:
+                info_entries.append("shape: (%s)"
+                        % ", ".join(
+                            "%s:%s" % (n, i)
+                            for n, i in zip(self.dim_names, self.shape)))
+            else:
+                info_entries.append("shape: (%s)"
+                        % ", ".join(str(i) for i in self.shape))
 
         if self.dim_tags is not None and self.dim_tags != ():
             info_entries.append("dim_tags: (%s)"
@@ -833,6 +866,7 @@ class ArrayBase(Record):
         key_builder.update_for_pymbolic_expression(key_hash, self.shape)
         key_builder.rec(key_hash, self.dim_tags)
         key_builder.rec(key_hash, self.offset)
+        key_builder.rec(key_hash, self.dim_names)
 
     @property
     @memoize_method
