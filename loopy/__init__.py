@@ -80,7 +80,8 @@ from loopy.transform.fusion import fuse_kernels
 
 from loopy.transform.arithmetic import (
         split_reduction_inward,
-        split_reduction_outward, fold_constants)
+        split_reduction_outward, fold_constants,
+        collect_common_factors_on_increment)
 
 from loopy.transform.padding import (
         split_array_dim, split_arg_axis, find_padding_multiple,
@@ -145,7 +146,7 @@ __all__ = [
         "fuse_kernels",
 
         "split_reduction_inward", "split_reduction_outward",
-        "fold_constants",
+        "fold_constants", "collect_common_factors_on_increment",
 
         "split_array_dim", "split_arg_axis", "find_padding_multiple",
         "add_padding",
