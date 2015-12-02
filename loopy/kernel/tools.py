@@ -903,11 +903,17 @@ class ArrayChanger(object):
     def get(self):
         ary_name = self.array_name
         if ary_name in self.kernel.temporary_variables:
-            return self.kernel.temporary_variables[ary_name]
+            result = self.kernel.temporary_variables[ary_name]
         elif ary_name in self.kernel.arg_dict:
-            return self.kernel.arg_dict[ary_name]
+            result = self.kernel.arg_dict[ary_name]
         else:
             raise NameError("array '%s' was not found" % ary_name)
+
+        from loopy.kernel.array import ArrayBase
+        if not isinstance(result, ArrayBase):
+            raise LoopyError("variable '%s' is not an array" % ary_name)
+
+        return result
 
     def with_changed_array(self, new_array):
         knl = self.kernel
