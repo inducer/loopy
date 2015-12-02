@@ -32,10 +32,8 @@ def set_q_storage_format(kernel, name):
     return kernel
 
 
-def prefetch_and_set_D_storage_format(kernel):
-    kernel = lp.tag_data_axes(kernel, "D", "f,f")
-    kernel = lp.add_prefetch(kernel, "D[:,:]")
-    return kernel
+def set_D_storage_format(kernel):
+    return lp.tag_data_axes(kernel, "D", "f,f")
 
 
 def set_up_volume_loop(kernel, Nq):
