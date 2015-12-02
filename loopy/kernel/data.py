@@ -703,11 +703,7 @@ def _get_assignee_and_index(expr):
         agg = expr.aggregate
         assert isinstance(agg, Variable)
 
-        idx = expr.index
-        if not isinstance(idx, tuple):
-            idx = (idx,)
-
-        return (agg.name, idx)
+        return (agg.name, expr.index_tuple)
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 

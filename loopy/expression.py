@@ -323,9 +323,7 @@ class VectorizabilityChecker(RecursiveMapper):
         if not isinstance(var, ArrayBase):
             raise LoopyError("non-array subscript '%s'" % expr)
 
-        index = expr.index
-        if not isinstance(index, tuple):
-            index = (index,)
+        index = expr.index_tuple
 
         from loopy.symbolic import get_dependencies
         from loopy.kernel.array import VectorArrayDimTag

@@ -1159,9 +1159,7 @@ class AccessRangeMapper(WalkMapper):
         if expr.aggregate.name != self.arg_name:
             return
 
-        subscript = expr.index
-        if not isinstance(subscript, tuple):
-            subscript = (subscript,)
+        subscript = expr.index_tuple
 
         if not get_dependencies(subscript) <= set(domain.get_var_dict()):
             self.bad_subscripts.append(expr)
