@@ -760,6 +760,14 @@ class ExpressionInstruction(InstructionBase):
         if isinstance(expression, str):
             assignee = parse(expression)
 
+        # FIXME: It may be worth it to enable this check eventually.
+        # For now, it causes grief with certain 'checky' uses of the
+        # with_transformed_expressions(). (notably the access checker)
+        #
+        # from pymbolic.primitives import Variable, Subscript
+        # if not isinstance(assignee, (Variable, Subscript)):
+        #     raise LoopyError("invalid lvalue '%s'" % assignee)
+
         self.assignee = assignee
         self.expression = expression
         self.temp_var_type = temp_var_type
