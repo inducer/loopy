@@ -28,6 +28,9 @@ import numpy as np
 
 from loopy.target.c import CTarget
 from pytools import memoize_method
+from loopy.diagnostic import LoopyError
+
+from pymbolic import var
 
 
 # {{{ vector types
@@ -192,6 +195,8 @@ def opencl_preamble_generator(kernel, seen_dtypes, seen_functions):
 # {{{ target
 
 class OpenCLTarget(CTarget):
+    # {{{ library
+
     def function_manglers(self):
         return (
                 super(OpenCLTarget, self).function_manglers() + [
@@ -212,6 +217,8 @@ class OpenCLTarget(CTarget):
                     reduction_preamble_generator
                     ])
 
+    # }}}
+
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (DTypeRegistry,
@@ -231,6 +238,10 @@ class OpenCLTarget(CTarget):
 
     def vector_dtype(self, base, count):
         return vec.types[base, count]
+
+    # }}}
+
+    # {{{ top-level codegen
 
     def wrap_function_declaration(self, kernel, fdecl):
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
@@ -268,6 +279,64 @@ class OpenCLTarget(CTarget):
                         "| CLK_FILTER_NEAREST"))
 
         return body, implemented_domains
+
+    # }}}
+
+    # {{{ code generation guts
+
+    def get_global_axis_expr(self, axis):
+        return var("gid")(axis)
+
+    def get_local_axis_expr(self, axis):
+        return var("lid")(axis)
+
+    def emit_barrier(self, kind, comment):
+        """
+        :arg kind: ``"local"`` or ``"global"``
+        :return: a :class:`loopy.codegen.GeneratedInstruction`.
+        """
+        if kind == "local":
+            if comment:
+                comment = "/* %s */" % comment
+
+            from loopy.codegen import GeneratedInstruction
+            from cgen import Statement
+            return GeneratedInstruction(
+                    ast=Statement("barrier(CLK_LOCAL_MEM_FENCE)%s" % comment),
+                    implemented_domain=None)
+        elif kind == "global":
+            raise LoopyError("OpenCL does not have global barriers")
+        else:
+            raise LoopyError("unknown barrier kind")
+
+    def get_global_arg_decl(self, name, shape, dtype, is_written):
+        from cgen.opencl import CLGlobal
+
+        return CLGlobal(super(OpenCLTarget, self).get_global_arg_decl(
+            name, shape, dtype, is_written))
+
+    def get_image_arg_decl(self, name, shape, dtype, is_written):
+        if is_written:
+            mode = "w"
+        else:
+            mode = "r"
+
+        from cgen.opencl import CLImage
+        return CLImage(self.num_target_axes(), mode, name)
+
+    def get_arg_decl(self, name, shape, dtype, is_written):
+        from loopy.codegen import POD  # uses the correct complex type
+        from cgen import RestrictPointer, Const
+        from cgen.opencl import CLConstant
+
+        arg_decl = RestrictPointer(POD(dtype, name))
+
+        if not is_written:
+            arg_decl = Const(arg_decl)
+
+        return CLConstant(arg_decl)
+
+    # }}}
 
 # }}}
 

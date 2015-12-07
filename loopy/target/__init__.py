@@ -52,11 +52,7 @@ class TargetBase(object):
 
     # }}}
 
-    def preprocess(self, kernel):
-        return kernel
-
-    def pre_codegen_check(self, kernel):
-        pass
+    # {{{ library
 
     def function_manglers(self):
         return []
@@ -67,10 +63,24 @@ class TargetBase(object):
     def preamble_generators(self):
         return []
 
-    def get_or_register_dtype(self, names, dtype=None):
-        raise NotImplementedError()
+    # }}}
 
-    def dtype_to_typename(self, dtype):
+    # {{{ top-level codegen
+
+    def preprocess(self, kernel):
+        return kernel
+
+    def pre_codegen_check(self, kernel):
+        pass
+
+    def generate_code(self, kernel, codegen_state, impl_arg_info):
+        pass
+
+    # }}}
+
+    # {{{ types
+
+    def get_dtype_registry(self):
         raise NotImplementedError()
 
     def is_vector_dtype(self, dtype):
@@ -82,3 +92,30 @@ class TargetBase(object):
     def alignment_requirement(self, type_decl):
         import struct
         return struct.calcsize(type_decl.struct_format())
+
+    # }}}
+
+    # {{{ code generation guts
+
+    def get_global_axis_expr(self, axis):
+        raise NotImplementedError()
+
+    def get_local_axis_expr(self, axis):
+        raise NotImplementedError()
+
+    def emit_barrier(self, kind, comment):
+        """
+        :arg kind: ``"local"`` or ``"global"``
+        :return: a :class:`loopy.codegen.GeneratedInstruction`.
+        """
+        raise NotImplementedError()
+
+    def get_global_arg_decl(self, name, shape, dtype, is_written):
+        raise NotImplementedError()
+
+    def get_image_arg_decl(self, name, shape, dtype, is_written):
+        raise NotImplementedError()
+
+    # }}}
+
+# vim: foldmethod=marker

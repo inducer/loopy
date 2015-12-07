@@ -244,12 +244,10 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
     tag = kernel.iname_to_tag.get(iname)
 
     assert isinstance(tag, UniqueTag)
-    from pymbolic import var
-
     if isinstance(tag, LocalIndexTag):
-        hw_axis_expr = var("lid")(tag.axis)
+        hw_axis_expr = kernel.target.get_local_axis_expr(tag.axis)
     elif isinstance(tag, GroupIndexTag):
-        hw_axis_expr = var("gid")(tag.axis)
+        hw_axis_expr = kernel.target.get_global_axis_expr(tag.axis)
     else:
         raise RuntimeError("unexpected hw tag type")
 

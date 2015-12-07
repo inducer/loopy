@@ -197,4 +197,18 @@ class CTarget(TargetBase):
 
         return body, gen_code.implemented_domains
 
+    def get_global_arg_decl(self, name, shape, dtype, is_written):
+        from loopy.codegen import POD  # uses the correct complex type
+        from cgen import RestrictPointer, Const
+
+        arg_decl = RestrictPointer(
+                POD(self, dtype, name))
+
+        if not is_written:
+            arg_decl = Const(arg_decl)
+
+        return arg_decl
+
     # }}}
+
+# vim: foldmethod=marker

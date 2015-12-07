@@ -221,17 +221,8 @@ class GlobalArg(ArrayBase, KernelArgument):
     max_target_axes = 1
 
     def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        from loopy.codegen import POD  # uses the correct complex type
-        from cgen import RestrictPointer, Const
-        from cgen.opencl import CLGlobal
-
-        arg_decl = RestrictPointer(
-                POD(target, dtype, self.name + name_suffix))
-
-        if not is_written:
-            arg_decl = Const(arg_decl)
-
-        return CLGlobal(arg_decl)
+        return target.get_global_arg_decl(self.name + name_suffix, shape,
+                dtype, is_written)
 
 
 class ConstantArg(ArrayBase, KernelArgument):
@@ -239,17 +230,8 @@ class ConstantArg(ArrayBase, KernelArgument):
     max_target_axes = 1
 
     def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        from loopy.codegen import POD  # uses the correct complex type
-        from cgen import RestrictPointer, Const
-        from cgen.opencl import CLConstant
-
-        arg_decl = RestrictPointer(
-                POD(dtype, self.name + name_suffix))
-
-        if not is_written:
-            arg_decl = Const(arg_decl)
-
-        return CLConstant(arg_decl)
+        return target.get_constant_arg_decl(self.name + name_suffix, shape,
+                dtype, is_written)
 
 
 class ImageArg(ArrayBase, KernelArgument):
@@ -261,13 +243,8 @@ class ImageArg(ArrayBase, KernelArgument):
         return len(self.dim_tags)
 
     def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        if is_written:
-            mode = "w"
-        else:
-            mode = "r"
-
-        from cgen.opencl import CLImage
-        return CLImage(self.num_target_axes(), mode, self.name+name_suffix)
+        return target.get_image_arg_decl(self.name + name_suffix, shape,
+                dtype, is_written)
 
 
 class ValueArg(KernelArgument):
