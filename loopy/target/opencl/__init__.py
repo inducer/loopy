@@ -172,23 +172,6 @@ def opencl_preamble_generator(kernel, seen_dtypes, seen_functions):
             #endif
             """)
 
-    c_funcs = set(func.c_name for func in seen_functions)
-    if "int_floor_div" in c_funcs:
-        yield ("05_int_floor_div", """
-            #define int_floor_div(a,b) \
-              (( (a) - \
-                 ( ( (a)<0 ) != ( (b)<0 )) \
-                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
-               / (b) )
-            """)
-
-    if "int_floor_div_pos_b" in c_funcs:
-        yield ("05_int_floor_div_pos_b", """
-            #define int_floor_div_pos_b(a,b) ( \
-                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
-                )
-            """)
-
 # }}}
 
 
@@ -290,6 +273,10 @@ class OpenCLTarget(CTarget):
     def get_local_axis_expr(self, axis):
         return var("lid")(axis)
 
+    def add_vector_access(self, access_str, index):
+        # The 'int' avoids an 'L' suffix for long ints.
+        return "(%s).s%s" % (access_str, hex(int(index))[2:])
+
     def emit_barrier(self, kind, comment):
         """
         :arg kind: ``"local"`` or ``"global"``
@@ -309,6 +296,13 @@ class OpenCLTarget(CTarget):
         else:
             raise LoopyError("unknown barrier kind")
 
+    def wrap_temporary_decl(self, decl, is_local):
+        if is_local:
+            from cgen.opencl import CLLocal
+            return CLLocal(decl)
+        else:
+            return decl
+
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from cgen.opencl import CLGlobal
 
@@ -324,7 +318,7 @@ class OpenCLTarget(CTarget):
         from cgen.opencl import CLImage
         return CLImage(self.num_target_axes(), mode, name)
 
-    def get_arg_decl(self, name, shape, dtype, is_written):
+    def get_constant_arg_decl(self, name, shape, dtype, is_written):
         from loopy.codegen import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
         from cgen.opencl import CLConstant

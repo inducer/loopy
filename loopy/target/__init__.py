@@ -97,10 +97,16 @@ class TargetBase(object):
 
     # {{{ code generation guts
 
+    def get_expression_to_code_mapper(self, codegen_state):
+        raise NotImplementedError()
+
     def get_global_axis_expr(self, axis):
         raise NotImplementedError()
 
     def get_local_axis_expr(self, axis):
+        raise NotImplementedError()
+
+    def add_vector_access(self, access_str, index):
         raise NotImplementedError()
 
     def emit_barrier(self, kind, comment):

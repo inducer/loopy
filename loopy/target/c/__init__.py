@@ -32,7 +32,32 @@ from loopy.target import TargetBase
 from pytools import memoize_method
 
 
+# {{{ preamble generator
+
+def _preamble_generator(kernel, seen_dtypes, seen_functions):
+    c_funcs = set(func.c_name for func in seen_functions)
+    if "int_floor_div" in c_funcs:
+        yield ("05_int_floor_div", """
+            #define int_floor_div(a,b) \
+              (( (a) - \
+                 ( ( (a)<0 ) != ( (b)<0 )) \
+                  *( (b) + ( (b)<0 ) - ( (b)>=0 ) )) \
+               / (b) )
+            """)
+
+    if "int_floor_div_pos_b" in c_funcs:
+        yield ("05_int_floor_div_pos_b", """
+            #define int_floor_div_pos_b(a,b) ( \
+                ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b) \
+                )
+            """)
+
+# }}}
+
+
 class CTarget(TargetBase):
+    # {{{ types
+
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
@@ -49,14 +74,24 @@ class CTarget(TargetBase):
         raise KeyError()
 
     def get_or_register_dtype(self, names, dtype=None):
+        # These kind of shouldn't be here.
         return self.get_dtype_registry().get_or_register_dtype(names, dtype)
 
     def dtype_to_typename(self, dtype):
+        # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
-    def get_expression_to_code_mapper(self, codegen_state):
-        from loopy.target.c.codegen.expression import LoopyCCodeMapper
-        return LoopyCCodeMapper(codegen_state)
+    # }}}
+
+    # {{{ library
+
+    def preamble_generators(self):
+        return (
+                super(CTarget, self).preamble_generators() + [
+                    _preamble_generator,
+                    ])
+
+    # }}}
 
     # {{{ code generation
 
@@ -95,7 +130,6 @@ class CTarget(TargetBase):
 
         from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute
         from loopy.codegen import POD  # uses the correct complex type
-        from cgen.opencl import CLLocal
 
         class ConstRestrictPointer(Pointer):
             def get_decl_pair(self):
@@ -115,10 +149,8 @@ class CTarget(TargetBase):
                         temp_var_decl = ArrayOf(temp_var_decl,
                                 " * ".join(str(s) for s in idi.shape))
 
-                    if tv.is_local:
-                        temp_var_decl = CLLocal(temp_var_decl)
-
-                    temp_decls.append(temp_var_decl)
+                    temp_decls.append(
+                            self.wrap_temporary_decl(temp_var_decl, tv.is_local))
 
             else:
                 offset = 0
@@ -141,9 +173,9 @@ class CTarget(TargetBase):
                     cast_decl = POD(self, idi.dtype, "")
                     temp_var_decl = POD(self, idi.dtype, idi.name)
 
-                    if tv.is_local:
-                        cast_decl = CLLocal(cast_decl)
-                        temp_var_decl = CLLocal(temp_var_decl)
+                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.is_local)
+                    temp_var_decl = self.wrap_temporary_decl(
+                            temp_var_decl, tv.is_local)
 
                     # The 'restrict' part of this is a complete lie--of course
                     # all these temporaries are aliased. But we're promising to
@@ -170,9 +202,8 @@ class CTarget(TargetBase):
 
         for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
             bs_var_decl = POD(self, np.int8, bs_name)
-            if base_storage_to_is_local[bs_name]:
-                bs_var_decl = CLLocal(bs_var_decl)
-
+            bs_var_decl = self.wrap_temporary_decl(
+                    bs_var_decl, base_storage_to_is_local[bs_name])
             bs_var_decl = ArrayOf(bs_var_decl, max(bs_sizes))
 
             alignment = max(base_storage_to_align_bytes[bs_name])
@@ -197,17 +228,56 @@ class CTarget(TargetBase):
 
         return body, gen_code.implemented_domains
 
+    # }}}
+
+    # {{{ code generation guts
+
+    def get_expression_to_code_mapper(self, codegen_state):
+        from loopy.target.c.codegen.expression import LoopyCCodeMapper
+        return LoopyCCodeMapper(codegen_state)
+
+    def wrap_temporary_decl(self, decl, is_local):
+        return decl
+
+    def get_value_arg_decl(self, name, shape, dtype, is_written):
+        assert shape == ()
+
+        from loopy.codegen import POD  # uses the correct complex type
+        result = POD(self, dtype, name)
+        if not is_written:
+            from cgen import Const
+            result = Const(result)
+        return result
+
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from loopy.codegen import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
 
-        arg_decl = RestrictPointer(
-                POD(self, dtype, name))
+        arg_decl = RestrictPointer(POD(self, dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
 
         return arg_decl
+
+    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
+            static_lbound, static_ubound, inner):
+        ecm = codegen_state.expression_to_code_mapper
+
+        from loopy.symbolic import aff_to_expr
+
+        from loopy.codegen import wrap_in
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from cgen import For
+
+        return wrap_in(For,
+                "%s %s = %s"
+                % (self.dtype_to_typename(iname_dtype),
+                    iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                "%s <= %s" % (
+                    iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
+                "++%s" % iname,
+                inner)
 
     # }}}
 

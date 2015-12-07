@@ -423,7 +423,7 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
             from cgen import Comment
             result.append(Comment(cmt))
 
-        from cgen import Initializer, POD, Const, Line, For
+        from cgen import Initializer, POD, Const, Line
         from loopy.symbolic import aff_to_expr
 
         if (static_ubound - static_lbound).plain_is_zero():
@@ -436,16 +436,10 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
                 ]))
 
         else:
-            from loopy.codegen import wrap_in
-
-            result.append(wrap_in(For,
-                    "%s %s = %s"
-                    % (kernel.target.dtype_to_typename(kernel.index_dtype),
-                        loop_iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
-                    "%s <= %s" % (
-                        loop_iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
-                    "++%s" % loop_iname,
-                    inner))
+            result.append(
+                kernel.target.emit_sequential_loop(
+                       codegen_state, loop_iname, kernel.index_dtype,
+                       static_lbound, static_ubound, inner))
 
     return gen_code_block(result)
 

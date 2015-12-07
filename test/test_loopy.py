@@ -2320,14 +2320,12 @@ def test_ispc_backend():
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
             [
-                # Tests that comma'd arguments interoperate with
-                # argument guessing.
                 lp.GlobalArg("out,a", np.float32, shape=lp.auto),
                 "..."
                 ],
             target=ISPCTarget())
 
-    knl = lp.split_iname(knl, "i", 128, inner_tag="l.0")
+    knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
 

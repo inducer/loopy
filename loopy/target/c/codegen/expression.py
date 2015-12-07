@@ -39,14 +39,6 @@ from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
 
 
-def get_opencl_vec_member(idx):
-    if idx is None:
-        return idx
-
-    # The 'int' avoids an 'L' suffix for long ints.
-    return "s%s" % hex(int(idx))[2:]
-
-
 # {{{ C code mapper
 
 class LoopyCCodeMapper(RecursiveMapper):
@@ -176,8 +168,6 @@ class LoopyCCodeMapper(RecursiveMapper):
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 
-        vec_member = get_opencl_vec_member(access_info.vector_index)
-
         from loopy.kernel.data import ImageArg, GlobalArg, TemporaryVariable
 
         if isinstance(ary, ImageArg):
@@ -200,21 +190,11 @@ class LoopyCCodeMapper(RecursiveMapper):
             if len(access_info.subscripts) == 0:
                 if isinstance(ary, GlobalArg):
                     # unsubscripted global args are pointers
-                    if vec_member is not None:
-                        return "%s->%s" % (
-                                access_info.array_name,
-                                vec_member)
-                    else:
-                        return "*" + access_info.array_name
+                    result = "*" + access_info.array_name
 
                 else:
                     # unsubscripted temp vars are scalars
-                    if vec_member is not None:
-                        return "%s.%s" % (
-                                access_info.array_name,
-                                vec_member)
-                    else:
-                        return access_info.array_name
+                    result = access_info.array_name
 
             else:
                 subscript, = access_info.subscripts
@@ -224,9 +204,10 @@ class LoopyCCodeMapper(RecursiveMapper):
                             self.rec(subscript, PREC_NONE, 'i')),
                         enclosing_prec, PREC_CALL)
 
-                if vec_member:
-                    result += "."+vec_member
-
+            if access_info.vector_index is not None:
+                return self.kernel.target.add_vector_access(
+                    result, access_info.vector_index)
+            else:
                 return result
 
         else:

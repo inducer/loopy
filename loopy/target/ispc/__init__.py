@@ -33,6 +33,74 @@ from pymbolic import var
 
 
 class ISPCTarget(CTarget):
+    # {{{ top-level codegen
+
+    def generate_code(self, kernel, codegen_state, impl_arg_info):
+        from cgen import (FunctionBody, FunctionDeclaration, Value, Module,
+                Block, Line, Statement as S)
+        from cgen.ispc import ISPCExport, ISPCTask
+
+        knl_body, implemented_domains = kernel.target.generate_body(
+                kernel, codegen_state)
+
+        inner_name = "lp_ispc_inner_"+kernel.name
+        arg_decls = [iai.cgen_declarator for iai in impl_arg_info]
+        knl_fbody = FunctionBody(
+                ISPCTask(
+                    FunctionDeclaration(
+                        Value("void", inner_name),
+                        arg_decls)),
+                knl_body)
+
+        # {{{ generate wrapper
+
+        wrapper_body = Block()
+
+        gsize, lsize = kernel.get_grid_sizes_as_exprs()
+        if len(lsize) > 1:
+            for i, ls_i in enumerate(lsize[1:]):
+                if ls_i != 1:
+                    raise LoopyError("local axis %d (0-based) "
+                            "has length > 1, which is unsupported "
+                            "by ISPC" % ls_i)
+
+        from pymbolic.mapper.stringifier import PREC_COMPARISON, PREC_NONE
+        ccm = self.get_expression_to_code_mapper(codegen_state)
+
+        wrapper_body.extend([
+                S("assert(programCount == %s)"
+                    % ccm(lsize[0], PREC_COMPARISON)),
+                S("launch[%s] %s(%s)"
+                    % (
+                        ", ".join(
+                            ccm(gs_i, PREC_NONE)
+                            for gs_i in gsize),
+                        inner_name,
+                        ", ".join(iai.name for iai in impl_arg_info)
+                        ))
+                ])
+
+        wrapper_fbody = FunctionBody(
+                ISPCExport(
+                    FunctionDeclaration(
+                        Value("void", kernel.name),
+                        [iai.cgen_declarator for iai in impl_arg_info])),
+                wrapper_body)
+
+        # }}}
+
+        mod = Module([
+            knl_fbody,
+            Line(),
+            wrapper_fbody,
+            ])
+
+        return str(mod), implemented_domains
+
+    # }}}
+
+    # {{{ code generation guts
+
     def get_global_axis_expr(self, axis):
         return var("taskIndex%d" % axis)
 
@@ -41,6 +109,9 @@ class ISPCTarget(CTarget):
             return var("programIndex")
         else:
             raise LoopyError("ISPC only supports one local axis")
+
+    def add_vector_access(self, access_str, index):
+        return "(%s)[%d]" % (access_str, index)
 
     def emit_barrier(self, kind, comment):
         from loopy.codegen import GeneratedInstruction
@@ -61,25 +132,37 @@ class ISPCTarget(CTarget):
         else:
             raise LoopyError("unknown barrier kind")
 
+    def wrap_temporary_decl(self, decl, is_local):
+        from cgen.ispc import ISPCUniform, ISPCVarying
+        if is_local:
+            return ISPCUniform(decl)
+        else:
+            return ISPCVarying(decl)
+
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from loopy.codegen import POD  # uses the correct complex type
         from cgen import Const
-        from cgen.ispc import ISPCUniformPointer
+        from cgen.ispc import ISPCUniformPointer, ISPCUniform
 
         arg_decl = ISPCUniformPointer(POD(self, dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
 
+        arg_decl = ISPCUniform(arg_decl)
+
         return arg_decl
+
+    def get_value_arg_decl(self, name, shape, dtype, is_written):
+        result = super(ISPCTarget, self).get_value_arg_decl(
+                name, shape, dtype, is_written)
+
+        from cgen.ispc import ISPCUniform
+        return ISPCUniform(result)
 
     # }}}
 
-# TODO: Fix argument wrapping (value,
-# TODO: Fix local variable wrapping
-# TODO: Fix local variable alloc
-# TODO: Top-level foreach
 # TODO: Generate launch code
-# TODO: Vector types
+# TODO: Vector types (element access: done)
 
 # vim: foldmethod=marker

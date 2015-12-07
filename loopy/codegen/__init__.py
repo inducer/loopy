@@ -499,7 +499,6 @@ def generate_code(kernel, device=None):
 
     from loopy.kernel.data import ValueArg
     from loopy.kernel.array import ArrayBase
-    from cgen import Const
 
     impl_arg_info = []
 
@@ -516,7 +515,7 @@ def generate_code(kernel, device=None):
                 target=kernel.target,
                 name=arg.name,
                 dtype=arg.dtype,
-                cgen_declarator=Const(POD(kernel.target, arg.dtype, arg.name)),
+                cgen_declarator=arg.get_arg_decl(kernel.target),
                 arg_class=ValueArg))
 
         else:

@@ -278,6 +278,10 @@ class ValueArg(KernelArgument):
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
 
+    def get_arg_decl(self, target):
+        return target.get_value_arg_decl(self.name, (),
+                self.dtype, False)
+
 # }}}
 
 
