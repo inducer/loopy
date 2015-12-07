@@ -10,9 +10,9 @@ debug = False
 
 from os.path import expanduser
 
-a = Analysis(['bin/loopy'],
+a = Analysis(['../bin/loopy'],
              pathex=[expanduser('~/src/loopy')],
-             hiddenimports=[],
+             hiddenimports=["appdirs"],
              hookspath=None,
              runtime_hooks=None,
              excludes=["hedge", "meshpy", "pyopencl", "PIL"]
