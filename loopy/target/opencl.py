@@ -284,7 +284,7 @@ class OpenCLTarget(CTarget):
         """
         if kind == "local":
             if comment:
-                comment = "/* %s */" % comment
+                comment = " /* %s */" % comment
 
             from loopy.codegen import GeneratedInstruction
             from cgen import Statement
