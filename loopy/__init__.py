@@ -359,6 +359,12 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
 _DEFAULT_TARGET = None
 
 
+def set_default_target(target):
+    # deliberately undocumented for now
+    global _DEFAULT_TARGET
+    _DEFAULT_TARGET = target
+
+
 def _set_up_default_target():
     try:
         import pyopencl  # noqa
@@ -371,11 +377,7 @@ def _set_up_default_target():
 
     set_default_target(target)
 
-
-def set_default_target(target):
-    # deliberately undocumented for now
-    global _DEFAULT_TARGET
-    _DEFAULT_TARGET = target
+_set_up_default_target()
 
 
 # }}}
