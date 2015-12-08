@@ -354,4 +354,31 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
 # }}}
 
 
+# {{{ default target
+
+_DEFAULT_TARGET = None
+
+
+def _set_up_default_target():
+    try:
+        import pyopencl  # noqa
+    except ImportError:
+        from loopy.target.opencl import OpenCLTarget
+        target = OpenCLTarget()
+    else:
+        from loopy.target.pyopencl import PyOpenCLTarget
+        target = PyOpenCLTarget()
+
+    set_default_target(target)
+
+
+def set_default_target(target):
+    # deliberately undocumented for now
+    global _DEFAULT_TARGET
+    _DEFAULT_TARGET = target
+
+
+# }}}
+
+
 # vim: foldmethod=marker

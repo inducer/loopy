@@ -1071,7 +1071,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg options: an instance of :class:`loopy.Options` or an equivalent
         string representation
     :arg target: an instance of :class:`loopy.target.TargetBase`, or *None*,
-        to use an OpenCL target.
+        to use the default target. (see :func:`loopy.set_default_target`)
     """
 
     defines = kwargs.pop("defines", {})
@@ -1083,14 +1083,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     target = kwargs.pop("target", None)
 
     if target is None:
-        try:
-            import pyopencl  # noqa
-        except ImportError:
-            from loopy.target.opencl import OpenCLTarget
-            target = OpenCLTarget()
-        else:
-            from loopy.target.pyopencl import PyOpenCLTarget
-            target = PyOpenCLTarget()
+        from loopy import _DEFAULT_TARGET
+        target = _DEFAULT_TARGET
 
     if flags is not None:
         if options is not None:
