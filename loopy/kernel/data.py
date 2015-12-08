@@ -244,7 +244,7 @@ class ImageArg(ArrayBase, KernelArgument):
 
     def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
         return target.get_image_arg_decl(self.name + name_suffix, shape,
-                dtype, is_written)
+                self.num_target_axes(), dtype, is_written)
 
 
 class ValueArg(KernelArgument):

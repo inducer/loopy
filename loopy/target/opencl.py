@@ -309,14 +309,14 @@ class OpenCLTarget(CTarget):
         return CLGlobal(super(OpenCLTarget, self).get_global_arg_decl(
             name, shape, dtype, is_written))
 
-    def get_image_arg_decl(self, name, shape, dtype, is_written):
+    def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         if is_written:
             mode = "w"
         else:
             mode = "r"
 
         from cgen.opencl import CLImage
-        return CLImage(self.num_target_axes(), mode, name)
+        return CLImage(num_target_axes, mode, name)
 
     def get_constant_arg_decl(self, name, shape, dtype, is_written):
         from loopy.codegen import POD  # uses the correct complex type
