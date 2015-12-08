@@ -2313,7 +2313,7 @@ def test_collect_common_factors(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=13))
 
 
-def test_ispc_backend():
+def test_ispc_target():
     from loopy.target.ispc import ISPCTarget
 
     knl = lp.make_kernel(
@@ -2324,6 +2324,28 @@ def test_ispc_backend():
                 "..."
                 ],
             target=ISPCTarget())
+
+    knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
+    knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
+    knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
+
+    print(
+            lp.generate_code(
+                lp.get_one_scheduled_kernel(
+                    lp.preprocess_kernel(knl)))[0])
+
+
+def test_cuda_target():
+    from loopy.target.cuda import CudaTarget
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i] = 2*a[i]",
+            [
+                lp.GlobalArg("out,a", np.float32, shape=lp.auto),
+                "..."
+                ],
+            target=CudaTarget())
 
     knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
