@@ -230,8 +230,8 @@ class F2LoopyTranslator(FTreeWalkerBase):
         else:
             insn_deps = frozenset()
 
-        from loopy.kernel.data import ExpressionInstruction
-        insn = ExpressionInstruction(
+        from loopy.kernel.data import Assignment
+        insn = Assignment(
                 lhs, rhs,
                 forced_iname_deps=frozenset(
                     scope.active_loopy_inames),

@@ -1015,7 +1015,7 @@ class LoopKernel(RecordWithoutPickling):
             for dep_id in sorted(insn.insn_deps):
                 print_insn(kernel.id_to_insn[dep_id])
 
-            if isinstance(insn, lp.ExpressionInstruction):
+            if isinstance(insn, lp.Assignment):
                 lhs = str(insn.assignee)
                 rhs = str(insn.expression)
                 trailing = []

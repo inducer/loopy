@@ -236,7 +236,7 @@ class DifferentiationContext(object):
 
         id_map = RuleAwareIdentityMapper(self.rule_mapping_context)
 
-        if isinstance(insn, lp.ExpressionInstruction):
+        if isinstance(insn, lp.Assignment):
             id_map(insn.expression, self.kernel, insn)
         else:
             raise RuntimeError("do not know how to deal with "
@@ -297,7 +297,7 @@ class DifferentiationContext(object):
 
         (_, lhs_ind), = orig_writer_insn.assignees_and_indices()
         new_insn_id = self.generate_instruction_id()
-        insn = lp.ExpressionInstruction(
+        insn = lp.Assignment(
                 id=new_insn_id,
                 assignee=var(new_var_name)[
                     lhs_ind + diff_iname_exprs],

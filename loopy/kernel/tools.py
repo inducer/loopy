@@ -414,10 +414,10 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
     dep_graph = {}
     lines = []
 
-    from loopy.kernel.data import ExpressionInstruction, CInstruction
+    from loopy.kernel.data import Assignment, CInstruction
 
     for insn in kernel.instructions:
-        if isinstance(insn, ExpressionInstruction):
+        if isinstance(insn, Assignment):
             op = "%s <- %s" % (insn.assignee, insn.expression)
             if len(op) > 200:
                 op = op[:200] + "..."
@@ -836,7 +836,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
     import loopy as lp
 
     for insn in kernel.instructions:
-        if not isinstance(insn, lp.ExpressionInstruction):
+        if not isinstance(insn, lp.Assignment):
             continue
 
         auto_axis_inames = [

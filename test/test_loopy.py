@@ -545,7 +545,7 @@ def test_fuzz_code_generator(ctx_factory):
                 return np.float64
 
         knl = lp.make_kernel("{ : }",
-                [lp.ExpressionInstruction("value", expr)],
+                [lp.Assignment("value", expr)],
                 [lp.GlobalArg("value", np.complex128, shape=())]
                 + [
                     lp.ValueArg(name, get_dtype(val))
@@ -1977,7 +1977,7 @@ def test_generate_c_snippet():
     from functools import partial
     l_sum = partial(lp.Reduction, "sum")
 
-    Instr = lp.ExpressionInstruction  # noqa
+    Instr = lp.Assignment  # noqa
 
     knl = lp.make_kernel(
         "{[I, k]: 0<=I<nSpace and 0<=k<nQuad}",

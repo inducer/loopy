@@ -84,7 +84,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     from loopy.diagnostic import DependencyTypeInferenceFailure
     for writer_insn_id in kernel.writer_map().get(var_name, []):
         writer_insn = kernel.id_to_insn[writer_insn_id]
-        if not isinstance(writer_insn, lp.ExpressionInstruction):
+        if not isinstance(writer_insn, lp.Assignment):
             continue
 
         expr = subst_expander(writer_insn.expression)
@@ -418,7 +418,7 @@ def realize_reduction(kernel, insn_id_filter=None):
             raise LoopyError("failed to determine type of accumulator for "
                     "reduction '%s'" % expr)
 
-        from loopy.kernel.data import ExpressionInstruction, TemporaryVariable
+        from loopy.kernel.data import Assignment, TemporaryVariable
 
         new_temporary_variables[target_var_name] = TemporaryVariable(
                 name=target_var_name,
@@ -437,7 +437,7 @@ def realize_reduction(kernel, insn_id_filter=None):
                 based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
                 extra_used_ids=set(i.id for i in generated_insns))
 
-        init_insn = ExpressionInstruction(
+        init_insn = Assignment(
                 id=init_id,
                 assignee=target_var,
                 forced_iname_deps=outer_insn_inames - frozenset(expr.inames),
@@ -450,7 +450,7 @@ def realize_reduction(kernel, insn_id_filter=None):
                 based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)),
                 extra_used_ids=set(i.id for i in generated_insns))
 
-        reduction_insn = ExpressionInstruction(
+        reduction_insn = Assignment(
                 id=update_id,
                 assignee=target_var,
                 expression=expr.operation(
@@ -479,7 +479,7 @@ def realize_reduction(kernel, insn_id_filter=None):
         insn = insn_queue.pop(0)
 
         if insn_id_filter is not None and insn.id != insn_id_filter \
-                or not isinstance(insn, lp.ExpressionInstruction):
+                or not isinstance(insn, lp.Assignment):
             new_insns.append(insn)
             continue
 

@@ -76,12 +76,12 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
 
     written_insn_ids = set()
 
-    from loopy.kernel import InstructionBase, ExpressionInstruction
+    from loopy.kernel import InstructionBase, Assignment
 
     def write_insn(insn):
         if not isinstance(insn, InstructionBase):
             insn = kernel.id_to_insn[insn]
-        if not isinstance(insn, ExpressionInstruction):
+        if not isinstance(insn, Assignment):
             raise RuntimeError("non-expression instructions not supported "
                     "in maxima export")
 

@@ -351,8 +351,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                     }))(init_expression)
 
     init_insn_id = kernel.make_unique_instruction_id(based_on="init_"+var_name)
-    from loopy.kernel.data import ExpressionInstruction
-    init_instruction = ExpressionInstruction(id=init_insn_id,
+    from loopy.kernel.data import Assignment
+    init_instruction = Assignment(id=init_insn_id,
                 assignee=buf_var_init,
                 expression=init_expression,
                 forced_iname_deps=frozenset(within_inames),
@@ -427,8 +427,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                     "buffer": buf_var_store,
                     }))(store_expression)
 
-    from loopy.kernel.data import ExpressionInstruction
-    store_instruction = ExpressionInstruction(
+    from loopy.kernel.data import Assignment
+    store_instruction = Assignment(
                 id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
                 insn_deps=frozenset(aar.modified_insn_ids),
                 assignee=store_target,

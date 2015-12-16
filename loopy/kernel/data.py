@@ -689,9 +689,9 @@ def _get_assignee_and_index(expr):
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
-# {{{ expression instruction
+# {{{ assignment
 
-class ExpressionInstruction(InstructionBase):
+class Assignment(InstructionBase):
     """
     .. attribute:: assignee
 
@@ -821,6 +821,15 @@ class ExpressionInstruction(InstructionBase):
                         key_hash, getattr(self, field_name))
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
+
+
+class ExpressionInstruction(Assignment):
+    def __init__(self, *args, **kwargs):
+        from warnings import warn
+        warn("ExpressionInstruction is deprecated. Use Assignment instead",
+                DeprecationWarning, stacklevel=2)
+
+        super(ExpressionInstruction, self).__init__(*args, **kwargs)
 
 # }}}
 

@@ -29,7 +29,7 @@ import numpy as np
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
-        InstructionBase, ExpressionInstruction, SubstitutionRule)
+        InstructionBase, Assignment, SubstitutionRule)
 import islpy as isl
 from islpy import dim_type
 
@@ -158,7 +158,7 @@ SUBST_RE = re.compile(
 def parse_insn(insn):
     """
     :return: a tuple ``(insn, inames_to_dup)``, where insn is a
-        :class:`ExpressionInstruction` or a :class:`SubstitutionRule`
+        :class:`Assignment` or a :class:`SubstitutionRule`
         and *inames_to_dup* is None or a list of tuples `(old, new)`.
     """
 
@@ -285,7 +285,7 @@ def parse_insn(insn):
             raise RuntimeError("left hand side of assignment '%s' must "
                     "be variable or subscript" % lhs)
 
-        return ExpressionInstruction(
+        return Assignment(
                     id=(
                         intern(insn_id)
                         if isinstance(insn_id, str)
@@ -483,7 +483,7 @@ class ArgumentGuesser:
         self.all_written_names = set()
         from loopy.symbolic import get_dependencies
         for insn in instructions:
-            if isinstance(insn, ExpressionInstruction):
+            if isinstance(insn, Assignment):
                 (assignee_var_name, _), = insn.assignees_and_indices()
                 self.all_written_names.add(assignee_var_name)
                 self.all_names.update(get_dependencies(
@@ -551,7 +551,7 @@ class ArgumentGuesser:
         temp_var_names = set(six.iterkeys(self.temporary_variables))
 
         for insn in self.instructions:
-            if isinstance(insn, ExpressionInstruction):
+            if isinstance(insn, Assignment):
                 if insn.temp_var_type is not None:
                     (assignee_var_name, _), = insn.assignees_and_indices()
                     temp_var_names.add(assignee_var_name)
@@ -728,7 +728,7 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
                 shape=()))
 
         from pymbolic.primitives import Variable
-        new_insn = ExpressionInstruction(
+        new_insn = Assignment(
                 id=None,
                 assignee=Variable(new_var_name), expression=expr,
                 predicates=insn.predicates)
@@ -748,7 +748,7 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
     new_temp_vars = []
 
     for insn in instructions:
-        if isinstance(insn, ExpressionInstruction):
+        if isinstance(insn, Assignment):
             new_insns.append(insn.copy(expression=cseam(insn.expression)))
         else:
             new_insns.append(insn)
@@ -767,7 +767,7 @@ def create_temporaries(knl, default_order):
     import loopy as lp
 
     for insn in knl.instructions:
-        if isinstance(insn, ExpressionInstruction) \
+        if isinstance(insn, Assignment) \
                 and insn.temp_var_type is not None:
             (assignee_name, _), = insn.assignees_and_indices()
 
@@ -893,7 +893,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
 
             try:
                 for insn in kernel.instructions:
-                    if isinstance(insn, lp.ExpressionInstruction):
+                    if isinstance(insn, lp.Assignment):
                         armap(submap(insn.assignee), kernel.insn_inames(insn))
                         armap(submap(insn.expression), kernel.insn_inames(insn))
             except TypeError as e:

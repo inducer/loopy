@@ -419,7 +419,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         import loopy as lp
         for insn in kernel.instructions:
-            if isinstance(insn, lp.ExpressionInstruction):
+            if isinstance(insn, lp.Assignment):
                 invg(insn.assignee, kernel, insn)
                 invg(insn.expression, kernel, insn)
 
@@ -727,11 +727,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
-    from loopy.kernel.data import ExpressionInstruction
+    from loopy.kernel.data import Assignment
     if compute_insn_id is None:
         compute_insn_id = kernel.make_unique_instruction_id(based_on=c_subst_name)
 
-    compute_insn = ExpressionInstruction(
+    compute_insn = Assignment(
             id=compute_insn_id,
             assignee=assignee,
             expression=compute_expression)

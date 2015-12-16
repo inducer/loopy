@@ -61,9 +61,9 @@ def wrap_in_conditionals(codegen_state, domain, check_inames, required_preds, st
 
 
 def generate_instruction_code(kernel, insn, codegen_state):
-    from loopy.kernel.data import ExpressionInstruction, CInstruction
+    from loopy.kernel.data import Assignment, CInstruction
 
-    if isinstance(insn, ExpressionInstruction):
+    if isinstance(insn, Assignment):
         result = generate_expr_instruction_code(kernel, insn, codegen_state)
     elif isinstance(insn, CInstruction):
         result = generate_c_instruction_code(kernel, insn, codegen_state)

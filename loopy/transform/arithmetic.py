@@ -250,13 +250,13 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
 
     # {{{ find common factors
 
-    from loopy.kernel.data import ExpressionInstruction
+    from loopy.kernel.data import Assignment
 
     for insn in kernel.instructions:
         if not is_assignee(insn):
             continue
 
-        if not isinstance(insn, ExpressionInstruction):
+        if not isinstance(insn, Assignment):
             raise LoopyError("'%s' modified by non-expression instruction"
                     % var_name)
 
@@ -332,7 +332,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
     new_insns = []
 
     for insn in kernel.instructions:
-        if not isinstance(insn, ExpressionInstruction) or not is_assignee(insn):
+        if not isinstance(insn, Assignment) or not is_assignee(insn):
             new_insns.append(insn)
             continue
 
@@ -414,7 +414,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
     subm = SubstitutionMapper(find_substitution)
 
     for insn in insns:
-        if not isinstance(insn, ExpressionInstruction) or is_assignee(insn):
+        if not isinstance(insn, Assignment) or is_assignee(insn):
             new_insns.append(insn)
             continue
 

@@ -326,7 +326,7 @@ def dump_schedule(kernel, schedule):
     lines = []
     indent = ""
 
-    from loopy.kernel.data import ExpressionInstruction
+    from loopy.kernel.data import Assignment
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
             lines.append(indent + "LOOP %s" % sched_item.iname)
@@ -336,7 +336,7 @@ def dump_schedule(kernel, schedule):
             lines.append(indent + "ENDLOOP %s" % sched_item.iname)
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
-            if isinstance(insn, ExpressionInstruction):
+            if isinstance(insn, Assignment):
                 insn_str = "[%s] %s <- %s" % (
                         insn.id, str(insn.assignee), str(insn.expression))
             else:
