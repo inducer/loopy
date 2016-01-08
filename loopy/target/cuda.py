@@ -138,6 +138,13 @@ def cuda_function_mangler(kernel, name, arg_dtypes):
 # {{{ target
 
 class CudaTarget(CTarget):
+    def __init__(self, extern_c=True):
+        """
+        :arg extern_c: If *True*, declare kernels using "extern C" to
+            avoid name mangling.
+        """
+        self.extern_c = extern_c
+
     # {{{ library
 
     def function_manglers(self):
@@ -173,8 +180,19 @@ class CudaTarget(CTarget):
     # {{{ top-level codegen
 
     def wrap_function_declaration(self, kernel, fdecl):
-        from cgen.cuda import CudaGlobal
-        return CudaGlobal(fdecl)
+        from cgen.cuda import CudaGlobal, CudaLaunchBounds
+        fdecl = CudaGlobal(fdecl)
+
+        if self.extern_c:
+            from cgen import Extern
+            fdecl = Extern("C", fdecl)
+
+        _, local_grid_size = kernel.get_grid_sizes_as_exprs()
+
+        from pytools import product
+        nthreads = product(local_grid_size)
+
+        return CudaLaunchBounds(nthreads, fdecl)
 
     def generate_code(self, kernel, codegen_state, impl_arg_info):
         code, implemented_domains = (
