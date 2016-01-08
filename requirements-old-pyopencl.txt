@@ -1,6 +1,6 @@
 git+git://github.com/inducer/pytools
 git+git://github.com/inducer/islpy
-cgen
+git+git://github.com/inducer/cgen
 pyopencl==2015.1
 git+git://github.com/inducer/pymbolic
 
