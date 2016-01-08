@@ -200,11 +200,22 @@ class CudaTarget(CTarget):
 
     _GRID_AXES = "xyz"
 
-    def get_global_axis_expr(self, axis):
-        return var("blockIdx").attr(self._GRID_AXES[axis])
+    @staticmethod
+    def _get_index_ctype(kernel):
+        if kernel.index_dtype == np.int32:
+            return "int32_t"
+        else:
+            return "int64_t"
 
-    def get_local_axis_expr(self, axis):
-        return var("threadIdx").attr(self._GRID_AXES[axis])
+    def get_global_axis_expr(self, kernel, axis):
+        return var("((%s) blockIdx.%s)" % (
+            self._get_index_ctype(kernel),
+            self._GRID_AXES[axis]))
+
+    def get_local_axis_expr(self, kernel, axis):
+        return var("((%s) threadIdx.%s)" % (
+            self._get_index_ctype(kernel),
+            self._GRID_AXES[axis]))
 
     _VEC_AXES = "xyzw"
 

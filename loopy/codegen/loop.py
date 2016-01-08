@@ -244,9 +244,9 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
 
     assert isinstance(tag, UniqueTag)
     if isinstance(tag, LocalIndexTag):
-        hw_axis_expr = kernel.target.get_local_axis_expr(tag.axis)
+        hw_axis_expr = kernel.target.get_local_axis_expr(kernel, tag.axis)
     elif isinstance(tag, GroupIndexTag):
-        hw_axis_expr = kernel.target.get_global_axis_expr(tag.axis)
+        hw_axis_expr = kernel.target.get_global_axis_expr(kernel, tag.axis)
     else:
         raise RuntimeError("unexpected hw tag type")
 

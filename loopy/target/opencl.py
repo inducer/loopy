@@ -267,10 +267,10 @@ class OpenCLTarget(CTarget):
 
     # {{{ code generation guts
 
-    def get_global_axis_expr(self, axis):
+    def get_global_axis_expr(self, kernel, axis):
         return var("gid")(axis)
 
-    def get_local_axis_expr(self, axis):
+    def get_local_axis_expr(self, kernel, axis):
         return var("lid")(axis)
 
     def add_vector_access(self, access_str, index):

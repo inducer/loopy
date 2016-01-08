@@ -101,10 +101,10 @@ class ISPCTarget(CTarget):
 
     # {{{ code generation guts
 
-    def get_global_axis_expr(self, axis):
+    def get_global_axis_expr(self, kernel, axis):
         return var("taskIndex%d" % axis)
 
-    def get_local_axis_expr(self, axis):
+    def get_local_axis_expr(self, kernel, axis):
         if axis == 0:
             return var("programIndex")
         else:
