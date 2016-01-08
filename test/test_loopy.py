@@ -2313,7 +2313,7 @@ def test_collect_common_factors(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=13))
 
 
-def test_ispc_target():
+def test_ispc_target(occa_mode=False):
     from loopy.target.ispc import ISPCTarget
 
     knl = lp.make_kernel(
@@ -2323,7 +2323,7 @@ def test_ispc_target():
                 lp.GlobalArg("out,a", np.float32, shape=lp.auto),
                 "..."
                 ],
-            target=ISPCTarget())
+            target=ISPCTarget(occa_mode=occa_mode))
 
     knl = lp.split_iname(knl, "i", 8, inner_tag="l.0")
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")

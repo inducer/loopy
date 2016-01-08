@@ -49,6 +49,13 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
 
 
 class ISPCTarget(CTarget):
+    def __init__(self, occa_mode=False):
+        """
+        :arg occa_mode: Whether to modify the generated call signature to
+            be compatible with OCCA
+        """
+        self.occa_mode = occa_mode
+
     # {{{ top-level codegen
 
     def generate_code(self, kernel, codegen_state, impl_arg_info):
@@ -61,6 +68,24 @@ class ISPCTarget(CTarget):
 
         inner_name = "lp_ispc_inner_"+kernel.name
         arg_decls = [iai.cgen_declarator for iai in impl_arg_info]
+        arg_names = [iai.name for iai in impl_arg_info]
+
+        # {{{ occa compatibility hackery
+
+        if self.occa_mode:
+            from cgen import ArrayOf, Const
+            from cgen.ispc import ISPCUniform
+
+            arg_decls = [
+                    Const(ISPCUniform(ArrayOf(Value("int", "loopy_dims")))),
+                    Const(ISPCUniform(Value("int", "o1"))),
+                    Const(ISPCUniform(Value("int", "o2"))),
+                    Const(ISPCUniform(Value("int", "o3"))),
+                    ] + arg_decls
+            arg_names = ["loopy_dims", "o1", "o2", "o3"] + arg_names
+
+        # }}}
+
         knl_fbody = FunctionBody(
                 ISPCTask(
                     FunctionDeclaration(
@@ -92,7 +117,7 @@ class ISPCTarget(CTarget):
                             ccm(gs_i, PREC_NONE)
                             for gs_i in gsize),
                         inner_name,
-                        ", ".join(iai.name for iai in impl_arg_info)
+                        ", ".join(arg_names)
                         ))
                 ])
 
@@ -100,7 +125,7 @@ class ISPCTarget(CTarget):
                 ISPCExport(
                     FunctionDeclaration(
                         Value("void", kernel.name),
-                        [iai.cgen_declarator for iai in impl_arg_info])),
+                        arg_decls)),
                 wrapper_body)
 
         # }}}
@@ -166,6 +191,18 @@ class ISPCTarget(CTarget):
     def get_value_arg_decl(self, name, shape, dtype, is_written):
         result = super(ISPCTarget, self).get_value_arg_decl(
                 name, shape, dtype, is_written)
+
+        from cgen import Reference, Const
+        was_const = isinstance(result, Const)
+
+        if was_const:
+            result = result.subdecl
+
+        if self.occa_mode:
+            result = Reference(result)
+
+        if was_const:
+            result = Const(result)
 
         from cgen.ispc import ISPCUniform
         return ISPCUniform(result)

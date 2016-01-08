@@ -63,8 +63,9 @@ def main():
     parser.add_argument("outfile", default="-", metavar="OUTPUT_FILE",
             help="Defaults to stdout ('-').", nargs='?')
     parser.add_argument("--lang", metavar="LANGUAGE", help="loopy|fortran")
-    parser.add_argument("--target", choices=("opencl", "ispc", "c", "cuda"),
-            default="opencl")
+    parser.add_argument("--target", choices=(
+        "opencl", "ispc", "ispc-occa", "c", "cuda"),
+        default="opencl")
     parser.add_argument("--name")
     parser.add_argument("--transform")
     parser.add_argument("--edit-code", action="store_true")
@@ -79,6 +80,9 @@ def main():
     elif args.target == "ispc":
         from loopy.target.ispc import ISPCTarget
         target = ISPCTarget()
+    elif args.target == "ispc-occa":
+        from loopy.target.ispc import ISPCTarget
+        target = ISPCTarget(occa_mode=True)
     elif args.target == "c":
         from loopy.target.c import CTarget
         target = CTarget()
