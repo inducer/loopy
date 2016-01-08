@@ -69,14 +69,20 @@ import numpy as np
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(object):
+    def map_group_hw_index(self, expr, *args):
+        return expr
+
+    def map_local_hw_index(self, expr, *args):
+        return expr
+
+    def map_loopy_function_identifier(self, expr, *args):
+        return expr
+
     def map_reduction(self, expr, *args):
         return Reduction(expr.operation, expr.inames, self.rec(expr.expr, *args))
 
     def map_tagged_variable(self, expr, *args):
         # leaf, doesn't change
-        return expr
-
-    def map_loopy_function_identifier(self, expr, *args):
         return expr
 
     map_linear_subscript = IdentityMapperBase.map_subscript
@@ -92,6 +98,12 @@ class PartialEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
 
 
 class WalkMapper(WalkMapperBase):
+    def map_group_hw_index(self, expr, *args):
+        self.visit(expr)
+
+    def map_local_hw_index(self, expr, *args):
+        self.visit(expr)
+
     def map_reduction(self, expr, *args):
         if not self.visit(expr):
             return
@@ -127,6 +139,12 @@ class ConstantFoldingMapper(ConstantFoldingMapperBase,
 
 
 class StringifyMapper(StringifyMapperBase):
+    def map_group_hw_index(self, expr, enclosing_prec):
+        return "grp.%d" % expr.index
+
+    def map_local_hw_index(self, expr, enclosing_prec):
+        return "loc.%d" % expr.index
+
     def map_reduction(self, expr, prec):
         return "reduce(%s, [%s], %s)" % (
                 expr.operation, ", ".join(expr.inames), expr.expr)
@@ -177,6 +195,12 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
 
 
 class DependencyMapper(DependencyMapperBase):
+    def map_group_hw_index(self, expr):
+        return set()
+
+    def map_local_hw_index(self, expr):
+        return set()
+
     def map_call(self, expr, *args):
         # Loopy does not have first-class functions. Do not descend
         # into 'function' attribute of Call.
@@ -234,6 +258,27 @@ class SubstitutionRuleExpander(IdentityMapper):
 
 
 # {{{ loopy-specific primitives
+
+class HardwareAxisIndex(Leaf):
+    def __init__(self, axis):
+        self.axis = axis
+
+    def stringifier(self):
+        return StringifyMapper
+
+    def __getinitargs__(self):
+        return (self.axis,)
+
+    init_arg_names = ("axis",)
+
+
+class GroupHardwareAxisIndex(HardwareAxisIndex):
+    mapper_method = "map_group_hw_index"
+
+
+class LocalHardwareAxisIndex(HardwareAxisIndex):
+    mapper_method = "map_local_hw_index"
+
 
 class FunctionIdentifier(Leaf):
     """A base class for symbols representing functions."""

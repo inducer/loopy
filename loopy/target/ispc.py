@@ -27,9 +27,25 @@ THE SOFTWARE.
 
 import numpy as np  # noqa
 from loopy.target.c import CTarget
+from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from loopy.diagnostic import LoopyError
 
 from pymbolic import var
+
+
+# {{{ expression mapper
+
+class LoopyISPCCodeMapper(LoopyCCodeMapper):
+    def map_group_hw_index(self, expr, enclosing_prec, type_context):
+        return "taskIndex%d" % expr.axis
+
+    def map_local_hw_index(self, expr, enclosing_prec, type_context):
+        if expr.axis == 0:
+            return var("programIndex")
+        else:
+            raise LoopyError("ISPC only supports one local axis")
+
+# }}}
 
 
 class ISPCTarget(CTarget):
@@ -101,14 +117,8 @@ class ISPCTarget(CTarget):
 
     # {{{ code generation guts
 
-    def get_global_axis_expr(self, kernel, axis):
-        return var("taskIndex%d" % axis)
-
-    def get_local_axis_expr(self, kernel, axis):
-        if axis == 0:
-            return var("programIndex")
-        else:
-            raise LoopyError("ISPC only supports one local axis")
+    def get_expression_to_code_mapper(self, codegen_state):
+        return LoopyISPCCodeMapper(codegen_state)
 
     def add_vector_access(self, access_str, index):
         return "(%s)[%d]" % (access_str, index)

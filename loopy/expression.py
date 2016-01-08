@@ -257,6 +257,12 @@ class TypeInferenceMapper(CombineMapper):
     map_logical_and = map_comparison
     map_logical_or = map_comparison
 
+    def map_group_hw_index(self, expr, *args):
+        return self.kernel.index_dtype
+
+    def map_local_hw_index(self, expr, *args):
+        return self.kernel.index_dtype
+
     def map_reduction(self, expr):
         return expr.operation.result_dtype(
                 self.kernel.target, self.rec(expr.expr), expr.inames)

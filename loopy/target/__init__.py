@@ -100,12 +100,6 @@ class TargetBase(object):
     def get_expression_to_code_mapper(self, codegen_state):
         raise NotImplementedError()
 
-    def get_global_axis_expr(self, kernel, axis):
-        raise NotImplementedError()
-
-    def get_local_axis_expr(self, kernel, axis):
-        raise NotImplementedError()
-
     def add_vector_access(self, access_str, index):
         raise NotImplementedError()
 

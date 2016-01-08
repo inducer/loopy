@@ -27,10 +27,9 @@ THE SOFTWARE.
 import numpy as np
 
 from loopy.target.c import CTarget
+from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
-
-from pymbolic import var
 
 
 # {{{ vector types
@@ -175,6 +174,18 @@ def opencl_preamble_generator(kernel, seen_dtypes, seen_functions):
 # }}}
 
 
+# {{{ expression mapper
+
+class LoopyOpenCLCCodeMapper(LoopyCCodeMapper):
+    def map_group_hw_index(self, expr, enclosing_prec, type_context):
+        return "gid(%d)" % expr.axis
+
+    def map_local_hw_index(self, expr, enclosing_prec, type_context):
+        return "lid(%d)" % expr.axis
+
+# }}}
+
+
 # {{{ target
 
 class OpenCLTarget(CTarget):
@@ -267,11 +278,8 @@ class OpenCLTarget(CTarget):
 
     # {{{ code generation guts
 
-    def get_global_axis_expr(self, kernel, axis):
-        return var("gid")(axis)
-
-    def get_local_axis_expr(self, kernel, axis):
-        return var("lid")(axis)
+    def get_expression_to_code_mapper(self, codegen_state):
+        return LoopyOpenCLCCodeMapper(codegen_state)
 
     def add_vector_access(self, access_str, index):
         # The 'int' avoids an 'L' suffix for long ints.

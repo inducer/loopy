@@ -242,11 +242,13 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
 
     tag = kernel.iname_to_tag.get(iname)
 
+    from loopy.symbolic import GroupHardwareAxisIndex, LocalHardwareAxisIndex
+
     assert isinstance(tag, UniqueTag)
-    if isinstance(tag, LocalIndexTag):
-        hw_axis_expr = kernel.target.get_local_axis_expr(kernel, tag.axis)
-    elif isinstance(tag, GroupIndexTag):
-        hw_axis_expr = kernel.target.get_global_axis_expr(kernel, tag.axis)
+    if isinstance(tag, GroupIndexTag):
+        hw_axis_expr = GroupHardwareAxisIndex(tag.axis)
+    elif isinstance(tag, LocalIndexTag):
+        hw_axis_expr = LocalHardwareAxisIndex(tag.axis)
     else:
         raise RuntimeError("unexpected hw tag type")
 

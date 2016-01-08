@@ -27,10 +27,9 @@ THE SOFTWARE.
 import numpy as np
 
 from loopy.target.c import CTarget
+from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
-
-from pymbolic import var
 
 
 # {{{ vector types
@@ -135,6 +134,31 @@ def cuda_function_mangler(kernel, name, arg_dtypes):
 # }}}
 
 
+# {{{ expression mapper
+
+class LoopyCudaCCodeMapper(LoopyCCodeMapper):
+    _GRID_AXES = "xyz"
+
+    @staticmethod
+    def _get_index_ctype(kernel):
+        if kernel.index_dtype == np.int32:
+            return "int32_t"
+        else:
+            return "int64_t"
+
+    def map_group_hw_index(self, expr, enclosing_prec, type_context):
+        return "((%s) blockIdx.%s)" % (
+            self._get_index_ctype(self.kernel),
+            self._GRID_AXES[expr.axis])
+
+    def map_local_hw_index(self, expr, enclosing_prec, type_context):
+        return "((%s) threadIdx.%s)" % (
+            self._get_index_ctype(self.kernel),
+            self._GRID_AXES[expr.axis])
+
+# }}}
+
+
 # {{{ target
 
 class CudaTarget(CTarget):
@@ -216,24 +240,8 @@ class CudaTarget(CTarget):
 
     # {{{ code generation guts
 
-    _GRID_AXES = "xyz"
-
-    @staticmethod
-    def _get_index_ctype(kernel):
-        if kernel.index_dtype == np.int32:
-            return "int32_t"
-        else:
-            return "int64_t"
-
-    def get_global_axis_expr(self, kernel, axis):
-        return var("((%s) blockIdx.%s)" % (
-            self._get_index_ctype(kernel),
-            self._GRID_AXES[axis]))
-
-    def get_local_axis_expr(self, kernel, axis):
-        return var("((%s) threadIdx.%s)" % (
-            self._get_index_ctype(kernel),
-            self._GRID_AXES[axis]))
+    def get_expression_to_code_mapper(self, codegen_state):
+        return LoopyCudaCCodeMapper(codegen_state)
 
     _VEC_AXES = "xyzw"
 
