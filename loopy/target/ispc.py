@@ -30,18 +30,24 @@ from loopy.target.c import CTarget
 from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from loopy.diagnostic import LoopyError
 
-from pymbolic import var
-
 
 # {{{ expression mapper
 
 class LoopyISPCCodeMapper(LoopyCCodeMapper):
+    def _get_index_ctype(self):
+        if self.kernel.index_dtype == np.int32:
+            return "int32"
+        elif self.kernel.index_dtype == np.int64:
+            return "int64"
+        else:
+            raise ValueError("unexpected index_type")
+
     def map_group_hw_index(self, expr, enclosing_prec, type_context):
-        return "taskIndex%d" % expr.axis
+        return "((%s) taskIndex%d)" % (self._get_index_ctype(), expr.axis)
 
     def map_local_hw_index(self, expr, enclosing_prec, type_context):
         if expr.axis == 0:
-            return var("programIndex")
+            return "(varying %s) programIndex" % self._get_index_ctype()
         else:
             raise LoopyError("ISPC only supports one local axis")
 
