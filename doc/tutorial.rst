@@ -106,7 +106,7 @@ always see loopy's view of a kernel by printing it.
     out: GlobalArg, type: <runtime>, shape: (n), dim_tags: (N0:stride:1)
     ---------------------------------------------------------------------------
     DOMAINS:
-    [n] -> { [i] : i >= 0 and i <= -1 + n }
+    [n] -> { [i] : 0 <= i < n }
     ---------------------------------------------------------------------------
     INAME IMPLEMENTATION TAGS:
     i: None
@@ -1238,12 +1238,12 @@ map now:
 .. doctest::
 
     >>> print(lp.stringify_stats_mapping(op_map))
-    (dtype('float32'), 'add') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('float32'), 'div') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('float32'), 'mul') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('float64'), 'add') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('float64'), 'mul') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('int32'), 'add') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float32'), 'add') : [n, m, l] -> { n * m * l : n > 0 and m > 0 and l > 0 }
+    (dtype('float32'), 'div') : [n, m, l] -> { n * m * l : n > 0 and m > 0 and l > 0 }
+    (dtype('float32'), 'mul') : [n, m, l] -> { n * m * l : n > 0 and m > 0 and l > 0 }
+    (dtype('float64'), 'add') : [n, m, l] -> { n * m : n > 0 and m > 0 and l > 0 }
+    (dtype('float64'), 'mul') : [n, m, l] -> { n * m : n > 0 and m > 0 and l > 0 }
+    (dtype('int32'), 'add') : [n, m, l] -> { n * m : n > 0 and m > 0 and l > 0 }
     <BLANKLINE>
 
 We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
@@ -1278,10 +1278,10 @@ continue using the kernel from the previous example:
     >>> from loopy.statistics import get_gmem_access_poly
     >>> load_store_map = get_gmem_access_poly(knl)
     >>> print(lp.stringify_stats_mapping(load_store_map))
-    (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n >= 1 and m >= 1 and l >= 1 }
-    (dtype('float64'), 'uniform', 'store') : [n, m, l] -> { n * m : n >= 1 and m >= 1 and l >= 1 }
+    (dtype('float32'), 'uniform', 'load') : [n, m, l] -> { 3 * n * m * l : n > 0 and m > 0 and l > 0 }
+    (dtype('float32'), 'uniform', 'store') : [n, m, l] -> { n * m * l : n > 0 and m > 0 and l > 0 }
+    (dtype('float64'), 'uniform', 'load') : [n, m, l] -> { 2 * n * m : n > 0 and m > 0 and l > 0 }
+    (dtype('float64'), 'uniform', 'store') : [n, m, l] -> { n * m : n > 0 and m > 0 and l > 0 }
     <BLANKLINE>
 
 :func:`loopy.get_gmem_access_poly` returns a mapping of **{(**
