@@ -38,11 +38,21 @@ setup(name="loo.py",
 
       install_requires=[
           "pytools>=2016.1",
-          "pymbolic>=2015.2.1",
-          "cgen>=2013.1.2",
-          "islpy>=2014.2",
+          "pymbolic>=2016.1",
+          "cgen>=2016.1",
+          "islpy>=2016.1",
           "six>=1.8.0",
           ],
+
+      extras_require={
+          "pyopencl":  [
+              "pyopencl>=2015.2",
+              ],
+          'fortran':  [
+              "hg+https://bitbucket.org/inducer/f2py",
+              "ply>=3.6",
+              ],
+          },
 
       scripts=["bin/loopy"],
 
