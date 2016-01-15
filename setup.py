@@ -48,11 +48,18 @@ setup(name="loo.py",
           "pyopencl":  [
               "pyopencl>=2015.2",
               ],
-          'fortran':  [
-              "hg+https://bitbucket.org/inducer/f2py",
+          "fortran":  [
+              # Note that this is *not* regular 'f2py2e', this is
+              # the Fortran parser from the (unfinished) third-edition
+              # f2py, as linked below.
+              "f2py>=0.3.1",
               "ply>=3.6",
               ],
           },
+
+      dependency_links=[
+          "hg+https://bitbucket.org/inducer/f2py#egg=f2py==0.3.1"
+          ],
 
       scripts=["bin/loopy"],
 
