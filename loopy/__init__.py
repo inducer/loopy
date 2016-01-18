@@ -55,7 +55,7 @@ from loopy.library.reduction import register_reduction_parser
 
 from loopy.transform.iname import (
         assume, set_loop_priority,
-        split_iname, join_inames, tag_inames, duplicate_inames,
+        split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
         rename_iname, link_inames, remove_unused_inames,
         affine_map_inames)
 
@@ -127,7 +127,8 @@ __all__ = [
         # {{{ transforms
 
         "assume", "set_loop_priority",
-        "split_iname", "join_inames", "tag_inames", "duplicate_inames",
+        "split_iname", "chunk_iname", "join_inames", "tag_inames",
+        "duplicate_inames",
         "rename_iname", "link_inames", "remove_unused_inames",
         "affine_map_inames",
 

@@ -418,6 +418,8 @@ Wrangling inames
 
 .. autofunction:: split_iname
 
+.. autofunction:: chunk_iname
+
 .. autofunction:: join_inames
 
 .. autofunction:: tag_inames

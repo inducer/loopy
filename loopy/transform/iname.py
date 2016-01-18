@@ -76,7 +76,9 @@ def set_loop_priority(kernel, loop_priority):
 # }}}
 
 
-# {{{ split inames
+# {{{ split/chunk inames
+
+# {{{ backend
 
 class _InameSplitter(RuleAwareIdentityMapper):
     def __init__(self, rule_mapping_context, within,
@@ -120,7 +122,9 @@ class _InameSplitter(RuleAwareIdentityMapper):
             return super(_InameSplitter, self).map_variable(expr, expn_state)
 
 
-def split_iname(kernel, split_iname, inner_length,
+def _split_iname_backend(kernel, split_iname,
+        fixed_length, fixed_length_is_inner,
+        make_new_loop_index,
         outer_iname=None, inner_iname=None,
         outer_tag=None, inner_tag=None,
         slabs=(0, 0), do_tagged_check=True,
@@ -166,18 +170,23 @@ def split_iname(kernel, split_iname, inner_length,
 
         from loopy.isl_helpers import make_slab
 
+        if fixed_length_is_inner:
+            fixed_iname, var_length_iname = inner_iname, outer_iname
+        else:
+            fixed_iname, var_length_iname = outer_iname, inner_iname
+
         space = s.get_space()
-        inner_constraint_set = (
-                make_slab(space, inner_iname, 0, inner_length)
-                # name = inner + length*outer
+        fixed_constraint_set = (
+                make_slab(space, fixed_iname, 0, fixed_length)
+                # name = fixed_iname + fixed_length*var_length_iname
                 .add_constraint(isl.Constraint.eq_from_names(
                     space, {
                         split_iname: 1,
-                        inner_iname: -1,
-                        outer_iname: -inner_length})))
+                        fixed_iname: -1,
+                        var_length_iname: -fixed_length})))
 
         name_dim_type, name_idx = space.get_var_dict()[split_iname]
-        s = s.intersect(inner_constraint_set)
+        s = s.intersect(fixed_constraint_set)
 
         if within is None:
             s = s.project_out(name_dim_type, name_idx, 1)
@@ -189,7 +198,7 @@ def split_iname(kernel, split_iname, inner_length,
     from pymbolic import var
     inner = var(inner_iname)
     outer = var(outer_iname)
-    new_loop_index = inner + outer*inner_length
+    new_loop_index = make_new_loop_index(inner, outer)
 
     subst_map = {var(split_iname): new_loop_index}
     applied_iname_rewrites.append(subst_map)
@@ -247,6 +256,131 @@ def split_iname(kernel, split_iname, inner_length,
                 {outer_iname: existing_tag, inner_iname: existing_tag})
 
     return tag_inames(kernel, {outer_iname: outer_tag, inner_iname: inner_tag})
+
+# }}}
+
+
+# {{{ split iname
+
+def split_iname(kernel, split_iname, inner_length,
+        outer_iname=None, inner_iname=None,
+        outer_tag=None, inner_tag=None,
+        slabs=(0, 0), do_tagged_check=True,
+        within=None):
+    """Split *split_iname* into two inames (an 'inner' one and an 'outer' one)
+    so that ``split_iname == inner + outer*inner_length`` and *inner* is of
+    fixed length *inner_length*.
+
+    :arg within: a stack match as understood by
+        :func:`loopy.context_matching.parse_stack_match`.
+    """
+    def make_new_loop_index(inner, outer):
+        return inner + outer*inner_length
+
+    return _split_iname_backend(kernel, split_iname,
+            fixed_length=inner_length, fixed_length_is_inner=True,
+            make_new_loop_index=make_new_loop_index,
+            outer_iname=outer_iname, inner_iname=inner_iname,
+            outer_tag=outer_tag, inner_tag=inner_tag,
+            slabs=slabs, do_tagged_check=do_tagged_check,
+            within=within)
+
+# }}}
+
+
+# {{{ chunk iname
+
+def chunk_iname(kernel, split_iname, num_chunks,
+        outer_iname=None, inner_iname=None,
+        outer_tag=None, inner_tag=None,
+        slabs=(0, 0), do_tagged_check=True,
+        within=None):
+    """
+    Split *split_iname* into two inames (an 'inner' one and an 'outer' one)
+    so that ``split_iname == inner + outer*chunk_length`` and *outer* is of
+    fixed length *num_chunks*.
+
+    :arg within: a stack match as understood by
+        :func:`loopy.context_matching.parse_stack_match`.
+
+    .. versionadded:: 2016.2
+    """
+
+    size = kernel.get_iname_bounds(split_iname).size
+    k0 = isl.Aff.zero_on_domain(size.domain().space)
+    chunk_ceil = size.div(k0+num_chunks).ceil()
+    chunk_floor = size.div(k0+num_chunks).floor()
+    chunk_diff = chunk_ceil - chunk_floor
+    chunk_mod = size.mod_val(num_chunks)
+
+    from loopy.symbolic import pw_aff_to_expr
+    from pymbolic.primitives import Min
+
+    def make_new_loop_index(inner, outer):
+        # These two expressions are equivalent. Benchmarking between the
+        # two was inconclusive, although one is shorter.
+
+        if 0:
+            # Triggers isl issues in check pass.
+            return (
+                    inner +
+                    pw_aff_to_expr(chunk_floor) * outer
+                    +
+                    pw_aff_to_expr(chunk_diff) * Min(
+                        (outer, pw_aff_to_expr(chunk_mod))))
+        else:
+            return (
+                    inner +
+                    pw_aff_to_expr(chunk_ceil) * Min(
+                        (outer, pw_aff_to_expr(chunk_mod)))
+                    +
+                    pw_aff_to_expr(chunk_floor) * (
+                        outer - Min((outer, pw_aff_to_expr(chunk_mod)))))
+
+    # {{{ check that iname is a box iname
+
+    # Since the linearization used in the constraint used to map the domain
+    # does not match the linearization in make_new_loop_index, we can't really
+    # tolerate if the iname in question has constraints that make it non-boxy,
+    # since these sub-indices would end up in the wrong spot.
+
+    for dom in kernel.domains:
+        var_dict = dom.get_var_dict()
+        if split_iname not in var_dict:
+            continue
+
+        dt, idx = var_dict[split_iname]
+        assert dt == dim_type.set
+
+        aff_zero = isl.Aff.zero_on_domain(dom.space)
+        aff_split_iname = aff_zero.set_coefficient_val(dim_type.in_, idx, 1)
+        aligned_size = isl.align_spaces(size, aff_zero)
+        box_dom = (
+                dom
+                .eliminate(dt, idx, 1)
+                & aff_zero.le_set(aff_split_iname)
+                & aff_split_iname.lt_set(aligned_size)
+                )
+
+        if not (
+                box_dom <= dom
+                and
+                dom <= box_dom):
+            raise LoopyError("domain '%s' is not box-shape about iname "
+                    "'%s', cannot use chunk_iname()"
+                    % (dom, split_iname))
+
+    # }}}
+
+    return _split_iname_backend(kernel, split_iname,
+            fixed_length=num_chunks, fixed_length_is_inner=False,
+            make_new_loop_index=make_new_loop_index,
+            outer_iname=outer_iname, inner_iname=inner_iname,
+            outer_tag=outer_tag, inner_tag=inner_tag,
+            slabs=slabs, do_tagged_check=do_tagged_check,
+            within=within)
+
+# }}}
 
 # }}}
 
