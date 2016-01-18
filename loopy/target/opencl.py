@@ -239,9 +239,18 @@ class OpenCLTarget(CTarget):
 
     def wrap_function_declaration(self, kernel, fdecl):
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
-        return CLRequiredWorkGroupSize(
-                kernel.get_grid_sizes_as_exprs()[1],
-                CLKernel(fdecl))
+        fdecl = CLKernel(fdecl)
+
+        _, local_sizes = kernel.get_grid_sizes_as_exprs()
+
+        from loopy.symbolic import get_dependencies
+        if not get_dependencies(local_sizes):
+            # sizes can't have parameter dependencies if they are
+            # to be used in static WG size.
+
+            fdecl = CLRequiredWorkGroupSize(local_sizes, fdecl)
+
+        return fdecl
 
     def generate_code(self, kernel, codegen_state, impl_arg_info):
         code, implemented_domains = (

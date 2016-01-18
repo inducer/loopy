@@ -213,10 +213,16 @@ class CudaTarget(CTarget):
 
         _, local_grid_size = kernel.get_grid_sizes_as_exprs()
 
-        from pytools import product
-        nthreads = product(local_grid_size)
+        from loopy.symbolic import get_dependencies
+        if not get_dependencies(local_grid_size):
+            # Sizes can't have parameter dependencies if they are
+            # to be used in static thread block size.
+            from pytools import product
+            nthreads = product(local_grid_size)
 
-        return CudaLaunchBounds(nthreads, fdecl)
+            fdecl = CudaLaunchBounds(nthreads, fdecl)
+
+        return fdecl
 
     def generate_code(self, kernel, codegen_state, impl_arg_info):
         code, implemented_domains = (
