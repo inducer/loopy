@@ -289,7 +289,7 @@ class LoopyCCodeMapper(RecursiveMapper):
     def map_min(self, expr, prec, type_context):
         what = type(expr).__name__.lower()
 
-        children = expr.children[:]
+        children = list(expr.children)
 
         result = self.rec(children.pop(), PREC_NONE, type_context)
         while children:
