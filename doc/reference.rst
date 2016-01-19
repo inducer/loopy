@@ -59,18 +59,18 @@ are accepted, in addition to what is registered in :mod:`pyopencl`.
 Iname Implementation Tags
 -------------------------
 
-========================= ====================================================
-Tag                       Meaning
-========================= ====================================================
-``None`` | ``"for"``      Sequential loop
-``"l.N"``                 Local (intra-group) axis N
-``"g.N"``                 Group-number axis N
-``"unr"``                 Unroll
-``"ilp"`` | ``"ilp.unr"`` Unroll using instruction-level parallelism
-``"ilp.seq"``             Realize parallel iname as innermost loop
-========================= ====================================================
-
-.. "l.auto" intentionally undocumented
+=============================== ====================================================
+Tag                             Meaning
+=============================== ====================================================
+``None`` | ``"for"``            Sequential loop
+``"l.N"``                       Local (intra-group) axis N ("local")
+``"g.N"``                       Group-number axis N ("group")
+``"unr"``                       Unroll
+``"ilp"`` | ``"ilp.unr"``       Unroll using instruction-level parallelism
+``"ilp.seq"``                   Realize parallel iname as innermost loop
+``"like.INAME"``                Can be used when tagging inames to tag like another
+``"unused.g"`` | ``"unused.l"`` Can be to tag as the next unused group/local axis
+=============================== ====================================================
 
 (Throughout this table, `N` must be replaced by an actual, zero-based number.)
 

@@ -542,16 +542,46 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 # {{{ tag inames
 
 def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
-    from loopy.kernel.data import parse_tag
+    """Tag an iname
 
-    iname_to_tag = dict((iname, parse_tag(tag))
-            for iname, tag in six.iteritems(iname_to_tag))
+    :arg iname_to_tag: a list of tuple ``(iname, new_tag)``. *new_tag* is given
+        as an instance of a subclass of :class:`loopy.kernel.data.IndexTag` or
+        as a string as shown in :ref:`iname-tags`. May also be a dictionary
+        for backwards compatibility.
+    """
+
+    if isinstance(iname_to_tag, dict):
+        iname_to_tag = list(six.iteritems(iname_to_tag))
+    elif isinstance(iname_to_tag, str):
+        def parse_kv(s):
+            colon_index = s.find(":")
+            if colon_index == -1:
+                raise ValueError("tag decl '%s' has no colon" % s)
+
+            return (s[:colon_index].strip(), s[colon_index+1:].strip())
+
+        iname_to_tag = [parse_kv(s) for s in iname_to_tag.split(",")]
+
+    from loopy.kernel.data import parse_tag as inner_parse_tag
+
+    def parse_tag(tag):
+        if isinstance(tag, str):
+            if tag.startswith("like."):
+                return kernel.iname_to_tag.get(tag[5:])
+            elif tag == "unused.g":
+                return find_unused_axis_tag(kernel, "g")
+            elif tag == "unused.l":
+                return find_unused_axis_tag(kernel, "l")
+
+        return inner_parse_tag(tag)
+
+    iname_to_tag = [(iname, parse_tag(tag)) for iname, tag in iname_to_tag]
 
     from loopy.kernel.data import (ParallelTag, AutoLocalIndexTagBase,
             ForceSequentialTag)
 
     new_iname_to_tag = kernel.iname_to_tag.copy()
-    for iname, new_tag in six.iteritems(iname_to_tag):
+    for iname, new_tag in iname_to_tag:
         if iname not in kernel.all_inames():
             if ignore_nonexistent:
                 continue
