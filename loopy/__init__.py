@@ -57,7 +57,7 @@ from loopy.transform.iname import (
         assume, set_loop_priority,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
         rename_iname, link_inames, remove_unused_inames,
-        affine_map_inames)
+        affine_map_inames, find_unused_axis_tag)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
@@ -131,7 +131,7 @@ __all__ = [
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
         "rename_iname", "link_inames", "remove_unused_inames",
-        "affine_map_inames",
+        "affine_map_inames", "find_unused_axis_tag",
 
         "add_prefetch", "change_arg_to_image", "tag_data_axes",
         "set_array_dim_names", "remove_unused_arguments",

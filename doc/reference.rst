@@ -442,6 +442,8 @@ Wrangling inames
 
 .. autofunction:: realize_ilp
 
+.. autofunction:: find_unused_axis_tag
+
 Dealing with Parameters
 ^^^^^^^^^^^^^^^^^^^^^^^
 

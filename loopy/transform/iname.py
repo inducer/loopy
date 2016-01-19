@@ -1173,4 +1173,52 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 # }}}
 
 
+# {{{ find unused axes
+
+def find_unused_axis_tag(kernel, kind, insn_match=None):
+    """For one of the hardware-parallel execution tags, find an unused
+    axis.
+
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.context_matching.parse_match`.
+    :arg kind: may be "l" or "g", or the corresponding tag class name
+
+    :returns: an :class:`GroupIndexTag` or :class:`LocalIndexTag`
+        that is not being used within the instructions matched by
+        *insn_match*.
+    """
+    used_axes = set()
+
+    from looopy.kernel.data import GroupIndexTag, LocalIndexTag
+
+    if isinstance(kind, str):
+        found = False
+        for cls in [GroupIndexTag, LocalIndexTag]:
+            if kind == cls.print_name:
+                kind = cls
+                found = True
+                break
+
+        if not found:
+            raise LoopyError("invlaid tag kind: %s" % kind)
+
+    from loopy.context_matching import parse_match
+    match = parse_match(insn_match)
+    insns = [insn for insn in kernel.instructions if match(kernel, insn)]
+
+    for insn in insns:
+        for iname in kernel.insn_inames(insn):
+            dim_tag = kernel.iname_to_tag.get(iname)
+
+            if isinstance(dim_tag, kind):
+                used_axes.add(kind.axis)
+
+    i = 0
+    while i in used_axes:
+        i += 1
+
+    return kind(i)
+
+# }}}
+
 # vim: foldmethod=marker
