@@ -459,6 +459,18 @@ def get_op_poly(knl):
     return op_poly.dict
 
 
+def sum_ops_to_dtypes(op_poly_dict):
+    result = {}
+    for (dtype, kind), v in op_poly_dict.items():
+        new_key = dtype
+        if new_key in result:
+            result[new_key] += v
+        else:
+            result[new_key] = v
+
+    return result
+
+
 def get_gmem_access_poly(knl):  # for now just counting subscripts
 
     """Count the number of global memory accesses in a loopy kernel.
