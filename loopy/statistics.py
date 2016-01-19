@@ -427,7 +427,7 @@ def get_op_poly(knl):
 
              - The :class:`islpy.PwQPolynomial` holds the number of operations of
                the kind specified in the key (in terms of the
-               :class:`loopy.LoopKernel` *inames*).
+               :class:`loopy.LoopKernel` *parameter inames*).
 
     Example usage::
 
