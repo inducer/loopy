@@ -32,6 +32,8 @@ from pymbolic.mapper import CombineMapper
 from functools import reduce
 
 
+# {{{ ToCountMap
+
 class ToCountMap:
     """Maps any type of key to an arithmetic type."""
 
@@ -75,6 +77,8 @@ class ToCountMap:
     def __repr__(self):
         return repr(self.dict)
 
+# }}}
+
 
 def stringify_stats_mapping(m):
     result = ""
@@ -82,6 +86,8 @@ def stringify_stats_mapping(m):
         result += ("%s : %s\n" % (key, m[key]))
     return result
 
+
+# {{{ ExpressionOpCounter
 
 class ExpressionOpCounter(CombineMapper):
 
@@ -207,6 +213,10 @@ class ExpressionOpCounter(CombineMapper):
         raise NotImplementedError("ExpressionOpCounter encountered slice, "
                                   "map_slice not implemented.")
 
+# }}}
+
+
+# {{{ GlobalSubscriptCounter
 
 class GlobalSubscriptCounter(CombineMapper):
 
@@ -379,6 +389,10 @@ class GlobalSubscriptCounter(CombineMapper):
         raise NotImplementedError("GlobalSubscriptCounter encountered slice, "
                                   "map_slice not implemented.")
 
+# }}}
+
+
+# {{{ count
 
 def count(kernel, bset):
     try:
@@ -409,6 +423,10 @@ def count(kernel, bset):
 
     return result
 
+# }}}
+
+
+# {{{ get_op_poly
 
 def get_op_poly(knl):
 
@@ -458,6 +476,8 @@ def get_op_poly(knl):
         op_poly = op_poly + ops*count(knl, domain)
     return op_poly.dict
 
+# }}}
+
 
 def sum_ops_to_dtypes(op_poly_dict):
     result = {}
@@ -471,6 +491,7 @@ def sum_ops_to_dtypes(op_poly_dict):
     return result
 
 
+# {{{ get_gmem_access_poly
 def get_gmem_access_poly(knl):  # for now just counting subscripts
 
     """Count the number of global memory accesses in a loopy kernel.
@@ -547,6 +568,10 @@ def get_DRAM_access_poly(knl):
             DeprecationWarning, stacklevel=2)
     return get_gmem_access_poly(knl)
 
+# }}}
+
+
+# {{{ sum_mem_access_to_bytes
 
 def sum_mem_access_to_bytes(m):
     """Sum the mapping returned by :func:`get_gmem_access_poly` to a mapping
@@ -568,6 +593,10 @@ def sum_mem_access_to_bytes(m):
 
     return result
 
+# }}}
+
+
+# {{{ get_barrier_poly
 
 def get_barrier_poly(knl):
 
@@ -617,3 +646,7 @@ def get_barrier_poly(knl):
                 barrier_poly += isl.PwQPolynomial('{ 1 }')
 
     return barrier_poly
+
+# }}}
+
+# vim: foldmethod=marker
