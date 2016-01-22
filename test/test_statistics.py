@@ -22,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
 import sys
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
@@ -593,6 +594,22 @@ def test_all_counters_parallel_matmul():
                         ].eval_with_dict(params)
 
     assert f32coal == n*l
+
+
+def test_gather_access_footprint():
+    knl = lp.make_kernel(
+            "{[i,k,j]: 0<=i,j,k<n}",
+            [
+                "c[i, j] = sum(k, a[i, k]*b[k, j]) + a[i,j]"
+            ],
+            name="matmul", assumptions="n >= 1")
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
+
+    from loopy.statistics import gather_access_footprints, count
+    fp = gather_access_footprints(knl)
+
+    for key, footprint in six.iteritems(fp):
+        print(key, count(knl, footprint))
 
 
 if __name__ == "__main__":
