@@ -310,6 +310,39 @@ def _fuse_two_kernels(knla, knlb):
 
 
 def fuse_kernels(kernels, suffixes=None):
+    """Return a kernel that performs all the operations in all entries
+    of *kernels*.
+
+    :arg kernels: A list of :class:`loopy.LoopKernel` instances to be fused.
+    :arg suffixes: If given, must be a list of strings of a length matching
+        that of *kernels*. This will be used to disambiguate the names
+        of temporaries, as described below.
+
+    The components of the kernels are fused as follows:
+
+    *   The resulting kernel will have a domain involving all the inames
+        and parameters occurring across *kernels*.
+        Inames with matching names across *kernels* are fused in such a way
+        that they remain a single iname in the fused kernel.
+        Use :func:`loopy.rename_iname` if this is not desired.
+
+    *   The projection of the domains of each pair of kernels onto their
+        common subset of inames must match in order for fusion to
+        succeed.
+
+    *   Assumptions are fused by taking their conjunction.
+
+    *   If kernel arguments with matching names are encountered across
+        *kernels*, their declarations must match in order for fusion to
+        succeed.
+
+    *   Temporaries are automatically renamed to remain uniquely associated
+        with each instruction stream.
+
+    *   The resulting kernel will contain all instructions from each entry
+        of *kernels*. Clashing instruction IDs will be renamed to ensure
+        uniqueness.
+    """
     kernels = list(kernels)
 
     if suffixes:
