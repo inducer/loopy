@@ -210,10 +210,8 @@ def _fuse_two_kernels(knla, knlb):
 
     from pymbolic.imperative.transform import \
             fuse_instruction_streams_with_unique_ids
-    new_instructions = fuse_instruction_streams_with_unique_ids(
+    new_instructions, _ = fuse_instruction_streams_with_unique_ids(
             knla.instructions, knlb.instructions)
-
-    # }}}
 
     # {{{ fuse assumptions
 
