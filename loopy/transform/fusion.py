@@ -208,29 +208,10 @@ def _fuse_two_kernels(knla, knlb):
 
     knlb = _apply_renames_in_exprs(knlb, b_var_renames)
 
-    # {{{ fuse instructions
-
-    new_instructions = knla.instructions[:]
-    from pytools import UniqueNameGenerator
-    insn_id_gen = UniqueNameGenerator(
-            set([insna.id for insna in new_instructions]))
-
-    knl_b_instructions = []
-    old_b_id_to_new_b_id = {}
-    for insnb in knlb.instructions:
-        old_id = insnb.id
-        new_id = insn_id_gen(old_id)
-        old_b_id_to_new_b_id[old_id] = new_id
-
-        knl_b_instructions.append(
-                insnb.copy(id=new_id))
-
-    for insnb in knl_b_instructions:
-        new_instructions.append(
-                insnb.copy(
-                    insn_deps=frozenset(
-                        old_b_id_to_new_b_id[dep_id]
-                        for dep_id in insnb.insn_deps)))
+    from pymbolic.imperative.transform import \
+            fuse_instruction_streams_with_unique_ids
+    new_instructions = fuse_instruction_streams_with_unique_ids(
+            knla.instructions, knlb.instructions)
 
     # }}}
 

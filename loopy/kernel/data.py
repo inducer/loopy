@@ -424,7 +424,7 @@ class InstructionBase(Record):
         An (otherwise meaningless) identifier that is unique within
         a :class:`loopy.kernel.LoopKernel`.
 
-    .. attribute:: insn_deps
+    .. attribute:: depends_on
 
         a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
          that *must* be executed before this one. Note that
@@ -434,9 +434,9 @@ class InstructionBase(Record):
 
         May be *None* to invoke the default.
 
-    .. attribute:: insn_deps_is_final
+    .. attribute:: depends_on_is_final
 
-        A :class:`bool` determining whether :attr:`insn_deps` constitutes
+        A :class:`bool` determining whether :attr:`depends_on` constitutes
         the *entire* list of iname dependencies.
 
         Defaults to *False*.
@@ -492,22 +492,33 @@ class InstructionBase(Record):
     .. attribute:: tags
 
         A tuple of string identifiers that can be used to identify groups
-        of statements.
+        of instructions.
     """
 
-    fields = set("id insn_deps insn_deps_is_final "
+    fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "
             "predicates "
             "forced_iname_deps_is_final forced_iname_deps "
             "priority boostable boostable_into".split())
 
-    def __init__(self, id, insn_deps, insn_deps_is_final,
+    def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             forced_iname_deps_is_final, forced_iname_deps, priority,
-            boostable, boostable_into, predicates, tags):
+            boostable, boostable_into, predicates, tags,
+            insn_deps=None, insn_deps_is_final=None):
 
-        if insn_deps is None:
-            insn_deps = frozenset()
+        if depends_on is not None and insn_deps is not None:
+            raise ValueError("may not specify both insn_deps and depends_on")
+        elif insn_deps is not None:
+            from warnings import warn
+            warn("insn_deps is deprecated, use depends_on",
+                    DeprecationWarning, stacklevel=2)
+
+            depends_on = insn_deps
+            depends_on_is_final = insn_deps_is_final
+
+        if depends_on is None:
+            depends_on = frozenset()
 
         if groups is None:
             groups = frozenset()
@@ -518,12 +529,12 @@ class InstructionBase(Record):
         if forced_iname_deps_is_final is None:
             forced_iname_deps_is_final = False
 
-        if insn_deps_is_final is None:
-            insn_deps_is_final = False
+        if depends_on_is_final is None:
+            depends_on_is_final = False
 
-        if insn_deps_is_final and not isinstance(insn_deps, frozenset):
-            raise LoopyError("Setting insn_deps_is_final to True requires "
-                    "actually specifying insn_deps")
+        if depends_on_is_final and not isinstance(depends_on, frozenset):
+            raise LoopyError("Setting depends_on_is_final to True requires "
+                    "actually specifying depends_on")
 
         if tags is None:
             tags = ()
@@ -533,21 +544,21 @@ class InstructionBase(Record):
         #
         # from loopy.tools import is_interned
         # assert is_interned(id)
-        # assert all(is_interned(dep) for dep in insn_deps)
+        # assert all(is_interned(dep) for dep in depends_on)
         # assert all(is_interned(grp) for grp in groups)
         # assert all(is_interned(grp) for grp in conflicts_with_groups)
         # assert all(is_interned(iname) for iname in forced_iname_deps)
         # assert all(is_interned(pred) for pred in predicates)
 
         assert isinstance(forced_iname_deps, frozenset)
-        assert isinstance(insn_deps, frozenset) or insn_deps is None
+        assert isinstance(depends_on, frozenset) or depends_on is None
         assert isinstance(groups, frozenset)
         assert isinstance(conflicts_with_groups, frozenset)
 
         Record.__init__(self,
                 id=id,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
+                depends_on=depends_on,
+                depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
@@ -556,6 +567,14 @@ class InstructionBase(Record):
                 boostable_into=boostable_into,
                 predicates=predicates,
                 tags=tags)
+
+    @property
+    def insn_deps(self):
+        return self.depends_on
+
+    @property
+    def insn_deps_is_final(self):
+        return self.depends_on_is_final
 
     # {{{ abstract interface
 
@@ -617,8 +636,8 @@ class InstructionBase(Record):
         else:
             raise RuntimeError("unexpected value for Instruction.boostable")
 
-        if self.insn_deps:
-            result.append("deps="+":".join(self.insn_deps))
+        if self.depends_on:
+            result.append("deps="+":".join(self.depends_on))
         if self.groups:
             result.append("groups=%s" % ":".join(self.groups))
         if self.conflicts_with_groups:
@@ -658,13 +677,30 @@ class InstructionBase(Record):
 
     # }}}
 
+    def copy(self, **kwargs):
+        if "insn_deps" in kwargs:
+            from warnings import warn
+            warn("insn_deps is deprecated, use depends_on",
+                    DeprecationWarning, stacklevel=2)
+
+            kwargs["depends_on"] = kwargs.pop("insn_deps")
+
+        if "insn_deps_is_final" in kwargs:
+            from warnings import warn
+            warn("insn_deps_is_final is deprecated, use depends_on",
+                    DeprecationWarning, stacklevel=2)
+
+            kwargs["depends_on_is_final"] = kwargs.pop("insn_deps_is_final")
+
+        return super(InstructionBase, self).copy(**kwargs)
+
     def __setstate__(self, val):
         super(InstructionBase, self).__setstate__(val)
 
         from loopy.tools import intern_frozenset_of_ids
 
         self.id = intern(self.id)
-        self.insn_deps = intern_frozenset_of_ids(self.insn_deps)
+        self.depends_on = intern_frozenset_of_ids(self.depends_on)
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
@@ -712,19 +748,20 @@ class Assignment(InstructionBase):
     def __init__(self,
             assignee, expression,
             id=None,
-            insn_deps=None,
-            insn_deps_is_final=None,
+            depends_on=None,
+            depends_on_is_final=None,
             groups=None,
             conflicts_with_groups=None,
             forced_iname_deps_is_final=None,
             forced_iname_deps=frozenset(),
             boostable=None, boostable_into=None, tags=None,
-            temp_var_type=None, priority=0, predicates=frozenset()):
+            temp_var_type=None, priority=0, predicates=frozenset(),
+            insn_deps=None, insn_deps_is_final=None):
 
         InstructionBase.__init__(self,
                 id=id,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
+                depends_on=depends_on,
+                depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
@@ -733,7 +770,9 @@ class Assignment(InstructionBase):
                 boostable_into=boostable_into,
                 priority=priority,
                 predicates=predicates,
-                tags=tags)
+                tags=tags,
+                insn_deps=insn_deps,
+                insn_deps_is_final=insn_deps_is_final)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -876,11 +915,12 @@ class CInstruction(InstructionBase):
     def __init__(self,
             iname_exprs, code,
             read_variables=frozenset(), assignees=frozenset(),
-            id=None, insn_deps=None, insn_deps_is_final=None,
+            id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
             priority=0, boostable=None, boostable_into=None,
-            predicates=frozenset(), tags=None):
+            predicates=frozenset(), tags=None,
+            insn_deps=None, insn_deps_is_final=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -893,14 +933,16 @@ class CInstruction(InstructionBase):
 
         InstructionBase.__init__(self,
                 id=id,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
+                depends_on=depends_on,
+                depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 boostable=boostable,
                 boostable_into=boostable_into,
-                priority=priority, predicates=predicates, tags=tags)
+                priority=priority, predicates=predicates, tags=tags,
+                insn_deps=insn_deps,
+                insn_deps_is_final=insn_deps_is_final)
 
         # {{{ normalize iname_exprs
 
