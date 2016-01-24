@@ -708,9 +708,9 @@ class LoopKernel(RecordWithoutPickling):
                 pass
 
             insn = self.id_to_insn[insn_id]
-            insn_result = set(insn.insn_deps)
+            insn_result = set(insn.depends_on)
 
-            for dep in list(insn.insn_deps):
+            for dep in list(insn.depends_on):
                 insn_result.update(compute_deps(dep))
 
             result[insn_id] = frozenset(insn_result)
@@ -1012,7 +1012,7 @@ class LoopKernel(RecordWithoutPickling):
                 return
             printed_insn_ids.add(insn.id)
 
-            for dep_id in sorted(insn.insn_deps):
+            for dep_id in sorted(insn.depends_on):
                 print_insn(kernel.id_to_insn[dep_id])
 
             if isinstance(insn, lp.Assignment):
@@ -1061,8 +1061,8 @@ class LoopKernel(RecordWithoutPickling):
 
         dep_lines = []
         for insn in kernel.instructions:
-            if insn.insn_deps:
-                dep_lines.append("%s : %s" % (insn.id, ",".join(insn.insn_deps)))
+            if insn.depends_on:
+                dep_lines.append("%s : %s" % (insn.id, ",".join(insn.depends_on)))
         if dep_lines:
             lines.append(sep)
             lines.append("DEPENDENCIES: "

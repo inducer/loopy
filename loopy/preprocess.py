@@ -345,7 +345,7 @@ def add_default_dependencies(kernel):
 
     new_insns = []
     for insn in kernel.instructions:
-        if not insn.insn_deps_is_final:
+        if not insn.depends_on_is_final:
             auto_deps = set()
 
             # {{{ add automatic dependencies
@@ -365,11 +365,11 @@ def add_default_dependencies(kernel):
 
             # }}}
 
-            insn_deps = insn.insn_deps
-            if insn_deps is None:
-                insn_deps = frozenset()
+            depends_on = insn.depends_on
+            if depends_on is None:
+                depends_on = frozenset()
 
-            insn = insn.copy(insn_deps=frozenset(auto_deps) | insn_deps)
+            insn = insn.copy(depends_on=frozenset(auto_deps) | depends_on)
 
         new_insns.append(insn)
 
@@ -441,7 +441,7 @@ def realize_reduction(kernel, insn_id_filter=None):
                 id=init_id,
                 assignee=target_var,
                 forced_iname_deps=outer_insn_inames - frozenset(expr.inames),
-                insn_deps=frozenset(),
+                depends_on=frozenset(),
                 expression=expr.operation.neutral_element(arg_dtype, expr.inames))
 
         generated_insns.append(init_insn)
@@ -455,12 +455,12 @@ def realize_reduction(kernel, insn_id_filter=None):
                 assignee=target_var,
                 expression=expr.operation(
                     arg_dtype, target_var, expr.expr, expr.inames),
-                insn_deps=frozenset([init_insn.id]) | insn.insn_deps,
+                depends_on=frozenset([init_insn.id]) | insn.depends_on,
                 forced_iname_deps=temp_kernel.insn_inames(insn) | set(expr.inames))
 
         generated_insns.append(reduction_insn)
 
-        new_insn_insn_deps.add(reduction_insn.id)
+        new_insn_depends_on.add(reduction_insn.id)
 
         return target_var
 
@@ -473,7 +473,7 @@ def realize_reduction(kernel, insn_id_filter=None):
 
     import loopy as lp
     while insn_queue:
-        new_insn_insn_deps = set()
+        new_insn_depends_on = set()
         generated_insns = []
 
         insn = insn_queue.pop(0)
@@ -492,8 +492,8 @@ def realize_reduction(kernel, insn_id_filter=None):
 
             insn = insn.copy(
                         expression=new_expression,
-                        insn_deps=insn.insn_deps
-                        | frozenset(new_insn_insn_deps),
+                        depends_on=insn.depends_on
+                        | frozenset(new_insn_depends_on),
                         forced_iname_deps=temp_kernel.insn_inames(insn))
 
             insn_queue = generated_insns + [insn] + insn_queue
@@ -507,7 +507,7 @@ def realize_reduction(kernel, insn_id_filter=None):
 
         else:
             # nothing happened, we're done with insn
-            assert not new_insn_insn_deps
+            assert not new_insn_depends_on
 
             new_insns.append(insn)
 
@@ -690,7 +690,7 @@ def preprocess_kernel(kernel, device=None):
     #   to be able to determine the types of the reduced expressions.
     #
     # - realize_reduction must happen after default dependencies are added
-    #   because it manipulates the insn_deps field, which could prevent
+    #   because it manipulates the depends_on field, which could prevent
     #   defaults from being applied.
 
     kernel = realize_reduction(kernel)

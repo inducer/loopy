@@ -356,8 +356,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                 assignee=buf_var_init,
                 expression=init_expression,
                 forced_iname_deps=frozenset(within_inames),
-                insn_deps=frozenset(),
-                insn_deps_is_final=True,
+                depends_on=frozenset(),
+                depends_on_is_final=True,
                 )
 
     # }}}
@@ -375,7 +375,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                 for assignee_name, _ in insn.assignees_and_indices()):
             did_write = True
 
-    # {{{ add init_insn_id to insn_deps
+    # {{{ add init_insn_id to depends_on
 
     new_insns = []
 
@@ -389,8 +389,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         if insn.id in aar.modified_insn_ids:
             new_insns.append(
                     insn.copy(
-                        insn_deps=(
-                            none_to_empty_set(insn.insn_deps)
+                        depends_on=(
+                            none_to_empty_set(insn.depends_on)
                             | frozenset([init_insn_id]))))
         else:
             new_insns.append(insn)
@@ -430,7 +430,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     from loopy.kernel.data import Assignment
     store_instruction = Assignment(
                 id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
-                insn_deps=frozenset(aar.modified_insn_ids),
+                depends_on=frozenset(aar.modified_insn_ids),
                 assignee=store_target,
                 expression=store_expression,
                 forced_iname_deps=frozenset(within_inames))

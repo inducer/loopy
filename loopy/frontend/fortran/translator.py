@@ -226,16 +226,16 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.insn_id_counter += 1
 
         if self.auto_dependencies and scope.previous_instruction_id:
-            insn_deps = frozenset([scope.previous_instruction_id])
+            depends_on = frozenset([scope.previous_instruction_id])
         else:
-            insn_deps = frozenset()
+            depends_on = frozenset()
 
         from loopy.kernel.data import Assignment
         insn = Assignment(
                 lhs, rhs,
                 forced_iname_deps=frozenset(
                     scope.active_loopy_inames),
-                insn_deps=insn_deps,
+                depends_on=depends_on,
                 id=new_id,
                 predicates=frozenset(self.conditions),
                 tags=tuple(self.instruction_tags))

@@ -85,7 +85,7 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
             raise RuntimeError("non-expression instructions not supported "
                     "in maxima export")
 
-        for dep in insn.insn_deps:
+        for dep in insn.depends_on:
             if dep not in written_insn_ids:
                 write_insn(dep)
 

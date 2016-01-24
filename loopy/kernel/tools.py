@@ -440,7 +440,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
                     repr(insn_label)[1:-1],
                     repr(tooltip)[1:-1],
                     ))
-        for dep in insn.insn_deps:
+        for dep in insn.depends_on:
             dep_graph.setdefault(insn.id, set()).add(dep)
 
     # {{{ O(n^3) transitive reduction

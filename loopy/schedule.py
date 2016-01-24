@@ -253,7 +253,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
             iname_dep = result.setdefault(iname, set())
 
-            for dep_insn_id in insn.insn_deps:
+            for dep_insn_id in insn.depends_on:
                 if dep_insn_id in iname_dep:
                     # already depending, nothing to check
                     continue
@@ -544,13 +544,13 @@ def generate_loop_schedules_internal(
     for insn_id in insn_ids_to_try:
         insn = kernel.id_to_insn[insn_id]
 
-        is_ready = insn.insn_deps <= sched_state.scheduled_insn_ids
+        is_ready = insn.depends_on <= sched_state.scheduled_insn_ids
 
         if not is_ready:
             if debug_mode:
                 print("instruction '%s' is missing insn depedencies '%s'" % (
                         insn.id, ",".join(
-                            insn.insn_deps - sched_state.scheduled_insn_ids)))
+                            insn.depends_on - sched_state.scheduled_insn_ids)))
             continue
 
         want = kernel.insn_inames(insn) - sched_state.parallel_inames

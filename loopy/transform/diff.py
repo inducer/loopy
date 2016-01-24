@@ -242,7 +242,7 @@ class DifferentiationContext(object):
             raise RuntimeError("do not know how to deal with "
                     "instruction of type %s" % type(insn))
 
-        for dep in insn.insn_deps:
+        for dep in insn.depends_on:
             self.import_instruction_and_deps(dep)
 
     def import_output_var(self, var_name):

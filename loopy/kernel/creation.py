@@ -190,8 +190,8 @@ def parse_insn(insn):
         raise
 
     if insn_match is not None:
-        insn_deps = None
-        insn_deps_is_final = False
+        depends_on = None
+        depends_on_is_final = False
         insn_groups = None
         conflicts_with_groups = None
         insn_id = None
@@ -233,10 +233,10 @@ def parse_insn(insn):
 
                 elif opt_key == "dep":
                     if opt_value.startswith("*"):
-                        insn_deps_is_final = True
+                        depends_on_is_final = True
                         opt_value = (opt_value[1:]).strip()
 
-                    insn_deps = frozenset(
+                    depends_on = frozenset(
                             intern(dep.strip()) for dep in opt_value.split(":")
                             if dep.strip())
 
@@ -290,8 +290,8 @@ def parse_insn(insn):
                         intern(insn_id)
                         if isinstance(insn_id, str)
                         else insn_id),
-                    insn_deps=insn_deps,
-                    insn_deps_is_final=insn_deps_is_final,
+                    depends_on=depends_on,
+                    depends_on_is_final=depends_on_is_final,
                     groups=insn_groups,
                     conflicts_with_groups=conflicts_with_groups,
                     forced_iname_deps_is_final=forced_iname_deps_is_final,
@@ -333,7 +333,7 @@ def parse_if_necessary(insn, defines):
     if isinstance(insn, InstructionBase):
         yield insn.copy(
                 id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
-                insn_deps=frozenset(intern(dep) for dep in insn.insn_deps),
+                depends_on=frozenset(intern(dep) for dep in insn.depends_on),
                 groups=frozenset(intern(grp) for grp in insn.groups),
                 conflicts_with_groups=frozenset(
                     intern(grp) for grp in insn.conflicts_with_groups),
@@ -980,9 +980,9 @@ def resolve_wildcard_deps(knl):
 
     from fnmatch import fnmatchcase
     for insn in knl.instructions:
-        if insn.insn_deps is not None:
+        if insn.depends_on is not None:
             new_deps = set()
-            for dep in insn.insn_deps:
+            for dep in insn.depends_on:
                 match_count = 0
                 for other_insn in knl.instructions:
                     if fnmatchcase(other_insn.id, dep):
@@ -993,7 +993,7 @@ def resolve_wildcard_deps(knl):
                     # Uh, best we can do
                     new_deps.add(dep)
 
-            insn = insn.copy(insn_deps=frozenset(new_deps))
+            insn = insn.copy(depends_on=frozenset(new_deps))
 
         new_insns.append(insn)
 

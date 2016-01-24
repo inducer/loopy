@@ -76,14 +76,14 @@ def add_dependency(kernel, insn_match, dependency):
                 % dependency)
 
     def add_dep(insn):
-        new_deps = insn.insn_deps
+        new_deps = insn.depends_on
         added_deps = frozenset([dependency])
         if new_deps is None:
             new_deps = added_deps
         else:
             new_deps = new_deps | added_deps
 
-        return insn.copy(insn_deps=new_deps)
+        return insn.copy(depends_on=new_deps)
 
     return map_instructions(kernel, insn_match, add_dep)
 
@@ -109,17 +109,17 @@ def remove_instructions(kernel, insn_ids):
 
         # transitively propagate dependencies
         # (only one level for now)
-        if insn.insn_deps is None:
-            insn_deps = frozenset()
+        if insn.depends_on is None:
+            depends_on = frozenset()
         else:
-            insn_deps = insn.insn_deps
+            depends_on = insn.depends_on
 
-        new_deps = insn_deps - insn_ids
+        new_deps = depends_on - insn_ids
 
-        for dep_id in insn_deps & insn_ids:
-            new_deps = new_deps | id_to_insn[dep_id].insn_deps
+        for dep_id in depends_on & insn_ids:
+            new_deps = new_deps | id_to_insn[dep_id].depends_on
 
-        new_insns.append(insn.copy(insn_deps=frozenset(new_deps)))
+        new_insns.append(insn.copy(depends_on=frozenset(new_deps)))
 
     return kernel.copy(
             instructions=new_insns)

@@ -320,7 +320,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         insn = id_to_insn[usage_insn_id]
 
         def_id = set()
-        for dep_id in insn.insn_deps:
+        for dep_id in insn.depends_on:
             dep_insn = id_to_insn[dep_id]
             if lhs_name in dep_insn.write_dependency_names():
                 if lhs_name in dep_insn.read_dependency_names():
