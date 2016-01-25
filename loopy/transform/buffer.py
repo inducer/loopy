@@ -75,7 +75,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
                 expn_state.kernel,
                 expn_state.instruction,
                 expn_state.stack):
-            result = self.map_array_access(expr.index, expn_state)
+            result = self.map_array_access(expr.index_tuple, expn_state)
 
         if result is None:
             return super(ArrayAccessReplacer, self).map_subscript(expr, expn_state)
