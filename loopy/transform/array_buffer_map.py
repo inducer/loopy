@@ -373,6 +373,11 @@ class ArrayToBufferMap(object):
                 usage_domain, self.storage_axis_names,
                 self.prime_sweep_inames)
 
+        if stor2sweep is None:
+            # happens if there are no indices
+            # -> yes, in footprint
+            return True
+
         if isinstance(stor2sweep, isl.BasicMap):
             stor2sweep = isl.Map.from_basic_map(stor2sweep)
 
