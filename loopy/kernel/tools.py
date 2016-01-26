@@ -773,9 +773,12 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             desired_length = kernel.get_constant_iname_length(iname)
         except isl.Error:
             # Likely unbounded, automatic assignment is not
-            # going to happen for this iname
-            return assign_automatic_axes(kernel,
-                    axis=recursion_axis, local_size=local_size)
+            # going to happen for this iname.
+            new_iname_to_tag = kernel.iname_to_tag.copy()
+            new_iname_to_tag[iname] = None
+            return assign_automatic_axes(
+                    kernel.copy(iname_to_tag=new_iname_to_tag),
+                    axis=recursion_axis)
 
         if axis is None:
             # {{{ find a suitable axis
