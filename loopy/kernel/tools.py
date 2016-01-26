@@ -28,6 +28,7 @@ import six
 from six.moves import intern
 
 import numpy as np
+import islpy as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError
 
@@ -768,7 +769,13 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
         If *axis* is None, find a suitable axis automatically.
         """
-        desired_length = kernel.get_constant_iname_length(iname)
+        try:
+            desired_length = kernel.get_constant_iname_length(iname)
+        except isl.Error:
+            # Likely unbounded, automatic assignment is not
+            # going to happen for this iname
+            return assign_automatic_axes(kernel,
+                    axis=recursion_axis, local_size=local_size)
 
         if axis is None:
             # {{{ find a suitable axis
@@ -870,10 +877,14 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             # "invalid" pass: There are still unassigned axis after the
             #  numbered "valid" passes--assign the remainder by length.
 
+            def get_iname_length(iname):
+                try:
+                    return kernel.get_constant_iname_length(iname)
+                except isl.Error:
+                    return -1
             # assign longest auto axis inames first
             auto_axis_inames.sort(
-                            key=lambda iname: (
-                                kernel.get_constant_iname_length(iname), iname),
+                            key=get_iname_length,
                             reverse=True)
 
             if auto_axis_inames:
