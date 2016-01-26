@@ -379,7 +379,12 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     from loopy.kernel.data import parse_tag
     default_tag = parse_tag(default_tag)
 
-    subst = kernel.substitutions[subst_name]
+    try:
+        subst = kernel.substitutions[subst_name]
+    except KeyError:
+        raise LoopyError("substitution rule '%s' not found"
+                % subst_name)
+
     c_subst_name = subst_name.replace(".", "_")
 
     # }}}
