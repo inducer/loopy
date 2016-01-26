@@ -368,6 +368,10 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
     # }}}
 
+    if not definition_insn_ids:
+        raise LoopyError("no assignments to variable '%s' found"
+                % lhs_name)
+
     from loopy.context_matching import parse_stack_match
     within = parse_stack_match(within)
 
