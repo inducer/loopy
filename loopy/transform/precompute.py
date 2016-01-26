@@ -226,7 +226,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
             if self.replaced_something:
                 insn = insn.copy(
-                        depends_on=insn.depends_on | frozenset([self.compute_insn_id]))
+                        depends_on=(
+                            insn.depends_on
+                            | frozenset([self.compute_insn_id])))
 
             new_insns.append(insn)
 
