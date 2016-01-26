@@ -1206,6 +1206,9 @@ class LoopKernel(RecordWithoutPickling):
 
         for field_name in self.comparison_fields:
             if field_name == "domains":
+                if len(self.domains) != len(other.domains):
+                    return False
+
                 for set_a, set_b in zip(self.domains, other.domains):
                     if not set_a.plain_is_equal(set_b):
                         return False
