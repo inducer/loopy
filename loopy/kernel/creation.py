@@ -418,6 +418,10 @@ def parse_domains(domains, defines):
             assert isinstance(dom, (isl.Set, isl.BasicSet))
             # assert dom.get_ctx() == ctx
 
+        if isinstance(dom, isl.Set):
+            from loopy.isl_helpers import convexify
+            dom = convexify(dom)
+
         for i_iname in range(dom.dim(dim_type.set)):
             iname = dom.get_dim_name(dim_type.set, i_iname)
 
