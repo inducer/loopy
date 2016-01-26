@@ -136,8 +136,11 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         array should be read) or an expression optionally involving the
         variable 'base' (which references the associated location in the array
         being buffered).
-    :arg store_expression: Either *None* or an expression involving
+    :arg store_expression: Either *None*, *False*, or an expression involving
         variables 'base' and 'buffer' (without array indices).
+        (*None* indicates that a default storage instruction should be used,
+        *False* indicates that no storing of the temporary should occur
+        at all.)
     """
 
     # {{{ process arguments
@@ -426,19 +429,25 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                     "buffer": buf_var_store,
                     }))(store_expression)
 
-    from loopy.kernel.data import Assignment
-    store_instruction = Assignment(
-                id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
-                depends_on=frozenset(aar.modified_insn_ids),
-                assignee=store_target,
-                expression=store_expression,
-                forced_iname_deps=frozenset(within_inames))
+    if store_expression is not False:
+        from loopy.kernel.data import Assignment
+        store_instruction = Assignment(
+                    id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
+                    depends_on=frozenset(aar.modified_insn_ids),
+                    assignee=store_target,
+                    expression=store_expression,
+                    forced_iname_deps=frozenset(within_inames))
+    else:
+        did_write = False
 
     # }}}
 
     new_insns.append(init_instruction)
     if did_write:
         new_insns.append(store_instruction)
+    else:
+        for iname in store_inames:
+            del new_iname_to_tag[iname]
 
     kernel = kernel.copy(
             domains=new_kernel_domains,
