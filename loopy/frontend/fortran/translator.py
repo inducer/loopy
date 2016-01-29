@@ -301,6 +301,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
     TYPE_MAP = {
             ("real", "4"): np.float32,
             ("real", "8"): np.float64,
+            ("doubleprecision", ""): np.float64,
 
             ("complex", "8"): np.complex64,
             ("complex", "16"): np.complex128,
@@ -339,6 +340,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
     map_Integer = map_type_decl
     map_Real = map_type_decl
     map_Complex = map_type_decl
+    map_DoublePrecision = map_type_decl
 
     def map_Dimension(self, node):
         scope = self.scope_stack[-1]
