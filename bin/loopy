@@ -105,6 +105,7 @@ def main():
         _, ext = splitext(args.infile)
 
         lang = {
+                ".py": "loopy",
                 ".loopy": "loopy",
                 ".floopy": "fortran",
                 ".f90": "fortran",
