@@ -8,4 +8,4 @@ knl = lp.make_kernel(
         "out[i] = 2*a[i]")
 
 knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
-lp_knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+lp_knl = lp.split_iname(knl, "i", 8, outer_tag="g.0", inner_tag="l.0")
