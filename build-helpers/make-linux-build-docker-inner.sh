@@ -11,14 +11,12 @@ useradd -d /home/user -m -s /bin/bash user
 yum install -y centos-release-SCL
 yum install -y git python27 python27-python-devel tar gcc gcc-c++ mercurial numpy libffi-devel
 
-PYTHON_EXE=python27
-
 VENV_VERSION="virtualenv-1.9.1"
 rm -Rf "$VENV_VERSION"
 curl -k https://pypi.python.org/packages/source/v/virtualenv/$VENV_VERSION.tar.gz | tar xfz -
 
 VIRTUALENV=virtualenv
-scl enable python27 "$VENV_VERSION/virtualenv.py -p $PYTHON_EXE --system-site-packages --no-setuptools .env"
+scl enable python27 "$VENV_VERSION/virtualenv.py --system-site-packages --no-setuptools .env"
 
 source .env/bin/activate
 
