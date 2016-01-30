@@ -22,7 +22,15 @@ source .env/bin/activate
 curl -k https://ssl.tiker.net/software/ez_setup.py | python -
 curl -k https://gitlab.tiker.net/inducer/pip/raw/7.0.3/contrib/get-pip.py | python -
 
-pip install pyinstaller==3.0 packaging
+pip install packaging
+
+PYTHON_VER=$($PYTHON_EXE -c 'import sys; print(".".join(str(s) for s in sys.version_info[:2]))')
+if test "$PYTHON_VER" = "2.6"; then
+  pip install pyinstaller==2.1
+else
+  pip install pyinstaller
+fi
+
 git clone --recursive git://github.com/inducer/loopy
 cd loopy
 
