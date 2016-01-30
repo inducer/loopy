@@ -64,7 +64,7 @@ def main():
             help="Defaults to stdout ('-').", nargs='?')
     parser.add_argument("--lang", metavar="LANGUAGE", help="loopy|fortran")
     parser.add_argument("--target", choices=(
-        "opencl", "ispc", "ispc-occa", "c", "cuda"),
+        "opencl", "ispc", "ispc-occa", "c", "c-fortran", "cuda"),
         default="opencl")
     parser.add_argument("--name")
     parser.add_argument("--transform")
@@ -86,6 +86,9 @@ def main():
     elif args.target == "c":
         from loopy.target.c import CTarget
         target = CTarget()
+    elif args.target == "c-fortran":
+        from loopy.target.c import CTarget
+        target = CTarget(fortran_abi=True)
     elif args.target == "cuda":
         from loopy.target.cuda import CudaTarget
         target = CudaTarget()

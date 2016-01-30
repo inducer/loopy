@@ -42,12 +42,14 @@ from loopy.tools import is_integer
 # {{{ C code mapper
 
 class LoopyCCodeMapper(RecursiveMapper):
-    def __init__(self, codegen_state):
+    def __init__(self, codegen_state, fortran_abi=False):
         self.kernel = codegen_state.kernel
         self.codegen_state = codegen_state
 
         self.type_inf_mapper = TypeInferenceMapper(self.kernel)
         self.allow_complex = codegen_state.allow_complex
+
+        self.fortran_abi = fortran_abi
 
     # {{{ helpers
 
@@ -108,6 +110,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                 "entry to loopy")
 
     def map_variable(self, expr, enclosing_prec, type_context):
+        prefix = ""
+
         if expr.name in self.codegen_state.var_subst_map:
             if self.kernel.options.annotate_inames:
                 return " /* %s */ %s" % (
@@ -131,12 +135,16 @@ class LoopyCCodeMapper(RecursiveMapper):
                     raise RuntimeError("unsubscripted reference to array '%s'"
                             % expr.name)
 
+            from loopy.kernel.data import ValueArg
+            if isinstance(arg, ValueArg) and self.fortran_abi:
+                prefix = "*"
+
         result = self.kernel.mangle_symbol(expr.name)
         if result is not None:
             _, c_name = result
-            return c_name
+            return prefix + c_name
 
-        return expr.name
+        return prefix + expr.name
 
     def map_tagged_variable(self, expr, enclosing_prec, type_context):
         return expr.name
