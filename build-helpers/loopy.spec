@@ -12,7 +12,7 @@ from os.path import expanduser
 
 import packaging # pip install packaging to add
 
-a = Analysis(['../bin/loopy'],
+a = Analysis(['bin/loopy'],
              pathex=[expanduser('~/src/loopy')],
              hiddenimports=[
                 "appdirs",
