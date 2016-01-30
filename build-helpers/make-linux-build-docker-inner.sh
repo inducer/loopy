@@ -8,7 +8,7 @@ cd /tmp/build
 
 useradd -d /home/user -m -s /bin/bash user
 
-yum install centos-release-SCL
+yum install -y centos-release-SCL
 yum install -y git python27 python27-python-devel tar gcc gcc-c++ mercurial numpy libffi-devel
 
 PYTHON_EXE=python2.7
