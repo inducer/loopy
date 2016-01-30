@@ -18,7 +18,7 @@ rm -Rf "$VENV_VERSION"
 curl -k https://pypi.python.org/packages/source/v/virtualenv/$VENV_VERSION.tar.gz | tar xfz -
 
 VIRTUALENV=virtualenv
-scl enable python27 $VENV_VERSION/virtualenv.py -p $PYTHON_EXE --system-site-packages --no-setuptools .env
+scl enable python27 "$VENV_VERSION/virtualenv.py -p $PYTHON_EXE --system-site-packages --no-setuptools .env"
 
 source .env/bin/activate
 
