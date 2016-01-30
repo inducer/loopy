@@ -18,12 +18,12 @@ rm -Rf "$VENV_VERSION"
 curl -k https://pypi.python.org/packages/source/v/virtualenv/$VENV_VERSION.tar.gz | tar xfz -
 
 VIRTUALENV=virtualenv
-$VENV_VERSION/virtualenv.py -p $PYTHON_EXE --system-site-packages --no-setuptools .env
+scl enable python27 $VENV_VERSION/virtualenv.py -p $PYTHON_EXE --system-site-packages --no-setuptools .env
 
 source .env/bin/activate
 
-curl -k https://ssl.tiker.net/software/ez_setup.py | $PYTHON_EXE -
-curl -k https://gitlab.tiker.net/inducer/pip/raw/7.0.3/contrib/get-pip.py | $PYTHON_EXE -
+curl -k https://ssl.tiker.net/software/ez_setup.py | python -
+curl -k https://gitlab.tiker.net/inducer/pip/raw/7.0.3/contrib/get-pip.py | python -
 
 pip install packaging
 
