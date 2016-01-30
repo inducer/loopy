@@ -17,11 +17,7 @@ curl -k https://gitlab.tiker.net/inducer/pip/raw/7.0.3/contrib/get-pip.py | pyth
 pip install packaging
 
 PYTHON_VER=$(python -c 'import sys; print(".".join(str(s) for s in sys.version_info[:2]))')
-if test "$PYTHON_VER" = "2.6"; then
-  pip install pyinstaller==2.1
-else
-  pip install pyinstaller
-fi
+pip install git+https://github.com/pyinstaller/pyinstaller.git@413c37bec126c0bd26084813593f65128966b4b7
 
 git clone --recursive git://github.com/inducer/loopy
 cd loopy
