@@ -5,7 +5,7 @@ Installation
 
 This command should install :mod:`loopy`::
 
-    pip install https://github.com/inducer/loopy/tarball/master
+    pip install loopy
 
 You may need to run this with :command:`sudo`.
 If you don't already have `pip <https://pypi.python.org/pypi/pip>`_,
@@ -27,14 +27,17 @@ You may also clone its git repository::
 User-visible Changes
 ====================
 
-Version 2014.1
+Version 2016.2
 --------------
 .. note::
 
     This version is currently under development. You can get snapshots from
-    PyOpenCL's `git repository <https://github.com/inducer/loopy>`_
+    loopy's `git repository <https://github.com/inducer/loopy>`_
 
-* Initial release. 
+Version 2016.1
+--------------
+
+* Initial release.
 
 .. _license:
 
