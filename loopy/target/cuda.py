@@ -169,6 +169,8 @@ class CudaTarget(CTarget):
         """
         self.extern_c = extern_c
 
+        super(CudaTarget, self).__init__()
+
     # {{{ library
 
     def function_manglers(self):
