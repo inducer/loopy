@@ -22,7 +22,7 @@ source .env/bin/activate
 curl -k https://ssl.tiker.net/software/ez_setup.py | python -
 curl -k https://gitlab.tiker.net/inducer/pip/raw/7.0.3/contrib/get-pip.py | python -
 
-pip install pyinstaller packaging
+pip install pyinstaller==3.0 packaging
 git clone --recursive git://github.com/inducer/loopy
 cd loopy
 
