@@ -226,15 +226,24 @@ def main():
 
     code = "\n\n".join(codes)
 
+    # {{{ edit code if requested
+
     import os
     edit_kernel_env = os.environ.get("LOOPY_EDIT_KERNEL")
-    if (args.edit_code
-            or (
-                edit_kernel_env is not None
-                and
-                any(edit_kernel_env.lower() in k.name.lower() for k in kernels))):
+    need_edit = args.edit_code
+    if not need_edit and edit_kernel_env is not None:
+        # Do not replace with "any()"--Py2.6/2.7 bug doesn't like
+        # comprehensions in functions with exec().
+
+        for k in kernels:
+            if edit_kernel_env.lower() in k.name.lower():
+                need_edit = True
+
+    if need_edit:
         from pytools import invoke_editor
         code = invoke_editor(code, filename="edit.cl")
+
+    # }}}
 
     if outfile == "-":
         sys.stdout.write(code)
