@@ -10,9 +10,16 @@ debug = False
 
 from os.path import expanduser
 
+import packaging # pip install packaging to add
+
 a = Analysis(['../bin/loopy'],
              pathex=[expanduser('~/src/loopy')],
-             hiddenimports=["appdirs"],
+             hiddenimports=[
+                "appdirs",
+                "packaging.markers",
+                "packaging.specifiers",
+                "packaging.version",
+                ],
              hookspath=None,
              runtime_hooks=None,
              excludes=["hedge", "meshpy", "pyopencl", "PIL"]
