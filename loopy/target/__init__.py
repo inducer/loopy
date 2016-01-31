@@ -30,8 +30,8 @@ class TargetBase(object):
 
     # {{{ persistent hashing
 
-    hash_fields = []
-    comparison_fields = []
+    hash_fields = ()
+    comparison_fields = ()
 
     def update_persistent_hash(self, key_hash, key_builder):
         for field_name in self.hash_fields:

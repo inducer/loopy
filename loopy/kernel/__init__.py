@@ -1155,7 +1155,7 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ persistent hash key generation / comparison
 
-    hash_fields = [
+    hash_fields = (
             "domains",
             "instructions",
             "args",
@@ -1173,9 +1173,9 @@ class LoopKernel(RecordWithoutPickling):
             "options",
             "state",
             "target",
-            ]
+            )
 
-    comparison_fields = hash_fields + [
+    comparison_fields = hash_fields + (
             # Contains pymbolic expressions, hence a (small) headache to hash.
             # Likely not needed for hash uniqueness => headache avoided.
             "applied_iname_rewrites",
@@ -1189,7 +1189,7 @@ class LoopKernel(RecordWithoutPickling):
             "preamble_generators",
             "function_manglers",
             "symbol_manglers",
-            ]
+            )
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with

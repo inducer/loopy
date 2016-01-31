@@ -8,3 +8,6 @@ hg+https://bitbucket.org/inducer/f2py
 
 # Optional, needed for using the C preprocessor on Fortran
 ply>=3.6
+
+# This is needed for the pyinstaller executable to be usable.
+packaging

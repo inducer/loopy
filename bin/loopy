@@ -64,7 +64,7 @@ def main():
             help="Defaults to stdout ('-').", nargs='?')
     parser.add_argument("--lang", metavar="LANGUAGE", help="loopy|fortran")
     parser.add_argument("--target", choices=(
-        "opencl", "ispc", "ispc-occa", "c", "cuda"),
+        "opencl", "ispc", "ispc-occa", "c", "c-fortran", "cuda"),
         default="opencl")
     parser.add_argument("--name")
     parser.add_argument("--transform")
@@ -86,6 +86,9 @@ def main():
     elif args.target == "c":
         from loopy.target.c import CTarget
         target = CTarget()
+    elif args.target == "c-fortran":
+        from loopy.target.c import CTarget
+        target = CTarget(fortran_abi=True)
     elif args.target == "cuda":
         from loopy.target.cuda import CudaTarget
         target = CudaTarget()
@@ -102,10 +105,13 @@ def main():
         _, ext = splitext(args.infile)
 
         lang = {
+                ".py": "loopy",
                 ".loopy": "loopy",
                 ".floopy": "fortran",
                 ".f90": "fortran",
                 ".fpp": "fortran",
+                ".f": "fortran",
+                ".f77": "fortran",
                 }.get(ext)
         with open(args.infile, "r") as infile_fd:
             infile_content = infile_fd.read()
@@ -221,15 +227,24 @@ def main():
 
     code = "\n\n".join(codes)
 
+    # {{{ edit code if requested
+
     import os
     edit_kernel_env = os.environ.get("LOOPY_EDIT_KERNEL")
-    if (args.edit_code
-            or (
-                edit_kernel_env is not None
-                and
-                any(edit_kernel_env.lower() in k.name.lower() for k in kernels))):
+    need_edit = args.edit_code
+    if not need_edit and edit_kernel_env is not None:
+        # Do not replace with "any()"--Py2.6/2.7 bug doesn't like
+        # comprehensions in functions with exec().
+
+        for k in kernels:
+            if edit_kernel_env.lower() in k.name.lower():
+                need_edit = True
+
+    if need_edit:
         from pytools import invoke_editor
         code = invoke_editor(code, filename="edit.cl")
+
+    # }}}
 
     if outfile == "-":
         sys.stdout.write(code)

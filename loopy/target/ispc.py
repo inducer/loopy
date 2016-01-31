@@ -62,6 +62,8 @@ class ISPCTarget(CTarget):
         """
         self.occa_mode = occa_mode
 
+        super(ISPCTarget, self).__init__()
+
     # {{{ top-level codegen
 
     def generate_code(self, kernel, codegen_state, impl_arg_info):

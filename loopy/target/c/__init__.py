@@ -56,6 +56,13 @@ def _preamble_generator(kernel, seen_dtypes, seen_functions):
 
 
 class CTarget(TargetBase):
+    hash_fields = TargetBase.hash_fields + ("fortran_abi",)
+    comparison_fields = TargetBase.comparison_fields + ("fortran_abi",)
+
+    def __init__(self, fortran_abi=False):
+        self.fortran_abi = fortran_abi
+        super(CTarget, self).__init__()
+
     # {{{ types
 
     @memoize_method
@@ -101,12 +108,16 @@ class CTarget(TargetBase):
         body, implemented_domains = kernel.target.generate_body(
                 kernel, codegen_state)
 
+        name = kernel.name
+        if self.fortran_abi:
+            name += "_"
+
         mod = Module([
             FunctionBody(
                 kernel.target.wrap_function_declaration(
                     kernel,
                     FunctionDeclaration(
-                        Value("void", kernel.name),
+                        Value("void", name),
                         [iai.cgen_declarator for iai in impl_arg_info])),
                 body)
             ])
@@ -234,7 +245,7 @@ class CTarget(TargetBase):
 
     def get_expression_to_code_mapper(self, codegen_state):
         from loopy.target.c.codegen.expression import LoopyCCodeMapper
-        return LoopyCCodeMapper(codegen_state)
+        return LoopyCCodeMapper(codegen_state, fortran_abi=self.fortran_abi)
 
     def wrap_temporary_decl(self, decl, is_local):
         return decl
@@ -247,6 +258,11 @@ class CTarget(TargetBase):
         if not is_written:
             from cgen import Const
             result = Const(result)
+
+        if self.fortran_abi:
+            from cgen import Pointer
+            result = Pointer(result)
+
         return result
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
