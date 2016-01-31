@@ -34,6 +34,15 @@ Version 2016.2
     This version is currently under development. You can get snapshots from
     loopy's `git repository <https://github.com/inducer/loopy>`_
 
+Version 2016.1.1
+----------------
+
+* Add :func:`loopy.chunk_iname`.
+* Add ``unused:l``, ``unused:g``, and ``like:INAME`` iname tag notation
+* Release automatically built, self-contained Linux binary
+* Many fixes and improvements
+* Docs improvements
+
 Version 2016.1
 --------------
 
