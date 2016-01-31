@@ -378,14 +378,16 @@ def test_gmem_access_counter_mixed():
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
             [
                 """
-            c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+            c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]+x[i,k]
             e[i, k] = g[i,k]*(2+h[i,k])
             """
             ],
             name="mixed", assumptions="n,m,l >= 1")
     knl = lp.add_and_infer_dtypes(knl, dict(
-                a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    knl = lp.split_iname(knl, "j", 16)
+                a=np.float32, b=np.float32, g=np.float64, h=np.float64,
+                x=np.float32))
+    threads = 16
+    knl = lp.split_iname(knl, "j", threads)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
     poly = get_gmem_access_poly(knl)  # noqa
@@ -396,10 +398,14 @@ def test_gmem_access_counter_mixed():
     f64uniform = poly[
                     (np.dtype(np.float64), 'uniform', 'load')
                     ].eval_with_dict(params)
+    f32uniform = poly[
+                    (np.dtype(np.float32), 'uniform', 'load')
+                    ].eval_with_dict(params)
     f32nonconsec = poly[
                     (np.dtype(np.float32), 'nonconsecutive', 'load')
                     ].eval_with_dict(params)
     assert f64uniform == 2*n*m
+    assert f32uniform == n*m*l/threads
     assert f32nonconsec == 3*n*m*l
 
     f64uniform = poly[
