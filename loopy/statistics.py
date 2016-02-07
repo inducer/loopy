@@ -28,6 +28,7 @@ import loopy as lp
 import warnings
 from islpy import dim_type
 import islpy as isl
+from pytools import memoize_method
 from pymbolic.mapper import CombineMapper
 from functools import reduce
 from loopy.kernel.data import Assignment
@@ -552,6 +553,18 @@ def sum_ops_to_dtypes(op_poly_dict):
     return result
 
 
+@memoize_method
+def get_insn_count(knl, insn_inames, uniform=False):
+    if uniform:
+        from loopy.kernel.data import LocalIndexTag
+        insn_inames = [iname for iname in insn_inames if not
+                       isinstance(knl.iname_to_tag.get(iname), LocalIndexTag)] 
+    inames_domain = knl.get_inames_domain(insn_inames)
+    domain = (inames_domain.project_out_except(
+                            insn_inames, [dim_type.set]))
+    return count(knl, domain)
+
+
 # {{{ get_gmem_access_poly
 def get_gmem_access_poly(knl):  # for now just counting subscripts
 
@@ -616,35 +629,24 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
             (key + ("store",), val)
             for key, val in six.iteritems(subs_assignee.dict)))
 
-        # get count including local index tags
         insn_inames = knl.insn_inames(insn)
-        inames_domain = knl.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
-        count_all = count(knl, domain)
-
-        # get count excluding local index tags
-        from loopy.kernel.data import LocalIndexTag
-        insn_inames_nonlocal = [iname for iname in insn_inames if not
-                                isinstance(knl.iname_to_tag.get(iname), LocalIndexTag)]
-        inames_domain_nonlocal = knl.get_inames_domain(insn_inames_nonlocal)
-        domain_nonlocal = (inames_domain_nonlocal.project_out_except(
-                                insn_inames_nonlocal, [dim_type.set]))
-        count_nonlocal = count(knl, domain_nonlocal)
 
         # use count excluding local index tags for uniform accesses
         for key in subs_expr.dict:
             poly = ToCountMap({key: subs_expr.dict[key]})
             if key[1] == "uniform":
-                subs_poly = subs_poly + poly*count_nonlocal
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames,
+                                                            uniform=True)
             else:
-                subs_poly = subs_poly + poly*count_all
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
         for key in subs_assignee.dict:
             poly = ToCountMap({key: subs_assignee.dict[key]})
             if key[1] == "uniform":
-                subs_poly = subs_poly + poly*count_nonlocal
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames,
+                                                            uniform=True)
             else:
-                subs_poly = subs_poly + poly*count_all
-        #subs_poly = subs_poly + (subs_expr + subs_assignee)*count(knl, domain)
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+
     return subs_poly.dict
 
 
