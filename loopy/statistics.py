@@ -28,6 +28,7 @@ import loopy as lp
 import warnings
 from islpy import dim_type
 import islpy as isl
+from pytools import memoize_in
 from pymbolic.mapper import CombineMapper
 from functools import reduce
 from loopy.kernel.data import Assignment
@@ -600,26 +601,57 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
     """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
+
+    class CacheHolder(object):
+        pass
+
+    cache_holder = CacheHolder()
+
+    @memoize_in(cache_holder)
+    def get_insn_count(knl, insn_inames, uniform=False):
+        if uniform:
+            from loopy.kernel.data import LocalIndexTag
+            insn_inames = [iname for iname in insn_inames if not
+                           isinstance(knl.iname_to_tag.get(iname), LocalIndexTag)] 
+        inames_domain = knl.get_inames_domain(insn_inames)
+        domain = (inames_domain.project_out_except(
+                                insn_inames, [dim_type.set]))
+        return count(knl, domain)
+
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
     subs_poly = ToCountMap()
     subscript_counter = GlobalSubscriptCounter(knl)
     for insn in knl.instructions:
-        insn_inames = knl.insn_inames(insn)
-        inames_domain = knl.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+        # count subscripts, distinguishing loads and stores
         subs_expr = subscript_counter(insn.expression)
         subs_expr = ToCountMap(dict(
             (key + ("load",), val)
             for key, val in six.iteritems(subs_expr.dict)))
-
         subs_assignee = subscript_counter(insn.assignee)
         subs_assignee = ToCountMap(dict(
             (key + ("store",), val)
             for key, val in six.iteritems(subs_assignee.dict)))
 
-        subs_poly = subs_poly + (subs_expr + subs_assignee)*count(knl, domain)
+        insn_inames = knl.insn_inames(insn)
+
+        # use count excluding local index tags for uniform accesses
+        for key in subs_expr.dict:
+            poly = ToCountMap({key: subs_expr.dict[key]})
+            if key[1] == "uniform":
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames,
+                                                            uniform=True)
+            else:
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+        for key in subs_assignee.dict:
+            poly = ToCountMap({key: subs_assignee.dict[key]})
+            if key[1] == "uniform":
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames,
+                                                            uniform=True)
+            else:
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+
     return subs_poly.dict
 
 
