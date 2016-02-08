@@ -1200,6 +1200,13 @@ class LoopKernel(RecordWithoutPickling):
         for field_name in self.hash_fields:
             key_builder.rec(key_hash, getattr(self, field_name))
 
+    def __hash__(self):
+        from loopy.tools import LoopyKeyBuilder
+        from pytools.persistent_dict import new_hash
+        key_hash = new_hash()
+        self.update_persistent_hash(key_hash, LoopyKeyBuilder())
+        return hash(key_hash.digest())
+
     def __eq__(self, other):
         if not isinstance(other, LoopKernel):
             return False
