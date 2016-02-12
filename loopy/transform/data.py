@@ -346,8 +346,11 @@ def set_array_dim_names(kernel, ary_names, dim_names):
 def remove_unused_arguments(knl):
     new_args = []
 
+    import loopy as lp
+    exp_knl = lp.expand_subst(knl)
+
     refd_vars = set(knl.all_params())
-    for insn in knl.instructions:
+    for insn in exp_knl.instructions:
         refd_vars.update(insn.dependency_names())
 
     for arg in knl.args:
