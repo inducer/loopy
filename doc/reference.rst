@@ -528,6 +528,8 @@ Arguments
 
 .. autofunction:: add_and_infer_dtypes
 
+.. autofunction:: rename_argument
+
 Batching
 ^^^^^^^^
 
