@@ -67,8 +67,8 @@ from loopy.transform.instruction import (
 from loopy.transform.data import (
         add_prefetch, change_arg_to_image, tag_data_axes,
         set_array_dim_names, remove_unused_arguments,
-        alias_temporaries, set_argument_order
-        )
+        alias_temporaries, set_argument_order,
+        rename_argument)
 
 from loopy.transform.subst import (extract_subst,
         assignment_to_subst, expand_subst, find_rules_matching,
@@ -136,6 +136,7 @@ __all__ = [
         "add_prefetch", "change_arg_to_image", "tag_data_axes",
         "set_array_dim_names", "remove_unused_arguments",
         "alias_temporaries", "set_argument_order",
+        "rename_argument",
 
         "find_instructions", "map_instructions",
         "set_instruction_priority", "add_dependency",
@@ -170,7 +171,8 @@ __all__ = [
         "generate_loop_schedules", "get_one_scheduled_kernel",
         "generate_code", "generate_body",
 
-        "get_op_poly", "sum_ops_to_dtypes", "get_gmem_access_poly", "get_DRAM_access_poly",
+        "get_op_poly", "sum_ops_to_dtypes", "get_gmem_access_poly",
+        "get_DRAM_access_poly",
         "get_barrier_poly", "stringify_stats_mapping", "sum_mem_access_to_bytes",
 
         "CompiledKernel",

@@ -461,4 +461,48 @@ def set_argument_order(kernel, arg_names):
 # }}}
 
 
+# {{{ rename argument
+
+def rename_argument(kernel, old_name, new_name, existing_ok=False):
+    """
+    .. versionadded:: 2016.2
+    """
+
+    var_name_gen = kernel.get_var_name_generator()
+
+    if old_name not in kernel.arg_dict:
+        raise LoopyError("old arg name '%s' does not exist" % old_name)
+
+    does_exist = var_name_gen.is_name_conflicting(new_name)
+
+    if does_exist and not existing_ok:
+        raise LoopyError("argument name '%s' conflicts with an existing identifier"
+                "--cannot rename" % new_name)
+
+    from pymbolic import var
+    subst_dict = {old_name: var(new_name)}
+
+    from loopy.symbolic import (
+            RuleAwareSubstitutionMapper,
+            SubstitutionRuleMappingContext)
+    from pymbolic.mapper.substitutor import make_subst_func
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, var_name_gen)
+    smap = RuleAwareSubstitutionMapper(rule_mapping_context,
+                    make_subst_func(subst_dict),
+                    within=lambda knl, insn, stack: True)
+
+    kernel = smap.map_kernel(kernel)
+
+    new_args = []
+    for arg in kernel.args:
+        if arg.name == old_name:
+            arg = arg.copy(name=new_name)
+
+        new_args.append(arg)
+
+    return kernel.copy(args=new_args)
+
+# }}}
+
 # vim: foldmethod=marker

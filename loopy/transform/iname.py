@@ -779,8 +779,11 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
 
     does_exist = var_name_gen.is_name_conflicting(new_iname)
 
+    if old_iname not in knl.all_inames():
+        raise LoopyError("old iname '%s' does not exist" % old_iname)
+
     if does_exist and not existing_ok:
-        raise ValueError("iname '%s' conflicts with an existing identifier"
+        raise LoopyError("iname '%s' conflicts with an existing identifier"
                 "--cannot rename" % new_iname)
 
     if does_exist:
@@ -824,11 +827,11 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
         from pymbolic.mapper.substitutor import make_subst_func
         rule_mapping_context = SubstitutionRuleMappingContext(
                 knl.substitutions, var_name_gen)
-        ijoin = RuleAwareSubstitutionMapper(rule_mapping_context,
+        smap = RuleAwareSubstitutionMapper(rule_mapping_context,
                         make_subst_func(subst_dict), within)
 
         knl = rule_mapping_context.finish_kernel(
-                ijoin.map_kernel(knl))
+                smap.map_kernel(knl))
 
         new_instructions = []
         for insn in knl.instructions:

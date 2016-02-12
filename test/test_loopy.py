@@ -2160,6 +2160,21 @@ def test_sci_notation_literal(ctx_factory):
     assert (np.abs(out.get() - 1e-12) < 1e-20).all()
 
 
+def test_rename_argument(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    kernel = lp.make_kernel(
+         '''{ [i]: 0<=i<n }''',
+         '''out[i] = a + 2''')
+
+    kernel = lp.rename_argument(kernel, "a", "b")
+
+    evt, (out,) = kernel(queue, b=np.float32(12), n=20)
+
+    assert (np.abs(out.get() - 14) < 1e-8).all()
+
+
 def test_to_batched(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
