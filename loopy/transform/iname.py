@@ -987,10 +987,15 @@ def remove_unused_inames(knl, inames=None):
 
     # {{{ check which inames are unused
 
+    import loopy as lp
+    exp_knl = lp.expand_subst(knl)
+
     inames = set(inames)
     used_inames = set()
-    for insn in knl.instructions:
-        used_inames.update(knl.insn_inames(insn.id))
+    for insn in exp_knl.instructions:
+        used_inames.update(
+                exp_knl.insn_inames(insn.id)
+                | insn.reduction_inames())
 
     unused_inames = inames - used_inames
 
