@@ -43,7 +43,7 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
             raise ValueError("unexpected index_type")
 
     def map_group_hw_index(self, expr, enclosing_prec, type_context):
-        return "((%s) taskIndex%d)" % (self._get_index_ctype(), expr.axis)
+        return "((uniform %s) taskIndex%d)" % (self._get_index_ctype(), expr.axis)
 
     def map_local_hw_index(self, expr, enclosing_prec, type_context):
         if expr.axis == 0:
@@ -215,6 +215,24 @@ class ISPCTarget(CTarget):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(result)
 
+    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
+            static_lbound, static_ubound, inner):
+        ecm = codegen_state.expression_to_code_mapper
+
+        from loopy.symbolic import aff_to_expr
+
+        from loopy.codegen import wrap_in
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from cgen import For
+
+        return wrap_in(For,
+                "uniform %s %s = %s"
+                % (self.dtype_to_typename(iname_dtype),
+                    iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                "%s <= %s" % (
+                    iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
+                "++%s" % iname,
+                inner)
     # }}}
 
 # TODO: Generate launch code
