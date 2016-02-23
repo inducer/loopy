@@ -36,6 +36,14 @@ def test_aff_to_expr():
     print(aff_to_expr(x))
 
 
+def test_aff_to_expr_2():
+    from loopy.symbolic import aff_to_expr
+    x = isl.Aff("[n] -> { [i0] -> [(-i0 + 2*floor((i0)/2))] }")
+    from pymbolic import var
+    i0 = var("i0")
+    assert aff_to_expr(x) == (-1)*i0 + 2*(i0 // 2)
+
+
 if __name__ == "__main__":
     import sys
     if len(sys.argv) > 1:
