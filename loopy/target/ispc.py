@@ -121,9 +121,12 @@ class ISPCTarget(CTarget):
         from pymbolic.mapper.stringifier import PREC_COMPARISON, PREC_NONE
         ccm = self.get_expression_to_code_mapper(codegen_state)
 
-        wrapper_body.extend([
-                S("assert(programCount == %s)"
-                    % ccm(lsize[0], PREC_COMPARISON)),
+        if lsize:
+            wrapper_body.append(
+                    S("assert(programCount == %s)"
+                        % ccm(lsize[0], PREC_COMPARISON)))
+
+        wrapper_body.append(
                 S("launch[%s] %s(%s)"
                     % (
                         ", ".join(
@@ -132,7 +135,7 @@ class ISPCTarget(CTarget):
                         inner_name,
                         ", ".join(arg_names)
                         ))
-                ])
+                )
 
         wrapper_fbody = FunctionBody(
                 ISPCExport(
