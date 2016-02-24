@@ -31,12 +31,6 @@ import numpy as np
 
 from loopy.target.opencl import OpenCLTarget
 
-import pyopencl as cl
-import pyopencl.characterize as cl_char
-
-# This ensures the dtype registry is populated.
-import pyopencl.tools  # noqa
-
 import logging
 logger = logging.getLogger(__name__)
 
@@ -44,6 +38,9 @@ logger = logging.getLogger(__name__)
 # {{{ temp storage adjust for bank conflict
 
 def adjust_local_temp_var_storage(kernel, device):
+    import pyopencl as cl
+    import pyopencl.characterize as cl_char
+
     logger.debug("%s: adjust temp var storage" % kernel.name)
 
     new_temp_vars = {}
@@ -256,6 +253,9 @@ class PyOpenCLTarget(OpenCLTarget):
     """
 
     def __init__(self, device=None):
+        # This ensures the dtype registry is populated.
+        import pyopencl.tools  # noqa
+
         super(PyOpenCLTarget, self).__init__()
 
         self.device = device
