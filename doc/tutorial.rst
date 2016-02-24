@@ -1186,8 +1186,12 @@ across the remaining axis of the workgroup would emerge.
 
 TODO
 
-Obtaining Kernel Statistics
----------------------------
+.. }}}
+
+Obtaining Performance Statistics
+--------------------------------
+
+.. {{{
 
 Operations, array access, and barriers can all be counted, which may facilitate
 performance prediction and optimization of a :mod:`loopy` kernel.

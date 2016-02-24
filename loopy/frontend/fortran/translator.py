@@ -198,10 +198,11 @@ class Scope(object):
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
-    def __init__(self, filename, auto_dependencies):
+    def __init__(self, filename, auto_dependencies, target=None):
         FTreeWalkerBase.__init__(self)
 
         self.auto_dependencies = auto_dependencies
+        self.target = target
 
         self.scope_stack = []
 
@@ -679,6 +680,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     name=sub.subprogram_name,
                     default_order="F",
                     index_dtype=self.index_dtype,
+                    target=self.target,
                     )
 
             from loopy.loop import fuse_loop_domains

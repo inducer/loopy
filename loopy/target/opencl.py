@@ -189,6 +189,9 @@ class LoopyOpenCLCCodeMapper(LoopyCCodeMapper):
 # {{{ target
 
 class OpenCLTarget(CTarget):
+    """A target for the OpenCL C heterogeneous compute programming language.
+    """
+
     # {{{ library
 
     def function_manglers(self):

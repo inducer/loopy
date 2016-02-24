@@ -791,8 +791,16 @@ class _CLKernelInfo(Record):
 
 
 class CompiledKernel:
+    """An object connecting a kernel to a :class:`pyopencl.Context`
+    for execution.
+
+    .. automethod:: __init__
+    .. automethod:: __call__
+    """
+
     def __init__(self, context, kernel):
         """
+        :arg context: a :class:`pyopencl.Context`
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
             kernel has not yet been loop-scheduled, that is done, too, with no
@@ -908,10 +916,12 @@ class CompiledKernel:
 
     def __call__(self, queue, **kwargs):
         """
-        :arg allocator:
-        :arg wait_for:
-        :arg out_host:
-
+        :arg allocator: a callable passed a byte count and returning
+            a :class:`pyopencl.Buffer`. A :class:`pyopencl` allocator
+            maybe.
+        :arg wait_for: A list of :class:`pyopencl.Event` instances
+            for which to wait.
+        :arg out_host: :class:`bool`
             Decides whether output arguments (i.e. arguments
             written by the kernel) are to be returned as
             :mod:`numpy` arrays. *True* for yes, *False* for no.

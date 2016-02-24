@@ -56,6 +56,9 @@ def _preamble_generator(kernel, seen_dtypes, seen_functions):
 
 
 class CTarget(TargetBase):
+    """A target for plain "C", without any parallel extensions.
+    """
+
     hash_fields = TargetBase.hash_fields + ("fortran_abi",)
     comparison_fields = TargetBase.comparison_fields + ("fortran_abi",)
 

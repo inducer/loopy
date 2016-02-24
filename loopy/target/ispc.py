@@ -55,6 +55,11 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
 
 
 class ISPCTarget(CTarget):
+    """A code generation target for Intel's `ISPC <https://ispc.github.io/>`_
+    SPMD programming language, to target Intel's Knight's hardware and modern
+    Intel CPUs with wide vector units.
+    """
+
     def __init__(self, occa_mode=False):
         """
         :arg occa_mode: Whether to modify the generated call signature to

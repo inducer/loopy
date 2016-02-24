@@ -29,6 +29,10 @@ from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingCont
 from loopy.kernel.data import ValueArg, GlobalArg
 import islpy as isl
 
+__doc__ = """
+.. autofunction:: to_batched
+"""
+
 
 # {{{ to_batched
 

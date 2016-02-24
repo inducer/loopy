@@ -90,11 +90,16 @@ class LoopKernel(RecordWithoutPickling):
     .. attribute:: domains
 
         a list of :class:`islpy.BasicSet` instances
+        representing the :ref:`domain-tree`.
 
     .. attribute:: instructions
+
+        A list of :class:`InstructionBase` instances, e.g.
+        :class:`Assignment`. See :ref:`instructions`.
+
     .. attribute:: args
 
-        A list of :class:`loopy.kernel.data.KernelArgument`
+        A list of :class:`loopy.KernelArgument`
 
     .. attribute:: schedule
 
@@ -108,7 +113,7 @@ class LoopKernel(RecordWithoutPickling):
     .. attribute:: temporary_variables
 
         A :class:`dict` of mapping variable names to
-        :class:`loopy.kernel.data.TemporaryVariable`
+        :class:`loopy.TemporaryVariable`
         instances.
 
     .. attribute:: iname_to_tag
@@ -155,7 +160,7 @@ class LoopKernel(RecordWithoutPickling):
 
     .. attribute:: target
 
-        A subclass of :class:`loopy.target.TargetBase`.
+        A subclass of :class:`loopy.TargetBase`.
     """
 
     # {{{ constructor

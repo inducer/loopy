@@ -38,11 +38,13 @@ from loopy.library.function import (
 
 from loopy.kernel.data import (
         auto,
+        KernelArgument,
         ValueArg, GlobalArg, ConstantArg, ImageArg,
         InstructionBase, Assignment, ExpressionInstruction, CInstruction,
-        TemporaryVariable)
+        TemporaryVariable,
+        SubstitutionRule)
 
-from loopy.kernel import LoopKernel
+from loopy.kernel import LoopKernel, kernel_state
 from loopy.kernel.tools import (
         get_dot_dependency_graph,
         show_dependency_graph,
@@ -54,9 +56,10 @@ from loopy.library.reduction import register_reduction_parser
 # {{{ import transforms
 
 from loopy.transform.iname import (
-        assume, set_loop_priority,
+        set_loop_priority,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
         rename_iname, link_inames, remove_unused_inames,
+        split_reduction_inward, split_reduction_outward,
         affine_map_inames, find_unused_axis_tag)
 
 from loopy.transform.instruction import (
@@ -79,8 +82,7 @@ from loopy.transform.buffer import buffer_array
 from loopy.transform.fusion import fuse_kernels
 
 from loopy.transform.arithmetic import (
-        split_reduction_inward,
-        split_reduction_outward, fold_constants,
+        fold_constants,
         collect_common_factors_on_increment)
 
 from loopy.transform.padding import (
@@ -89,7 +91,7 @@ from loopy.transform.padding import (
 
 from loopy.transform.ilp import realize_ilp
 from loopy.transform.batch import to_batched
-from loopy.transform.parameter import fix_parameters
+from loopy.transform.parameter import assume, fix_parameters
 
 # }}}
 
@@ -107,15 +109,24 @@ from loopy.auto_test import auto_test_vs_ref
 from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
+from loopy.target import TargetBase
+from loopy.target.c import CTarget
+from loopy.target.cuda import CudaTarget
+from loopy.target.opencl import OpenCLTarget
+from loopy.target.pyopencl import PyOpenCLTarget
+from loopy.target.ispc import ISPCTarget
+
 __all__ = [
         "TaggedVariable", "Reduction", "LinearSubscript",
 
         "auto",
 
-        "LoopKernel",
+        "LoopKernel", "kernel_state",
 
+        "KernelArgument",
         "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
         "TemporaryVariable",
+        "SubstitutionRule",
 
         "InstructionBase", "Assignment", "ExpressionInstruction", "CInstruction",
 
@@ -127,10 +138,11 @@ __all__ = [
 
         # {{{ transforms
 
-        "assume", "set_loop_priority",
+        "set_loop_priority",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
         "rename_iname", "link_inames", "remove_unused_inames",
+        "split_reduction_inward", "split_reduction_outward",
         "affine_map_inames", "find_unused_axis_tag",
 
         "add_prefetch", "change_arg_to_image", "tag_data_axes",
@@ -148,7 +160,6 @@ __all__ = [
         "precompute", "buffer_array",
         "fuse_kernels",
 
-        "split_reduction_inward", "split_reduction_outward",
         "fold_constants", "collect_common_factors_on_increment",
 
         "split_array_dim", "split_arg_axis", "find_padding_multiple",
@@ -158,7 +169,7 @@ __all__ = [
 
         "to_batched",
 
-        "fix_parameters",
+        "assume", "fix_parameters",
 
         # }}}
 
@@ -185,6 +196,9 @@ __all__ = [
         "c_preprocess", "parse_transformed_fortran", "parse_fortran",
 
         "LoopyError", "LoopyWarning",
+
+        "TargetBase", "CTarget", "CudaTarget", "OpenCLTarget",
+        "PyOpenCLTarget", "ISPCTarget",
 
         # {{{ from this file
 

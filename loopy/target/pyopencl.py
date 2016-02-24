@@ -244,8 +244,17 @@ class _LegacyTypeRegistryStub(object):
         from pyopencl.compyte.dtypes import dtype_to_ctype
         return dtype_to_ctype(dtype)
 
+# }}}
+
+
+# {{{ target
 
 class PyOpenCLTarget(OpenCLTarget):
+    """A code generation target that takes special advantage of :mod:`pyopencl`
+    features such as run-time knowledge of the target device (to generate
+    warnings) and support for complex numbers.
+    """
+
     def __init__(self, device=None):
         super(PyOpenCLTarget, self).__init__()
 

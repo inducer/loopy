@@ -185,6 +185,8 @@ def parse_tag(tag):
 # {{{ arguments
 
 class KernelArgument(Record):
+    """Base class for all argument types"""
+
     def __init__(self, **kwargs):
         kwargs["name"] = intern(kwargs.pop("name"))
 
@@ -418,7 +420,9 @@ class SubstitutionRule(Record):
 # {{{ base class
 
 class InstructionBase(Record):
-    """
+    """A base class for all types of instruction that can occur in
+    a kernel.
+
     .. attribute:: id
 
         An (otherwise meaningless) identifier that is unique within
@@ -427,7 +431,7 @@ class InstructionBase(Record):
     .. attribute:: depends_on
 
         a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
-         that *must* be executed before this one. Note that
+        that *must* be executed before this one. Note that
         :func:`loopy.preprocess_kernel` (usually invoked automatically)
         augments this by adding dependencies on any writes to temporaries read
         by this instruction.
@@ -493,6 +497,14 @@ class InstructionBase(Record):
 
         A tuple of string identifiers that can be used to identify groups
         of instructions.
+
+    .. automethod:: __init__
+    .. automethod:: assignees_and_indices
+    .. automethod:: with_transformed_expressions
+    .. automethod:: write_dependency_names
+    .. automethod:: dependency_names
+    .. automethod:: assignee_var_names
+    .. automethod:: copy
     """
 
     fields = set("id depends_on depends_on_is_final "
@@ -568,10 +580,12 @@ class InstructionBase(Record):
                 predicates=predicates,
                 tags=tags)
 
+    # legacy
     @property
     def insn_deps(self):
         return self.depends_on
 
+    # legacy
     @property
     def insn_deps_is_final(self):
         return self.depends_on_is_final
@@ -740,6 +754,8 @@ class Assignment(InstructionBase):
 
         if not *None*, a type that will be assigned to the new temporary variable
         created from the assignee
+
+    .. automethod:: __init__
     """
 
     fields = InstructionBase.fields | \

@@ -63,7 +63,10 @@ Please check :ref:`installation` to get started.
     :maxdepth: 2
 
     tutorial
-    reference
+    ref_creation
+    ref_kernel
+    ref_transform
+    ref_other
     misc
 
 Indices and tables

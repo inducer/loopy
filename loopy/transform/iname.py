@@ -35,25 +35,38 @@ from loopy.symbolic import (
 from loopy.diagnostic import LoopyError
 
 
-# {{{ assume
+__doc__ = """
+.. currentmodule:: loopy
 
-def assume(kernel, assumptions):
-    if isinstance(assumptions, str):
-        assumptions_set_str = "[%s] -> { : %s}" \
-                % (",".join(s for s in kernel.outer_params()),
-                    assumptions)
-        assumptions = isl.BasicSet.read_from_str(kernel.domains[0].get_ctx(),
-                assumptions_set_str)
+.. autofunction:: split_iname
 
-    if not isinstance(assumptions, isl.BasicSet):
-        raise TypeError("'assumptions' must be a BasicSet or a string")
+.. autofunction:: chunk_iname
 
-    old_assumptions, new_assumptions = isl.align_two(kernel.assumptions, assumptions)
+.. autofunction:: join_inames
 
-    return kernel.copy(
-            assumptions=old_assumptions.params() & new_assumptions.params())
+.. autofunction:: tag_inames
 
-# }}}
+.. autofunction:: duplicate_inames
+
+.. undocumented .. autofunction:: link_inames
+
+.. autofunction:: rename_iname
+
+.. autofunction:: remove_unused_inames
+
+.. autofunction:: set_loop_priority
+
+.. autofunction:: split_reduction_inward
+
+.. autofunction:: split_reduction_outward
+
+.. autofunction:: affine_map_inames
+
+.. autofunction:: realize_ilp
+
+.. autofunction:: find_unused_axis_tag
+
+"""
 
 
 # {{{ set loop priority
@@ -1017,6 +1030,103 @@ def remove_unused_inames(knl, inames=None):
     # }}}
 
     return knl
+
+# }}}
+
+
+# {{{ split_reduction
+
+class _ReductionSplitter(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, within, inames, direction):
+        super(_ReductionSplitter, self).__init__(
+                rule_mapping_context)
+
+        self.within = within
+        self.inames = inames
+        self.direction = direction
+
+    def map_reduction(self, expr, expn_state):
+        if set(expr.inames) & set(expn_state.arg_context):
+            # FIXME
+            raise NotImplementedError()
+
+        if (self.inames <= set(expr.inames)
+                and self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)):
+            leftover_inames = set(expr.inames) - self.inames
+
+            from loopy.symbolic import Reduction
+            if self.direction == "in":
+                return Reduction(expr.operation, tuple(leftover_inames),
+                        Reduction(expr.operation, tuple(self.inames),
+                            self.rec(expr.expr, expn_state)))
+            elif self.direction == "out":
+                return Reduction(expr.operation, tuple(self.inames),
+                        Reduction(expr.operation, tuple(leftover_inames),
+                            self.rec(expr.expr, expn_state)))
+            else:
+                assert False
+        else:
+            return super(_ReductionSplitter, self).map_reduction(expr, expn_state)
+
+
+def _split_reduction(kernel, inames, direction, within=None):
+    if direction not in ["in", "out"]:
+        raise ValueError("invalid value for 'direction': %s" % direction)
+
+    if isinstance(inames, str):
+        inames = inames.split(",")
+    inames = set(inames)
+
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, kernel.get_var_name_generator())
+    rsplit = _ReductionSplitter(rule_mapping_context,
+            within, inames, direction)
+    return rule_mapping_context.finish_kernel(
+            rsplit.map_kernel(kernel))
+
+
+def split_reduction_inward(kernel, inames, within=None):
+    """Takes a reduction of the form::
+
+        sum([i,j,k], ...)
+
+    and splits it into two nested reductions::
+
+        sum([j,k], sum([i], ...))
+
+    In this case, *inames* would have been ``"i"`` indicating that
+    the iname ``i`` should be made the iname governing the inner reduction.
+
+    :arg inames: A list of inames, or a comma-separated string that can
+        be parsed into those
+    """
+
+    return _split_reduction(kernel, inames, "in", within)
+
+
+def split_reduction_outward(kernel, inames, within=None):
+    """Takes a reduction of the form::
+
+        sum([i,j,k], ...)
+
+    and splits it into two nested reductions::
+
+        sum([i], sum([j,k], ...))
+
+    In this case, *inames* would have been ``"i"`` indicating that
+    the iname ``i`` should be made the iname governing the outer reduction.
+
+    :arg inames: A list of inames, or a comma-separated string that can
+        be parsed into those
+    """
+
+    return _split_reduction(kernel, inames, "out", within)
 
 # }}}
 

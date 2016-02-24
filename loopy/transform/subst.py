@@ -289,7 +289,7 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
 def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         force_retain_argument=False):
     """Extract an assignment (to a temporary variable or an argument)
-    as a :ref:`substituiton-rule`. The temporary may be an array, in
+    as a :ref:`substitution-rule`. The temporary may be an array, in
     which case the array indices will become arguments to the substitution
     rule.
 

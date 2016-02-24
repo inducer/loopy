@@ -24,9 +24,26 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+__doc__ = """
+
+.. currentmodule:: loopy
+
+.. autoclass:: TargetBase
+.. autoclass:: CTarget
+.. autoclass:: CudaTarget
+.. autoclass:: OpenCLTarget
+.. autoclass:: PyOpenCLTarget
+.. autoclass:: ISPCTarget
+
+"""
+
 
 class TargetBase(object):
-    """Objects of this type must be picklable."""
+    """Base class for all targets, i.e. different types of code that
+    loopy can generate.
+
+    Objects of this type must be picklable.
+    """
 
     # {{{ persistent hashing
 
