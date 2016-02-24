@@ -458,34 +458,95 @@ class AccessFootprintGatherer(CombineMapper):
 
 # {{{ count
 
-def count(kernel, bset):
+def count(kernel, set):
     try:
-        return bset.card()
+        return set.card()
     except AttributeError:
         pass
 
-    if not bset.is_box():
-        from loopy.diagnostic import warn
-        warn(kernel, "count_overestimate",
-                "Barvinok wrappers are not installed. "
-                "Counting routines may overestimate the "
-                "number of integer points in your loop "
-                "domain.")
+    count = 0
 
-    result = None
+    set = set.make_disjoint()
 
-    for i in range(bset.dim(isl.dim_type.set)):
-        dmax = bset.dim_max(i)
-        dmin = bset.dim_min(i)
+    from loopy.isl_helpers import get_simple_strides
 
-        length = isl.PwQPolynomial.from_pw_aff(dmax - dmin + 1)
+    for bset in set.get_basic_sets():
+        bset_count = None
+        bset_rebuilt = bset.universe(bset.space)
 
-        if result is None:
-            result = length
-        else:
-            result = result * length
+        bset_strides = get_simple_strides(bset, key_by="index")
 
-    return result
+        for i in range(bset.dim(isl.dim_type.set)):
+            dmax = bset.dim_max(i)
+            dmin = bset.dim_min(i)
+
+            stride = bset_strides.get((dim_type.set, i))
+            if stride is None:
+                stride = 1
+
+            length = isl.PwQPolynomial.from_pw_aff(dmax - dmin + stride)
+            length = length.scale_down_val(stride)
+
+            if bset_count is None:
+                bset_count = length
+            else:
+                bset_count = bset_count * length
+
+            # {{{ rebuild check domain
+
+            zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(bset.space))
+            iname = isl.PwAff.from_aff(
+                    zero.set_coefficient_val(isl.dim_type.in_, i, 1))
+            dmin_matched = dmin.insert_dims(
+                    dim_type.in_, 0, bset.dim(isl.dim_type.set))
+            dmax_matched = dmax.insert_dims(
+                    dim_type.in_, 0, bset.dim(isl.dim_type.set))
+            for idx in range(bset.dim(isl.dim_type.set)):
+                if bset.has_dim_id(isl.dim_type.set, idx):
+                    dim_id = bset.get_dim_id(isl.dim_type.set, idx)
+                    dmin_matched = dmin_matched.set_dim_id(
+                            isl.dim_type.in_, idx, dim_id)
+                    dmax_matched = dmax_matched.set_dim_id(
+                            isl.dim_type.in_, idx, dim_id)
+
+            bset_rebuilt = (
+                    bset_rebuilt
+                    & iname.le_set(dmax_matched)
+                    & iname.ge_set(dmin_matched)
+                    & (iname-dmin_matched).mod_val(stride).eq_set(zero))
+
+            # }}}
+
+        if bset_count is not None:
+            count += bset_count
+
+        is_subset = bset <= bset_rebuilt
+        is_superset = bset >= bset_rebuilt
+
+        if not (is_subset and is_superset):
+            if is_subset:
+                from loopy.diagnostic import warn
+                warn(kernel, "count_overestimate",
+                        "Barvinok wrappers are not installed. "
+                        "Counting routines have overestimated the "
+                        "number of integer points in your loop "
+                        "domain.")
+            elif is_superset:
+                from loopy.diagnostic import warn
+                warn(kernel, "count_underestimate",
+                        "Barvinok wrappers are not installed. "
+                        "Counting routines have underestimated the "
+                        "number of integer points in your loop "
+                        "domain.")
+            else:
+                from loopy.diagnostic import warn
+                warn(kernel, "count_misestimate",
+                        "Barvinok wrappers are not installed. "
+                        "Counting routines have misestimated the "
+                        "number of integer points in your loop "
+                        "domain.")
+
+    return count
 
 # }}}
 

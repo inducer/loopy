@@ -619,6 +619,22 @@ def test_gather_access_footprint():
         print(key, count(knl, footprint))
 
 
+def test_gather_access_footprint_2():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            "c[2*i] = a[i]",
+            name="matmul", assumptions="n >= 1")
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+
+    from loopy.statistics import gather_access_footprints, count
+    fp = gather_access_footprints(knl)
+
+    params = {"n": 200}
+    for key, footprint in six.iteritems(fp):
+        assert count(knl, footprint).eval_with_dict(params) == 200
+        print(key, count(knl, footprint))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

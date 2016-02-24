@@ -512,4 +512,62 @@ def dim_max_with_elimination(obj, idx):
 # }}}
 
 
+def get_simple_strides(bset, key_by="name"):
+    """Return a dictionary from inames to strides in bset. Each stride is
+    returned as a :class:`islpy.Val`. If no stride can be determined, the
+    corresponding key will not be present in the returned dictionary.
+
+    This only recognizes simple strides involving single variables.
+
+    :arg key_by: "index" or "name"
+    """
+    result = {}
+
+    lspace = bset.get_local_space()
+    for idiv in range(lspace.dim(dim_type.div)):
+        div = lspace.get_div(idiv)
+
+        # check for sub-divs
+        supported = True
+        for dim_idx in range(div.dim(dim_type.div)):
+            coeff_val = div.get_coefficient_val(dim_type.div, dim_idx)
+            if not coeff_val.is_zero():
+                # sub-divs not supported
+                supported = False
+                break
+
+        if not supported:
+            continue
+
+        denom = div.get_denominator_val().to_python()
+
+        inames_and_coeffs = []
+        for dt in [dim_type.param, dim_type.in_]:
+            for dim_idx in range(div.dim(dt)):
+                coeff_val = div.get_coefficient_val(dt, dim_idx) * denom
+                if not coeff_val.is_zero():
+                    inames_and_coeffs.append((dt, dim_idx, coeff_val))
+
+        if len(inames_and_coeffs) != 1:
+            continue
+
+        (dt, dim_idx, coeff), = inames_and_coeffs
+
+        if coeff != 1:
+            # not supported
+            continue
+
+        if key_by == "name":
+            key = bset.get_dim_name(dt, dim_idx)
+        elif key_by == "index":
+            key_dt = dt if dt != dim_type.in_ else dim_type.set
+
+            key = (key_dt, dim_idx)
+        else:
+            raise ValueError("invalid value of 'key_by")
+
+        result[key] = denom
+
+    return result
+
 # vim: foldmethod=marker
