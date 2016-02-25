@@ -322,6 +322,11 @@ def _enumerate_cl_devices_for_ref_test():
     for pf in cl.get_platforms():
         for dev in pf.get_devices():
             if dev.type & cl.device_type.CPU:
+                if "Advanced Micro" in dev.platform.vendor:
+                    # Sorry, AMD, your CPU CL has gotten too crashy of late.
+                    # (Feb 2016)
+                    continue
+
                 cpu_devs.append(dev)
             else:
                 noncpu_devs.append(dev)
