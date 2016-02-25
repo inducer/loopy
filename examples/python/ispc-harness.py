@@ -2,70 +2,20 @@ import loopy as lp
 import numpy as np
 import numpy.linalg as la
 import ctypes
+import ctypes.util
 import os
 from time import time
-
-
-# {{{ temporary directory
-
-class TemporaryDirectory(object):
-    """Create and return a temporary directory.  This has the same
-    behavior as mkdtemp but can be used as a context manager.  For
-    example:
-
-        with TemporaryDirectory() as tmpdir:
-            ...
-
-    Upon exiting the context, the directory and everything contained
-    in it are removed.
-    """
-
-    # Yanked from
-    # https://hg.python.org/cpython/file/3.3/Lib/tempfile.py
-
-    # Handle mkdtemp raising an exception
-    name = None
-    _closed = False
-
-    def __init__(self, suffix="", prefix="tmp", dir=None):
-        from tempfile import mkdtemp
-        self.name = mkdtemp(suffix, prefix, dir)
-
-    def __repr__(self):
-        return "<{} {!r}>".format(self.__class__.__name__, self.name)
-
-    def __enter__(self):
-        return self.name
-
-    def cleanup(self, _warn=False):
-        import warnings
-        if self.name and not self._closed:
-            from shutil import rmtree
-            try:
-                rmtree(self.name)
-            except (TypeError, AttributeError) as ex:
-                if "None" not in '%s' % (ex,):
-                    raise
-                self._rmtree(self.name)
-            self._closed = True
-            if _warn and warnings.warn:
-                warnings.warn("Implicitly cleaning up {!r}".format(self))
-
-    def __exit__(self, exc, value, tb):
-        self.cleanup()
-
-    def __del__(self):
-        # Issue a ResourceWarning if implicit cleanup needed
-        self.cleanup(_warn=True)
-
-# }}}
+from tempfile import TemporaryDirectory
 
 
 # {{{ build_ispc_shared_lib
 
 def build_ispc_shared_lib(
         cwd, ispc_sources, cxx_sources,
-        ispc_options=[], cxx_options=[]):
+        ispc_options=[], cxx_options=[],
+        ispc_bin="ispc",
+        cxx_bin="g++",
+        quiet=True):
     from os.path import join
 
     ispc_source_names = []
@@ -84,38 +34,82 @@ def build_ispc_shared_lib(
 
     from subprocess import check_call
 
-    check_call(
-            ["ispc",
+    ispc_cmd = ([ispc_bin,
                 "--pic",
-                "--opt=force-aligned-memory",
-                "--target=avx2-i32x8",
                 "-o", "ispc.o"]
             + ispc_options
-            + list(ispc_source_names),
-            cwd=cwd)
+            + list(ispc_source_names))
+    if not quiet:
+        print(" ".join(ispc_cmd))
 
-    check_call(
-            [
-                "g++",
-                "-shared", "-fopenmp", "-Wl,--export-dynamic",
+    check_call(ispc_cmd, cwd=cwd)
+
+    cxx_cmd = ([
+                cxx_bin,
+                "-shared", "-Wl,--export-dynamic",
                 "-fPIC",
                 "-oshared.so",
                 "ispc.o",
                 ]
             + cxx_options
-            + list(cxx_source_names),
-            cwd=cwd)
+            + list(cxx_source_names))
+
+    check_call(cxx_cmd, cwd=cwd)
+
+    if not quiet:
+        print(" ".join(cxx_cmd))
 
 # }}}
 
 
-def cptr_from_numpy(obj):
+def address_from_numpy(obj):
     ary_intf = getattr(obj, "__array_interface__", None)
     if ary_intf is None:
         raise RuntimeError("no array interface")
 
     buf_base, is_read_only = ary_intf["data"]
-    return ctypes.c_void_p(buf_base + ary_intf.get("offset", 0))
+    return buf_base + ary_intf.get("offset", 0)
+
+
+def cptr_from_numpy(obj):
+    return ctypes.c_void_p(address_from_numpy(obj))
+
+
+# https://github.com/hgomersall/pyFFTW/blob/master/pyfftw/utils.pxi#L172
+def empty_aligned(shape, dtype, order='C', n=64):
+    '''empty_aligned(shape, dtype='float64', order='C', n=None)
+    Function that returns an empty numpy array that is n-byte aligned,
+    where ``n`` is determined by inspecting the CPU if it is not
+    provided.
+    The alignment is given by the final optional argument, ``n``. If
+    ``n`` is not provided then this function will inspect the CPU to
+    determine alignment. The rest of the arguments are as per
+    :func:`numpy.empty`.
+    '''
+    itemsize = np.dtype(dtype).itemsize
+
+    # Apparently there is an issue with numpy.prod wrapping around on 32-bits
+    # on Windows 64-bit. This shouldn't happen, but the following code
+    # alleviates the problem.
+    if not isinstance(shape, (int, np.integer)):
+        array_length = 1
+        for each_dimension in shape:
+            array_length *= each_dimension
+
+    else:
+        array_length = shape
+
+    base_ary = np.empty(array_length*itemsize+n, dtype=np.int8)
+
+    # We now need to know how to offset base_ary
+    # so it is correctly aligned
+    _array_aligned_offset = (n-address_from_numpy(base_ary)) % n
+
+    array = np.frombuffer(
+            base_ary[_array_aligned_offset:_array_aligned_offset-n].data,
+            dtype=dtype).reshape(shape, order=order)
+
+    return array
 
 
 def main():
@@ -124,8 +118,8 @@ def main():
 
     from loopy.target.ispc import ISPCTarget
     stream_knl = lp.make_kernel(
-            "{[i]: 0<=i<n}",
-            "z[i] = a*x[i] + y[i]",
+            "{[i,j]: 0<=i<n and 0<=j<4}",
+            "z[i] = a*x[i] + y[i] {inames=i:j}",
             target=ISPCTarget())
 
     stream_dtype = np.float64
@@ -138,9 +132,9 @@ def main():
         })
 
     stream_knl = lp.assume(stream_knl, "n>0")
-    stream_knl = lp.split_iname(stream_knl, "i", 8, inner_tag="l.0")
     stream_knl = lp.split_iname(stream_knl,
-            "i_outer", 2**22, outer_tag="g.0")
+            "i", 2**18, outer_tag="g.0", slabs=(0, 1))
+    stream_knl = lp.split_iname(stream_knl, "i_inner", 8, inner_tag="l.0")
     stream_knl = lp.preprocess_kernel(stream_knl)
     stream_knl = lp.get_one_scheduled_kernel(stream_knl)
     stream_knl = lp.set_argument_order(stream_knl, "n,a,x,y,z")
@@ -150,18 +144,26 @@ def main():
         build_ispc_shared_lib(
                 tmpdir,
                 [("stream.ispc", ispc_code)],
-                [("tasksys.cpp", tasksys_source)])
+                [("tasksys.cpp", tasksys_source)],
+                cxx_options=["-g", "-fopenmp", "-DISPC_USE_OMP"],
+                ispc_options=[
+                    #"-g", "--no-omit-frame-pointer",
+                    "--target=avx2-i32x8",
+                    "--opt=force-aligned-memory",
+                    ],
+                ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
+                quiet=False)
 
         print(ispc_code)
         knl_lib = ctypes.cdll.LoadLibrary(os.path.join(tmpdir, "shared.so"))
 
         n = 2**28
         a = 5
-        x = np.empty(n, dtype=stream_dtype)
-        y = np.empty(n, dtype=stream_dtype)
-        z = np.empty(n, dtype=stream_dtype)
+        x = empty_aligned(n, dtype=stream_dtype)
+        y = empty_aligned(n, dtype=stream_dtype)
+        z = empty_aligned(n, dtype=stream_dtype)
 
-        nruns = 30
+        nruns = 10
         start_time = time()
         for irun in range(nruns):
             knl_lib.loopy_kernel(
@@ -171,10 +173,9 @@ def main():
                     cptr_from_numpy(z))
         elapsed = time() - start_time
 
-        print(1e-9*3*x.nbytes*nruns/elapsed, "GB/s")
+        print(1e-9*3*x.nbytes*nruns/elapsed*4, "GB/s")
 
-        print(la.norm(z-a*x+y))
-
+        assert la.norm(z-a*x+y) < 1e-10
 
 
 if __name__ == "__main__":
