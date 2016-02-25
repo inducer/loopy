@@ -424,7 +424,8 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
             from cgen import Comment
             result.append(Comment(cmt))
 
-        from cgen import Initializer, POD, Const, Line
+        from loopy.codegen import POD
+        from cgen import Initializer, Const, Line
         from loopy.symbolic import aff_to_expr
 
         if (static_ubound - static_lbound).plain_is_zero():
