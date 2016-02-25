@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -25,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+from six.moves import range, zip
 from pytools import Record
 from warnings import warn
 
@@ -324,6 +322,10 @@ def _enumerate_cl_devices_for_ref_test():
             if dev.type & cl.device_type.CPU:
                 if "Advanced Micro" in dev.platform.vendor:
                     # Sorry, AMD, your CPU CL has gotten too crashy of late.
+                    # (Feb 2016)
+                    continue
+                if "Intel" in dev.platform.vendor:
+                    # Sorry, Intel, your CPU CL has gotten too crashy of late.
                     # (Feb 2016)
                     continue
 
