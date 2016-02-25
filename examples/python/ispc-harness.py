@@ -116,14 +116,16 @@ def main():
     with open("tasksys.cpp", "r") as ts_file:
         tasksys_source = ts_file.read()
 
-    from loopy.target.ispc import ISPCTarget
-    stream_knl = lp.make_kernel(
-            "{[i,j]: 0<=i<n and 0<=j<4}",
-            "z[i] = a*x[i] + y[i] {inames=i:j}",
-            target=ISPCTarget())
-
     stream_dtype = np.float64
     stream_ctype = ctypes.c_double
+    index_dtype = np.int32
+
+    from loopy.target.ispc import ISPCTarget
+    stream_knl = lp.make_kernel(
+            "{[i,j]: 0<=i<n}",
+            "z[i] = a*x[i] + y[i] {inames=i}",
+            target=ISPCTarget(),
+            index_dtype=index_dtype)
 
     stream_knl = lp.add_and_infer_dtypes(stream_knl, {
         "a": stream_dtype,
@@ -141,39 +143,57 @@ def main():
     ispc_code, arg_info = lp.generate_code(stream_knl)
 
     with TemporaryDirectory() as tmpdir:
+        print(ispc_code)
+
         build_ispc_shared_lib(
                 tmpdir,
                 [("stream.ispc", ispc_code)],
                 [("tasksys.cpp", tasksys_source)],
                 cxx_options=["-g", "-fopenmp", "-DISPC_USE_OMP"],
-                ispc_options=[
-                    #"-g", "--no-omit-frame-pointer",
+                ispc_options=([
+                    "-g", "--no-omit-frame-pointer",
                     "--target=avx2-i32x8",
                     "--opt=force-aligned-memory",
-                    ],
+                    ]
+                    + ["--addressing=64"] if index_dtype == np.int64 else []
+                    ),
                 ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
-                quiet=False)
+                quiet=False,
+                )
 
-        print(ispc_code)
         knl_lib = ctypes.cdll.LoadLibrary(os.path.join(tmpdir, "shared.so"))
 
-        n = 2**28
+        n = 2**27
         a = 5
         x = empty_aligned(n, dtype=stream_dtype)
         y = empty_aligned(n, dtype=stream_dtype)
         z = empty_aligned(n, dtype=stream_dtype)
 
-        nruns = 10
+        assert address_from_numpy(x) % 64 == 0
+        assert address_from_numpy(y) % 64 == 0
+        assert address_from_numpy(z) % 64 == 0
+
+        nruns = 20
         start_time = time()
-        for irun in range(nruns):
+
+        def call_kernel():
             knl_lib.loopy_kernel(
                     ctypes.c_int(n), stream_ctype(a),
                     cptr_from_numpy(x),
                     cptr_from_numpy(y),
                     cptr_from_numpy(z))
+
+        call_kernel()
+        call_kernel()
+
+        for irun in range(nruns):
+            call_kernel()
+
         elapsed = time() - start_time
 
-        print(1e-9*3*x.nbytes*nruns/elapsed*4, "GB/s")
+        print(elapsed/nruns)
+
+        print(1e-9*3*x.nbytes*nruns/elapsed, "GB/s")
 
         assert la.norm(z-a*x+y) < 1e-10
 
