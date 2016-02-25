@@ -1382,4 +1382,21 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
 
 # }}}
 
+
+# {{{ separate_loop_head_tail_slab
+
+# undocumented, because not super-useful
+def separate_loop_head_tail_slab(kernel, iname, head_it_count, tail_it_count):
+    """Mark *iname* so that the separate code is generated for
+    the lower *head_it_count* and the upper *tail_it_count*
+    iterations of the loop on *iname*.
+    """
+
+    iname_slab_increments = kernel.iname_slab_increments.copy()
+    iname_slab_increments[iname] = (head_it_count, tail_it_count)
+
+    return kernel.copy(iname_slab_increments=iname_slab_increments)
+
+# }}}
+
 # vim: foldmethod=marker
