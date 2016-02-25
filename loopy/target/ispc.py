@@ -30,6 +30,8 @@ from loopy.target.c import CTarget
 from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from loopy.diagnostic import LoopyError
 
+from pytools import memoize_method
+
 
 # {{{ expression mapper
 
@@ -54,6 +56,29 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
 # }}}
 
 
+# {{{ type registry
+
+def fill_registry_with_ispc_types(reg, respect_windows, include_bool=True):
+    reg.get_or_register_dtype("bool", np.bool)
+
+    reg.get_or_register_dtype(["int8", "signed char", "char"], np.int8)
+    reg.get_or_register_dtype(["uint8", "unsigned char"], np.uint8)
+    reg.get_or_register_dtype(["int16", "short", "signed short",
+        "signed short int", "short signed int"], np.int16)
+    reg.get_or_register_dtype(["uint16", "unsigned short",
+        "unsigned short int", "short unsigned int"], np.uint16)
+    reg.get_or_register_dtype(["int32", "int", "signed int"], np.int32)
+    reg.get_or_register_dtype(["uint32", "unsigned", "unsigned int"], np.uint32)
+
+    reg.get_or_register_dtype(["int64"], np.int64)
+    reg.get_or_register_dtype(["uint64"], np.uint64)
+
+    reg.get_or_register_dtype("float", np.float32)
+    reg.get_or_register_dtype("double", np.float64)
+
+# }}}
+
+
 class ISPCTarget(CTarget):
     """A code generation target for Intel's `ISPC <https://ispc.github.io/>`_
     SPMD programming language, to target Intel's Knight's hardware and modern
@@ -68,6 +93,18 @@ class ISPCTarget(CTarget):
         self.occa_mode = occa_mode
 
         super(ISPCTarget, self).__init__()
+
+    # {{{ types
+
+    @memoize_method
+    def get_dtype_registry(self):
+        from loopy.target.c.compyte.dtypes import DTypeRegistry
+        result = DTypeRegistry()
+        fill_registry_with_ispc_types(result, respect_windows=False,
+                include_bool=True)
+        return result
+
+    # }}}
 
     # {{{ top-level codegen
 
