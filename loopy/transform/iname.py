@@ -282,8 +282,21 @@ def split_iname(kernel, split_iname, inner_length,
         within=None):
     """Split *split_iname* into two inames (an 'inner' one and an 'outer' one)
     so that ``split_iname == inner + outer*inner_length`` and *inner* is of
-    fixed length *inner_length*.
+    constant length *inner_length*.
 
+    :arg outer_iname: The new iname to use for the 'inner' (fixed-length)
+        loop. Defaults to a name derived from ``split_iname + "_outer"``
+    :arg inner_iname: The new iname to use for the 'inner' (fixed-length)
+        loop. Defaults to a name derived from ``split_iname + "_inner"``
+    :arg inner_length: a positive integer
+    :arg slabs:
+        A tuple ``(head_it_count, tail_it_count)`` indicating the
+        number of leading/trailing iterations of *outer_iname*
+        for which separate code should be generated.
+    :arg outer_tag: The iname tag (see :ref:`iname-tag`) to apply to
+        *outer_iname*.
+    :arg inner_tag: The iname tag (see :ref:`iname-tag`) to apply to
+        *inner_iname*.
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.
     """
