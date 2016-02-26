@@ -466,7 +466,7 @@ def test_magma_fermi_matrix_mul(ctx_factory):
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
-            parameters={})
+            parameters={}, blacklist_ref_vendors="pocl")
 
 
 def test_image_matrix_mul(ctx_factory):
