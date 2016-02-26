@@ -67,6 +67,9 @@ def test_axpy(ctx_factory):
 
     vec = cl_array.vec
 
+    if ctx.devices[0].platform.vendor.startswith("Advanced Micro"):
+        pytest.skip("crashes on AMD 15.12")
+
     for dtype, check, a, b in [
             (np.complex64, None, 5, 7),
             (vec.float4, check_float4,
