@@ -431,7 +431,8 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
         if (static_ubound - static_lbound).plain_is_zero():
             # single-trip, generate just a variable assignment, not a loop
             result.append(gen_code_block([
-                Initializer(Const(POD(kernel.index_dtype, loop_iname)),
+                Initializer(
+                    Const(POD(kernel.target, kernel.index_dtype, loop_iname)),
                     ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                 Line(),
                 inner,
