@@ -529,6 +529,9 @@ def test_fuzz_code_generator(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    if ctx.devices[0].platform.vendor.startswith("Advanced Micro"):
+        pytest.skip("crashes on AMD 15.12")
+
     #from expr_fuzz import get_fuzz_examples
     #for expr, var_values in get_fuzz_examples():
     for expr, var_values in generate_random_fuzz_examples(50):
