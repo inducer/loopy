@@ -122,8 +122,8 @@ def main():
 
     from loopy.target.ispc import ISPCTarget
     stream_knl = lp.make_kernel(
-            "{[i,j]: 0<=i<n}",
-            "z[i] = a*x[i] + y[i] {inames=i}",
+            "{[i]: 0<=i<n}",
+            "z[i] = x[i] + a*y[i]",
             target=ISPCTarget(),
             index_dtype=index_dtype)
 
@@ -151,11 +151,11 @@ def main():
                 [("tasksys.cpp", tasksys_source)],
                 cxx_options=["-g", "-fopenmp", "-DISPC_USE_OMP"],
                 ispc_options=([
-                    "-g", "--no-omit-frame-pointer",
+                    #"-g", "--no-omit-frame-pointer",
                     "--target=avx2-i32x8",
                     "--opt=force-aligned-memory",
                     ]
-                    + ["--addressing=64"] if index_dtype == np.int64 else []
+                    + (["--addressing=64"] if index_dtype == np.int64 else [])
                     ),
                 ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
                 quiet=False,
@@ -163,15 +163,21 @@ def main():
 
         knl_lib = ctypes.cdll.LoadLibrary(os.path.join(tmpdir, "shared.so"))
 
-        n = 2**27
+        n = 2**28
         a = 5
-        x = empty_aligned(n, dtype=stream_dtype)
-        y = empty_aligned(n, dtype=stream_dtype)
-        z = empty_aligned(n, dtype=stream_dtype)
 
-        assert address_from_numpy(x) % 64 == 0
-        assert address_from_numpy(y) % 64 == 0
-        assert address_from_numpy(z) % 64 == 0
+        align_to = 64
+        x = empty_aligned(n, dtype=stream_dtype, n=align_to)
+        y = empty_aligned(n, dtype=stream_dtype, n=align_to)
+        z = empty_aligned(n, dtype=stream_dtype, n=align_to)
+
+        print(
+                hex(address_from_numpy(x)),
+                hex(address_from_numpy(y)),
+                hex(address_from_numpy(z)))
+        assert address_from_numpy(x) % align_to == 0
+        assert address_from_numpy(y) % align_to == 0
+        assert address_from_numpy(z) % align_to == 0
 
         nruns = 20
         start_time = time()
