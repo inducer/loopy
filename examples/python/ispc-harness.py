@@ -201,7 +201,7 @@ def main():
                     ]
                     + (["--addressing=64"] if INDEX_DTYPE == np.int64 else [])
                     ),
-                ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
+                #ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
                 quiet=False,
                 )
 
