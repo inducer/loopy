@@ -62,6 +62,8 @@ def build_ispc_shared_lib(
 # }}}
 
 
+# {{{ numpy address munging
+
 def address_from_numpy(obj):
     ary_intf = getattr(obj, "__array_interface__", None)
     if ary_intf is None:
@@ -111,38 +113,101 @@ def empty_aligned(shape, dtype, order='C', n=64):
 
     return array
 
+# }}}
+
+
+def transform(knl, vars, stream_dtype):
+    vars = [v.strip() for v in vars.split(",")]
+    knl = lp.assume(knl, "n>0")
+    knl = lp.split_iname(
+        knl, "i", 2**18, outer_tag="g.0", slabs=(0, 1))
+    knl = lp.split_iname(knl, "i_inner", 8, inner_tag="l.0")
+
+    knl = lp.add_and_infer_dtypes(knl, {
+        var: stream_dtype
+        for var in vars
+        })
+
+    knl = lp.set_argument_order(knl, vars + ["n"])
+
+    return knl
+
+
+def gen_code(knl):
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    ispc_code, arg_info = lp.generate_code(knl)
+
+    return ispc_code
+
+
+NRUNS = 10
+ALIGN_TO = 4096
+ARRAY_SIZE = 2**28
+
+if 0:
+    STREAM_DTYPE = np.float64
+    STREAM_CTYPE = ctypes.c_double
+else:
+    STREAM_DTYPE = np.float32
+    STREAM_CTYPE = ctypes.c_float
+
+if 1:
+    INDEX_DTYPE = np.int32
+    INDEX_CTYPE = ctypes.c_int
+else:
+    INDEX_DTYPE = np.int64
+    INDEX_CTYPE = ctypes.c_longlong
+
 
 def main():
     with open("tasksys.cpp", "r") as ts_file:
         tasksys_source = ts_file.read()
 
-    stream_dtype = np.float64
-    stream_ctype = ctypes.c_double
-    index_dtype = np.int32
+    if 0:
+        from loopy.target.ispc import ISPCTarget
+        stream_knl = lp.make_kernel(
+                "{[i]: 0<=i<n}",
+                "z[i] = x[i] + a*y[i]",
+                target=ISPCTarget(),
+                index_dtype=INDEX_DTYPE)
 
-    from loopy.target.ispc import ISPCTarget
-    stream_knl = lp.make_kernel(
-            "{[i]: 0<=i<n}",
-            "z[i] = x[i] + a*y[i]",
-            target=ISPCTarget(),
-            index_dtype=index_dtype)
+        stream_knl = lp.add_and_infer_dtypes(stream_knl, {
+            "a": STREAM_DTYPE,
+            "x": STREAM_DTYPE,
+            "y": STREAM_DTYPE
+            })
 
-    stream_knl = lp.add_and_infer_dtypes(stream_knl, {
-        "a": stream_dtype,
-        "x": stream_dtype,
-        "y": stream_dtype
-        })
+        stream_knl = lp.assume(stream_knl, "n>0")
+        stream_knl = lp.split_iname(stream_knl,
+                "i", 2**18, outer_tag="g.0", slabs=(0, 1))
+        stream_knl = lp.split_iname(stream_knl, "i_inner", 8, inner_tag="l.0")
+        stream_knl = lp.preprocess_kernel(stream_knl)
+        stream_knl = lp.get_one_scheduled_kernel(stream_knl)
+        stream_knl = lp.set_argument_order(stream_knl, "n,a,x,y,z")
+        ispc_code, arg_info = lp.generate_code(stream_knl)
 
-    stream_knl = lp.assume(stream_knl, "n>0")
-    stream_knl = lp.split_iname(stream_knl,
-            "i", 2**18, outer_tag="g.0", slabs=(0, 1))
-    stream_knl = lp.split_iname(stream_knl, "i_inner", 8, inner_tag="l.0")
-    stream_knl = lp.preprocess_kernel(stream_knl)
-    stream_knl = lp.get_one_scheduled_kernel(stream_knl)
-    stream_knl = lp.set_argument_order(stream_knl, "n,a,x,y,z")
-    ispc_code, arg_info = lp.generate_code(stream_knl)
+    def make_knl(name, insn, vars):
+        knl = lp.make_kernel(
+                "{[i]: 0<=i<n}",
+                insn,
+                target=lp.ISPCTarget(), index_dtype=INDEX_DTYPE,
+                name="stream_"+name+"_tasks")
+
+        knl = transform(knl, vars, STREAM_DTYPE)
+        return knl
+
+    init_knl = make_knl("init", """
+                a[i] = 1
+                b[i] = 2
+                c[i] = 0
+                """, "a,b,c")
+    triad_knl = make_knl("triad", """
+            a[i] = b[i] + scalar * c[i]
+            """, "a,b,c,scalar")
 
     with TemporaryDirectory() as tmpdir:
+        ispc_code = gen_code(init_knl) + gen_code(triad_knl)
         print(ispc_code)
 
         build_ispc_shared_lib(
@@ -157,7 +222,7 @@ def main():
                     #"--opt=fast-math",
                     #"--opt=disable-fma",
                     ]
-                    + (["--addressing=64"] if index_dtype == np.int64 else [])
+                    + (["--addressing=64"] if INDEX_DTYPE == np.int64 else [])
                     ),
                 ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
                 quiet=False,
@@ -165,46 +230,51 @@ def main():
 
         knl_lib = ctypes.cdll.LoadLibrary(os.path.join(tmpdir, "shared.so"))
 
-        n = 2**28
-        a = 5
+        scalar = 5
 
-        align_to = 64
-        x = empty_aligned(n, dtype=stream_dtype, n=align_to)
-        y = empty_aligned(n, dtype=stream_dtype, n=align_to)
-        z = empty_aligned(n, dtype=stream_dtype, n=align_to)
+        a = empty_aligned(ARRAY_SIZE, dtype=STREAM_DTYPE, n=ALIGN_TO)
+        b = empty_aligned(ARRAY_SIZE, dtype=STREAM_DTYPE, n=ALIGN_TO)
+        c = empty_aligned(ARRAY_SIZE, dtype=STREAM_DTYPE, n=ALIGN_TO)
 
         print(
-                hex(address_from_numpy(x)),
-                hex(address_from_numpy(y)),
-                hex(address_from_numpy(z)))
-        assert address_from_numpy(x) % align_to == 0
-        assert address_from_numpy(y) % align_to == 0
-        assert address_from_numpy(z) % align_to == 0
+                hex(address_from_numpy(a)),
+                hex(address_from_numpy(b)),
+                hex(address_from_numpy(c)))
+        assert address_from_numpy(a) % ALIGN_TO == 0
+        assert address_from_numpy(b) % ALIGN_TO == 0
+        assert address_from_numpy(c) % ALIGN_TO == 0
 
-        nruns = 10
+        knl_lib.stream_init_tasks(
+                cptr_from_numpy(a),
+                cptr_from_numpy(b),
+                cptr_from_numpy(c),
+                INDEX_CTYPE(ARRAY_SIZE),
+                )
 
         def call_kernel():
-            knl_lib.loopy_kernel(
-                    ctypes.c_int(n), stream_ctype(a),
-                    cptr_from_numpy(x),
-                    cptr_from_numpy(y),
-                    cptr_from_numpy(z))
+            knl_lib.stream_triad_tasks(
+                    cptr_from_numpy(a),
+                    cptr_from_numpy(b),
+                    cptr_from_numpy(c),
+                    STREAM_CTYPE(scalar),
+                    INDEX_CTYPE(ARRAY_SIZE),
+                    )
 
         call_kernel()
         call_kernel()
 
         start_time = time()
 
-        for irun in range(nruns):
+        for irun in range(NRUNS):
             call_kernel()
 
         elapsed = time() - start_time
 
-        print(elapsed/nruns)
+        print(elapsed/NRUNS)
 
-        print(1e-9 * 3 * x.nbytes * nruns / elapsed, "GB/s")
+        print(1e-9*3*a.nbytes*NRUNS/elapsed, "GB/s")
 
-        assert la.norm(z-a*x+y) < 1e-10
+        assert la.norm(a-b+scalar*c, np.inf) < np.finfo(STREAM_DTYPE).eps * 10
 
 
 if __name__ == "__main__":
