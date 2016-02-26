@@ -154,6 +154,8 @@ def main():
                     #"-g", "--no-omit-frame-pointer",
                     "--target=avx2-i32x8",
                     "--opt=force-aligned-memory",
+                    #"--opt=fast-math",
+                    #"--opt=disable-fma",
                     ]
                     + (["--addressing=64"] if index_dtype == np.int64 else [])
                     ),
@@ -179,8 +181,7 @@ def main():
         assert address_from_numpy(y) % align_to == 0
         assert address_from_numpy(z) % align_to == 0
 
-        nruns = 20
-        start_time = time()
+        nruns = 10
 
         def call_kernel():
             knl_lib.loopy_kernel(
@@ -192,6 +193,8 @@ def main():
         call_kernel()
         call_kernel()
 
+        start_time = time()
+
         for irun in range(nruns):
             call_kernel()
 
@@ -199,7 +202,7 @@ def main():
 
         print(elapsed/nruns)
 
-        print(1e-9*3*x.nbytes*nruns/elapsed, "GB/s")
+        print(1e-9 * 3 * x.nbytes * nruns / elapsed, "GB/s")
 
         assert la.norm(z-a*x+y) < 1e-10
 
