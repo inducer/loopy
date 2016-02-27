@@ -2269,7 +2269,10 @@ def test_finite_difference_expr_subst(ctx_factory):
             lp.GlobalArg("u", shape="n+2"),
             ])
 
-    fused_knl = lp.fuse_kernels([fin_diff_knl, flux_knl])
+    fused_knl = lp.fuse_kernels([fin_diff_knl, flux_knl],
+            data_flow=[
+                ("f", 1, 0)
+                ])
 
     fused_knl = lp.set_options(fused_knl, write_cl=True)
     evt, _ = fused_knl(queue, u=u, h=np.float32(1e-1))
