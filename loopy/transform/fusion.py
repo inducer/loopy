@@ -403,8 +403,10 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
             id_to_insn[insn_id] = insn
 
-    result = result.copy(
-            instructions=list(six.itervalues(id_to_insn)))
+    result = result.copy(instructions=[
+            id_to_insn[insn_id]
+            for insn_ids in kernel_insn_ids
+            for insn_id in insn_ids])
 
     # }}}
 
