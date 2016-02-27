@@ -179,7 +179,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
 
     hsv = lp.buffer_array(hsv, "rhsQ", ilp_inames,
           fetch_bounding_box=True, default_tag="for",
-          init_expression="0")
+          init_expression="0", store_expression="base + buffer")
 
     if opt_level == 5:
         tap_hsv = hsv
@@ -242,7 +242,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
     hsv = hsv.copy(name="horizontalStrongVolumeKernel")
 
     results = lp.auto_test_vs_ref(ref_hsv, ctx, hsv, parameters=dict(elements=300),
-            do_check=False, quiet=True)
+            quiet=True)
 
     elapsed = results["elapsed_wall"]
 
