@@ -40,7 +40,7 @@ setup(name="loo.py",
           "pytools>=2016.1",
           "pymbolic>=2016.2",
           "cgen>=2016.1",
-          "islpy>=2016.1",
+          "islpy>=2016.1.2",
           "six>=1.8.0",
           ],
 
