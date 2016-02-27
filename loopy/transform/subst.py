@@ -349,7 +349,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
     usage_to_definition = {}
 
-    for insn in kernel.instructions:
+    for insn in dep_kernel.instructions:
         if lhs_name not in insn.read_dependency_names():
             continue
 
