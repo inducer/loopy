@@ -27,6 +27,11 @@ from pytools import Record
 import re
 
 
+class _ColoramaStub(object):
+    def getattribute(self, name):
+        return ""
+
+
 class Options(Record):
     """
     Unless otherwise specified, these options are Boolean-valued
@@ -105,6 +110,11 @@ class Options(Record):
 
         Options to pass to the OpenCL compiler when building the kernel.
         A list of strings.
+
+    .. attribute:: allow_terminal_colors
+
+        A :class:`bool`. Whether to allow colors in terminal output
+
     """
 
     def __init__(
@@ -124,6 +134,7 @@ class Options(Record):
             write_wrapper=False, highlight_wrapper=False,
             write_cl=False, highlight_cl=False,
             edit_cl=False, cl_build_options=[],
+            allow_terminal_colors=True
             ):
         Record.__init__(
                 self,
@@ -137,6 +148,7 @@ class Options(Record):
                 write_wrapper=write_wrapper, highlight_wrapper=highlight_wrapper,
                 write_cl=write_cl, highlight_cl=highlight_cl,
                 edit_cl=edit_cl, cl_build_options=cl_build_options,
+                allow_terminal_colors=allow_terminal_colors,
                 )
 
     def update(self, other):
@@ -149,6 +161,30 @@ class Options(Record):
         """
         for field_name in sorted(self.__class__.fields):
             key_builder.rec(key_hash, getattr(self, field_name))
+
+    @property
+    def _fore(self):
+        if self.allow_terminal_colors:
+            import colorama
+            return colorama.Fore
+        else:
+            return _ColoramaStub()
+
+    @property
+    def _back(self):
+        if self.allow_terminal_colors:
+            import colorama
+            return colorama.Back
+        else:
+            return _ColoramaStub()
+
+    @property
+    def _style(self):
+        if self.allow_terminal_colors:
+            import colorama
+            return colorama.Style
+        else:
+            return _ColoramaStub()
 
 
 KEY_VAL_RE = re.compile("^([a-zA-Z0-9]+)=(.*)$")

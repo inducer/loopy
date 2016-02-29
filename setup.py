@@ -42,6 +42,7 @@ setup(name="loo.py",
           "cgen>=2016.1",
           "islpy>=2016.1.2",
           "six>=1.8.0",
+          "colorama",
           ],
 
       extras_require={
