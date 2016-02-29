@@ -89,8 +89,6 @@ def check_reduction_iname_uniqueness(kernel):
     for insn in kernel.instructions:
         insn.with_transformed_expressions(cb_mapper)
 
-    print(iname_to_reduction_count)
-    print(iname_to_nonsimultaneous_reduction_count)
     for iname, count in six.iteritems(iname_to_reduction_count):
         nonsimul_count = iname_to_nonsimultaneous_reduction_count.get(iname, 0)
 

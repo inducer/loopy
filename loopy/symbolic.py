@@ -804,7 +804,6 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
             processed_inames.append(iname.name)
 
-        print(allow_simultaneous)
         return Reduction(operation, tuple(processed_inames), red_expr,
                 allow_simultaneous=allow_simultaneous)
 
