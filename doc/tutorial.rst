@@ -96,6 +96,7 @@ always see loopy's view of a kernel by printing it.
 
 .. doctest::
 
+    >>> knl = lp.set_options(knl, allow_terminal_colors=False)
     >>> print(knl)
     ---------------------------------------------------------------------------
     KERNEL: loopy_kernel
@@ -245,8 +246,6 @@ call :func:`loopy.generate_code`:
 .. doctest::
 
     >>> typed_knl = lp.add_dtypes(knl, dict(a=np.float32))
-    >>> typed_knl = lp.preprocess_kernel(typed_knl, device=ctx.devices[0])
-    >>> typed_knl = lp.get_one_scheduled_kernel(typed_knl)
     >>> code, _ = lp.generate_code(typed_knl)
     >>> print(code)
     #define lid(N) ((int) get_local_id(N))
