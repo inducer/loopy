@@ -47,16 +47,16 @@ def test_tim2d(ctx_factory):
     knl = lp.make_kernel(
             "[K] -> {[i,j,e,m,o,gi]: 0<=i,j,m,o<%d and 0<=e<K and 0<=gi<3}" % n,
             [
-                "ur(a,b) := sum(o, D[a,o]*u[e,o,b])",
-                "us(a,b) := sum(o, D[b,o]*u[e,a,o])",
+                "ur(a,b) := simul_reduce(sum, o, D[a,o]*u[e,o,b])",
+                "us(a,b) := simul_reduce(sum, o, D[b,o]*u[e,a,o])",
 
                 #"Gu(mat_entry,a,b) := G[mat_entry,e,m,j]*ur(m,j)",
 
                 "Gux(a,b) := G$x[0,e,a,b]*ur(a,b)+G$x[1,e,a,b]*us(a,b)",
                 "Guy(a,b) := G$y[1,e,a,b]*ur(a,b)+G$y[2,e,a,b]*us(a,b)",
                 "lap[e,i,j]  = "
-                "  sum(m, D[m,i]*Gux(m,j))"
-                "+ sum(m, D[m,j]*Guy(i,m))"
+                "  simul_reduce(sum, m, D[m,i]*Gux(m,j))"
+                "+ simul_reduce(sum, m, D[m,j]*Guy(i,m))"
 
             ],
             [

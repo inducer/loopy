@@ -947,8 +947,8 @@ def test_double_sum(ctx_factory):
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             [
-                "a = sum((i,j), i*j)",
-                "b = sum(i, sum(j, i*j))",
+                "a = simul_reduce(sum, (i,j), i*j)",
+                "b = simul_reduce(sum, i, simul_reduce(sum, j, i*j))",
                 ],
             assumptions="n>=1")
 
@@ -1098,8 +1098,8 @@ def test_arg_guessing_with_reduction(ctx_factory):
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             """
-                a = 1.5 + sum((i,j), i*j)
-                d = 1.5 + sum((i,j), b[i,j])
+                a = 1.5 + simul_reduce(sum, (i,j), i*j)
+                d = 1.5 + simul_reduce(sum, (i,j), b[i,j])
                 b[i, j] = i*j
                 c[i+j, j] = b[j,i]
                 """,
@@ -1895,18 +1895,21 @@ def test_poisson(ctx_factory):
     sdim = 3
 
     knl = lp.make_kernel(
-            "{ [c,i,j,k,ell,ell2]: \
+            "{ [c,i,j,k,ell,ell2,ell3]: \
             0 <= c < nels and \
             0 <= i < nbf and \
             0 <= j < nbf and \
             0 <= k < nqp and \
-            0 <= ell < sdim and \
-            0 <= ell2 < sdim }",
+            0 <= ell,ell2,ell3 < sdim}",
             """
-            dpsi(bf,k0,dir) := sum(ell2, DFinv[c,ell2,dir] * DPsi[bf,k0,ell2] )
-            Ael[c,i,j] = J[c] * w[k] * sum(ell, dpsi(i,k,ell) * dpsi(j,k,ell))
+            dpsi(bf,k0,dir,ell_r) := \
+                    sum(ell_r, DFinv[c,ell_r,dir] * DPsi[bf,k0,ell_r] )
+            Ael[c,i,j] = \
+                    J[c] * w[k] * sum(ell, dpsi(i,k,ell,ell2) * dpsi(j,k,ell,ell3))
             """,
             assumptions="nels>=1 and nbf >= 1 and nels mod 4 = 0")
+
+    print(knl)
 
     knl = lp.fix_parameters(knl, nbf=nbf, sdim=sdim, nqp=nqp)
 
@@ -1978,7 +1981,7 @@ def test_generate_c_snippet():
     u = var("u")
 
     from functools import partial
-    l_sum = partial(lp.Reduction, "sum")
+    l_sum = partial(lp.Reduction, "sum", allow_simultaneous=True)
 
     Instr = lp.Assignment  # noqa
 
