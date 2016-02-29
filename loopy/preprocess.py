@@ -66,6 +66,46 @@ def prepare_for_caching(kernel):
 # }}}
 
 
+# {{{ check reduction iname uniqueness
+
+def check_reduction_iname_uniqueness(kernel):
+    iname_to_reduction_count = {}
+    iname_to_nonsimultaneous_reduction_count = {}
+
+    def map_reduction(expr, rec):
+        rec(expr.expr)
+        for iname in expr.inames:
+            iname_to_reduction_count[iname] = (
+                    iname_to_reduction_count.get(iname, 0) + 1)
+            if not expr.allow_simultaneous:
+                iname_to_nonsimultaneous_reduction_count[iname] = (
+                        iname_to_nonsimultaneous_reduction_count.get(iname, 0) + 1)
+
+        return expr
+
+    from loopy.symbolic import ReductionCallbackMapper
+    cb_mapper = ReductionCallbackMapper(map_reduction)
+
+    for insn in kernel.instructions:
+        insn.with_transformed_expressions(cb_mapper)
+
+    print(iname_to_reduction_count)
+    print(iname_to_nonsimultaneous_reduction_count)
+    for iname, count in six.iteritems(iname_to_reduction_count):
+        nonsimul_count = iname_to_nonsimultaneous_reduction_count.get(iname, 0)
+
+        if nonsimul_count and count > 1:
+            raise LoopyError("iname '%s' used in more than one reduction. "
+                    "(%d of them, to be precise.) "
+                    "Since this usage can easily cause loop scheduling "
+                    "problems, this is prohibited by default. "
+                    "If you are sure that this is OK, write the reduction "
+                    "as 'simul_reduce(...)' instead of 'reduce(...)'"
+                    % (iname, count))
+
+# }}}
+
+
 # {{{ infer types
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
@@ -677,10 +717,12 @@ def preprocess_kernel(kernel, device=None):
     kernel = expand_subst(kernel)
 
     # Ordering restriction:
-    # Type inference doesn't handle substitutions. Get them out of the
-    # way.
+    # Type inference and reduction iname uniqueness don't handle substitutions.
+    # Get them out of the way.
 
     kernel = infer_unknown_types(kernel, expect_completion=False)
+
+    check_reduction_iname_uniqueness(kernel)
 
     kernel = add_default_dependencies(kernel)
 

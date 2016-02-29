@@ -79,7 +79,8 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_reduction(self, expr, *args):
-        return Reduction(expr.operation, expr.inames, self.rec(expr.expr, *args))
+        return Reduction(expr.operation, expr.inames, self.rec(expr.expr, *args),
+                allow_simultaneous=expr.allow_simultaneous)
 
     def map_tagged_variable(self, expr, *args):
         # leaf, doesn't change
@@ -146,7 +147,8 @@ class StringifyMapper(StringifyMapperBase):
         return "loc.%d" % expr.index
 
     def map_reduction(self, expr, prec):
-        return "reduce(%s, [%s], %s)" % (
+        return "%sreduce(%s, [%s], %s)" % (
+                "simul_" if expr.allow_simultaneous else "",
                 expr.operation, ", ".join(expr.inames), expr.expr)
 
     def map_tagged_variable(self, expr, prec):
@@ -346,11 +348,16 @@ class Reduction(AlgebraicLeaf):
 
         The expression (as a :class:`pymbolic.primitives.Expression`)
         on which reduction is performed.
+
+    .. attribute:: allow_simultaneous
+
+        A :class:`bool`. If not *True*, an iname is allowed to be used
+        in precisely one reduction, to avoid mis-nesting errors.
     """
 
-    init_arg_names = ("operation", "inames", "expr")
+    init_arg_names = ("operation", "inames", "expr", "allow_simultaneous")
 
-    def __init__(self, operation, inames, expr):
+    def __init__(self, operation, inames, expr, allow_simultaneous=False):
         if isinstance(inames, str):
             inames = tuple(iname.strip() for iname in inames.split(","))
 
@@ -378,9 +385,10 @@ class Reduction(AlgebraicLeaf):
         self.operation = operation
         self.inames = inames
         self.expr = expr
+        self.allow_simultaneous = allow_simultaneous
 
     def __getinitargs__(self):
-        return (self.operation, self.inames, self.expr)
+        return (self.operation, self.inames, self.expr, self.allow_simultaneous)
 
     def get_hash(self):
         return hash((self.__class__, self.operation, self.inames,
@@ -779,7 +787,8 @@ class FunctionToPrimitiveMapper(IdentityMapper):
     turns those into the actual pymbolic primitives used for that.
     """
 
-    def _parse_reduction(self, operation, inames, red_expr):
+    def _parse_reduction(self, operation, inames, red_expr,
+            allow_simultaneous=False):
         if isinstance(inames, Variable):
             inames = (inames,)
 
@@ -795,7 +804,9 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
             processed_inames.append(iname.name)
 
-        return Reduction(operation, tuple(processed_inames), red_expr)
+        print(allow_simultaneous)
+        return Reduction(operation, tuple(processed_inames), red_expr,
+                allow_simultaneous=allow_simultaneous)
 
     def map_call(self, expr):
         from loopy.library.reduction import parse_reduction_op
@@ -820,7 +831,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
             else:
                 raise TypeError("cse takes two arguments")
 
-        elif name == "reduce":
+        elif name in ["reduce", "simul_reduce"]:
             if len(expr.parameters) == 3:
                 operation, inames, red_expr = expr.parameters
 
@@ -829,7 +840,8 @@ class FunctionToPrimitiveMapper(IdentityMapper):
                             "must be a symbol")
 
                 operation = parse_reduction_op(operation.name)
-                return self._parse_reduction(operation, inames, self.rec(red_expr))
+                return self._parse_reduction(operation, inames, self.rec(red_expr),
+                        allow_simultaneous=(name == "simul_reduce"))
             else:
                 raise TypeError("invalid 'reduce' calling sequence")
 

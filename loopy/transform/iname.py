@@ -119,7 +119,8 @@ class _InameSplitter(RuleAwareIdentityMapper):
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, tuple(new_inames),
-                        self.rec(expr.expr, expn_state))
+                        self.rec(expr.expr, expn_state),
+                        expr.allow_simultaneous)
         else:
             return super(_InameSplitter, self).map_reduction(expr, expn_state)
 
@@ -444,7 +445,8 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, tuple(new_inames),
-                        self.rec(expr.expr, expn_state))
+                        self.rec(expr.expr, expn_state),
+                        expr.allow_simultaneous)
         else:
             return super(_InameJoiner, self).map_reduction(expr, expn_state)
 
@@ -676,7 +678,8 @@ class _InameDuplicator(RuleAwareIdentityMapper):
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, new_inames,
-                        self.rec(expr.expr, expn_state))
+                        self.rec(expr.expr, expn_state),
+                        expr.allow_simultaneous)
         else:
             return super(_InameDuplicator, self).map_reduction(expr, expn_state)
 
@@ -1074,11 +1077,14 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
             if self.direction == "in":
                 return Reduction(expr.operation, tuple(leftover_inames),
                         Reduction(expr.operation, tuple(self.inames),
-                            self.rec(expr.expr, expn_state)))
+                            self.rec(expr.expr, expn_state),
+                            expr.allow_simultaneous),
+                        expr.allow_simultaneous)
             elif self.direction == "out":
                 return Reduction(expr.operation, tuple(self.inames),
                         Reduction(expr.operation, tuple(leftover_inames),
-                            self.rec(expr.expr, expn_state)))
+                            self.rec(expr.expr, expn_state),
+                            expr.allow_simultaneous))
             else:
                 assert False
         else:
