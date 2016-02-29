@@ -1900,12 +1900,12 @@ def test_poisson(ctx_factory):
             0 <= i < nbf and \
             0 <= j < nbf and \
             0 <= k < nqp and \
-            0 <= ell,ell2,ell3 < sdim}",
+            0 <= ell,ell2 < sdim}",
             """
-            dpsi(bf,k0,dir,ell_r) := \
-                    sum(ell_r, DFinv[c,ell_r,dir] * DPsi[bf,k0,ell_r] )
+            dpsi(bf,k0,dir) := \
+                    simul_reduce(sum, ell2, DFinv[c,ell2,dir] * DPsi[bf,k0,ell2] )
             Ael[c,i,j] = \
-                    J[c] * w[k] * sum(ell, dpsi(i,k,ell,ell2) * dpsi(j,k,ell,ell3))
+                    J[c] * w[k] * sum(ell, dpsi(i,k,ell) * dpsi(j,k,ell))
             """,
             assumptions="nels>=1 and nbf >= 1 and nels mod 4 = 0")
 
