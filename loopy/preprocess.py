@@ -97,6 +97,7 @@ def check_reduction_iname_uniqueness(kernel):
                     "(%d of them, to be precise.) "
                     "Since this usage can easily cause loop scheduling "
                     "problems, this is prohibited by default. "
+                    "Use loopy.make_reduction_inames_unique() to fix this. "
                     "If you are sure that this is OK, write the reduction "
                     "as 'simul_reduce(...)' instead of 'reduce(...)'"
                     % (iname, count))

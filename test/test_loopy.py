@@ -952,9 +952,31 @@ def test_double_sum(ctx_factory):
                 ],
             assumptions="n>=1")
 
-    cknl = lp.CompiledKernel(ctx, knl)
+    evt, (a, b) = knl(queue, n=n)
 
-    evt, (a, b) = cknl(queue, n=n)
+    ref = sum(i*j for i in range(n) for j in range(n))
+    assert a.get() == ref
+    assert b.get() == ref
+
+
+def test_double_sum_made_unique(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    n = 20
+
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i,j<n }",
+            [
+                "a = sum((i,j), i*j)",
+                "b = sum(i, sum(j, i*j))",
+                ],
+            assumptions="n>=1")
+
+    knl = lp.make_reduction_inames_unique(knl)
+    print(knl)
+
+    evt, (a, b) = knl(queue, n=n)
 
     ref = sum(i*j for i in range(n) for j in range(n))
     assert a.get() == ref
