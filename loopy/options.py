@@ -28,7 +28,7 @@ import re
 
 
 class _ColoramaStub(object):
-    def getattribute(self, name):
+    def __getattribute__(self, name):
         return ""
 
 
