@@ -79,7 +79,19 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_reduction(self, expr, *args):
-        return Reduction(expr.operation, expr.inames, self.rec(expr.expr, *args),
+        mapped_inames = [self.rec(Variable(iname), *args) for iname in expr.inames]
+
+        new_inames = []
+        for iname, new_sym_iname in zip(expr.inames, mapped_inames):
+            if not isinstance(new_sym_iname, Variable):
+                from loopy.diagnostic import LoopyError
+                raise LoopyError("%s did not map iname '%s' to a variable"
+                        % (type(self).__name__, iname))
+
+            new_inames.append(new_sym_iname.name)
+
+        return Reduction(
+                expr.operation, tuple(new_inames), self.rec(expr.expr, *args),
                 allow_simultaneous=expr.allow_simultaneous)
 
     def map_tagged_variable(self, expr, *args):
