@@ -464,10 +464,15 @@ def generate_code(kernel, device=None):
         warn("passing 'device' to generate_code() is deprecated",
                 DeprecationWarning, stacklevel=2)
 
+    from loopy.kernel import kernel_state
+    if kernel.state == kernel_state.INITIAL:
+        from loopy.preprocess import preprocess_kernel
+        kernel = preprocess_kernel(kernel)
+
     if kernel.schedule is None:
         from loopy.schedule import get_one_scheduled_kernel
         kernel = get_one_scheduled_kernel(kernel)
-    from loopy.kernel import kernel_state
+
     if kernel.state != kernel_state.SCHEDULED:
         raise LoopyError("cannot generate code for a kernel that has not been "
                 "scheduled")
