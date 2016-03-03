@@ -233,6 +233,119 @@ def remove_common_indentation(code, require_leading_newline=True,
 # }}}
 
 
+# {{{ build_ispc_shared_lib
+
+# DO NOT RELY ON THESE: THEY WILL GO AWAY
+
+def build_ispc_shared_lib(
+        cwd, ispc_sources, cxx_sources,
+        ispc_options=[], cxx_options=[],
+        ispc_bin="ispc",
+        cxx_bin="g++",
+        quiet=True):
+    from os.path import join
+
+    ispc_source_names = []
+    for name, contents in ispc_sources:
+        ispc_source_names.append(name)
+
+        with open(join(cwd, name), "w") as srcf:
+            srcf.write(contents)
+
+    cxx_source_names = []
+    for name, contents in cxx_sources:
+        cxx_source_names.append(name)
+
+        with open(join(cwd, name), "w") as srcf:
+            srcf.write(contents)
+
+    from subprocess import check_call
+
+    ispc_cmd = ([ispc_bin,
+                "--pic",
+                "-o", "ispc.o"]
+            + ispc_options
+            + list(ispc_source_names))
+    if not quiet:
+        print(" ".join(ispc_cmd))
+
+    check_call(ispc_cmd, cwd=cwd)
+
+    cxx_cmd = ([
+                cxx_bin,
+                "-shared", "-Wl,--export-dynamic",
+                "-fPIC",
+                "-oshared.so",
+                "ispc.o",
+                ]
+            + cxx_options
+            + list(cxx_source_names))
+
+    check_call(cxx_cmd, cwd=cwd)
+
+    if not quiet:
+        print(" ".join(cxx_cmd))
+
+# }}}
+
+
+# {{{ numpy address munging
+
+# DO NOT RELY ON THESE: THEY WILL GO AWAY
+
+def address_from_numpy(obj):
+    ary_intf = getattr(obj, "__array_interface__", None)
+    if ary_intf is None:
+        raise RuntimeError("no array interface")
+
+    buf_base, is_read_only = ary_intf["data"]
+    return buf_base + ary_intf.get("offset", 0)
+
+
+def cptr_from_numpy(obj):
+    import ctypes
+    return ctypes.c_void_p(address_from_numpy(obj))
+
+
+# https://github.com/hgomersall/pyFFTW/blob/master/pyfftw/utils.pxi#L172
+def empty_aligned(shape, dtype, order='C', n=64):
+    '''empty_aligned(shape, dtype='float64', order='C', n=None)
+    Function that returns an empty numpy array that is n-byte aligned,
+    where ``n`` is determined by inspecting the CPU if it is not
+    provided.
+    The alignment is given by the final optional argument, ``n``. If
+    ``n`` is not provided then this function will inspect the CPU to
+    determine alignment. The rest of the arguments are as per
+    :func:`numpy.empty`.
+    '''
+    itemsize = np.dtype(dtype).itemsize
+
+    # Apparently there is an issue with numpy.prod wrapping around on 32-bits
+    # on Windows 64-bit. This shouldn't happen, but the following code
+    # alleviates the problem.
+    if not isinstance(shape, (int, np.integer)):
+        array_length = 1
+        for each_dimension in shape:
+            array_length *= each_dimension
+
+    else:
+        array_length = shape
+
+    base_ary = np.empty(array_length*itemsize+n, dtype=np.int8)
+
+    # We now need to know how to offset base_ary
+    # so it is correctly aligned
+    _array_aligned_offset = (n-address_from_numpy(base_ary)) % n
+
+    array = np.frombuffer(
+            base_ary[_array_aligned_offset:_array_aligned_offset-n].data,
+            dtype=dtype).reshape(shape, order=order)
+
+    return array
+
+# }}}
+
+
 def is_interned(s):
     return s is None or intern(s) is s
 
