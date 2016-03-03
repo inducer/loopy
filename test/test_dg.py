@@ -52,10 +52,10 @@ def test_dg_volume(ctx_factory):
             "{[n,m,k]: 0<= n,m < Np and 0<= k < K}",
             ],
             """
-                <> du_drst = sum(m, DrDsDt[n,m]*u[k,m])
-                <> dv_drst = sum(m, DrDsDt[n,m]*v[k,m])
-                <> dw_drst = sum(m, DrDsDt[n,m]*w[k,m])
-                <> dp_drst = sum(m, DrDsDt[n,m]*p[k,m])
+                <> du_drst = simul_reduce(sum, m, DrDsDt[n,m]*u[k,m])
+                <> dv_drst = simul_reduce(sum, m, DrDsDt[n,m]*v[k,m])
+                <> dw_drst = simul_reduce(sum, m, DrDsDt[n,m]*w[k,m])
+                <> dp_drst = simul_reduce(sum, m, DrDsDt[n,m]*p[k,m])
 
                 # volume flux
                 rhsu[k,n] = dot(drst_dx[k],dp_drst)

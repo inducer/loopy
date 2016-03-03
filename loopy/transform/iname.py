@@ -66,6 +66,8 @@ __doc__ = """
 
 .. autofunction:: find_unused_axis_tag
 
+.. autofunction:: make_reduction_inames_unique
+
 """
 
 
@@ -119,7 +121,8 @@ class _InameSplitter(RuleAwareIdentityMapper):
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, tuple(new_inames),
-                        self.rec(expr.expr, expn_state))
+                        self.rec(expr.expr, expn_state),
+                        expr.allow_simultaneous)
         else:
             return super(_InameSplitter, self).map_reduction(expr, expn_state)
 
@@ -444,7 +447,8 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, tuple(new_inames),
-                        self.rec(expr.expr, expn_state))
+                        self.rec(expr.expr, expn_state),
+                        expr.allow_simultaneous)
         else:
             return super(_InameJoiner, self).map_reduction(expr, expn_state)
 
@@ -676,7 +680,8 @@ class _InameDuplicator(RuleAwareIdentityMapper):
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, new_inames,
-                        self.rec(expr.expr, expn_state))
+                        self.rec(expr.expr, expn_state),
+                        expr.allow_simultaneous)
         else:
             return super(_InameDuplicator, self).map_reduction(expr, expn_state)
 
@@ -1074,11 +1079,14 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
             if self.direction == "in":
                 return Reduction(expr.operation, tuple(leftover_inames),
                         Reduction(expr.operation, tuple(self.inames),
-                            self.rec(expr.expr, expn_state)))
+                            self.rec(expr.expr, expn_state),
+                            expr.allow_simultaneous),
+                        expr.allow_simultaneous)
             elif self.direction == "out":
                 return Reduction(expr.operation, tuple(self.inames),
                         Reduction(expr.operation, tuple(leftover_inames),
-                            self.rec(expr.expr, expn_state)))
+                            self.rec(expr.expr, expn_state),
+                            expr.allow_simultaneous))
             else:
                 assert False
         else:
@@ -1396,6 +1404,110 @@ def separate_loop_head_tail_slab(kernel, iname, head_it_count, tail_it_count):
     iname_slab_increments[iname] = (head_it_count, tail_it_count)
 
     return kernel.copy(iname_slab_increments=iname_slab_increments)
+
+# }}}
+
+
+# {{{ make_reduction_inames_unique
+
+class _ReductionInameUniquifier(RuleAwareIdentityMapper):
+    def __init__(self, rule_mapping_context, inames, within):
+        super(_ReductionInameUniquifier, self).__init__(rule_mapping_context)
+
+        self.inames = inames
+        self.old_to_new = []
+        self.within = within
+
+        self.iname_to_red_count = {}
+        self.iname_to_nonsimultaneous_red_count = {}
+
+    def map_reduction(self, expr, expn_state):
+        within = self.within(
+                    expn_state.kernel,
+                    expn_state.instruction,
+                    expn_state.stack)
+
+        for iname in expr.inames:
+            self.iname_to_red_count[iname] = (
+                    self.iname_to_red_count.get(iname, 0) + 1)
+            if not expr.allow_simultaneous:
+                self.iname_to_nonsimultaneous_red_count[iname] = (
+                    self.iname_to_nonsimultaneous_red_count.get(iname, 0) + 1)
+
+        if within and not expr.allow_simultaneous:
+            subst_dict = {}
+
+            from pymbolic import var
+
+            new_inames = []
+            for iname in expr.inames:
+                if (
+                        not (self.inames is None or iname in self.inames)
+                        or
+                        self.iname_to_red_count[iname] <= 1):
+                    new_inames.append(iname)
+                    continue
+
+                new_iname = self.rule_mapping_context.make_unique_var_name(iname)
+                subst_dict[iname] = var(new_iname)
+                self.old_to_new.append((iname, new_iname))
+                new_inames.append(new_iname)
+
+            from loopy.symbolic import SubstitutionMapper
+            from pymbolic.mapper.substitutor import make_subst_func
+
+            from loopy.symbolic import Reduction
+            return Reduction(expr.operation, tuple(new_inames),
+                    self.rec(
+                        SubstitutionMapper(make_subst_func(subst_dict))(
+                            expr.expr),
+                        expn_state),
+                    expr.allow_simultaneous)
+        else:
+            return super(_ReductionInameUniquifier, self).map_reduction(
+                    expr, expn_state)
+
+
+def make_reduction_inames_unique(kernel, inames=None, within=None):
+    """
+    :arg inames: if not *None*, only apply to these inames
+    :arg within: a stack match as understood by
+        :func:`loopy.context_matching.parse_stack_match`.
+
+    .. versionadded:: 2016.2
+    """
+
+    name_gen = kernel.get_var_name_generator()
+
+    from loopy.context_matching import parse_stack_match
+    within = parse_stack_match(within)
+
+    # {{{ change kernel
+
+    rule_mapping_context = SubstitutionRuleMappingContext(
+            kernel.substitutions, name_gen)
+    r_uniq = _ReductionInameUniquifier(rule_mapping_context,
+            inames, within=within)
+
+    kernel = rule_mapping_context.finish_kernel(
+            r_uniq.map_kernel(kernel))
+
+    # }}}
+
+    # {{{ duplicate the inames
+
+    for old_iname, new_iname in r_uniq.old_to_new:
+        from loopy.kernel.tools import DomainChanger
+        domch = DomainChanger(kernel, frozenset([old_iname]))
+
+        from loopy.isl_helpers import duplicate_axes
+        kernel = kernel.copy(
+                domains=domch.get_domains_with(
+                    duplicate_axes(domch.domain, [old_iname], [new_iname])))
+
+    # }}}
+
+    return kernel
 
 # }}}
 

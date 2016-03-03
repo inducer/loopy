@@ -317,10 +317,39 @@ def group_insn_counts(kernel):
 
     return result
 
+
+def gen_dependencies_except(kernel, insn_id, except_insn_ids):
+    insn = kernel.id_to_insn[insn_id]
+    for dep_id in insn.depends_on:
+
+        if dep_id in except_insn_ids:
+            continue
+
+        yield dep_id
+
+        for sub_dep_id in gen_dependencies_except(kernel, dep_id, except_insn_ids):
+            yield sub_dep_id
+
 # }}}
 
 
 # {{{ debug help
+
+def format_insn_id(kernel, insn_id):
+    Fore = kernel.options._fore
+    Style = kernel.options._style
+    return Fore.GREEN + insn_id + Style.RESET_ALL
+
+
+def format_insn(kernel, insn_id):
+    insn = kernel.id_to_insn[insn_id]
+    Fore = kernel.options._fore
+    Style = kernel.options._style
+    return "[%s] %s%s%s <- %s%s%s" % (
+            format_insn_id(kernel, insn_id),
+            Fore.BLUE, str(insn.assignee), Style.RESET_ALL,
+            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
+
 
 def dump_schedule(kernel, schedule):
     lines = []
@@ -337,8 +366,7 @@ def dump_schedule(kernel, schedule):
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
             if isinstance(insn, Assignment):
-                insn_str = "[%s] %s <- %s" % (
-                        insn.id, str(insn.assignee), str(insn.expression))
+                insn_str = format_insn(kernel, sched_item.insn_id)
             else:
                 insn_str = sched_item.insn_id
             lines.append(indent + insn_str)
@@ -482,6 +510,8 @@ def generate_loop_schedules_internal(
     # to give loops containing high-priority instructions a chance.
 
     kernel = sched_state.kernel
+    Fore = kernel.options._fore
+    Style = kernel.options._style
 
     if allow_boost is None:
         rec_allow_boost = None
@@ -510,7 +540,7 @@ def generate_loop_schedules_internal(
         print(dump_schedule(sched_state.kernel, sched_state.schedule))
         #print("boost allowed:", allow_boost)
         print(75*"=")
-        print("LOOP NEST MAP:")
+        print("LOOP NEST MAP (inner: outer):")
         for iname, val in six.iteritems(sched_state.loop_nest_around_map):
             print("%s : %s" % (iname, ", ".join(val)))
         print(75*"=")
@@ -549,7 +579,7 @@ def generate_loop_schedules_internal(
         if not is_ready:
             if debug_mode:
                 print("instruction '%s' is missing insn depedencies '%s'" % (
-                        insn.id, ",".join(
+                        format_insn(kernel, insn.id), ",".join(
                             insn.depends_on - sched_state.scheduled_insn_ids)))
             continue
 
@@ -570,10 +600,10 @@ def generate_loop_schedules_internal(
             if debug_mode:
                 if want-have:
                     print("instruction '%s' is missing inames '%s'"
-                            % (insn.id, ",".join(want-have)))
+                            % (format_insn(kernel, insn.id), ",".join(want-have)))
                 if have-want:
                     print("instruction '%s' won't work under inames '%s'"
-                            % (insn.id, ",".join(have-want)))
+                            % (format_insn(kernel, insn.id), ",".join(have-want)))
 
         # {{{ determine group-based readiness
 
@@ -595,7 +625,7 @@ def generate_loop_schedules_internal(
         # }}}
 
         if is_ready and debug_mode:
-            print("ready to schedule '%s'" % insn.id)
+            print("ready to schedule '%s'" % format_insn(kernel, insn.id))
 
         if is_ready and not debug_mode:
             iid_set = frozenset([insn.id])
@@ -660,7 +690,38 @@ def generate_loop_schedules_internal(
                 if last_entered_loop in kernel.insn_inames(insn):
                     if debug_mode:
                         print("cannot leave '%s' because '%s' still depends on it"
-                                % (last_entered_loop, insn.id))
+                                % (last_entered_loop, format_insn(kernel, insn.id)))
+
+                        # check if there's a dependency of insn that needs to be
+                        # outside of last_entered_loop.
+                        for subdep_id in gen_dependencies_except(kernel, insn_id,
+                                sched_state.unscheduled_insn_ids):
+                            subdep = kernel.id_to_insn[insn_id]
+                            want = (kernel.insn_inames(subdep_id)
+                                    - sched_state.parallel_inames)
+                            if (
+                                    last_entered_loop not in want and
+                                    last_entered_loop not in subdep.boostable_into):
+                                print(
+                                    "%(warn)swarning:%(reset_all)s '%(iname)s', "
+                                    "which the schedule is "
+                                    "currently stuck inside of, seems mis-nested. "
+                                    "'%(subdep)s' must occur " "before '%(dep)s', "
+                                    "but '%(subdep)s must be outside "
+                                    "'%(iname)s', whereas '%(dep)s' must be back "
+                                    "in it.%(reset_all)s\n"
+                                    "  %(subdep_i)s\n"
+                                    "  %(dep_i)s"
+                                    % {
+                                        "warn": Fore.RED + Style.BRIGHT,
+                                        "reset_all": Style.RESET_ALL,
+                                        "iname": last_entered_loop,
+                                        "subdep": format_insn_id(kernel, subdep_id),
+                                        "dep": format_insn_id(kernel, insn_id),
+                                        "subdep_i": format_insn(kernel, subdep_id),
+                                        "dep_i": format_insn(kernel, insn_id),
+                                        })
+
                     can_leave = False
                     break
 

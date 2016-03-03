@@ -270,9 +270,10 @@ Expressions
 Loopy's expressions are a slight superset of the expressions supported by
 :mod:`pymbolic`.
 
-* `if`
-* `reductions`
+* ``if``
+* ``reductions``
     * duplication of reduction inames
+    * ``reduce`` vs ``simul_reduce``
 * complex-valued arithmetic
 * tagging of array access and substitution rule use ("$")
 * ``indexof``, ``indexof_vec``

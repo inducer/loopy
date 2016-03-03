@@ -59,29 +59,6 @@ def main():
     with open("tasksys.cpp", "r") as ts_file:
         tasksys_source = ts_file.read()
 
-    if 0:
-        from loopy.target.ispc import ISPCTarget
-        stream_knl = lp.make_kernel(
-                "{[i]: 0<=i<n}",
-                "z[i] = x[i] + a*y[i]",
-                target=ISPCTarget(),
-                index_dtype=INDEX_DTYPE)
-
-        stream_knl = lp.add_and_infer_dtypes(stream_knl, {
-            "a": STREAM_DTYPE,
-            "x": STREAM_DTYPE,
-            "y": STREAM_DTYPE
-            })
-
-        stream_knl = lp.assume(stream_knl, "n>0")
-        stream_knl = lp.split_iname(stream_knl,
-                "i", 2**18, outer_tag="g.0", slabs=(0, 1))
-        stream_knl = lp.split_iname(stream_knl, "i_inner", 8, inner_tag="l.0")
-        stream_knl = lp.preprocess_kernel(stream_knl)
-        stream_knl = lp.get_one_scheduled_kernel(stream_knl)
-        stream_knl = lp.set_argument_order(stream_knl, "n,a,x,y,z")
-        ispc_code, arg_info = lp.generate_code(stream_knl)
-
     def make_knl(name, insn, vars):
         knl = lp.make_kernel(
                 "{[i]: 0<=i<n}",
@@ -120,7 +97,7 @@ def main():
                     ]
                     + (["--addressing=64"] if INDEX_DTYPE == np.int64 else [])
                     ),
-                ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
+                #ispc_bin="/home/andreask/pack/ispc-v1.9.0-linux/ispc",
                 quiet=False,
                 )
 
