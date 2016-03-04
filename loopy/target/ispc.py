@@ -226,11 +226,8 @@ class ISPCTarget(CTarget):
             raise LoopyError("unknown barrier kind")
 
     def wrap_temporary_decl(self, decl, is_local):
-        from cgen.ispc import ISPCUniform, ISPCVarying
-        if is_local:
-            return ISPCUniform(decl)
-        else:
-            return ISPCVarying(decl)
+        from cgen.ispc import ISPCUniform
+        return ISPCUniform(decl)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from loopy.codegen import POD  # uses the correct complex type
