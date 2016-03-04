@@ -574,7 +574,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     """Tag an iname
 
-    :arg iname_to_tag: a list of tuple ``(iname, new_tag)``. *new_tag* is given
+    :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
         as an instance of a subclass of :class:`loopy.kernel.data.IndexTag` or
         as a string as shown in :ref:`iname-tags`. May also be a dictionary
         for backwards compatibility.
