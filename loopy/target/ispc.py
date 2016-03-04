@@ -163,12 +163,17 @@ class ISPCTarget(CTarget):
                     S("assert(programCount == %s)"
                         % ccm(lsize[0], PREC_COMPARISON)))
 
+        if gsize:
+            launch_spec = "[%s]" % ", ".join(
+                                ccm(gs_i, PREC_NONE)
+                                for gs_i in gsize),
+        else:
+            launch_spec = ""
+
         wrapper_body.append(
-                S("launch[%s] %s(%s)"
+                S("launch%s %s(%s)"
                     % (
-                        ", ".join(
-                            ccm(gs_i, PREC_NONE)
-                            for gs_i in gsize),
+                        launch_spec,
                         inner_name,
                         ", ".join(arg_names)
                         ))
