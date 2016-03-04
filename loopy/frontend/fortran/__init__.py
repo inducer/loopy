@@ -132,7 +132,7 @@ def _extract_loopy_lines(source):
 
 def parse_transformed_fortran(source, free_form=True, strict=True,
         pre_transform_code=None, transform_code_context=None,
-        filename="<floopy code>", target=None):
+        filename="<floopy code>"):
     """
     :arg source: a string of Fortran source code which must include
         a snippet of transform code as described below.
@@ -237,7 +237,7 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
 
 
 def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
-        auto_dependencies=True):
+        auto_dependencies=True, target=None):
     """
     :returns: a list of :class:`loopy.LoopKernel` objects
     """
@@ -258,7 +258,7 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
 
     from loopy.frontend.fortran.translator import F2LoopyTranslator
     f2loopy = F2LoopyTranslator(filename, auto_dependencies=auto_dependencies,
-            target=None)
+            target=target)
     f2loopy(tree)
 
     return f2loopy.make_kernels()
