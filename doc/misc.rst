@@ -5,7 +5,9 @@ Installation
 
 This command should install :mod:`loopy`::
 
-    pip install loopy
+    pip install loo.py
+
+(Note the extra "."!)
 
 You may need to run this with :command:`sudo`.
 If you don't already have `pip <https://pypi.python.org/pypi/pip>`_,

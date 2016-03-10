@@ -353,6 +353,26 @@ def remove_unused_arguments(knl):
     for insn in exp_knl.instructions:
         refd_vars.update(insn.dependency_names())
 
+    from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
+    from loopy.symbolic import get_dependencies
+    from itertools import chain
+
+    def tolerant_get_deps(expr):
+        if expr is None or expr is lp.auto:
+            return set()
+        return get_dependencies(expr)
+
+    for ary in chain(knl.args, six.itervalues(knl.temporary_variables)):
+        if isinstance(ary, ArrayBase):
+            refd_vars.update(
+                    tolerant_get_deps(ary.shape)
+                    | tolerant_get_deps(ary.offset))
+
+            for dim_tag in ary.dim_tags:
+                if isinstance(dim_tag, FixedStrideArrayDimTag):
+                    refd_vars.update(
+                            tolerant_get_deps(dim_tag.stride))
+
     for arg in knl.args:
         if arg.name in refd_vars:
             new_args.append(arg)

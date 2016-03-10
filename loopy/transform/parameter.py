@@ -28,6 +28,42 @@ from loopy.symbolic import (RuleAwareSubstitutionMapper,
         SubstitutionRuleMappingContext)
 import islpy as isl
 
+__doc__ = """
+
+.. currentmodule:: loopy
+
+.. autofunction:: fix_parameters
+
+.. autofunction:: assume
+"""
+
+
+# {{{ assume
+
+def assume(kernel, assumptions):
+    """Include an assumption about :ref:`domain-parameters` in the kernel, e.g.
+    `n mod 4 = 0`.
+
+    :arg assumptions: a :class:`islpy.BasicSet` or a string representation of
+        the assumptions in :ref:`isl-syntax`.
+    """
+    if isinstance(assumptions, str):
+        assumptions_set_str = "[%s] -> { : %s}" \
+                % (",".join(s for s in kernel.outer_params()),
+                    assumptions)
+        assumptions = isl.BasicSet.read_from_str(kernel.domains[0].get_ctx(),
+                assumptions_set_str)
+
+    if not isinstance(assumptions, isl.BasicSet):
+        raise TypeError("'assumptions' must be a BasicSet or a string")
+
+    old_assumptions, new_assumptions = isl.align_two(kernel.assumptions, assumptions)
+
+    return kernel.copy(
+            assumptions=old_assumptions.params() & new_assumptions.params())
+
+# }}}
+
 
 # {{{ fix_parameter
 
@@ -99,6 +135,13 @@ def _fix_parameter(kernel, name, value):
 
 
 def fix_parameters(kernel, **value_dict):
+    """Fix the values of the arguments to specific constants.
+
+    *value_dict* consists of *name*/*value* pairs, where *name* will be fixed
+    to be *value*. *name* may refer to :ref:`domain-parameters` or
+    :ref:`arguments`.
+    """
+
     for name, value in six.iteritems(value_dict):
         kernel = _fix_parameter(kernel, name, value)
 

@@ -35,6 +35,21 @@ from loopy.kernel.data import Assignment
 from loopy.diagnostic import warn
 
 
+__doc__ = """
+
+.. currentmodule:: loopy
+
+.. autofunction:: get_op_poly
+
+.. autofunction:: get_gmem_access_poly
+
+.. autofunction:: sum_mem_access_to_bytes
+
+.. autofunction:: get_barrier_poly
+
+"""
+
+
 # {{{ ToCountMap
 
 class ToCountMap:

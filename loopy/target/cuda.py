@@ -162,6 +162,8 @@ class LoopyCudaCCodeMapper(LoopyCCodeMapper):
 # {{{ target
 
 class CudaTarget(CTarget):
+    """A target for Nvidia's CUDA GPU programming language."""
+
     def __init__(self, extern_c=True):
         """
         :arg extern_c: If *True*, declare kernels using "extern C" to

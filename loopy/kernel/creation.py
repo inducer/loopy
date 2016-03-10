@@ -1011,8 +1011,22 @@ def resolve_wildcard_deps(knl):
 def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     """User-facing kernel creation entrypoint.
 
-    :arg domains: :class:`islpy.BasicSet`
+    :arg domains:
+
+        A list of :class:`islpy.BasicSet` (i.e. convex set) instances
+        representing the :ref:`domain-tree`. May also be a list of strings
+        which will be parsed into such instances according to :ref:`isl-syntax`.
+
     :arg instructions:
+
+        A list of :class:`Assignment` (or other :class:`InstructionBase`
+        subclasses), possibly intermixed with instances of
+        :class:`SubstitutionRule`. This same list may also contain strings
+        which will be parsed into such objects using the
+        :ref:`assignment-syntax` and the :ref:`subst-rule-syntax`.  May also be
+        a single multi-line string which will be split into lines and then
+        parsed.
+
     :arg kernel_data:
 
         A list of :class:`ValueArg`, :class:`GlobalArg`, ... (etc.) instances.
@@ -1054,7 +1068,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         strides. They are expanded only upon kernel creation.
     :arg default_order: "C" (default) or "F"
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
-        *offset* in :attr:`loopy.kernel.data.GlobalArg` for guessed arguments.
+        *offset* in :attr:`GlobalArg` for guessed arguments.
         Defaults to 0.
     :arg function_manglers: list of functions of signature (name, arg_dtypes)
         returning a tuple (result_dtype, c_name)
@@ -1074,8 +1088,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         to silence
     :arg options: an instance of :class:`loopy.Options` or an equivalent
         string representation
-    :arg target: an instance of :class:`loopy.target.TargetBase`, or *None*,
-        to use the default target. (see :func:`loopy.set_default_target`)
+    :arg target: an instance of :class:`loopy.TargetBase`, or *None*,
+        to use the default target.
     """
 
     defines = kwargs.pop("defines", {})

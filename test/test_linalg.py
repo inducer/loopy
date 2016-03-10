@@ -30,6 +30,8 @@ import pyopencl as cl
 import pyopencl.array as cl_array
 import loopy as lp
 
+import logging
+
 from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
@@ -61,11 +63,15 @@ def check_float4(result, ref_result):
 
 
 def test_axpy(ctx_factory):
+    logging.basicConfig(level="INFO")
     ctx = ctx_factory()
 
     n = 3145182
 
     vec = cl_array.vec
+
+    if ctx.devices[0].platform.vendor.startswith("Advanced Micro"):
+        pytest.skip("crashes on AMD 15.12")
 
     for dtype, check, a, b in [
             (np.complex64, None, 5, 7),
@@ -111,7 +117,8 @@ def test_axpy(ctx_factory):
             lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                     op_count=[np.dtype(dtype).itemsize*n*3/1e9],
                     op_label=["GBytes"],
-                    parameters={"a": a, "b": b, "n": n}, check_result=check)
+                    parameters={"a": a, "b": b, "n": n}, check_result=check,
+                    blacklist_ref_vendors=["Advanced Micro"])
 
 
 def test_transpose(ctx_factory):
@@ -463,7 +470,7 @@ def test_magma_fermi_matrix_mul(ctx_factory):
 
     lp.auto_test_vs_ref(seq_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
-            parameters={})
+            parameters={}, blacklist_ref_vendors="pocl")
 
 
 def test_image_matrix_mul(ctx_factory):

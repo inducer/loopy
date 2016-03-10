@@ -90,11 +90,16 @@ class LoopKernel(RecordWithoutPickling):
     .. attribute:: domains
 
         a list of :class:`islpy.BasicSet` instances
+        representing the :ref:`domain-tree`.
 
     .. attribute:: instructions
+
+        A list of :class:`InstructionBase` instances, e.g.
+        :class:`Assignment`. See :ref:`instructions`.
+
     .. attribute:: args
 
-        A list of :class:`loopy.kernel.data.KernelArgument`
+        A list of :class:`loopy.KernelArgument`
 
     .. attribute:: schedule
 
@@ -108,7 +113,7 @@ class LoopKernel(RecordWithoutPickling):
     .. attribute:: temporary_variables
 
         A :class:`dict` of mapping variable names to
-        :class:`loopy.kernel.data.TemporaryVariable`
+        :class:`loopy.TemporaryVariable`
         instances.
 
     .. attribute:: iname_to_tag
@@ -155,7 +160,7 @@ class LoopKernel(RecordWithoutPickling):
 
     .. attribute:: target
 
-        A subclass of :class:`loopy.target.TargetBase`.
+        A subclass of :class:`loopy.TargetBase`.
     """
 
     # {{{ constructor
@@ -1007,6 +1012,9 @@ class LoopKernel(RecordWithoutPickling):
 
         printed_insn_ids = set()
 
+        Fore = self.options._fore
+        Style = self.options._style
+
         def print_insn(insn):
             if insn.id in printed_insn_ids:
                 return
@@ -1030,7 +1038,7 @@ class LoopKernel(RecordWithoutPickling):
 
             loop_list = ",".join(sorted(kernel.insn_inames(insn)))
 
-            options = [insn.id]
+            options = [Fore.GREEN+insn.id+Style.RESET_ALL]
             if insn.priority:
                 options.append("priority=%d" % insn.priority)
             if insn.tags:
@@ -1043,12 +1051,15 @@ class LoopKernel(RecordWithoutPickling):
             if len(loop_list) > loop_list_width:
                 lines.append("[%s]" % loop_list)
                 lines.append("%s%s <- %s   # %s" % (
-                    (loop_list_width+2)*" ", lhs,
-                    rhs, ", ".join(options)))
+                    (loop_list_width+2)*" ", Fore.BLUE+lhs+Style.RESET_ALL,
+                    Fore.MAGENTA+rhs+Style.RESET_ALL,
+                    ", ".join(options)))
             else:
                 lines.append("[%s]%s%s <- %s   # %s" % (
                     loop_list, " "*(loop_list_width-len(loop_list)),
-                    lhs, rhs, ",".join(options)))
+                    Fore.BLUE + lhs + Style.RESET_ALL,
+                    Fore.MAGENTA+rhs+Style.RESET_ALL,
+                    ",".join(options)))
 
             lines.extend(trailing)
 

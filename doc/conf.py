@@ -46,7 +46,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'loopy'
-copyright = u'2011, Andreas Klöckner'
+copyright = u'2016, Andreas Klöckner'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -54,7 +54,10 @@ copyright = u'2011, Andreas Klöckner'
 #
 # The short X.Y version.
 ver_dic = {}
-exec(compile(open("../loopy/version.py").read(), "../loopy/version.py", 'exec'), ver_dic)
+with open("../loopy/version.py") as vpy_file:
+    version_py = vpy_file.read()
+
+exec(compile(version_py, "../loopy/version.py", 'exec'), ver_dic)
 version = ".".join(str(x) for x in ver_dic["VERSION"])
 # The full version, including alpha/beta/rc tags.
 release = ver_dic["VERSION_TEXT"]
@@ -249,4 +252,4 @@ intersphinx_mapping = {
     'http://docs.scipy.org/doc/numpy/': None,
     }
 
-autoclass_content = "both"
+autoclass_content = "class"

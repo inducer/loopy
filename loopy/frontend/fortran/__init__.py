@@ -237,7 +237,7 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
 
 
 def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
-        auto_dependencies=True):
+        auto_dependencies=True, target=None):
     """
     :returns: a list of :class:`loopy.LoopKernel` objects
     """
@@ -257,7 +257,8 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
                 "and returned invalid data (Sorry!)")
 
     from loopy.frontend.fortran.translator import F2LoopyTranslator
-    f2loopy = F2LoopyTranslator(filename, auto_dependencies=auto_dependencies)
+    f2loopy = F2LoopyTranslator(filename, auto_dependencies=auto_dependencies,
+            target=target)
     f2loopy(tree)
 
     return f2loopy.make_kernels()
