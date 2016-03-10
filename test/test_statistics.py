@@ -115,7 +115,7 @@ def test_op_counter_specialops():
             [
                 """
                 c[i, j, k] = (2*a[i,j,k])%(2+b[i,j,k]/3.0)
-                e[i, k] = (1+g[i,k])**(1+h[i,k+1])
+                e[i, k] = (1+g[i,k])**(1+h[i,k+1])+rsqrt(g[i,k])*sin(g[i,k])
                 """
             ],
             name="specialops", assumptions="n,m,l >= 1")
@@ -133,10 +133,12 @@ def test_op_counter_specialops():
     f64pow = poly[(np.dtype(np.float64), 'pow')].eval_with_dict(params)
     f64add = poly[(np.dtype(np.float64), 'add')].eval_with_dict(params)
     i32add = poly[(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    f64rsqrt = poly[(np.dtype(np.float64), 'func:rsqrt')].eval_with_dict(params)
+    f64sin = poly[(np.dtype(np.float64), 'func:sin')].eval_with_dict(params)
     assert f32div == 2*n*m*l
     assert f32mul == f32add == n*m*l
-    assert f64add == 2*n*m
-    assert f64pow == i32add == n*m
+    assert f64add == 3*n*m
+    assert f64pow == i32add == f64rsqrt == f64sin == n*m
 
 
 def test_op_counter_bitwise():
