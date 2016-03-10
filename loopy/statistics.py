@@ -131,7 +131,7 @@ class ExpressionOpCounter(CombineMapper):
 
     def map_call(self, expr):
         return ToCountMap(
-                    {(self.type_inf(expr), 'call'): 1}
+                    {(self.type_inf(expr), 'func:'+str(expr.function)): 1}
                     ) + self.rec(expr.parameters)
 
     # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
