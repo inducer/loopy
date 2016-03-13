@@ -105,6 +105,18 @@ def stringify_stats_mapping(m):
     return result
 
 
+class DataAccess:
+
+    def __init__(self, stride=0):
+        self.stride = stride
+
+    def __eq__(self, other):
+        return isinstance(other, DataAccess) and other.stride == self.stride  #TODO is this okay?
+
+    def __hash__(self):
+        return hash(self.stride)
+
+
 # {{{ ExpressionOpCounter
 
 class ExpressionOpCounter(CombineMapper):
@@ -277,67 +289,63 @@ class GlobalSubscriptCounter(CombineMapper):
         from loopy.symbolic import get_dependencies
         from loopy.kernel.data import LocalIndexTag
         my_inames = get_dependencies(index) & self.knl.all_inames()
-        local_id0 = None
+
+        # find min tag axis
+        import sys
+        min_tag_axis = sys.maxsize
         local_id_found = False
         for iname in my_inames:
-            # find local id0
             tag = self.knl.iname_to_tag.get(iname)
             if isinstance(tag, LocalIndexTag):
                 local_id_found = True
-                if tag.axis == 0:
-                    local_id0 = iname
-                    break  # there will be only one local_id0
+                if tag.axis < min_tag_axis:
+                    min_tag_axis = tag.axis
 
         if not local_id_found:
             # count as uniform access
             return ToCountMap(
-                    {(self.type_inf(expr), 'uniform'): 1}
+                    {(self.type_inf(expr), DataAccess(stride=0)): 1}
                     ) + self.rec(expr.index)
 
-        if local_id0 is None:
-            # only non-zero local id(s) found, assume non-consecutive access
-            return ToCountMap(
-                    {(self.type_inf(expr), 'nonconsecutive'): 1}
-                    ) + self.rec(expr.index)
+        # get local_id associated with minimum tag axis
+        min_local_id = None
+        for iname in my_inames:
+            tag = self.knl.iname_to_tag.get(iname)
+            if isinstance(tag, LocalIndexTag):
+                if tag.axis == min_tag_axis:
+                    min_local_id = iname
+                    break  # there will be only one min local_id
 
-        # check coefficient of local_id0 for each axis
+        # found local_id associated with minimum tag axis
+
+        total_stride = None
+        # check coefficient of min_local_id for each axis
         from loopy.symbolic import CoefficientCollector
         from pymbolic.primitives import Variable
         for idx, axis_tag in zip(index, array.dim_tags):
 
             coeffs = CoefficientCollector()(idx)
-            # check if he contains the lid 0 guy
+            # check if he contains the min lid guy
             try:
-                coeff_id0 = coeffs[Variable(local_id0)]
+                coeff_min_lid = coeffs[Variable(min_local_id)]
             except KeyError:
-                # does not contain local_id0
+                # does not contain min_local_id
                 continue
 
-            if coeff_id0 != 1:
-                # non-consecutive access
-                return ToCountMap(
-                        {(self.type_inf(expr), 'nonconsecutive'): 1}
-                        ) + self.rec(expr.index)
-
-            # coefficient is 1, now determine if stride is 1
+            # found coefficient of min_local_id
+            # now determine stride
             from loopy.kernel.array import FixedStrideArrayDimTag
             if isinstance(axis_tag, FixedStrideArrayDimTag):
                 stride = axis_tag.stride
             else:
                 continue
 
-            if stride != 1:
-                # non-consecutive
-                return ToCountMap(
-                        {(self.type_inf(expr), 'nonconsecutive'): 1}
-                        ) + self.rec(expr.index)
+            total_stride = stride*coeff_min_lid
+            #TODO is there a case where this^ does not execute, or executes more than once for two different axes?
 
-            # else, stride == 1, continue since another idx could contain id0
-
-        # loop finished without returning, stride==1 for every instance of local_id0
-        return ToCountMap(
-                {(self.type_inf(expr), 'consecutive'): 1}
-                ) + self.rec(expr.index)
+        return ToCountMap({(self.type_inf(expr),
+                           DataAccess(stride=total_stride)): 1}
+                          ) + self.rec(expr.index)
 
     def map_sum(self, expr):
         if expr.children:
@@ -717,13 +725,13 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
         # use count excluding local index tags for uniform accesses
         for key in subs_expr.dict:
             poly = ToCountMap({key: subs_expr.dict[key]})
-            if key[1] == "uniform":
+            if key[1].stride == 0:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames, True)
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
         for key in subs_assignee.dict:
             poly = ToCountMap({key: subs_assignee.dict[key]})
-            if key[1] == "uniform":
+            if key[1].stride == 0:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames, True)
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)

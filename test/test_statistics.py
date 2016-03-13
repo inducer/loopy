@@ -28,9 +28,15 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 import loopy as lp
-from loopy.statistics import get_op_poly, get_gmem_access_poly, get_barrier_poly
+from loopy.statistics import (
+        get_op_poly,
+        get_gmem_access_poly,
+        get_barrier_poly,
+        DataAccess)
+
 import numpy as np
 
+from pymbolic.primitives import Variable
 
 def test_op_counter_basic():
 
@@ -227,19 +233,19 @@ def test_gmem_access_counter_basic():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
     f32 = poly[
-                    (np.dtype(np.float32), 'uniform', 'load')
+                    (np.dtype(np.float32), DataAccess(stride=0), 'load')
                    ].eval_with_dict(params)
     f64 = poly[
-                    (np.dtype(np.float64), 'uniform', 'load')
+                    (np.dtype(np.float64), DataAccess(stride=0), 'load')
                    ].eval_with_dict(params)
     assert f32 == 3*n*m*l
     assert f64 == 2*n*m
 
     f32 = poly[
-                    (np.dtype(np.float32), 'uniform', 'store')
+                    (np.dtype(np.float32), DataAccess(stride=0), 'store')
                    ].eval_with_dict(params)
     f64 = poly[
-                    (np.dtype(np.float64), 'uniform', 'store')
+                    (np.dtype(np.float64), DataAccess(stride=0), 'store')
                    ].eval_with_dict(params)
     assert f32 == n*m*l
     assert f64 == n*m
@@ -261,12 +267,12 @@ def test_gmem_access_counter_reduction():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
     f32 = poly[
-                    (np.dtype(np.float32), 'uniform', 'load')
+                    (np.dtype(np.float32), DataAccess(stride=0), 'load')
                     ].eval_with_dict(params)
     assert f32 == 2*n*m*l
 
     f32 = poly[
-                    (np.dtype(np.float32), 'uniform', 'store')
+                    (np.dtype(np.float32), DataAccess(stride=0), 'store')
                     ].eval_with_dict(params)
     assert f32 == n*l
 
@@ -289,16 +295,16 @@ def test_gmem_access_counter_logic():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
     f32 = poly[
-                    (np.dtype(np.float32), 'uniform', 'load')
+                    (np.dtype(np.float32), DataAccess(stride=0), 'load')
                     ].eval_with_dict(params)
     f64 = poly[
-                    (np.dtype(np.float64), 'uniform', 'load')
+                    (np.dtype(np.float64), DataAccess(stride=0), 'load')
                     ].eval_with_dict(params)
     assert f32 == 2*n*m
     assert f64 == n*m
 
     f64 = poly[
-                    (np.dtype(np.float64), 'uniform', 'store')
+                    (np.dtype(np.float64), DataAccess(stride=0), 'store')
                     ].eval_with_dict(params)
     assert f64 == n*m
 
@@ -323,19 +329,19 @@ def test_gmem_access_counter_specialops():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
     f32 = poly[
-                    (np.dtype(np.float32), 'uniform', 'load')
+                    (np.dtype(np.float32), DataAccess(stride=0), 'load')
                     ].eval_with_dict(params)
     f64 = poly[
-                    (np.dtype(np.float64), 'uniform', 'load')
+                    (np.dtype(np.float64), DataAccess(stride=0), 'load')
                     ].eval_with_dict(params)
     assert f32 == 2*n*m*l
     assert f64 == 2*n*m
 
     f32 = poly[
-                    (np.dtype(np.float32), 'uniform', 'store')
+                    (np.dtype(np.float32), DataAccess(stride=0), 'store')
                     ].eval_with_dict(params)
     f64 = poly[
-                    (np.dtype(np.float64), 'uniform', 'store')
+                    (np.dtype(np.float64), DataAccess(stride=0), 'store')
                     ].eval_with_dict(params)
     assert f32 == n*m*l
     assert f64 == n*m
@@ -364,12 +370,12 @@ def test_gmem_access_counter_bitwise():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
     i32 = poly[
-                    (np.dtype(np.int32), 'uniform', 'load')
+                    (np.dtype(np.int32), DataAccess(stride=0), 'load')
                     ].eval_with_dict(params)
     assert i32 == 4*n*m+2*n*m*l
 
     i32 = poly[
-                    (np.dtype(np.int32), 'uniform', 'store')
+                    (np.dtype(np.int32), DataAccess(stride=0), 'store')
                     ].eval_with_dict(params)
     assert i32 == n*m+n*m*l
 
@@ -398,23 +404,23 @@ def test_gmem_access_counter_mixed():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
     f64uniform = poly[
-                    (np.dtype(np.float64), 'uniform', 'load')
+                    (np.dtype(np.float64), DataAccess(stride=0), 'load')
                     ].eval_with_dict(params)
     f32uniform = poly[
-                    (np.dtype(np.float32), 'uniform', 'load')
+                    (np.dtype(np.float32), DataAccess(stride=0), 'load')
                     ].eval_with_dict(params)
     f32nonconsec = poly[
-                    (np.dtype(np.float32), 'nonconsecutive', 'load')
+                    (np.dtype(np.float32), DataAccess(stride=Variable('m')), 'load')
                     ].eval_with_dict(params)
     assert f64uniform == 2*n*m
     assert f32uniform == n*m*l/threads
     assert f32nonconsec == 3*n*m*l
 
     f64uniform = poly[
-                    (np.dtype(np.float64), 'uniform', 'store')
+                    (np.dtype(np.float64), DataAccess(stride=0), 'store')
                     ].eval_with_dict(params)
     f32nonconsec = poly[
-                    (np.dtype(np.float32), 'nonconsecutive', 'store')
+                    (np.dtype(np.float32), DataAccess(stride=Variable('m')), 'store')
                     ].eval_with_dict(params)
     assert f64uniform == n*m
     assert f32nonconsec == n*m*l
@@ -442,19 +448,19 @@ def test_gmem_access_counter_nonconsec():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
     f64nonconsec = poly[
-                    (np.dtype(np.float64), 'nonconsecutive', 'load')
+                    (np.dtype(np.float64), DataAccess(stride=Variable('m')), 'load')
                     ].eval_with_dict(params)
     f32nonconsec = poly[
-                    (np.dtype(np.float32), 'nonconsecutive', 'load')
+                    (np.dtype(np.float32), DataAccess(stride=Variable('m')*Variable('l')), 'load')
                     ].eval_with_dict(params)
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
     f64nonconsec = poly[
-                    (np.dtype(np.float64), 'nonconsecutive', 'store')
+                    (np.dtype(np.float64), DataAccess(stride=Variable('m')), 'store')
                     ].eval_with_dict(params)
     f32nonconsec = poly[
-                    (np.dtype(np.float32), 'nonconsecutive', 'store')
+                    (np.dtype(np.float32), DataAccess(stride=Variable('m')*Variable('l')), 'store')
                     ].eval_with_dict(params)
     assert f64nonconsec == n*m
     assert f32nonconsec == n*m*l
@@ -482,19 +488,19 @@ def test_gmem_access_counter_consec():
     params = {'n': n, 'm': m, 'l': l}
 
     f64consec = poly[
-                    (np.dtype(np.float64), 'consecutive', 'load')
+                    (np.dtype(np.float64), DataAccess(stride=1), 'load')
                     ].eval_with_dict(params)
     f32consec = poly[
-                    (np.dtype(np.float32), 'consecutive', 'load')
+                    (np.dtype(np.float32), DataAccess(stride=1), 'load')
                     ].eval_with_dict(params)
     assert f64consec == 2*n*m
     assert f32consec == 3*n*m*l
 
     f64consec = poly[
-                    (np.dtype(np.float64), 'consecutive', 'store')
+                    (np.dtype(np.float64), DataAccess(stride=1), 'store')
                     ].eval_with_dict(params)
     f32consec = poly[
-                    (np.dtype(np.float32), 'consecutive', 'store')
+                    (np.dtype(np.float32), DataAccess(stride=1), 'store')
                     ].eval_with_dict(params)
     assert f64consec == n*m
     assert f32consec == n*m*l
@@ -588,17 +594,17 @@ def test_all_counters_parallel_matmul():
 
     subscript_map = get_gmem_access_poly(knl)
     f32uncoal = subscript_map[
-                        (np.dtype(np.float32), 'nonconsecutive', 'load')
+                        (np.dtype(np.float32), DataAccess(stride=Variable('m')), 'load')
                         ].eval_with_dict(params)
     f32coal = subscript_map[
-                        (np.dtype(np.float32), 'consecutive', 'load')
+                        (np.dtype(np.float32), DataAccess(stride=1), 'load')
                         ].eval_with_dict(params)
 
     assert f32uncoal == n*m*l
     assert f32coal == n*m*l
 
     f32coal = subscript_map[
-                        (np.dtype(np.float32), 'consecutive', 'store')
+                        (np.dtype(np.float32), DataAccess(stride=1), 'store')
                         ].eval_with_dict(params)
 
     assert f32coal == n*l
