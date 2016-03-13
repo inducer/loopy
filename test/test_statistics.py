@@ -594,7 +594,7 @@ def test_all_counters_parallel_matmul():
 
     subscript_map = get_gmem_access_poly(knl)
     f32uncoal = subscript_map[
-                        (np.dtype(np.float32), DataAccess(stride=Variable('m')), 'load')
+                        (np.dtype(np.float32), DataAccess(stride=sys.maxsize), 'load')
                         ].eval_with_dict(params)
     f32coal = subscript_map[
                         (np.dtype(np.float32), DataAccess(stride=1), 'load')
