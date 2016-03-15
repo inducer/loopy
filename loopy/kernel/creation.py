@@ -914,13 +914,27 @@ def guess_arg_shape_if_requested(kernel, default_order):
 
             if armap.access_range is None:
                 if armap.bad_subscripts:
-                    raise RuntimeError("cannot determine access range for '%s': "
-                            "undetermined index in subscript(s) '%s'"
-                            % (arg.name, ", ".join(
-                                    str(i) for i in armap.bad_subscripts)))
+                    n_axes_in_subscripts = set(
+                            len(sub.index_tuple) for sub in armap.bad_subscripts)
 
-                # no subscripts found, let's call it a scalar
-                shape = ()
+                    if len(n_axes_in_subscripts) != 1:
+                        raise RuntimeError("subscripts of '%s' with differing "
+                                "numbers of axes were found" % arg.name)
+
+                    n_axes, = n_axes_in_subscripts
+
+                    if n_axes == 1:
+                        # Leave shape undetermined--we can live with that for 1D.
+                        shape = (None,)
+                    else:
+                        raise RuntimeError("cannot determine access range for '%s': "
+                                "undetermined index in subscript(s) '%s'"
+                                % (arg.name, ", ".join(
+                                        str(i) for i in armap.bad_subscripts)))
+
+                else:
+                    # no subscripts found, let's call it a scalar
+                    shape = ()
             else:
                 from loopy.isl_helpers import static_max_of_pw_aff
                 from loopy.symbolic import pw_aff_to_expr

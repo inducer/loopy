@@ -10,9 +10,5 @@ k = lp.make_kernel([
     rowsum = 0 {id=zerosum}
     rowsum = rowsum + x[-1 + colindices[-1 + rowstart + j]]*values[-1 + rowstart + j] {dep=zerosum}
     y[i] = rowsum
-    """,
-    [
-    lp.GlobalArg("colindices,values,x", shape=None),
-    "..."
-    ])
+    """)
 print(k)
