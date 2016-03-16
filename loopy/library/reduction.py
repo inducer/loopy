@@ -59,13 +59,13 @@ class ReductionOperation(object):
     @staticmethod
     def parse_result_type(target, op_type):
         try:
-            return np.dtype(op_type)
+            return NumpyType(np.dtype(op_type))
         except TypeError:
             pass
 
         if op_type.startswith("vec_"):
             try:
-                return target.get_or_register_dtype(op_type[4:])
+                return NumpyType(target.get_or_register_dtype(op_type[4:]))
             except AttributeError:
                 pass
 
