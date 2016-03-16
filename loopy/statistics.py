@@ -105,16 +105,24 @@ def stringify_stats_mapping(m):
     return result
 
 
-class DataAccess:
+class StridedGmemAccess:
 
-    def __init__(self, stride=0):
+    def __init__(self, dtype, stride, direction=None):
+        self.dtype = dtype
         self.stride = stride
+        self.direction = direction
 
     def __eq__(self, other):
-        return isinstance(other, DataAccess) and other.stride == self.stride  #TODO is this okay?
+        return isinstance(other, StridedGmemAccess) and (
+                other.dtype == self.dtype and
+                other.stride == self.stride and
+                other.direction == self.direction )
 
     def __hash__(self):
-        return hash(self.stride)
+        if self.direction == None:
+            return hash(str(self.dtype)+str(self.stride)+"None")
+        else:
+            return hash(str(self.dtype)+str(self.stride)+self.direction)
 
 
 # {{{ ExpressionOpCounter
@@ -292,7 +300,6 @@ class GlobalSubscriptCounter(CombineMapper):
 
         # find min tag axis
         import sys
-        #local_id0 = None
         min_tag_axis = sys.maxsize
         local_id_found = False
         for iname in my_inames:
@@ -301,14 +308,11 @@ class GlobalSubscriptCounter(CombineMapper):
                 local_id_found = True
                 if tag.axis < min_tag_axis:
                     min_tag_axis = tag.axis
-                #if tag.axis == 0:
-                #    local_id0 = iname
-                #    break
 
         if not local_id_found:
             # count as uniform access
             return ToCountMap(
-                    {(self.type_inf(expr), DataAccess(stride=0)): 1}
+                    {StridedGmemAccess(self.type_inf(expr), 0): 1}
                     ) + self.rec(expr.index)
 
         # get local_id associated with minimum tag axis
@@ -326,41 +330,27 @@ class GlobalSubscriptCounter(CombineMapper):
         # check coefficient of local_id0 for each axis
         from loopy.symbolic import CoefficientCollector
         from pymbolic.primitives import Variable
-        #print("==========================================================================================")
-        #print("expr: ", expr)
-        #print("min_lid: ", min_lid)
-        #print("min_tag_axis: ", min_tag_axis)
-        #print("Var(min_lid): ", Variable(min_lid))
         for idx, axis_tag in zip(index, array.dim_tags):
-            #print("...........................................................................................")
-            #print("idx, axis_tag: ", idx, "\t",  axis_tag)
             coeffs = CoefficientCollector()(idx)
-            #print("coeffs: ", coeffs)
             # check if he contains the min lid guy
             try:
                 coeff_min_lid = coeffs[Variable(min_lid)]
             except KeyError:
                 # does not contain min_lid
-                #print("key error")
                 continue
-            #print("coeff_min_lid: ", coeff_min_lid)
-            #print("axis_tag: ", axis_tag)
             # found coefficient of min_lid
             # now determine stride
             from loopy.kernel.array import FixedStrideArrayDimTag
             if isinstance(axis_tag, FixedStrideArrayDimTag):
                 stride = axis_tag.stride
             else:
-                #print("continuing")
                 continue
-            #print("stride: ", stride)
 
             total_stride = stride*coeff_min_lid
             #TODO is there a case where this^ does not execute, or executes more than once for two different axes?
 
-        return ToCountMap({(self.type_inf(expr),
-                           DataAccess(stride=total_stride)): 1}
-                          ) + self.rec(expr.index)
+        return ToCountMap({StridedGmemAccess(self.type_inf(expr),
+                           total_stride): 1}) + self.rec(expr.index)
 
     def map_sum(self, expr):
         if expr.children:
@@ -727,26 +717,28 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
     for insn in knl.instructions:
         # count subscripts, distinguishing loads and stores
         subs_expr = subscript_counter(insn.expression)
-        subs_expr = ToCountMap(dict(
-            (key + ("load",), val)
-            for key, val in six.iteritems(subs_expr.dict)))
+        for key in subs_expr.dict:
+            subs_expr.dict[StridedGmemAccess(
+                           key.dtype, key.stride, 'load')
+                          ] = subs_expr.dict.pop(key)
         subs_assignee = subscript_counter(insn.assignee)
-        subs_assignee = ToCountMap(dict(
-            (key + ("store",), val)
-            for key, val in six.iteritems(subs_assignee.dict)))
+        for key in subs_assignee.dict:
+            subs_assignee.dict[StridedGmemAccess(
+                           key.dtype, key.stride, 'store')
+                          ] = subs_assignee.dict.pop(key)
 
         insn_inames = knl.insn_inames(insn)
 
         # use count excluding local index tags for uniform accesses
         for key in subs_expr.dict:
             poly = ToCountMap({key: subs_expr.dict[key]})
-            if key[1].stride == 0:
+            if isinstance(key.stride, int) and key.stride == 0:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames, True)
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
         for key in subs_assignee.dict:
             poly = ToCountMap({key: subs_assignee.dict[key]})
-            if key[1].stride == 0:
+            if isinstance(key.stride, int) and key.stride == 0:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames, True)
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
