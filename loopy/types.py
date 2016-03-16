@@ -101,7 +101,7 @@ class NumpyType(LoopyType):
                 and self.dtype == other.dtype)
 
     def __ne__(self, other):
-        return not super(NumpyType, self).__eq__(other)
+        return not self.__eq__(other)
 
     def __getstate__(self):
         if self.target is None:
