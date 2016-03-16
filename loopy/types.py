@@ -92,6 +92,9 @@ class NumpyType(LoopyType):
     def __hash__(self):
         return hash(self.dtype)
 
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, self.dtype)
+
     def __eq__(self, other):
         return (
                 type(self) == type(other)
@@ -167,6 +170,10 @@ class AtomicNumpyType(NumpyType, AtomicType):
     """
     def __hash__(self):
         return 0xa7031c ^ hash(self.dtype)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, 0xa7031c)
+        key_builder.rec(key_hash, self.dtype)
 
     def __repr__(self):
         return "atomic:%s" % repr(self.dtype)
