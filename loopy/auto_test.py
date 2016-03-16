@@ -101,7 +101,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
                 argv_dtype = None
 
             if argv_dtype != arg.dtype:
-                arg_value = arg.dtype.type(arg_value)
+                arg_value = arg.dtype.numpy_dtype.type(arg_value)
 
             ref_args[arg.name] = arg_value
 
@@ -208,7 +208,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
                 argv_dtype = None
 
             if argv_dtype != arg.dtype:
-                arg_value = arg.dtype.type(arg_value)
+                arg_value = arg.dtype.numpy_dtype.type(arg_value)
 
             args[arg.name] = arg_value
 
