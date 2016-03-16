@@ -324,7 +324,6 @@ def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors):
         for dev in pf.get_devices():
             if any(bl in dev.platform.vendor
                     for bl in blacklist_ref_vendors):
-                print("blacklist", dev, blacklist_ref_vendors)
                 continue
 
             if dev.type & cl.device_type.CPU:
