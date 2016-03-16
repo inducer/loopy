@@ -551,7 +551,8 @@ class ArrayBase(Record):
     allowed_extra_kwargs = []
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
-            dim_names=None, strides=None, order=None, **kwargs):
+            dim_names=None, strides=None, order=None, for_atomic=False,
+            **kwargs):
         """
         All of the following are optional. Specify either strides or shape.
 
@@ -611,6 +612,9 @@ class ArrayBase(Record):
         :arg order: "F" or "C" for C (row major) or Fortran
             (column major). Defaults to the *default_order* argument
             passed to :func:`loopy.make_kernel`.
+        :arg for_atomic:
+            Whether the array is declared for atomic access, and, if necessary,
+            using atomic-capable data types.
         :arg offset: Offset from the beginning of the buffer to the point from
             which the strides are counted. May be one of
 
@@ -629,22 +633,9 @@ class ArrayBase(Record):
 
         import loopy as lp
 
-        if dtype is not None and dtype is not lp.auto:
-            from loopy.tools import PicklableDtype
-            if not isinstance(dtype, PicklableDtype):
-                picklable_dtype = PicklableDtype(dtype)
-            else:
-                picklable_dtype = dtype
-
-            if picklable_dtype.dtype == object:
-                raise TypeError("loopy does not directly support object arrays "
-                        "(object dtype encountered on array '%s') "
-                        "-- you may want to tag the relevant array axis as 'sep'"
-                        % name)
-        else:
-            picklable_dtype = dtype
-
-        del dtype
+        from loopy.types import to_loopy_type
+        dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
+                for_atomic=for_atomic)
 
         strides_known = strides is not None and strides is not lp.auto
         shape_known = shape is not None and shape is not lp.auto
@@ -766,7 +757,7 @@ class ArrayBase(Record):
 
         Record.__init__(self,
                 name=name,
-                picklable_dtype=picklable_dtype,
+                dtype=dtype,
                 shape=shape,
                 dim_tags=dim_tags,
                 offset=offset,
@@ -781,7 +772,7 @@ class ArrayBase(Record):
         return (
                 type(self) == type(other)
                 and self.name == other.name
-                and self.picklable_dtype == other.picklable_dtype
+                and self.dtype == other.dtype
                 and istoee(self.shape, other.shape)
                 and self.dim_tags == other.dim_tags
                 and isee(self.offset, other.offset)
@@ -791,23 +782,6 @@ class ArrayBase(Record):
 
     def __ne__(self, other):
         return not self.__eq__(other)
-
-    @property
-    def dtype(self):
-        from loopy.tools import PicklableDtype
-        if isinstance(self.picklable_dtype, PicklableDtype):
-            return self.picklable_dtype.dtype
-        else:
-            return self.picklable_dtype
-
-    def get_copy_kwargs(self, **kwargs):
-        result = Record.get_copy_kwargs(self, **kwargs)
-        if "dtype" not in result:
-            result["dtype"] = self.dtype
-
-        del result["picklable_dtype"]
-
-        return result
 
     def stringify(self, include_typename):
         import loopy as lp

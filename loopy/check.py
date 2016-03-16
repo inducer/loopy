@@ -373,6 +373,37 @@ def pre_schedule_checks(kernel):
 
 # {{{ pre-code-generation checks
 
+def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
+    from loopy.kernel.data import ArrayBase, Assignment
+    from loopy.types import AtomicType
+    atomicity_candidates = (
+            set(v.name for v in six.itervalues(kernel.temporary_variables)
+                if isinstance(v.dtype, AtomicType))
+            |
+            set(v.name for v in kernel.args
+                if isinstance(v, ArrayBase)
+                and isinstance(v.dtype, AtomicType)))
+
+    for insn in kernel.instructions:
+        if not isinstance(insn, Assignment):
+            continue
+
+        atomic_accesses = set(a.var_name for a in insn.atomicity)
+        if not atomic_accesses <= atomicity_candidates:
+            raise LoopyError("atomic access in instruction '%s' to "
+                    "non-atomic variable(s) '%s'"
+                    % (insn.id,
+                        ",".join(atomic_accesses - atomicity_candidates)))
+
+        accessed_atomic_vars = insn.dependency_names() & atomicity_candidates
+        if not accessed_atomic_vars <= atomic_accesses:
+            raise LoopyError("atomic variable(s) '%s' in instruction '%s' "
+                    "used in non-atomic access"
+                    % (
+                        ",".join(accessed_atomic_vars - atomic_accesses),
+                        insn.id))
+
+
 def check_that_shapes_and_strides_are_arguments(kernel):
     from loopy.kernel.data import ValueArg
     from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
@@ -383,7 +414,7 @@ def check_that_shapes_and_strides_are_arguments(kernel):
             arg.name
             for arg in kernel.args
             if isinstance(arg, ValueArg)
-            and arg.dtype.kind == "i")
+            and arg.dtype.is_integral())
 
     for arg in kernel.args:
         if isinstance(arg, ArrayBase):
@@ -417,6 +448,7 @@ def pre_codegen_checks(kernel):
     try:
         logger.info("pre-codegen check %s: start" % kernel.name)
 
+        check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
         kernel.target.pre_codegen_check(kernel)
         check_that_shapes_and_strides_are_arguments(kernel)
 

@@ -2421,6 +2421,26 @@ def test_chunk_iname(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=130))
 
 
+def test_atomic(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i%20] = out[i%20] + 2*a[i] {atomic}",
+            [
+                lp.GlobalArg("out", np.float32, shape=lp.auto,
+                    for_atomic=True),
+                lp.GlobalArg("a", np.float32, shape=lp.auto),
+                "..."
+                ],
+            assumptions="n>0")
+
+    ref_knl = knl
+    knl = lp.chunk_iname(knl, "i", 3, inner_tag="l.0")
+    knl = lp.set_loop_priority(knl, "i_outer, i_inner")
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=130))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

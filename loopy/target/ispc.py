@@ -37,9 +37,9 @@ from pytools import memoize_method
 
 class LoopyISPCCodeMapper(LoopyCCodeMapper):
     def _get_index_ctype(self):
-        if self.kernel.index_dtype == np.int32:
+        if self.kernel.index_dtype.numpy_dtype == np.int32:
             return "int32"
-        elif self.kernel.index_dtype == np.int64:
+        elif self.kernel.index_dtype.numpy_dtype == np.int64:
             return "int64"
         else:
             raise ValueError("unexpected index_type")

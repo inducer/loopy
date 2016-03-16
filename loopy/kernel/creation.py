@@ -30,6 +30,7 @@ from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
         InstructionBase, Assignment, SubstitutionRule)
+from loopy.diagnostic import LoopyError
 import islpy as isl
 from islpy import dim_type
 
@@ -162,6 +163,8 @@ def parse_insn(insn):
         and *inames_to_dup* is None or a list of tuples `(old, new)`.
     """
 
+    import loopy as lp
+
     insn_match = INSN_RE.match(insn)
     subst_match = SUBST_RE.match(insn)
     if insn_match is not None and subst_match is not None:
@@ -189,6 +192,18 @@ def parse_insn(insn):
                 "the following error occurred:" % groups["rhs"])
         raise
 
+    from pymbolic.primitives import Variable, Subscript, Call
+    if isinstance(lhs, Variable):
+        assignee_name = lhs.name
+    elif isinstance(lhs, Subscript):
+        assignee_name = lhs.aggregate.name
+    elif isinstance(lhs, Call):
+        assignee_name = None
+        assert subst_match is not None
+    else:
+        raise LoopyError("left hand side of assignment '%s' must "
+                "be variable or subscript" % lhs)
+
     if insn_match is not None:
         depends_on = None
         depends_on_is_final = False
@@ -201,6 +216,7 @@ def parse_insn(insn):
         forced_iname_deps = frozenset()
         predicates = frozenset()
         tags = ()
+        atomicity = ()
 
         if groups["options"] is not None:
             for option in groups["options"].split(","):
@@ -216,13 +232,13 @@ def parse_insn(insn):
                     opt_key = option[:equal_idx].strip()
                     opt_value = option[equal_idx+1:].strip()
 
-                if opt_key == "id":
+                if opt_key == "id" and opt_value is not None:
                     insn_id = intern(opt_value)
-                elif opt_key == "id_prefix":
+                elif opt_key == "id_prefix" and opt_value is not None:
                     insn_id = UniqueName(opt_value)
-                elif opt_key == "priority":
+                elif opt_key == "priority" and opt_value is not None:
                     priority = int(opt_value)
-                elif opt_key == "dup":
+                elif opt_key == "dup" and opt_value is not None:
                     for value in opt_value.split(":"):
                         arrow_idx = value.find("->")
                         if arrow_idx >= 0:
@@ -231,7 +247,7 @@ def parse_insn(insn):
                         else:
                             inames_to_dup.append((value, None))
 
-                elif opt_key == "dep":
+                elif opt_key == "dep" and opt_value is not None:
                     if opt_value.startswith("*"):
                         depends_on_is_final = True
                         opt_value = (opt_value[1:]).strip()
@@ -240,17 +256,17 @@ def parse_insn(insn):
                             intern(dep.strip()) for dep in opt_value.split(":")
                             if dep.strip())
 
-                elif opt_key == "groups":
+                elif opt_key == "groups" and opt_value is not None:
                     insn_groups = frozenset(
                             intern(grp.strip()) for grp in opt_value.split(":")
                             if grp.strip())
 
-                elif opt_key == "conflicts":
+                elif opt_key == "conflicts" and opt_value is not None:
                     conflicts_with_groups = frozenset(
                             intern(grp.strip()) for grp in opt_value.split(":")
                             if grp.strip())
 
-                elif opt_key == "inames":
+                elif opt_key == "inames" and opt_value is not None:
                     if opt_value.startswith("+"):
                         forced_iname_deps_is_final = False
                         opt_value = (opt_value[1:]).strip()
@@ -259,16 +275,32 @@ def parse_insn(insn):
 
                     forced_iname_deps = intern_frozenset_of_ids(opt_value.split(":"))
 
-                elif opt_key == "if":
+                elif opt_key == "if" and opt_value is not None:
                     predicates = intern_frozenset_of_ids(opt_value.split(":"))
 
-                elif opt_key == "tags":
+                elif opt_key == "tags" and opt_value is not None:
                     tags = tuple(
                             tag.strip() for tag in opt_value.split(":")
                             if tag.strip())
 
+                elif opt_key == "atomic":
+                    if opt_value is None:
+                        atomicity = atomicity + (
+                                lp.AtomicUpdate(assignee_name),)
+                    else:
+                        for v in opt_value.split(":"):
+                            if v == "init":
+                                atomicity = atomicity + (
+                                        lp.AtomicInit(assignee_name),)
+                            else:
+                                raise LoopyError("atomicity directive not "
+                                        "understood: %s"
+                                        % v)
+
                 else:
-                    raise ValueError("unrecognized instruction option '%s'"
+                    raise ValueError(
+                            "unrecognized instruction option '%s' "
+                            "(maybe a missing/extraneous =value?)"
                             % opt_key)
 
         if groups["temp_var_type"] is not None:
@@ -279,11 +311,6 @@ def parse_insn(insn):
                 temp_var_type = lp.auto
         else:
             temp_var_type = None
-
-        from pymbolic.primitives import Variable, Subscript
-        if not isinstance(lhs, (Variable, Subscript)):
-            raise RuntimeError("left hand side of assignment '%s' must "
-                    "be variable or subscript" % lhs)
 
         return Assignment(
                     id=(
@@ -298,6 +325,7 @@ def parse_insn(insn):
                     forced_iname_deps=forced_iname_deps,
                     assignee=lhs, expression=rhs,
                     temp_var_type=temp_var_type,
+                    atomicity=atomicity,
                     priority=priority,
                     predicates=predicates,
                     tags=tags), inames_to_dup

@@ -26,10 +26,12 @@ THE SOFTWARE.
 
 import numpy as np
 
+from pytools import memoize_method
+
 from loopy.target.c import CTarget
 from loopy.target.c.codegen.expression import LoopyCCodeMapper
-from pytools import memoize_method
 from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
 
 
 # {{{ vector types
@@ -141,10 +143,12 @@ class LoopyCudaCCodeMapper(LoopyCCodeMapper):
 
     @staticmethod
     def _get_index_ctype(kernel):
-        if kernel.index_dtype == np.int32:
+        if kernel.index_dtype.numpy_dtype == np.int32:
             return "int32_t"
-        else:
+        elif kernel.index_dtype.numpy_dtype == np.int32:
             return "int64_t"
+        else:
+            raise LoopyError("unexpected index type")
 
     def map_group_hw_index(self, expr, enclosing_prec, type_context):
         return "((%s) blockIdx.%s)" % (
@@ -198,10 +202,10 @@ class CudaTarget(CTarget):
         return result
 
     def is_vector_dtype(self, dtype):
-        return list(vec.types.values())
+        return dtype.numpy_dtype in list(vec.types.values())
 
     def vector_dtype(self, base, count):
-        return vec.types[base, count]
+        return NumpyType(vec.types[base.numpy_dtype, count])
 
     # }}}
 

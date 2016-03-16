@@ -1,8 +1,4 @@
-from __future__ import division, with_statement
-from __future__ import absolute_import
-import six
-from six.moves import range
-from six.moves import zip
+from __future__ import division, with_statement, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -26,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+from six.moves import range, zip
 
 import sys
 import numpy as np
@@ -34,6 +32,7 @@ from loopy.diagnostic import ParameterFinderWarning
 from pytools.py_codegen import (
         Indentation, PythonFunctionGenerator)
 from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
 
 import logging
 logger = logging.getLogger(__name__)
@@ -162,7 +161,7 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options
                 if len(deps) == 1:
                     integer_arg_var, = deps
 
-                    if kernel.arg_dict[integer_arg_var.name].dtype.kind == "i":
+                    if kernel.arg_dict[integer_arg_var.name].dtype.is_integral():
                         from pymbolic.algorithm import solve_affine_equations_for
                         try:
                             # friggin' overkill :)
@@ -279,7 +278,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, option
                     if not options.skip_arg_checks:
                         gen("%s, _lpy_remdr = divmod(%s.strides[%d], %d)"
                                 % (arg.name, impl_array_name, stride_impl_axis,
-                                    base_arg.dtype.itemsize))
+                                    base_arg.dtype.dtype.itemsize))
 
                         gen("assert _lpy_remdr == 0, \"Stride %d of array '%s' is "
                                 "not divisible by its dtype itemsize\""
@@ -360,16 +359,20 @@ def generate_value_arg_setup(gen, kernel, cl_kernel, impl_arg_info, options):
                         "be supplied")
                 """.format(name=arg.name))
 
-        if sys.version_info < (2, 7) and arg.dtype.kind == "i":
+        if sys.version_info < (2, 7) and arg.dtype.is_integral():
             gen("# cast to long to avoid trouble with struct packing")
             gen("%s = long(%s)" % (arg.name, arg.name))
             gen("")
 
-        if arg.dtype.char == "V":
+        if arg.dtype.is_composite():
             gen("cl_kernel.set_arg(%d, %s)" % (cl_arg_idx, arg.name))
             cl_arg_idx += 1
 
-        elif arg.dtype.kind == "c":
+        elif arg.dtype.is_complex():
+            assert isinstance(arg.dtype, NumpyType)
+
+            dtype = arg.dtype
+
             if warn_about_arg_count_bug:
                 from warnings import warn
                 warn("{knl_name}: arguments include complex numbers, and "
@@ -378,15 +381,15 @@ def generate_value_arg_setup(gen, kernel, cl_kernel, impl_arg_info, options):
                         "disabled".format(
                             knl_name=kernel.name))
 
-            if arg.dtype == np.complex64:
+            if dtype.numpy_dtype == np.complex64:
                 arg_char = "f"
-            elif arg.dtype == np.complex128:
+            elif dtype.numpy_dtype == np.complex128:
                 arg_char = "d"
             else:
-                raise TypeError("unexpected complex type: %s" % arg.dtype)
+                raise TypeError("unexpected complex type: %s" % dtype)
 
             if (work_around_arg_count_bug
-                    and arg.dtype == np.complex128
+                    and dtype.numpy_dtype == np.complex128
                     and fp_arg_count + 2 <= 8):
                 gen(
                         "buf = _lpy_pack('{arg_char}', {arg_var}.real)"
@@ -415,14 +418,18 @@ def generate_value_arg_setup(gen, kernel, cl_kernel, impl_arg_info, options):
 
             fp_arg_count += 2
 
-        else:
-            if arg.dtype.kind == "f":
+        elif isinstance(arg.dtype, NumpyType):
+            if arg.dtype.dtype.kind == "f":
                 fp_arg_count += 1
 
             gen("cl_kernel.set_arg(%d, _lpy_pack('%s', %s))"
-                    % (cl_arg_idx, arg.dtype.char, arg.name))
+                    % (cl_arg_idx, arg.dtype.dtype.char, arg.name))
 
             cl_arg_idx += 1
+
+        else:
+            raise LoopyError("do not know how to pass argument of type '%s'"
+                    % arg.dtype)
 
         gen("")
 
@@ -510,6 +517,10 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
         if is_written and arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
                 and arg.shape is not None:
 
+            if not isinstance(arg.dtype, NumpyType):
+                raise LoopyError("do not know how to pass arg of type '%s'"
+                        % arg.dtype)
+
             possibly_made_by_loopy = True
             gen("_lpy_made_by_loopy = False")
             gen("")
@@ -520,7 +531,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
                 for i in range(num_axes):
                     gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
 
-                itemsize = kernel_arg.dtype.itemsize
+                itemsize = kernel_arg.dtype.numpy_dtype.itemsize
                 for i in range(num_axes):
                     gen("_lpy_strides_%d = %s" % (i, strify(
                         itemsize*arg.unvec_strides[i])))
@@ -550,7 +561,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
                             name=arg.name,
                             shape=strify(sym_shape),
                             strides=strify(sym_strides),
-                            dtype=python_dtype_str(arg.dtype)))
+                            dtype=python_dtype_str(kernel_arg.dtype.numpy_dtype)))
 
                 if not options.skip_arg_checks:
                     for i in range(num_axes):
@@ -575,7 +586,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
 
             with Indentation(gen):
                 gen("if %s.dtype != %s:"
-                        % (arg.name, python_dtype_str(kernel_arg.dtype)))
+                        % (arg.name, python_dtype_str(kernel_arg.dtype.numpy_dtype)))
                 with Indentation(gen):
                     gen("raise TypeError(\"dtype mismatch on argument '%s' "
                             "(got: %%s, expected: %s)\" %% %s.dtype)"
@@ -630,7 +641,7 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
                 # }}}
 
                 if arg.unvec_strides and kernel_arg.dim_tags:
-                    itemsize = kernel_arg.dtype.itemsize
+                    itemsize = kernel_arg.dtype.numpy_dtype.itemsize
                     sym_strides = tuple(
                             itemsize*s_i for s_i in arg.unvec_strides)
                     gen("if %s.strides != %s:"

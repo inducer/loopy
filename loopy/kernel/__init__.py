@@ -254,10 +254,11 @@ class LoopKernel(RecordWithoutPickling):
 
         # }}}
 
-        index_dtype = np.dtype(index_dtype)
-        if index_dtype.kind != 'i':
+        from loopy.types import to_loopy_type
+        index_dtype = to_loopy_type(index_dtype).with_target(target)
+        if not index_dtype.is_integral():
             raise TypeError("index_dtype must be an integer")
-        if np.iinfo(index_dtype).min >= 0:
+        if np.iinfo(index_dtype.numpy_dtype).min >= 0:
             raise TypeError("index_dtype must be signed")
 
         if get_grid_sizes is not None:
@@ -1043,6 +1044,9 @@ class LoopKernel(RecordWithoutPickling):
                 options.append("priority=%d" % insn.priority)
             if insn.tags:
                 options.append("tags=%s" % ":".join(insn.tags))
+            if isinstance(insn, lp.Assignment) and insn.atomicity:
+                options.append("atomic=%s" % ":".join(
+                    str(a) for a in insn.atomicity))
             if insn.groups:
                 options.append("groups=%s" % ":".join(insn.groups))
             if insn.conflicts_with_groups:

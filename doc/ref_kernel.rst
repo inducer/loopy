@@ -262,6 +262,9 @@ These are usually key-value pairs. The following attributes are recognized:
   given instruction groups. See
   :class:`InstructionBase.conflicts_with_groups`.
 
+* ``atomic`` The update embodied by the assignment is carried out
+  atomically. See :attr:`Assignment.atomicity` for precise semantics.
+
 .. _expression-syntax:
 
 Expressions
@@ -285,6 +288,19 @@ C Block Instructions
 ^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: CInstruction
+
+Atomic Operations
+^^^^^^^^^^^^^^^^^
+
+.. autoclass:: memory_ordering
+
+.. autoclass:: memory_scope
+
+.. autoclass:: VarAtomicity
+
+.. autoclass:: AtomicInit
+
+.. autoclass:: AtomicUpdate
 
 .. }}}
 

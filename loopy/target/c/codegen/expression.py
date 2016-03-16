@@ -37,6 +37,7 @@ from loopy.expression import dtype_to_type_context, TypeInferenceMapper
 
 from loopy.diagnostic import LoopyError
 from loopy.tools import is_integer
+from loopy.types import LoopyType
 
 
 # {{{ C code mapper
@@ -55,6 +56,8 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     def infer_type(self, expr):
         result = self.type_inf_mapper(expr)
+        assert isinstance(result, LoopyType)
+
         self.codegen_state.seen_dtypes.add(result)
         return result
 
@@ -91,11 +94,11 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         actual_type = self.infer_type(expr)
 
-        if (actual_type.kind == "c" and needed_dtype.kind == "c"
+        if (actual_type.is_complex() and needed_dtype.is_complex()
                 and actual_type != needed_dtype):
             result = RecursiveMapper.rec(self, expr, PREC_NONE, type_context)
             return "%s_cast(%s)" % (self.complex_type_name(needed_dtype), result)
-        elif actual_type.kind != "c" and needed_dtype.kind == "c":
+        elif not actual_type.is_complex() and needed_dtype.is_complex():
             result = RecursiveMapper.rec(self, expr, PREC_NONE, type_context)
             return "%s_fromreal(%s)" % (self.complex_type_name(needed_dtype), result)
         else:
@@ -459,9 +462,13 @@ class LoopyCCodeMapper(RecursiveMapper):
     # {{{ deal with complex-valued variables
 
     def complex_type_name(self, dtype):
-        if dtype == np.complex64:
+        from loopy.types import NumpyType
+        if not isinstance(dtype, NumpyType):
+            raise LoopyError("'%s' is not a complex type" % dtype)
+
+        if dtype.dtype == np.complex64:
             return "cfloat"
-        if dtype == np.complex128:
+        if dtype.dtype == np.complex128:
             return "cdouble"
         else:
             raise RuntimeError
@@ -484,17 +491,20 @@ class LoopyCCodeMapper(RecursiveMapper):
             return base_impl(expr, enclosing_prec, type_context)
 
         tgt_dtype = self.infer_type(expr)
-        is_complex = tgt_dtype.kind == 'c'
+        is_complex = tgt_dtype.is_complex()
 
         if not is_complex:
             return base_impl(expr, enclosing_prec, type_context)
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
-            reals = [child for child in expr.children
-                    if 'c' != self.infer_type(child).kind]
-            complexes = [child for child in expr.children
-                    if 'c' == self.infer_type(child).kind]
+            reals = []
+            complexes = []
+            for child in expr.children:
+                if self.infer_type(child).is_complex():
+                    complexes.append(child)
+                else:
+                    reals.append(child)
 
             real_sum = self.join_rec(" + ", reals, PREC_SUM, type_context)
 
@@ -534,17 +544,20 @@ class LoopyCCodeMapper(RecursiveMapper):
             return base_impl(expr, enclosing_prec, type_context)
 
         tgt_dtype = self.infer_type(expr)
-        is_complex = 'c' == tgt_dtype.kind
+        is_complex = tgt_dtype.is_complex()
 
         if not is_complex:
             return base_impl(expr, enclosing_prec, type_context)
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
-            reals = [child for child in expr.children
-                    if 'c' != self.infer_type(child).kind]
-            complexes = [child for child in expr.children
-                    if 'c' == self.infer_type(child).kind]
+            reals = []
+            complexes = []
+            for child in expr.children:
+                if self.infer_type(child).is_complex():
+                    complexes.append(child)
+                else:
+                    reals.append(child)
 
             real_prd = self.join_rec(" * ", reals, PREC_PRODUCT,
                     type_context)
@@ -574,7 +587,8 @@ class LoopyCCodeMapper(RecursiveMapper):
             # analogous to ^{-1}
             denom = self.rec(expr.denominator, PREC_POWER, type_context)
 
-            if n_dtype.kind not in "fc" and d_dtype.kind not in "fc":
+            if (n_dtype.kind not in "fc"
+                    and d_dtype.kind not in "fc"):
                 # must both be integers
                 if type_context == "f":
                     num = "((float) (%s))" % num
@@ -592,8 +606,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                         denom),
                     enclosing_prec, PREC_PRODUCT)
 
-        n_dtype = self.infer_type(expr.numerator)
-        d_dtype = self.infer_type(expr.denominator)
+        n_dtype = self.infer_type(expr.numerator).numpy_dtype
+        d_dtype = self.infer_type(expr.denominator).numpy_dtype
 
         if not self.allow_complex:
             return base_impl(expr, enclosing_prec, type_context)
@@ -623,7 +637,7 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     def map_remainder(self, expr, enclosing_prec, type_context):
         tgt_dtype = self.infer_type(expr)
-        if 'c' == tgt_dtype.kind:
+        if tgt_dtype.is_complex():
             raise RuntimeError("complex remainder not defined")
 
         return "(%s %% %s)" % (

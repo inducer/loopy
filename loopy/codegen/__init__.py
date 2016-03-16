@@ -425,11 +425,12 @@ class ImplementedDataInfo(Record):
             offset_for_name=None, stride_for_name_and_axis=None,
             allows_offset=None):
 
-        from loopy.tools import PicklableDtype
+        from loopy.types import LoopyType
+        assert isinstance(dtype, LoopyType)
 
         Record.__init__(self,
                 name=name,
-                picklable_dtype=PicklableDtype(dtype, target=target),
+                dtype=dtype,
                 cgen_declarator=cgen_declarator,
                 arg_class=arg_class,
                 base_name=base_name,
@@ -440,14 +441,6 @@ class ImplementedDataInfo(Record):
                 offset_for_name=offset_for_name,
                 stride_for_name_and_axis=stride_for_name_and_axis,
                 allows_offset=allows_offset)
-
-    @property
-    def dtype(self):
-        from loopy.tools import PicklableDtype
-        if isinstance(self.picklable_dtype, PicklableDtype):
-            return self.picklable_dtype.dtype
-        else:
-            return self.picklable_dtype
 
 # }}}
 
@@ -528,7 +521,7 @@ def generate_code(kernel, device=None):
 
     allow_complex = False
     for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
-        if var.dtype.kind == "c":
+        if var.dtype.involves_complex():
             allow_complex = True
 
     # }}}
@@ -619,7 +612,7 @@ def generate_body(kernel):
 
     allow_complex = False
     for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
-        if var.dtype.kind == "c":
+        if var.dtype.involves_complex():
             allow_complex = True
 
     seen_dtypes = set()

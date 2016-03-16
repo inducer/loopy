@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 
 from six.moves import intern
-import numpy as np
+import numpy as np  # noqa
 from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
@@ -191,31 +191,11 @@ class KernelArgument(Record):
         kwargs["name"] = intern(kwargs.pop("name"))
 
         dtype = kwargs.pop("dtype", None)
-
-        if isinstance(dtype, np.dtype):
-            from loopy.tools import PicklableDtype
-            kwargs["picklable_dtype"] = PicklableDtype(dtype)
-        else:
-            kwargs["picklable_dtype"] = dtype
+        from loopy.types import to_loopy_type
+        kwargs["dtype"] = to_loopy_type(
+                dtype, allow_auto=True, allow_none=True)
 
         Record.__init__(self, **kwargs)
-
-    def get_copy_kwargs(self, **kwargs):
-        result = Record.get_copy_kwargs(self, **kwargs)
-        if "dtype" not in result:
-            result["dtype"] = self.dtype
-
-        del result["picklable_dtype"]
-
-        return result
-
-    @property
-    def dtype(self):
-        from loopy.tools import PicklableDtype
-        if isinstance(self.picklable_dtype, PicklableDtype):
-            return self.picklable_dtype.dtype
-        else:
-            return self.picklable_dtype
 
 
 class GlobalArg(ArrayBase, KernelArgument):
@@ -251,11 +231,9 @@ class ImageArg(ArrayBase, KernelArgument):
 
 class ValueArg(KernelArgument):
     def __init__(self, name, dtype=None, approximately=1000):
-        from loopy.tools import PicklableDtype
-        if dtype is not None and not isinstance(dtype, PicklableDtype):
-            dtype = np.dtype(dtype)
-
-        KernelArgument.__init__(self, name=name, dtype=dtype,
+        from loopy.types import to_loopy_type
+        KernelArgument.__init__(self, name=name,
+                dtype=to_loopy_type(dtype, allow_auto=True, allow_none=True),
                 approximately=approximately)
 
     def __str__(self):
@@ -660,6 +638,8 @@ class InstructionBase(Record):
             result.append("priority=%d" % self.priority)
         if self.tags:
             result.append("tags=%s" % ":".join(self.tags))
+        if self.atomicity:
+            result.append("atomic=%s" % ":".join(str(a) for a in self.atomicity))
 
         return result
 
@@ -739,6 +719,148 @@ def _get_assignee_and_index(expr):
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
+class memory_ordering:
+    """Ordering of atomic operations, defined as in C11 and OpenCL.
+
+    .. attribute:: relaxed
+    .. attribute:: acquire
+    .. attribute:: release
+    .. attribute:: acq_rel
+    .. attribute:: seq_cst
+    """
+
+    relaxed = 0
+    acquire = 1
+    release = 2
+    acq_rel = 3
+    seq_cst = 4
+
+    @staticmethod
+    def to_string(v):
+        for i in dir(memory_ordering):
+            if i.startswith("_"):
+                continue
+
+            if getattr(memory_ordering, i) == v:
+                return i
+
+        raise ValueError("Unknown value of memory_ordering")
+
+
+class memory_scope:
+    """Scope of atomicity, defined as in OpenCL.
+
+    .. attribute:: auto
+
+        Scope matches the accessibility of the variable.
+
+    .. attribute:: work_item
+    .. attribute:: work_group
+    .. attribute:: work_device
+    .. attribute:: all_svm_devices
+    """
+
+    work_item = 0
+    work_group = 1
+    device = 2
+    all_svm_devices = 2
+
+    auto = -1
+
+    @staticmethod
+    def to_string(v):
+        for i in dir(memory_scope):
+            if i.startswith("_"):
+                continue
+
+            if getattr(memory_scope, i) == v:
+                return i
+
+        raise ValueError("Unknown value of memory_scope")
+
+
+class VarAtomicity(object):
+    """A base class for the description of how atomic access to :attr:`var_name`
+    shall proceed.
+
+    .. attribute:: var_name
+    """
+
+    def __init__(self, var_name):
+        self.var_name = var_name
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        key_builder.rec(key_hash, self.var_name)
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.var_name == other.var_name)
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+
+class AtomicInit(VarAtomicity):
+    """Describes initialization of an atomic variable. A subclass of
+    :class:`VarAtomicity`.
+    """
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        super(AtomicInit, self).update_persistent_hash(key_hash, key_builder)
+        key_builder.rec(key_hash, "AtomicInit")
+
+    def __str__(self):
+        return "update[%s]%s/%s" % (
+                self.var_name,
+                memory_ordering.to_string(self.ordering),
+                memory_scope.to_string(self.scope))
+
+
+class AtomicUpdate(VarAtomicity):
+    """Properties of an atomic operation. A subclass of :class:`VarAtomicity`.
+
+    .. attribute:: ordering
+
+        One of the values from :class:`memory_ordering`
+
+    .. attribute:: scope
+
+        One of the values from :class:`memory_scope`
+    """
+
+    ordering = memory_ordering.seq_cst
+    scope = memory_scope.auto
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+        """
+
+        super(AtomicUpdate, self).update_persistent_hash(key_hash, key_builder)
+        key_builder.rec(key_hash, "AtomicUpdate")
+        key_builder.rec(key_hash, self.ordering)
+        key_builder.rec(key_hash, self.scope)
+
+    def __eq__(self, other):
+        return (super(AtomicUpdate, self).__eq__(other)
+                and self.ordering == other.ordering
+                and self.scope == other.scope)
+
+    def __str__(self):
+        return "update[%s]%s/%s" % (
+                self.var_name,
+                memory_ordering.to_string(self.ordering),
+                memory_scope.to_string(self.scope))
+
+
 # {{{ assignment
 
 class Assignment(InstructionBase):
@@ -755,11 +877,45 @@ class Assignment(InstructionBase):
         if not *None*, a type that will be assigned to the new temporary variable
         created from the assignee
 
+    .. attribute:: atomicity
+
+        A tuple of instances of :class:`VarAtomicity`. Together, they describe
+        to what extent the assignment is to be carried out in a way that
+        involves atomic operations.
+
+        To describe an atomic update, any memory reads of *exact* occurrences
+        of the left-hand side expression of the assignment in the right hand
+        side are treated , together with the "memory write" part of the
+        assignment, as part of one single atomic update.
+
+        .. note::
+
+            Exact identity of the LHS with RHS subexpressions is required for
+            an atomic update to be recognized. For example, the following update
+            will not be recognized as an update::
+
+                z[i] = z[i+1-1] + a {atomic}
+
+        :mod:`loopy` may to evaluate the right-hand side *multiple times*
+        as part of a single assignment. It is up to the user to ensure that
+        this retains correct semantics.
+
+        For example, the following assignment::
+
+            z[i] = f(z[i]) + a {atomic}
+
+        may generate the following (pseudo-)code::
+
+            DO
+                READ ztemp_old = z[i]
+                EVALUATE ztemp_new = f(ztemp_old) + a
+            WHILE compare_and_swap(z[i], ztemp_new, ztemp_old) did not succeed
+
     .. automethod:: __init__
     """
 
     fields = InstructionBase.fields | \
-            set("assignee expression temp_var_type".split())
+            set("assignee expression temp_var_type atomicity".split())
 
     def __init__(self,
             assignee, expression,
@@ -771,7 +927,8 @@ class Assignment(InstructionBase):
             forced_iname_deps_is_final=None,
             forced_iname_deps=frozenset(),
             boostable=None, boostable_into=None, tags=None,
-            temp_var_type=None, priority=0, predicates=frozenset(),
+            temp_var_type=None, atomicity=(),
+            priority=0, predicates=frozenset(),
             insn_deps=None, insn_deps_is_final=None):
 
         InstructionBase.__init__(self,
@@ -807,6 +964,7 @@ class Assignment(InstructionBase):
         self.assignee = assignee
         self.expression = expression
         self.temp_var_type = temp_var_type
+        self.atomicity = atomicity
 
     # {{{ implement InstructionBase interface
 

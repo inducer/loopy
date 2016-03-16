@@ -28,6 +28,7 @@ import numpy as np
 
 from loopy.symbolic import FunctionIdentifier
 from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
 
 
 class ReductionOperation(object):
@@ -122,7 +123,7 @@ class ProductReductionOperation(ScalarReductionOperation):
 def get_le_neutral(dtype):
     """Return a number y that satisfies (x <= y) for all y."""
 
-    if dtype.kind == "f":
+    if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.1, section 6.11.2
         return var("INFINITY")
     else:
@@ -153,17 +154,17 @@ ARGEXT_STRUCT_DTYPES = {}
 
 class _ArgExtremumReductionOperation(ReductionOperation):
     def prefix(self, dtype):
-        return "loopy_arg%s_%s" % (self.which, dtype.type.__name__)
+        return "loopy_arg%s_%s" % (self.which, dtype.numpy_dtype.type.__name__)
 
     def result_dtype(self, target, dtype, inames):
         try:
             return ARGEXT_STRUCT_DTYPES[dtype]
         except KeyError:
             struct_dtype = np.dtype([("value", dtype), ("index", np.int32)])
-            ARGEXT_STRUCT_DTYPES[dtype] = struct_dtype
+            ARGEXT_STRUCT_DTYPES[dtype] = NumpyType(struct_dtype, target)
 
             target.get_or_register_dtype(self.prefix(dtype)+"_result", struct_dtype)
-            return struct_dtype
+            return ARGEXT_STRUCT_DTYPES[dtype]
 
     def neutral_element(self, dtype, inames):
         return ArgExtFunction(self, dtype, "init", inames)()

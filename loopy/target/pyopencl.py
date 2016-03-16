@@ -30,6 +30,7 @@ from six.moves import range
 import numpy as np
 
 from loopy.target.opencl import OpenCLTarget
+from loopy.types import NumpyType
 
 import logging
 logger = logging.getLogger(__name__)
@@ -181,10 +182,10 @@ def pyopencl_function_mangler(target, name, arg_dtypes):
     if len(arg_dtypes) == 1 and isinstance(name, str):
         arg_dtype, = arg_dtypes
 
-        if arg_dtype.kind == "c":
-            if arg_dtype == np.complex64:
+        if arg_dtype.is_complex():
+            if arg_dtype.numpy_dtype == np.complex64:
                 tpname = "cfloat"
-            elif arg_dtype == np.complex128:
+            elif arg_dtype.numpy_dtype == np.complex128:
                 tpname = "cdouble"
             else:
                 raise RuntimeError("unexpected complex type '%s'" % arg_dtype)
@@ -196,7 +197,10 @@ def pyopencl_function_mangler(target, name, arg_dtypes):
                 return arg_dtype, "%s_%s" % (tpname, name)
 
             if name in ["real", "imag", "abs"]:
-                return np.dtype(arg_dtype.type(0).real), "%s_%s" % (tpname, name)
+                return (
+                        NumpyType(
+                            np.dtype(arg_dtype.numpy_dtype.type(0).real)),
+                        "%s_%s" % (tpname, name))
 
     return None
 
@@ -207,10 +211,12 @@ def pyopencl_preamble_generator(target, seen_dtypes, seen_functions):
     has_double = False
     has_complex = False
 
+    from loopy.types import NumpyType
     for dtype in seen_dtypes:
-        if dtype in [np.float64, np.complex128]:
+        if (isinstance(dtype, NumpyType)
+                and dtype.dtype in [np.float64, np.complex128]):
             has_double = True
-        if dtype.kind == "c":
+        if dtype.involves_complex():
             has_complex = True
 
     if has_complex:
@@ -294,7 +300,7 @@ class PyOpenCLTarget(OpenCLTarget):
 
     def vector_dtype(self, base, count):
         from pyopencl.array import vec
-        return vec.types[base, count]
+        return NumpyType(vec.types[base.numpy_dtype, count])
 
     def alignment_requirement(self, type_decl):
         import struct

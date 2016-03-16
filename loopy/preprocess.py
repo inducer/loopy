@@ -43,7 +43,7 @@ def prepare_for_caching(kernel):
     new_args = []
 
     for arg in kernel.args:
-        dtype = arg.picklable_dtype
+        dtype = arg.dtype
         if dtype is not None and dtype is not lp.auto:
             dtype = dtype.with_target(kernel.target)
 
@@ -51,7 +51,7 @@ def prepare_for_caching(kernel):
 
     new_temporary_variables = {}
     for name, temp in six.iteritems(kernel.temporary_variables):
-        dtype = temp.picklable_dtype
+        dtype = temp.dtype
         if dtype is not None and dtype is not lp.auto:
             dtype = dtype.with_target(kernel.target)
 

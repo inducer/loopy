@@ -28,6 +28,7 @@ import numpy as np
 from pymbolic.mapper import CombineMapper, RecursiveMapper
 
 from loopy.tools import is_integer
+from loopy.types import NumpyType
 from loopy.codegen import Unvectorizable
 from loopy.diagnostic import (
         LoopyError,
@@ -41,13 +42,13 @@ from loopy.diagnostic import (
 # or None for 'no known context'.
 
 def dtype_to_type_context(target, dtype):
-    dtype = np.dtype(dtype)
+    from loopy.types import NumpyType
 
-    if dtype.kind == 'i':
+    if dtype.is_integral():
         return 'i'
-    if dtype in [np.float64, np.complex128]:
+    if isinstance(dtype, NumpyType) and dtype.dtype in [np.float64, np.complex128]:
         return 'd'
-    if dtype in [np.float32, np.complex64]:
+    if isinstance(dtype, NumpyType) and dtype.dtype in [np.float32, np.complex64]:
         return 'f'
     if target.is_vector_dtype(dtype):
         return dtype_to_type_context(target, dtype.fields["x"][0])
@@ -76,7 +77,20 @@ class TypeInferenceMapper(CombineMapper):
 
     @staticmethod
     def combine(dtypes):
+        # dtypes may just be a generator expr
         dtypes = list(dtypes)
+
+        from loopy.types import NumpyType
+        if not all(isinstance(dtype, NumpyType) for dtype in dtypes):
+            from pytools import is_single_valued, single_valued
+            if not is_single_valued(dtypes):
+                raise TypeInferenceFailure(
+                        "Nothing known about operations between '%s'"
+                        % ", ".join(str(dt) for dt in dtypes))
+
+            return single_valued(dtypes)
+
+        dtypes = [dtype.dtype for dtype in dtypes]
 
         result = dtypes.pop()
         while dtypes:
@@ -107,7 +121,7 @@ class TypeInferenceMapper(CombineMapper):
                             "nothing known about result of operation on "
                             "'%s' and '%s'" % (result, other))
 
-        return result
+        return NumpyType(result)
 
     def map_sum(self, expr):
         dtypes = []
@@ -120,7 +134,7 @@ class TypeInferenceMapper(CombineMapper):
                 dtypes.append(dtype)
 
         from pytools import all
-        if all(dtype.kind == "i" for dtype in dtypes):
+        if all(dtype.is_integral() for dtype in dtypes):
             dtypes.extend(small_integer_dtypes)
 
         return self.combine(dtypes)
@@ -131,9 +145,9 @@ class TypeInferenceMapper(CombineMapper):
         n_dtype = self.rec(expr.numerator)
         d_dtype = self.rec(expr.denominator)
 
-        if n_dtype.kind in "iu" and d_dtype.kind in "iu":
+        if n_dtype.is_integral() and d_dtype.is_integral():
             # both integers
-            return np.dtype(np.float64)
+            return NumpyType(np.dtype(np.float64))
 
         else:
             return self.combine([n_dtype, d_dtype])
@@ -143,20 +157,20 @@ class TypeInferenceMapper(CombineMapper):
             for tp in [np.int32, np.int64]:
                 iinfo = np.iinfo(tp)
                 if iinfo.min <= expr <= iinfo.max:
-                    return np.dtype(tp)
+                    return NumpyType(np.dtype(tp))
 
             else:
                 raise TypeInferenceFailure("integer constant '%s' too large" % expr)
 
         dt = np.asarray(expr).dtype
         if hasattr(expr, "dtype"):
-            return expr.dtype
+            return NumpyType(expr.dtype)
         elif isinstance(expr, np.number):
             # Numpy types are sized
-            return np.dtype(type(expr))
+            return NumpyType(np.dtype(type(expr)))
         elif dt.kind == "f":
             # deduce the smaller type by default
-            return np.dtype(np.float32)
+            return NumpyType(np.dtype(np.float32))
         elif dt.kind == "c":
             if np.complex64(expr) == np.complex128(expr):
                 # (COMPLEX_GUESS_LOGIC)
@@ -245,13 +259,13 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_lookup(self, expr):
         agg_result = self.rec(expr.aggregate)
-        dtype, offset = agg_result.fields[expr.name]
-        return dtype
+        dtype, offset = agg_result.numpy_dtype.fields[expr.name]
+        return NumpyType(dtype)
 
     def map_comparison(self, expr):
         # "bool" is unusable because OpenCL's bool has indeterminate memory
         # format.
-        return np.dtype(np.int32)
+        return NumpyType(np.dtype(np.int32))
 
     map_logical_not = map_comparison
     map_logical_and = map_comparison

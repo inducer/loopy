@@ -30,6 +30,7 @@ from loopy.target.c import CTarget
 from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
 
 
 # {{{ vector types
@@ -126,8 +127,8 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
         return arg_dtypes[0], name
 
     if name == "dot":
-        scalar_dtype, offset, field_name = arg_dtypes[0].fields["s0"]
-        return scalar_dtype, name
+        scalar_dtype, offset, field_name = arg_dtypes[0].numpy_dtype.fields["s0"]
+        return NumpyType(scalar_dtype), name
 
     return None
 
@@ -192,6 +193,17 @@ class OpenCLTarget(CTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
 
+    def __init__(self, atomics_flavor="cl2"):
+        """
+        :arg atomics_flavor: one of ``"cl2"`` (C11-style atomics from OpenCL 2.0),
+            ``"cl1"`` (OpenCL 1.1 atomics, using bit-for-bit compare-and-swap
+            for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
+            double-exchange for floating point).
+        """
+        super(OpenCLTarget, self).__init__()
+
+        self.atomics_flavor = atomics_flavor
+
     # {{{ library
 
     def function_manglers(self):
@@ -231,10 +243,10 @@ class OpenCLTarget(CTarget):
         return result
 
     def is_vector_dtype(self, dtype):
-        return list(vec.types.values())
+        return dtype.numpy_dtype in list(vec.types.values())
 
     def vector_dtype(self, base, count):
-        return vec.types[base, count]
+        return NumpyType(vec.types[base.numpy_dtype, count])
 
     # }}}
 
