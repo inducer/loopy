@@ -93,6 +93,9 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     from loopy.expression import dtype_to_type_context, VectorizabilityChecker
 
     if codegen_state.vectorization_info:
+        if insn.atomicity:
+            raise Unvectorizable("atomic operation")
+
         vinfo = codegen_state.vectorization_info
         vcheck = VectorizabilityChecker(
                 kernel, vinfo.iname, vinfo.length)
