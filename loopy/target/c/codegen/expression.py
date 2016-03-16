@@ -187,11 +187,11 @@ class LoopyCCodeMapper(RecursiveMapper):
                         ", ".join(self.rec(idx, PREC_NONE, 'i')
                             for idx in expr.index[::-1])))
 
-            if ary.dtype == np.float32:
+            if ary.dtype.numpy_dtype == np.float32:
                 return base_access+".x"
             if self.kernel.target.is_vector_dtype(ary.dtype):
                 return base_access
-            elif ary.dtype == np.float64:
+            elif ary.dtype.numpy_dtype == np.float64:
                 return "as_double(%s.xy)" % base_access
             else:
                 raise NotImplementedError(
