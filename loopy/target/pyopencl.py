@@ -296,7 +296,8 @@ class PyOpenCLTarget(OpenCLTarget):
 
     def is_vector_dtype(self, dtype):
         from pyopencl.array import vec
-        return dtype in list(vec.types.values())
+        return (isinstance(dtype, NumpyType)
+                and dtype.numpy_dtype in list(vec.types.values()))
 
     def vector_dtype(self, base, count):
         from pyopencl.array import vec

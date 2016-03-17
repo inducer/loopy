@@ -243,7 +243,8 @@ class OpenCLTarget(CTarget):
         return result
 
     def is_vector_dtype(self, dtype):
-        return dtype.numpy_dtype in list(vec.types.values())
+        return (isinstance(dtype, NumpyType)
+                and dtype.numpy_dtype in list(vec.types.values()))
 
     def vector_dtype(self, base, count):
         return NumpyType(vec.types[base.numpy_dtype, count])

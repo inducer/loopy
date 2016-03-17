@@ -51,7 +51,8 @@ def dtype_to_type_context(target, dtype):
     if isinstance(dtype, NumpyType) and dtype.dtype in [np.float32, np.complex64]:
         return 'f'
     if target.is_vector_dtype(dtype):
-        return dtype_to_type_context(target, dtype.fields["x"][0])
+        return dtype_to_type_context(
+                target, NumpyType(dtype.numpy_dtype.fields["x"][0]))
 
     return None
 
