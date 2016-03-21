@@ -666,24 +666,24 @@ class LoopyCCodeMapper(RecursiveMapper):
             return base_impl(expr, enclosing_prec, type_context)
 
         tgt_dtype = self.infer_type(expr)
-        if 'c' == tgt_dtype.kind:
+        if tgt_dtype.is_complex():
             if expr.exponent in [2, 3, 4]:
                 value = expr.base
                 for i in range(expr.exponent-1):
                     value = value * expr.base
                 return self.rec(value, enclosing_prec, type_context)
             else:
-                b_complex = 'c' == self.infer_type(expr.base).kind
-                e_complex = 'c' == self.infer_type(expr.exponent).kind
+                b_complex = self.infer_type(expr.base).is_complex()
+                e_complex = self.infer_type(expr.exponent).is_complex()
 
                 if b_complex and not e_complex:
                     return "%s_powr(%s, %s)" % (
-                            self.complex_type_name(tgt_dtype),
+                            self.complex_type_name(tgt_dtype.numpy_dtype),
                             self.rec(expr.base, PREC_NONE, type_context, tgt_dtype),
                             self.rec(expr.exponent, PREC_NONE, type_context))
                 else:
                     return "%s_pow(%s, %s)" % (
-                            self.complex_type_name(tgt_dtype),
+                            self.complex_type_name(tgt_dtype.numpy_dtype),
                             self.rec(expr.base, PREC_NONE, type_context, tgt_dtype),
                             self.rec(expr.exponent, PREC_NONE,
                                 type_context, tgt_dtype))
