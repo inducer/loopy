@@ -177,7 +177,7 @@ class TypeInferenceMapper(CombineMapper):
                 # (COMPLEX_GUESS_LOGIC)
                 # No precision is lost by 'guessing' single precision, use that.
                 # This at least covers simple cases like '1j'.
-                return np.dtype(np.complex64)
+                return NumpyType(np.dtype(np.complex64))
 
             # Codegen for complex types depends on exactly correct types.
             # Refuse temptation to guess.
