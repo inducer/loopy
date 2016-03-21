@@ -157,7 +157,7 @@ class NumpyType(LoopyType):
         return self.dtype
 
     def __repr__(self):
-        return repr(self.dtype)
+        return "np:" + repr(self.dtype)
 
 # }}}
 
@@ -176,7 +176,7 @@ class AtomicNumpyType(NumpyType, AtomicType):
         key_builder.rec(key_hash, self.dtype)
 
     def __repr__(self):
-        return "atomic:%s" % repr(self.dtype)
+        return "np_atomic:%s" % repr(self.dtype)
 
 # }}}
 
