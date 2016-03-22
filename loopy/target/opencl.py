@@ -411,7 +411,7 @@ class OpenCLTarget(CTarget):
 
     # {{{ code generation for atomic update
 
-    def generate_atomic_update(self, kernel, codegen_state, lhs_atomicity,
+    def generate_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
         from pymbolic.mapper.stringifier import PREC_NONE
 
@@ -425,7 +425,7 @@ class OpenCLTarget(CTarget):
             old_val_var = codegen_state.var_name_generator("loopy_old_val")
             new_val_var = codegen_state.var_name_generator("loopy_new_val")
 
-            from loopy.kernel.data import TemporaryVariable
+            from loopy.kernel.data import TemporaryVariable, temp_var_scope
             ecm = codegen_state.expression_to_code_mapper.with_assignments(
                     {
                         old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
@@ -463,9 +463,25 @@ class OpenCLTarget(CTarget):
                 else:
                     assert False
 
+                from loopy.kernel.data import TemporaryVariable, GlobalArg
+                if isinstance(lhs_var, GlobalArg):
+                    var_kind = "__global"
+                elif (
+                        isinstance(lhs_var, TemporaryVariable)
+                        and lhs_var.scope == temp_var_scope.LOCAL):
+                    var_kind = "__local"
+                elif (
+                        isinstance(lhs_var, TemporaryVariable)
+                        and lhs_var.scope == temp_var_scope.GLOBAL):
+                    var_kind = "__global"
+                else:
+                    raise LoopyError("unexpected kind of variable '%s' in "
+                            "atomic operation: "
+                            % (lhs_var.name, type(lhs_var).__name__))
+
                 old_val = "*(%s *) &" % ctype + old_val
                 new_val = "*(%s *) &" % ctype + new_val
-                cast_str = "(__global %s *) " % ctype
+                cast_str = "(%s %s *) " % (var_kind, ctype)
 
             return Block([
                 POD(self, NumpyType(lhs_dtype.dtype), old_val_var),

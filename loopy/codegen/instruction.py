@@ -116,7 +116,8 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     # }}}
 
     (assignee_var_name, assignee_indices), = insn.assignees_and_indices()
-    lhs_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
+    lhs_var = kernel.get_var_descriptor(assignee_var_name)
+    lhs_dtype = lhs_var.dtype
 
     if insn.atomicity is not None:
         lhs_atomicity = [
@@ -147,7 +148,7 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     elif isinstance(lhs_atomicity, AtomicUpdate):
         codegen_state.seen_atomic_dtypes.add(lhs_dtype)
         result = kernel.target.generate_atomic_update(
-                kernel, codegen_state, lhs_atomicity,
+                kernel, codegen_state, lhs_atomicity, lhs_var,
                 insn.assignee, insn.expression,
                 lhs_dtype, rhs_type_context)
 
