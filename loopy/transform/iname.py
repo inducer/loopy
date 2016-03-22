@@ -296,9 +296,9 @@ def split_iname(kernel, split_iname, inner_length,
         A tuple ``(head_it_count, tail_it_count)`` indicating the
         number of leading/trailing iterations of *outer_iname*
         for which separate code should be generated.
-    :arg outer_tag: The iname tag (see :ref:`iname-tag`) to apply to
+    :arg outer_tag: The iname tag (see :ref:`iname-tags`) to apply to
         *outer_iname*.
-    :arg inner_tag: The iname tag (see :ref:`iname-tag`) to apply to
+    :arg inner_tag: The iname tag (see :ref:`iname-tags`) to apply to
         *inner_iname*.
     :arg within: a stack match as understood by
         :func:`loopy.context_matching.parse_stack_match`.

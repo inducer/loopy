@@ -26,7 +26,7 @@ in strides) are also allowed. In the absence of divisibility
 constraints, the loop domain is convex.
 
 Note that *n* in the example is not an iname. It is a
-:ref:`domain-parameter` that is passed to the kernel by the user.
+:ref:`domain-parameters` that is passed to the kernel by the user.
 
 To accommodate some data-dependent control flow, there is not actually
 a single loop domain, but rather a *tree of loop domains*,

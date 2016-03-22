@@ -604,7 +604,7 @@ Implementing Loop Axes ("Inames")
 .. {{{
 
 So far, all the loops we have seen loopy implement were ``for`` loops. Each
-iname in loopy carries a so-called 'implementation tag'.  :ref:`tags` shows
+iname in loopy carries a so-called 'implementation tag'.  :ref:`iname-tags` shows
 all possible choices for iname implementation tags. The important ones are
 explained below.
 
