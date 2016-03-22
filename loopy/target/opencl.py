@@ -44,8 +44,8 @@ class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
                 return super(self.wrapped_registry.get_or_register_dtype(
                         names, NumpyType(dtype.dtype)))
 
-        return super(self.wrapped_registry.get_or_register_dtype(
-                names, dtype))
+        return super(DTypeRegistryWrapperWithAtomics, self).get_or_register_dtype(
+                names, dtype)
 
 
 class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):

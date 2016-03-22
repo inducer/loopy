@@ -163,7 +163,8 @@ class _ArgExtremumReductionOperation(ReductionOperation):
             struct_dtype = np.dtype([("value", dtype), ("index", np.int32)])
             ARGEXT_STRUCT_DTYPES[dtype] = NumpyType(struct_dtype, target)
 
-            target.get_or_register_dtype(self.prefix(dtype)+"_result", struct_dtype)
+            target.get_or_register_dtype(self.prefix(dtype)+"_result",
+                    NumpyType(struct_dtype))
             return ARGEXT_STRUCT_DTYPES[dtype]
 
     def neutral_element(self, dtype, inames):

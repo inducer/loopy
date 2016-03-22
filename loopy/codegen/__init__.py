@@ -637,6 +637,7 @@ def generate_body(kernel):
 
     seen_dtypes = set()
     seen_functions = set()
+    seen_atomic_dtypes = set()
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(
@@ -645,6 +646,7 @@ def generate_body(kernel):
             implemented_predicates=frozenset(),
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
+            seen_atomic_dtypes=seen_atomic_dtypes,
             var_subst_map={},
             allow_complex=allow_complex)
 

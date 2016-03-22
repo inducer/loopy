@@ -107,13 +107,13 @@ class NumpyType(LoopyType):
         if self.target is None:
             raise RuntimeError("unable to pickle dtype: target not known")
 
-        c_name = self.target.dtype_to_typename(self.dtype)
+        c_name = self.target.dtype_to_typename(NumpyType(self.dtype))
         return (self.target, c_name, self.dtype)
 
     def __setstate__(self, state):
         target, name, dtype = state
         self.target = target
-        self.dtype = self.target.get_or_register_dtype([name], dtype)
+        self.dtype = self.target.get_or_register_dtype([name], NumpyType(dtype))
 
     def with_target(self, target):
         if (self.target is not None

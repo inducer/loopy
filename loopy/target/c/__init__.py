@@ -178,7 +178,7 @@ class CTarget(TargetBase):
         base_storage_to_is_local = {}
         base_storage_to_align_bytes = {}
 
-        from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute
+        from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute, Value
         from loopy.codegen import POD  # uses the correct complex type
 
         class ConstRestrictPointer(Pointer):
@@ -251,7 +251,7 @@ class CTarget(TargetBase):
                             * product(si for si in idi.shape))
 
         for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
-            bs_var_decl = POD(self, np.int8, bs_name)
+            bs_var_decl = Value("char", bs_name)
             bs_var_decl = self.wrap_temporary_decl(
                     bs_var_decl, base_storage_to_is_local[bs_name])
             bs_var_decl = ArrayOf(bs_var_decl, max(bs_sizes))
