@@ -345,6 +345,8 @@ Temporary Variables
 Temporary variables model OpenCL's ``private`` and ``local`` address spaces. Both
 have the lifetime of a kernel invocation.
 
+.. autoclass:: temp_var_scope
+
 .. autoclass:: TemporaryVariable
     :members:
     :undoc-members:

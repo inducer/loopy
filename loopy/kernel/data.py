@@ -267,6 +267,19 @@ class ValueArg(KernelArgument):
 
 # {{{ temporary variable
 
+class temp_var_scope:
+    """Storage location of a temporary
+
+    .. attribute:: PRIVATE
+    .. attribute:: LOCAL
+    .. attribute:: GLOBAL
+    """
+
+    PRIVATE = 0
+    LOCAL = 1
+    GLOBAL = 2
+
+
 class TemporaryVariable(ArrayBase):
     __doc__ = ArrayBase.__doc__ + """
     .. attribute:: storage_shape
@@ -281,6 +294,8 @@ class TemporaryVariable(ArrayBase):
 
         The name of a storage array that is to be used to actually
         hold the data in this temporary.
+
+    .. autoattribute:: scope
     """
 
     min_target_axes = 0
@@ -317,6 +332,15 @@ class TemporaryVariable(ArrayBase):
                 base_indices=base_indices, is_local=is_local,
                 storage_shape=storage_shape,
                 base_storage=base_storage)
+
+    @property
+    def scope(self):
+        """One of :class:`loopy.temp_var_scope`."""
+
+        if self.is_local:
+            return temp_var_scope.LOCAL
+        else:
+            return temp_var_scope.PRIVATE
 
     @property
     def nbytes(self):

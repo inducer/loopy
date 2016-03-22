@@ -42,7 +42,7 @@ from loopy.kernel.data import (
         ValueArg, GlobalArg, ConstantArg, ImageArg,
         memory_ordering, memory_scope, VarAtomicity, AtomicInit, AtomicUpdate,
         InstructionBase, Assignment, ExpressionInstruction, CInstruction,
-        TemporaryVariable,
+        temp_var_scope, TemporaryVariable,
         SubstitutionRule)
 
 from loopy.kernel import LoopKernel, kernel_state
@@ -129,7 +129,7 @@ __all__ = [
         "memory_ordering", "memory_scope", "VarAtomicity",
         "AtomicInit", "AtomicUpdate",
         "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
-        "TemporaryVariable",
+        "temp_var_scope", "TemporaryVariable",
         "SubstitutionRule",
 
         "InstructionBase", "Assignment", "ExpressionInstruction", "CInstruction",
