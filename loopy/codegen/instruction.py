@@ -152,13 +152,13 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
                     for i in assignee_indices)
 
         if kernel.options.trace_assignment_values:
-            if target_dtype.kind == "i":
+            if lhs_dtype.numpy_dtype.kind == "i":
                 printf_format += " = %d"
                 printf_args.append(lhs_code)
-            elif target_dtype.kind == "f":
+            elif lhs_dtype.numpy_dtype.kind == "f":
                 printf_format += " = %g"
                 printf_args.append(lhs_code)
-            elif target_dtype.kind == "c":
+            elif lhs_dtype.numpy_dtype.kind == "c":
                 printf_format += " = %g + %gj"
                 printf_args.extend([
                     "(%s).x" % lhs_code,
