@@ -28,14 +28,50 @@ import six
 
 import numpy as np  # noqa
 from loopy.target import TargetBase
+from loopy.diagnostic import LoopyError
 
 from pytools import memoize_method
 
 
+# {{{ dtype registry wrapper
+
+class DTypeRegistryWrapper(object):
+    def __init__(self, wrapped_registry):
+        self.wrapped_registry = wrapped_registry
+
+    def get_or_register_dtype(self, names, dtype=None):
+        if dtype is not None:
+            from loopy.types import LoopyType, NumpyType
+            assert isinstance(dtype, LoopyType)
+
+            if isinstance(dtype, NumpyType):
+                return self.wrapped_registry.get_or_register_dtype(
+                        names, dtype.dtype)
+            else:
+                raise LoopyError(
+                        "unable to get or register type '%s'"
+                        % dtype)
+        else:
+            return self.wrapped_registry.get_or_register_dtype(names, dtype)
+
+    def dtype_to_ctype(self, dtype):
+        from loopy.types import LoopyType, NumpyType
+        assert isinstance(dtype, LoopyType)
+
+        if isinstance(dtype, NumpyType):
+            return self.wrapped_registry.dtype_to_ctype(dtype)
+        else:
+            raise LoopyError(
+                    "unable to convert type '%s' to C"
+                    % dtype)
+
+# }}}
+
+
 # {{{ preamble generator
 
-def _preamble_generator(kernel, seen_dtypes, seen_functions):
-    c_funcs = set(func.c_name for func in seen_functions)
+def _preamble_generator(preamble_info):
+    c_funcs = set(func.c_name for func in preamble_info.seen_functions)
     if "int_floor_div" in c_funcs:
         yield ("05_int_floor_div", """
             #define int_floor_div(a,b) \
@@ -75,7 +111,7 @@ class CTarget(TargetBase):
         result = DTypeRegistry()
         fill_registry_with_c_types(result, respect_windows=False,
                 include_bool=True)
-        return result
+        return DTypeRegistryWrapper(result)
 
     def is_vector_dtype(self, dtype):
         return False

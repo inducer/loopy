@@ -314,14 +314,14 @@ def reduction_function_mangler(kernel, func_id, arg_dtypes):
     return None
 
 
-def reduction_preamble_generator(kernel, seen_dtypes, seen_functions):
+def reduction_preamble_generator(preamble_info):
     from loopy.target.opencl import OpenCLTarget
 
-    for func in seen_functions:
+    for func in preamble_info.seen_functions:
         if isinstance(func.name, ArgExtFunction):
-            if not isinstance(kernel.target, OpenCLTarget):
+            if not isinstance(preamble_info.kernel.target, OpenCLTarget):
                 raise LoopyError("only OpenCL supported for now")
 
-            yield get_argext_preamble(kernel.target, func.name)
+            yield get_argext_preamble(preamble_info.kernel.target, func.name)
 
 # vim: fdm=marker

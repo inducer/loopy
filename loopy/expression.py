@@ -76,12 +76,19 @@ class TypeInferenceMapper(CombineMapper):
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
     # are Python-equal (for many common constants such as integers).
 
+    def with_assignments(self, names_to_vars):
+        new_ass = self.new_assignments.copy()
+        new_ass.update(names_to_vars)
+        return type(self)(self.kernel, new_ass)
+
     @staticmethod
     def combine(dtypes):
         # dtypes may just be a generator expr
         dtypes = list(dtypes)
 
-        from loopy.types import NumpyType
+        from loopy.types import LoopyType, NumpyType
+        assert all(isinstance(dtype, LoopyType) for dtype in dtypes)
+
         if not all(isinstance(dtype, NumpyType) for dtype in dtypes):
             from pytools import is_single_valued, single_valued
             if not is_single_valued(dtypes):

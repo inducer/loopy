@@ -28,8 +28,6 @@ from loopy.diagnostic import LoopyError, warn
 from pytools import Record
 import islpy as isl
 
-import numpy as np
-
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
@@ -205,6 +203,8 @@ class CodeGenerationState(object):
 
         set of :class:`SeenFunction` instances
 
+    .. attribute:: seen_atomic_dtypes
+
     .. attribute:: var_subst_map
 
     .. attribute:: allow_complex
@@ -215,17 +215,19 @@ class CodeGenerationState(object):
     """
 
     def __init__(self, kernel, implemented_domain, implemented_predicates,
-            seen_dtypes, seen_functions, var_subst_map,
+            seen_dtypes, seen_functions, seen_atomic_dtypes, var_subst_map,
             allow_complex,
-            vectorization_info=None):
+            vectorization_info=None, var_name_generator=None):
         self.kernel = kernel
         self.implemented_domain = implemented_domain
         self.implemented_predicates = implemented_predicates
         self.seen_dtypes = seen_dtypes
         self.seen_functions = seen_functions
+        self.seen_atomic_dtypes = seen_atomic_dtypes
         self.var_subst_map = var_subst_map.copy()
         self.allow_complex = allow_complex
         self.vectorization_info = vectorization_info
+        self.var_name_generator = var_name_generator
 
     # {{{ copy helpers
 
@@ -245,9 +247,11 @@ class CodeGenerationState(object):
                     implemented_predicates or self.implemented_predicates),
                 seen_dtypes=self.seen_dtypes,
                 seen_functions=self.seen_functions,
+                seen_atomic_dtypes=self.seen_atomic_dtypes,
                 var_subst_map=var_subst_map or self.var_subst_map,
                 allow_complex=self.allow_complex,
-                vectorization_info=vectorization_info)
+                vectorization_info=vectorization_info,
+                var_name_generator=self.var_name_generator)
 
     def copy_and_assign(self, name, value):
         """Make a copy of self with variable *name* fixed to *value*."""
@@ -347,7 +351,8 @@ class POD(Declarator):
     """
 
     def __init__(self, target, dtype, name):
-        dtype = np.dtype(dtype)
+        from loopy.types import LoopyType
+        assert isinstance(dtype, LoopyType)
 
         self.target = target
         self.ctype = target.dtype_to_typename(dtype)
@@ -528,6 +533,7 @@ def generate_code(kernel, device=None):
 
     seen_dtypes = set()
     seen_functions = set()
+    seen_atomic_dtypes = set()
 
     initial_implemented_domain = isl.BasicSet.from_params(kernel.assumptions)
     codegen_state = CodeGenerationState(
@@ -536,8 +542,10 @@ def generate_code(kernel, device=None):
             implemented_predicates=frozenset(),
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
+            seen_atomic_dtypes=seen_atomic_dtypes,
             var_subst_map={},
-            allow_complex=allow_complex)
+            allow_complex=allow_complex,
+            var_name_generator=kernel.get_var_name_generator())
 
     code_str, implemented_domains = kernel.target.generate_code(
             kernel, codegen_state, impl_arg_info)
@@ -555,10 +563,22 @@ def generate_code(kernel, device=None):
 
     preambles = kernel.preambles[:]
 
+    from pytools import Record
+
+    class PreambleInfo(Record):
+        pass
+
+    preamble_info = PreambleInfo(
+            kernel=kernel,
+            seen_dtypes=seen_dtypes,
+            seen_functions=seen_functions,
+            # a set of LoopyTypes (!)
+            seen_atomic_dtypes=seen_atomic_dtypes)
+
     preamble_generators = (kernel.preamble_generators
             + kernel.target.preamble_generators())
     for prea_gen in preamble_generators:
-        preambles.extend(prea_gen(kernel, seen_dtypes, seen_functions))
+        preambles.extend(prea_gen(preamble_info))
 
     seen_preamble_tags = set()
     dedup_preambles = []

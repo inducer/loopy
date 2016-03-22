@@ -2421,24 +2421,29 @@ def test_chunk_iname(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=130))
 
 
-def test_atomic(ctx_factory):
+@pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
+def test_atomic(ctx_factory, dtype):
     ctx = ctx_factory()
+
+    if (
+            np.dtype(dtype).itemsize == 8
+            and "cl_khr_int64_base_atomics" not in ctx.devices[0].extensions):
+        pytest.skip("64-bit atomics not supported on device")
 
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
             "out[i%20] = out[i%20] + 2*a[i] {atomic}",
             [
-                lp.GlobalArg("out", np.float32, shape=lp.auto,
-                    for_atomic=True),
-                lp.GlobalArg("a", np.float32, shape=lp.auto),
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.auto),
                 "..."
                 ],
             assumptions="n>0")
 
     ref_knl = knl
-    knl = lp.chunk_iname(knl, "i", 3, inner_tag="l.0")
-    knl = lp.set_loop_priority(knl, "i_outer, i_inner")
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=130))
+    knl = lp.split_iname(knl, "i", 512)
+    knl = lp.split_iname(knl, "i_inner", 128, outer_tag="unr", inner_tag="g.0")
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
 
 
 if __name__ == "__main__":

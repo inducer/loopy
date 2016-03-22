@@ -92,6 +92,8 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
 
     from loopy.expression import dtype_to_type_context, VectorizabilityChecker
 
+    # {{{ vectorization handling
+
     if codegen_state.vectorization_info:
         if insn.atomicity:
             raise Unvectorizable("atomic operation")
@@ -111,18 +113,49 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
         del lhs_is_vector
         del rhs_is_vector
 
-    expr = insn.expression
+    # }}}
 
     (assignee_var_name, assignee_indices), = insn.assignees_and_indices()
-    target_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
+    lhs_dtype = kernel.get_var_descriptor(assignee_var_name).dtype
 
-    from cgen import Assign
+    if insn.atomicity is not None:
+        lhs_atomicity = [
+                a for a in insn.atomicity if a.var_name == assignee_var_name]
+        assert len(lhs_atomicity) <= 1
+        if lhs_atomicity:
+            lhs_atomicity, = lhs_atomicity
+        else:
+            lhs_atomicity = None
+    else:
+        lhs_atomicity = None
+
+    from loopy.kernel.data import AtomicInit, AtomicUpdate
+
     lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
-    result = Assign(
-            lhs_code,
-            ecm(expr, prec=PREC_NONE,
-                type_context=dtype_to_type_context(kernel.target, target_dtype),
-                needed_dtype=target_dtype))
+    rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
+    if lhs_atomicity is None:
+        from cgen import Assign
+        result = Assign(
+                lhs_code,
+                ecm(insn.expression, prec=PREC_NONE,
+                    type_context=rhs_type_context,
+                    needed_dtype=lhs_dtype))
+
+    elif isinstance(lhs_atomicity, AtomicInit):
+        raise NotImplementedError("atomic init")
+
+    elif isinstance(lhs_atomicity, AtomicUpdate):
+        codegen_state.seen_atomic_dtypes.add(lhs_dtype)
+        result = kernel.target.generate_atomic_update(
+                kernel, codegen_state, lhs_atomicity,
+                insn.assignee, insn.expression,
+                lhs_dtype, rhs_type_context)
+
+    else:
+        raise ValueError("unexpected lhs atomicity type: %s"
+                % type(lhs_atomicity).__name__)
+
+    # {{{ tracing
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
         if codegen_state.vectorization_info and is_vector:
@@ -178,6 +211,8 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
         else:
             # print first, execute later -> helps find segfaults
             result = Block([printf_insn, result])
+
+    # }}}
 
     return result
 

@@ -31,6 +31,34 @@ from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
+from loopy.target.c import DTypeRegistryWrapper
+
+
+# {{{ dtype registry wrappers
+
+class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
+    def get_or_register_dtype(self, names, dtype=None):
+        if dtype is not None:
+            from loopy.types import AtomicNumpyType, NumpyType
+            if isinstance(dtype, AtomicNumpyType):
+                return super(self.wrapped_registry.get_or_register_dtype(
+                        names, NumpyType(dtype.dtype)))
+
+        return super(self.wrapped_registry.get_or_register_dtype(
+                names, dtype))
+
+
+class DTypeRegistryWrapperWithCL1Atomics(DTypeRegistryWrapperWithAtomics):
+    def dtype_to_ctype(self, dtype):
+        from loopy.types import AtomicNumpyType
+
+        if isinstance(dtype, AtomicNumpyType):
+            return "volatile " + self.wrapped_registry.dtype_to_ctype(dtype)
+        else:
+            return super(DTypeRegistryWrapperWithCL1Atomics, self).dtype_to_ctype(
+                    dtype)
+
+# }}}
 
 
 # {{{ vector types
@@ -159,10 +187,10 @@ def opencl_symbol_mangler(kernel, name):
 
 # {{{ preamble generator
 
-def opencl_preamble_generator(kernel, seen_dtypes, seen_functions):
+def opencl_preamble_generator(preamble_info):
     has_double = False
 
-    for dtype in seen_dtypes:
+    for dtype in preamble_info.seen_dtypes:
         if dtype in [np.float64, np.complex128]:
             has_double = True
 
@@ -171,6 +199,17 @@ def opencl_preamble_generator(kernel, seen_dtypes, seen_functions):
             #if __OPENCL_C_VERSION__ < 120
             #pragma OPENCL EXTENSION cl_khr_fp64: enable
             #endif
+            """)
+
+    from loopy.types import AtomicNumpyType
+    seen_64_bit_atomics = any(
+            isinstance(dtype, AtomicNumpyType) and dtype.numpy_dtype.itemsize == 8
+            for dtype in preamble_info.seen_atomic_dtypes)
+
+    if seen_64_bit_atomics:
+        # FIXME: Should gate on "CL1" atomics style
+        yield ("00_enable_64bit_atomics", """
+            #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
             """)
 
 # }}}
@@ -194,14 +233,17 @@ class OpenCLTarget(CTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
 
-    def __init__(self, atomics_flavor="cl2"):
+    def __init__(self, atomics_flavor="cl1"):
         """
-        :arg atomics_flavor: one of ``"cl2"`` (C11-style atomics from OpenCL 2.0),
+        :arg atomics_flavor: one of ``"cl1"`` (C11-style atomics from OpenCL 2.0),
             ``"cl1"`` (OpenCL 1.1 atomics, using bit-for-bit compare-and-swap
             for floating point), ``"cl1-exch"`` (OpenCL 1.1 atomics, using
-            double-exchange for floating point).
+            double-exchange for floating point--not yet supported).
         """
         super(OpenCLTarget, self).__init__()
+
+        if atomics_flavor not in ["cl1", "cl2"]:
+            raise ValueError("unsupported atomics flavor: %s" % atomics_flavor)
 
         self.atomics_flavor = atomics_flavor
 
@@ -241,7 +283,10 @@ class OpenCLTarget(CTarget):
 
         _register_vector_types(result)
 
-        return result
+        if self.atomics_flavor == "cl1":
+            return DTypeRegistryWrapperWithCL1Atomics(result)
+        else:
+            raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
 
     def is_vector_dtype(self, dtype):
         return (isinstance(dtype, NumpyType)
@@ -363,6 +408,91 @@ class OpenCLTarget(CTarget):
             arg_decl = Const(arg_decl)
 
         return CLConstant(arg_decl)
+
+    # {{{ code generation for atomic update
+
+    def generate_atomic_update(self, kernel, codegen_state, lhs_atomicity,
+            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        # FIXME: Could detect operations, generate atomic_{add,...} when
+        # appropriate.
+
+        if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
+                np.int32, np.int64, np.float32, np.float64]:
+            from cgen import Block, DoWhile, Assign
+            from loopy.codegen import POD
+            old_val_var = codegen_state.var_name_generator("loopy_old_val")
+            new_val_var = codegen_state.var_name_generator("loopy_new_val")
+
+            from loopy.kernel.data import TemporaryVariable
+            ecm = codegen_state.expression_to_code_mapper.with_assignments(
+                    {
+                        old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
+                        new_val_var: TemporaryVariable(new_val_var, lhs_dtype),
+                        })
+
+            lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
+
+            from pymbolic.mapper.substitutor import make_subst_func
+            from pymbolic import var
+            from loopy.symbolic import SubstitutionMapper
+
+            subst = SubstitutionMapper(
+                    make_subst_func({lhs_expr: var(old_val_var)}))
+            rhs_expr_code = ecm(subst(rhs_expr), prec=PREC_NONE,
+                    type_context=rhs_type_context,
+                    needed_dtype=lhs_dtype)
+
+            if lhs_dtype.numpy_dtype.itemsize == 4:
+                func_name = "atomic_cmpxchg"
+            elif lhs_dtype.numpy_dtype.itemsize == 8:
+                func_name = "atom_cmpxchg"
+            else:
+                raise LoopyError("unexpected atomic size")
+
+            cast_str = ""
+            old_val = old_val_var
+            new_val = new_val_var
+
+            if lhs_dtype.numpy_dtype.kind == "f":
+                if lhs_dtype.numpy_dtype == np.float32:
+                    ctype = "int"
+                elif lhs_dtype.numpy_dtype == np.float64:
+                    ctype = "long"
+                else:
+                    assert False
+
+                old_val = "*(%s *) &" % ctype + old_val
+                new_val = "*(%s *) &" % ctype + new_val
+                cast_str = "(__global %s *) " % ctype
+
+            return Block([
+                POD(self, NumpyType(lhs_dtype.dtype), old_val_var),
+                POD(self, NumpyType(lhs_dtype.dtype), new_val_var),
+                DoWhile(
+                    "%(func_name)s("
+                    "%(cast_str)s&(%(lhs_expr)s), "
+                    "%(old_val)s, "
+                    "%(new_val)s"
+                    ") != %(old_val)s"
+                    % {
+                        "func_name": func_name,
+                        "cast_str": cast_str,
+                        "lhs_expr": lhs_expr_code,
+                        "old_val": old_val,
+                        "new_val": new_val,
+                        },
+                    Block([
+                        Assign(old_val_var, lhs_expr_code),
+                        Assign(new_val_var, rhs_expr_code),
+                        ])
+                    )
+                ])
+        else:
+            raise NotImplementedError("atomic update for '%s'" % lhs_dtype)
+
+    # }}}
 
     # }}}
 

@@ -207,12 +207,12 @@ def pyopencl_function_mangler(target, name, arg_dtypes):
 
 # {{{ preamble generator
 
-def pyopencl_preamble_generator(target, seen_dtypes, seen_functions):
+def pyopencl_preamble_generator(preamble_info):
     has_double = False
     has_complex = False
 
     from loopy.types import NumpyType
-    for dtype in seen_dtypes:
+    for dtype in preamble_info.seen_dtypes:
         if (isinstance(dtype, NumpyType)
                 and dtype.dtype in [np.float64, np.complex128]):
             has_double = True
@@ -290,9 +290,15 @@ class PyOpenCLTarget(OpenCLTarget):
         try:
             from pyopencl.compyte.dtypes import TYPE_REGISTRY
         except ImportError:
-            return _LegacyTypeRegistryStub()
+            result = _LegacyTypeRegistryStub()
         else:
-            return TYPE_REGISTRY
+            result = TYPE_REGISTRY
+
+        from loopy.target.opencl import DTypeRegistryWrapperWithCL1Atomics
+        if self.atomics_flavor == "cl1":
+            return DTypeRegistryWrapperWithCL1Atomics(result)
+        else:
+            raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
 
     def is_vector_dtype(self, dtype):
         from pyopencl.array import vec

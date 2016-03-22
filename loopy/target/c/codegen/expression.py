@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -26,6 +23,8 @@ THE SOFTWARE.
 """
 
 
+from six.moves import range, zip
+
 import numpy as np
 
 from pymbolic.mapper import RecursiveMapper
@@ -43,16 +42,23 @@ from loopy.types import LoopyType
 # {{{ C code mapper
 
 class LoopyCCodeMapper(RecursiveMapper):
-    def __init__(self, codegen_state, fortran_abi=False):
+    def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
         self.kernel = codegen_state.kernel
         self.codegen_state = codegen_state
 
-        self.type_inf_mapper = TypeInferenceMapper(self.kernel)
+        if type_inf_mapper is None:
+            type_inf_mapper = TypeInferenceMapper(self.kernel)
+        self.type_inf_mapper = type_inf_mapper
+
         self.allow_complex = codegen_state.allow_complex
 
         self.fortran_abi = fortran_abi
 
     # {{{ helpers
+
+    def with_assignments(self, names_to_vars):
+        type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
+        return type(self)(self.codegen_state, self.fortran_abi, type_inf_mapper)
 
     def infer_type(self, expr):
         result = self.type_inf_mapper(expr)
