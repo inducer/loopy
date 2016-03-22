@@ -1063,6 +1063,24 @@ Conditionals
 Snippets of C
 ~~~~~~~~~~~~~
 
+Atomic operations
+~~~~~~~~~~~~~~~~~
+
+Loopy supports atomic operations. To use them, both the data on which the
+atomic operations work as well as the operations themselves must be
+suitably tagged, as in the following example::
+
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i%20] = out[i%20] + 2*a[i] {atomic}",
+            [
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.auto),
+                "..."
+                ],
+            assumptions="n>0")
+
 .. }}}
 
 Common Problems
