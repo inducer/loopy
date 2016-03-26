@@ -300,6 +300,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         raise NotImplementedError("equivalence")
 
     TYPE_MAP = {
+            ("real", ""): np.float32,
             ("real", "4"): np.float32,
             ("real", "8"): np.float64,
             ("doubleprecision", ""): np.float64,
