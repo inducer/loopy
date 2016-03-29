@@ -307,7 +307,9 @@ class PyOpenCLTarget(OpenCLTarget):
 
     def vector_dtype(self, base, count):
         from pyopencl.array import vec
-        return NumpyType(vec.types[base.numpy_dtype, count])
+        return NumpyType(
+                vec.types[base.numpy_dtype, count],
+                target=self)
 
     def alignment_requirement(self, type_decl):
         import struct
