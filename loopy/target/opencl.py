@@ -191,7 +191,8 @@ def opencl_preamble_generator(preamble_info):
     has_double = False
 
     for dtype in preamble_info.seen_dtypes:
-        if dtype in [np.float64, np.complex128]:
+        if (isinstance(dtype, NumpyType)
+                and dtype.numpy_dtype in [np.float64, np.complex128]):
             has_double = True
 
     if has_double:
