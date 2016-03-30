@@ -128,7 +128,7 @@ __all__ = [
         "KernelArgument",
         "memory_ordering", "memory_scope", "VarAtomicity",
         "AtomicInit", "AtomicUpdate",
-        "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
+        "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
         "temp_var_scope", "TemporaryVariable",
         "SubstitutionRule",
 
@@ -181,7 +181,7 @@ __all__ = [
         "get_dot_dependency_graph",
         "show_dependency_graph",
         "add_dtypes",
-        "infer_argument_dtypes", "add_and_infer_dtypes",
+        "add_and_infer_dtypes",
 
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules", "get_one_scheduled_kernel",
