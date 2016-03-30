@@ -502,6 +502,7 @@ class InstructionBase(Record):
 
     .. automethod:: __init__
     .. automethod:: assignees_and_indices
+    .. automethod:: assignee_name
     .. automethod:: with_transformed_expressions
     .. automethod:: write_dependency_names
     .. automethod:: dependency_names
@@ -615,6 +616,24 @@ class InstructionBase(Record):
         raise NotImplementedError
 
     # }}}
+
+    @property
+    def assignee_name(self):
+        """A convenience wrapper around :meth:`assignees_and_indices`
+        that returns the the name of the variable being assigned.
+        If more than one variable is being modified in the instruction,
+        :raise:`ValueError` is raised.
+        """
+
+        aai = self.assignees_and_indices()
+
+        if len(aai) != 1:
+            raise ValueError("expected exactly one assignment in instruction "
+                    "on which assignee_name is being called, found %d"
+                    % len(aai))
+
+        (name, _), = aai
+        return name
 
     @memoize_method
     def write_dependency_names(self):
