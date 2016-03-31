@@ -165,7 +165,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     buffer_inames = list(buffer_inames)
     buffer_inames_set = frozenset(buffer_inames)
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     if var_name in kernel.arg_dict:

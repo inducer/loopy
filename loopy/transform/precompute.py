@@ -291,7 +291,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         names/indices to be used as storage axes.
         May also equivalently be a comma-separated string.
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
     :arg temporary_name:
         The temporary variable name to use for storing the precomputed data.
         If it does not exist, it will be created. If it does exist, its properties
@@ -375,7 +375,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 raise ValueError("not all uses in subst_use agree "
                         "on rule name and tag")
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     from loopy.kernel.data import parse_tag
@@ -724,7 +724,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     expr_subst_map = RuleAwareSubstitutionMapper(
             rule_mapping_context,
             make_subst_func(storage_axis_subst_dict),

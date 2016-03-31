@@ -37,7 +37,7 @@ def _apply_renames_in_exprs(kernel, var_renames):
             SubstitutionRuleMappingContext,
             RuleAwareSubstitutionMapper)
     from pymbolic.mapper.substitutor import make_subst_func
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
 
     srmc = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())

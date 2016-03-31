@@ -30,13 +30,13 @@ from loopy.diagnostic import LoopyError
 # {{{ instruction processing
 
 def find_instructions(kernel, insn_match):
-    from loopy.context_matching import parse_match
+    from loopy.match import parse_match
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
 
 
 def map_instructions(kernel, insn_match, f):
-    from loopy.context_matching import parse_match
+    from loopy.match import parse_match
     match = parse_match(insn_match)
 
     new_insns = []
@@ -54,7 +54,7 @@ def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
     *insn_match* may be any instruction id match understood by
-    :func:`loopy.context_matching.parse_match`.
+    :func:`loopy.match.parse_match`.
     """
 
     def set_prio(insn):
@@ -68,7 +68,7 @@ def add_dependency(kernel, insn_match, dependency):
     by *insn_match*.
 
     *insn_match* may be any instruction id match understood by
-    :func:`loopy.context_matching.parse_match`.
+    :func:`loopy.match.parse_match`.
     """
 
     if dependency not in kernel.id_to_insn:
@@ -130,7 +130,7 @@ def remove_instructions(kernel, insn_ids):
 # {{{ tag_instructions
 
 def tag_instructions(kernel, new_tag, within=None):
-    from loopy.context_matching import parse_match
+    from loopy.match import parse_match
     within = parse_match(within)
 
     new_insns = []

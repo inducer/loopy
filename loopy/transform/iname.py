@@ -147,7 +147,7 @@ def _split_iname_backend(kernel, split_iname,
         within=None):
     """
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
     """
 
     existing_tag = kernel.iname_to_tag.get(split_iname)
@@ -256,7 +256,7 @@ def _split_iname_backend(kernel, split_iname,
             applied_iname_rewrites=applied_iname_rewrites,
             loop_priority=new_loop_priority)
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -301,7 +301,7 @@ def split_iname(kernel, split_iname, inner_length,
     :arg inner_tag: The iname tag (see :ref:`iname-tags`) to apply to
         *inner_iname*.
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
     """
     def make_new_loop_index(inner, outer):
         return inner + outer*inner_length
@@ -330,7 +330,7 @@ def chunk_iname(kernel, split_iname, num_chunks,
     fixed length *num_chunks*.
 
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
 
     .. versionadded:: 2016.2
     """
@@ -457,7 +457,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
     """
     :arg inames: fastest varying last
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
     """
 
     # now fastest varying first
@@ -548,7 +548,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
                 applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
                 ))
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     from pymbolic.mapper.substitutor import make_subst_func
@@ -713,7 +713,7 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
         tags={}):
     """
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
     """
 
     # {{{ normalize arguments, find unique new_inames
@@ -724,7 +724,7 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
     if isinstance(new_inames, str):
         new_inames = [iname.strip() for iname in new_inames.split(",")]
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     if new_inames is None:
@@ -802,7 +802,7 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
     """
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
     :arg existing_ok: execute even if *new_iname* already exists
     """
 
@@ -852,7 +852,7 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
         from pymbolic import var
         subst_dict = {old_iname: var(new_iname)}
 
-        from loopy.context_matching import parse_stack_match
+        from loopy.match import parse_stack_match
         within = parse_stack_match(within)
 
         from pymbolic.mapper.substitutor import make_subst_func
@@ -972,7 +972,7 @@ def link_inames(knl, inames, new_iname, within=None, tag=None):
     from pymbolic import var
     subst_dict = dict((iname, var(new_iname)) for iname in inames)
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     from pymbolic.mapper.substitutor import make_subst_func
@@ -1101,7 +1101,7 @@ def _split_reduction(kernel, inames, direction, within=None):
         inames = inames.split(",")
     inames = set(inames)
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -1232,7 +1232,7 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
     var_name_gen = kernel.get_var_name_generator()
 
     from pymbolic.mapper.substitutor import make_subst_func
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
 
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, var_name_gen)
@@ -1349,7 +1349,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     axis.
 
     :arg insn_match: An instruction match as understood by
-        :func:`loopy.context_matching.parse_match`.
+        :func:`loopy.match.parse_match`.
     :arg kind: may be "l" or "g", or the corresponding tag class name
 
     :returns: an :class:`GroupIndexTag` or :class:`LocalIndexTag`
@@ -1371,7 +1371,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
         if not found:
             raise LoopyError("invlaid tag kind: %s" % kind)
 
-    from loopy.context_matching import parse_match
+    from loopy.match import parse_match
     match = parse_match(insn_match)
     insns = [insn for insn in kernel.instructions if match(kernel, insn)]
 
@@ -1472,14 +1472,14 @@ def make_reduction_inames_unique(kernel, inames=None, within=None):
     """
     :arg inames: if not *None*, only apply to these inames
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
 
     .. versionadded:: 2016.2
     """
 
     name_gen = kernel.get_var_name_generator()
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     # {{{ change kernel

@@ -116,7 +116,7 @@ def _fix_parameter(kernel, name, value):
     for tv in six.itervalues(kernel.temporary_variables):
         new_temp_vars[tv.name] = tv.map_exprs(map_expr)
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(None)
 
     rule_mapping_context = SubstitutionRuleMappingContext(

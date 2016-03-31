@@ -124,12 +124,7 @@ Matching contexts
 
 TODO: Matching instruction tags
 
-.. automodule:: loopy.context_matching
-
-.. autofunction:: parse_match
-
-.. autofunction:: parse_stack_match
-
+.. automodule:: loopy.match
 
 .. vim: tw=75:spell
 

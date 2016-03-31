@@ -183,7 +183,7 @@ These are usually key-value pairs. The following attributes are recognized:
 * ``id=value`` sets the instruction's identifier to ``value``. ``value``
   must be unique within the kernel. This identifier is used to refer to the
   instruction after it has been created, such as from ``dep`` attributes
-  (see below) or from :mod:`context matches <loopy.context_matching>`.
+  (see below) or from :mod:`context matches <loopy.match>`.
 
 * ``id_prefix=value`` also sets the instruction's identifier, however
   uniqueness is ensured by loopy itself, by appending further components
