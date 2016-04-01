@@ -695,7 +695,7 @@ def generate_loop_schedules_internal(
                         # check if there's a dependency of insn that needs to be
                         # outside of last_entered_loop.
                         for subdep_id in gen_dependencies_except(kernel, insn_id,
-                                sched_state.unscheduled_insn_ids):
+                                sched_state.scheduled_insn_ids):
                             subdep = kernel.id_to_insn[insn_id]
                             want = (kernel.insn_inames(subdep_id)
                                     - sched_state.parallel_inames)
