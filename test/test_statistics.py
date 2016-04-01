@@ -31,8 +31,10 @@ import loopy as lp
 from loopy.statistics import (
         get_op_poly,
         get_gmem_access_poly,
+        get_lmem_access_poly,
         get_barrier_poly,
         StridedGmemAccess,
+        LmemAccess,
         TypedOp)
 
 import numpy as np
@@ -578,6 +580,9 @@ def test_all_counters_parallel_matmul():
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
     knl = lp.split_iname(knl, "i", 16, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", 16, outer_tag="g.1", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 16)
+    knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
+    knl = lp.add_prefetch(knl, "b", ["j_inner", "k_inner"])
 
     n = 512
     m = 256
@@ -585,7 +590,7 @@ def test_all_counters_parallel_matmul():
     params = {'n': n, 'm': m, 'l': l}
 
     barrier_count = get_barrier_poly(knl).eval_with_dict(params)
-    assert barrier_count == 0
+    assert barrier_count == 2*m/16
 
     op_map = get_op_poly(knl)
     f32mul = op_map[
@@ -602,35 +607,27 @@ def test_all_counters_parallel_matmul():
                         ].eval_with_dict(params)
 
     assert f32mul+f32add == n*m*l*2
-    assert i32ops == n*m*l*4 + l*n*4
 
     subscript_map = get_gmem_access_poly(knl)
-    #f32uncoal = subscript_map[StridedGmemAccess(
-    #                          np.dtype(np.float32), Variable('m'), direction='load', variable='ANY_VAR')
-    #                          ].eval_with_dict(params)
-    #test = StridedGmemAccess(np.dtype(np.float32), sys.maxsize, direction='load', variable='ANY_VAR')
-    #print("test key: ", test.dtype, test.stride, test.direction, test.variable)
-    #for key in subscript_map:
-    #    print(key.dtype, key.stride, key.direction, key.variable)
-    f32uncoal = subscript_map[StridedGmemAccess(
-                              np.dtype(np.float32), sys.maxsize, direction='load', variable='a')
-                              ].eval_with_dict(params)
-    '''
-    f32uncoal = subscript_map[StridedGmemAccess(
-                              np.dtype(np.float32), sys.maxsize, direction='load', variable='ANY_VAR')
-                              ].eval_with_dict(params)
-    '''
+
     f32coal = subscript_map[StridedGmemAccess(np.dtype(np.float32), 1, direction='load', variable='b')
                             ].eval_with_dict(params)
+    f32coal += subscript_map[StridedGmemAccess(np.dtype(np.float32), 1, direction='load', variable='a')
+                            ].eval_with_dict(params)
 
-    assert f32uncoal == n*m*l
-    assert f32coal == n*m*l
+    assert f32coal == n*m+m*l
 
     f32coal = subscript_map[StridedGmemAccess(np.dtype(np.float32), 1, direction='store', variable='c')
                             ].eval_with_dict(params)
 
     assert f32coal == n*l
 
+    local_subs_map = get_lmem_access_poly(knl)
+
+    local_subs_l = local_subs_map[LmemAccess(np.dtype(np.float32), direction='load')
+                                  ].eval_with_dict(params)
+
+    assert local_subs_l == n*m*l*2
 
 def test_gather_access_footprint():
     knl = lp.make_kernel(

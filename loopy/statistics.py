@@ -120,6 +120,24 @@ class TypedOp:
         return hash(str(self.dtype)+self.name)
 
 
+class LmemAccess:
+
+    def __init__(self, dtype, direction=None):
+        self.dtype = dtype
+        self.direction = direction
+
+    def __eq__(self, other):
+        return isinstance(other, LmemAccess) and (
+                other.dtype == self.dtype and
+                other.direction == self.direction)
+
+    def __hash__(self):
+        direction = self.direction
+        if direction == None:
+            direction = 'None'
+        return hash(str(self.dtype)+direction)
+
+
 class StridedGmemAccess:
 
     #TODO "ANY_VAR" does not work yet
@@ -277,6 +295,116 @@ class ExpressionOpCounter(CombineMapper):
                                   "map_slice not implemented.")
 
 # }}}
+
+
+# {{{ LocalSubscriptCounter
+
+class LocalSubscriptCounter(CombineMapper):
+
+    def __init__(self, knl):
+        self.knl = knl
+        from loopy.expression import TypeInferenceMapper
+        self.type_inf = TypeInferenceMapper(knl)
+
+    def combine(self, values):
+        return sum(values)
+
+    def map_constant(self, expr):
+        return ToCountMap()
+
+    map_tagged_variable = map_constant
+    map_variable = map_constant
+
+    def map_call(self, expr):
+        return self.rec(expr.parameters)
+
+    def map_subscript(self, expr):
+        name = expr.aggregate.name  # name of array
+
+        if name in self.knl.temporary_variables:
+            array = self.knl.temporary_variables[name]
+            #print("array: ", array)
+            #print("is local? ", array.is_local)
+            if array.is_local:
+                return ToCountMap(
+                        {LmemAccess(self.type_inf(expr), direction=None): 1}
+                        ) + self.rec(expr.index)
+
+        return self.rec(expr.index)
+            
+    def map_sum(self, expr):
+        if expr.children:
+            return sum(self.rec(child) for child in expr.children)
+        else:
+            return ToCountMap()
+
+    map_product = map_sum
+
+    def map_quotient(self, expr, *args):
+        return self.rec(expr.numerator) + self.rec(expr.denominator)
+
+    map_floor_div = map_quotient
+    map_remainder = map_quotient
+
+    def map_power(self, expr):
+        return self.rec(expr.base) + self.rec(expr.exponent)
+
+    def map_left_shift(self, expr):
+        return self.rec(expr.shiftee)+self.rec(expr.shift)
+
+    map_right_shift = map_left_shift
+
+    def map_bitwise_not(self, expr):
+        return self.rec(expr.child)
+
+    def map_bitwise_or(self, expr):
+        return sum(self.rec(child) for child in expr.children)
+
+    map_bitwise_xor = map_bitwise_or
+    map_bitwise_and = map_bitwise_or
+
+    def map_comparison(self, expr):
+        return self.rec(expr.left)+self.rec(expr.right)
+
+    map_logical_not = map_bitwise_not
+    map_logical_or = map_bitwise_or
+    map_logical_and = map_logical_or
+
+    def map_if(self, expr):
+        warnings.warn("LocalSubscriptCounter counting LMEM accesses as "
+                      "sum of if-statement branches.")
+        return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
+
+    def map_if_positive(self, expr):
+        warnings.warn("LocalSubscriptCounter counting LMEM accesses as "
+                      "sum of if_pos-statement branches.")
+        return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
+
+    map_min = map_bitwise_or
+    map_max = map_min
+
+    def map_common_subexpression(self, expr):
+        raise NotImplementedError("LocalSubscriptCounter encountered "
+                                  "common_subexpression, "
+                                  "map_common_subexpression not implemented.")
+
+    def map_substitution(self, expr):
+        raise NotImplementedError("LocalSubscriptCounter encountered "
+                                  "substitution, "
+                                  "map_substitution not implemented.")
+
+    def map_derivative(self, expr):
+        raise NotImplementedError("LocalSubscriptCounter encountered "
+                                  "derivative, "
+                                  "map_derivative not implemented.")
+
+    def map_slice(self, expr):
+        raise NotImplementedError("LocalSubscriptCounter encountered slice, "
+                                  "map_slice not implemented.")
+
+# }}}
+
+
 
 
 # {{{ GlobalSubscriptCounter
@@ -672,6 +800,66 @@ def sum_ops_to_dtypes(op_poly_dict):
             result[new_key] = v
 
     return result
+
+
+def get_lmem_access_poly(knl):
+
+    """Count the number of local memory accesses in a loopy kernel.
+    """
+
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+
+    class CacheHolder(object):
+        pass
+
+    cache_holder = CacheHolder()
+
+    @memoize_in(cache_holder, "insn_count")
+    def get_insn_count(knl, insn_inames):
+        inames_domain = knl.get_inames_domain(insn_inames)
+        domain = (inames_domain.project_out_except(
+                                insn_inames, [dim_type.set]))
+        return count(knl, domain)
+
+    knl = infer_unknown_types(knl, expect_completion=True)
+    knl = preprocess_kernel(knl)
+
+    subs_poly = ToCountMap()
+    subscript_counter = LocalSubscriptCounter(knl)
+    for insn in knl.instructions:
+        # count subscripts, distinguishing loads and stores
+        subs_expr = subscript_counter(insn.expression)
+        for key in subs_expr.dict:
+            subs_expr.dict[LmemAccess(
+                           key.dtype, direction='load')
+                          ] = subs_expr.dict.pop(key)
+        subs_assignee = subscript_counter(insn.assignee)
+        for key in subs_assignee.dict:
+            print(key.dtype, key.direction, subs_assignee.dict[key])
+
+        # for now, not counting stores in local mem
+        '''
+        for key in subs_assignee.dict:
+            subs_assignee.dict[LmemAccess(
+                               key.dtype, direction='store')
+                              ] = subs_assignee.dict.pop(key)
+        '''
+
+        insn_inames = knl.insn_inames(insn)
+
+        # use count excluding local index tags for uniform accesses
+        for key in subs_expr.dict:
+            poly = ToCountMap({key: subs_expr.dict[key]})
+            subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+
+        # for now, not counting stores in local mem
+        '''
+        for key in subs_assignee.dict:
+            poly = ToCountMap({key: subs_assignee.dict[key]})
+            subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+        '''
+
+    return subs_poly.dict
 
 
 # {{{ get_gmem_access_poly
