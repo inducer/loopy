@@ -485,6 +485,10 @@ def parse_stack_match(smatch):
 
     if isinstance(smatch, StackMatch):
         return smatch
+    if isinstance(smatch, MatchExpressionBase):
+        return StackMatch(
+                StackItemMatchComponent(
+                    smatch, StackAllMatchComponent()))
 
     if smatch is None:
         return StackMatch(StackAllMatchComponent())
