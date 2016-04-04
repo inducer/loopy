@@ -590,7 +590,9 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
             return (s[:colon_index].strip(), s[colon_index+1:].strip())
 
-        iname_to_tag = [parse_kv(s) for s in iname_to_tag.split(",")]
+        iname_to_tag = [
+                parse_kv(s) for s in iname_to_tag.split(",")
+                if s.strip()]
 
     from loopy.kernel.data import parse_tag as inner_parse_tag
 
