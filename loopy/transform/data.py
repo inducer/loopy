@@ -307,7 +307,8 @@ def tag_data_axes(knl, ary_names, dim_tags):
         from loopy.kernel.array import parse_array_dim_tags
         new_dim_tags = parse_array_dim_tags(dim_tags,
                 n_axes=ary.num_user_axes(),
-                use_increasing_target_axes=ary.max_target_axes > 1)
+                use_increasing_target_axes=ary.max_target_axes > 1,
+                dim_names=ary.dim_names)
 
         ary = ary.copy(dim_tags=tuple(new_dim_tags))
 
