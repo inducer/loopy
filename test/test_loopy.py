@@ -959,6 +959,29 @@ def test_double_sum(ctx_factory):
     assert b.get() == ref
 
 
+@pytest.mark.parametrize(("op_name", "np_op"), [
+    ("sum", np.sum),
+    ("product", np.prod),
+    ("min", np.min),
+    ("max", np.max),
+    ])
+def test_reduction_library(ctx_factory, op_name, np_op):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i<n and 0<=j<m }",
+            [
+                "res[i] = reduce(%s, j, a[i,j])" % op_name,
+                ],
+            assumptions="n>=1")
+
+    a = np.random.randn(20, 10)
+    evt, (res,) = knl(queue, a=a)
+
+    assert np.allclose(res, np_op(a, axis=1))
+
+
 def test_double_sum_made_unique(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

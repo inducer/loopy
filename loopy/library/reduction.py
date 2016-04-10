@@ -139,7 +139,6 @@ class MaxReductionOperation(ScalarReductionOperation):
 
 
 class MinReductionOperation(ScalarReductionOperation):
-    @property
     def neutral_element(self, dtype, inames):
         return get_le_neutral(dtype)
 
