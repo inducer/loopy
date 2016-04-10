@@ -1780,7 +1780,7 @@ def test_multiple_writes_to_local_temporary():
 def test_fd_demo():
     knl = lp.make_kernel(
         "{[i,j]: 0<=i,j<n}",
-        "result[i,j] = u[i, j]**2 + -1 + (-4)*u[i + 1, j + 1] \
+        "result[i+1,j+1] = u[i + 1, j + 1]**2 + -1 + (-4)*u[i + 1, j + 1] \
                 + u[i + 1 + 1, j + 1] + u[i + 1 + -1, j + 1] \
                 + u[i + 1, j + 1 + 1] + u[i + 1, j + 1 + -1]")
     #assumptions="n mod 16=0")
@@ -1797,8 +1797,6 @@ def test_fd_demo():
 
     knl = lp.set_options(knl, write_cl=True)
     knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
-    knl = lp.preprocess_kernel(knl)
-    knl = lp.get_one_scheduled_kernel(knl)
     code, inf = lp.generate_code(knl)
     print(code)
 
