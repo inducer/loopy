@@ -110,8 +110,6 @@ def add_and_infer_dtypes(knl, dtype_dict):
             if subkey:
                 processed_dtype_dict[subkey] = v
 
-    print(processed_dtype_dict)
-
     knl = add_dtypes(knl, processed_dtype_dict)
 
     from loopy.preprocess import infer_unknown_types
