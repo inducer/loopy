@@ -1,8 +1,8 @@
 import loopy as lp
 
 k = lp.make_kernel([
-    "[m] -> { [i] : 0 <= i < m }",
-    "[length] -> { [j] : 0 <= j < length }"],
+    "{ [i] : 0 <= i < m }",
+    "{ [j] : 0 <= j < length }"],
     """
     rowstart = rowstarts[i]
     rowend = rowstarts[1 + i]
