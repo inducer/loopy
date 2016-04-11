@@ -102,7 +102,17 @@ def get_arguments_with_incomplete_dtype(knl):
 
 
 def add_and_infer_dtypes(knl, dtype_dict):
-    knl = add_dtypes(knl, dtype_dict)
+    processed_dtype_dict = {}
+
+    for k, v in six.iteritems(dtype_dict):
+        for subkey in k.split(","):
+            subkey = subkey.strip()
+            if subkey:
+                processed_dtype_dict[subkey] = v
+
+    print(processed_dtype_dict)
+
+    knl = add_dtypes(knl, processed_dtype_dict)
 
     from loopy.preprocess import infer_unknown_types
     return infer_unknown_types(knl, expect_completion=True)
