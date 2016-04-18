@@ -232,7 +232,7 @@ def generate_c_instruction_code(kernel, insn, codegen_state):
     from pymbolic.primitives import Variable
     for name, iname_expr in insn.iname_exprs:
         if (isinstance(iname_expr, Variable)
-                and name not in ecm.var_subst_map):
+                and name not in codegen_state.var_subst_map):
             # No need, the bare symbol will work
             continue
 
