@@ -1379,15 +1379,15 @@ def test_c_instruction(ctx_factory):
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             [
-                lp.CInstruction("i", """
-                    x = sin((float) i);
+                lp.CInstruction("i,j", """
+                    x = sin((float) i*j);
                     """, assignees="x"),
-                "a[i*i] = x",
+                "a[i,j] = x",
                 ],
             [
-                lp.GlobalArg("a", shape="n"),
-                lp.ValueArg("n"),
+                lp.GlobalArg("a", shape=lp.auto, dtype=np.float32),
                 lp.TemporaryVariable("x", np.float32),
+                "...",
                 ],
             assumptions="n>=1")
 
