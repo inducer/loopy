@@ -53,6 +53,24 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
         else:
             raise LoopyError("ISPC only supports one local axis")
 
+    def map_constant(self, expr, enclosing_prec, type_context):
+        if isinstance(expr, (complex, np.complexfloating)):
+            raise NotImplementedError("complex numbers in ispc")
+        else:
+            if type_context == "f":
+                return repr(float(expr))
+            elif type_context == "d":
+                # Keepin' the good ideas flowin' since '66.
+                return repr(float(expr))+"d"
+            elif type_context == "i":
+                return str(int(expr))
+            else:
+                from loopy.tools import is_integer
+                if is_integer(expr):
+                    return str(expr)
+
+                raise RuntimeError("don't know how to generated code "
+                        "for constant '%s'" % expr)
 # }}}
 
 
