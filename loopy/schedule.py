@@ -1438,17 +1438,17 @@ def generate_loop_schedules(kernel, debug_args={}):
     try:
         for gen in generators:
             for gen_sched in gen:
-                # gen_sched = insert_barriers(kernel, gen_sched,
-                #         reverse=False, kind="global")
-
-                # for sched_item in gen_sched:
-                #     if (
-                #             isinstance(sched_item, Barrier)
-                #             and sched_item.kind == "global"):
-                #         raise LoopyError("kernel requires a global barrier %s"
-                #                 % sched_item.comment)
-
                 debug.stop()
+
+                gen_sched = insert_barriers(kernel, gen_sched,
+                        reverse=False, kind="global")
+
+                for sched_item in gen_sched:
+                    if (
+                            isinstance(sched_item, Barrier)
+                            and sched_item.kind == "global"):
+                        raise LoopyError("kernel requires a global barrier %s"
+                                % sched_item.comment)
 
                 logger.info("%s: barrier insertion: start" % kernel.name)
 
