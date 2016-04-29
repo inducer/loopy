@@ -247,8 +247,9 @@ class CTarget(TargetBase):
 
         for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
             bs_var_decl = Value("char", bs_name)
+            from pytools import single_valued
             bs_var_decl = self.wrap_temporary_decl(
-                    bs_var_decl, base_storage_to_scope[bs_name])
+                    bs_var_decl, single_valued(base_storage_to_scope[bs_name]))
             bs_var_decl = ArrayOf(bs_var_decl, max(bs_sizes))
 
             alignment = max(base_storage_to_align_bytes[bs_name])
