@@ -175,7 +175,7 @@ class CTarget(TargetBase):
         # {{{ declare temporaries
 
         base_storage_sizes = {}
-        base_storage_to_is_local = {}
+        base_storage_to_scope = {}
         base_storage_to_align_bytes = {}
 
         from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute, Value
@@ -193,21 +193,16 @@ class CTarget(TargetBase):
 
             if not tv.base_storage:
                 for idi in decl_info:
-                    temp_var_decl = POD(self, idi.dtype, idi.name)
-
-                    if idi.shape:
-                        temp_var_decl = ArrayOf(temp_var_decl,
-                                " * ".join(str(s) for s in idi.shape))
-
                     temp_decls.append(
-                            self.wrap_temporary_decl(temp_var_decl, tv.is_local))
+                            self.wrap_temporary_decl(
+                                self.get_temporary_decl(kernel, tv, idi), tv.scope))
 
             else:
                 offset = 0
                 base_storage_sizes.setdefault(tv.base_storage, []).append(
                         tv.nbytes)
-                base_storage_to_is_local.setdefault(tv.base_storage, []).append(
-                        tv.is_local)
+                base_storage_to_scope.setdefault(tv.base_storage, []).append(
+                        tv.scope)
 
                 align_size = tv.dtype.itemsize
 
@@ -223,9 +218,9 @@ class CTarget(TargetBase):
                     cast_decl = POD(self, idi.dtype, "")
                     temp_var_decl = POD(self, idi.dtype, idi.name)
 
-                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.is_local)
+                    cast_decl = self.wrap_temporary_decl(cast_decl, tv.scope)
                     temp_var_decl = self.wrap_temporary_decl(
-                            temp_var_decl, tv.is_local)
+                            temp_var_decl, tv.scope)
 
                     # The 'restrict' part of this is a complete lie--of course
                     # all these temporaries are aliased. But we're promising to
@@ -253,7 +248,7 @@ class CTarget(TargetBase):
         for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
             bs_var_decl = Value("char", bs_name)
             bs_var_decl = self.wrap_temporary_decl(
-                    bs_var_decl, base_storage_to_is_local[bs_name])
+                    bs_var_decl, base_storage_to_scope[bs_name])
             bs_var_decl = ArrayOf(bs_var_decl, max(bs_sizes))
 
             alignment = max(base_storage_to_align_bytes[bs_name])
@@ -286,7 +281,18 @@ class CTarget(TargetBase):
         from loopy.target.c.codegen.expression import LoopyCCodeMapper
         return LoopyCCodeMapper(codegen_state, fortran_abi=self.fortran_abi)
 
-    def wrap_temporary_decl(self, decl, is_local):
+    def get_temporary_decl(self, knl, temp_var, decl_info):
+        from loopy.codegen import POD  # uses the correct complex type
+        temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
+
+        if decl_info.shape:
+            from cgen import ArrayOf
+            temp_var_decl = ArrayOf(temp_var_decl,
+                    " * ".join(str(s) for s in decl_info.shape))
+
+        return temp_var_decl
+
+    def wrap_temporary_decl(self, decl, scope):
         return decl
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):

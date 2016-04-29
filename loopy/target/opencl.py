@@ -32,6 +32,7 @@ from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
+from loopy.kernel.data import temp_var_scope
 
 
 # {{{ dtype registry wrappers
@@ -378,12 +379,15 @@ class OpenCLTarget(CTarget):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def wrap_temporary_decl(self, decl, is_local):
-        if is_local:
+    def wrap_temporary_decl(self, decl, scope):
+        if scope == temp_var_scope.LOCAL:
             from cgen.opencl import CLLocal
             return CLLocal(decl)
-        else:
+        elif scope == temp_var_scope.PRIVATE:
             return decl
+        else:
+            raise ValueError("unexpected temporary variable scope: %s"
+                    % scope)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from cgen.opencl import CLGlobal

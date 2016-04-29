@@ -32,6 +32,7 @@ from loopy.target.c import CTarget
 from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
+from loopy.kernel.data import temp_var_scope
 
 
 # {{{ vector types
@@ -284,12 +285,15 @@ class CudaTarget(CTarget):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def wrap_temporary_decl(self, decl, is_local):
-        if is_local:
+    def wrap_temporary_decl(self, decl, scope):
+        if scope == temp_var_scope.LOCAL:
             from cgen.cuda import CudaShared
             return CudaShared(decl)
-        else:
+        elif scope == temp_var_scope.PRIVATE:
             return decl
+        else:
+            raise ValueError("unexpected temporary variable scope: %s"
+                    % scope)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from loopy.codegen import POD  # uses the correct complex type

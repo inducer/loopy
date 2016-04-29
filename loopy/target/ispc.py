@@ -29,6 +29,7 @@ import numpy as np  # noqa
 from loopy.target.c import CTarget
 from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from loopy.diagnostic import LoopyError
+from pymbolic.mapper.stringifier import (PREC_SUM, PREC_CALL)
 
 from pytools import memoize_method
 
@@ -71,6 +72,49 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
 
                 raise RuntimeError("don't know how to generated code "
                         "for constant '%s'" % expr)
+
+    def map_variable(self, expr, enclosing_prec, type_context):
+        if expr.name in self.kernel.temporary_variables:
+            gsize, lsize = self.kernel.get_grid_sizes_as_exprs()
+            if lsize:
+                return "%s[programIndex]" % expr.name
+            else:
+                return expr.name
+        else:
+            return super(LoopyISPCCodeMapper, self).map_variable(
+                    expr, enclosing_prec, type_context)
+
+    def map_subscript(self, expr, enclosing_prec, type_context):
+        from loopy.kernel.data import TemporaryVariable
+
+        ary = self.find_array(expr)
+
+        if isinstance(ary, TemporaryVariable):
+            gsize, lsize = self.kernel.get_grid_sizes_as_exprs()
+            if lsize:
+                from loopy.kernel.array import get_access_info
+                from pymbolic import evaluate
+
+                access_info = get_access_info(self.kernel.target, ary, expr.index,
+                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
+                    self.codegen_state.vectorization_info)
+
+                subscript, = access_info.subscripts
+                result = self.parenthesize_if_needed(
+                        "%s[programIndex + %s]" % (
+                            access_info.array_name,
+                            self.rec(lsize*subscript, PREC_SUM, 'i')),
+                        enclosing_prec, PREC_CALL)
+
+                if access_info.vector_index is not None:
+                    return self.kernel.target.add_vector_access(
+                        result, access_info.vector_index)
+                else:
+                    return result
+
+        return super(LoopyISPCCodeMapper, self).map_subscript(
+                expr, enclosing_prec, type_context)
+
 # }}}
 
 
@@ -243,7 +287,25 @@ class ISPCTarget(CTarget):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def wrap_temporary_decl(self, decl, is_local):
+    def get_temporary_decl(self, knl, temp_var, decl_info):
+        from loopy.codegen import POD  # uses the correct complex type
+        temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
+
+        shape = decl_info.shape
+
+        from loopy.kernel.data import temp_var_scope
+        if temp_var.scope == temp_var_scope.PRIVATE:
+            gsize, lsize = knl.get_grid_sizes_as_exprs()
+            shape = lsize + shape
+
+        if shape:
+            from cgen import ArrayOf
+            temp_var_decl = ArrayOf(temp_var_decl,
+                    " * ".join(str(s) for s in shape))
+
+        return temp_var_decl
+
+    def wrap_temporary_decl(self, decl, scope):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(decl)
 
