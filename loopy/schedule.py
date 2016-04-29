@@ -1440,6 +1440,8 @@ def generate_loop_schedules(kernel, debug_args={}):
             for gen_sched in gen:
                 debug.stop()
 
+                logger.info("%s: barrier insertion: global" % kernel.name)
+
                 gen_sched = insert_barriers(kernel, gen_sched,
                         reverse=False, kind="global")
 
@@ -1450,7 +1452,7 @@ def generate_loop_schedules(kernel, debug_args={}):
                         raise LoopyError("kernel requires a global barrier %s"
                                 % sched_item.comment)
 
-                logger.info("%s: barrier insertion: start" % kernel.name)
+                logger.info("%s: barrier insertion: local" % kernel.name)
 
                 gen_sched = insert_barriers(kernel, gen_sched,
                         reverse=False, kind="local")
