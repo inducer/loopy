@@ -184,7 +184,7 @@ class ISPCTarget(CTarget):
         if gsize:
             launch_spec = "[%s]" % ", ".join(
                                 ccm(gs_i, PREC_NONE)
-                                for gs_i in gsize),
+                                for gs_i in gsize)
         else:
             launch_spec = ""
 
