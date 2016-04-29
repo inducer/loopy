@@ -92,6 +92,7 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
         if isinstance(ary, TemporaryVariable):
             gsize, lsize = self.kernel.get_grid_sizes_as_exprs()
             if lsize:
+                lsize, = lsize
                 from loopy.kernel.array import get_access_info
                 from pymbolic import evaluate
 
