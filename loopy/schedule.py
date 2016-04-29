@@ -1440,24 +1440,27 @@ def generate_loop_schedules(kernel, debug_args={}):
             for gen_sched in gen:
                 debug.stop()
 
-                logger.info("%s: barrier insertion: global" % kernel.name)
+                gsize, lsize = kernel.get_grid_sizes_as_exprs()
 
-                gen_sched = insert_barriers(kernel, gen_sched,
-                        reverse=False, kind="global")
+                if gsize or lsize:
+                    logger.info("%s: barrier insertion: global" % kernel.name)
 
-                for sched_item in gen_sched:
-                    if (
-                            isinstance(sched_item, Barrier)
-                            and sched_item.kind == "global"):
-                        raise LoopyError("kernel requires a global barrier %s"
-                                % sched_item.comment)
+                    gen_sched = insert_barriers(kernel, gen_sched,
+                            reverse=False, kind="global")
 
-                logger.info("%s: barrier insertion: local" % kernel.name)
+                    for sched_item in gen_sched:
+                        if (
+                                isinstance(sched_item, Barrier)
+                                and sched_item.kind == "global"):
+                            raise LoopyError("kernel requires a global barrier %s"
+                                    % sched_item.comment)
 
-                gen_sched = insert_barriers(kernel, gen_sched,
-                        reverse=False, kind="local")
+                    logger.info("%s: barrier insertion: local" % kernel.name)
 
-                logger.info("%s: barrier insertion: done" % kernel.name)
+                    gen_sched = insert_barriers(kernel, gen_sched,
+                            reverse=False, kind="local")
+
+                    logger.info("%s: barrier insertion: done" % kernel.name)
 
                 yield kernel.copy(
                         schedule=gen_sched,
