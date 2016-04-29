@@ -109,6 +109,9 @@ class LoopKernel(RecordWithoutPickling):
     .. attribute:: preambles
     .. attribute:: preamble_generators
     .. attribute:: assumptions
+
+        A :class:`islpy.BasicSet` parameter domain.
+
     .. attribute:: local_sizes
     .. attribute:: temporary_variables
 
