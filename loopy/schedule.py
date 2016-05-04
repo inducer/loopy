@@ -371,7 +371,7 @@ def dump_schedule(kernel, schedule):
                 insn_str = sched_item.insn_id
             lines.append(indent + insn_str)
         elif isinstance(sched_item, Barrier):
-            lines.append(indent + "---BARRIER---")
+            lines.append(indent + "---BARRIER:%s---" % sched_item.kind)
         else:
             assert False
 
