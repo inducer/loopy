@@ -2473,6 +2473,23 @@ def test_atomic(ctx_factory, dtype):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
 
 
+def test_clamp(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    n = 15 * 10**6
+    x = cl.clrandom.rand(queue, n, dtype=np.float32)
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i] = clamp(x[i], a, b)")
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.set_options(knl, write_cl=True)
+
+    evt, (out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

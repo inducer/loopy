@@ -137,6 +137,11 @@ def _register_vector_types(dtype_registry):
 
 # {{{ function mangler
 
+_CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
+        "clamp": 3,
+        }
+
+
 def opencl_function_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
@@ -159,6 +164,21 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
     if name == "dot":
         scalar_dtype, offset, field_name = arg_dtypes[0].numpy_dtype.fields["s0"]
         return NumpyType(scalar_dtype), name
+
+    if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
+        num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
+        if len(arg_dtypes) != num_args:
+            raise LoopyError("%s takes %d arguments (%d received)"
+                    % (name, num_args, len(arg_dtypes)))
+
+        dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for dtype in arg_dtypes])
+
+        if dtype.kind == "c":
+            raise LoopyError("%s does not support complex numbers"
+                    % name)
+
+        return NumpyType(dtype), name
 
     return None
 
