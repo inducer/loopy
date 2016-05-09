@@ -1043,6 +1043,9 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     if reverse:
         source, target = target, source
 
+    if source.id in target.no_sync_with:
+        return None
+
     # {{{ check that a dependency exists
 
     dep_descr = None

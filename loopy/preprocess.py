@@ -400,7 +400,9 @@ def add_default_dependencies(kernel):
                             % var)
 
                 if len(var_writers) == 1:
-                    auto_deps.update(var_writers - set([insn.id]))
+                    auto_deps.update(
+                            var_writers
+                            - set([insn.id]))
 
             # }}}
 

@@ -430,6 +430,8 @@ class InstructionBase(Record):
         An (otherwise meaningless) identifier that is unique within
         a :class:`loopy.kernel.LoopKernel`.
 
+    .. rubric:: Instruction ordering
+
     .. attribute:: depends_on
 
         a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
@@ -460,12 +462,29 @@ class InstructionBase(Record):
         (see :class:`InstructionBase.groups`) may not be active when this
         instruction is scheduled.
 
+    .. attribute:: priority
+
+        Scheduling priority, an integer. Higher means 'execute sooner'.
+        Default 0.
+
+    .. rubric :: Synchronization
+
+    .. attribute:: no_sync_with
+
+        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
+        with which no barrier synchronization is necessary, even given the existence
+        of a dependency chain and apparently conflicting writes
+
+    .. rubric:: Conditionals
+
     .. attribute:: predicates
 
         a :class:`frozenset` of variable names the conjunction (logical and) of
         whose truth values (as defined by C) determine whether this instruction
         should be run. Each variable name may, optionally, be preceded by
         an exclamation point, indicating negation.
+
+    .. rubric:: Iname dependencies
 
     .. attribute:: forced_iname_deps_is_final
 
@@ -478,10 +497,7 @@ class InstructionBase(Record):
         dependencies *or* constitute the entire list of iname dependencies,
         depending on the value of :attr:`forced_iname_deps_is_final`.
 
-    .. attribute:: priority
-
-        Scheduling priority, an integer. Higher means 'execute sooner'.
-        Default 0.
+    .. rubric:: Iname dependencies
 
     .. attribute:: boostable
 
@@ -494,6 +510,8 @@ class InstructionBase(Record):
         A :class:`set` of inames into which the instruction
         may need to be boosted, as a heuristic help for the scheduler.
         Also allowed to be *None*.
+
+    .. rubric:: Tagging
 
     .. attribute:: tags
 
@@ -512,12 +530,14 @@ class InstructionBase(Record):
 
     fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "
+            "no_sync_with "
             "predicates "
             "forced_iname_deps_is_final forced_iname_deps "
             "priority boostable boostable_into".split())
 
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
+            no_sync_with,
             forced_iname_deps_is_final, forced_iname_deps, priority,
             boostable, boostable_into, predicates, tags,
             insn_deps=None, insn_deps_is_final=None):
@@ -540,6 +560,9 @@ class InstructionBase(Record):
 
         if conflicts_with_groups is None:
             conflicts_with_groups = frozenset()
+
+        if no_sync_with is None:
+            no_sync_with = frozenset()
 
         if forced_iname_deps_is_final is None:
             forced_iname_deps_is_final = False
@@ -574,6 +597,7 @@ class InstructionBase(Record):
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
+                no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
@@ -967,6 +991,7 @@ class Assignment(InstructionBase):
             depends_on_is_final=None,
             groups=None,
             conflicts_with_groups=None,
+            no_sync_with=None,
             forced_iname_deps_is_final=None,
             forced_iname_deps=frozenset(),
             boostable=None, boostable_into=None, tags=None,
@@ -980,6 +1005,7 @@ class Assignment(InstructionBase):
                 depends_on_is_final=depends_on_is_final,
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
+                no_sync_with=no_sync_with,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 boostable=boostable,
@@ -1134,6 +1160,7 @@ class CInstruction(InstructionBase):
             read_variables=frozenset(), assignees=frozenset(),
             id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
+            no_sync_with=None,
             forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset(), tags=None,
@@ -1153,6 +1180,7 @@ class CInstruction(InstructionBase):
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
+                no_sync_with=no_sync_with,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 boostable=boostable,

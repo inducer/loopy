@@ -207,6 +207,7 @@ def parse_insn(insn):
     if insn_match is not None:
         depends_on = None
         depends_on_is_final = False
+        no_sync_with = None
         insn_groups = None
         conflicts_with_groups = None
         insn_id = None
@@ -253,6 +254,11 @@ def parse_insn(insn):
                         opt_value = (opt_value[1:]).strip()
 
                     depends_on = frozenset(
+                            intern(dep.strip()) for dep in opt_value.split(":")
+                            if dep.strip())
+
+                elif opt_key == "nosync" and opt_value is not None:
+                    no_sync_with = frozenset(
                             intern(dep.strip()) for dep in opt_value.split(":")
                             if dep.strip())
 
@@ -319,6 +325,7 @@ def parse_insn(insn):
                         else insn_id),
                     depends_on=depends_on,
                     depends_on_is_final=depends_on_is_final,
+                    no_sync_with=no_sync_with,
                     groups=insn_groups,
                     conflicts_with_groups=conflicts_with_groups,
                     forced_iname_deps_is_final=forced_iname_deps_is_final,
@@ -1021,25 +1028,39 @@ def apply_default_order_to_args(kernel, default_order):
 
 # {{{ resolve wildcard insn dependencies
 
+def find_matching_insn_ids(knl, dep):
+    from fnmatch import fnmatchcase
+
+    return [
+        other_insn.id
+        for other_insn in knl.instructions
+        if fnmatchcase(other_insn.id, dep)]
+
+
+def resove_wildcard_insn_ids(knl, deps):
+    new_deps = []
+    for dep in deps:
+        matches = find_matching_insn_ids(knl, dep)
+
+        if matches:
+            new_deps.extend(matches)
+        else:
+            # Uh, best we can do
+            new_deps.append(dep)
+
+    return frozenset(new_deps)
+
+
 def resolve_wildcard_deps(knl):
     new_insns = []
 
-    from fnmatch import fnmatchcase
     for insn in knl.instructions:
         if insn.depends_on is not None:
-            new_deps = set()
-            for dep in insn.depends_on:
-                match_count = 0
-                for other_insn in knl.instructions:
-                    if fnmatchcase(other_insn.id, dep):
-                        new_deps.add(other_insn.id)
-                        match_count += 1
-
-                if match_count == 0:
-                    # Uh, best we can do
-                    new_deps.add(dep)
-
-            insn = insn.copy(depends_on=frozenset(new_deps))
+            insn = insn.copy(
+                    depends_on=resove_wildcard_insn_ids(knl, insn.depends_on),
+                    no_sync_with=resove_wildcard_insn_ids(
+                        knl, insn.no_sync_with),
+                    )
 
         new_insns.append(insn)
 
