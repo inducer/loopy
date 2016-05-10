@@ -417,9 +417,7 @@ class SubstitutionRule(Record):
 # }}}
 
 
-# {{{ instruction
-
-# {{{ base class
+# {{{ instructions: base class
 
 class InstructionBase(Record):
     """A base class for all types of instruction that can occur in
@@ -786,6 +784,8 @@ def _get_assignee_and_index(expr):
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
+# {{{ atomic ops
+
 class memory_ordering:
     """Ordering of atomic operations, defined as in C11 and OpenCL.
 
@@ -927,8 +927,10 @@ class AtomicUpdate(VarAtomicity):
                 memory_ordering.to_string(self.ordering),
                 memory_scope.to_string(self.scope))
 
+# }}}
 
-# {{{ assignment
+
+# {{{ instruction: assignment
 
 class Assignment(InstructionBase):
     """
@@ -1289,8 +1291,6 @@ class CInstruction(InstructionBase):
                     key_builder.update_for_pymbolic_expression(key_hash, val)
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
-
-# }}}
 
 # }}}
 
