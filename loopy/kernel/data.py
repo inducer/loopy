@@ -1020,7 +1020,7 @@ class Assignment(InstructionBase):
         if isinstance(assignee, str):
             assignee = parse(assignee)
         if isinstance(expression, str):
-            assignee = parse(expression)
+            expression = parse(expression)
 
         # FIXME: It may be worth it to enable this check eventually.
         # For now, it causes grief with certain 'checky' uses of the
