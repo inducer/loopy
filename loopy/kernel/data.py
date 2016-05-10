@@ -1147,9 +1147,10 @@ class CInstruction(InstructionBase):
 
     .. attribute:: assignees
 
-        A sequence of variable references (with or without subscript) as
-        :class:`pymbolic.primitives.Expression` instances that :attr:`code`
-        writes to. This is optional and only used for figuring out dependencies.
+        A sequence (typically a :class:`tuple`) of variable references (with or
+        without subscript) as :class:`pymbolic.primitives.Expression` instances
+        that :attr:`code` writes to. This is optional and only used for
+        figuring out dependencies.
     """
 
     fields = InstructionBase.fields | \
@@ -1157,7 +1158,7 @@ class CInstruction(InstructionBase):
 
     def __init__(self,
             iname_exprs, code,
-            read_variables=frozenset(), assignees=frozenset(),
+            read_variables=frozenset(), assignees=tuple(),
             id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
