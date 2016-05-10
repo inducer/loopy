@@ -482,6 +482,7 @@ def realize_reduction(kernel, insn_id_filter=None):
                 id=init_id,
                 assignee=target_var,
                 forced_iname_deps=outer_insn_inames - frozenset(expr.inames),
+                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
                 depends_on=frozenset(),
                 expression=expr.operation.neutral_element(arg_dtype, expr.inames))
 
@@ -491,13 +492,18 @@ def realize_reduction(kernel, insn_id_filter=None):
                 based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)),
                 extra_used_ids=set(i.id for i in generated_insns))
 
+        update_insn_iname_deps = temp_kernel.insn_inames(insn) | set(expr.inames)
+        if insn.forced_iname_deps_is_final:
+            update_insn_iname_deps = insn.forced_iname_deps | set(expr.inames)
+
         reduction_insn = Assignment(
                 id=update_id,
                 assignee=target_var,
                 expression=expr.operation(
                     arg_dtype, target_var, expr.expr, expr.inames),
                 depends_on=frozenset([init_insn.id]) | insn.depends_on,
-                forced_iname_deps=temp_kernel.insn_inames(insn) | set(expr.inames))
+                forced_iname_deps=update_insn_iname_deps,
+                forced_iname_deps_is_final=insn.forced_iname_deps_is_final)
 
         generated_insns.append(reduction_insn)
 
