@@ -2490,6 +2490,33 @@ def test_clamp(ctx_factory):
     evt, (out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
 
 
+def test_forced_iname_deps_and_reduction():
+    i1 = lp.CInstruction("i",
+            "doSomethingToGetPhi();",
+            assignees=frozenset({"phi"}))
+
+    from pymbolic.primitives import Subscript, Variable
+    i2 = lp.Assignment("a",
+            lp.Reduction("sum", "j", Subscript(Variable("phi"), Variable("j"))),
+            forced_iname_deps=frozenset(),
+            forced_iname_deps_is_final=True)
+
+    k = lp.make_kernel("{[i,j] : 0<=i,j<n}",
+            [i1, i2],
+            [
+                lp.GlobalArg("a", dtype=np.float32, shape=()),
+                lp.ValueArg("n", dtype=np.int32),
+                lp.TemporaryVariable("phi", dtype=np.float32, shape=("n",)),
+                ],
+            target=lp.CTarget(),
+            )
+
+    k = lp.preprocess_kernel(k)
+
+    assert 'i' not in k.insn_inames("insn_0_j_update")
+    print(k.stringify(with_dependencies=True))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
