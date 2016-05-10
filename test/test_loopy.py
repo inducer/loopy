@@ -2491,9 +2491,17 @@ def test_clamp(ctx_factory):
 
 
 def test_forced_iname_deps_and_reduction():
+    # See https://github.com/inducer/loopy/issues/24
+
+    # This is (purposefully) somewhat un-idiomatic, to replicate the conditions
+    # under which the above bug was found. If assignees were phi[i], then the
+    # iname propagation heuristic would not assume that dependent instructions
+    # need to run inside of 'i', and hence the forced_iname_* bits below would not
+    # be needed.
+
     i1 = lp.CInstruction("i",
             "doSomethingToGetPhi();",
-            assignees=frozenset({"phi"}))
+            assignees="phi")
 
     from pymbolic.primitives import Subscript, Variable
     i2 = lp.Assignment("a",
