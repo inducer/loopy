@@ -129,7 +129,7 @@ float${ width } ${ name }_f32(
     *new_ctr = ctr;
     return
         convert_float${ width }(${ name }_gen(*new_ctr, key, new_ctr))
-        * ${ repr(1/2**32) }f;
+        * ${ repr(1./2**32) }f;
 }
 
 double${ width } ${ name }_f64(
@@ -141,16 +141,16 @@ double${ width } ${ name }_f64(
     %if rng_variant.bits == 32:
         return
             convert_double${ width }(${ name }_gen(*new_ctr, key, new_ctr))
-            * ${ repr(1/2**32) }
+            * ${ repr(1./2**32) }
             +
             convert_double${ width }(${ name }_gen(*new_ctr, key, new_ctr))
-            * ${ repr(1/2**64) };
+            * ${ repr(1./2**64) };
 
     %elif rng_variant.bits == 64:
         *new_ctr = ctr;
         return
             convert_double${ width }(${ name }_gen(*new_ctr, key, new_ctr))
-            * ${ repr(1/2**64) };
+            * ${ repr(1./2**64) };
 
     %else:
         #error Unrecognized bit width in RNG
