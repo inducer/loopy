@@ -64,9 +64,9 @@ def fill_rand(ary):
         real_dtype = ary.dtype.type(0).real.dtype
         real_ary = ary.view(real_dtype)
 
-        fill_rand(real_ary, luxury=0)
+        fill_rand(real_ary)
     else:
-        fill_rand(ary, luxury=0)
+        fill_rand(ary)
 
 
 class TestArgInfo(Record):
