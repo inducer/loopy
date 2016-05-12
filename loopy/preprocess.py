@@ -332,9 +332,10 @@ def mark_local_temporaries(kernel):
                     if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase))
 
             locparallel_assignee_inames = set(iname
-                    for _, assignee_indices in insn.assignees_and_indices()
-                    for iname in get_dependencies(assignee_indices)
+                    for aname, aindices in insn.assignees_and_indices()
+                    for iname in get_dependencies(aindices)
                         & kernel.all_inames()
+                    if aname == temp_var.name
                     if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase))
 
             assert locparallel_assignee_inames <= locparallel_compute_inames
