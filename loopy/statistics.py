@@ -31,7 +31,7 @@ import islpy as isl
 from pytools import memoize_in
 from pymbolic.mapper import CombineMapper
 from functools import reduce
-from loopy.kernel.data import Assignment
+from loopy.kernel.data import MultiAssignmentBase
 from loopy.diagnostic import warn
 
 
@@ -849,7 +849,7 @@ def gather_access_footprints(kernel):
     read_footprints = []
 
     for insn in kernel.instructions:
-        if not isinstance(insn, Assignment):
+        if not isinstance(insn, MultiAssignmentBase):
             warn(kernel, "count_non_assignment",
                     "Non-assignment instruction encountered in "
                     "gather_access_footprints, not counted")
@@ -861,7 +861,8 @@ def gather_access_footprints(kernel):
 
         afg = AccessFootprintGatherer(kernel, domain)
 
-        write_footprints.append(afg(insn.assignee))
+        for assignee in insn.assignees:
+            write_footprints.append(afg(insn.assignees))
         read_footprints.append(afg(insn.expression))
 
     write_footprints = AccessFootprintGatherer.combine(write_footprints)

@@ -262,7 +262,7 @@ def test_join_inames(ctx_factory):
     knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"])
     knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
 
 
 def test_divisibility_assumption(ctx_factory):
@@ -439,26 +439,21 @@ def test_argmax(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    order = "C"
 
     n = 10000
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<%d}" % n,
-            [
-                "<> result = argmax(i, fabs(a[i]))",
-                "max_idx = result.index",
-                "max_val = result.value",
-                ],
-            [
-                lp.GlobalArg("a", dtype, shape=(n,), order=order),
-                lp.GlobalArg("max_idx", np.int32, shape=(), order=order),
-                lp.GlobalArg("max_val", dtype, shape=(), order=order),
-                ])
+            """
+            max_val, max_idx = argmax(i, fabs(a[i]))
+            """)
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    print(lp.preprocess_kernel(knl))
+    knl = lp.set_options(knl, write_cl=True, highlight_cl=True)
 
     a = np.random.randn(10000).astype(dtype)
-    cknl = lp.CompiledKernel(ctx, knl)
-    evt, (max_idx, max_val) = cknl(queue, a=a, out_host=True)
+    evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
     assert max_val == np.max(np.abs(a))
     assert max_idx == np.where(np.abs(a) == max_val)[-1]
 

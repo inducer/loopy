@@ -124,6 +124,27 @@ def remove_instructions(kernel, insn_ids):
     return kernel.copy(
             instructions=new_insns)
 
+
+def replace_instruction_ids(kernel, replacements):
+    new_insns = []
+
+    for insn in kernel.instructions:
+        changed = False
+        new_depends_on = []
+
+        for dep in insn.depends_on:
+            if dep in replacements:
+                new_depends_on.extend(replacements[dep])
+                changed = True
+            else:
+                new_depends_on.append(dep)
+
+        new_insns.append(
+                insn.copy(depends_on=frozenset(new_depends_on))
+                if changed else insn)
+
+    return kernel.copy(instructions=new_insns)
+
 # }}}
 
 

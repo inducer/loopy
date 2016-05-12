@@ -313,7 +313,35 @@ class LoopKernel(RecordWithoutPickling):
         for mangler in manglers:
             mangle_result = mangler(self, identifier, arg_dtypes)
             if mangle_result is not None:
-                return mangle_result
+                from loopy.kernel.data import CallMangleInfo
+                if isinstance(mangle_result, CallMangleInfo):
+                    assert len(mangle_result.arg_dtypes) == len(arg_dtypes)
+                    return mangle_result
+
+                assert isinstance(mangle_result, tuple)
+
+                from warnings import warn
+                warn("'%s' returned a tuple instead of a CallMangleInfo instance. "
+                        "This is deprecated." % mangler.__name__,
+                        DeprecationWarning)
+
+                if len(mangle_result) == 2:
+                    result_dtype, target_name = mangle_result
+                    return CallMangleInfo(
+                            target_name=target_name,
+                            result_dtypes=(result_dtype,),
+                            arg_dtypes=None)
+
+                elif len(mangle_result) == 3:
+                    result_dtype, target_name, actual_arg_dtypes = mangle_result
+                    return CallMangleInfo(
+                            target_name=target_name,
+                            result_dtypes=(result_dtype,),
+                            arg_dtypes=actual_arg_dtypes)
+
+                else:
+                    raise ValueError("unexpected size of tuple returned by '%s'"
+                            % mangler.__name__)
 
         return None
 
@@ -1027,8 +1055,8 @@ class LoopKernel(RecordWithoutPickling):
             for dep_id in sorted(insn.depends_on):
                 print_insn(kernel.id_to_insn[dep_id])
 
-            if isinstance(insn, lp.Assignment):
-                lhs = str(insn.assignee)
+            if isinstance(insn, lp.MultiAssignmentBase):
+                lhs = ", ".join(str(a) for a in insn.assignees)
                 rhs = str(insn.expression)
                 trailing = []
             elif isinstance(insn, lp.CInstruction):

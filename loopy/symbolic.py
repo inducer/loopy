@@ -33,7 +33,7 @@ from pytools import memoize, memoize_method, Record
 import pytools.lex
 
 from pymbolic.primitives import (
-        Leaf, AlgebraicLeaf, Variable,
+        Leaf, AlgebraicLeaf, Expression, Variable,
         CommonSubexpression)
 
 from pymbolic.mapper import (
@@ -97,6 +97,9 @@ class IdentityMapperMixin(object):
     def map_tagged_variable(self, expr, *args):
         # leaf, doesn't change
         return expr
+
+    def map_type_annotation(self, expr, *args):
+        return TypeAnnotation(expr.type, self.rec(expr.child))
 
     map_linear_subscript = IdentityMapperBase.map_subscript
 
@@ -319,6 +322,18 @@ class TypedCSE(CommonSubexpression):
 
     def get_extra_properties(self):
         return dict(dtype=self.dtype)
+
+
+class TypeAnnotation(Expression):
+    def __init__(self, type, child):
+        super(TypeAnnotation, self).__init__()
+        self.type = type
+        self.child = child
+
+    def __getinitargs__(self):
+        return (self.type, self.child)
+
+    mapper_method = intern("map_type_annotation")
 
 
 class TaggedVariable(Variable):
@@ -882,7 +897,6 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 # {{{ customization to pymbolic parser
 
 _open_dbl_bracket = intern("open_dbl_bracket")
-_close_dbl_bracket = intern("close_dbl_bracket")
 
 TRAILING_FLOAT_TAG_RE = re.compile("^(.*?)([a-zA-Z]*)$")
 
@@ -907,6 +921,26 @@ class LoopyParser(ParserBase):
             return np.float64(val)
         else:
             return float(val)  # generic float
+
+    def parse_prefix(self, pstate):
+        from pymbolic.parser import _PREC_UNARY, _less, _greater, _identifier
+        if pstate.is_next(_less):
+            pstate.advance()
+            if pstate.is_next(_greater):
+                typename = None
+                pstate.advance()
+            else:
+                pstate.expect(_identifier)
+                typename = pstate.next_str()
+                pstate.advance()
+                pstate.expect(_greater)
+                pstate.advance()
+
+            return TypeAnnotation(
+                    typename,
+                    self.parse_expression(pstate, _PREC_UNARY))
+        else:
+            return super(LoopyParser, self).parse_prefix(pstate)
 
     def parse_postfix(self, pstate, min_precedence, left_exp):
         from pymbolic.parser import _PREC_CALL, _closebracket
@@ -1079,10 +1113,10 @@ class ReductionCallbackMapper(IdentityMapper):
     def __init__(self, callback):
         self.callback = callback
 
-    def map_reduction(self, expr):
-        result = self.callback(expr, self.rec)
+    def map_reduction(self, expr, **kwargs):
+        result = self.callback(expr, self.rec, **kwargs)
         if result is None:
-            return IdentityMapper.map_reduction(self, expr)
+            return IdentityMapper.map_reduction(self, expr, **kwargs)
         return result
 
 # }}}

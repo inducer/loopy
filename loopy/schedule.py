@@ -347,7 +347,7 @@ def format_insn(kernel, insn_id):
     Style = kernel.options._style
     return "[%s] %s%s%s <- %s%s%s" % (
             format_insn_id(kernel, insn_id),
-            Fore.BLUE, str(insn.assignee), Style.RESET_ALL,
+            Fore.BLUE, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
 
 
@@ -355,7 +355,7 @@ def dump_schedule(kernel, schedule):
     lines = []
     indent = ""
 
-    from loopy.kernel.data import Assignment
+    from loopy.kernel.data import MultiAssignmentBase
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
             lines.append(indent + "LOOP %s" % sched_item.iname)
@@ -365,7 +365,7 @@ def dump_schedule(kernel, schedule):
             lines.append(indent + "ENDLOOP %s" % sched_item.iname)
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
-            if isinstance(insn, Assignment):
+            if isinstance(insn, MultiAssignmentBase):
                 insn_str = format_insn(kernel, sched_item.insn_id)
             else:
                 insn_str = sched_item.insn_id

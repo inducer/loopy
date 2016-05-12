@@ -32,7 +32,7 @@ from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
-from loopy.kernel.data import temp_var_scope
+from loopy.kernel.data import temp_var_scope, CallMangleInfo
 
 
 # {{{ dtype registry wrappers
@@ -146,7 +146,7 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
 
-    if name in ["max", "min"] and len(arg_dtypes) == 2:
+    if name in ["max", "min", "atan2"] and len(arg_dtypes) == 2:
         dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for dtype in arg_dtypes])
 
@@ -156,14 +156,18 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
         if dtype.kind == "f":
             name = "f" + name
 
-        return NumpyType(dtype), name
-
-    if name in "atan2" and len(arg_dtypes) == 2:
-        return arg_dtypes[0], name
+        result_dtype = NumpyType(dtype)
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(result_dtype,),
+                arg_dtypes=2*(result_dtype,))
 
     if name == "dot":
         scalar_dtype, offset, field_name = arg_dtypes[0].numpy_dtype.fields["s0"]
-        return NumpyType(scalar_dtype), name
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(NumpyType(scalar_dtype),),
+                arg_dtypes=(arg_dtypes[0],)*2)
 
     if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
         num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
@@ -178,7 +182,11 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
             raise LoopyError("%s does not support complex numbers"
                     % name)
 
-        return NumpyType(dtype), name
+        result_dtype = NumpyType(dtype)
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(result_dtype,),
+                arg_dtypes=(result_dtype,)*3)
 
     return None
 

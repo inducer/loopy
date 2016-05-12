@@ -293,6 +293,11 @@ Loopy's expressions are a slight superset of the expressions supported by
 TODO: Functions
 TODO: Reductions
 
+Function Call Instructions
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: CallInstruction
+
 C Block Instructions
 ^^^^^^^^^^^^^^^^^^^^
 
@@ -468,6 +473,8 @@ Targets
 
 .. automodule:: loopy.target
 
+.. currentmodule:: loopy
+
 Helper values
 -------------
 
@@ -478,6 +485,27 @@ Helper values
 .. autoclass:: UniqueName
 
 .. }}}
+
+Libraries: Extending and Interfacing with External Functionality
+----------------------------------------------------------------
+
+.. _symbols:
+
+Symbols
+^^^^^^^
+
+.. _functions:
+
+Functions
+^^^^^^^^^
+
+.. autoclass:: CallMangleInfo
+
+.. _reductions:
+
+Reductions
+^^^^^^^^^^
+
 
 The Kernel Object
 -----------------

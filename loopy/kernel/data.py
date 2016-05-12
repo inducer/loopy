@@ -703,7 +703,7 @@ class InstructionBase(Record):
             result.append("priority=%d" % self.priority)
         if self.tags:
             result.append("tags=%s" % ":".join(self.tags))
-        if self.atomicity:
+        if hasattr(self, "atomicity"):
             result.append("atomic=%s" % ":".join(str(a) for a in self.atomicity))
 
         return result
@@ -930,9 +930,48 @@ class AtomicUpdate(VarAtomicity):
 # }}}
 
 
+# {{{ instruction base class: expression rhs
+
+class MultiAssignmentBase(InstructionBase):
+    """An assignment instruction with an expression as a right-hand side."""
+
+    fields = InstructionBase.fields | set(["expression"])
+
+    @memoize_method
+    def read_dependency_names(self):
+        from loopy.symbolic import get_dependencies
+        result = get_dependencies(self.expression)
+        for _, subscript in self.assignees_and_indices():
+            result = result | get_dependencies(subscript)
+
+        processed_predicates = frozenset(
+                pred.lstrip("!") for pred in self.predicates)
+
+        result = result | processed_predicates
+
+        return result
+
+    @memoize_method
+    def reduction_inames(self):
+        def map_reduction(expr, rec):
+            rec(expr.expr)
+            for iname in expr.inames:
+                result.add(iname)
+
+        from loopy.symbolic import ReductionCallbackMapper
+        cb_mapper = ReductionCallbackMapper(map_reduction)
+
+        result = set()
+        cb_mapper(self.expression)
+
+        return result
+
+# }}}
+
+
 # {{{ instruction: assignment
 
-class Assignment(InstructionBase):
+class Assignment(MultiAssignmentBase):
     """
     .. attribute:: assignee
 
@@ -983,8 +1022,8 @@ class Assignment(InstructionBase):
     .. automethod:: __init__
     """
 
-    fields = InstructionBase.fields | \
-            set("assignee expression temp_var_type atomicity".split())
+    fields = MultiAssignmentBase.fields | \
+            set("assignee temp_var_type atomicity".split())
 
     def __init__(self,
             assignee, expression,
@@ -1001,7 +1040,7 @@ class Assignment(InstructionBase):
             priority=0, predicates=frozenset(),
             insn_deps=None, insn_deps_is_final=None):
 
-        InstructionBase.__init__(self,
+        super(Assignment, self).__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1038,35 +1077,6 @@ class Assignment(InstructionBase):
         self.atomicity = atomicity
 
     # {{{ implement InstructionBase interface
-
-    @memoize_method
-    def read_dependency_names(self):
-        from loopy.symbolic import get_dependencies
-        result = get_dependencies(self.expression)
-        for _, subscript in self.assignees_and_indices():
-            result = result | get_dependencies(subscript)
-
-        processed_predicates = frozenset(
-                pred.lstrip("!") for pred in self.predicates)
-
-        result = result | processed_predicates
-
-        return result
-
-    @memoize_method
-    def reduction_inames(self):
-        def map_reduction(expr, rec):
-            rec(expr.expr)
-            for iname in expr.inames:
-                result.add(iname)
-
-        from loopy.symbolic import ReductionCallbackMapper
-        cb_mapper = ReductionCallbackMapper(map_reduction)
-
-        result = set()
-        cb_mapper(self.expression)
-
-        return result
 
     @memoize_method
     def assignees_and_indices(self):
@@ -1106,6 +1116,18 @@ class Assignment(InstructionBase):
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
 
+    # {{{ for interface uniformity with CallInstruction
+
+    @property
+    def temp_var_types(self):
+        return (self.temp_var_type,)
+
+    @property
+    def assignees(self):
+        return (self.assignee,)
+
+    # }}}
+
 
 class ExpressionInstruction(Assignment):
     def __init__(self, *args, **kwargs):
@@ -1116,6 +1138,162 @@ class ExpressionInstruction(Assignment):
         super(ExpressionInstruction, self).__init__(*args, **kwargs)
 
 # }}}
+
+
+# {{{ instruction: function call
+
+class CallInstruction(MultiAssignmentBase):
+    """An instruction capturing a function call. Unlike :class:`Assignment`,
+    this instruction supports functions with multiple return values.
+
+    .. attribute:: assignees
+
+    .. attribute:: expression
+
+    The following attributes are only used until
+    :func:`loopy.make_kernel` is finished:
+
+    .. attribute:: temp_var_types
+
+        if not *None*, a type that will be assigned to the new temporary variable
+        created from the assignee
+
+    .. automethod:: __init__
+    """
+
+    fields = MultiAssignmentBase.fields | \
+            set("assignees temp_var_types".split())
+
+    def __init__(self,
+            assignees, expression,
+            id=None,
+            depends_on=None,
+            depends_on_is_final=None,
+            groups=None,
+            conflicts_with_groups=None,
+            no_sync_with=None,
+            forced_iname_deps_is_final=None,
+            forced_iname_deps=frozenset(),
+            boostable=None, boostable_into=None, tags=None,
+            temp_var_types=None,
+            priority=0, predicates=frozenset(),
+            insn_deps=None, insn_deps_is_final=None):
+
+        super(CallInstruction, self).__init__(
+                id=id,
+                depends_on=depends_on,
+                depends_on_is_final=depends_on_is_final,
+                groups=groups,
+                conflicts_with_groups=conflicts_with_groups,
+                no_sync_with=no_sync_with,
+                forced_iname_deps_is_final=forced_iname_deps_is_final,
+                forced_iname_deps=forced_iname_deps,
+                boostable=boostable,
+                boostable_into=boostable_into,
+                priority=priority,
+                predicates=predicates,
+                tags=tags,
+                insn_deps=insn_deps,
+                insn_deps_is_final=insn_deps_is_final)
+
+        from pymbolic.primitives import Call
+        from loopy.symbolic import Reduction
+        if not isinstance(expression, (Call, Reduction)) and expression is not None:
+            raise LoopyError("'expression' argument to CallInstruction "
+                    "must be a function call")
+
+        from loopy.symbolic import parse
+        if isinstance(assignees, str):
+            assignees = parse(assignees)
+        if isinstance(expression, str):
+            expression = parse(expression)
+
+        # FIXME: It may be worth it to enable this check eventually.
+        # For now, it causes grief with certain 'checky' uses of the
+        # with_transformed_expressions(). (notably the access checker)
+        #
+        # from pymbolic.primitives import Variable, Subscript
+        # if not isinstance(assignee, (Variable, Subscript)):
+        #     raise LoopyError("invalid lvalue '%s'" % assignee)
+
+        self.assignees = assignees
+        self.expression = expression
+        self.temp_var_types = temp_var_types
+
+    # {{{ implement InstructionBase interface
+
+    @memoize_method
+    def assignees_and_indices(self):
+        return [_get_assignee_and_index(a) for a in self.assignees]
+
+    def with_transformed_expressions(self, f, *args):
+        return self.copy(
+                assignees=f(self.assignees, *args),
+                expression=f(self.expression, *args))
+
+    # }}}
+
+    def __str__(self):
+        result = "%s: %s <- %s" % (self.id,
+                ", ".join(str(a) for a in self.assignees),
+                self.expression)
+
+        options = self.get_str_options()
+        if options:
+            result += " (%s)" % (": ".join(options))
+
+        if self.predicates:
+            result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
+        return result
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        """Custom hash computation function for use with
+        :class:`pytools.persistent_dict.PersistentDict`.
+
+        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
+        """
+
+        # Order matters for hash forming--sort the fields.
+        for field_name in sorted(self.fields):
+            if field_name in ["assignees", "expression"]:
+                key_builder.update_for_pymbolic_expression(
+                        key_hash, getattr(self, field_name))
+            else:
+                key_builder.rec(key_hash, getattr(self, field_name))
+
+# }}}
+
+
+def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
+    if len(assignees) < 1:
+        raise LoopyError("every instruction must have a left-hand side")
+    elif len(assignees) > 1:
+        atomicity = kwargs.pop("atomicity", ())
+        if atomicity:
+            raise LoopyError("atomic operations with more than one "
+                    "left-hand side not supported")
+
+        from pymbolic.primitives import Call
+        from loopy.symbolic import Reduction
+        if not isinstance(expression, (Call, Reduction)):
+            raise LoopyError("right-hand side in multiple assignment must be "
+                    "function call or reduction")
+
+        return CallInstruction(
+                assignees=assignees,
+                expression=expression,
+                temp_var_types=temp_var_types,
+                **kwargs)
+
+    else:
+        return Assignment(
+                assignee=assignees[0],
+                expression=expression,
+                temp_var_type=(
+                    temp_var_types[0]
+                    if temp_var_types is not None
+                    else None),
+                **kwargs)
 
 
 # {{{ c instruction
@@ -1291,6 +1469,37 @@ class CInstruction(InstructionBase):
                     key_builder.update_for_pymbolic_expression(key_hash, val)
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
+
+# }}}
+
+
+# {{{ function call mangling
+
+class CallMangleInfo(Record):
+    """
+    .. attribute:: target_name
+
+        A string. The name of the function to be called in the
+        generated target code.
+
+    .. attribute:: result_dtypes
+
+        A tuple of :class:`LoopyType` instances indicating what
+        types of values the function returns.
+
+    .. attribute:: arg_dtypes
+
+        A tuple of :class:`LoopyType` instances indicating what
+        types of arguments the function actually receives.
+    """
+
+    def __init__(self, target_name, result_dtypes, arg_dtypes):
+        assert isinstance(result_dtypes, tuple)
+
+        super(CallMangleInfo, self).__init__(
+                target_name=target_name,
+                result_dtypes=result_dtypes,
+                arg_dtypes=arg_dtypes)
 
 # }}}
 

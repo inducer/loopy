@@ -34,7 +34,7 @@ import islpy as isl
 
 from loopy.expression import dtype_to_type_context, TypeInferenceMapper
 
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.tools import is_integer
 from loopy.types import LoopyType
 
@@ -94,21 +94,22 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         return ary
 
+    def wrap_in_typecast(self, actual_type, needed_dtype, s):
+        if (actual_type.is_complex() and needed_dtype.is_complex()
+                and actual_type != needed_dtype):
+            return "%s_cast(%s)" % (self.complex_type_name(needed_dtype), s)
+        elif not actual_type.is_complex() and needed_dtype.is_complex():
+            return "%s_fromreal(%s)" % (self.complex_type_name(needed_dtype), s)
+        else:
+            return s
+
     def rec(self, expr, prec, type_context=None, needed_dtype=None):
         if needed_dtype is None:
             return RecursiveMapper.rec(self, expr, prec, type_context)
 
-        actual_type = self.infer_type(expr)
-
-        if (actual_type.is_complex() and needed_dtype.is_complex()
-                and actual_type != needed_dtype):
-            result = RecursiveMapper.rec(self, expr, PREC_NONE, type_context)
-            return "%s_cast(%s)" % (self.complex_type_name(needed_dtype), result)
-        elif not actual_type.is_complex() and needed_dtype.is_complex():
-            result = RecursiveMapper.rec(self, expr, PREC_NONE, type_context)
-            return "%s_fromreal(%s)" % (self.complex_type_name(needed_dtype), result)
-        else:
-            return RecursiveMapper.rec(self, expr, prec, type_context)
+        return self.wrap_in_typecast(
+                self.infer_type(expr), needed_dtype,
+                RecursiveMapper.rec(self, expr, PREC_NONE, type_context))
 
     __call__ = rec
 
@@ -419,37 +420,32 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         # }}}
 
-        c_name = None
         if isinstance(identifier, Variable):
             identifier = identifier.name
-            c_name = identifier
 
         par_dtypes = tuple(self.infer_type(par) for par in expr.parameters)
 
         str_parameters = None
 
         mangle_result = self.kernel.mangle_function(identifier, par_dtypes)
-        if mangle_result is not None:
-            if len(mangle_result) == 2:
-                result_dtype, c_name = mangle_result
-            elif len(mangle_result) == 3:
-                result_dtype, c_name, arg_tgt_dtypes = mangle_result
+        if mangle_result is None:
+            raise RuntimeError("function '%s' unknown--"
+                    "maybe you need to register a function mangler?"
+                    % identifier)
 
-                str_parameters = [
-                        self.rec(par, PREC_NONE,
-                            dtype_to_type_context(self.kernel.target, tgt_dtype),
-                            tgt_dtype)
-                        for par, par_dtype, tgt_dtype in zip(
-                            expr.parameters, par_dtypes, arg_tgt_dtypes)]
-            else:
-                raise RuntimeError("result of function mangler "
-                        "for function '%s' not understood"
-                        % identifier)
+        if len(mangle_result.result_dtypes) != 1:
+            raise LoopyError("functions with more or fewer than one return value "
+                    "may not be used in an expression")
 
-        from loopy.codegen import SeenFunction
-        self.codegen_state.seen_functions.add(
-                SeenFunction(identifier, c_name, par_dtypes))
-        if str_parameters is None:
+        if mangle_result.arg_dtypes is not None:
+            str_parameters = [
+                    self.rec(par, PREC_NONE,
+                        dtype_to_type_context(self.kernel.target, tgt_dtype),
+                        tgt_dtype)
+                    for par, par_dtype, tgt_dtype in zip(
+                        expr.parameters, par_dtypes, mangle_result.arg_dtypes)]
+
+        else:
             # /!\ FIXME For some functions (e.g. 'sin'), it makes sense to
             # propagate the type context here. But for many others, it does
             # not. Using the inferred type as a stopgap for now.
@@ -459,11 +455,18 @@ class LoopyCCodeMapper(RecursiveMapper):
                             self.kernel.target, par_dtype))
                     for par, par_dtype in zip(expr.parameters, par_dtypes)]
 
-        if c_name is None:
-            raise RuntimeError("unable to find C name for function identifier '%s'"
-                    % identifier)
+            from warnings import warn
+            warn("Calling function '%s' with unknown C signature--"
+                    "return CallMangleInfo.arg_dtypes"
+                    % identifier, LoopyWarning)
 
-        return "%s(%s)" % (c_name, ", ".join(str_parameters))
+        from loopy.codegen import SeenFunction
+        self.codegen_state.seen_functions.add(
+                SeenFunction(identifier,
+                    mangle_result.target_name,
+                    mangle_result.arg_dtypes or par_dtypes))
+
+        return "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
 
     # {{{ deal with complex-valued variables
 
