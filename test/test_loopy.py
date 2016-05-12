@@ -2525,6 +2525,10 @@ def test_random123(ctx_factory, tp):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    import pyopencl.version  # noqa
+    if cl.version.VERSION < (2016, 2):
+        pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
+
     n = 150000
 
     knl = lp.make_kernel(
