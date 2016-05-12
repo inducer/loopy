@@ -382,10 +382,11 @@ class CTarget(TargetBase):
                     mangle_result.target_name,
                     mangle_result.arg_dtypes))
 
-        for a, tgt_dtype in zip(insn.assignees[1:], mangle_result.result_dtypes[1:]):
+        for i, (a, tgt_dtype) in enumerate(
+                zip(insn.assignees[1:], mangle_result.result_dtypes[1:])):
             if tgt_dtype != ecm.infer_type(a):
                 raise LoopyError("type mismatch in %d'th (1-based) left-hand "
-                        "side of instruction '%s'" % (insn.id))
+                        "side of instruction '%s'" % (i+1, insn.id))
             str_parameters.append(
                     "&(%s)" % ecm(a, PREC_NONE,
                         dtype_to_type_context(self, tgt_dtype),
