@@ -2520,6 +2520,38 @@ def test_forced_iname_deps_and_reduction():
     print(k.stringify(with_dependencies=True))
 
 
+@pytest.mark.parametrize("tp", ["f32", "f64"])
+def test_random123(ctx_factory, tp):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    n = 150000
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            <> key2 = make_uint2(i, 324830944) {inames=i}
+            <> key4 = make_uint4(i, 324830944, 234181, 2233) {inames=i}
+            <> ctr = make_uint4(0, 1, 2, 3) {inames=i}
+            <> real, ctr = philox4x32_TYPE(ctr, key2)
+            <> imag, ctr = threefry4x32_TYPE(ctr, key4)
+
+            out[i, 0] = real.s0 + 1j * imag.s0
+            out[i, 1] = real.s1 + 1j * imag.s1
+            out[i, 2] = real.s2 + 1j * imag.s2
+            out[i, 3] = real.s3 + 1j * imag.s3
+            """.replace("TYPE", tp))
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.set_options(knl, write_cl=True)
+
+    evt, (out,) = knl(queue, n=n)
+
+    out = out.get()
+    assert (out < 1).all()
+    assert (0 <= out).all()
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

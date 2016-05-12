@@ -276,14 +276,18 @@ class PyOpenCLTarget(OpenCLTarget):
     comparison_fields = ["device"]
 
     def function_manglers(self):
+        from loopy.library.random123 import random123_function_mangler
         return (
                 super(PyOpenCLTarget, self).function_manglers() + [
-                    pyopencl_function_mangler
+                    pyopencl_function_mangler,
+                    random123_function_mangler
                     ])
 
     def preamble_generators(self):
+        from loopy.library.random123 import random123_preamble_generator
         return ([
-            pyopencl_preamble_generator
+            pyopencl_preamble_generator,
+            random123_preamble_generator,
             ] + super(PyOpenCLTarget, self).preamble_generators())
 
     def preprocess(self, kernel):
