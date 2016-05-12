@@ -469,8 +469,12 @@ def realize_reduction(kernel, insn_id_filter=None):
             raise LoopyError("failed to determine type of accumulator for "
                     "reduction '%s'" % expr)
 
+        arg_dtype = arg_dtype.with_target(kernel.target)
+
         reduction_dtypes = expr.operation.result_dtypes(
                     kernel, arg_dtype, expr.inames)
+        reduction_dtypes = tuple(
+                dt.with_target(kernel.target) for dt in reduction_dtypes)
 
         ncomp = len(reduction_dtypes)
 
