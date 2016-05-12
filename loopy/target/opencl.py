@@ -212,7 +212,6 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
         if count != len(arg_dtypes):
             return None
 
-        from loopy.types import NumpyType
         return CallMangleInfo(
                 target_name="(%s%d) " % (base_tp_name, count),
                 result_dtypes=(kernel.target.vector_dtype(
