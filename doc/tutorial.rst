@@ -563,8 +563,9 @@ relation to loop nesting. For example, it's perfectly possible to request
     #define lid(N) ((int) get_local_id(N))
     ...
       for (int i_inner = 0; i_inner <= 15; ++i_inner)
-        for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
-          a[i_inner + i_outer * 16] = 0.0f;
+        if (-1 + -1 * i_inner + n >= 0)
+          for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
+            a[i_inner + i_outer * 16] = 0.0f;
     ...
 
 Notice how loopy has automatically generated guard conditionals to make
@@ -1105,7 +1106,7 @@ Attempting to create this kernel results in an error:
     ... # While trying to find shape axis 0 of argument 'out', the following exception occurred:
     Traceback (most recent call last):
     ...
-    StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [(1)] : n = 1; [(n)] : n >= 2; [(1)] : n <= 0 }'
+    StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [(1)] : n <= 1; [(n)] : n >= 2 }'
 
 The problem is that loopy cannot find a simple, universally valid expression
 for the length of *out* in this case. Notice how the kernel accesses both the

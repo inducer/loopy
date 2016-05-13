@@ -355,7 +355,7 @@ def format_insn(kernel, insn_id):
     Style = kernel.options._style
     return "[%s] %s%s%s <- %s%s%s" % (
             format_insn_id(kernel, insn_id),
-            Fore.BLUE, str(insn.assignee), Style.RESET_ALL,
+            Fore.BLUE, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
 
 
@@ -363,7 +363,7 @@ def dump_schedule(kernel, schedule):
     lines = []
     indent = ""
 
-    from loopy.kernel.data import Assignment
+    from loopy.kernel.data import MultiAssignmentBase
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
             lines.append(indent + "LOOP %s" % sched_item.iname)
@@ -379,13 +379,13 @@ def dump_schedule(kernel, schedule):
             lines.append(indent + "RETURN FROM KERNEL %s" % sched_item.kernel_name)
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
-            if isinstance(insn, Assignment):
+            if isinstance(insn, MultiAssignmentBase):
                 insn_str = format_insn(kernel, sched_item.insn_id)
             else:
                 insn_str = sched_item.insn_id
             lines.append(indent + insn_str)
         elif isinstance(sched_item, Barrier):
-            lines.append(indent + "---BARRIER---")
+            lines.append(indent + "---BARRIER:%s---" % sched_item.kind)
         else:
             assert False
 
@@ -1056,6 +1056,9 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
 
     if reverse:
         source, target = target, source
+
+    if source.id in target.no_sync_with:
+        return None
 
     # {{{ check that a dependency exists
 

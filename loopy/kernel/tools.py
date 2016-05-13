@@ -423,11 +423,11 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
     dep_graph = {}
     lines = []
 
-    from loopy.kernel.data import Assignment, CInstruction
+    from loopy.kernel.data import MultiAssignmentBase, CInstruction
 
     for insn in kernel.instructions:
-        if isinstance(insn, Assignment):
-            op = "%s <- %s" % (insn.assignee, insn.expression)
+        if isinstance(insn, MultiAssignmentBase):
+            op = "%s <- %s" % (insn.assignees, insn.expression)
             if len(op) > 200:
                 op = op[:200] + "..."
 
@@ -657,8 +657,9 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     from pymbolic.primitives import Subscript
 
-    if isinstance(insn.assignee, Subscript):
-        ary_acc_exprs.append(insn.assignee)
+    for assignee in insn.assignees:
+        if isinstance(assignee, Subscript):
+            ary_acc_exprs.append(assignee)
 
     # }}}
 
@@ -855,7 +856,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
     import loopy as lp
 
     for insn in kernel.instructions:
-        if not isinstance(insn, lp.Assignment):
+        if not isinstance(insn, lp.MultiAssignmentBase):
             continue
 
         auto_axis_inames = [

@@ -29,7 +29,9 @@ import numpy as np
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
-        InstructionBase, Assignment, SubstitutionRule)
+        InstructionBase,
+        MultiAssignmentBase, Assignment,
+        SubstitutionRule)
 from loopy.diagnostic import LoopyError
 import islpy as isl
 from islpy import dim_type
@@ -147,7 +149,6 @@ def expand_defines_in_expr(expr, defines):
 # {{{ parse instructions
 
 INSN_RE = re.compile(
-        "\s*(?:\<(?P<temp_var_type>.*?)\>)?"
         "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
         "\s*?(?:\{(?P<options>.+)\}\s*)?$"
         )
@@ -159,7 +160,8 @@ SUBST_RE = re.compile(
 def parse_insn(insn):
     """
     :return: a tuple ``(insn, inames_to_dup)``, where insn is a
-        :class:`Assignment` or a :class:`SubstitutionRule`
+        :class:`Assignment`, a :class:`CallInstruction`,
+        or a :class:`SubstitutionRule`
         and *inames_to_dup* is None or a list of tuples `(old, new)`.
     """
 
@@ -192,21 +194,74 @@ def parse_insn(insn):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Subscript, Call
-    if isinstance(lhs, Variable):
-        assignee_name = lhs.name
-    elif isinstance(lhs, Subscript):
-        assignee_name = lhs.aggregate.name
-    elif isinstance(lhs, Call):
-        assignee_name = None
-        assert subst_match is not None
-    else:
-        raise LoopyError("left hand side of assignment '%s' must "
-                "be variable or subscript" % lhs)
+    from pymbolic.primitives import Variable, Call, Subscript
+    from loopy.symbolic import TypeAnnotation
+
+    # {{{ deal with subst rules
+
+    if subst_match is not None:
+        assert insn_match is None
+        if isinstance(lhs, Variable):
+            subst_name = lhs.name
+            arg_names = []
+        elif isinstance(lhs, Call):
+            if not isinstance(lhs.function, Variable):
+                raise RuntimeError("Invalid substitution rule left-hand side")
+            subst_name = lhs.function.name
+            arg_names = []
+
+            for i, arg in enumerate(lhs.parameters):
+                if not isinstance(arg, Variable):
+                    raise RuntimeError("Invalid substitution rule "
+                                    "left-hand side: %s--arg number %d "
+                                    "is not a variable" % (lhs, i))
+                arg_names.append(arg.name)
+        else:
+            raise RuntimeError("Invalid substitution rule left-hand side")
+
+        return SubstitutionRule(
+                name=subst_name,
+                arguments=tuple(arg_names),
+                expression=rhs), []
+
+    # }}}
+
+    if not isinstance(lhs, tuple):
+        lhs = (lhs,)
+
+    temp_var_types = []
+    new_lhs = []
+    assignee_names = []
+
+    for lhs_i in lhs:
+        if isinstance(lhs_i, TypeAnnotation):
+            if lhs_i.type is None:
+                temp_var_types.append(lp.auto)
+            else:
+                temp_var_types.append(lhs_i.type)
+
+            lhs_i = lhs_i.child
+        else:
+            temp_var_types.append(None)
+
+        if isinstance(lhs_i, Variable):
+            assignee_names.append(lhs_i.name)
+        elif isinstance(lhs_i, Subscript):
+            assignee_names.append(lhs_i.aggregate.name)
+        else:
+            raise LoopyError("left hand side of assignment '%s' must "
+                    "be variable or subscript" % (lhs_i,))
+
+        new_lhs.append(lhs_i)
+
+    lhs = tuple(new_lhs)
+    temp_var_types = tuple(temp_var_types)
+    del new_lhs
 
     if insn_match is not None:
         depends_on = None
         depends_on_is_final = False
+        no_sync_with = None
         insn_groups = None
         conflicts_with_groups = None
         insn_id = None
@@ -256,6 +311,11 @@ def parse_insn(insn):
                             intern(dep.strip()) for dep in opt_value.split(":")
                             if dep.strip())
 
+                elif opt_key == "nosync" and opt_value is not None:
+                    no_sync_with = frozenset(
+                            intern(dep.strip()) for dep in opt_value.split(":")
+                            if dep.strip())
+
                 elif opt_key == "groups" and opt_value is not None:
                     insn_groups = frozenset(
                             intern(grp.strip()) for grp in opt_value.split(":")
@@ -284,6 +344,11 @@ def parse_insn(insn):
                             if tag.strip())
 
                 elif opt_key == "atomic":
+                    if len(assignee_names) != 1:
+                        raise LoopyError("atomic operations with more than one "
+                                "left-hand side not supported")
+                    assignee_name, = assignee_names
+
                     if opt_value is None:
                         atomicity = atomicity + (
                                 lp.AtomicUpdate(assignee_name),)
@@ -296,6 +361,7 @@ def parse_insn(insn):
                                 raise LoopyError("atomicity directive not "
                                         "understood: %s"
                                         % v)
+                    del assignee_name
 
                 else:
                     raise ValueError(
@@ -303,58 +369,27 @@ def parse_insn(insn):
                             "(maybe a missing/extraneous =value?)"
                             % opt_key)
 
-        if groups["temp_var_type"] is not None:
-            if groups["temp_var_type"]:
-                temp_var_type = np.dtype(groups["temp_var_type"])
-            else:
-                import loopy as lp
-                temp_var_type = lp.auto
-        else:
-            temp_var_type = None
-
-        return Assignment(
+        kwargs = dict(
                     id=(
                         intern(insn_id)
                         if isinstance(insn_id, str)
                         else insn_id),
                     depends_on=depends_on,
                     depends_on_is_final=depends_on_is_final,
+                    no_sync_with=no_sync_with,
                     groups=insn_groups,
                     conflicts_with_groups=conflicts_with_groups,
                     forced_iname_deps_is_final=forced_iname_deps_is_final,
                     forced_iname_deps=forced_iname_deps,
-                    assignee=lhs, expression=rhs,
-                    temp_var_type=temp_var_type,
-                    atomicity=atomicity,
                     priority=priority,
                     predicates=predicates,
-                    tags=tags), inames_to_dup
+                    tags=tags,
+                    atomicity=atomicity)
 
-    elif subst_match is not None:
-        from pymbolic.primitives import Variable, Call
-
-        if isinstance(lhs, Variable):
-            subst_name = lhs.name
-            arg_names = []
-        elif isinstance(lhs, Call):
-            if not isinstance(lhs.function, Variable):
-                raise RuntimeError("Invalid substitution rule left-hand side")
-            subst_name = lhs.function.name
-            arg_names = []
-
-            for i, arg in enumerate(lhs.parameters):
-                if not isinstance(arg, Variable):
-                    raise RuntimeError("Invalid substitution rule "
-                                    "left-hand side: %s--arg number %d "
-                                    "is not a variable" % (lhs, i))
-                arg_names.append(arg.name)
-        else:
-            raise RuntimeError("Invalid substitution rule left-hand side")
-
-        return SubstitutionRule(
-                name=subst_name,
-                arguments=tuple(arg_names),
-                expression=rhs), []
+        from loopy.kernel.data import make_assignment
+        return make_assignment(
+                lhs, rhs, temp_var_types, **kwargs
+                ), inames_to_dup
 
 
 def parse_if_necessary(insn, defines):
@@ -515,13 +550,13 @@ class ArgumentGuesser:
         self.all_written_names = set()
         from loopy.symbolic import get_dependencies
         for insn in instructions:
-            if isinstance(insn, Assignment):
-                (assignee_var_name, _), = insn.assignees_and_indices()
-                self.all_written_names.add(assignee_var_name)
-                self.all_names.update(get_dependencies(
-                    self.submap(insn.assignee)))
-                self.all_names.update(get_dependencies(
-                    self.submap(insn.expression)))
+            if isinstance(insn, MultiAssignmentBase):
+                for assignee_var_name, _ in insn.assignees_and_indices():
+                    self.all_written_names.add(assignee_var_name)
+                    self.all_names.update(get_dependencies(
+                        self.submap(insn.assignees)))
+                    self.all_names.update(get_dependencies(
+                        self.submap(insn.expression)))
 
     def find_index_rank(self, name):
         irf = IndexRankFinder(name)
@@ -583,10 +618,12 @@ class ArgumentGuesser:
         temp_var_names = set(six.iterkeys(self.temporary_variables))
 
         for insn in self.instructions:
-            if isinstance(insn, Assignment):
-                if insn.temp_var_type is not None:
-                    (assignee_var_name, _), = insn.assignees_and_indices()
-                    temp_var_names.add(assignee_var_name)
+            if isinstance(insn, MultiAssignmentBase):
+                for (assignee_var_name, _), temp_var_type in zip(
+                        insn.assignees_and_indices(),
+                        insn.temp_var_types):
+                    if temp_var_type is not None:
+                        temp_var_names.add(assignee_var_name)
 
         # }}}
 
@@ -780,7 +817,7 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
     new_temp_vars = []
 
     for insn in instructions:
-        if isinstance(insn, Assignment):
+        if isinstance(insn, MultiAssignmentBase):
             new_insns.append(insn.copy(expression=cseam(insn.expression)))
         else:
             new_insns.append(insn)
@@ -799,29 +836,36 @@ def create_temporaries(knl, default_order):
     import loopy as lp
 
     for insn in knl.instructions:
-        if isinstance(insn, Assignment) \
-                and insn.temp_var_type is not None:
-            (assignee_name, _), = insn.assignees_and_indices()
+        if isinstance(insn, MultiAssignmentBase):
+            for (assignee_name, _), temp_var_type in zip(
+                    insn.assignees_and_indices(),
+                    insn.temp_var_types):
 
-            if assignee_name in new_temp_vars:
-                raise RuntimeError("cannot create temporary variable '%s'--"
-                        "already exists" % assignee_name)
-            if assignee_name in knl.arg_dict:
-                raise RuntimeError("cannot create temporary variable '%s'--"
-                        "already exists as argument" % assignee_name)
+                if temp_var_type is None:
+                    continue
 
-            logger.debug("%s: creating temporary %s"
-                    % (knl.name, assignee_name))
+                if assignee_name in new_temp_vars:
+                    raise RuntimeError("cannot create temporary variable '%s'--"
+                            "already exists" % assignee_name)
+                if assignee_name in knl.arg_dict:
+                    raise RuntimeError("cannot create temporary variable '%s'--"
+                            "already exists as argument" % assignee_name)
 
-            new_temp_vars[assignee_name] = lp.TemporaryVariable(
-                    name=assignee_name,
-                    dtype=insn.temp_var_type,
-                    is_local=lp.auto,
-                    base_indices=lp.auto,
-                    shape=lp.auto,
-                    order=default_order)
+                logger.debug("%s: creating temporary %s"
+                        % (knl.name, assignee_name))
 
-            insn = insn.copy(temp_var_type=None)
+                new_temp_vars[assignee_name] = lp.TemporaryVariable(
+                        name=assignee_name,
+                        dtype=temp_var_type,
+                        is_local=lp.auto,
+                        base_indices=lp.auto,
+                        shape=lp.auto,
+                        order=default_order)
+
+                if isinstance(insn, Assignment):
+                    insn = insn.copy(temp_var_type=None)
+                else:
+                    insn = insn.copy(temp_var_types=None)
 
         new_insns.append(insn)
 
@@ -925,8 +969,8 @@ def guess_arg_shape_if_requested(kernel, default_order):
 
             try:
                 for insn in kernel.instructions:
-                    if isinstance(insn, lp.Assignment):
-                        armap(submap(insn.assignee), kernel.insn_inames(insn))
+                    if isinstance(insn, lp.MultiAssignmentBase):
+                        armap(submap(insn.assignees), kernel.insn_inames(insn))
                         armap(submap(insn.expression), kernel.insn_inames(insn))
             except TypeError as e:
                 from traceback import print_exc
@@ -1021,25 +1065,39 @@ def apply_default_order_to_args(kernel, default_order):
 
 # {{{ resolve wildcard insn dependencies
 
+def find_matching_insn_ids(knl, dep):
+    from fnmatch import fnmatchcase
+
+    return [
+        other_insn.id
+        for other_insn in knl.instructions
+        if fnmatchcase(other_insn.id, dep)]
+
+
+def resove_wildcard_insn_ids(knl, deps):
+    new_deps = []
+    for dep in deps:
+        matches = find_matching_insn_ids(knl, dep)
+
+        if matches:
+            new_deps.extend(matches)
+        else:
+            # Uh, best we can do
+            new_deps.append(dep)
+
+    return frozenset(new_deps)
+
+
 def resolve_wildcard_deps(knl):
     new_insns = []
 
-    from fnmatch import fnmatchcase
     for insn in knl.instructions:
         if insn.depends_on is not None:
-            new_deps = set()
-            for dep in insn.depends_on:
-                match_count = 0
-                for other_insn in knl.instructions:
-                    if fnmatchcase(other_insn.id, dep):
-                        new_deps.add(other_insn.id)
-                        match_count += 1
-
-                if match_count == 0:
-                    # Uh, best we can do
-                    new_deps.add(dep)
-
-            insn = insn.copy(depends_on=frozenset(new_deps))
+            insn = insn.copy(
+                    depends_on=resove_wildcard_insn_ids(knl, insn.depends_on),
+                    no_sync_with=resove_wildcard_insn_ids(
+                        knl, insn.no_sync_with),
+                    )
 
         new_insns.append(insn)
 
@@ -1112,10 +1170,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
         *offset* in :attr:`GlobalArg` for guessed arguments.
         Defaults to 0.
-    :arg function_manglers: list of functions of signature (name, arg_dtypes)
-        returning a tuple (result_dtype, c_name)
-        or a tuple (result_dtype, c_name, arg_dtypes),
-        where c_name is the C-level function to be called.
+    :arg function_manglers: list of functions of signature
+        ``(target, name, arg_dtypes)``
+        returning a :class:`loopy.CallMangleInfo`.
     :arg symbol_manglers: list of functions of signature (name) returning
         a tuple (result_dtype, c_name), where c_name is the C-level symbol to
         be evaluated.

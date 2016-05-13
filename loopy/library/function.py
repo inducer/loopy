@@ -38,7 +38,9 @@ def default_function_mangler(kernel, name, arg_dtypes):
 def single_arg_function_mangler(kernel, name, arg_dtypes):
     if len(arg_dtypes) == 1:
         dtype, = arg_dtypes
-        return dtype, name
+
+        from loopy.kernel.data import CallMangleInfo
+        return CallMangleInfo(name, (dtype,), (dtype,))
 
     return None
 

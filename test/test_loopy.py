@@ -262,7 +262,7 @@ def test_join_inames(ctx_factory):
     knl = lp.add_prefetch(knl, "a", sweep_inames=["i", "j"])
     knl = lp.join_inames(knl, ["a_dim_0", "a_dim_1"])
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
 
 
 def test_divisibility_assumption(ctx_factory):
@@ -439,26 +439,21 @@ def test_argmax(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
-    order = "C"
 
     n = 10000
 
     knl = lp.make_kernel(
             "{[i]: 0<=i<%d}" % n,
-            [
-                "<> result = argmax(i, fabs(a[i]))",
-                "max_idx = result.index",
-                "max_val = result.value",
-                ],
-            [
-                lp.GlobalArg("a", dtype, shape=(n,), order=order),
-                lp.GlobalArg("max_idx", np.int32, shape=(), order=order),
-                lp.GlobalArg("max_val", dtype, shape=(), order=order),
-                ])
+            """
+            max_val, max_idx = argmax(i, fabs(a[i]))
+            """)
+
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    print(lp.preprocess_kernel(knl))
+    knl = lp.set_options(knl, write_cl=True, highlight_cl=True)
 
     a = np.random.randn(10000).astype(dtype)
-    cknl = lp.CompiledKernel(ctx, knl)
-    evt, (max_idx, max_val) = cknl(queue, a=a, out_host=True)
+    evt, (max_idx, max_val) = knl(queue, a=a, out_host=True)
     assert max_val == np.max(np.abs(a))
     assert max_idx == np.where(np.abs(a) == max_val)[-1]
 
@@ -2471,6 +2466,94 @@ def test_atomic(ctx_factory, dtype):
     knl = lp.split_iname(knl, "i", 512)
     knl = lp.split_iname(knl, "i_inner", 128, outer_tag="unr", inner_tag="g.0")
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
+
+
+def test_clamp(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    n = 15 * 10**6
+    x = cl.clrandom.rand(queue, n, dtype=np.float32)
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i] = clamp(x[i], a, b)")
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.set_options(knl, write_cl=True)
+
+    evt, (out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
+
+
+def test_forced_iname_deps_and_reduction():
+    # See https://github.com/inducer/loopy/issues/24
+
+    # This is (purposefully) somewhat un-idiomatic, to replicate the conditions
+    # under which the above bug was found. If assignees were phi[i], then the
+    # iname propagation heuristic would not assume that dependent instructions
+    # need to run inside of 'i', and hence the forced_iname_* bits below would not
+    # be needed.
+
+    i1 = lp.CInstruction("i",
+            "doSomethingToGetPhi();",
+            assignees="phi")
+
+    from pymbolic.primitives import Subscript, Variable
+    i2 = lp.Assignment("a",
+            lp.Reduction("sum", "j", Subscript(Variable("phi"), Variable("j"))),
+            forced_iname_deps=frozenset(),
+            forced_iname_deps_is_final=True)
+
+    k = lp.make_kernel("{[i,j] : 0<=i,j<n}",
+            [i1, i2],
+            [
+                lp.GlobalArg("a", dtype=np.float32, shape=()),
+                lp.ValueArg("n", dtype=np.int32),
+                lp.TemporaryVariable("phi", dtype=np.float32, shape=("n",)),
+                ],
+            target=lp.CTarget(),
+            )
+
+    k = lp.preprocess_kernel(k)
+
+    assert 'i' not in k.insn_inames("insn_0_j_update")
+    print(k.stringify(with_dependencies=True))
+
+
+@pytest.mark.parametrize("tp", ["f32", "f64"])
+def test_random123(ctx_factory, tp):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    import pyopencl.version  # noqa
+    if cl.version.VERSION < (2016, 2):
+        pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
+
+    n = 150000
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            <> key2 = make_uint2(i, 324830944) {inames=i}
+            <> key4 = make_uint4(i, 324830944, 234181, 2233) {inames=i}
+            <> ctr = make_uint4(0, 1, 2, 3) {inames=i}
+            <> real, ctr = philox4x32_TYPE(ctr, key2)
+            <> imag, ctr = threefry4x32_TYPE(ctr, key4)
+
+            out[i, 0] = real.s0 + 1j * imag.s0
+            out[i, 1] = real.s1 + 1j * imag.s1
+            out[i, 2] = real.s2 + 1j * imag.s2
+            out[i, 3] = real.s3 + 1j * imag.s3
+            """.replace("TYPE", tp))
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.set_options(knl, write_cl=True)
+
+    evt, (out,) = knl(queue, n=n)
+
+    out = out.get()
+    assert (out < 1).all()
+    assert (0 <= out).all()
 
 
 if __name__ == "__main__":

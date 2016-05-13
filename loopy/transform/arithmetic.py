@@ -158,7 +158,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
             continue
 
         if not isinstance(insn, Assignment):
-            raise LoopyError("'%s' modified by non-expression instruction"
+            raise LoopyError("'%s' modified by non-single-assignment"
                     % var_name)
 
         lhs = insn.assignee

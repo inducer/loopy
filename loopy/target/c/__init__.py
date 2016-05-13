@@ -341,6 +341,71 @@ class CTarget(TargetBase):
                 "++%s" % iname,
                 inner)
 
+    def generate_multiple_assignment(self, codegen_state, insn):
+        ecm = codegen_state.expression_to_code_mapper
+
+        from pymbolic.primitives import Variable
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        func_id = insn.expression.function
+        parameters = insn.expression.parameters
+
+        if isinstance(func_id, Variable):
+            func_id = func_id.name
+
+        assignee_var_descriptors = [codegen_state.kernel.get_var_descriptor(a)
+                for a, _ in insn.assignees_and_indices()]
+
+        par_dtypes = tuple(ecm.infer_type(par) for par in parameters)
+
+        str_parameters = None
+
+        mangle_result = codegen_state.kernel.mangle_function(func_id, par_dtypes)
+        if mangle_result is None:
+            raise RuntimeError("function '%s' unknown--"
+                    "maybe you need to register a function mangler?"
+                    % func_id)
+
+        assert mangle_result.arg_dtypes is not None
+
+        from loopy.expression import dtype_to_type_context
+        str_parameters = [
+                ecm(par, PREC_NONE,
+                    dtype_to_type_context(self, tgt_dtype),
+                    tgt_dtype)
+                for par, par_dtype, tgt_dtype in zip(
+                    parameters, par_dtypes, mangle_result.arg_dtypes)]
+
+        from loopy.codegen import SeenFunction
+        codegen_state.seen_functions.add(
+                SeenFunction(func_id,
+                    mangle_result.target_name,
+                    mangle_result.arg_dtypes))
+
+        for i, (a, tgt_dtype) in enumerate(
+                zip(insn.assignees[1:], mangle_result.result_dtypes[1:])):
+            if tgt_dtype != ecm.infer_type(a):
+                raise LoopyError("type mismatch in %d'th (1-based) left-hand "
+                        "side of instruction '%s'" % (i+1, insn.id))
+            str_parameters.append(
+                    "&(%s)" % ecm(a, PREC_NONE,
+                        dtype_to_type_context(self, tgt_dtype),
+                        tgt_dtype))
+
+        result = "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
+
+        result = ecm.wrap_in_typecast(
+                mangle_result.result_dtypes[0],
+                assignee_var_descriptors[0].dtype,
+                result)
+
+        lhs_code = ecm(insn.assignees[0], prec=PREC_NONE, type_context=None)
+
+        from cgen import Assign
+        return Assign(
+                lhs_code,
+                result)
+
     # }}}
 
 # vim: foldmethod=marker

@@ -82,7 +82,7 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
         if not isinstance(insn, InstructionBase):
             insn = kernel.id_to_insn[insn]
         if not isinstance(insn, Assignment):
-            raise RuntimeError("non-expression instructions not supported "
+            raise RuntimeError("non-single-output assignment not supported "
                     "in maxima export")
 
         for dep in insn.depends_on:

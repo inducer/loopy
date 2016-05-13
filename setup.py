@@ -43,6 +43,7 @@ setup(name="loo.py",
           "islpy>=2016.1.2",
           "six>=1.8.0",
           "colorama",
+          "Mako",
           ],
 
       extras_require={

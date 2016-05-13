@@ -199,7 +199,7 @@ class TypeInferenceMapper(CombineMapper):
     def map_linear_subscript(self, expr):
         return self.rec(expr.aggregate)
 
-    def map_call(self, expr):
+    def map_call(self, expr, multiple_types_ok=False):
         from pymbolic.primitives import Variable
 
         identifier = expr.function
@@ -212,11 +212,20 @@ class TypeInferenceMapper(CombineMapper):
         arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
 
         mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
-        if mangle_result is not None:
-            return mangle_result[0]
+        if multiple_types_ok:
+            if mangle_result is not None:
+                return mangle_result.result_dtypes
+        else:
+            if mangle_result is not None:
+                if len(mangle_result.result_dtypes) != 1 and not multiple_types_ok:
+                    raise LoopyError("functions with more or fewer than one "
+                            "return value may only be used in direct assignments")
 
-        raise RuntimeError("no type inference information on "
-                "function '%s'" % identifier)
+                return mangle_result.result_dtypes[0]
+
+        raise RuntimeError("unable to resolve "
+                "function '%s' with %d given arguments"
+                % (identifier, len(arg_dtypes)))
 
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():
@@ -267,7 +276,8 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_lookup(self, expr):
         agg_result = self.rec(expr.aggregate)
-        dtype, offset = agg_result.numpy_dtype.fields[expr.name]
+        field = agg_result.numpy_dtype.fields[expr.name]
+        dtype = field[0]
         return NumpyType(dtype)
 
     def map_comparison(self, expr):
@@ -285,9 +295,19 @@ class TypeInferenceMapper(CombineMapper):
     def map_local_hw_index(self, expr, *args):
         return self.kernel.index_dtype
 
-    def map_reduction(self, expr):
-        return expr.operation.result_dtype(
-                self.kernel.target, self.rec(expr.expr), expr.inames)
+    def map_reduction(self, expr, multiple_types_ok=False):
+        result = expr.operation.result_dtypes(
+                self.kernel, self.rec(expr.expr), expr.inames)
+
+        if multiple_types_ok:
+            return result
+
+        else:
+            if len(result) != 1 and not multiple_types_ok:
+                raise LoopyError("reductions with more or fewer than one "
+                        "return value may only be used in direct assignments")
+
+            return result[0]
 
 # }}}
 

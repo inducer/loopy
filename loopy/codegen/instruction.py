@@ -61,10 +61,12 @@ def wrap_in_conditionals(codegen_state, domain, check_inames, required_preds, st
 
 
 def generate_instruction_code(kernel, insn, codegen_state):
-    from loopy.kernel.data import Assignment, CInstruction
+    from loopy.kernel.data import Assignment, CallInstruction, CInstruction
 
     if isinstance(insn, Assignment):
         result = generate_expr_instruction_code(kernel, insn, codegen_state)
+    elif isinstance(insn, CallInstruction):
+        result = generate_call_code(kernel, insn, codegen_state)
     elif isinstance(insn, CInstruction):
         result = generate_c_instruction_code(kernel, insn, codegen_state)
     else:
@@ -218,11 +220,31 @@ def generate_expr_instruction_code(kernel, insn, codegen_state):
     return result
 
 
+def generate_call_code(kernel, insn, codegen_state):
+    # {{{ vectorization handling
+
+    if codegen_state.vectorization_info:
+        if insn.atomicity:
+            raise Unvectorizable("function call")
+
+    # }}}
+
+    result = kernel.target.generate_multiple_assignment(
+            codegen_state, insn)
+
+    # {{{ tracing
+
+    if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
+        raise NotImplementedError("tracing of multi-output function calls")
+
+    # }}}
+
+    return result
+
+
 def generate_c_instruction_code(kernel, insn, codegen_state):
     if codegen_state.vectorization_info is not None:
         raise Unvectorizable("C instructions cannot be vectorized")
-
-    ecm = codegen_state.expression_to_code_mapper
 
     body = []
 

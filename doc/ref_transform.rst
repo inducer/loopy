@@ -68,6 +68,8 @@ Manipulating Instructions
 
 .. autofunction:: remove_instructions
 
+.. autofunction:: replace_instruction_ids
+
 .. autofunction:: tag_instructions
 
 Registering Library Routines

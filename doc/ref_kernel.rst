@@ -217,9 +217,9 @@ These are usually key-value pairs. The following attributes are recognized:
   dependency is that the code generated for this instruction is required to
   appear textually after all of these dependees' generated code.
 
-  Identifiers here are allowed to be wildcards as defined by
-  the Python module :mod:`fnmatchcase`. This is helpful in conjunction
-  with ``id_prefix``.
+  Identifiers here are allowed to be wildcards as defined by the Python
+  function :func:`fnmatch.fnmatchcase`. This is helpful in conjunction with
+  ``id_prefix``.
 
   .. note::
 
@@ -241,6 +241,15 @@ These are usually key-value pairs. The following attributes are recognized:
       You may use a leading asterisk ("``*``") to turn off the single-writer
       heuristic and indicate that the specified list of dependencies is
       exhaustive.
+
+* ``nosync=id1:id2`` prescribes that no barrier synchronization is necessary
+  the instructions with identifiers ``id1`` and ``id2`` to the, even if
+  a dependency chain exists and variables are accessed in an apparently
+  racy way.
+
+  Identifiers here are allowed to be wildcards as defined by the Python
+  function :func:`fnmatch.fnmatchcase`. This is helpful in conjunction with
+  ``id_prefix``.
 
 * ``priority=integer`` sets the instructions priority to the value
   ``integer``. Instructions with higher priority will be scheduled sooner,
@@ -283,6 +292,11 @@ Loopy's expressions are a slight superset of the expressions supported by
 
 TODO: Functions
 TODO: Reductions
+
+Function Call Instructions
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: CallInstruction
 
 C Block Instructions
 ^^^^^^^^^^^^^^^^^^^^
@@ -459,6 +473,8 @@ Targets
 
 .. automodule:: loopy.target
 
+.. currentmodule:: loopy
+
 Helper values
 -------------
 
@@ -469,6 +485,27 @@ Helper values
 .. autoclass:: UniqueName
 
 .. }}}
+
+Libraries: Extending and Interfacing with External Functionality
+----------------------------------------------------------------
+
+.. _symbols:
+
+Symbols
+^^^^^^^
+
+.. _functions:
+
+Functions
+^^^^^^^^^
+
+.. autoclass:: CallMangleInfo
+
+.. _reductions:
+
+Reductions
+^^^^^^^^^^
+
 
 The Kernel Object
 -----------------

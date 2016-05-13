@@ -32,7 +32,7 @@ from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
-from loopy.kernel.data import temp_var_scope
+from loopy.kernel.data import temp_var_scope, CallMangleInfo
 
 
 # {{{ dtype registry wrappers
@@ -137,11 +137,34 @@ def _register_vector_types(dtype_registry):
 
 # {{{ function mangler
 
+_CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
+        "clamp": 3,
+        }
+
+
+VECTOR_LITERAL_FUNCS = dict(
+        ("make_%s%d" % (name, count), (name, dtype, count))
+        for name, dtype in [
+            ('char', np.int8),
+            ('uchar', np.uint8),
+            ('short', np.int16),
+            ('ushort', np.uint16),
+            ('int', np.int32),
+            ('uint', np.uint32),
+            ('long', np.int64),
+            ('ulong', np.uint64),
+            ('float', np.float32),
+            ('double', np.float64),
+            ]
+        for count in [2, 3, 4, 8, 16]
+        )
+
+
 def opencl_function_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
 
-    if name in ["max", "min"] and len(arg_dtypes) == 2:
+    if name in ["max", "min", "atan2"] and len(arg_dtypes) == 2:
         dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for dtype in arg_dtypes])
 
@@ -151,14 +174,49 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
         if dtype.kind == "f":
             name = "f" + name
 
-        return NumpyType(dtype), name
-
-    if name in "atan2" and len(arg_dtypes) == 2:
-        return arg_dtypes[0], name
+        result_dtype = NumpyType(dtype)
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(result_dtype,),
+                arg_dtypes=2*(result_dtype,))
 
     if name == "dot":
         scalar_dtype, offset, field_name = arg_dtypes[0].numpy_dtype.fields["s0"]
-        return NumpyType(scalar_dtype), name
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(NumpyType(scalar_dtype),),
+                arg_dtypes=(arg_dtypes[0],)*2)
+
+    if name in _CL_SIMPLE_MULTI_ARG_FUNCTIONS:
+        num_args = _CL_SIMPLE_MULTI_ARG_FUNCTIONS[name]
+        if len(arg_dtypes) != num_args:
+            raise LoopyError("%s takes %d arguments (%d received)"
+                    % (name, num_args, len(arg_dtypes)))
+
+        dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for dtype in arg_dtypes])
+
+        if dtype.kind == "c":
+            raise LoopyError("%s does not support complex numbers"
+                    % name)
+
+        result_dtype = NumpyType(dtype)
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(result_dtype,),
+                arg_dtypes=(result_dtype,)*3)
+
+    if name in VECTOR_LITERAL_FUNCS:
+        base_tp_name, dtype, count = VECTOR_LITERAL_FUNCS[name]
+
+        if count != len(arg_dtypes):
+            return None
+
+        return CallMangleInfo(
+                target_name="(%s%d) " % (base_tp_name, count),
+                result_dtypes=(kernel.target.vector_dtype(
+                    NumpyType(dtype), count),),
+                arg_dtypes=(NumpyType(dtype),)*count)
 
     return None
 

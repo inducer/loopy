@@ -133,6 +133,9 @@ class TargetBase(object):
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
+    def generate_multiple_assignment(self, codegen_state, insn):
+        raise NotImplementedError()
+
     def generate_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype):
         raise NotImplementedError("atomic update in target %s" % type(self).__name__)

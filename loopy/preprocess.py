@@ -31,6 +31,7 @@ from loopy.diagnostic import (
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
+from loopy.kernel.data import make_assignment
 
 import logging
 logger = logging.getLogger(__name__)
@@ -123,14 +124,26 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     from loopy.diagnostic import DependencyTypeInferenceFailure
     for writer_insn_id in kernel.writer_map().get(var_name, []):
         writer_insn = kernel.id_to_insn[writer_insn_id]
-        if not isinstance(writer_insn, lp.Assignment):
+        if not isinstance(writer_insn, lp.MultiAssignmentBase):
             continue
 
         expr = subst_expander(writer_insn.expression)
 
         try:
             debug("             via expr %s" % expr)
-            result = type_inf_mapper(expr)
+            if isinstance(writer_insn, lp.Assignment):
+                result = type_inf_mapper(expr)
+            elif isinstance(writer_insn, lp.CallInstruction):
+                result_dtypes = type_inf_mapper(expr, multiple_types_ok=True)
+
+                result = None
+                for (assignee, _), comp_dtype in zip(
+                        writer_insn.assignees_and_indices(), result_dtypes):
+                    if assignee == var_name:
+                        result = comp_dtype
+                        break
+
+                assert result is not None
 
             debug("             result: %s" % result)
 
@@ -319,9 +332,10 @@ def mark_local_temporaries(kernel):
                     if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase))
 
             locparallel_assignee_inames = set(iname
-                    for _, assignee_indices in insn.assignees_and_indices()
-                    for iname in get_dependencies(assignee_indices)
+                    for aname, aindices in insn.assignees_and_indices()
+                    for iname in get_dependencies(aindices)
                         & kernel.all_inames()
+                    if aname == temp_var.name
                     if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase))
 
             assert locparallel_assignee_inames <= locparallel_compute_inames
@@ -400,7 +414,9 @@ def add_default_dependencies(kernel):
                             % var)
 
                 if len(var_writers) == 1:
-                    auto_deps.update(var_writers - set([insn.id]))
+                    auto_deps.update(
+                            var_writers
+                            - set([insn.id]))
 
             # }}}
 
@@ -436,20 +452,17 @@ def realize_reduction(kernel, insn_id_filter=None):
 
     new_insns = []
 
+    insn_id_gen = kernel.get_instruction_id_generator()
+
     var_name_gen = kernel.get_var_name_generator()
     new_temporary_variables = kernel.temporary_variables.copy()
 
     from loopy.expression import TypeInferenceMapper
     type_inf_mapper = TypeInferenceMapper(kernel)
 
-    def map_reduction(expr, rec):
+    def map_reduction(expr, rec, multiple_values_ok=False):
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
-
-        from pymbolic import var
-
-        target_var_name = var_name_gen("acc_"+"_".join(expr.inames))
-        target_var = var(target_var_name)
 
         try:
             arg_dtype = type_inf_mapper(expr.expr)
@@ -457,14 +470,30 @@ def realize_reduction(kernel, insn_id_filter=None):
             raise LoopyError("failed to determine type of accumulator for "
                     "reduction '%s'" % expr)
 
-        from loopy.kernel.data import Assignment, TemporaryVariable
+        arg_dtype = arg_dtype.with_target(kernel.target)
 
-        new_temporary_variables[target_var_name] = TemporaryVariable(
-                name=target_var_name,
-                shape=(),
-                dtype=expr.operation.result_dtype(
-                    kernel.target, arg_dtype, expr.inames),
-                is_local=False)
+        reduction_dtypes = expr.operation.result_dtypes(
+                    kernel, arg_dtype, expr.inames)
+        reduction_dtypes = tuple(
+                dt.with_target(kernel.target) for dt in reduction_dtypes)
+
+        ncomp = len(reduction_dtypes)
+
+        from pymbolic import var
+
+        acc_var_names = [
+                var_name_gen("acc_"+"_".join(expr.inames))
+                for i in range(ncomp)]
+        acc_vars = tuple(var(n) for n in acc_var_names)
+
+        from loopy.kernel.data import TemporaryVariable
+
+        for name, dtype in zip(acc_var_names, reduction_dtypes):
+            new_temporary_variables[name] = TemporaryVariable(
+                    name=name,
+                    shape=(),
+                    dtype=dtype,
+                    is_local=False)
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
         bad_inames = frozenset(expr.inames) & outer_insn_inames
@@ -472,41 +501,52 @@ def realize_reduction(kernel, insn_id_filter=None):
             raise LoopyError("reduction used within loop(s) that it was "
                     "supposed to reduce over: " + ", ".join(bad_inames))
 
-        init_id = temp_kernel.make_unique_instruction_id(
-                based_on="%s_%s_init" % (insn.id, "_".join(expr.inames)),
-                extra_used_ids=set(i.id for i in generated_insns))
+        init_id = insn_id_gen(
+                "%s_%s_init" % (insn.id, "_".join(expr.inames)))
 
-        init_insn = Assignment(
+        init_insn = make_assignment(
                 id=init_id,
-                assignee=target_var,
+                assignees=acc_vars,
                 forced_iname_deps=outer_insn_inames - frozenset(expr.inames),
+                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
                 depends_on=frozenset(),
                 expression=expr.operation.neutral_element(arg_dtype, expr.inames))
 
         generated_insns.append(init_insn)
 
-        update_id = temp_kernel.make_unique_instruction_id(
-                based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)),
-                extra_used_ids=set(i.id for i in generated_insns))
+        update_id = insn_id_gen(
+                based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)))
 
-        reduction_insn = Assignment(
+        update_insn_iname_deps = temp_kernel.insn_inames(insn) | set(expr.inames)
+        if insn.forced_iname_deps_is_final:
+            update_insn_iname_deps = insn.forced_iname_deps | set(expr.inames)
+
+        reduction_insn = make_assignment(
                 id=update_id,
-                assignee=target_var,
+                assignees=acc_vars,
                 expression=expr.operation(
-                    arg_dtype, target_var, expr.expr, expr.inames),
+                    arg_dtype,
+                    acc_vars if len(acc_vars) > 1 else acc_vars[0],
+                    expr.expr, expr.inames),
                 depends_on=frozenset([init_insn.id]) | insn.depends_on,
-                forced_iname_deps=temp_kernel.insn_inames(insn) | set(expr.inames))
+                forced_iname_deps=update_insn_iname_deps,
+                forced_iname_deps_is_final=insn.forced_iname_deps_is_final)
 
         generated_insns.append(reduction_insn)
 
         new_insn_depends_on.add(reduction_insn.id)
 
-        return target_var
+        if multiple_values_ok:
+            return acc_vars
+        else:
+            assert len(acc_vars) == 1
+            return acc_vars[0]
 
     from loopy.symbolic import ReductionCallbackMapper
     cb_mapper = ReductionCallbackMapper(map_reduction)
 
     insn_queue = kernel.instructions[:]
+    insn_id_replacements = {}
 
     temp_kernel = kernel
 
@@ -518,24 +558,47 @@ def realize_reduction(kernel, insn_id_filter=None):
         insn = insn_queue.pop(0)
 
         if insn_id_filter is not None and insn.id != insn_id_filter \
-                or not isinstance(insn, lp.Assignment):
+                or not isinstance(insn, lp.MultiAssignmentBase):
             new_insns.append(insn)
             continue
 
         # Run reduction expansion.
-        new_expression = cb_mapper(insn.expression)
+        from loopy.symbolic import Reduction
+        if isinstance(insn.expression, Reduction):
+            new_expressions = cb_mapper(insn.expression, multiple_values_ok=True)
+        else:
+            new_expressions = (cb_mapper(insn.expression),)
 
         if generated_insns:
             # An expansion happened, so insert the generated stuff plus
             # ourselves back into the queue.
 
-            insn = insn.copy(
-                        expression=new_expression,
-                        depends_on=insn.depends_on
-                        | frozenset(new_insn_depends_on),
-                        forced_iname_deps=temp_kernel.insn_inames(insn))
+            kwargs = insn.get_copy_kwargs(
+                    depends_on=insn.depends_on
+                    | frozenset(new_insn_depends_on),
+                    forced_iname_deps=temp_kernel.insn_inames(insn))
 
-            insn_queue = generated_insns + [insn] + insn_queue
+            kwargs.pop("id")
+            kwargs.pop("expression")
+            kwargs.pop("assignee", None)
+            kwargs.pop("assignees", None)
+            kwargs.pop("temp_var_type", None)
+            kwargs.pop("temp_var_types", None)
+
+            replacement_insns = [
+                    lp.Assignment(
+                        id=insn_id_gen(insn.id),
+                        assignee=assignee,
+                        expression=new_expr,
+                        **kwargs)
+                    for assignee, new_expr in zip(insn.assignees, new_expressions)]
+
+            insn_id_replacements[insn.id] = [
+                    rinsn.id for rinsn in replacement_insns]
+
+            # FIXME: Track dep rename
+
+            insn_queue = generated_insns + replacement_insns + insn_queue
 
             # The reduction expander needs an up-to-date kernel
             # object to find dependencies. Keep temp_kernel up-to-date.
@@ -550,9 +613,11 @@ def realize_reduction(kernel, insn_id_filter=None):
 
             new_insns.append(insn)
 
-    return kernel.copy(
+    kernel = kernel.copy(
             instructions=new_insns,
             temporary_variables=new_temporary_variables)
+
+    return lp.replace_instruction_ids(kernel, insn_id_replacements)
 
 # }}}
 

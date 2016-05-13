@@ -29,6 +29,7 @@ from six.moves import range
 
 import numpy as np
 
+from loopy.kernel.data import CallMangleInfo
 from loopy.target.opencl import OpenCLTarget
 from loopy.types import NumpyType
 
@@ -194,13 +195,18 @@ def pyopencl_function_mangler(target, name, arg_dtypes):
                     "sin", "cos", "tan",
                     "sinh", "cosh", "tanh",
                     "conj"]:
-                return arg_dtype, "%s_%s" % (tpname, name)
+                return CallMangleInfo(
+                        target_name="%s_%s" % (tpname, name),
+                        result_dtypes=(arg_dtype,),
+                        arg_dtypes=(arg_dtype,))
 
             if name in ["real", "imag", "abs"]:
-                return (
-                        NumpyType(
+                return CallMangleInfo(
+                        target_name="%s_%s" % (tpname, name),
+                        result_dtypes=(NumpyType(
                             np.dtype(arg_dtype.numpy_dtype.type(0).real)),
-                        "%s_%s" % (tpname, name))
+                            ),
+                        arg_dtypes=(arg_dtype,))
 
     return None
 
@@ -270,14 +276,18 @@ class PyOpenCLTarget(OpenCLTarget):
     comparison_fields = ["device"]
 
     def function_manglers(self):
+        from loopy.library.random123 import random123_function_mangler
         return (
                 super(PyOpenCLTarget, self).function_manglers() + [
-                    pyopencl_function_mangler
+                    pyopencl_function_mangler,
+                    random123_function_mangler
                     ])
 
     def preamble_generators(self):
+        from loopy.library.random123 import random123_preamble_generator
         return ([
-            pyopencl_preamble_generator
+            pyopencl_preamble_generator,
+            random123_preamble_generator,
             ] + super(PyOpenCLTarget, self).preamble_generators())
 
     def preprocess(self, kernel):

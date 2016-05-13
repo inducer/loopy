@@ -426,8 +426,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         import loopy as lp
         for insn in kernel.instructions:
-            if isinstance(insn, lp.Assignment):
-                invg(insn.assignee, kernel, insn)
+            if isinstance(insn, lp.MultiAssignmentBase):
+                for assignee in insn.assignees:
+                    invg(assignee, kernel, insn)
                 invg(insn.expression, kernel, insn)
 
         access_descriptors = invg.access_descriptors
