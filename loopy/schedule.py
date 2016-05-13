@@ -62,6 +62,14 @@ class RunInstruction(ScheduleItem):
     hash_fields = __slots__ = ["insn_id"]
 
 
+class CallKernel(ScheduleItem):
+    hash_fields = __slots__ = ["kernel_name"]
+
+
+class ReturnFromKernel(ScheduleItem):
+    hash_fields = __slots__ = ["kernel_name"]
+
+
 class Barrier(ScheduleItem):
     """
     .. attribute:: comment
@@ -363,6 +371,12 @@ def dump_schedule(kernel, schedule):
         elif isinstance(sched_item, LeaveLoop):
             indent = indent[:-4]
             lines.append(indent + "ENDLOOP %s" % sched_item.iname)
+        elif isinstance(sched_item, CallKernel):
+            lines.append(indent + "CALL KERNEL %s" % sched_item.kernel_name)
+            indent += "    "
+        elif isinstance(sched_item, ReturnFromKernel):
+            indent = indent[:-4]
+            lines.append(indent + "RETURN FROM KERNEL %s" % sched_item.kernel_name)
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
             if isinstance(insn, MultiAssignmentBase):
@@ -1451,12 +1465,14 @@ def generate_loop_schedules(kernel, debug_args={}):
                     gen_sched = insert_barriers(kernel, gen_sched,
                             reverse=False, kind="global")
 
+                    """
                     for sched_item in gen_sched:
                         if (
                                 isinstance(sched_item, Barrier)
                                 and sched_item.kind == "global"):
                             raise LoopyError("kernel requires a global barrier %s"
                                     % sched_item.comment)
+                    """
 
                     logger.info("%s: barrier insertion: local" % kernel.name)
 
