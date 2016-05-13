@@ -108,7 +108,8 @@ from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
 from loopy.statistics import (get_op_poly, sum_ops_to_dtypes,
         get_gmem_access_poly,
         get_DRAM_access_poly, get_barrier_poly, stringify_stats_mapping,
-        sum_mem_access_to_bytes)
+        sum_mem_access_to_bytes,
+        gather_access_footprints, gather_access_footprint_bytes)
 from loopy.codegen import generate_code, generate_body
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
@@ -200,6 +201,7 @@ __all__ = [
         "get_op_poly", "sum_ops_to_dtypes", "get_gmem_access_poly",
         "get_DRAM_access_poly",
         "get_barrier_poly", "stringify_stats_mapping", "sum_mem_access_to_bytes",
+        "gather_access_footprints", "gather_access_footprint_bytes",
 
         "CompiledKernel",
 
