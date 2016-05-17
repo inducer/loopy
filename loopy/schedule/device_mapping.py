@@ -32,7 +32,7 @@ def map_schedule_onto_host_or_device(kernel):
             [CallKernel(kernel_name=kernel.name,
                         extra_inames=[],
                         extra_args=[])] +
-            kernel.schedule +
+            list(kernel.schedule) +
             [ReturnFromKernel(kernel_name=kernel.name)])
         return kernel.copy(schedule=new_schedule)
 
