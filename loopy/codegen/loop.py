@@ -310,7 +310,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     result = []
 
     for slab_name, slab in slabs:
-        if len(slabs) == 1:
+        if len(slabs) > 1:
             result.append(
                     codegen_state.ast_builder.emit_comment(
                         "%s slab for '%s'" % (slab_name, iname)))

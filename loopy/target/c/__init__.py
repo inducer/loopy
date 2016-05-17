@@ -238,7 +238,7 @@ class CASTBuilder(ASTBuilderBase):
         base_storage_to_scope = {}
         base_storage_to_align_bytes = {}
 
-        from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute, Value
+        from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute, Value, Line
 
         class ConstRestrictPointer(Pointer):
             def get_decl_pair(self):
@@ -318,7 +318,12 @@ class CASTBuilder(ASTBuilderBase):
 
         # }}}
 
-        return base_storage_decls + temp_decls
+        result = base_storage_decls + temp_decls
+
+        if result:
+            result.append(Line())
+
+        return result
 
     @property
     def ast_block_class(self):
