@@ -3,11 +3,24 @@ from __future__ import division, absolute_import, print_function
 __copyright__ = "Copyright (C) 2016 Matt Wala"
 
 __license__ = """
-(unclear)
-"""
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-# TODO: Matt, please replace the license header
-# TODO: Should move to loopy.schedule.device_mapping
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+"""
 
 from pytools import Record
 from loopy.diagnostic import LoopyError
@@ -61,6 +74,7 @@ def get_common_hw_inames(kernel, insn_ids):
 
 
 # {{{ Use / def analysis
+
 
 def filter_out_subscripts(exprs):
     result = set()
@@ -268,18 +282,6 @@ def save_and_restore_temporaries(kernel):
             "Cannot promote temporaries with base_storage to global"
 
         hw_inames = get_common_hw_inames(kernel, def_lists[temporary.name])
-=======
-class HostInvokeKernel(Record):
-    # TOOD: Should have docstring indicating what attributes can occur
-    pass
-
-
-def map_schedule_onto_host_or_device(kernel):
-    from functools import partial
-    kernel_name_gen = partial(
-            kernel.get_var_name_generator(),
-            kernel.name + kernel.target.device_program_name_suffix)
->>>>>>> 55ba3a29f0cf120ae0f74be5d0ee2bb7773ba8e5
 
         # This takes advantage of the fact that g < l in the alphabet :)
         hw_inames = sorted(hw_inames,
