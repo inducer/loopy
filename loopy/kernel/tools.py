@@ -393,7 +393,8 @@ class DomainChanger:
 
                 # Changing the domain might look like it wants to change grid
                 # sizes. Not true.
-                get_grid_sizes=self.kernel.get_grid_sizes)
+                # (Relevant for 'slab decomposition')
+                get_grid_sizes_for_insn_ids=self.kernel.get_grid_sizes_for_insn_ids)
 
 # }}}
 
@@ -767,7 +768,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
     # copies.
 
     if local_size is None:
-        _, local_size = kernel.get_grid_sizes_as_exprs(
+        _, local_size = kernel.get_grid_size_upper_bounds_as_exprs(
                 ignore_auto=True)
 
     # {{{ axis assignment helper function

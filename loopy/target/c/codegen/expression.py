@@ -29,7 +29,8 @@ import numpy as np
 
 from pymbolic.mapper import RecursiveMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
-        PREC_POWER)
+        PREC_POWER,
+        PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND)
 import islpy as isl
 
 from loopy.expression import dtype_to_type_context, TypeInferenceMapper
@@ -41,7 +42,7 @@ from loopy.types import LoopyType
 
 # {{{ C code mapper
 
-class LoopyCCodeMapper(RecursiveMapper):
+class ExpressionToCMapper(RecursiveMapper):
     def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
         self.kernel = codegen_state.kernel
         self.codegen_state = codegen_state
@@ -149,7 +150,7 @@ class LoopyCCodeMapper(RecursiveMapper):
             if isinstance(arg, ValueArg) and self.fortran_abi:
                 prefix = "*"
 
-        result = self.kernel.mangle_symbol(expr.name)
+        result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
         if result is not None:
             _, c_name = result
             return prefix + c_name
@@ -223,7 +224,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                         enclosing_prec, PREC_CALL)
 
             if access_info.vector_index is not None:
-                return self.kernel.target.add_vector_access(
+                return self.codegen_state.ast_builder.add_vector_access(
                     result, access_info.vector_index)
             else:
                 return result
@@ -427,7 +428,10 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         str_parameters = None
 
-        mangle_result = self.kernel.mangle_function(identifier, par_dtypes)
+        mangle_result = self.kernel.mangle_function(
+                identifier, par_dtypes,
+                ast_builder=self.codegen_state.ast_builder)
+
         if mangle_result is None:
             raise RuntimeError("function '%s' unknown--"
                     "maybe you need to register a function mangler?"
@@ -467,6 +471,21 @@ class LoopyCCodeMapper(RecursiveMapper):
                     mangle_result.arg_dtypes or par_dtypes))
 
         return "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
+
+    def map_logical_not(self, expr, enclosing_prec, type_context):
+        return self.parenthesize_if_needed(
+                "!" + self.rec(expr.child, PREC_UNARY, type_context),
+                enclosing_prec, PREC_UNARY)
+
+    def map_logical_and(self, expr, enclosing_prec, type_context):
+        return self.parenthesize_if_needed(
+                self.join_rec(" && ", expr.children, PREC_LOGICAL_AND, type_context),
+                enclosing_prec, PREC_LOGICAL_AND)
+
+    def map_logical_or(self, expr, enclosing_prec, type_context):
+        return self.parenthesize_if_needed(
+                self.join_rec(" || ", expr.children, PREC_LOGICAL_OR, type_context),
+                enclosing_prec, PREC_LOGICAL_OR)
 
     # {{{ deal with complex-valued variables
 

@@ -50,11 +50,19 @@ class ScheduleItem(Record):
             key_builder.rec(key_hash, getattr(self, field_name))
 
 
-class EnterLoop(ScheduleItem):
+class BeginBlockItem(ScheduleItem):
+    pass
+
+
+class EndBlockItem(ScheduleItem):
+    pass
+
+
+class EnterLoop(BeginBlockItem):
     hash_fields = __slots__ = ["iname"]
 
 
-class LeaveLoop(ScheduleItem):
+class LeaveLoop(EndBlockItem):
     hash_fields = __slots__ = ["iname"]
 
 
@@ -62,11 +70,11 @@ class RunInstruction(ScheduleItem):
     hash_fields = __slots__ = ["insn_id"]
 
 
-class CallKernel(ScheduleItem):
+class CallKernel(BeginBlockItem):
     hash_fields = __slots__ = ["kernel_name", "extra_inames", "extra_args"]
 
 
-class ReturnFromKernel(ScheduleItem):
+class ReturnFromKernel(EndBlockItem):
     hash_fields = __slots__ = ["kernel_name"]
 
 
@@ -87,15 +95,15 @@ class Barrier(ScheduleItem):
 
 # {{{ schedule utilities
 
-def gather_schedule_subloop(schedule, start_idx):
-    assert isinstance(schedule[start_idx], EnterLoop)
+def gather_schedule_block(schedule, start_idx):
+    assert isinstance(schedule[start_idx], BeginBlockItem)
     level = 0
 
     i = start_idx
     while i < len(schedule):
-        if isinstance(schedule[i], EnterLoop):
+        if isinstance(schedule[i], BeginBlockItem):
             level += 1
-        if isinstance(schedule[i], LeaveLoop):
+        elif isinstance(schedule[i], EndBlockItem):
             level -= 1
 
             if level == 0:
@@ -107,16 +115,17 @@ def gather_schedule_subloop(schedule, start_idx):
 
 
 def generate_sub_sched_items(schedule, start_idx):
-    if not isinstance(schedule[start_idx], EnterLoop):
+    if not isinstance(schedule[start_idx], BeginBlockItem):
         yield start_idx, schedule[start_idx]
 
     level = 0
     i = start_idx
     while i < len(schedule):
         sched_item = schedule[i]
-        if isinstance(sched_item, EnterLoop):
+        if isinstance(sched_item, BeginBlockItem):
             level += 1
-        elif isinstance(sched_item, LeaveLoop):
+
+        elif isinstance(sched_item, EndBlockItem):
             level -= 1
 
         else:
@@ -128,6 +137,14 @@ def generate_sub_sched_items(schedule, start_idx):
         i += 1
 
     assert False
+
+
+def get_insn_ids_for_block_at(schedule, start_idx):
+    return frozenset(
+            sub_sched_item.insn_id
+            for sub_sched_item in generate_sub_sched_items(
+                schedule, start_idx)
+            if isinstance(sub_sched_item, RunInstruction))
 
 
 def find_active_inames_at(kernel, sched_index):
@@ -146,8 +163,8 @@ def find_active_inames_at(kernel, sched_index):
 def has_barrier_within(kernel, sched_index):
     sched_item = kernel.schedule[sched_index]
 
-    if isinstance(sched_item, EnterLoop):
-        loop_contents, _ = gather_schedule_subloop(
+    if isinstance(sched_item, BeginBlockItem):
+        loop_contents, _ = gather_schedule_block(
                 kernel.schedule, sched_index)
         from pytools import any
         return any(isinstance(subsched_item, Barrier)
@@ -161,8 +178,8 @@ def has_barrier_within(kernel, sched_index):
 def find_used_inames_within(kernel, sched_index):
     sched_item = kernel.schedule[sched_index]
 
-    if isinstance(sched_item, EnterLoop):
-        loop_contents, _ = gather_schedule_subloop(
+    if isinstance(sched_item, BeginBlockItem):
+        loop_contents, _ = gather_schedule_block(
                 kernel.schedule, sched_index)
         run_insns = [subsched_item
                 for subsched_item in loop_contents
@@ -1263,7 +1280,7 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
         if isinstance(sched_item, EnterLoop):
             # {{{ recurse for nested loop
 
-            subloop, new_i = gather_schedule_subloop(schedule, i)
+            subloop, new_i = gather_schedule_block(schedule, i)
             i = new_i
 
             # Run barrier insertion for inner loop
@@ -1461,7 +1478,7 @@ def generate_loop_schedules(kernel, debug_args={}):
             for gen_sched in gen:
                 debug.stop()
 
-                gsize, lsize = kernel.get_grid_sizes_as_exprs()
+                gsize, lsize = kernel.get_grid_size_upper_bounds()
 
                 if gsize or lsize:
                     logger.info("%s: barrier insertion: global" % kernel.name)
@@ -1485,9 +1502,15 @@ def generate_loop_schedules(kernel, debug_args={}):
 
                     logger.info("%s: barrier insertion: done" % kernel.name)
 
-                yield kernel.copy(
+                new_kernel = kernel.copy(
                         schedule=gen_sched,
                         state=kernel_state.SCHEDULED)
+
+                from loopy.codegen.device_mapping import \
+                        map_schedule_onto_host_or_device
+                new_kernel = map_schedule_onto_host_or_device(new_kernel)
+                yield new_kernel
+
                 debug.start()
 
                 schedule_count += 1

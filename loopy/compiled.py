@@ -25,7 +25,6 @@ THE SOFTWARE.
 import six
 from six.moves import range, zip
 
-import sys
 import numpy as np
 from pytools import Record, memoize_method
 from loopy.diagnostic import ParameterFinderWarning
@@ -137,7 +136,7 @@ def python_dtype_str(dtype):
 
 # {{{ integer arg finding from shapes
 
-def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options):
+def generate_integer_arg_finding_from_shapes(gen, kernel, implemented_data_info):
     # a mapping from integer argument names to a list of tuples
     # (arg_name, expression), where expression is a
     # unary function of kernel.arg_dict[arg_name]
@@ -149,7 +148,7 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options
     dep_map = DependencyMapper()
 
     from pymbolic import var
-    for arg in impl_arg_info:
+    for arg in implemented_data_info:
         if arg.arg_class is GlobalArg:
             sym_shape = var(arg.name).attr("shape")
             for axis_nr, shape_i in enumerate(arg.shape):
@@ -193,7 +192,7 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options
             for arg_name, value_expr in sources:
                 gen("%s %s is not None:" % (if_stmt, arg_name))
                 with Indentation(gen):
-                    gen("%s = %s"
+                    gen("%s = int(%s)"
                             % (iarg_name, StringifyMapper()(value_expr)))
 
                 if_stmt = "elif"
@@ -208,11 +207,13 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options
 
 # {{{ integer arg finding from offsets
 
-def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, options):
+def generate_integer_arg_finding_from_offsets(gen, kernel, implemented_data_info):
+    options = kernel.options
+
     gen("# {{{ find integer arguments from offsets")
     gen("")
 
-    for arg in impl_arg_info:
+    for arg in implemented_data_info:
         impl_array_name = arg.offset_for_name
         if impl_array_name is not None:
             gen("if %s is None:" % arg.name)
@@ -225,10 +226,10 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, option
                 gen("else:")
                 with Indentation(gen):
                     if not options.no_numpy:
-                        gen("_lpy_offset = getattr(%s, \"offset\", 0)"
+                        gen("_lpy_offset = int(getattr(%s, \"offset\", 0))"
                                 % impl_array_name)
                     else:
-                        gen("_lpy_offset = %s.offset" % impl_array_name)
+                        gen("_lpy_offset = int(%s.offset)" % impl_array_name)
 
                     base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
@@ -241,7 +242,7 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, option
                                 % impl_array_name)
                         gen("del _lpy_remdr")
                     else:
-                        gen("%s = _lpy_offset // %d)"
+                        gen("%s = _lpy_offset // %d"
                                 % (arg.name, base_arg.dtype.itemsize))
 
                     if not options.skip_arg_checks:
@@ -255,11 +256,13 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, option
 
 # {{{ integer arg finding from strides
 
-def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, options):
+def generate_integer_arg_finding_from_strides(gen, kernel, implemented_data_info):
+    options = kernel.options
+
     gen("# {{{ find integer arguments from strides")
     gen("")
 
-    for arg in impl_arg_info:
+    for arg in implemented_data_info:
         if arg.stride_for_name_and_axis is not None:
             impl_array_name, stride_impl_axis = arg.stride_for_name_and_axis
 
@@ -284,11 +287,9 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, option
                                 "not divisible by its dtype itemsize\""
                                 % (stride_impl_axis, impl_array_name))
                         gen("del _lpy_remdr")
+                        gen("%s = int(%s)" % (arg.name, arg.name))
                     else:
-                        gen("%s = divmod(%s.strides[%d], %d)"
-                                % (arg.name, impl_array_name, stride_impl_axis,
-                                    base_arg.dtype.itemsize))
-                        gen("%s = _lpy_offset // %d)"
+                        gen("%s = int(_lpy_offset // %d)"
                                 % (arg.name, base_arg.dtype.itemsize))
 
     gen("# }}}")
@@ -297,156 +298,9 @@ def generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, option
 # }}}
 
 
-# {{{ value arg setup
+# {{{ arg setup
 
-def generate_value_arg_setup(gen, kernel, cl_kernel, impl_arg_info, options):
-    import loopy as lp
-    from loopy.kernel.array import ArrayBase
-
-    # {{{ arg counting bug handling
-
-    # For example:
-    # https://github.com/pocl/pocl/issues/197
-    # (but Apple CPU has a similar bug)
-
-    work_around_arg_count_bug = False
-    warn_about_arg_count_bug = False
-
-    devices = cl_kernel.context.devices
-
-    try:
-        from pyopencl.characterize import has_struct_arg_count_bug
-
-    except ImportError:
-        count_bug_per_dev = [False]*len(devices)
-
-    else:
-        count_bug_per_dev = [
-                has_struct_arg_count_bug(dev)
-                for dev in devices]
-
-    if any(count_bug_per_dev):
-        if all(count_bug_per_dev):
-            work_around_arg_count_bug = True
-        else:
-            warn_about_arg_count_bug = True
-
-    # }}}
-
-    cl_arg_idx = 0
-    arg_idx_to_cl_arg_idx = {}
-
-    fp_arg_count = 0
-
-    for arg_idx, arg in enumerate(impl_arg_info):
-        arg_idx_to_cl_arg_idx[arg_idx] = cl_arg_idx
-
-        if arg.arg_class is not lp.ValueArg:
-            assert issubclass(arg.arg_class, ArrayBase)
-
-            # assume each of those generates exactly one...
-            cl_arg_idx += 1
-
-            continue
-
-        gen("# {{{ process %s" % arg.name)
-        gen("")
-
-        if not options.skip_arg_checks:
-            gen("""
-                if {name} is None:
-                    raise RuntimeError("input argument '{name}' must "
-                        "be supplied")
-                """.format(name=arg.name))
-
-        if sys.version_info < (2, 7) and arg.dtype.is_integral():
-            gen("# cast to long to avoid trouble with struct packing")
-            gen("%s = long(%s)" % (arg.name, arg.name))
-            gen("")
-
-        if arg.dtype.is_composite():
-            gen("cl_kernel.set_arg(%d, %s)" % (cl_arg_idx, arg.name))
-            cl_arg_idx += 1
-
-        elif arg.dtype.is_complex():
-            assert isinstance(arg.dtype, NumpyType)
-
-            dtype = arg.dtype
-
-            if warn_about_arg_count_bug:
-                from warnings import warn
-                warn("{knl_name}: arguments include complex numbers, and "
-                        "some (but not all) of the target devices mishandle "
-                        "struct kernel arguments (hence the workaround is "
-                        "disabled".format(
-                            knl_name=kernel.name))
-
-            if dtype.numpy_dtype == np.complex64:
-                arg_char = "f"
-            elif dtype.numpy_dtype == np.complex128:
-                arg_char = "d"
-            else:
-                raise TypeError("unexpected complex type: %s" % dtype)
-
-            if (work_around_arg_count_bug
-                    and dtype.numpy_dtype == np.complex128
-                    and fp_arg_count + 2 <= 8):
-                gen(
-                        "buf = _lpy_pack('{arg_char}', {arg_var}.real)"
-                        .format(arg_char=arg_char, arg_var=arg.name))
-                gen(
-                        "cl_kernel.set_arg({cl_arg_idx}, buf)"
-                        .format(cl_arg_idx=cl_arg_idx))
-                cl_arg_idx += 1
-
-                gen(
-                        "buf = _lpy_pack('{arg_char}', {arg_var}.imag)"
-                        .format(arg_char=arg_char, arg_var=arg.name))
-                gen(
-                        "cl_kernel.set_arg({cl_arg_idx}, buf)"
-                        .format(cl_arg_idx=cl_arg_idx))
-                cl_arg_idx += 1
-            else:
-                gen(
-                        "buf = _lpy_pack('{arg_char}{arg_char}', "
-                        "{arg_var}.real, {arg_var}.imag)"
-                        .format(arg_char=arg_char, arg_var=arg.name))
-                gen(
-                        "cl_kernel.set_arg({cl_arg_idx}, buf)"
-                        .format(cl_arg_idx=cl_arg_idx))
-                cl_arg_idx += 1
-
-            fp_arg_count += 2
-
-        elif isinstance(arg.dtype, NumpyType):
-            if arg.dtype.dtype.kind == "f":
-                fp_arg_count += 1
-
-            gen("cl_kernel.set_arg(%d, _lpy_pack('%s', %s))"
-                    % (cl_arg_idx, arg.dtype.dtype.char, arg.name))
-
-            cl_arg_idx += 1
-
-        else:
-            raise LoopyError("do not know how to pass argument of type '%s'"
-                    % arg.dtype)
-
-        gen("")
-
-        gen("# }}}")
-        gen("")
-
-    assert cl_arg_idx == cl_kernel.num_args
-
-    return arg_idx_to_cl_arg_idx
-
-# }}}
-
-
-# {{{ array arg setup
-
-def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
-        arg_idx_to_cl_arg_idx):
+def generate_arg_setup(gen, kernel, implemented_data_info, options):
     import loopy as lp
 
     from loopy.kernel.array import ArrayBase
@@ -461,13 +315,16 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
         gen("_lpy_encountered_dev = False")
         gen("")
 
+    args = []
+
     strify = StringifyMapper()
 
-    for arg_idx, arg in enumerate(impl_arg_info):
+    for arg_idx, arg in enumerate(implemented_data_info):
         is_written = arg.base_name in kernel.get_written_variables()
         kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
 
         if not issubclass(arg.arg_class, ArrayBase):
+            args.append(arg.name)
             continue
 
         gen("# {{{ process %s" % arg.name)
@@ -667,12 +524,11 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
             gen("del _lpy_made_by_loopy")
             gen("")
 
-        cl_arg_idx = arg_idx_to_cl_arg_idx[arg_idx]
-
         if arg.arg_class in [lp.GlobalArg, lp.ConstantArg]:
-            gen("cl_kernel.set_arg(%d, %s.base_data)" % (cl_arg_idx, arg.name))
+            args.append("%s.base_data" % arg.name)
         else:
-            gen("cl_kernel.set_arg(%d, %s)" % (cl_arg_idx, arg.name))
+            args.append("%s" % arg.name)
+
         gen("")
 
         gen("# }}}")
@@ -681,19 +537,23 @@ def generate_array_arg_setup(gen, kernel, impl_arg_info, options,
     gen("# }}}")
     gen("")
 
+    return args
+
 # }}}
 
 
-def generate_invoker(kernel, cl_kernel, impl_arg_info, options):
+def generate_invoker(kernel, implemented_data_info, host_code):
+    options = kernel.options
+
     system_args = [
-            "cl_kernel", "queue", "allocator=None", "wait_for=None",
+            "_lpy_cl_kernels", "queue", "allocator=None", "wait_for=None",
             # ignored if options.no_numpy
             "out_host=None"
             ]
 
     gen = PythonFunctionGenerator(
             "invoke_%s_loopy_kernel" % kernel.name,
-            system_args + ["%s=None" % iai.name for iai in impl_arg_info])
+            system_args + ["%s=None" % iai.name for iai in implemented_data_info])
 
     gen.add_to_preamble("from __future__ import division")
     gen.add_to_preamble("")
@@ -701,7 +561,8 @@ def generate_invoker(kernel, cl_kernel, impl_arg_info, options):
     gen.add_to_preamble("import pyopencl.array as _lpy_cl_array")
     gen.add_to_preamble("import pyopencl.tools as _lpy_cl_tools")
     gen.add_to_preamble("import numpy as _lpy_np")
-    gen.add_to_preamble("from struct import pack as _lpy_pack")
+    gen.add_to_preamble("")
+    gen.add_to_preamble(host_code)
     gen.add_to_preamble("")
 
     gen("if allocator is None:")
@@ -709,37 +570,21 @@ def generate_invoker(kernel, cl_kernel, impl_arg_info, options):
         gen("allocator = _lpy_cl_tools.DeferredAllocator(queue.context)")
     gen("")
 
-    generate_integer_arg_finding_from_shapes(gen, kernel, impl_arg_info, options)
-    generate_integer_arg_finding_from_offsets(gen, kernel, impl_arg_info, options)
-    generate_integer_arg_finding_from_strides(gen, kernel, impl_arg_info, options)
+    generate_integer_arg_finding_from_shapes(gen, kernel, implemented_data_info)
+    generate_integer_arg_finding_from_offsets(gen, kernel, implemented_data_info)
+    generate_integer_arg_finding_from_strides(gen, kernel, implemented_data_info)
 
-    arg_idx_to_cl_arg_idx = \
-            generate_value_arg_setup(gen, kernel, cl_kernel, impl_arg_info, options)
-    generate_array_arg_setup(gen, kernel, impl_arg_info, options,
-            arg_idx_to_cl_arg_idx)
+    args = generate_arg_setup(gen, kernel, implemented_data_info, options)
 
     # {{{ generate invocation
 
-    from loopy.symbolic import StringifyMapper
-
-    strify = StringifyMapper()
-    gsize_expr, lsize_expr = kernel.get_grid_sizes_as_exprs()
-
-    if not gsize_expr:
-        gsize_expr = (1,)
-    if not lsize_expr:
-        lsize_expr = (1,)
-
-    def strify_tuple(t):
-        return "(%s,)" % (
-                ", ".join("int(%s)" % strify(t_i) for t_i in t))
-
-    gen("_lpy_evt = _lpy_cl.enqueue_nd_range_kernel(queue, cl_kernel, "
-            "%(gsize)s, %(lsize)s,  wait_for=wait_for, g_times_l=True)"
-            % dict(
-                gsize=strify_tuple(gsize_expr),
-                lsize=strify_tuple(lsize_expr)))
-    gen("")
+    gen("_lpy_evt = {kernel_name}({args})"
+            .format(
+                kernel_name=kernel.name,
+                args=", ".join(
+                    ["_lpy_cl_kernels", "queue"]
+                    + args
+                    + ["wait_for=wait_for"])))
 
     # }}}
 
@@ -754,7 +599,7 @@ def generate_invoker(kernel, cl_kernel, impl_arg_info, options):
         gen("if out_host:")
         with Indentation(gen):
             gen("pass")  # if no outputs (?!)
-            for arg_idx, arg in enumerate(impl_arg_info):
+            for arg_idx, arg in enumerate(implemented_data_info):
                 is_written = arg.base_name in kernel.get_written_variables()
                 if is_written:
                     gen("%s = %s.get(queue=queue)" % (arg.name, arg.name))
@@ -764,11 +609,11 @@ def generate_invoker(kernel, cl_kernel, impl_arg_info, options):
     if options.return_dict:
         gen("return _lpy_evt, {%s}"
                 % ", ".join("\"%s\": %s" % (arg.name, arg.name)
-                    for arg in impl_arg_info
+                    for arg in implemented_data_info
                     if arg.base_name in kernel.get_written_variables()))
     else:
         out_args = [arg
-                for arg in impl_arg_info
+                for arg in implemented_data_info
                 if arg.base_name in kernel.get_written_variables()]
         if out_args:
             gen("return _lpy_evt, (%s,)"
@@ -801,6 +646,10 @@ class _CLKernelInfo(Record):
     pass
 
 
+class _CLKernels(object):
+    pass
+
+
 class CompiledKernel:
     """An object connecting a kernel to a :class:`pyopencl.Context`
     for execution.
@@ -819,7 +668,9 @@ class CompiledKernel:
         """
 
         self.context = context
-        self.kernel = kernel
+
+        from loopy.target.pyopencl import PyOpenCLTarget
+        self.kernel = kernel.copy(target=PyOpenCLTarget(context.devices[0]))
 
         self.packing_controller = SeparateArrayPackingController(kernel)
 
@@ -865,11 +716,13 @@ class CompiledKernel:
     def cl_kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
 
-        from loopy.codegen import generate_code
-        code, impl_arg_info = generate_code(kernel)
+        from loopy.codegen import generate_code_v2
+        codegen_result = generate_code_v2(kernel)
+
+        dev_code = codegen_result.device_code()
 
         if self.kernel.options.write_cl:
-            output = code
+            output = dev_code
             if self.kernel.options.highlight_cl:
                 output = get_highlighted_cl_code(output)
 
@@ -881,23 +734,31 @@ class CompiledKernel:
 
         if self.kernel.options.edit_cl:
             from pytools import invoke_editor
-            code = invoke_editor(code, "code.cl")
+            dev_code = invoke_editor(dev_code, "code.cl")
 
         import pyopencl as cl
 
         logger.info("%s: opencl compilation start" % self.kernel.name)
-        cl_program = cl.Program(self.context, code)
-        cl_kernel = getattr(
-                cl_program.build(options=kernel.options.cl_build_options),
-                kernel.name)
+
+        cl_program = (
+                cl.Program(self.context, dev_code)
+                .build(options=kernel.options.cl_build_options))
+
+        cl_kernels = _CLKernels()
+        for dp in codegen_result.device_programs:
+            setattr(cl_kernels, dp.name, getattr(cl_program, dp.name))
+
         logger.info("%s: opencl compilation done" % self.kernel.name)
 
         return _CLKernelInfo(
                 kernel=kernel,
-                cl_kernel=cl_kernel,
-                impl_arg_info=impl_arg_info,
+                cl_kernels=cl_kernels,
+                implemented_data_info=codegen_result.implemented_data_info,
                 invoker=generate_invoker(
-                    kernel, cl_kernel, impl_arg_info, self.kernel.options))
+                    kernel,
+                    codegen_result.implemented_data_info,
+                    codegen_result.host_code(),
+                    ))
 
     # {{{ debugging aids
 
@@ -907,9 +768,9 @@ class CompiledKernel:
 
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
 
-        from loopy.codegen import generate_code
-        code, arg_info = generate_code(kernel)
-        return code
+        from loopy.codegen import generate_code_v2
+        code = generate_code_v2(kernel)
+        return code.device_code()
 
     def get_highlighted_code(self, arg_to_dtype=None):
         return get_highlighted_cl_code(
@@ -979,7 +840,7 @@ class CompiledKernel:
                 frozenset(six.iteritems(arg_to_dtype)))
 
         return kernel_info.invoker(
-                kernel_info.cl_kernel, queue, allocator, wait_for,
+                kernel_info.cl_kernels, queue, allocator, wait_for,
                 out_host, **kwargs)
 
 # }}}

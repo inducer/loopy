@@ -178,7 +178,6 @@ by passing :attr:`loopy.Options.write_cl`.
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
-    <BLANKLINE>
       for (int i = 0; i <= -1 + n; ++i)
         out[i] = 2.0f * a[i];
     }
@@ -220,7 +219,7 @@ inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
     >>> evt, (out,) = knl(queue, a=x_vec_host)
     from __future__ import division
     ...
-    def invoke_loopy_kernel_loopy_kernel(cl_kernel, queue, allocator=None, wait_for=None, out_host=None, a=None, n=None, out=None):
+    def invoke_loopy_kernel_loopy_kernel(_lpy_cl_kernels, queue, allocator=None, wait_for=None, out_host=None, a=None, n=None, out=None):
         if allocator is None:
             allocator = _lpy_cl_tools.DeferredAllocator(queue.context)
     <BLANKLINE>
@@ -228,9 +227,9 @@ inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
     <BLANKLINE>
         if n is None:
             if a is not None:
-                n = a.shape[0]
+                n = int(a.shape[0])
             elif out is not None:
-                n = out.shape[0]
+                n = int(out.shape[0])
     <BLANKLINE>
         # }}}
     ...
@@ -253,7 +252,6 @@ call :func:`loopy.generate_code`:
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
-    <BLANKLINE>
       for (int i = 0; i <= -1 + n; ++i)
         out[i] = 2.0f * a[i];
     }
@@ -369,7 +367,6 @@ Let us take a look at the generated code for the above kernel:
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
-    <BLANKLINE>
       for (int i = 0; i <= -1 + n; ++i)
         for (int j = 0; j <= -1 + n; ++j)
         {
@@ -419,7 +416,6 @@ Now the intended code is generated and our test passes.
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
-    <BLANKLINE>
       for (int i = 0; i <= -1 + n; ++i)
         for (int j = 0; j <= -1 + n; ++j)
           out[n * j + i] = a[n * i + j];
@@ -628,8 +624,9 @@ loop's tag to ``"unr"``:
     >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    #define int_floor_div_pos_b(a,b) (                 ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b)                 )
     #define lid(N) ((int) get_local_id(N))
+    #define gid(N) ((int) get_group_id(N))
+    #define int_floor_div_pos_b(a,b) (                 ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b)                 )
     ...
       for (int i_outer = 0; i_outer <= int_floor_div_pos_b(-4 + n, 4); ++i_outer)
       {
@@ -707,7 +704,6 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     ...
     __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *restrict a, int const n)
     {
-    <BLANKLINE>
       if (-1 + -128 * gid(0) + -1 * lid(0) + n >= 0)
         a[lid(0) + gid(0) * 128] = 0.0f;
     }
@@ -721,7 +717,7 @@ those for us:
 
 .. doctest::
 
-    >>> glob, loc = knl.get_grid_sizes()
+    >>> glob, loc = knl.get_grid_size_upper_bounds()
     >>> print(glob)
     (Aff("[n] -> { [(floor((127 + n)/128))] }"),)
     >>> print(loc)

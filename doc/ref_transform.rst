@@ -112,7 +112,10 @@ Finishing up
 
 .. autofunction:: get_one_scheduled_kernel
 
-.. autofunction:: generate_code
+.. autoclass:: GeneratedProgram
+.. autoclass:: CodeGenerationResult
+
+.. autofunction:: generate_code_v2
 
 Setting options
 ---------------

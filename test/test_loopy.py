@@ -1740,17 +1740,23 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
                 outer_tag=outer_tag)
         knl = lp.set_loop_priority(knl, "i_outer")
 
-        a = cl.clrandom.rand(queue, 20, np.float32)
+        a = cl.array.empty(queue, 20, np.float32)
+        a.fill(17)
         a_ref = a.copy()
         a_knl = a.copy()
 
-        knl = lp.set_options(knl, "write_cl")
+        knl = lp.set_options(knl, write_cl=True)
+        print("TEST-----------------------------------------")
         knl(queue, a=a_knl)
+        print("REF-----------------------------------------")
         ref_knl(queue, a=a_ref)
+        print("DONE-----------------------------------------")
 
-        queue.finish()
-
+        print("REF", a_ref)
+        print("KNL", a_knl)
         assert (a_ref == a_knl).get().all()
+
+        print("_________________________________")
 
 
 def test_multiple_writes_to_local_temporary():
@@ -2391,10 +2397,12 @@ def test_ispc_target(occa_mode=False):
     knl = lp.split_iname(knl, "i_outer", 4, outer_tag="g.0", inner_tag="ilp")
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
 
-    print(
-            lp.generate_code(
+    codegen_result = lp.generate_code_v2(
                 lp.get_one_scheduled_kernel(
-                    lp.preprocess_kernel(knl)))[0])
+                    lp.preprocess_kernel(knl)))
+
+    print(codegen_result.device_code())
+    print(codegen_result.host_code())
 
 
 def test_cuda_target():
@@ -2554,6 +2562,81 @@ def test_random123(ctx_factory, tp):
     out = out.get()
     assert (out < 1).all()
     assert (0 <= out).all()
+
+
+def test_kernel_splitting(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            c[i] = a[i + 1]
+            out[i] = c[i]
+            """)
+
+    knl = lp.add_and_infer_dtypes(knl,
+            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    # schedule
+    from loopy.preprocess import preprocess_kernel
+    knl = preprocess_kernel(knl)
+
+    from loopy.schedule import get_one_scheduled_kernel
+    knl = get_one_scheduled_kernel(knl)
+
+    # map schedule onto host or device
+    print(knl)
+
+    cgr = lp.generate_code_v2(knl)
+
+    assert len(cgr.device_programs) == 2
+
+    print(cgr.device_code())
+    print(cgr.host_code())
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
+def test_kernel_splitting_with_loop(ctx_factory):
+    #ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i,k]: 0<=i<n and 0<=k<3 }",
+            """
+            c[k,i] = a[k, i + 1]
+            out[k,i] = c[k,i]
+            """)
+
+    knl = lp.add_and_infer_dtypes(knl,
+            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    # schedule
+    from loopy.preprocess import preprocess_kernel
+    knl = preprocess_kernel(knl)
+
+    from loopy.schedule import get_one_scheduled_kernel
+    knl = get_one_scheduled_kernel(knl)
+
+    # map schedule onto host or device
+    print(knl)
+
+    cgr = lp.generate_code_v2(knl)
+
+    assert len(cgr.device_programs) == 2
+
+    print(cgr.device_code())
+    print(cgr.host_code())
+
+    # Doesn't yet work--not passing k
+    #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
 if __name__ == "__main__":

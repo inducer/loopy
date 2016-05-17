@@ -110,7 +110,11 @@ from loopy.statistics import (get_op_poly, sum_ops_to_dtypes,
         get_DRAM_access_poly, get_barrier_poly, stringify_stats_mapping,
         sum_mem_access_to_bytes,
         gather_access_footprints, gather_access_footprint_bytes)
-from loopy.codegen import generate_code, generate_body
+from loopy.codegen import (
+        generate_code, generate_code_v2, generate_body)
+from loopy.codegen.result import (
+        GeneratedProgram,
+        CodeGenerationResult)
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
@@ -196,7 +200,8 @@ __all__ = [
 
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules", "get_one_scheduled_kernel",
-        "generate_code", "generate_body",
+        "GeneratedProgram", "CodeGenerationResult",
+        "generate_code", "generate_code_v2", "generate_body",
 
         "get_op_poly", "sum_ops_to_dtypes", "get_gmem_access_poly",
         "get_DRAM_access_poly",

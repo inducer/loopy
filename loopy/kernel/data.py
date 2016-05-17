@@ -202,8 +202,8 @@ class GlobalArg(ArrayBase, KernelArgument):
     min_target_axes = 0
     max_target_axes = 1
 
-    def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        return target.get_global_arg_decl(self.name + name_suffix, shape,
+    def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
+        return ast_builder.get_global_arg_decl(self.name + name_suffix, shape,
                 dtype, is_written)
 
 
@@ -211,8 +211,8 @@ class ConstantArg(ArrayBase, KernelArgument):
     min_target_axes = 0
     max_target_axes = 1
 
-    def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        return target.get_constant_arg_decl(self.name + name_suffix, shape,
+    def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
+        return ast_builder.get_constant_arg_decl(self.name + name_suffix, shape,
                 dtype, is_written)
 
 
@@ -224,8 +224,8 @@ class ImageArg(ArrayBase, KernelArgument):
     def dimensions(self):
         return len(self.dim_tags)
 
-    def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        return target.get_image_arg_decl(self.name + name_suffix, shape,
+    def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
+        return ast_builder.get_image_arg_decl(self.name + name_suffix, shape,
                 self.num_target_axes(), dtype, is_written)
 
 
@@ -258,8 +258,8 @@ class ValueArg(KernelArgument):
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
 
-    def get_arg_decl(self, target):
-        return target.get_value_arg_decl(self.name, (),
+    def get_arg_decl(self, ast_builder):
+        return ast_builder.get_value_arg_decl(self.name, (),
                 self.dtype, False)
 
 # }}}

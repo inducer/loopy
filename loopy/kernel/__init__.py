@@ -198,7 +198,7 @@ class LoopKernel(RecordWithoutPickling):
             # When kernels get intersected in slab decomposition,
             # their grid sizes shouldn't change. This provides
             # a way to forward sub-kernel grid size requests.
-            get_grid_sizes=None):
+            get_grid_sizes_for_insn_ids=None):
 
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
@@ -264,9 +264,9 @@ class LoopKernel(RecordWithoutPickling):
         if np.iinfo(index_dtype.numpy_dtype).min >= 0:
             raise TypeError("index_dtype must be signed")
 
-        if get_grid_sizes is not None:
+        if get_grid_sizes_for_insn_ids is not None:
             # overwrites method down below
-            self.get_grid_sizes = get_grid_sizes
+            self.get_grid_sizes_for_insn_ids = get_grid_sizes_for_insn_ids
 
         if state not in [
                 kernel_state.INITIAL,
@@ -307,8 +307,11 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ function mangling
 
-    def mangle_function(self, identifier, arg_dtypes):
-        manglers = self.target.function_manglers() + self.function_manglers
+    def mangle_function(self, identifier, arg_dtypes, ast_builder=None):
+        if ast_builder is None:
+            ast_builder = self.target.get_device_ast_builder()
+
+        manglers = ast_builder.function_manglers() + self.function_manglers
 
         for mangler in manglers:
             mangle_result = mangler(self, identifier, arg_dtypes)
@@ -349,8 +352,8 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ symbol mangling
 
-    def mangle_symbol(self, identifier):
-        manglers = self.target.symbol_manglers() + self.symbol_manglers
+    def mangle_symbol(self, ast_builder, identifier):
+        manglers = ast_builder.symbol_manglers() + self.symbol_manglers
 
         for mangler in manglers:
             result = mangler(self, identifier)
@@ -895,9 +898,20 @@ class LoopKernel(RecordWithoutPickling):
                 constants_only=True)))
 
     @memoize_method
-    def get_grid_sizes(self, ignore_auto=False):
+    def get_grid_sizes_for_insn_ids(self, insn_ids, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of all instructions whose IDs are given
+        in *insn_ids*.
+
+        :arg insn_ids: a :class:`frozenset` of instruction IDs
+
+        *global_size* and *local_size* are :class:`islpy.PwAff` objects.
+        """
+
         all_inames_by_insns = set()
-        for insn in self.instructions:
+        for insn_id in insn_ids:
+            insn = self.id_to_insn[insn_id]
+
             all_inames_by_insns |= self.insn_inames(insn)
 
         if not all_inames_by_insns <= self.all_inames():
@@ -973,14 +987,45 @@ class LoopKernel(RecordWithoutPickling):
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
-    def get_grid_sizes_as_exprs(self, ignore_auto=False):
-        grid_size, group_size = self.get_grid_sizes(ignore_auto)
+    def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of all instructions whose IDs are given
+        in *insn_ids*.
+
+        :arg insn_ids: a :class:`frozenset` of instruction IDs
+
+        *global_size* and *local_size* are :mod:`pymbolic` expressions
+        """
+
+        grid_size, group_size = self.get_grid_sizes_for_insn_ids(
+                insn_ids, ignore_auto)
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
             return tuple(pw_aff_to_expr(i, int_ok=True) for i in tup)
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
+
+    def get_grid_size_upper_bounds(self, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of *all* instructions in the kernel.
+
+        *global_size* and *local_size* are :class:`islpy.PwAff` objects.
+        """
+        return self.get_grid_sizes_for_insn_ids(
+                frozenset(insn.id for insn in self.instructions),
+                ignore_auto=ignore_auto)
+
+    def get_grid_size_upper_bounds_as_exprs(self, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of *all* instructions in the kernel.
+
+        *global_size* and *local_size* are :mod:`pymbolic` expressions
+        """
+
+        return self.get_grid_sizes_for_insn_ids_as_exprs(
+                frozenset(insn.id for insn in self.instructions),
+                ignore_auto=ignore_auto)
 
     # }}}
 

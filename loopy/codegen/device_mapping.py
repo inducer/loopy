@@ -1,4 +1,16 @@
+from __future__ import division, absolute_import, print_function
+
+__copyright__ = "Copyright (C) 2016 Matt Wala"
+
+__license__ = """
+(unclear)
+"""
+
+# TODO: Matt, please replace the license header
+# TODO: Should move to loopy.schedule.device_mapping
+
 from pytools import Record
+from loopy.diagnostic import LoopyError
 
 
 def postprocess(kernel, global_barrier_splitting=False):
@@ -15,19 +27,16 @@ def postprocess(kernel, global_barrier_splitting=False):
             kernel.schedule +
             [ReturnFromKernel(kernel_name=kernel.name)])
         return kernel.copy(schedule=new_schedule)
-
     # Split the schedule onto host or device.
     kernel = map_schedule_onto_host_or_device(kernel)
     # Compute which temporaries and inames go into which kernel
     kernel = save_and_restore_temporaries(kernel)
-
     return kernel
 
 
 def get_block_boundaries(schedule):
     from loopy.schedule import (
         EnterLoop, LeaveLoop, CallKernel, ReturnFromKernel)
-
     block_bounds = {}
     active_blocks = []
     for idx, sched_item in enumerate(schedule):
@@ -259,6 +268,18 @@ def save_and_restore_temporaries(kernel):
             "Cannot promote temporaries with base_storage to global"
 
         hw_inames = get_common_hw_inames(kernel, def_lists[temporary.name])
+=======
+class HostInvokeKernel(Record):
+    # TOOD: Should have docstring indicating what attributes can occur
+    pass
+
+
+def map_schedule_onto_host_or_device(kernel):
+    from functools import partial
+    kernel_name_gen = partial(
+            kernel.get_var_name_generator(),
+            kernel.name + kernel.target.device_program_name_suffix)
+>>>>>>> 55ba3a29f0cf120ae0f74be5d0ee2bb7773ba8e5
 
         # This takes advantage of the fact that g < l in the alphabet :)
         hw_inames = sorted(hw_inames,
@@ -538,8 +559,8 @@ def map_schedule_onto_host_or_device(kernel):
                     current_chunk.append(sched_item)
                 i += 1
             else:
-                # TODO: Make error message more informative.
-                raise ValueError()
+                raise LoopyError("unexepcted type of schedule item: %s"
+                        % type(sched_item).__name__)
 
         if current_chunk and schedule_required_splitting:
             # Wrap remainder of schedule into a kernel call.

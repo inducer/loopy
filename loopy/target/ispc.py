@@ -26,8 +26,8 @@ THE SOFTWARE.
 
 
 import numpy as np  # noqa
-from loopy.target.c import CTarget
-from loopy.target.c.codegen.expression import LoopyCCodeMapper
+from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c.codegen.expression import ExpressionToCMapper
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.stringifier import (PREC_SUM, PREC_CALL)
 
@@ -36,7 +36,7 @@ from pytools import memoize_method
 
 # {{{ expression mapper
 
-class LoopyISPCCodeMapper(LoopyCCodeMapper):
+class ExprToISPCMapper(ExpressionToCMapper):
     def _get_index_ctype(self):
         if self.kernel.index_dtype.numpy_dtype == np.int32:
             return "int32"
@@ -81,7 +81,7 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
             else:
                 return expr.name
         else:
-            return super(LoopyISPCCodeMapper, self).map_variable(
+            return super(ExprToISPCMapper, self).map_variable(
                     expr, enclosing_prec, type_context)
 
     def map_subscript(self, expr, enclosing_prec, type_context):
@@ -90,7 +90,7 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
         ary = self.find_array(expr)
 
         if isinstance(ary, TemporaryVariable):
-            gsize, lsize = self.kernel.get_grid_sizes_as_exprs()
+            gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:
                 lsize, = lsize
                 from loopy.kernel.array import get_access_info
@@ -113,7 +113,7 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
                 else:
                     return result
 
-        return super(LoopyISPCCodeMapper, self).map_subscript(
+        return super(ExprToISPCMapper, self).map_subscript(
                 expr, enclosing_prec, type_context)
 
 # }}}
@@ -157,6 +157,24 @@ class ISPCTarget(CTarget):
 
         super(ISPCTarget, self).__init__()
 
+    host_program_name_suffix = ""
+    device_program_name_suffix = "_inner"
+
+    def pre_codegen_check(self, kernel):
+        gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs()
+        if len(lsize) > 1:
+            for i, ls_i in enumerate(lsize[1:]):
+                if ls_i != 1:
+                    raise LoopyError("local axis %d (0-based) "
+                            "has length > 1, which is unsupported "
+                            "by ISPC" % ls_i)
+
+    def get_host_ast_builder(self):
+        return ISPCASTBuilder(self)
+
+    def get_device_ast_builder(self):
+        return ISPCASTBuilder(self)
+
     # {{{ types
 
     @memoize_method
@@ -169,23 +187,20 @@ class ISPCTarget(CTarget):
 
     # }}}
 
-    # {{{ top-level codegen
 
-    def generate_code(self, kernel, codegen_state, impl_arg_info):
-        from cgen import (FunctionBody, FunctionDeclaration, Value, Module,
-                Block, Line, Statement as S)
-        from cgen.ispc import ISPCExport, ISPCTask
+class ISPCASTBuilder(CASTBuilder):
+    def _arg_names_and_decls(self, codegen_state):
+        implemented_data_info = codegen_state.implemented_data_info
+        arg_names = [iai.name for iai in implemented_data_info]
 
-        knl_body, implemented_domains = kernel.target.generate_body(
-                kernel, codegen_state)
-
-        inner_name = "lp_ispc_inner_"+kernel.name
-        arg_decls = [iai.cgen_declarator for iai in impl_arg_info]
-        arg_names = [iai.name for iai in impl_arg_info]
+        arg_decls = [
+                self.idi_to_cgen_declarator(codegen_state.kernel, idi)
+                for idi in implemented_data_info]
 
         # {{{ occa compatibility hackery
 
-        if self.occa_mode:
+        from cgen import Value
+        if self.target.occa_mode:
             from cgen import ArrayOf, Const
             from cgen.ispc import ISPCUniform
 
@@ -199,97 +214,85 @@ class ISPCTarget(CTarget):
 
         # }}}
 
-        knl_fbody = FunctionBody(
-                ISPCTask(
+        return arg_names, arg_decls
+
+    # {{{ top-level codegen
+
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        name = codegen_result.current_program(codegen_state).name
+
+        from cgen import (FunctionDeclaration, Value)
+        from cgen.ispc import ISPCExport, ISPCTask
+
+        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+
+        if codegen_state.is_generating_device_code:
+            return ISPCTask(
+                        FunctionDeclaration(
+                            Value("void", name),
+                            arg_decls))
+        else:
+            return ISPCExport(
                     FunctionDeclaration(
-                        Value("void", inner_name),
-                        arg_decls)),
-                knl_body)
+                        Value("void", name),
+                        arg_decls))
 
-        # {{{ generate wrapper
+    # }}}
 
-        wrapper_body = Block()
-
-        gsize, lsize = kernel.get_grid_sizes_as_exprs()
-        if len(lsize) > 1:
-            for i, ls_i in enumerate(lsize[1:]):
-                if ls_i != 1:
-                    raise LoopyError("local axis %d (0-based) "
-                            "has length > 1, which is unsupported "
-                            "by ISPC" % ls_i)
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         from pymbolic.mapper.stringifier import PREC_COMPARISON, PREC_NONE
-        ccm = self.get_expression_to_code_mapper(codegen_state)
-
+        result = []
+        from cgen import Statement as S, Block
         if lsize:
-            wrapper_body.append(
+            result.append(
                     S("assert(programCount == %s)"
-                        % ccm(lsize[0], PREC_COMPARISON)))
+                        % ecm(lsize[0], PREC_COMPARISON)))
 
         if gsize:
             launch_spec = "[%s]" % ", ".join(
-                                ccm(gs_i, PREC_NONE)
+                                ecm(gs_i, PREC_NONE)
                                 for gs_i in gsize)
         else:
             launch_spec = ""
 
-        wrapper_body.append(
-                S("launch%s %s(%s)"
-                    % (
-                        launch_spec,
-                        inner_name,
-                        ", ".join(arg_names)
-                        ))
-                )
+        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
 
-        wrapper_fbody = FunctionBody(
-                ISPCExport(
-                    FunctionDeclaration(
-                        Value("void", kernel.name),
-                        arg_decls)),
-                wrapper_body)
+        result.append(S(
+            "launch%s %s(%s)" % (
+                launch_spec,
+                name,
+                ", ".join(arg_names)
+                )))
 
-        # }}}
-
-        mod = Module([
-            knl_fbody,
-            Line(),
-            wrapper_fbody,
-            ])
-
-        return str(mod), implemented_domains
-
-    # }}}
+        return Block(result)
 
     # {{{ code generation guts
 
     def get_expression_to_code_mapper(self, codegen_state):
-        return LoopyISPCCodeMapper(codegen_state)
+        return ExprToISPCMapper(codegen_state)
 
     def add_vector_access(self, access_str, index):
         return "(%s)[%d]" % (access_str, index)
 
     def emit_barrier(self, kind, comment):
-        from loopy.codegen import GeneratedInstruction
         from cgen import Comment, Statement
 
         assert comment
 
         if kind == "local":
-            return GeneratedInstruction(
-                    ast=Comment("local barrier: %s" % comment),
-                    implemented_domain=None)
+            return Comment("local barrier: %s" % comment)
 
         elif kind == "global":
-            return GeneratedInstruction(
-                    ast=Statement("sync; /* %s */" % comment),
-                    implemented_domain=None)
+            return Statement("sync; /* %s */" % comment)
 
         else:
             raise LoopyError("unknown barrier kind")
 
     def get_temporary_decl(self, knl, temp_var, decl_info):
-        from loopy.codegen import POD  # uses the correct complex type
+        from loopy.target.c import POD  # uses the correct complex type
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
         shape = decl_info.shape
@@ -311,7 +314,7 @@ class ISPCTarget(CTarget):
         return ISPCUniform(decl)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.codegen import POD  # uses the correct complex type
+        from loopy.target.c import POD  # uses the correct complex type
         from cgen import Const
         from cgen.ispc import ISPCUniformPointer, ISPCUniform
 
@@ -325,7 +328,7 @@ class ISPCTarget(CTarget):
         return arg_decl
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):
-        result = super(ISPCTarget, self).get_value_arg_decl(
+        result = super(ISPCASTBuilder, self).get_value_arg_decl(
                 name, shape, dtype, is_written)
 
         from cgen import Reference, Const
@@ -334,7 +337,7 @@ class ISPCTarget(CTarget):
         if was_const:
             result = result.subdecl
 
-        if self.occa_mode:
+        if self.target.occa_mode:
             result = Reference(result)
 
         if was_const:
@@ -349,19 +352,19 @@ class ISPCTarget(CTarget):
 
         from loopy.symbolic import aff_to_expr
 
-        from loopy.codegen import wrap_in
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For
 
-        return wrap_in(For,
+        return For(
                 "uniform %s %s = %s"
-                % (self.dtype_to_typename(iname_dtype),
+                % (self.target.dtype_to_typename(iname_dtype),
                     iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                 "%s <= %s" % (
                     iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
                 "++%s" % iname,
                 inner)
     # }}}
+
 
 # TODO: Generate launch code
 # TODO: Vector types (element access: done)

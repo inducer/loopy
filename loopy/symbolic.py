@@ -33,8 +33,7 @@ from pytools import memoize, memoize_method, Record
 import pytools.lex
 
 from pymbolic.primitives import (
-        Leaf, AlgebraicLeaf, Expression, Variable,
-        CommonSubexpression)
+        Leaf, AlgebraicLeaf, Expression, Variable, CommonSubexpression)
 
 from pymbolic.mapper import (
         CombineMapper as CombineMapperBase,
@@ -1094,7 +1093,7 @@ def ineq_constraint_from_expr(space, expr):
     return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
 
 
-def constraint_to_expr(cns, except_name=None):
+def constraint_to_expr(cns):
     # Looks like this is ok after all--get_aff() performs some magic.
     # Not entirely sure though... FIXME
     #
@@ -1102,7 +1101,13 @@ def constraint_to_expr(cns, except_name=None):
     #if ls.dim(dim_type.div):
         #raise RuntimeError("constraint has an existentially quantified variable")
 
-    return aff_to_expr(cns.get_aff(), except_name=except_name)
+    expr = aff_to_expr(cns.get_aff())
+
+    from pymbolic.primitives import Comparison
+    if cns.is_equality():
+        return Comparison(expr, "==", 0)
+    else:
+        return Comparison(expr, ">=", 0)
 
 # }}}
 
