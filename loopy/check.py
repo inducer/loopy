@@ -342,33 +342,6 @@ def check_write_destinations(kernel):
                     or wvar in kernel.arg_dict) and wvar not in kernel.all_params():
                 raise LoopyError
 
-
-def check_that_temporaries_are_well_defined_in_hw_axes(kernel):
-    from loopy.schedule.device_mapping import (
-        get_common_hw_inames, get_def_and_use_lists_for_all_temporaries,
-        get_hw_inames)
-
-    def_lists, use_lists = get_def_and_use_lists_for_all_temporaries(kernel)
-
-    for temporary in sorted(def_lists):
-        def_list = def_lists[temporary]
-        hw_inames = get_common_hw_inames(kernel, def_list)
-
-        # Ensure that no use of the temporary is at a loop nesting level
-        # that is "more general" than the definition.
-        for use in use_lists[temporary]:
-            if not hw_inames <= get_hw_inames(kernel, use):
-                raise LoopyError(
-                    "Temporary variable `{temporary}` gets used in a more "
-                    "general hardware parallel loop than it is defined. "
-                    "(used by instruction id `{id}`, inames: {use_inames}) "
-                    "(defined in inames: {def_inames}).".format(
-                        temporary=temporary,
-                        id=use,
-                        use_inames=", ".join(
-                            sorted(get_hw_inames(kernel, use))),
-                        def_inames=", ".join(sorted(hw_inames))))
-
 # }}}
 
 
@@ -386,7 +359,6 @@ def pre_schedule_checks(kernel):
         check_for_data_dependent_parallel_bounds(kernel)
         check_bounds(kernel)
         check_write_destinations(kernel)
-        check_that_temporaries_are_well_defined_in_hw_axes(kernel)
 
         logger.info("pre-schedule check %s: done" % kernel.name)
     except KeyboardInterrupt:
