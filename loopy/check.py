@@ -365,7 +365,8 @@ def check_that_temporaries_are_well_defined_in_hw_axes(kernel):
                     "(defined in inames: {def_inames}).".format(
                         temporary=temporary,
                         id=use,
-                        use_inames=", ".join(sorted(get_hw_inames(insn))),
+                        use_inames=", ".join(
+                            sorted(get_hw_inames(kernel, use))),
                         def_inames=", ".join(sorted(hw_inames))))
 
 # }}}
