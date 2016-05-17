@@ -672,6 +672,3 @@ def map_schedule_onto_host_or_device_impl(kernel):
 
     new_kernel = kernel.copy(schedule=new_schedule)
     return new_kernel
-
-
-# }}}
