@@ -488,7 +488,7 @@ def restore_and_save_temporaries(kernel):
 
         from loopy.kernel.data import Assignment
         # After loading local temporaries, we need to insert a barrier.
-        needs_local_barrier = False
+        local_temporaries = set()
 
         from loopy.kernel.tools import DomainChanger
         for tval in tvals_to_load:
@@ -513,11 +513,14 @@ def restore_and_save_temporaries(kernel):
             new_instructions.append(new_insn)
             subkernel_prolog.append(RunInstruction(insn_id=insn_id))
             if new_temporaries[tval].orig_temporary.is_local:
-                needs_local_barrier = True
+                local_temporaries.append(new_temporaries[tval].name)
 
-        if needs_local_barrier:
+        if local_temporaries:
             from loopy.schedule import Barrier
-            subkernel_prolog.append(Barrier(kind="local"))
+            subkernel_prolog.append(
+                Barrier(kind="local",
+                        comment="for loads of {0}".format(
+                            ", ".join(sorted(local_temporaries)))))
 
         for tval in tvals_to_spill:
             tval_hw_inames = new_temporaries[tval].hw_inames
