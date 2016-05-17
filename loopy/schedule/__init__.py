@@ -1506,7 +1506,7 @@ def generate_loop_schedules(kernel, debug_args={}):
                         schedule=gen_sched,
                         state=kernel_state.SCHEDULED)
 
-                from loopy.codegen.device_mapping import \
+                from loopy.schedule.device_mapping import \
                         map_schedule_onto_host_or_device
                 new_kernel = map_schedule_onto_host_or_device(new_kernel)
                 yield new_kernel

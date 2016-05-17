@@ -317,6 +317,9 @@ class OpenCLTarget(CTarget):
 
         self.atomics_flavor = atomics_flavor
 
+    def split_kernel_at_global_barriers(self):
+        return True
+
     def get_device_ast_builder(self):
         return OpenCLCASTBuilder(self)
 

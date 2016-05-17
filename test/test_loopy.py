@@ -2639,6 +2639,47 @@ def test_kernel_splitting_with_loop(ctx_factory):
     #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
+def test_kernel_splitting_with_loop_and_temporaries(ctx_factory):
+    #ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i,k]: 0<=i<n and 0<=k<3 }",
+            """
+            <> t_extra_dim[i,0,i] = i
+            <> t_private = a[k,i+1]
+            <> t_local[k,i] = a[k,i+1]
+            c[k,i] = a[k,i+1] + t_extra_dim[i,0,i]
+            out[k,i] = c[k,i] + t_private + t_local[k,i]
+            """)
+
+    knl = lp.add_and_infer_dtypes(knl,
+            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    # schedule
+    from loopy.preprocess import preprocess_kernel
+    knl = preprocess_kernel(knl)
+
+    from loopy.schedule import get_one_scheduled_kernel
+    knl = get_one_scheduled_kernel(knl)
+
+    # map schedule onto host or device
+    print(knl)
+
+    cgr = lp.generate_code_v2(knl)
+
+    assert len(cgr.device_programs) == 3
+
+    print(cgr.device_code())
+    print(cgr.host_code())
+
+    # Doesn't yet work--not passing k, temporaries
+    #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
