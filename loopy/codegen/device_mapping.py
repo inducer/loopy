@@ -37,7 +37,9 @@ def map_schedule_onto_host_or_device(kernel):
     from functools import partial
     kernel_name_gen = partial(
             kernel.get_var_name_generator(),
-            kernel.name + kernel.target.device_program_name_suffix)
+            kernel.target.device_program_name_prefix
+            + kernel.name
+            + kernel.target.device_program_name_suffix)
 
     from loopy.schedule import (
         RunInstruction, EnterLoop, LeaveLoop, Barrier,

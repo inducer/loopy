@@ -542,8 +542,10 @@ def generate_arg_setup(gen, kernel, implemented_data_info, options):
 # }}}
 
 
-def generate_invoker(kernel, implemented_data_info, host_code):
+def generate_invoker(kernel, codegen_result):
     options = kernel.options
+    implemented_data_info = codegen_result.implemented_data_info
+    host_code = codegen_result.host_code()
 
     system_args = [
             "_lpy_cl_kernels", "queue", "allocator=None", "wait_for=None",
@@ -580,7 +582,7 @@ def generate_invoker(kernel, implemented_data_info, host_code):
 
     gen("_lpy_evt = {kernel_name}({args})"
             .format(
-                kernel_name=kernel.name,
+                kernel_name=codegen_result.host_program.name,
                 args=", ".join(
                     ["_lpy_cl_kernels", "queue"]
                     + args
@@ -754,11 +756,7 @@ class CompiledKernel:
                 kernel=kernel,
                 cl_kernels=cl_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
-                invoker=generate_invoker(
-                    kernel,
-                    codegen_result.implemented_data_info,
-                    codegen_result.host_code(),
-                    ))
+                invoker=generate_invoker(kernel, codegen_result))
 
     # {{{ debugging aids
 

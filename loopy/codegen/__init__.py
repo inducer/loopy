@@ -456,7 +456,10 @@ def generate_code_v2(kernel):
             allow_complex=allow_complex,
             var_name_generator=kernel.get_var_name_generator(),
             is_generating_device_code=False,
-            gen_program_name=kernel.name,
+            gen_program_name=(
+                kernel.target.host_program_name_prefix
+                + kernel.name
+                + kernel.target.host_program_name_suffix),
             schedule_index_end=len(kernel.schedule))
 
     from loopy.codegen.result import generate_host_or_device_program

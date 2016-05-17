@@ -81,7 +81,9 @@ class TargetBase(object):
 
     # }}}
 
+    host_program_name_prefix = ""
     host_program_name_suffix = "_outer"
+    device_program_name_prefix = ""
     device_program_name_suffix = ""
 
     def split_kernel_at_global_barriers(self):

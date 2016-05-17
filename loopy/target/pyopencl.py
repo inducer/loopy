@@ -269,6 +269,9 @@ class PyOpenCLTarget(OpenCLTarget):
     warnings) and support for complex numbers.
     """
 
+    host_program_name_prefix = "_lpy_host_"
+    host_program_name_suffix = ""
+
     def __init__(self, device=None, pyopencl_module_name="_lpy_cl"):
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
