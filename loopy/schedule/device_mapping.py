@@ -669,8 +669,10 @@ def map_schedule_onto_host_or_device_impl(kernel):
 
     # Assign names, inames to CallKernel / ReturnFromKernel instructions
     inames = []
-    from pytools import UniqueNameGenerator
-    kernel_name_gen = UniqueNameGenerator(forced_prefix=kernel.name)
+    from functools import partial
+    kernel_name_gen = partial(
+                kernel.get_var_name_generator(),
+                kernel.name + kernel.target.device_program_name_suffix)
     for idx, sched_item in enumerate(new_schedule):
         if isinstance(sched_item, CallKernel):
             last_kernel_name = kernel_name_gen()
