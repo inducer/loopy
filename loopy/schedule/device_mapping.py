@@ -267,9 +267,17 @@ def restore_and_save_temporaries(kernel):
     inter_kernel_temporaries = set()
     from loopy.schedule import CallKernel, ReturnFromKernel, RunInstruction
 
+    call_count = 0
     for idx, sched_item in enumerate(kernel.schedule):
-        if isinstance(sched_item, CallKernel) and idx != 0:
+        if isinstance(sched_item, CallKernel):
             inter_kernel_temporaries |= filter_out_subscripts(live_in[idx])
+            call_count = 1
+        elif isinstance(sched_item, ReturnFromKernel):
+            inter_kernel_temporaries |= filter_out_subscripts(live_out[idx])
+
+    if call_count == 1:
+        # Single kernel call - needs no saves / restores
+        return kernel
 
     def_lists, use_lists = get_def_and_use_lists_for_all_temporaries(kernel)
 
