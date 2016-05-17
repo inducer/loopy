@@ -513,7 +513,7 @@ def restore_and_save_temporaries(kernel):
             new_instructions.append(new_insn)
             subkernel_prolog.append(RunInstruction(insn_id=insn_id))
             if new_temporaries[tval].orig_temporary.is_local:
-                local_temporaries.append(new_temporaries[tval].name)
+                local_temporaries.add(new_temporaries[tval].name)
 
         if local_temporaries:
             from loopy.schedule import Barrier
