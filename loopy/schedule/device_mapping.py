@@ -268,10 +268,8 @@ def restore_and_save_temporaries(kernel):
     from loopy.schedule import CallKernel, ReturnFromKernel, RunInstruction
 
     for idx, sched_item in enumerate(kernel.schedule):
-        if isinstance(sched_item, CallKernel):
+        if isinstance(sched_item, CallKernel) and idx != 0:
             inter_kernel_temporaries |= filter_out_subscripts(live_in[idx])
-        elif isinstance(sched_item, ReturnFromKernel):
-            inter_kernel_temporaries |= filter_out_subscripts(live_out[idx])
 
     def_lists, use_lists = get_def_and_use_lists_for_all_temporaries(kernel)
 
@@ -331,7 +329,6 @@ def restore_and_save_temporaries(kernel):
         # This takes advantage of the fact that g < l in the alphabet :)
         hw_inames = sorted(hw_inames,
             key=lambda iname: str(kernel.iname_to_tag[iname]))
-        print("meow", hw_inames)
 
         shape_prefix = []
         idx = 0
@@ -433,10 +430,10 @@ def restore_and_save_temporaries(kernel):
                 dim_inames.append(new_iname)
                 # Add size information.
                 aff = isl.affs_from_space(domain.space)
-                domain &= aff[0].le_set(aff[iname])
+                domain &= aff[0].le_set(aff[new_iname])
                 size = temporary.orig_temporary.shape[t_idx]
                 from loopy.symbolic import aff_from_expr
-                domain &= aff[iname].le_set(aff_from_expr(domain.space, size))
+                domain &= aff[new_iname].le_set(aff_from_expr(domain.space, size))
 
             hw_inames = []
 
