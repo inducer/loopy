@@ -151,6 +151,9 @@ class ASTBuilderBase(object):
             schedule_index):
         raise NotImplementedError
 
+    def generate_top_of_body(self, codegen_state):
+        return []
+
     def get_temporary_decls(self, codegen_state):
         raise NotImplementedError
 

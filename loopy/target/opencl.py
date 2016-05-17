@@ -401,20 +401,17 @@ class OpenCLCASTBuilder(CASTBuilder):
 
         return fdecl
 
-    def generate_body(self, kernel, codegen_state):
-        body, implemented_domains = (
-                super(OpenCLCASTBuilder, self).generate_body(kernel, codegen_state))
-
+    def generate_top_of_body(self, codegen_state):
         from loopy.kernel.data import ImageArg
-
-        if any(isinstance(arg, ImageArg) for arg in kernel.args):
+        if any(isinstance(arg, ImageArg) for arg in codegen_state.kernel.args):
             from cgen import Value, Const, Initializer
-            body.contents.insert(0,
+            return [
                     Initializer(Const(Value("sampler_t", "loopy_sampler")),
                         "CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP "
-                        "| CLK_FILTER_NEAREST"))
+                        "| CLK_FILTER_NEAREST")
+                    ]
 
-        return body, implemented_domains
+        return []
 
     # }}}
 

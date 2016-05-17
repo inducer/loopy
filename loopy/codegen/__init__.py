@@ -338,7 +338,12 @@ class CodeGenerationState(object):
         for i in range(vinf.length):
             idx_aff = isl.Aff.zero_on_domain(vinf.space.params()) + i
             new_codegen_state = novec_self.fix(vinf.iname, idx_aff)
-            result.extend(func(new_codegen_state))
+            generated = func(new_codegen_state)
+
+            if isinstance(generated, list):
+                result.extend(generated)
+            else:
+                result.append(generated)
 
         from loopy.codegen.result import merge_codegen_results
         return merge_codegen_results(self, result)

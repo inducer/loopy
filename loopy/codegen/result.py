@@ -257,7 +257,9 @@ def generate_host_or_device_program(codegen_state, schedule_index):
 
     codegen_result = merge_codegen_results(
             codegen_state,
-            temp_decls + [codegen_result],
+            ast_builder.generate_top_of_body(codegen_state)
+            + temp_decls
+            + [codegen_result],
             collapse=False)
 
     cur_prog = codegen_result.current_program(codegen_state)

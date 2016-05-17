@@ -289,10 +289,17 @@ class PyOpenCLTarget(OpenCLTarget):
         if self.device is not None:
             dev_id = self.device.persistent_unique_id
 
-        return {"device_id": dev_id, "atomics_flavor": self.atomics_flavor}
+        return {
+                "device_id": dev_id,
+                "atomics_flavor": self.atomics_flavor,
+                "fortran_abi": self.fortran_abi,
+                "pyopencl_module_name": self.pyopencl_module_name,
+                }
 
     def __setstate__(self, state):
         self.atomics_flavor = state["atomics_flavor"]
+        self.fortran_abi = state["fortran_abi"]
+        self.pyopencl_module_name = state["pyopencl_module_name"]
 
         dev_id = state["device_id"]
         if dev_id is None:

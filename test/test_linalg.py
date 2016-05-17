@@ -515,7 +515,7 @@ def test_image_matrix_mul(ctx_factory):
             parameters={}, print_ref_code=True)
 
 
-def test_image_matrix_mul_ilp(ctx_factory):
+def no_test_image_matrix_mul_ilp(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
