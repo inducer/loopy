@@ -270,6 +270,8 @@ def restore_and_save_temporaries(kernel):
     for idx, sched_item in enumerate(kernel.schedule):
         if isinstance(sched_item, CallKernel):
             inter_kernel_temporaries |= filter_out_subscripts(live_in[idx])
+        elif isinstance(sched_item, ReturnFromKernel):
+            inter_kernel_temporaries |= filter_out_subscripts(live_out[idx])
 
     def_lists, use_lists = get_def_and_use_lists_for_all_temporaries(kernel)
 
@@ -329,15 +331,18 @@ def restore_and_save_temporaries(kernel):
         # This takes advantage of the fact that g < l in the alphabet :)
         hw_inames = sorted(hw_inames,
             key=lambda iname: str(kernel.iname_to_tag[iname]))
+        print("meow", hw_inames)
 
         shape_prefix = []
         idx = 0
+        backing_hw_inames = []
         for iname in hw_inames:
             tag = kernel.iname_to_tag[iname]
             is_local_iname = isinstance(tag, LocalIndexTag)
             if is_local_iname and temporary.scope == temp_var_scope.LOCAL:
                 # Restrict shape to that of group inames for locals.
                 continue
+            backing_hw_inames.append(iname)
             from loopy.isl_helpers import static_max_of_pw_aff
             from loopy.symbolic import aff_to_expr
             shape_prefix.append(
@@ -349,7 +354,7 @@ def restore_and_save_temporaries(kernel):
             name=name_gen(temporary.name),
             orig_temporary=temporary,
             shape_prefix=tuple(shape_prefix),
-            hw_inames=hw_inames)
+            hw_inames=backing_hw_inames)
         new_temporaries[temporary.name] = backing_temporary
 
     # }}}
