@@ -991,7 +991,6 @@ class ArrayBase(Record):
                 # generate stride arguments, yielded later to keep array first
                 for stride_user_axis, stride_impl_axis, stride_unvec_impl_axis \
                         in stride_arg_axes:
-                    from cgen import Const, POD
                     stride_name = full_name+"_stride%d" % stride_user_axis
 
                     from pymbolic import var
@@ -1004,19 +1003,15 @@ class ArrayBase(Record):
                                 target=target,
                                 name=stride_name,
                                 dtype=index_dtype,
-                                cgen_declarator=Const(POD(index_dtype, stride_name)),
                                 arg_class=ValueArg,
                                 stride_for_name_and_axis=(
-                                    full_name, stride_impl_axis)))
+                                    full_name, stride_impl_axis),
+                                is_written=False))
 
                 yield ImplementedDataInfo(
                             target=target,
                             name=full_name,
                             base_name=self.name,
-
-                            # implemented by various argument types
-                            cgen_declarator=self.get_arg_decl(
-                                target, name_suffix, shape, dtype, is_written),
 
                             arg_class=type(self),
                             dtype=dtype,
@@ -1025,18 +1020,18 @@ class ArrayBase(Record):
                             unvec_shape=unvec_shape,
                             unvec_strides=tuple(unvec_strides),
                             allows_offset=bool(self.offset),
-                            )
+
+                            is_written=is_written)
 
                 if self.offset:
-                    from cgen import Const, POD
                     offset_name = full_name+"_offset"
                     yield ImplementedDataInfo(
                                 target=target,
                                 name=offset_name,
                                 dtype=index_dtype,
-                                cgen_declarator=Const(POD(index_dtype, offset_name)),
                                 arg_class=ValueArg,
-                                offset_for_name=full_name)
+                                offset_for_name=full_name,
+                                is_written=False)
 
                 for sa in stride_args:
                     yield sa

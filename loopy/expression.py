@@ -231,7 +231,10 @@ class TypeInferenceMapper(CombineMapper):
         if expr.name in self.kernel.all_inames():
             return self.kernel.index_dtype
 
-        result = self.kernel.mangle_symbol(expr.name)
+        result = self.kernel.mangle_symbol(
+                self.kernel.target.get_device_ast_builder(),
+                expr.name)
+
         if result is not None:
             result_dtype, _ = result
             return result_dtype

@@ -116,10 +116,6 @@ class NumpyType(LoopyType):
         self.dtype = self.target.get_or_register_dtype([name], NumpyType(dtype))
 
     def with_target(self, target):
-        if (self.target is not None
-                and target is not self.target):
-            raise RuntimeError("target already set to different value")
-
         return type(self)(self.dtype, target)
 
     def assert_has_target(self):

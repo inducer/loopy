@@ -1,25 +1,43 @@
+from __future__ import division, absolute_import, print_function
+
+__copyright__ = "Copyright (C) 2016 Matt Wala"
+
+__license__ = """
+(unclear)
+"""
+
+# TODO: Matt, please replace the license header
+# TODO: Should move to loopy.schedule.device_mapping
+
 from pytools import Record
+from loopy.diagnostic import LoopyError
 
 
 class HostForLoop(Record):
+    # TOOD: Should have docstring indicating what attributes can occur
     pass
 
 
 class HostConditional(Record):
+    # TOOD: Should have docstring indicating what attributes can occur
     pass
 
 
 class HostBlock(Record):
+    # TOOD: Should have docstring indicating what attributes can occur
     pass
 
 
 class HostInvokeKernel(Record):
+    # TOOD: Should have docstring indicating what attributes can occur
     pass
 
 
 def map_schedule_onto_host_or_device(kernel):
-    from pytools import UniqueNameGenerator
-    kernel_name_gen = UniqueNameGenerator(forced_prefix=kernel.name)
+    from functools import partial
+    kernel_name_gen = partial(
+            kernel.get_var_name_generator(),
+            kernel.name + kernel.target.device_program_name_suffix)
 
     from loopy.schedule import (
         RunInstruction, EnterLoop, LeaveLoop, Barrier,
@@ -67,7 +85,6 @@ def map_schedule_onto_host_or_device(kernel):
                 if loop_required_splitting:
                     schedule_required_splitting = True
                     if current_chunk:
-                        # TODO: Do a better job of naming the kernel...
                         new_kernel_name = kernel_name_gen()
                         new_schedule.extend(
                             # TODO: Infer kernel arguments
@@ -92,7 +109,6 @@ def map_schedule_onto_host_or_device(kernel):
                     # Wrap the current chunk into a kernel call.
                     schedule_required_splitting = True
                     if current_chunk:
-                        # TODO: Do a better job of naming the kernel
                         new_kernel_name = kernel_name_gen()
                         new_schedule.extend(
                             # TODO: Infer kernel arguments
@@ -106,8 +122,8 @@ def map_schedule_onto_host_or_device(kernel):
                     current_chunk.append(sched_item)
                 i += 1
             else:
-                # TODO: Make error message more informative.
-                raise ValueError()
+                raise LoopyError("unexepcted type of schedule item: %s"
+                        % type(sched_item).__name__)
 
         if current_chunk and schedule_required_splitting:
             # Wrap remainder of schedule into a kernel call.
@@ -131,7 +147,7 @@ def map_schedule_onto_host_or_device(kernel):
     if not split_kernel:
         # Wrap everything into a kernel call.
         new_schedule = (
-            [CallKernel(kernel_name=kernel.name)] +
+            [CallKernel(kernel_name=kernel_name_gen())] +
             new_schedule +
             [ReturnFromKernel(kernel_name=kernel.name)])
     new_kernel = kernel.copy(schedule=new_schedule)

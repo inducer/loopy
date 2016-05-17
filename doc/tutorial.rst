@@ -721,7 +721,7 @@ those for us:
 
 .. doctest::
 
-    >>> glob, loc = knl.get_grid_sizes()
+    >>> glob, loc = knl.get_grid_size_upper_bounds()
     >>> print(glob)
     (Aff("[n] -> { [(floor((127 + n)/128))] }"),)
     >>> print(loc)

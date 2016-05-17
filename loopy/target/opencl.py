@@ -26,8 +26,8 @@ THE SOFTWARE.
 
 import numpy as np
 
-from loopy.target.c import CTarget
-from loopy.target.c.codegen.expression import LoopyCCodeMapper
+from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c.codegen.expression import ExpressionToCMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
@@ -272,12 +272,21 @@ def opencl_preamble_generator(preamble_info):
             #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
             """)
 
+    from loopy.tools import remove_common_indentation
+    kernel = preamble_info.kernel
+    yield ("00_declare_gid_lid",
+            remove_common_indentation("""
+                #define lid(N) ((%(idx_ctype)s) get_local_id(N))
+                #define gid(N) ((%(idx_ctype)s) get_group_id(N))
+                """ % dict(idx_ctype=kernel.target.dtype_to_typename(
+                    kernel.index_dtype))))
+
 # }}}
 
 
 # {{{ expression mapper
 
-class LoopyOpenCLCCodeMapper(LoopyCCodeMapper):
+class ExpressionToOpenCLCMapper(ExpressionToCMapper):
     def map_group_hw_index(self, expr, enclosing_prec, type_context):
         return "gid(%d)" % expr.axis
 
@@ -307,29 +316,8 @@ class OpenCLTarget(CTarget):
 
         self.atomics_flavor = atomics_flavor
 
-    # {{{ library
-
-    def function_manglers(self):
-        return (
-                super(OpenCLTarget, self).function_manglers() + [
-                    opencl_function_mangler
-                    ])
-
-    def symbol_manglers(self):
-        return (
-                super(OpenCLTarget, self).symbol_manglers() + [
-                    opencl_symbol_mangler
-                    ])
-
-    def preamble_generators(self):
-        from loopy.library.reduction import reduction_preamble_generator
-        return (
-                super(OpenCLTarget, self).preamble_generators() + [
-                    opencl_preamble_generator,
-                    reduction_preamble_generator
-                    ])
-
-    # }}}
+    def get_device_ast_builder(self):
+        return OpenCLCASTBuilder(self)
 
     @memoize_method
     def get_dtype_registry(self):
@@ -359,13 +347,50 @@ class OpenCLTarget(CTarget):
 
     # }}}
 
+# }}}
+
+
+# {{{ ast builder
+
+class OpenCLCASTBuilder(CASTBuilder):
+    # {{{ library
+
+    def function_manglers(self):
+        return (
+                super(OpenCLCASTBuilder, self).function_manglers() + [
+                    opencl_function_mangler
+                    ])
+
+    def symbol_manglers(self):
+        return (
+                super(OpenCLCASTBuilder, self).symbol_manglers() + [
+                    opencl_symbol_mangler
+                    ])
+
+    def preamble_generators(self):
+        from loopy.library.reduction import reduction_preamble_generator
+        return (
+                super(OpenCLCASTBuilder, self).preamble_generators() + [
+                    opencl_preamble_generator,
+                    reduction_preamble_generator
+                    ])
+
+    # }}}
+
     # {{{ top-level codegen
 
-    def wrap_function_declaration(self, kernel, fdecl):
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        fdecl = super(OpenCLCASTBuilder, self).get_function_declaration(
+                codegen_state, codegen_result, schedule_index)
+
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
         fdecl = CLKernel(fdecl)
 
-        _, local_sizes = kernel.get_grid_sizes_as_exprs()
+        from loopy.schedule import get_insn_ids_for_block_at
+        _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
+                get_insn_ids_for_block_at(
+                    codegen_state.kernel.schedule, schedule_index))
 
         from loopy.symbolic import get_dependencies
         if not get_dependencies(local_sizes):
@@ -376,25 +401,9 @@ class OpenCLTarget(CTarget):
 
         return fdecl
 
-    def generate_code(self, kernel, codegen_state, impl_arg_info):
-        code, implemented_domains = (
-                super(OpenCLTarget, self).generate_code(
-                    kernel, codegen_state, impl_arg_info))
-
-        from loopy.tools import remove_common_indentation
-        code = (
-                remove_common_indentation("""
-                    #define lid(N) ((%(idx_ctype)s) get_local_id(N))
-                    #define gid(N) ((%(idx_ctype)s) get_group_id(N))
-                    """ % dict(idx_ctype=self.dtype_to_typename(kernel.index_dtype)))
-                + "\n\n"
-                + code)
-
-        return code, implemented_domains
-
     def generate_body(self, kernel, codegen_state):
         body, implemented_domains = (
-                super(OpenCLTarget, self).generate_body(kernel, codegen_state))
+                super(OpenCLCASTBuilder, self).generate_body(kernel, codegen_state))
 
         from loopy.kernel.data import ImageArg
 
@@ -412,7 +421,7 @@ class OpenCLTarget(CTarget):
     # {{{ code generation guts
 
     def get_expression_to_code_mapper(self, codegen_state):
-        return LoopyOpenCLCCodeMapper(codegen_state)
+        return ExpressionToOpenCLCMapper(codegen_state)
 
     def add_vector_access(self, access_str, index):
         # The 'int' avoids an 'L' suffix for long ints.
@@ -427,11 +436,8 @@ class OpenCLTarget(CTarget):
             if comment:
                 comment = " /* %s */" % comment
 
-            from loopy.codegen import GeneratedInstruction
             from cgen import Statement
-            return GeneratedInstruction(
-                    ast=Statement("barrier(CLK_LOCAL_MEM_FENCE)%s" % comment),
-                    implemented_domain=None)
+            return Statement("barrier(CLK_LOCAL_MEM_FENCE)%s" % comment)
         elif kind == "global":
             raise LoopyError("OpenCL does not have global barriers")
         else:
@@ -450,7 +456,7 @@ class OpenCLTarget(CTarget):
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from cgen.opencl import CLGlobal
 
-        return CLGlobal(super(OpenCLTarget, self).get_global_arg_decl(
+        return CLGlobal(super(OpenCLCASTBuilder, self).get_global_arg_decl(
             name, shape, dtype, is_written))
 
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
@@ -486,7 +492,7 @@ class OpenCLTarget(CTarget):
         if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
                 np.int32, np.int64, np.float32, np.float64]:
             from cgen import Block, DoWhile, Assign
-            from loopy.codegen import POD
+            from loopy.target.c import POD
             old_val_var = codegen_state.var_name_generator("loopy_old_val")
             new_val_var = codegen_state.var_name_generator("loopy_new_val")
 

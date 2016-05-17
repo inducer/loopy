@@ -25,7 +25,7 @@ THE SOFTWARE.
 from six.moves import range
 
 from loopy.diagnostic import warn, LoopyError
-from loopy.codegen import gen_code_block
+from loopy.codegen.result import merge_codegen_results
 import islpy as isl
 from islpy import dim_type
 from loopy.codegen.control import build_loop_nest
@@ -34,7 +34,7 @@ from pymbolic.mapper.stringifier import PREC_NONE
 
 # {{{ conditional-reducing slab decomposition
 
-def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
+def get_slab_decomposition(kernel, iname):
     iname_domain = kernel.get_inames_domain(iname)
 
     if iname_domain.is_empty():
@@ -116,7 +116,9 @@ def get_slab_decomposition(kernel, iname, sched_index, codegen_state):
 
 # {{{ unrolled loops
 
-def generate_unroll_loop(kernel, sched_index, codegen_state):
+def generate_unroll_loop(codegen_state, sched_index):
+    kernel = codegen_state.kernel
+
     iname = kernel.schedule[sched_index].iname
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
@@ -147,16 +149,18 @@ def generate_unroll_loop(kernel, sched_index, codegen_state):
         idx_aff = lower_bound_aff + i
         new_codegen_state = codegen_state.fix(iname, idx_aff)
         result.append(
-                build_loop_nest(kernel, sched_index+1, new_codegen_state))
+                build_loop_nest(new_codegen_state, sched_index+1))
 
-    return gen_code_block(result)
+    return merge_codegen_results(codegen_state, result)
 
 # }}}
 
 
 # {{{ vectorized loops
 
-def generate_vectorize_loop(kernel, sched_index, codegen_state):
+def generate_vectorize_loop(codegen_state, sched_index):
+    kernel = codegen_state.kernel
+
     iname = kernel.schedule[sched_index].iname
 
     bounds = kernel.get_iname_bounds(iname, constants_only=True)
@@ -206,7 +210,7 @@ def generate_vectorize_loop(kernel, sched_index, codegen_state):
                 length=length,
                 space=length_aff.space))
 
-    return build_loop_nest(kernel, sched_index+1, new_codegen_state)
+    return build_loop_nest(new_codegen_state, sched_index+1)
 
 # }}}
 
@@ -222,8 +226,10 @@ def intersect_kernel_with_slab(kernel, slab, iname):
 
 # {{{ hw-parallel loop
 
-def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
+def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         hw_inames_left=None):
+    kernel = codegen_state.kernel
+
     from loopy.kernel.data import (
             UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag)
 
@@ -233,9 +239,11 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
                 if isinstance(kernel.iname_to_tag.get(iname), HardwareParallelTag)]
 
     if not hw_inames_left:
-        return build_loop_nest(kernel, sched_index, codegen_state)
+        return next_func(codegen_state)
 
-    global_size, local_size = kernel.get_grid_sizes()
+    from loopy.schedule import get_insn_ids_for_block_at
+    global_size, local_size = kernel.get_grid_sizes_for_insn_ids(
+            get_insn_ids_for_block_at(kernel.schedule, schedule_index))
 
     hw_inames_left = hw_inames_left[:]
     iname = hw_inames_left.pop()
@@ -293,8 +301,7 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
 
     # }}}
 
-    slabs = get_slab_decomposition(
-            kernel, iname, sched_index, codegen_state)
+    slabs = get_slab_decomposition(kernel, iname)
 
     if other_inames_with_same_tag and len(slabs) > 1:
         raise RuntimeError("cannot do slab decomposition on inames that share "
@@ -302,38 +309,39 @@ def set_up_hw_parallel_loops(kernel, sched_index, codegen_state,
 
     result = []
 
-    from loopy.codegen import add_comment
-
     for slab_name, slab in slabs:
-        cmt = "%s slab for '%s'" % (slab_name, iname)
         if len(slabs) == 1:
-            cmt = None
+            result.append(
+                    codegen_state.ast_builder.emit_comment(
+                        "%s slab for '%s'" % (slab_name, iname)))
 
         # Have the conditional infrastructure generate the
         # slabbing conditionals.
         slabbed_kernel = intersect_kernel_with_slab(kernel, slab, iname)
-        new_codegen_state = codegen_state.copy_and_assign(iname, hw_axis_expr)
+        new_codegen_state = (codegen_state
+                .copy_and_assign(iname, hw_axis_expr)
+                .copy(kernel=slabbed_kernel))
 
         inner = set_up_hw_parallel_loops(
-                slabbed_kernel, sched_index,
-                new_codegen_state, hw_inames_left)
+                new_codegen_state, schedule_index, next_func,
+                hw_inames_left)
 
-        result.append(add_comment(cmt, inner))
+        result.append(inner)
 
-    from loopy.codegen import gen_code_block
-    return gen_code_block(result)
+    return merge_codegen_results(codegen_state, result)
 
 # }}}
 
 
 # {{{ sequential loop
 
-def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
+def generate_sequential_loop_dim_code(codegen_state, sched_index):
+    kernel = codegen_state.kernel
+
     ecm = codegen_state.expression_to_code_mapper
     loop_iname = kernel.schedule[sched_index].iname
 
-    slabs = get_slab_decomposition(
-            kernel, loop_iname, sched_index, codegen_state)
+    slabs = get_slab_decomposition(kernel, loop_iname)
 
     from loopy.codegen.bounds import get_usable_inames_for_conditional
 
@@ -411,40 +419,45 @@ def generate_sequential_loop_dim_code(kernel, sched_index, codegen_state):
                     dim_type.set, impl_slab.dim(dim_type.set),
                     dt, idx, 1)
 
-        new_codegen_state = codegen_state.intersect(impl_slab)
+        new_codegen_state = (
+                codegen_state
+                .intersect(impl_slab)
+                .copy(kernel=intersect_kernel_with_slab(
+                    kernel, slab, iname)))
 
-        inner = build_loop_nest(
-                intersect_kernel_with_slab(
-                    kernel, slab, iname),
-                sched_index+1, new_codegen_state)
+        inner = build_loop_nest(new_codegen_state, sched_index+1)
 
         # }}}
 
         if cmt is not None:
-            from cgen import Comment
-            result.append(Comment(cmt))
+            result.append(codegen_state.ast_builder.emit_comment(cmt))
 
-        from loopy.codegen import POD
-        from cgen import Initializer, Const, Line
         from loopy.symbolic import aff_to_expr
+
+        astb = codegen_state.ast_builder
 
         if (static_ubound - static_lbound).plain_is_zero():
             # single-trip, generate just a variable assignment, not a loop
-            result.append(gen_code_block([
-                Initializer(
-                    Const(POD(kernel.target, kernel.index_dtype, loop_iname)),
-                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
-                Line(),
+            result.append(merge_codegen_results(codegen_state, [
+                astb.emit_initializer(
+                    codegen_state,
+                    kernel.index_dtype, loop_iname,
+                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i"),
+                    is_const=True),
+                astb.emit_blank_line(),
                 inner,
                 ]))
 
         else:
+            inner_ast = inner.current_ast(codegen_state)
             result.append(
-                kernel.target.emit_sequential_loop(
-                       codegen_state, loop_iname, kernel.index_dtype,
-                       static_lbound, static_ubound, inner))
+                inner.with_new_ast(
+                    codegen_state,
+                    astb.emit_sequential_loop(
+                        codegen_state, loop_iname, kernel.index_dtype,
+                        static_lbound, static_ubound, inner_ast)))
 
-    return gen_code_block(result)
+    return merge_codegen_results(codegen_state, result)
 
 # }}}
 

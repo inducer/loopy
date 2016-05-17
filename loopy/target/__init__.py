@@ -29,6 +29,8 @@ __doc__ = """
 .. currentmodule:: loopy
 
 .. autoclass:: TargetBase
+.. autoclass:: ASTBuilderBase
+
 .. autoclass:: CTarget
 .. autoclass:: CudaTarget
 .. autoclass:: OpenCLTarget
@@ -39,7 +41,7 @@ __doc__ = """
 
 
 class TargetBase(object):
-    """Base class for all targets, i.e. different types of code that
+    """Base class for all targets, i.e. different combinations of code that
     loopy can generate.
 
     Objects of this type must be picklable.
@@ -69,19 +71,6 @@ class TargetBase(object):
 
     # }}}
 
-    # {{{ library
-
-    def function_manglers(self):
-        return []
-
-    def symbol_manglers(self):
-        return []
-
-    def preamble_generators(self):
-        return []
-
-    # }}}
-
     # {{{ top-level codegen
 
     def preprocess(self, kernel):
@@ -90,10 +79,29 @@ class TargetBase(object):
     def pre_codegen_check(self, kernel):
         pass
 
-    def generate_code(self, kernel, codegen_state, impl_arg_info):
-        pass
-
     # }}}
+
+    host_program_name_suffix = "_outer"
+    device_program_name_suffix = ""
+
+    def split_kernel_at_global_barriers(self):
+        """
+        :returns: a :class:`bool` indicating whether the kernel should
+            be split when a global barrier is encountered.
+        """
+        raise NotImplementedError()
+
+    def get_host_ast_builder(self):
+        """
+        :returns: a class implementing :class:`ASTBuilderBase` for the host code
+        """
+        raise NotImplementedError()
+
+    def get_device_ast_builder(self):
+        """
+        :returns: a class implementing :class:`ASTBuilderBase` for the host code
+        """
+        raise NotImplementedError()
 
     # {{{ types
 
@@ -112,7 +120,46 @@ class TargetBase(object):
 
     # }}}
 
+
+class ASTBuilderBase(object):
+    """An interface for generating (host or device) ASTs.
+    """
+
+    def __init__(self, target):
+        self.target = target
+
+    # {{{ library
+
+    def function_manglers(self):
+        return []
+
+    def symbol_manglers(self):
+        return []
+
+    def preamble_generators(self):
+        return []
+
+    # }}}
+
     # {{{ code generation guts
+
+    def get_function_definition(self, codegen_state, codegen_result,
+            schedule_index, function_decl, function_body):
+        raise NotImplementedError
+
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        raise NotImplementedError
+
+    def get_temporary_decls(self, codegen_state):
+        raise NotImplementedError
+
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        raise NotImplementedError
+
+    @property
+    def ast_block_class(self):
+        raise NotImplementedError()
 
     def get_expression_to_code_mapper(self, codegen_state):
         raise NotImplementedError()
@@ -123,7 +170,6 @@ class TargetBase(object):
     def emit_barrier(self, kind, comment):
         """
         :arg kind: ``"local"`` or ``"global"``
-        :return: a :class:`loopy.codegen.GeneratedInstruction`.
         """
         raise NotImplementedError()
 
@@ -133,13 +179,101 @@ class TargetBase(object):
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
-    def generate_multiple_assignment(self, codegen_state, insn):
+    def emit_assignment(self, codegen_state, lhs, rhs):
         raise NotImplementedError()
 
-    def generate_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
+    def emit_multiple_assignment(self, codegen_state, insn):
+        raise NotImplementedError()
+
+    def emit_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype):
         raise NotImplementedError("atomic update in target %s" % type(self).__name__)
 
+    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
+            static_lbound, static_ubound, inner):
+        raise NotImplementedError()
+
+    def emit_if(self, condition_str, ast):
+        raise NotImplementedError()
+
+    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+        raise NotImplementedError()
+
+    def emit_blank_line(self):
+        raise NotImplementedError()
+
+    def emit_comment(self, s):
+        raise NotImplementedError()
+
     # }}}
+
+
+# {{{ dummy host ast builder
+
+class _DummyExpressionToCodeMapper(object):
+    def rec(self, expr, prec, type_context=None, needed_dtype=None):
+        return ""
+
+    __call__ = rec
+
+
+class _DummyASTBlock(object):
+    def __init__(self, arg):
+        self.contents = []
+
+    def __str__(self):
+        return ""
+
+
+class DummyHostASTBuilder(ASTBuilderBase):
+    def get_function_definition(self, codegen_state, codegen_result,
+            schedule_index, function_decl, function_body):
+        return function_body
+
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        return None
+
+    def get_temporary_decls(self, codegen_state):
+        return []
+
+    def get_expression_to_code_mapper(self, codegen_state):
+        return _DummyExpressionToCodeMapper()
+
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        return None
+
+    @property
+    def ast_block_class(self):
+        return _DummyASTBlock
+
+    def emit_assignment(self, codegen_state, lhs, rhs):
+        return None
+
+    def emit_multiple_assignment(self, codegen_state, insn):
+        return None
+
+    def emit_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
+            lhs_expr, rhs_expr, lhs_dtype):
+        return None
+
+    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
+            static_lbound, static_ubound, inner):
+        return None
+
+    def emit_if(self, condition_str, ast):
+        return None
+
+    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+        return None
+
+    def emit_blank_line(self):
+        return None
+
+    def emit_comment(self, s):
+        return None
+
+# }}}
+
 
 # vim: foldmethod=marker

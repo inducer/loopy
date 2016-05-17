@@ -442,7 +442,8 @@ def auto_test_vs_ref(
 
         try:
             ref_args, ref_arg_data = \
-                    make_ref_args(ref_sched_kernel, ref_cl_kernel_info.impl_arg_info,
+                    make_ref_args(ref_sched_kernel,
+                            ref_cl_kernel_info.implemented_data_info,
                             ref_queue, parameters)
             ref_args["out_host"] = False
         except cl.RuntimeError as e:
@@ -529,7 +530,8 @@ def auto_test_vs_ref(
         if args is None:
             cl_kernel_info = compiled.cl_kernel_info(frozenset())
 
-            args = make_args(kernel, cl_kernel_info.impl_arg_info,
+            args = make_args(kernel,
+                    cl_kernel_info.implemented_data_info,
                     queue, ref_arg_data, parameters)
         args["out_host"] = False
 

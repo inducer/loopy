@@ -27,7 +27,7 @@ THE SOFTWARE.
 import six
 
 import numpy as np  # noqa
-from loopy.target import TargetBase
+from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError
 
 from pytools import memoize_method
@@ -91,6 +91,43 @@ def _preamble_generator(preamble_info):
 # }}}
 
 
+# {{{ cgen overrides
+
+from cgen import Declarator
+
+
+class POD(Declarator):
+    """A simple declarator: The type is given as a :class:`numpy.dtype`
+    and the *name* is given as a string.
+    """
+
+    def __init__(self, ast_builder, dtype, name):
+        from loopy.types import LoopyType
+        assert isinstance(dtype, LoopyType)
+
+        self.ast_builder = ast_builder
+        self.ctype = ast_builder.target.dtype_to_typename(dtype)
+        self.dtype = dtype
+        self.name = name
+
+    def get_decl_pair(self):
+        return [self.ctype], self.name
+
+    def struct_maker_code(self, name):
+        return name
+
+    def struct_format(self):
+        return self.dtype.char
+
+    def alignment_requirement(self):
+        return self.ast_builder.target.alignment_requirement(self)
+
+    def default_value(self):
+        return 0
+
+# }}}
+
+
 class CTarget(TargetBase):
     """A target for plain "C", without any parallel extensions.
     """
@@ -101,6 +138,15 @@ class CTarget(TargetBase):
     def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
         super(CTarget, self).__init__()
+
+    def split_kernel_at_global_barriers(self):
+        return False
+
+    def get_host_ast_builder(self):
+        return DummyHostASTBuilder(self)
+
+    def get_device_ast_builder(self):
+        return CASTBuilder(self)
 
     # {{{ types
 
@@ -129,11 +175,13 @@ class CTarget(TargetBase):
 
     # }}}
 
+
+class CASTBuilder(ASTBuilderBase):
     # {{{ library
 
     def preamble_generators(self):
         return (
-                super(CTarget, self).preamble_generators() + [
+                super(CASTBuilder, self).preamble_generators() + [
                     _preamble_generator,
                     ])
 
@@ -141,35 +189,47 @@ class CTarget(TargetBase):
 
     # {{{ code generation
 
-    def generate_code(self, kernel, codegen_state, impl_arg_info):
-        from cgen import FunctionBody, FunctionDeclaration, Value, Module
+    def get_function_definition(self, codegen_state, codegen_result,
+            schedule_index,
+            function_decl, function_body):
+        from cgen import FunctionBody
+        return FunctionBody(function_decl, function_body)
 
-        body, implemented_domains = kernel.target.generate_body(
-                kernel, codegen_state)
+    def idi_to_cgen_declarator(self, kernel, idi):
+        if (idi.offset_for_name is not None
+                or idi.stride_for_name_and_axis is not None):
+            assert not idi.is_written
+            from cgen import Const
+            return Const(POD(self, idi.dtype, idi.name))
+        else:
+            name = idi.base_name or idi.name
+            arg = kernel.arg_dict[name]
+            from loopy.kernel.data import ArrayBase
+            if isinstance(arg, ArrayBase):
+                return arg.get_arg_decl(
+                        self,
+                        idi.name[len(name):], idi.shape, idi.dtype,
+                        idi.is_written)
+            else:
+                return arg.get_arg_decl(self)
 
-        name = kernel.name
-        if self.fortran_abi:
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        from cgen import FunctionDeclaration, Value
+
+        name = codegen_result.current_program(codegen_state).name
+        if self.target.fortran_abi:
             name += "_"
 
-        mod = Module([
-            FunctionBody(
-                kernel.target.wrap_function_declaration(
-                    kernel,
-                    FunctionDeclaration(
+        return FunctionDeclaration(
                         Value("void", name),
-                        [iai.cgen_declarator for iai in impl_arg_info])),
-                body)
-            ])
+                        [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
+                            for idi in codegen_state.implemented_data_info])
 
-        return str(mod), implemented_domains
+    def get_temporary_decls(self, codegen_state):
+        kernel = codegen_state.kernel
 
-    def wrap_function_declaration(self, kernel, fdecl):
-        return fdecl
-
-    def generate_body(self, kernel, codegen_state):
-        from cgen import Block
-        body = Block()
-
+        base_storage_decls = []
         temp_decls = []
 
         # {{{ declare temporaries
@@ -179,7 +239,6 @@ class CTarget(TargetBase):
         base_storage_to_align_bytes = {}
 
         from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute, Value
-        from loopy.codegen import POD  # uses the correct complex type
 
         class ConstRestrictPointer(Pointer):
             def get_decl_pair(self):
@@ -189,7 +248,7 @@ class CTarget(TargetBase):
         for tv in sorted(
                 six.itervalues(kernel.temporary_variables),
                 key=lambda tv: tv.name):
-            decl_info = tv.decl_info(self, index_dtype=kernel.index_dtype)
+            decl_info = tv.decl_info(self.target, index_dtype=kernel.index_dtype)
 
             if not tv.base_storage:
                 for idi in decl_info:
@@ -255,35 +314,27 @@ class CTarget(TargetBase):
             alignment = max(base_storage_to_align_bytes[bs_name])
             bs_var_decl = AlignedAttribute(alignment, bs_var_decl)
 
-            body.append(bs_var_decl)
-
-        body.extend(temp_decls)
+            base_storage_decls.append(bs_var_decl)
 
         # }}}
 
-        from loopy.codegen.loop import set_up_hw_parallel_loops
-        gen_code = set_up_hw_parallel_loops(kernel, 0, codegen_state)
+        return base_storage_decls + temp_decls
 
-        from cgen import Line
-        body.append(Line())
-
-        if isinstance(gen_code.ast, Block):
-            body.extend(gen_code.ast.contents)
-        else:
-            body.append(gen_code.ast)
-
-        return body, gen_code.implemented_domains
+    @property
+    def ast_block_class(self):
+        from cgen import Block
+        return Block
 
     # }}}
 
     # {{{ code generation guts
 
     def get_expression_to_code_mapper(self, codegen_state):
-        from loopy.target.c.codegen.expression import LoopyCCodeMapper
-        return LoopyCCodeMapper(codegen_state, fortran_abi=self.fortran_abi)
+        from loopy.target.c.codegen.expression import ExpressionToCMapper
+        return ExpressionToCMapper(
+                codegen_state, fortran_abi=self.target.fortran_abi)
 
     def get_temporary_decl(self, knl, temp_var, decl_info):
-        from loopy.codegen import POD  # uses the correct complex type
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
         if decl_info.shape:
@@ -299,20 +350,18 @@ class CTarget(TargetBase):
     def get_value_arg_decl(self, name, shape, dtype, is_written):
         assert shape == ()
 
-        from loopy.codegen import POD  # uses the correct complex type
         result = POD(self, dtype, name)
         if not is_written:
             from cgen import Const
             result = Const(result)
 
-        if self.fortran_abi:
+        if self.target.fortran_abi:
             from cgen import Pointer
             result = Pointer(result)
 
         return result
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.codegen import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
 
         arg_decl = RestrictPointer(POD(self, dtype, name))
@@ -322,26 +371,11 @@ class CTarget(TargetBase):
 
         return arg_decl
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
-        ecm = codegen_state.expression_to_code_mapper
+    def emit_assignment(self, codegen_state, lhs, rhs):
+        from cgen import Assign
+        return Assign(lhs, rhs)
 
-        from loopy.symbolic import aff_to_expr
-
-        from loopy.codegen import wrap_in
-        from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For
-
-        return wrap_in(For,
-                "%s %s = %s"
-                % (self.dtype_to_typename(iname_dtype),
-                    iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
-                "%s <= %s" % (
-                    iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
-                "++%s" % iname,
-                inner)
-
-    def generate_multiple_assignment(self, codegen_state, insn):
+    def emit_multiple_assignment(self, codegen_state, insn):
         ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic.primitives import Variable
@@ -371,7 +405,7 @@ class CTarget(TargetBase):
         from loopy.expression import dtype_to_type_context
         str_parameters = [
                 ecm(par, PREC_NONE,
-                    dtype_to_type_context(self, tgt_dtype),
+                    dtype_to_type_context(self.target, tgt_dtype),
                     tgt_dtype)
                 for par, par_dtype, tgt_dtype in zip(
                     parameters, par_dtypes, mangle_result.arg_dtypes)]
@@ -389,7 +423,7 @@ class CTarget(TargetBase):
                         "side of instruction '%s'" % (i+1, insn.id))
             str_parameters.append(
                     "&(%s)" % ecm(a, PREC_NONE,
-                        dtype_to_type_context(self, tgt_dtype),
+                        dtype_to_type_context(self.target, tgt_dtype),
                         tgt_dtype))
 
         result = "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
@@ -405,6 +439,46 @@ class CTarget(TargetBase):
         return Assign(
                 lhs_code,
                 result)
+
+    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
+            static_lbound, static_ubound, inner):
+        ecm = codegen_state.expression_to_code_mapper
+
+        from loopy.symbolic import aff_to_expr
+
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from cgen import For
+
+        return For(
+                "%s %s = %s"
+                % (self.target.dtype_to_typename(iname_dtype),
+                    iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                "%s <= %s" % (
+                    iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
+                "++%s" % iname,
+                inner)
+
+    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+        decl = POD(self, dtype, name)
+
+        from cgen import Initializer, Const
+
+        if is_const:
+            decl = Const(decl)
+
+        return Initializer(decl, val_str)
+
+    def emit_blank_line(self):
+        from cgen import Line
+        return Line()
+
+    def emit_comment(self, s):
+        from cgen import Comment
+        return Comment(s)
+
+    def emit_if(self, condition_str, ast):
+        from cgen import If
+        return If(condition_str, ast)
 
     # }}}
 

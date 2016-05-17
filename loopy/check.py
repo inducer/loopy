@@ -60,7 +60,8 @@ def check_loop_priority_inames_known(kernel):
 
 
 def check_for_unused_hw_axes_in_insns(kernel):
-    group_size, local_size = kernel.get_grid_sizes_as_exprs()
+    # FIXME: This could be made specific to the current kernel piece.
+    group_size, local_size = kernel.get_grid_size_upper_bounds_as_exprs()
 
     group_axes = set(ax for ax, length in enumerate(group_size))
     local_axes = set(ax for ax, length in enumerate(local_size))
