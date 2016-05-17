@@ -71,7 +71,7 @@ class TargetBase(object):
 
     # }}}
 
-    # {{{ top-level codegen
+    # {{{ preprocess
 
     def preprocess(self, kernel):
         return kernel
