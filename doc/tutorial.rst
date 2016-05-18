@@ -227,9 +227,9 @@ inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
     <BLANKLINE>
         if n is None:
             if a is not None:
-                n = int(a.shape[0])
+                n = a.shape[0]
             elif out is not None:
-                n = int(out.shape[0])
+                n = out.shape[0]
     <BLANKLINE>
         # }}}
     ...
