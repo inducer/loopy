@@ -449,9 +449,14 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                 Raise('RuntimeError("input argument \'{name}\' '
                         'must be supplied")'.format(name=idi.name))))
 
-        if sys.version_info < (2, 7) and idi.dtype.is_integral():
-            gen(Comment("cast to long to avoid trouble with struct packing"))
-            gen(Assign(idi.name, "long(%s)" % idi.name))
+        if idi.dtype.is_integral():
+            gen(Comment("cast to Python int to avoid trouble with struct packing or Boost.Python"))
+            if sys.version_info < (3,):
+                py_type = "long"
+            else:
+                py_type = "int"
+
+            gen(Assign(idi.name, "%s(%s)" % (py_type, idi.name)))
             gen(Line())
 
         if idi.dtype.is_composite():
