@@ -29,6 +29,7 @@ import six
 import numpy as np  # noqa
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError
+from cgen import Pointer
 
 from pytools import memoize_method
 
@@ -176,6 +177,12 @@ class CTarget(TargetBase):
     # }}}
 
 
+class _ConstRestrictPointer(Pointer):
+    def get_decl_pair(self):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+        return sub_tp, ("*const restrict %s" % sub_decl)
+
+
 class CASTBuilder(ASTBuilderBase):
     # {{{ library
 
@@ -238,12 +245,7 @@ class CASTBuilder(ASTBuilderBase):
         base_storage_to_scope = {}
         base_storage_to_align_bytes = {}
 
-        from cgen import ArrayOf, Pointer, Initializer, AlignedAttribute, Value, Line
-
-        class ConstRestrictPointer(Pointer):
-            def get_decl_pair(self):
-                sub_tp, sub_decl = self.subdecl.get_decl_pair()
-                return sub_tp, ("*const restrict %s" % sub_decl)
+        from cgen import ArrayOf, Initializer, AlignedAttribute, Value, Line
 
         for tv in sorted(
                 six.itervalues(kernel.temporary_variables),
@@ -286,8 +288,8 @@ class CASTBuilder(ASTBuilderBase):
                     # not use them to shovel data from one representation to the
                     # other. That counts, right?
 
-                    cast_decl = ConstRestrictPointer(cast_decl)
-                    temp_var_decl = ConstRestrictPointer(temp_var_decl)
+                    cast_decl = _ConstRestrictPointer(cast_decl)
+                    temp_var_decl = _ConstRestrictPointer(temp_var_decl)
 
                     cast_tp, cast_d = cast_decl.get_decl_pair()
                     temp_var_decl = Initializer(
