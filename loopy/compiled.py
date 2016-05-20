@@ -192,7 +192,7 @@ def generate_integer_arg_finding_from_shapes(gen, kernel, implemented_data_info)
             for arg_name, value_expr in sources:
                 gen("%s %s is not None:" % (if_stmt, arg_name))
                 with Indentation(gen):
-                    gen("%s = int(%s)"
+                    gen("%s = %s"
                             % (iarg_name, StringifyMapper()(value_expr)))
 
                 if_stmt = "elif"
@@ -226,10 +226,10 @@ def generate_integer_arg_finding_from_offsets(gen, kernel, implemented_data_info
                 gen("else:")
                 with Indentation(gen):
                     if not options.no_numpy:
-                        gen("_lpy_offset = int(getattr(%s, \"offset\", 0))"
+                        gen("_lpy_offset = getattr(%s, \"offset\", 0)"
                                 % impl_array_name)
                     else:
-                        gen("_lpy_offset = int(%s.offset)" % impl_array_name)
+                        gen("_lpy_offset = %s.offset" % impl_array_name)
 
                     base_arg = kernel.impl_arg_to_arg[impl_array_name]
 
@@ -287,9 +287,8 @@ def generate_integer_arg_finding_from_strides(gen, kernel, implemented_data_info
                                 "not divisible by its dtype itemsize\""
                                 % (stride_impl_axis, impl_array_name))
                         gen("del _lpy_remdr")
-                        gen("%s = int(%s)" % (arg.name, arg.name))
                     else:
-                        gen("%s = int(_lpy_offset // %d)"
+                        gen("%s = _lpy_offset // %d"
                                 % (arg.name, base_arg.dtype.itemsize))
 
     gen("# }}}")
@@ -542,8 +541,10 @@ def generate_arg_setup(gen, kernel, implemented_data_info, options):
 # }}}
 
 
-def generate_invoker(kernel, implemented_data_info, host_code):
+def generate_invoker(kernel, codegen_result):
     options = kernel.options
+    implemented_data_info = codegen_result.implemented_data_info
+    host_code = codegen_result.host_code()
 
     system_args = [
             "_lpy_cl_kernels", "queue", "allocator=None", "wait_for=None",
@@ -580,7 +581,7 @@ def generate_invoker(kernel, implemented_data_info, host_code):
 
     gen("_lpy_evt = {kernel_name}({args})"
             .format(
-                kernel_name=kernel.name,
+                kernel_name=codegen_result.host_program.name,
                 args=", ".join(
                     ["_lpy_cl_kernels", "queue"]
                     + args
@@ -754,11 +755,7 @@ class CompiledKernel:
                 kernel=kernel,
                 cl_kernels=cl_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
-                invoker=generate_invoker(
-                    kernel,
-                    codegen_result.implemented_data_info,
-                    codegen_result.host_code(),
-                    ))
+                invoker=generate_invoker(kernel, codegen_result))
 
     # {{{ debugging aids
 
