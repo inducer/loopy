@@ -1440,26 +1440,28 @@ elements in memory. The total number of array accesses has not changed:
     f64 load: 131072
     f64 store: 65536
 
-Counting barriers
-~~~~~~~~~~~~~~~~~
+Counting synchronization events
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:func:`loopy.get_barrier_poly` counts the number of barriers per **thread** in a
-kernel. First, we'll call this function on the kernel from the previous example:
+:func:`loopy.get_synchronization_poly` counts the number of synchronization
+events per **thread** in a kernel. First, we'll call this function on the
+kernel from the previous example:
 
 .. doctest::
 
-    >>> from loopy.statistics import get_barrier_poly
-    >>> barrier_poly = get_barrier_poly(knl)
-    >>> print("Barrier polynomial: %s" % barrier_poly)
-    Barrier polynomial: { 0 }
+    >>> from loopy.statistics import get_synchronization_poly
+    >>> barrier_poly = get_synchronization_poly(knl)
+    >>> print(lp.stringify_stats_mapping(barrier_poly))
+    kernel_launch : { 1 }
+    <BLANKLINE>
 
 We can evaluate this polynomial using :func:`islpy.eval_with_dict`:
 
 .. doctest::
 
-    >>> barrier_count = barrier_poly.eval_with_dict(param_dict)
-    >>> print("Barrier count: %s" % barrier_count)
-    Barrier count: 0
+    >>> launch_count = barrier_poly["kernel_launch"].eval_with_dict(param_dict)
+    >>> print("Kernel launch count: %s" % launch_count)
+    Kernel launch count: 1
 
 Now to make things more interesting, we'll create a kernel with barriers:
 
@@ -1505,12 +1507,11 @@ using :func:`loopy.get_barrier_poly`:
 
 .. doctest::
 
-    >>> barrier_poly = get_barrier_poly(knl)
-    >>> barrier_count = barrier_poly.eval_with_dict({})
-    >>> print("Barrier polynomial: %s\nBarrier count: %i" %
-    ...     (barrier_poly, barrier_count))
-    Barrier polynomial: { 1000 }
-    Barrier count: 1000
+    >>> sync_map = lp.get_synchronization_poly(knl)
+    >>> print(lp.stringify_stats_mapping(sync_map))
+    barrier_local : { 1000 }
+    kernel_launch : { 1 }
+    <BLANKLINE>
 
 Based on the kernel code printed above, we would expect each thread to encounter
 50x10x2 barriers, which matches the result from :func:`loopy.get_barrier_poly`. In

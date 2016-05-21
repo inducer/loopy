@@ -45,7 +45,7 @@ __doc__ = """
 
 .. autofunction:: sum_mem_access_to_bytes
 
-.. autofunction:: get_barrier_poly
+.. autofunction:: get_synchronization_poly
 
 .. autofunction:: gather_access_footprints
 .. autofunction:: gather_access_footprint_bytes
@@ -793,16 +793,21 @@ def sum_mem_access_to_bytes(m):
 # }}}
 
 
-# {{{ get_barrier_poly
+# {{{ get_synchronization_poly
 
-def get_barrier_poly(knl):
+def get_synchronization_poly(knl):
 
-    """Count the number of barriers each thread encounters in a loopy kernel.
+    """Count the number of synchronization events each thread encounters in a
+    loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
-    :return: An :class:`islpy.PwQPolynomial` holding the number of barrier calls
-             made (in terms of the :class:`loopy.LoopKernel` *inames*).
+    :return: A dictionary mapping each type of synchronization event to a
+            :class:`islpy.PwQPolynomial` holding the number of such events
+            per thread.
+
+            Possible keys include ``barrier_local``, ``barrier_global``
+            (if supported by the target) and ``kernel_launch``.
 
     Example usage::
 
@@ -817,13 +822,27 @@ def get_barrier_poly(knl):
     """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.schedule import EnterLoop, LeaveLoop, Barrier
+    from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
+            CallKernel, ReturnFromKernel, RunInstruction)
     from operator import mul
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
     iname_list = []
-    barrier_poly = isl.PwQPolynomial('{ 0 }')
+
+    result = ToCountMap()
+
+    one = isl.PwQPolynomial('{ 1 }')
+
+    def get_count_poly(iname_list):
+        if iname_list:  # (if iname_list is not empty)
+            ct = (count(knl, (
+                            knl.get_inames_domain(iname_list).
+                            project_out_except(iname_list, [dim_type.set])
+                            )), )
+            return reduce(mul, ct)
+        else:
+            return one
 
     for sched_item in knl.schedule:
         if isinstance(sched_item, EnterLoop):
@@ -832,17 +851,23 @@ def get_barrier_poly(knl):
         elif isinstance(sched_item, LeaveLoop):
             if sched_item.iname:  # (if not empty)
                 iname_list.pop()
-        elif isinstance(sched_item, Barrier):
-            if iname_list:  # (if iname_list is not empty)
-                ct = (count(knl, (
-                                knl.get_inames_domain(iname_list).
-                                project_out_except(iname_list, [dim_type.set])
-                                )), )
-                barrier_poly += reduce(mul, ct)
-            else:
-                barrier_poly += isl.PwQPolynomial('{ 1 }')
 
-    return barrier_poly
+        elif isinstance(sched_item, Barrier):
+            result = result + ToCountMap(
+                    {"barrier_%s" % sched_item.kind: get_count_poly(iname_list)})
+
+        elif isinstance(sched_item, CallKernel):
+            result = result + ToCountMap(
+                    {"kernel_launch": get_count_poly(iname_list)})
+
+        elif isinstance(sched_item, (ReturnFromKernel, RunInstruction)):
+            pass
+
+        else:
+            raise LoopyError("unexpected schedule item: %s"
+                    % type(sched_item).__name__)
+
+    return result.dict
 
 # }}}
 
