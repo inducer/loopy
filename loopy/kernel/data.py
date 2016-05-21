@@ -275,19 +275,34 @@ class temp_var_scope:
     .. attribute:: GLOBAL
     """
 
+    # These must occur in ascending order of 'globality' so that
+    # max(scope) does the right thing.
+
     PRIVATE = 0
     LOCAL = 1
     GLOBAL = 2
+
+    @classmethod
+    def stringify(cls, val):
+        if val == cls.PRIVATE:
+            return "private"
+        elif val == cls.LOCAL:
+            return "local"
+        elif val == cls.GLOBAL:
+            return "global"
+        else:
+            raise ValueError("unexpected value of temp_var_scope")
 
 
 class TemporaryVariable(ArrayBase):
     __doc__ = ArrayBase.__doc__ + """
     .. attribute:: storage_shape
     .. attribute:: base_indices
-    .. attribute:: is_local
+    .. attribute:: scope
 
-        Whether this is temporary lives in ``local`` memory.
-        May be *True*, *False*, or :class:`loopy.auto` if this is
+        What memory this temporary variable lives in.
+        One of the values in :class:`temp_var_scope`,
+        or :class:`loopy.auto` if this is
         to be automatically determined.
 
     .. attribute:: base_storage
@@ -304,11 +319,11 @@ class TemporaryVariable(ArrayBase):
     allowed_extra_kwargs = [
             "storage_shape",
             "base_indices",
-            "is_local",
+            "scope",
             "base_storage"
             ]
 
-    def __init__(self, name, dtype=None, shape=(), is_local=auto,
+    def __init__(self, name, dtype=None, shape=(), scope=auto,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
             base_storage=None):
@@ -318,10 +333,6 @@ class TemporaryVariable(ArrayBase):
         :arg base_indices: :class:`loopy.auto` or a tuple of base indices
         """
 
-        if is_local is None:
-            raise ValueError("is_local is None is no longer supported. "
-                    "Use loopy.auto.")
-
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
@@ -329,18 +340,25 @@ class TemporaryVariable(ArrayBase):
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
                 order="C",
-                base_indices=base_indices, is_local=is_local,
+                base_indices=base_indices, scope=scope,
                 storage_shape=storage_shape,
                 base_storage=base_storage)
 
     @property
-    def scope(self):
+    def is_local(self):
         """One of :class:`loopy.temp_var_scope`."""
 
-        if self.is_local:
-            return temp_var_scope.LOCAL
+        if self.scope is auto:
+            return auto
+        elif self.scope == temp_var_scope.LOCAL:
+            return True
+        elif self.scope == temp_var_scope.PRIVATE:
+            return False
+        elif self.scope == temp_var_scope.GLOBAL:
+            raise LoopyError("TemporaryVariable.is_local called on "
+                    "global temporary variable '%s'" % self.name)
         else:
-            return temp_var_scope.PRIVATE
+            raise LoopyError("unexpected value of TemporaryVariable.scope")
 
     @property
     def nbytes(self):
@@ -356,18 +374,31 @@ class TemporaryVariable(ArrayBase):
                 target, is_written=True, index_dtype=index_dtype,
                 shape_override=self.storage_shape)
 
-    def get_arg_decl(self, target, name_suffix, shape, dtype, is_written):
-        return None
+    def get_arg_decl(self, ast_builder, name_suffix, shape, dtype, is_written):
+        if self.scope == temp_var_scope.GLOBAL:
+            return ast_builder.get_global_arg_decl(self.name + name_suffix, shape,
+                    dtype, is_written)
+        else:
+            raise LoopyError("unexpected request for argument declaration of "
+                    "non-global temporary")
 
     def __str__(self):
-        return self.stringify(include_typename=False)
+        if self.scope is auto:
+            scope_str = "auto"
+        else:
+            scope_str = temp_var_scope.stringify(self.scope)
+
+        return (
+                self.stringify(include_typename=False)
+                +
+                " scope:%s" % scope_str)
 
     def __eq__(self, other):
         return (
                 super(TemporaryVariable, self).__eq__(other)
                 and self.storage_shape == other.storage_shape
                 and self.base_indices == other.base_indices
-                and self.is_local == other.is_local
+                and self.scope == other.scope
                 and self.base_storage == other.base_storage)
 
     def update_persistent_hash(self, key_hash, key_builder):
@@ -378,7 +409,7 @@ class TemporaryVariable(ArrayBase):
         super(TemporaryVariable, self).update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
-        key_builder.rec(key_hash, self.is_local)
+        key_builder.rec(key_hash, self.scope)
 
 # }}}
 

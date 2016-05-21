@@ -78,7 +78,8 @@ from loopy.transform.data import (
         add_prefetch, change_arg_to_image, tag_data_axes,
         set_array_dim_names, remove_unused_arguments,
         alias_temporaries, set_argument_order,
-        rename_argument)
+        rename_argument,
+        set_temporary_scope)
 
 from loopy.transform.subst import (extract_subst,
         assignment_to_subst, expand_subst, find_rules_matching,
@@ -107,7 +108,7 @@ from loopy.preprocess import (preprocess_kernel, realize_reduction,
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
 from loopy.statistics import (get_op_poly, sum_ops_to_dtypes,
         get_gmem_access_poly,
-        get_DRAM_access_poly, get_barrier_poly, stringify_stats_mapping,
+        get_DRAM_access_poly, get_synchronization_poly, stringify_stats_mapping,
         sum_mem_access_to_bytes,
         gather_access_footprints, gather_access_footprint_bytes)
 from loopy.codegen import (
@@ -166,7 +167,7 @@ __all__ = [
         "add_prefetch", "change_arg_to_image", "tag_data_axes",
         "set_array_dim_names", "remove_unused_arguments",
         "alias_temporaries", "set_argument_order",
-        "rename_argument",
+        "rename_argument", "set_temporary_scope",
 
         "find_instructions", "map_instructions",
         "set_instruction_priority", "add_dependency",
@@ -205,7 +206,8 @@ __all__ = [
 
         "get_op_poly", "sum_ops_to_dtypes", "get_gmem_access_poly",
         "get_DRAM_access_poly",
-        "get_barrier_poly", "stringify_stats_mapping", "sum_mem_access_to_bytes",
+        "get_synchronization_poly", "stringify_stats_mapping",
+        "sum_mem_access_to_bytes",
         "gather_access_footprints", "gather_access_footprint_bytes",
 
         "CompiledKernel",

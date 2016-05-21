@@ -79,7 +79,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, TemporaryVariable
 
     from pymbolic import evaluate
 
@@ -177,6 +177,11 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
                         ref_alloc_size=alloc_size,
                         ref_numpy_strides=numpy_strides,
                         needs_checking=is_output))
+
+        elif arg.arg_class is TemporaryVariable:
+            # global temporary, handled by invocation logic
+            pass
+
         else:
             raise LoopyError("arg type not understood")
 
@@ -191,7 +196,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, TemporaryVariable
 
     from pymbolic import evaluate
 
@@ -274,6 +279,10 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             arg_desc.test_strides = strides
             arg_desc.test_numpy_strides = numpy_strides
             arg_desc.test_alloc_size = alloc_size
+
+        elif arg.arg_class is TemporaryVariable:
+            # global temporary, handled by invocation logic
+            pass
 
         else:
             raise LoopyError("arg type not understood")

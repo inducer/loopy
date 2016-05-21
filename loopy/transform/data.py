@@ -136,7 +136,8 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 
 def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         default_tag="l.auto", rule_name=None,
-        temporary_name=None, temporary_is_local=None,
+        temporary_name=None,
+        temporary_scope=None, temporary_is_local=None,
         footprint_subscripts=None,
         fetch_bounding_box=False):
     """Prefetch all accesses to the variable *var_name*, with all accesses
@@ -245,7 +246,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
-            temporary_is_local=temporary_is_local)
+            temporary_scope=temporary_scope, temporary_is_local=temporary_is_local)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
@@ -526,6 +527,47 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
         new_args.append(arg)
 
     return kernel.copy(args=new_args)
+
+# }}}
+
+
+# {{{ set temporary scope
+
+def set_temporary_scope(kernel, temp_var_names, scope):
+    """
+    :arg temp_var_names: a container with membership checking,
+        or a comma-separated string of variables for which the
+        scope is to be set.
+    :arg scope: One of the values from :class:`temp_var_scope`, or one
+        of the strings ``"private"``, ``"local"``, or ``"global"``.
+    """
+
+    if isinstance(temp_var_names, str):
+        temp_var_names = [s.strip() for s in temp_var_names.split(",")]
+
+    from loopy.kernel.data import temp_var_scope
+    if isinstance(scope, str):
+        try:
+            scope = getattr(temp_var_scope, scope.upper())
+        except AttributeError:
+            raise LoopyError("scope '%s' unknown" % scope)
+
+    if not isinstance(scope, int) or scope not in [
+            temp_var_scope.PRIVATE,
+            temp_var_scope.LOCAL,
+            temp_var_scope.GLOBAL]:
+        raise LoopyError("invalid scope '%s'" % scope)
+
+    new_temp_vars = kernel.temporary_variables.copy()
+    for tv_name in temp_var_names:
+        try:
+            tv = new_temp_vars[tv_name]
+        except KeyError:
+            raise LoopyError("temporary '%s' not found" % tv_name)
+
+        new_temp_vars[tv_name] = tv.copy(scope=scope)
+
+    return kernel.copy(temporary_variables=new_temp_vars)
 
 # }}}
 

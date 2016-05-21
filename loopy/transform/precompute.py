@@ -240,7 +240,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, temporary_name=None, precompute_inames=None,
         storage_axis_to_tag={}, default_tag="l.auto", dtype=None,
-        fetch_bounding_box=False, temporary_is_local=None,
+        fetch_bounding_box=False,
+        temporary_scope=None, temporary_is_local=None,
         compute_insn_id=None):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
@@ -315,6 +316,27 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
+
+    # {{{ unify temporary_scope / temporary_is_local
+
+    from loopy.kernel.data import temp_var_scope
+    if temporary_is_local is not None:
+        from warnings import warn
+        warn("temporary_is_local is deprecated. Use temporary_scope instead",
+                DeprecationWarning, stacklevel=2)
+
+        if temporary_scope is not None:
+            raise LoopyError("may not specify both temporary_is_local and "
+                    "temporary_scope")
+
+        if temporary_is_local:
+            temporary_scope = temp_var_scope.LOCAL
+        else:
+            temporary_scope = temp_var_scope.PRIVATE
+
+    del temporary_is_local
+
+    # }}}
 
     # {{{ check, standardize arguments
 
@@ -772,8 +794,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     import loopy as lp
 
-    if temporary_is_local is None:
-        temporary_is_local = lp.auto
+    if temporary_scope is None:
+        temporary_scope = lp.auto
 
     new_temp_shape = tuple(abm.non1_storage_shape)
 
@@ -784,7 +806,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 dtype=dtype,
                 base_indices=(0,)*len(new_temp_shape),
                 shape=tuple(abm.non1_storage_shape),
-                is_local=temporary_is_local,
+                scope=temporary_scope,
                 dim_names=non1_storage_axis_names)
 
     else:
@@ -822,19 +844,20 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         temp_var = temp_var.copy(shape=new_temp_shape)
 
-        if temporary_is_local == temp_var.is_local:
+        if temporary_scope == temp_var.scope:
             pass
-        elif temporary_is_local is lp.auto:
-            temporary_is_local = temp_var.is_local
-        elif temp_var.is_local is lp.auto:
+        elif temporary_scope is lp.auto:
+            temporary_scope = temp_var.scope
+        elif temp_var.scope is lp.auto:
             pass
         else:
             raise LoopyError("Existing and new temporary '%s' do not "
-                    "have matching values of 'is_local'"
+                    "have matching scopes (existing: %s, new: %s)"
                     % (temporary_name,
-                        temp_var.is_local, temporary_is_local))
+                        temp_var_scope.stringify(temp_var.scope),
+                        temp_var_scope.stringify(temporary_scope)))
 
-        temp_var = temp_var.copy(is_local=temporary_is_local)
+        temp_var = temp_var.copy(scope=temporary_scope)
 
         # }}}
 

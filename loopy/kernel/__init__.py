@@ -843,9 +843,17 @@ class LoopKernel(RecordWithoutPickling):
 
     @memoize_method
     def global_var_names(self):
+        from loopy.kernel.data import temp_var_scope
+
         from loopy.kernel.data import GlobalArg
-        return set(arg.name for arg in self.args
-            if isinstance(arg, GlobalArg))
+        return (
+                set(
+                    arg.name for arg in self.args
+                    if isinstance(arg, GlobalArg))
+                | set(
+                    tv.name
+                    for tv in six.itervalues(self.temporary_variables)
+                    if tv.scope == temp_var_scope.GLOBAL))
 
     # }}}
 
@@ -1033,14 +1041,17 @@ class LoopKernel(RecordWithoutPickling):
 
     @memoize_method
     def local_var_names(self):
+        from loopy.kernel.data import temp_var_scope
         return set(
             tv.name
             for tv in six.itervalues(self.temporary_variables)
-            if tv.is_local)
+            if tv.scope == temp_var_scope.LOCAL)
 
     def local_mem_use(self):
-        return sum(lv.nbytes for lv in six.itervalues(self.temporary_variables)
-                if lv.is_local)
+        from loopy.kernel.data import temp_var_scope
+        return sum(
+                tv.nbytes for tv in six.itervalues(self.temporary_variables)
+                if tv.scope == temp_var_scope.LOCAL)
 
     # }}}
 
@@ -1213,8 +1224,8 @@ class LoopKernel(RecordWithoutPickling):
         return CompiledKernel(ctx, self)
 
     def __call__(self, queue, **kwargs):
-        return self.get_compiled_kernel(queue.context)(
-                queue, **kwargs)
+        cknl = self.get_compiled_kernel(queue.context)
+        return cknl(queue, **kwargs)
 
     # }}}
 

@@ -302,6 +302,7 @@ def generate_integer_arg_finding_from_strides(gen, kernel, implemented_data_info
 def generate_arg_setup(gen, kernel, implemented_data_info, options):
     import loopy as lp
 
+    from loopy.kernel.data import KernelArgument
     from loopy.kernel.array import ArrayBase
     from loopy.symbolic import StringifyMapper
     from pymbolic import var
@@ -318,9 +319,19 @@ def generate_arg_setup(gen, kernel, implemented_data_info, options):
 
     strify = StringifyMapper()
 
+    expect_no_more_arguments = False
+
     for arg_idx, arg in enumerate(implemented_data_info):
         is_written = arg.base_name in kernel.get_written_variables()
         kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
+
+        if not issubclass(arg.arg_class, KernelArgument):
+            expect_no_more_arguments = True
+            continue
+
+        if expect_no_more_arguments:
+            raise LoopyError("Further arguments encountered after arg info "
+                    "describing a global temporary variable")
 
         if not issubclass(arg.arg_class, ArrayBase):
             args.append(arg.name)
@@ -552,9 +563,14 @@ def generate_invoker(kernel, codegen_result):
             "out_host=None"
             ]
 
+    from loopy.kernel.data import KernelArgument
     gen = PythonFunctionGenerator(
             "invoke_%s_loopy_kernel" % kernel.name,
-            system_args + ["%s=None" % iai.name for iai in implemented_data_info])
+            system_args + [
+                "%s=None" % idi.name
+                for idi in implemented_data_info
+                if issubclass(idi.arg_class, KernelArgument)
+                ])
 
     gen.add_to_preamble("from __future__ import division")
     gen.add_to_preamble("")
@@ -600,7 +616,10 @@ def generate_invoker(kernel, codegen_result):
         gen("if out_host:")
         with Indentation(gen):
             gen("pass")  # if no outputs (?!)
-            for arg_idx, arg in enumerate(implemented_data_info):
+            for arg in implemented_data_info:
+                if not issubclass(arg.arg_class, KernelArgument):
+                    continue
+
                 is_written = arg.base_name in kernel.get_written_variables()
                 if is_written:
                     gen("%s = %s.get(queue=queue)" % (arg.name, arg.name))
@@ -611,10 +630,12 @@ def generate_invoker(kernel, codegen_result):
         gen("return _lpy_evt, {%s}"
                 % ", ".join("\"%s\": %s" % (arg.name, arg.name)
                     for arg in implemented_data_info
+                    if issubclass(arg.arg_class, KernelArgument)
                     if arg.base_name in kernel.get_written_variables()))
     else:
         out_args = [arg
                 for arg in implemented_data_info
+                    if issubclass(arg.arg_class, KernelArgument)
                 if arg.base_name in kernel.get_written_variables()]
         if out_args:
             gen("return _lpy_evt, (%s,)"

@@ -28,7 +28,6 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 import loopy as lp
-from loopy.statistics import get_op_poly, get_gmem_access_poly, get_barrier_poly
 import numpy as np
 
 
@@ -46,7 +45,7 @@ def test_op_counter_basic():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_op_poly(knl)
+    poly = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -71,7 +70,7 @@ def test_op_counter_reduction():
             name="matmul_serial", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    poly = get_op_poly(knl)
+    poly = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -93,7 +92,7 @@ def test_op_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = get_op_poly(knl)
+    poly = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -122,7 +121,7 @@ def test_op_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_op_poly(knl)
+    poly = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -158,7 +157,7 @@ def test_op_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int64, h=np.int64))
 
-    poly = get_op_poly(knl)
+    poly = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -197,7 +196,7 @@ def test_op_counter_triangular_domain():
     else:
         expect_fallback = False
 
-    poly = get_op_poly(knl)[(np.dtype(np.float64), 'mul')]
+    poly = lp.get_op_poly(knl)[(np.dtype(np.float64), 'mul')]
     value_dict = dict(m=13, n=200)
     flops = poly.eval_with_dict(value_dict)
 
@@ -221,7 +220,7 @@ def test_gmem_access_counter_basic():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_gmem_access_poly(knl)
+    poly = lp.get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -255,7 +254,7 @@ def test_gmem_access_counter_reduction():
             name="matmul", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    poly = get_gmem_access_poly(knl)
+    poly = lp.get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -283,7 +282,7 @@ def test_gmem_access_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = get_gmem_access_poly(knl)
+    poly = lp.get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -317,7 +316,7 @@ def test_gmem_access_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_gmem_access_poly(knl)
+    poly = lp.get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -358,7 +357,7 @@ def test_gmem_access_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int32, h=np.int32))
 
-    poly = get_gmem_access_poly(knl)
+    poly = lp.get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -392,7 +391,7 @@ def test_gmem_access_counter_mixed():
     knl = lp.split_iname(knl, "j", threads)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
-    poly = get_gmem_access_poly(knl)  # noqa
+    poly = lp.get_gmem_access_poly(knl)  # noqa
     n = 512
     m = 256
     l = 128
@@ -436,7 +435,7 @@ def test_gmem_access_counter_nonconsec():
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
 
-    poly = get_gmem_access_poly(knl)  # noqa
+    poly = lp.get_gmem_access_poly(knl)  # noqa
     n = 512
     m = 256
     l = 128
@@ -475,7 +474,7 @@ def test_gmem_access_counter_consec():
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
-    poly = get_gmem_access_poly(knl)
+    poly = lp.get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -514,13 +513,13 @@ def test_barrier_counter_nobarriers():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = get_barrier_poly(knl)
+    sync_poly = lp.get_synchronization_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    barrier_count = poly.eval_with_dict(params)
-    assert barrier_count == 0
+    assert len(sync_poly) == 1
+    assert sync_poly["kernel_launch"].eval_with_dict(params) == 1
 
 
 def test_barrier_counter_barriers():
@@ -540,12 +539,13 @@ def test_barrier_counter_barriers():
             )
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
     knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
-    poly = get_barrier_poly(knl)
+    poly = lp.get_synchronization_poly(knl)
+    print(poly)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    barrier_count = poly.eval_with_dict(params)
+    barrier_count = poly["barrier_local"].eval_with_dict(params)
     assert barrier_count == 50*10*2
 
 
@@ -566,10 +566,11 @@ def test_all_counters_parallel_matmul():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
 
-    barrier_count = get_barrier_poly(knl).eval_with_dict(params)
-    assert barrier_count == 0
+    sync_poly = lp.get_synchronization_poly(knl)
+    assert len(sync_poly) == 1
+    assert sync_poly["kernel_launch"].eval_with_dict(params) == 1
 
-    op_map = get_op_poly(knl)
+    op_map = lp.get_op_poly(knl)
     f32mul = op_map[
                         (np.dtype(np.float32), 'mul')
                         ].eval_with_dict(params)
@@ -586,7 +587,7 @@ def test_all_counters_parallel_matmul():
     assert f32mul+f32add == n*m*l*2
     assert i32ops == n*m*l*4 + l*n*4
 
-    subscript_map = get_gmem_access_poly(knl)
+    subscript_map = lp.get_gmem_access_poly(knl)
     f32uncoal = subscript_map[
                         (np.dtype(np.float32), 'nonconsecutive', 'load')
                         ].eval_with_dict(params)

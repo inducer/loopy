@@ -32,6 +32,7 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
+from loopy.diagnostic import LoopyError
 
 from pymbolic import var
 
@@ -130,7 +131,8 @@ buffer_array_cache = PersistentDict("loopy-buffer-array-cache-"+DATA_MODEL_VERSI
 # Adding an argument? also add something to the cache_key below.
 def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         store_expression=None, within=None, default_tag="l.auto",
-        temporary_is_local=None, fetch_bounding_box=False):
+        temporary_scope=None, temporary_is_local=None,
+        fetch_bounding_box=False):
     """
     :arg init_expression: Either *None* (indicating the prior value of the buffered
         array should be read) or an expression optionally involving the
@@ -142,6 +144,27 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         *False* indicates that no storing of the temporary should occur
         at all.)
     """
+
+    # {{{ unify temporary_scope / temporary_is_local
+
+    from loopy.kernel.data import temp_var_scope
+    if temporary_is_local is not None:
+        from warnings import warn
+        warn("temporary_is_local is deprecated. Use temporary_scope instead",
+                DeprecationWarning, stacklevel=2)
+
+        if temporary_scope is not None:
+            raise LoopyError("may not specify both temporary_is_local and "
+                    "temporary_scope")
+
+        if temporary_is_local:
+            temporary_scope = temp_var_scope.LOCAL
+        else:
+            temporary_scope = temp_var_scope.PRIVATE
+
+    del temporary_is_local
+
+    # }}}
 
     # {{{ process arguments
 
@@ -181,9 +204,9 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     else:
         var_shape = ()
 
-    if temporary_is_local is None:
+    if temporary_scope is None:
         import loopy as lp
-        temporary_is_local = lp.auto
+        temporary_scope = lp.auto
 
     # }}}
 
@@ -196,7 +219,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     cache_key = (key_kernel, var_name, tuple(buffer_inames),
             PymbolicExpressionHashWrapper(init_expression),
             PymbolicExpressionHashWrapper(store_expression), within,
-            default_tag, temporary_is_local, fetch_bounding_box)
+            default_tag, temporary_scope, fetch_bounding_box)
 
     if CACHING_ENABLED:
         try:
@@ -312,7 +335,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
             dtype=var_descr.dtype,
             base_indices=(0,)*len(abm.non1_storage_shape),
             shape=tuple(abm.non1_storage_shape),
-            is_local=temporary_is_local)
+            scope=temporary_scope)
 
     new_temporary_variables[buf_var_name] = temp_var
 
