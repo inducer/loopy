@@ -52,9 +52,11 @@ def adjust_local_temp_var_storage(kernel, device):
 
     new_temp_vars = {}
 
+    from loopy.kernel.data import temp_var_scope
+
     lmem_size = cl_char.usable_local_mem_size(device)
     for temp_var in six.itervalues(kernel.temporary_variables):
-        if not temp_var.is_local:
+        if temp_var.scope != temp_var_scope.LOCAL:
             new_temp_vars[temp_var.name] = \
                     temp_var.copy(storage_shape=temp_var.shape)
             continue
@@ -62,7 +64,8 @@ def adjust_local_temp_var_storage(kernel, device):
         other_loctemp_nbytes = [
                 tv.nbytes
                 for tv in six.itervalues(kernel.temporary_variables)
-                if tv.is_local and tv.name != temp_var.name]
+                if tv.scope == temp_var_scope.LOCAL
+                and tv.name != temp_var.name]
 
         storage_shape = temp_var.storage_shape
 
@@ -450,7 +453,8 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
                         'must be supplied")'.format(name=idi.name))))
 
         if idi.dtype.is_integral():
-            gen(Comment("cast to Python int to avoid trouble with struct packing or Boost.Python"))
+            gen(Comment("cast to Python int to avoid trouble "
+                "with struct packing or Boost.Python"))
             if sys.version_info < (3,):
                 py_type = "long"
             else:
@@ -567,20 +571,58 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
 
     def get_function_definition(self, codegen_state, codegen_result,
             schedule_index, function_decl, function_body):
+        from loopy.kernel.data import TemporaryVariable
         args = (
                 ["_lpy_cl_kernels", "queue"]
-                + [idi.name for idi in codegen_state.implemented_data_info]
-                + ["wait_for=None"])
+                + [idi.name for idi in codegen_state.implemented_data_info
+                    if not issubclass(idi.arg_class, TemporaryVariable)]
+                + ["wait_for=None", "allocator=None"])
 
-        from genpy import Function, Suite, ImportAs, Return, FromImport, Line
+        ecm = self.get_expression_to_code_mapper(codegen_state)
+
+        def alloc_nbytes(idi):
+            return idi.dtype.numpy_dtype.itemsize * (
+                    sum(astrd*(alen-1)
+                        for alen, astrd in zip(idi.unvec_shape, idi.unvec_strides))
+                    + 1)
+
+        from genpy import (Function, Suite, Import, ImportAs, Return, FromImport,
+                If, Assign, Line, Statement as S)
+        from pymbolic.mapper.stringifier import PREC_NONE
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
                 Suite([
                     FromImport("struct", ["pack as _lpy_pack"]),
                     ImportAs("pyopencl", "_lpy_cl"),
+                    Import("pyopencl.tools"),
+                    Line(),
+                    If("allocator is None",
+                        Assign(
+                            "allocator",
+                            "_lpy_cl_tools.DeferredAllocator(queue.context)")),
+                    Line(),
+                    ] + [
+
+                    # allocate global temporaries
+                    Assign(idi.name, "allocator(%s)"
+                        % ecm(alloc_nbytes(idi), PREC_NONE, "i"))
+                    for idi in codegen_result.implemented_data_info
+                    if issubclass(idi.arg_class, TemporaryVariable)
+
+                    ] + [
                     Line(),
                     function_body,
+                    Line(),
+                    ] + [
+
+                    # free global temporaries
+                    S("%s.release()" % idi.name)
+                    for idi in codegen_result.implemented_data_info
+                    if issubclass(idi.arg_class, TemporaryVariable)
+
+                    ] + [
+                    Line(),
                     Return("_lpy_evt"),
                     ]))
 

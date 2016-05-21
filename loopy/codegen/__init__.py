@@ -407,7 +407,7 @@ def generate_code_v2(kernel):
 
     # {{{ examine arg list
 
-    from loopy.kernel.data import ValueArg
+    from loopy.kernel.data import ValueArg, temp_var_scope
     from loopy.kernel.array import ArrayBase
 
     implemented_data_info = []
@@ -431,6 +431,13 @@ def generate_code_v2(kernel):
 
         else:
             raise ValueError("argument type not understood: '%s'" % type(arg))
+
+    for tv in six.itervalues(kernel.temporary_variables):
+        if tv.scope == temp_var_scope.GLOBAL:
+            implemented_data_info.extend(
+                    tv.decl_info(
+                        kernel.target,
+                        index_dtype=kernel.index_dtype))
 
     allow_complex = False
     for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):

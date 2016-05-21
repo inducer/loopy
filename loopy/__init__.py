@@ -78,7 +78,8 @@ from loopy.transform.data import (
         add_prefetch, change_arg_to_image, tag_data_axes,
         set_array_dim_names, remove_unused_arguments,
         alias_temporaries, set_argument_order,
-        rename_argument)
+        rename_argument,
+        set_temporary_scope)
 
 from loopy.transform.subst import (extract_subst,
         assignment_to_subst, expand_subst, find_rules_matching,
@@ -166,7 +167,7 @@ __all__ = [
         "add_prefetch", "change_arg_to_image", "tag_data_axes",
         "set_array_dim_names", "remove_unused_arguments",
         "alias_temporaries", "set_argument_order",
-        "rename_argument",
+        "rename_argument", "set_temporary_scope",
 
         "find_instructions", "map_instructions",
         "set_instruction_priority", "add_dependency",

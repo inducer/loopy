@@ -96,6 +96,8 @@ Modifying Arguments
 
 .. autofunction:: rename_argument
 
+.. autofunction:: set_temporary_scope
+
 Creating Batches of Operations
 ------------------------------
 

@@ -210,15 +210,15 @@ class CASTBuilder(ASTBuilderBase):
             return Const(POD(self, idi.dtype, idi.name))
         else:
             name = idi.base_name or idi.name
-            arg = kernel.arg_dict[name]
+            var_descr = kernel.get_var_descriptor(name)
             from loopy.kernel.data import ArrayBase
-            if isinstance(arg, ArrayBase):
-                return arg.get_arg_decl(
+            if isinstance(var_descr, ArrayBase):
+                return var_descr.get_arg_decl(
                         self,
                         idi.name[len(name):], idi.shape, idi.dtype,
                         idi.is_written)
             else:
-                return arg.get_arg_decl(self)
+                return var_descr.get_arg_decl(self)
 
     def get_function_declaration(self, codegen_state, codegen_result,
             schedule_index):
@@ -234,6 +234,8 @@ class CASTBuilder(ASTBuilderBase):
                             for idi in codegen_state.implemented_data_info])
 
     def get_temporary_decls(self, codegen_state):
+        from loopy.kernel.data import temp_var_scope
+
         kernel = codegen_state.kernel
 
         base_storage_decls = []
@@ -254,9 +256,12 @@ class CASTBuilder(ASTBuilderBase):
 
             if not tv.base_storage:
                 for idi in decl_info:
-                    temp_decls.append(
-                            self.wrap_temporary_decl(
-                                self.get_temporary_decl(kernel, tv, idi), tv.scope))
+                    # global temp vars are mapped to arguments
+                    if tv.scope != temp_var_scope.GLOBAL:
+                        temp_decls.append(
+                                self.wrap_temporary_decl(
+                                    self.get_temporary_decl(
+                                        kernel, tv, idi), tv.scope))
 
             else:
                 offset = 0

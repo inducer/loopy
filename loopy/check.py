@@ -127,9 +127,35 @@ def check_for_inactive_iname_access(kernel):
                     % insn.id)
 
 
+def _is_racing_iname_tag(tv, tag):
+    from loopy.kernel.data import (temp_var_scope,
+            LocalIndexTagBase, GroupIndexTag, ParallelTag, auto)
+
+    if tv.scope == temp_var_scope.PRIVATE:
+        return (
+                isinstance(tag, ParallelTag)
+                and not isinstance(tag, (LocalIndexTagBase, GroupIndexTag)))
+
+    elif tv.scope == temp_var_scope.LOCAL:
+        return (
+                isinstance(tag, ParallelTag)
+                and not isinstance(tag, GroupIndexTag))
+
+    elif tv.scope == temp_var_scope.GLOBAL:
+        return isinstance(tag, ParallelTag)
+
+    elif tv.scope == auto:
+        raise LoopyError("scope of temp var '%s' has not yet been"
+                "determined" % tv.name)
+
+    else:
+        raise ValueError("unexpected value of temp_var.scope for "
+                "temporary variable '%s'" % tv.name)
+
+
 def check_for_write_races(kernel):
     from loopy.symbolic import DependencyMapper
-    from loopy.kernel.data import ParallelTag, GroupIndexTag, LocalIndexTagBase
+    from loopy.kernel.data import ParallelTag
     depmap = DependencyMapper(composite_leaves=False)
 
     iname_to_tag = kernel.iname_to_tag.get
@@ -162,26 +188,10 @@ def check_for_write_races(kernel):
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
-                if temp_var.is_local is True:
-                    raceable_parallel_insn_inames = set(
+                raceable_parallel_insn_inames = set(
                             iname
                             for iname in kernel.insn_inames(insn)
-                            if isinstance(iname_to_tag(iname), ParallelTag)
-                            and not isinstance(iname_to_tag(iname), GroupIndexTag))
-
-                elif temp_var.is_local is False:
-                    raceable_parallel_insn_inames = set(
-                            iname
-                            for iname in kernel.insn_inames(insn)
-                            if isinstance(iname_to_tag(iname), ParallelTag)
-                            and not isinstance(iname_to_tag(iname),
-                                GroupIndexTag)
-                            and not isinstance(iname_to_tag(iname),
-                                LocalIndexTagBase))
-
-                else:
-                    raise LoopyError("temp var '%s' hasn't decided on "
-                            "whether it is local" % temp_var.name)
+                            if _is_racing_iname_tag(temp_var, iname_to_tag(iname)))
 
             else:
                 raise LoopyError("invalid assignee name in instruction '%s'"

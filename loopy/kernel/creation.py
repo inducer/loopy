@@ -793,7 +793,7 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
         new_temp_vars.append(TemporaryVariable(
                 name=new_var_name,
                 dtype=dtype,
-                is_local=lp.auto,
+                scope=lp.auto,
                 shape=()))
 
         from pymbolic.primitives import Variable
@@ -857,7 +857,7 @@ def create_temporaries(knl, default_order):
                 new_temp_vars[assignee_name] = lp.TemporaryVariable(
                         name=assignee_name,
                         dtype=temp_var_type,
-                        is_local=lp.auto,
+                        scope=lp.auto,
                         base_indices=lp.auto,
                         shape=lp.auto,
                         order=default_order)

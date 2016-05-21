@@ -2614,7 +2614,7 @@ def test_kernel_splitting_with_loop(ctx_factory):
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
 
-    ref_knl = knl
+    # ref_knl = knl
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
@@ -2637,6 +2637,34 @@ def test_kernel_splitting_with_loop(ctx_factory):
 
     # Doesn't yet work--not passing k
     #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
+def test_global_temporary(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n}",
+            """
+            <> c[i] = a[i + 1]
+            out[i] = c[i]
+            """)
+
+    knl = lp.add_and_infer_dtypes(knl,
+            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+    knl = lp.set_temporary_scope(knl, "c", "global")
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
+
+    cgr = lp.generate_code_v2(knl)
+
+    assert len(cgr.device_programs) == 2
+
+    #print(cgr.device_code())
+    #print(cgr.host_code())
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
 if __name__ == "__main__":
