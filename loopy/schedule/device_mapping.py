@@ -31,16 +31,15 @@ def map_schedule_onto_host_or_device(kernel):
         from loopy.schedule import CallKernel, ReturnFromKernel
         new_schedule = (
             [CallKernel(kernel_name=kernel.name,
-                        extra_args=[])] +
+                        extra_args=[],
+                        extra_inames=[])] +
             list(kernel.schedule) +
             [ReturnFromKernel(kernel_name=kernel.name)])
-        return kernel.copy(schedule=new_schedule)
+        kernel = kernel.copy(schedule=new_schedule)
+    else:
+        kernel = map_schedule_onto_host_or_device_impl(kernel)
 
-    # Split the schedule onto host or device.
-    kernel = map_schedule_onto_host_or_device_impl(kernel)
-    # Compute which temporaries and inames go into which kernel.
-    kernel = restore_and_save_temporaries(kernel)
-    return kernel
+    return restore_and_save_temporaries(kernel)
 
 
 def get_block_boundaries(schedule):
@@ -359,6 +358,8 @@ def determine_temporaries_to_promote(kernel, temporaries, name_gen):
 # }}}
 
 
+# {{{ Domain augmentation
+
 def augment_domain_for_temporary_promotion(
         kernel, domain, promoted_temporary, mode, name_gen):
     """
@@ -417,6 +418,8 @@ def augment_domain_for_temporary_promotion(
     domain = domain_list.get_basic_set(0)
     return domain, hw_inames, dim_inames, iname_to_tag
 
+# }}}
+
 
 def restore_and_save_temporaries(kernel):
     """
@@ -436,16 +439,11 @@ def restore_and_save_temporaries(kernel):
             inter_kernel_temporaries |= filter_out_subscripts(live_in[idx])
             call_count += 1
 
-    if call_count == 1:
-        # A single call / return corresponds to a kernel which has not been
-        # split.
-        return kernel
-
     name_gen = kernel.get_var_name_generator()
     new_temporaries = determine_temporaries_to_promote(
         kernel, inter_kernel_temporaries, name_gen)
 
-    # {{{ Insert loads and spills of new temporaries.
+    # {{{ Insert loads and spills of new temporaries
 
     new_schedule = []
     new_instructions = []
@@ -498,6 +496,12 @@ def restore_and_save_temporaries(kernel):
         tvals_to_load = ((subkernel_uses - subkernel_globals)
             | tvals_to_spill) & live_in[start_idx]
 
+        # Add new arguments.
+        sched_item = sched_item.copy(
+            extra_args=sorted(subkernel_globals
+                | set(new_temporaries[tv].name
+                      for tv in tvals_to_load | tvals_to_spill)))
+
         # }}}
 
         # {{{ Add all the loads and spills.
@@ -532,7 +536,7 @@ def restore_and_save_temporaries(kernel):
                 from loopy.kernel.tools import DomainChanger
                 tval_hw_inames = new_temporaries[tval].hw_inames
                 dchg = DomainChanger(kernel,
-                    frozenset(sched_item.extra_args + tval_hw_inames))
+                    frozenset(sched_item.extra_inames + tval_hw_inames))
                 domain = dchg.domain
 
                 domain, hw_inames, dim_inames, itt = \
@@ -627,7 +631,7 @@ def map_schedule_onto_host_or_device_impl(kernel):
 
     # {{{ Inner mapper function
 
-    dummy_call = CallKernel(kernel_name="", extra_args=[])
+    dummy_call = CallKernel(kernel_name="", extra_args=[], extra_inames=[])
     dummy_return = ReturnFromKernel(kernel_name="")
 
     def inner_mapper(start_idx, end_idx, new_schedule):
@@ -721,7 +725,7 @@ def map_schedule_onto_host_or_device_impl(kernel):
             last_kernel_name = kernel_name_gen()
             new_schedule[idx] = sched_item.copy(
                 kernel_name=last_kernel_name,
-                extra_args=list(inames))
+                extra_inames=list(inames))
         elif isinstance(sched_item, ReturnFromKernel):
             new_schedule[idx] = sched_item.copy(
                 kernel_name=last_kernel_name)
@@ -731,4 +735,5 @@ def map_schedule_onto_host_or_device_impl(kernel):
             inames.pop()
 
     new_kernel = kernel.copy(schedule=new_schedule)
+
     return new_kernel

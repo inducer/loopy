@@ -216,6 +216,7 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
             .with_new_ast(codegen_state, ast)
             .copy(
                 implemented_domains=implemented_domains,
+                implemented_data_info=codegen_state.implemented_data_info,
                 **kwargs))
 
 
@@ -238,9 +239,7 @@ def wrap_in_if(codegen_state, condition_exprs, inner):
 
 # {{{ program generation top-level
 
-def generate_host_or_device_program(codegen_state,
-                                    schedule_index,
-                                    extra_args=[]):
+def generate_host_or_device_program(codegen_state, schedule_index):
     ast_builder = codegen_state.ast_builder
     temp_decls = ast_builder.get_temporary_decls(codegen_state)
 
@@ -266,8 +265,7 @@ def generate_host_or_device_program(codegen_state,
     cur_prog = codegen_result.current_program(codegen_state)
     body_ast = cur_prog.ast
     fdecl_ast = ast_builder.get_function_declaration(
-            codegen_state, codegen_result, schedule_index,
-            extra_args)
+            codegen_state, codegen_result, schedule_index)
 
     fdef_ast = ast_builder.get_function_definition(
             codegen_state, codegen_result,

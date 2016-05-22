@@ -57,6 +57,39 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     return frozenset(result)
 
 
+def synthesize_idis_for_extra_args(kernel, schedule_index):
+    """
+    :returns: A list of :class:`loopy.codegen.ImplementedDataInfo`
+    """
+    sched_item = kernel.schedule[schedule_index]
+
+    from loopy.codegen import ImplementedDataInfo
+    from loopy.kernel.data import InameArg, temp_var_scope
+
+    assert isinstance(sched_item, CallKernel)
+
+    idis = []
+
+    for arg in sched_item.extra_args:
+        temporary = kernel.temporary_variables[arg]
+        assert temporary.scope == temp_var_scope.GLOBAL
+        idis.extend(
+            temporary.decl_info(
+                kernel.target,
+                index_dtype=kernel.index_dtype))
+
+    for iname in sched_item.extra_inames:
+        idis.append(
+            ImplementedDataInfo(
+                target=kernel.target,
+                name=iname,
+                dtype=kernel.index_dtype,
+                arg_class=InameArg,
+                is_written=False))
+
+    return idis
+
+
 def generate_code_for_sched_index(codegen_state, sched_index):
     kernel = codegen_state.kernel
     sched_item = kernel.schedule[sched_index]
@@ -68,17 +101,18 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
         assert past_end_i <= codegen_state.schedule_index_end
 
-        from loopy.codegen.tools import synthesize_idis_for_extra_args
         extra_args = synthesize_idis_for_extra_args(kernel, sched_index)
 
         new_codegen_state = codegen_state.copy(
                 is_generating_device_code=True,
                 gen_program_name=sched_item.kernel_name,
-                schedule_index_end=past_end_i-1)
+                schedule_index_end=past_end_i-1,
+                implemented_data_info=(codegen_state.implemented_data_info
+                    + extra_args))
 
         from loopy.codegen.result import generate_host_or_device_program
         codegen_result = generate_host_or_device_program(
-                new_codegen_state, sched_index + 1, extra_args)
+                new_codegen_state, sched_index + 1)
 
         glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(kernel.schedule, sched_index))

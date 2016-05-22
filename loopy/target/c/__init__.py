@@ -224,7 +224,7 @@ class CASTBuilder(ASTBuilderBase):
                 return var_descr.get_arg_decl(self)
 
     def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index, extra_args):
+            schedule_index):
         from cgen import FunctionDeclaration, Value
 
         name = codegen_result.current_program(codegen_state).name
@@ -234,8 +234,7 @@ class CASTBuilder(ASTBuilderBase):
         return FunctionDeclaration(
                         Value("void", name),
                         [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                            for idi in
-                            codegen_state.implemented_data_info + extra_args])
+                            for idi in codegen_state.implemented_data_info])
 
     def get_temporary_decls(self, codegen_state):
         from loopy.kernel.data import temp_var_scope

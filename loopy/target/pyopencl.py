@@ -578,17 +578,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     if not issubclass(idi.arg_class, TemporaryVariable)]
                 + ["wait_for=None", "allocator=None"])
 
-        ecm = self.get_expression_to_code_mapper(codegen_state)
-
-        def alloc_nbytes(idi):
-            return idi.dtype.numpy_dtype.itemsize * (
-                    sum(astrd*(alen-1)
-                        for alen, astrd in zip(idi.unvec_shape, idi.unvec_strides))
-                    + 1)
-
-        from genpy import (Function, Suite, Import, ImportAs, Return, FromImport,
-                If, Assign, Line, Statement as S)
-        from pymbolic.mapper.stringifier import PREC_NONE
+        from genpy import (For, Function, Suite, Import, ImportAs, Return,
+                FromImport, If, Assign, Line, Statement as S)
         return Function(
                 codegen_result.current_program(codegen_state).name,
                 args,
@@ -603,37 +594,53 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                             "_lpy_cl_tools.DeferredAllocator(queue.context)")),
                     Line(),
                     ] + [
-
-                    # allocate global temporaries
-                    Assign(idi.name, "allocator(%s)"
-                        % ecm(alloc_nbytes(idi), PREC_NONE, "i"))
-                    for idi in codegen_result.implemented_data_info
-                    if issubclass(idi.arg_class, TemporaryVariable)
-
-                    ] + [
                     Line(),
                     function_body,
                     Line(),
                     ] + [
-
-                    # free global temporaries
-                    S("%s.release()" % idi.name)
-                    for idi in codegen_result.implemented_data_info
-                    if issubclass(idi.arg_class, TemporaryVariable)
-
+                    For("_tv", "_global_temporaries",
+                        # free global temporaries
+                        S("_tv.release()"))
                     ] + [
                     Line(),
                     Return("_lpy_evt"),
                     ]))
 
     def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index, extra_args):
+            schedule_index):
         # no such thing in Python
         return None
 
     def get_temporary_decls(self, codegen_state):
-        # FIXME: Create global temporaries
-        return []
+        from genpy import Assign, Comment, Line
+
+        def alloc_nbytes(tv):
+            return tv.dtype.numpy_dtype.itemsize
+
+        from loopy.kernel.data import temp_var_scope
+
+        global_temporaries = sorted(
+            (tv for tv in six.itervalues(codegen_state.kernel.temporary_variables)
+            if tv.scope == temp_var_scope.GLOBAL),
+            key=lambda tv: tv.name)
+
+        from pymbolic.mapper.stringifier import PREC_NONE
+        ecm = self.get_expression_to_code_mapper(codegen_state)
+
+        if not global_temporaries:
+            return [Assign("_global_temporaries", "[]"), Line()]
+
+        return [
+            Comment("{{{ allocate global temporaries"),
+            Line()] + [
+            Assign(tv.name, "allocator(%s)" %
+                ecm(alloc_nbytes(tv), PREC_NONE, "i"))
+                for tv in global_temporaries] + [
+            Assign("_global_temporaries", "[{tvs}]".format(tvs=", ".join(
+                tv.name for tv in global_temporaries)))] + [
+            Line(),
+            Comment("}}}"),
+            Line()]
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
         ecm = self.get_expression_to_code_mapper(codegen_state)

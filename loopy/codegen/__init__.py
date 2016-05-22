@@ -218,7 +218,7 @@ class CodeGenerationState(object):
 
     # {{{ copy helpers
 
-    def copy(self, kernel=None,
+    def copy(self, kernel=None, implemented_data_info=None,
             implemented_domain=None, implemented_predicates=frozenset(),
             var_subst_map=None, vectorization_info=None,
             is_generating_device_code=None,
@@ -227,6 +227,9 @@ class CodeGenerationState(object):
 
         if kernel is None:
             kernel = self.kernel
+
+        if implemented_data_info is None:
+            implemented_data_info = self.implemented_data_info
 
         if vectorization_info is False:
             vectorization_info = None
@@ -245,7 +248,7 @@ class CodeGenerationState(object):
 
         return CodeGenerationState(
                 kernel=kernel,
-                implemented_data_info=self.implemented_data_info,
+                implemented_data_info=implemented_data_info,
                 implemented_domain=implemented_domain or self.implemented_domain,
                 implemented_predicates=(
                     implemented_predicates or self.implemented_predicates),
@@ -407,7 +410,7 @@ def generate_code_v2(kernel):
 
     # {{{ examine arg list
 
-    from loopy.kernel.data import ValueArg, temp_var_scope
+    from loopy.kernel.data import ValueArg
     from loopy.kernel.array import ArrayBase
 
     implemented_data_info = []
@@ -431,13 +434,6 @@ def generate_code_v2(kernel):
 
         else:
             raise ValueError("argument type not understood: '%s'" % type(arg))
-
-    for tv in six.itervalues(kernel.temporary_variables):
-        if tv.scope == temp_var_scope.GLOBAL:
-            implemented_data_info.extend(
-                    tv.decl_info(
-                        kernel.target,
-                        index_dtype=kernel.index_dtype))
 
     allow_complex = False
     for var in kernel.args + list(six.itervalues(kernel.temporary_variables)):
