@@ -236,7 +236,7 @@ class DummyHostASTBuilder(ASTBuilderBase):
         return function_body
 
     def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+            schedule_index, extra_args):
         return None
 
     def get_temporary_decls(self, codegen_state):
