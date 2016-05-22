@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 from loopy.diagnostic import LoopyError
+from pytools import Record, memoize_method
 
 
 def map_schedule_onto_host_or_device(kernel):
@@ -30,7 +31,6 @@ def map_schedule_onto_host_or_device(kernel):
         from loopy.schedule import CallKernel, ReturnFromKernel
         new_schedule = (
             [CallKernel(kernel_name=kernel.name,
-                        extra_inames=[],
                         extra_args=[])] +
             list(kernel.schedule) +
             [ReturnFromKernel(kernel_name=kernel.name)])
@@ -87,7 +87,6 @@ def get_common_hw_inames(kernel, insn_ids):
 
 
 # {{{ Use / def analysis
-
 
 def filter_out_subscripts(exprs):
     """
@@ -267,73 +266,55 @@ def compute_live_temporaries(kernel, schedule):
     return live_in, live_out
 
 
-def restore_and_save_temporaries(kernel):
+# {{{ Temporary promotion analysis
+
+class PromotedTemporary(Record):
     """
-    Add code that loads / spills the temporaries in the kernel which are
-    live across sub-kernel calls.
+    .. attribute:: name
+
+        The name of the new temporary.
+
+    .. attribute:: orig_temporary
+
+        The original temporary variable object.
+
+    .. attribute:: hw_inames
+
+        The common list of hw axes that define the original object.
+
+    .. attribute:: shape_prefix
+
+        A list of expressions, to be added in front of the shape
+        of the promoted temporary value
     """
-    # Compute live temporaries.
-    live_in, live_out = compute_live_temporaries(kernel, kernel.schedule)
 
-    # Create kernel variables based on live temporaries.
-    inter_kernel_temporaries = set()
-    from loopy.schedule import CallKernel, ReturnFromKernel, RunInstruction
+    @memoize_method
+    def as_variable(self):
+        temporary = self.orig_temporary
+        from loopy.kernel.data import TemporaryVariable, temp_var_scope
+        return TemporaryVariable(
+            name=self.name,
+            dtype=temporary.dtype,
+            scope=temp_var_scope.GLOBAL,
+            shape=self.new_shape)
 
-    call_count = 0
-    for idx, sched_item in enumerate(kernel.schedule):
-        if isinstance(sched_item, CallKernel):
-            inter_kernel_temporaries |= filter_out_subscripts(live_in[idx])
-            call_count += 1
+    @property
+    def new_shape(self):
+        return self.shape_prefix + self.orig_temporary.shape
 
-    if call_count == 1:
-        # XXX
-        # Single kernel call - needs no saves / restores
-        return kernel
+
+def determine_temporaries_to_promote(kernel, temporaries, name_gen):
+    """
+    :returns: A :class:`dict` mapping temporary names from `temporaries` to
+              :class:`PromotedTemporary` objects
+    """
+    new_temporaries = {}
 
     def_lists, use_lists = get_def_and_use_lists_for_all_temporaries(kernel)
 
-    # {{{ Determine which temporaries need passing around.
-
-    new_temporaries = {}
-    name_gen = kernel.get_var_name_generator()
-
     from loopy.kernel.data import LocalIndexTag, temp_var_scope
-    from pytools import Record
 
-    class PromotedTemporary(Record):
-        """
-        .. attribute:: name
-
-            The name of the new temporary.
-
-        .. attribute:: orig_temporary
-
-            The original temporary variable object.
-
-        .. attribute:: hw_inames
-
-            The common list of hw axes that define the original object.
-
-        .. attribute:: shape_prefix
-
-            A list of expressions, to be added in front of the shape
-            of the promoted temporary value
-        """
-
-        def as_variable(self):
-            temporary = self.orig_temporary
-            from loopy.kernel.data import TemporaryVariable
-            return TemporaryVariable(
-                name=self.name,
-                dtype=temporary.dtype,
-                scope=temp_var_scope.GLOBAL,
-                shape=self.new_shape)
-
-        @property
-        def new_shape(self):
-            return self.shape_prefix + self.orig_temporary.shape
-
-    for temporary in inter_kernel_temporaries:
+    for temporary in temporaries:
         temporary = kernel.temporary_variables[temporary]
         if temporary.scope == temp_var_scope.GLOBAL:
             # Nothing to be done for global temporaries (I hope)
@@ -350,7 +331,7 @@ def restore_and_save_temporaries(kernel):
             key=lambda iname: str(kernel.iname_to_tag[iname]))
 
         shape_prefix = []
-        idx = 0
+
         backing_hw_inames = []
         for iname in hw_inames:
             tag = kernel.iname_to_tag[iname]
@@ -373,7 +354,96 @@ def restore_and_save_temporaries(kernel):
             hw_inames=backing_hw_inames)
         new_temporaries[temporary.name] = backing_temporary
 
-    # }}}
+    return new_temporaries
+
+# }}}
+
+
+def augment_domain_for_temporary_promotion(
+        kernel, domain, promoted_temporary, mode, name_gen):
+    """
+    Add new axes to the domain corresponding to the dimensions of
+    `promoted_temporary`.
+    """
+    import islpy as isl
+
+    orig_temporary = promoted_temporary.orig_temporary
+    orig_dim = domain.dim(isl.dim_type.set)
+    dims_to_insert = len(orig_temporary.shape)
+
+    iname_to_tag = {}
+
+    # Add dimension-dependent inames.
+    dim_inames = []
+
+    domain = domain.add(isl.dim_type.set, dims_to_insert)
+    for t_idx in range(len(orig_temporary.shape)):
+        new_iname = name_gen("{name}_{mode}_dim_{dim}".
+            format(name=orig_temporary.name,
+                   mode=mode,
+                   dim=orig_dim + t_idx))
+        domain = domain.set_dim_name(
+            isl.dim_type.set, orig_dim + t_idx, new_iname)
+        #from loopy.kernel.data import auto
+        #iname_to_tag[new_iname] = auto
+        dim_inames.append(new_iname)
+
+        # Add size information.
+        aff = isl.affs_from_space(domain.space)
+        domain &= aff[0].le_set(aff[new_iname])
+        size = orig_temporary.shape[t_idx]
+        from loopy.symbolic import aff_from_expr
+        domain &= aff[new_iname].le_set(aff_from_expr(domain.space, size))
+
+    hw_inames = []
+
+    # Add hardware inames duplicates.
+    for t_idx, hw_iname in enumerate(promoted_temporary.hw_inames):
+        new_iname = name_gen("{name}_{mode}_hw_dim_{dim}".
+            format(name=orig_temporary.name,
+                   mode=mode,
+                   dim=t_idx))
+        hw_inames.append(new_iname)
+        iname_to_tag[new_iname] = kernel.iname_to_tag[hw_iname]
+
+    from loopy.isl_helpers import duplicate_axes
+    domain = duplicate_axes(
+        domain, promoted_temporary.hw_inames, hw_inames)
+
+    # The operations on the domain above return a Set object, but the
+    # underlying domain should be expressible as a single BasicSet.
+    domain_list = domain.get_basic_set_list()
+    assert domain_list.n_basic_set() == 1
+    domain = domain_list.get_basic_set(0)
+    return domain, hw_inames, dim_inames, iname_to_tag
+
+
+def restore_and_save_temporaries(kernel):
+    """
+    Add code that loads / spills the temporaries in the kernel which are
+    live across sub-kernel calls.
+    """
+    # Compute live temporaries.
+    live_in, live_out = compute_live_temporaries(kernel, kernel.schedule)
+
+    # Create kernel variables based on live temporaries.
+    inter_kernel_temporaries = set()
+    from loopy.schedule import CallKernel, ReturnFromKernel, RunInstruction
+
+    call_count = 0
+    for idx, sched_item in enumerate(kernel.schedule):
+        if isinstance(sched_item, CallKernel):
+            inter_kernel_temporaries |= filter_out_subscripts(live_in[idx])
+            call_count += 1
+
+    if call_count == 1:
+        # A single call / return corresponds to a kernel which has not been
+        # split.
+        return kernel
+
+    name_gen = kernel.get_var_name_generator()
+    new_temporaries = determine_temporaries_to_promote(
+        kernel, inter_kernel_temporaries, name_gen)
 
     # {{{ Insert loads and spills of new temporaries.
 
@@ -397,6 +467,8 @@ def restore_and_save_temporaries(kernel):
         subkernel_epilog = []
         subkernel_schedule = []
 
+        # {{{ Determine what to load / spill
+
         start_idx = idx
 
         idx += 1
@@ -414,6 +486,7 @@ def restore_and_save_temporaries(kernel):
                         kernel, get_use_set(insn)))
             idx += 1
 
+        from loopy.kernel.data import temp_var_scope
         # Filter out temporaries that are global.
         subkernel_globals = set(
             tval for tval in subkernel_defs | subkernel_uses
@@ -425,63 +498,9 @@ def restore_and_save_temporaries(kernel):
         tvals_to_load = ((subkernel_uses - subkernel_globals)
             | tvals_to_spill) & live_in[start_idx]
 
-        # Add arguments.
-        new_schedule.append(
-            sched_item.copy(extra_args=sorted(
-                set(new_temporaries[tval].name
-                    for tval in tvals_to_spill | tvals_to_load)
-                | subkernel_globals)))
-
-        import islpy as isl
+        # }}}
 
         # {{{ Add all the loads and spills.
-
-        def augment_domain(tval, domain, mode_str):
-            temporary = new_temporaries[tval]
-            orig_size = domain.dim(isl.dim_type.set)
-            dims_to_insert = len(temporary.orig_temporary.shape)
-            # Add dimension-dependent inames.
-            dim_inames = []
-
-            domain = domain.add(isl.dim_type.set, dims_to_insert)
-            for t_idx in range(len(temporary.orig_temporary.shape)):
-                new_iname = name_gen("{name}.{mode}.dim_{dim}".
-                    format(name=temporary.orig_temporary.name,
-                           mode=mode_str,
-                           dim=orig_size + t_idx))
-                domain = domain.set_dim_name(
-                    isl.dim_type.set, orig_size + t_idx, new_iname)
-                from loopy.kernel.data import auto
-                new_iname_to_tag[new_iname] = auto
-                dim_inames.append(new_iname)
-                # Add size information.
-                aff = isl.affs_from_space(domain.space)
-                domain &= aff[0].le_set(aff[new_iname])
-                size = temporary.orig_temporary.shape[t_idx]
-                from loopy.symbolic import aff_from_expr
-                domain &= aff[new_iname].le_set(aff_from_expr(domain.space, size))
-
-            hw_inames = []
-
-            # Add hardware inames duplicates.
-            for t_idx, hw_iname in enumerate(temporary.hw_inames):
-                new_iname = name_gen("{name}.{mode}.hw_dim_{dim}".
-                    format(name=temporary.orig_temporary.name,
-                           mode=mode_str,
-                           dim=t_idx))
-                hw_inames.append(new_iname)
-                new_iname_to_tag[new_iname] = kernel.iname_to_tag[hw_iname]
-
-            from loopy.isl_helpers import duplicate_axes
-            domain = duplicate_axes(
-                domain, temporary.hw_inames, hw_inames)
-
-            # The operations on the domain above return a Set object, but the
-            # underlying domain should be expressible as a single BasicSet.
-            domain_list = domain.get_basic_set_list()
-            assert domain_list.n_basic_set() == 1
-            domain = domain_list.get_basic_set(0)
-            return domain, hw_inames, dim_inames
 
         def subscript_or_var(agg, subscript):
             from pymbolic.primitives import Subscript, Variable
@@ -492,73 +511,91 @@ def restore_and_save_temporaries(kernel):
                     Variable(agg),
                     tuple(map(Variable, subscript)))
 
-        from loopy.kernel.data import Assignment
-        # After loading local temporaries, we need to insert a barrier.
-        local_temporaries = set()
+        def make_loop_nest(inames):
+            from loopy.schedule import EnterLoop, LeaveLoop
+            return (
+                [EnterLoop(iname=iname) for iname in inames],
+                list(reversed([LeaveLoop(iname=iname) for iname in inames])))
 
-        from loopy.kernel.tools import DomainChanger
-        for tval in tvals_to_load:
-            tval_hw_inames = new_temporaries[tval].hw_inames
-            dchg = DomainChanger(kernel,
-                frozenset(sched_item.extra_inames + tval_hw_inames))
-            domain = dchg.domain
+        def insert_loads_or_spills(tvals, mode):
+            assert mode in ["load", "spill"]
+            from loopy.kernel.data import Assignment
 
-            domain, hw_inames, dim_inames = augment_domain(tval, domain, "load")
-            kernel = dchg.get_kernel_with(domain)
+            local_temporaries = set()
 
-            # Add a load instruction.
-            insn_id = name_gen("{name}.load".format(name=tval))
+            code_block = \
+                subkernel_prolog if mode == "load" else subkernel_epilog
 
-            new_insn = Assignment(
-                subscript_or_var(
-                    tval, dim_inames),
-                subscript_or_var(
-                    new_temporaries[tval].name, hw_inames + dim_inames),
-                id=insn_id)
+            new_kernel = kernel
 
-            new_instructions.append(new_insn)
-            subkernel_prolog.append(RunInstruction(insn_id=insn_id))
-            if new_temporaries[tval].orig_temporary.is_local:
-                local_temporaries.add(new_temporaries[tval].name)
+            for tval in tvals:
+                from loopy.kernel.tools import DomainChanger
+                tval_hw_inames = new_temporaries[tval].hw_inames
+                dchg = DomainChanger(kernel,
+                    frozenset(sched_item.extra_args + tval_hw_inames))
+                domain = dchg.domain
 
-        if local_temporaries:
-            from loopy.schedule import Barrier
-            subkernel_prolog.append(
-                Barrier(kind="local",
-                        comment="for loads of {0}".format(
-                            ", ".join(sorted(local_temporaries)))))
+                domain, hw_inames, dim_inames, itt = \
+                    augment_domain_for_temporary_promotion(
+                        new_kernel, domain, new_temporaries[tval], mode,
+                        name_gen)
+                new_iname_to_tag.update(itt)
 
-        for tval in tvals_to_spill:
-            tval_hw_inames = new_temporaries[tval].hw_inames
-            dchg = DomainChanger(kernel,
-                frozenset(sched_item.extra_inames + tval_hw_inames))
-            domain = dchg.domain
+                new_kernel = dchg.get_kernel_with(domain)
 
-            domain, hw_inames, dim_inames = augment_domain(tval, domain, "spill")
-            kernel = dchg.get_kernel_with(domain)
+                # Add the load / spill instruction.
+                insn_id = name_gen("{name}.{mode}".format(name=tval, mode=mode))
 
-            # Add a spill instruction.
-            insn_id = name_gen("{name}.spill".format(name=tval))
+                args = (
+                    subscript_or_var(
+                        tval, dim_inames),
+                    subscript_or_var(
+                        new_temporaries[tval].name, hw_inames + dim_inames))
 
-            new_insn = Assignment(
-                subscript_or_var(
-                    new_temporaries[tval].name, hw_inames + dim_inames),
-                subscript_or_var(
-                    tval, dim_inames),
-                id=insn_id)
+                if mode == "spill":
+                    args = reversed(args)
 
-            new_instructions.append(new_insn)
-            subkernel_epilog.append(RunInstruction(insn_id=insn_id))
+                new_insn = Assignment(*args, id=insn_id)
+
+                new_instructions.append(new_insn)
+                loop_begin, loop_end = make_loop_nest(dim_inames)
+                code_block.extend(
+                    loop_begin +
+                    [RunInstruction(insn_id=insn_id)] +
+                    loop_end)
+                if new_temporaries[tval].orig_temporary.is_local:
+                    local_temporaries.add(new_temporaries[tval].name)
+
+            # After loading / before spilling local temporaries, we need to
+            # insert a barrier.
+            if local_temporaries:
+                from loopy.schedule import Barrier
+                if mode == "load":
+                    subkernel_prolog.append(
+                        Barrier(kind="local",
+                                comment="for loads of {0}".format(
+                                    ", ".join(sorted(local_temporaries)))))
+                else:
+                    subkernel_epilog.insert(0,
+                        Barrier(kind="local",
+                                comment="for spills of {0}".format(
+                                    ", ".join(sorted(local_temporaries)))))
+            return new_kernel
+
+        kernel = insert_loads_or_spills(tvals_to_load, "load")
+        kernel = insert_loads_or_spills(tvals_to_spill, "spill")
 
         # }}}
 
         new_schedule.extend(
+            [sched_item] +
             subkernel_prolog +
             subkernel_schedule +
-            subkernel_epilog)
+            subkernel_epilog +
+            # ReturnFromKernel
+            [schedule[idx]])
 
         # ReturnFromKernel
-        new_schedule.append(schedule[idx])
         idx += 1
 
     # }}}
@@ -590,7 +627,7 @@ def map_schedule_onto_host_or_device_impl(kernel):
 
     # {{{ Inner mapper function
 
-    dummy_call = CallKernel(kernel_name="", extra_args=[], extra_inames=[])
+    dummy_call = CallKernel(kernel_name="", extra_args=[])
     dummy_return = ReturnFromKernel(kernel_name="")
 
     def inner_mapper(start_idx, end_idx, new_schedule):
@@ -684,7 +721,7 @@ def map_schedule_onto_host_or_device_impl(kernel):
             last_kernel_name = kernel_name_gen()
             new_schedule[idx] = sched_item.copy(
                 kernel_name=last_kernel_name,
-                extra_inames=list(inames))
+                extra_args=list(inames))
         elif isinstance(sched_item, ReturnFromKernel):
             new_schedule[idx] = sched_item.copy(
                 kernel_name=last_kernel_name)

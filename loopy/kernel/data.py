@@ -262,6 +262,10 @@ class ValueArg(KernelArgument):
         return ast_builder.get_value_arg_decl(self.name, (),
                 self.dtype, False)
 
+
+class InameArg(ValueArg):
+    pass
+
 # }}}
 
 

@@ -71,7 +71,7 @@ class RunInstruction(ScheduleItem):
 
 
 class CallKernel(BeginBlockItem):
-    hash_fields = __slots__ = ["kernel_name", "extra_inames", "extra_args"]
+    hash_fields = __slots__ = ["kernel_name", "extra_args"]
 
 
 class ReturnFromKernel(EndBlockItem):
@@ -390,10 +390,9 @@ def dump_schedule(kernel, schedule):
             lines.append(indent + "ENDLOOP %s" % sched_item.iname)
         elif isinstance(sched_item, CallKernel):
             lines.append(indent +
-                         "CALL KERNEL %s(extra_args=%s, extra_inames=%s)" % (
+                         "CALL KERNEL %s(extra_args=%s)" % (
                              sched_item.kernel_name,
-                             sched_item.extra_args,
-                             sched_item.extra_inames))
+                             sched_item.extra_args))
             indent += "    "
         elif isinstance(sched_item, ReturnFromKernel):
             indent = indent[:-4]

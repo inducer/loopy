@@ -219,7 +219,8 @@ class ISPCASTBuilder(CASTBuilder):
     # {{{ top-level codegen
 
     def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+            schedule_index, extra_args):
+        assert extra_args == [], "extra_args not yet implemented"
         name = codegen_result.current_program(codegen_state).name
 
         from cgen import (FunctionDeclaration, Value)

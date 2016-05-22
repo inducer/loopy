@@ -436,7 +436,7 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
     for arg_idx, idi in enumerate(implemented_data_info):
         arg_idx_to_cl_arg_idx[arg_idx] = cl_arg_idx
 
-        if idi.arg_class is not lp.ValueArg:
+        if not issubclass(idi.arg_class, lp.ValueArg):
             assert issubclass(idi.arg_class, ArrayBase)
 
             # assume each of those generates exactly one...
@@ -627,7 +627,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
                     ]))
 
     def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+            schedule_index, extra_args):
         # no such thing in Python
         return None
 
@@ -643,13 +643,17 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         if not lsize:
             lsize = (1,)
 
+        all_args = codegen_state.implemented_data_info + extra_args
+
         value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
-                generate_value_arg_setup(codegen_state.kernel, [self.target.device],
-                        codegen_state.implemented_data_info)
+            generate_value_arg_setup(
+                    codegen_state.kernel,
+                    [self.target.device],
+                    all_args)
         arry_arg_code = generate_array_arg_setup(
-                codegen_state.kernel,
-                codegen_state.implemented_data_info,
-                arg_idx_to_cl_arg_idx)
+            codegen_state.kernel,
+            all_args,
+            arg_idx_to_cl_arg_idx)
 
         from genpy import Suite, Assign, Assert, Line, Comment
         from pymbolic.mapper.stringifier import PREC_NONE

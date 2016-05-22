@@ -2602,7 +2602,7 @@ def test_kernel_splitting(ctx_factory):
 
 
 def test_kernel_splitting_with_loop(ctx_factory):
-    #ctx = ctx_factory()
+    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
@@ -2614,7 +2614,7 @@ def test_kernel_splitting_with_loop(ctx_factory):
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
 
-    # ref_knl = knl
+    ref_knl = knl
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 
@@ -2635,25 +2635,23 @@ def test_kernel_splitting_with_loop(ctx_factory):
     print(cgr.device_code())
     print(cgr.host_code())
 
-    # Doesn't yet work--not passing k
-    #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-def test_kernel_splitting_with_loop_and_temporaries(ctx_factory):
-    #ctx = ctx_factory()
+def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
+    ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            <> t_extra_dim[i,0,i] = i
             <> t_private = a[k,i+1]
-            <> t_local[k,i] = a[k,i+1]
-            c[k,i] = a[k,i+1] + t_extra_dim[i,0,i]
-            out[k,i] = c[k,i] + t_private + t_local[k,i]
+            c[k,i] = a[k,i+1]
+            out[k,i] = c[k,i] + t_private
             """)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+
     ref_knl = knl
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
@@ -2670,13 +2668,12 @@ def test_kernel_splitting_with_loop_and_temporaries(ctx_factory):
 
     cgr = lp.generate_code_v2(knl)
 
-    assert len(cgr.device_programs) == 3
+    assert len(cgr.device_programs) == 2
 
     print(cgr.device_code())
     print(cgr.host_code())
 
-    # Doesn't yet work--not passing k, temporaries
-    #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
 def test_global_temporary(ctx_factory):

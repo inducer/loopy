@@ -203,11 +203,14 @@ class CASTBuilder(ASTBuilderBase):
         return FunctionBody(function_decl, function_body)
 
     def idi_to_cgen_declarator(self, kernel, idi):
+        from loopy.kernel.data import InameArg
         if (idi.offset_for_name is not None
                 or idi.stride_for_name_and_axis is not None):
             assert not idi.is_written
             from cgen import Const
             return Const(POD(self, idi.dtype, idi.name))
+        elif issubclass(idi.arg_class, InameArg):
+            return InameArg(idi.name, idi.dtype).get_arg_decl(self)
         else:
             name = idi.base_name or idi.name
             var_descr = kernel.get_var_descriptor(name)
@@ -221,7 +224,7 @@ class CASTBuilder(ASTBuilderBase):
                 return var_descr.get_arg_decl(self)
 
     def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+            schedule_index, extra_args):
         from cgen import FunctionDeclaration, Value
 
         name = codegen_result.current_program(codegen_state).name
@@ -231,7 +234,8 @@ class CASTBuilder(ASTBuilderBase):
         return FunctionDeclaration(
                         Value("void", name),
                         [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                            for idi in codegen_state.implemented_data_info])
+                            for idi in
+                            codegen_state.implemented_data_info + extra_args])
 
     def get_temporary_decls(self, codegen_state):
         from loopy.kernel.data import temp_var_scope

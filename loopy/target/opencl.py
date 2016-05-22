@@ -384,9 +384,9 @@ class OpenCLCASTBuilder(CASTBuilder):
     # {{{ top-level codegen
 
     def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
+            schedule_index, extra_args):
         fdecl = super(OpenCLCASTBuilder, self).get_function_declaration(
-                codegen_state, codegen_result, schedule_index)
+                codegen_state, codegen_result, schedule_index, extra_args)
 
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
         fdecl = CLKernel(fdecl)
