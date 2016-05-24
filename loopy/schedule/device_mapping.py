@@ -23,12 +23,18 @@ THE SOFTWARE.
 """
 
 from loopy.diagnostic import LoopyError
+from loopy.kernel.data import TemporaryVariable, temp_var_scope
+from loopy.schedule import (Barrier, BeginBlockItem, CallKernel, EndBlockItem,
+                            EnterLoop, LeaveLoop, ReturnFromKernel,
+                            RunInstruction)
 from pytools import Record, memoize_method
 
 
 def map_schedule_onto_host_or_device(kernel):
+    from loopy.kernel import kernel_state
+    assert kernel.state == kernel_state.SCHEDULED
+
     if not kernel.target.split_kernel_at_global_barriers():
-        from loopy.schedule import CallKernel, ReturnFromKernel
         new_schedule = (
             [CallKernel(kernel_name=kernel.name,
                         extra_args=[],
@@ -38,17 +44,19 @@ def map_schedule_onto_host_or_device(kernel):
         kernel = kernel.copy(schedule=new_schedule)
     else:
         kernel = map_schedule_onto_host_or_device_impl(kernel)
-    kernel = add_extra_args_to_schedule(kernel)
 
-    return restore_and_save_temporaries(kernel)
+    return restore_and_save_temporaries(
+        add_extra_args_to_schedule(kernel))
 
+
+# {{{ Schedule / instruction utilities
 
 def get_block_boundaries(schedule):
     """
-    Return a dictionary mapping BlockBeginItems to BlockEndItems and vice
-    versa.
+    Return a dictionary mapping indices of
+    :class:`loopy.schedule.BlockBeginItem`s to
+    :class:`loopy.schedule.BlockEndItem`s and vice versa.
     """
-    from loopy.schedule import (BeginBlockItem, EndBlockItem)
     block_bounds = {}
     active_blocks = []
     for idx, sched_item in enumerate(schedule):
@@ -85,8 +93,10 @@ def get_common_hw_inames(kernel, insn_ids):
         set.intersection,
         (get_hw_inames(kernel, id_to_insn[id]) for id in insn_ids))
 
+# }}}
 
-# {{{ Use / def analysis
+
+# {{{ Use / def utilities
 
 def filter_out_subscripts(exprs):
     """
@@ -101,9 +111,9 @@ def filter_out_subscripts(exprs):
     return result
 
 
-def filter_temporaries(kernel, items):
+def filter_items_by_varname(pred, kernel, items):
     """
-    Keep only the values in `items` which are temporaries.
+    Keep only the values in `items` whose variable names satisfy `pred`.
     """
     from pymbolic.primitives import Subscript, Variable
     result = set()
@@ -113,27 +123,19 @@ def filter_temporaries(kernel, items):
             base = base.aggregate
         if isinstance(base, Variable):
             base = base.name
-        if base in kernel.temporary_variables:
+        if pred(kernel, base):
             result.add(item)
     return result
 
 
-def filter_scalars(kernel, items):
-    """
-    Keep only the values in `items` which are scalars.
-    """
-    from pymbolic.primitives import Subscript, Variable
-    result = set()
-    for item in items:
-        base = item
-        if isinstance(base, Subscript):
-            continue
-        if isinstance(base, Variable):
-            base = base.name
-        if base in kernel.temporary_variables and \
-                len(kernel.temporary_variables[base].shape) == 0:
-            result.add(item)
-    return result
+from functools import partial
+
+filter_temporaries = partial(filter_items_by_varname,
+    lambda kernel, name: name in kernel.temporary_variables)
+
+filter_scalar_temporaries = partial(filter_items_by_varname,
+    lambda kernel, name: name in kernel.temporary_variables and
+        len(kernel.temporary_variables[name].shape) == 0)
 
 
 def get_use_set(insn, include_subscripts=True):
@@ -190,8 +192,6 @@ def get_temporaries_defined_and_used_in_subrange(
     defs = set()
     uses = set()
 
-    from loopy.schedule import RunInstruction
-
     for idx in range(start_idx, end_idx + 1):
         sched_item = schedule[idx]
         if isinstance(sched_item, RunInstruction):
@@ -208,6 +208,8 @@ def get_temporaries_defined_and_used_in_subrange(
 # }}}
 
 
+# {{{ Liveness analysis
+
 def compute_live_temporaries(kernel, schedule):
     """
     Compute live-in and live-out sets for temporary variables.
@@ -219,9 +221,6 @@ def compute_live_temporaries(kernel, schedule):
     block_bounds = get_block_boundaries(schedule)
 
     # {{{ Liveness analysis implementation
-
-    from loopy.schedule import (
-        LeaveLoop, ReturnFromKernel, Barrier, RunInstruction)
 
     def compute_subrange_liveness(start_idx, end_idx):
         idx = end_idx
@@ -250,9 +249,8 @@ def compute_live_temporaries(kernel, schedule):
             elif isinstance(sched_item, RunInstruction):
                 live_out[idx] = live_in[idx + 1]
                 insn = id_to_insn[sched_item.insn_id]
-                defs = filter_scalars(kernel,
-                    filter_temporaries(kernel,
-                    get_def_set(insn, include_subscripts=False)))
+                defs = filter_scalar_temporaries(kernel,
+                    get_def_set(insn, include_subscripts=False))
                 uses = filter_temporaries(kernel,
                     get_use_set(insn, include_subscripts=False))
                 live_in[idx] = (live_out[idx] - defs) | uses
@@ -286,8 +284,10 @@ def compute_live_temporaries(kernel, schedule):
 
     return live_in, live_out
 
+# }}}
 
-# {{{ Temporary promotion analysis
+
+# {{{ Temporary promotion
 
 class PromotedTemporary(Record):
     """
@@ -312,7 +312,6 @@ class PromotedTemporary(Record):
     @memoize_method
     def as_variable(self):
         temporary = self.orig_temporary
-        from loopy.kernel.data import TemporaryVariable, temp_var_scope
         return TemporaryVariable(
             name=self.name,
             dtype=temporary.dtype,
@@ -333,7 +332,7 @@ def determine_temporaries_to_promote(kernel, temporaries, name_gen):
 
     def_lists, use_lists = get_def_and_use_lists_for_all_temporaries(kernel)
 
-    from loopy.kernel.data import LocalIndexTag, temp_var_scope
+    from loopy.kernel.data import LocalIndexTag
 
     for temporary in temporaries:
         temporary = kernel.temporary_variables[temporary]
@@ -453,7 +452,6 @@ def restore_and_save_temporaries(kernel):
 
     # Create kernel variables based on live temporaries.
     inter_kernel_temporaries = set()
-    from loopy.schedule import CallKernel, ReturnFromKernel, RunInstruction
 
     call_count = 0
     for idx, sched_item in enumerate(kernel.schedule):
@@ -520,25 +518,8 @@ def restore_and_save_temporaries(kernel):
 
         # {{{ Add all the loads and spills.
 
-        def subscript_or_var(agg, subscript):
-            from pymbolic.primitives import Subscript, Variable
-            if len(subscript) == 0:
-                return Variable(agg)
-            else:
-                return Subscript(
-                    Variable(agg),
-                    tuple(map(Variable, subscript)))
-
-        def make_loop_nest(inames):
-            from loopy.schedule import EnterLoop, LeaveLoop
-            return (
-                [EnterLoop(iname=iname) for iname in inames],
-                list(reversed([LeaveLoop(iname=iname) for iname in inames])))
-
         def insert_loads_or_spills(tvals, mode):
             assert mode in ["load", "spill"]
-            from loopy.kernel.data import Assignment
-
             local_temporaries = set()
 
             code_block = \
@@ -564,6 +545,15 @@ def restore_and_save_temporaries(kernel):
                 # Add the load / spill instruction.
                 insn_id = name_gen("{name}.{mode}".format(name=tval, mode=mode))
 
+                def subscript_or_var(agg, subscript):
+                    from pymbolic.primitives import Subscript, Variable
+                    if len(subscript) == 0:
+                        return Variable(agg)
+                    else:
+                        return Subscript(
+                            Variable(agg),
+                            tuple(map(Variable, subscript)))
+
                 args = (
                     subscript_or_var(
                         tval, dim_inames),
@@ -573,10 +563,14 @@ def restore_and_save_temporaries(kernel):
                 if mode == "spill":
                     args = reversed(args)
 
+                from loopy.kernel.data import Assignment
                 new_insn = Assignment(*args, id=insn_id)
 
                 new_instructions.append(new_insn)
-                loop_begin, loop_end = make_loop_nest(dim_inames)
+
+                loop_begin = [EnterLoop(iname=iname) for iname in dim_inames]
+                loop_end = list(reversed([
+                    LeaveLoop(iname=iname) for iname in dim_inames]))
                 code_block.extend(
                     loop_begin +
                     [RunInstruction(insn_id=insn_id)] +
@@ -587,7 +581,6 @@ def restore_and_save_temporaries(kernel):
             # After loading / before spilling local temporaries, we need to
             # insert a barrier.
             if local_temporaries:
-                from loopy.schedule import Barrier
                 if mode == "load":
                     subkernel_prolog.append(
                         Barrier(kind="local",
@@ -634,10 +627,11 @@ def restore_and_save_temporaries(kernel):
 
 
 def add_extra_args_to_schedule(kernel):
+    """
+    Fill the `extra_args` fields in all the :class:`loopy.schedule.CallKernel`
+    instructions in the schedule with global temporaries.
+    """
     new_schedule = []
-
-    from loopy.schedule import CallKernel
-    from loopy.kernel.data import temp_var_scope
 
     block_bounds = get_block_boundaries(kernel.schedule)
     for idx, sched_item in enumerate(kernel.schedule):
@@ -655,13 +649,7 @@ def add_extra_args_to_schedule(kernel):
 
 
 def map_schedule_onto_host_or_device_impl(kernel):
-    from loopy.schedule import (
-        RunInstruction, EnterLoop, LeaveLoop, Barrier,
-        CallKernel, ReturnFromKernel)
-
-    # TODO: Assert that the kernel has been scheduled, etc.
     schedule = kernel.schedule
-
     loop_bounds = get_block_boundaries(schedule)
 
     # {{{ Inner mapper function
@@ -749,7 +737,7 @@ def map_schedule_onto_host_or_device_impl(kernel):
             new_schedule +
             [dummy_return.copy()])
 
-    # Assign names, inames to CallKernel / ReturnFromKernel instructions
+    # Assign names, extra_inames to CallKernel / ReturnFromKernel instructions
     inames = []
     from functools import partial
     kernel_name_gen = partial(
