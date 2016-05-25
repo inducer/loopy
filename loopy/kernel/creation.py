@@ -655,33 +655,6 @@ class ArgumentGuesser:
 # }}}
 
 
-# {{{ tag reduction inames as sequential
-
-def tag_reduction_inames_as_sequential(knl):
-    result = set()
-
-    for insn in knl.instructions:
-        result.update(insn.reduction_inames())
-
-    from loopy.kernel.data import ParallelTag, ForceSequentialTag
-
-    new_iname_to_tag = {}
-    for iname in result:
-        tag = knl.iname_to_tag.get(iname)
-        if tag is not None and isinstance(tag, ParallelTag):
-            raise RuntimeError("inconsistency detected: "
-                    "reduction iname '%s' has "
-                    "a parallel tag" % iname)
-
-        if tag is None:
-            new_iname_to_tag[iname] = ForceSequentialTag()
-
-    from loopy import tag_inames
-    return tag_inames(knl, new_iname_to_tag)
-
-# }}}
-
-
 # {{{ sanity checking
 
 def check_for_duplicate_names(knl):
@@ -1325,7 +1298,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     knl = create_temporaries(knl, default_order)
     knl = determine_shapes_of_temporaries(knl)
-    knl = tag_reduction_inames_as_sequential(knl)
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)

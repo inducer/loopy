@@ -681,6 +681,41 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
     # FIXME: Actually test functionality.
 
 
+@pytest.mark.parametrize("size", [128, 5, 113, 67])
+def test_local_parallel_reduction(ctx_factory, size):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i, j]: 0 <= i < n and 0 <= j < 5}",
+            """
+            z[j] = sum(i, i+j)
+            """)
+
+    knl = lp.fix_parameters(knl, n=size)
+
+    ref_knl = knl
+
+    def variant0(knl):
+        return lp.tag_inames(knl, "i:l.0")
+
+    def variant1(knl):
+        return lp.tag_inames(knl, "i:l.0,j:l.1")
+
+    def variant2(knl):
+        return lp.tag_inames(knl, "i:l.0,j:g.0")
+
+    for variant in [
+            variant0,
+            variant1,
+            variant2
+            ]:
+        knl = variant(ref_knl)
+        evt, (z,) = knl(queue)
+
+        lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
 def test_dependent_loop_bounds(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
