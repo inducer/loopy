@@ -726,6 +726,8 @@ class InstructionBase(Record):
 
         if self.depends_on:
             result.append("deps="+":".join(self.depends_on))
+        if self.no_sync_with:
+            result.append("nosync="+":".join(self.no_sync_with))
         if self.groups:
             result.append("groups=%s" % ":".join(self.groups))
         if self.conflicts_with_groups:
@@ -734,7 +736,7 @@ class InstructionBase(Record):
             result.append("priority=%d" % self.priority)
         if self.tags:
             result.append("tags=%s" % ":".join(self.tags))
-        if hasattr(self, "atomicity"):
+        if hasattr(self, "atomicity") and self.atomicity:
             result.append("atomic=%s" % ":".join(str(a) for a in self.atomicity))
 
         return result
