@@ -1138,6 +1138,8 @@ class LoopKernel(RecordWithoutPickling):
                 options.append("groups=%s" % ":".join(insn.groups))
             if insn.conflicts_with_groups:
                 options.append("conflicts=%s" % ":".join(insn.conflicts_with_groups))
+            if insn.no_sync_with:
+                options.append("no_sync_with=%s" % ":".join(insn.no_sync_with))
 
             if len(loop_list) > loop_list_width:
                 lines.append("[%s]" % loop_list)
