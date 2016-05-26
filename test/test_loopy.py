@@ -684,7 +684,6 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
 @pytest.mark.parametrize("size", [128, 5, 113, 67])
 def test_local_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
             "{[i, j]: 0 <= i < n and 0 <= j < 5}",
