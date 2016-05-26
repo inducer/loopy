@@ -710,9 +710,81 @@ def test_local_parallel_reduction(ctx_factory, size):
             variant2
             ]:
         knl = variant(ref_knl)
-        evt, (z,) = knl(queue)
 
         lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+# FIXME: Make me a test
+@pytest.mark.parametrize("size", [10000])
+def no_test_global_parallel_reduction(ctx_factory, size):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < n }",
+            """
+            <> key = make_uint2(i, 324830944)  {inames=i}
+            <> ctr = make_uint4(0, 1, 2, 3)  {inames=i,id=init_ctr}
+            <> vals, ctr = philox4x32_f32(ctr, key)  {dep=init_ctr}
+            z = sum(i, vals.s0 + vals.s1 + vals.s2 + vals.s3)
+            """)
+
+    # ref_knl = knl
+
+    gsize = 128
+    knl = lp.split_iname(knl, "i", gsize * 20)
+    knl = lp.split_iname(knl, "i_inner", gsize, outer_tag="l.0")
+    knl = lp.split_reduction_inward(knl, "i_inner_inner")
+    knl = lp.split_reduction_inward(knl, "i_inner_outer")
+    from loopy.transform.data import reduction_arg_to_subst_rule
+    knl = reduction_arg_to_subst_rule(knl, "i_outer")
+    knl = lp.precompute(knl, "red_i_outer_arg", "i_outer")
+    print(knl)
+    1/0
+    knl = lp.realize_reduction(knl)
+
+    evt, (z,) = knl(queue, n=size)
+
+    #lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+@pytest.mark.parametrize("size", [10000])
+def test_global_parallel_reduction_simpler(ctx_factory, size):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[l,g,j]: 0 <= l < nl and 0 <= g,j < ng}",
+            """
+            <> key = make_uint2(l+nl*g, 1234)  {inames=l:g}
+            <> ctr = make_uint4(0, 1, 2, 3)  {inames=l:g,id=init_ctr}
+            <> vals, ctr = philox4x32_f32(ctr, key)  {dep=init_ctr}
+
+            <> tmp[g] = sum(l, vals.s0 + 1j*vals.s1 + vals.s2 + 1j*vals.s3)
+
+            result = sum(j, tmp[j])
+            """)
+
+    ng = 50
+    knl = lp.fix_parameters(knl, ng=ng)
+
+    knl = lp.set_options(knl, write_cl=True)
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "l", 128, inner_tag="l.0")
+    knl = lp.split_reduction_outward(knl, "l_inner")
+    knl = lp.tag_inames(knl, "g:g.0,j:l.0")
+
+    evt, (result,) = knl(queue, nl=size)
+    evt, (result_ref,) = ref_knl(queue, nl=size)
+
+    nsamples = size * 2 * ng
+    print(result.get()/nsamples, result_ref.get()/nsamples)
+    assert abs(result.get() - result_ref.get()) / abs(result_ref.get()) < 1e-5
+
+    # FIXME: auto_test breaks
+    #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nl": size})
 
 
 def test_dependent_loop_bounds(ctx_factory):
