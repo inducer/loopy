@@ -363,7 +363,10 @@ def pre_schedule_checks(kernel):
         check_for_double_use_of_hw_axes(kernel)
         check_insn_attributes(kernel)
         check_loop_priority_inames_known(kernel)
-        check_for_unused_hw_axes_in_insns(kernel)
+
+        #FIXME: Move after scheduling
+        #check_for_unused_hw_axes_in_insns(kernel)
+
         check_for_inactive_iname_access(kernel)
         check_for_write_races(kernel)
         check_for_data_dependent_parallel_bounds(kernel)
