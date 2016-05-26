@@ -561,13 +561,15 @@ class InstructionBase(Record):
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
-            "forced_iname_deps_is_final forced_iname_deps "
+            "forced_iname_deps_is_final stop_iname_dep_propagation "
+            "stop_iname_dep_propagation "
             "priority boostable boostable_into".split())
 
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             no_sync_with,
-            forced_iname_deps_is_final, forced_iname_deps, priority,
+            forced_iname_deps_is_final, forced_iname_deps,
+            stop_iname_dep_propagation, priority,
             boostable, boostable_into, predicates, tags,
             insn_deps=None, insn_deps_is_final=None):
 
@@ -596,6 +598,9 @@ class InstructionBase(Record):
         if forced_iname_deps_is_final is None:
             forced_iname_deps_is_final = False
 
+        if stop_iname_dep_propagation is None:
+            stop_iname_dep_propagation = frozenset()
+
         if depends_on_is_final is None:
             depends_on_is_final = False
 
@@ -618,6 +623,7 @@ class InstructionBase(Record):
         # assert all(is_interned(pred) for pred in predicates)
 
         assert isinstance(forced_iname_deps, frozenset)
+        assert isinstance(stop_iname_dep_propagation, frozenset)
         assert isinstance(depends_on, frozenset) or depends_on is None
         assert isinstance(groups, frozenset)
         assert isinstance(conflicts_with_groups, frozenset)
@@ -630,6 +636,7 @@ class InstructionBase(Record):
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
+                stop_iname_dep_propagation=stop_iname_dep_propagation,
                 priority=priority,
                 boostable=boostable,
                 boostable_into=boostable_into,
@@ -800,6 +807,8 @@ class InstructionBase(Record):
                 intern_frozenset_of_ids(self.forced_iname_deps))
         self.predicates = (
                 intern_frozenset_of_ids(self.predicates))
+        self.stop_iname_dep_propagation = (
+                intern_frozenset_of_ids(self.stop_iname_dep_propagation))
 
 # }}}
 
@@ -1068,6 +1077,7 @@ class Assignment(MultiAssignmentBase):
             no_sync_with=None,
             forced_iname_deps_is_final=None,
             forced_iname_deps=frozenset(),
+            stop_iname_dep_propagation=None,
             boostable=None, boostable_into=None, tags=None,
             temp_var_type=None, atomicity=(),
             priority=0, predicates=frozenset(),
@@ -1082,6 +1092,7 @@ class Assignment(MultiAssignmentBase):
                 no_sync_with=no_sync_with,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
+                stop_iname_dep_propagation=stop_iname_dep_propagation,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
@@ -1207,6 +1218,7 @@ class CallInstruction(MultiAssignmentBase):
             no_sync_with=None,
             forced_iname_deps_is_final=None,
             forced_iname_deps=frozenset(),
+            stop_iname_dep_propagation=None,
             boostable=None, boostable_into=None, tags=None,
             temp_var_types=None,
             priority=0, predicates=frozenset(),
@@ -1221,6 +1233,7 @@ class CallInstruction(MultiAssignmentBase):
                 no_sync_with=no_sync_with,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
+                stop_iname_dep_propagation=stop_iname_dep_propagation,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
@@ -1376,6 +1389,7 @@ class CInstruction(InstructionBase):
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
+            stop_iname_dep_propagation=None,
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset(), tags=None,
             insn_deps=None, insn_deps_is_final=None):
@@ -1397,6 +1411,7 @@ class CInstruction(InstructionBase):
                 no_sync_with=no_sync_with,
                 forced_iname_deps_is_final=forced_iname_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
+                stop_iname_dep_propagation=stop_iname_dep_propagation,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority, predicates=predicates, tags=tags,

@@ -164,7 +164,9 @@ def find_all_insn_inames(kernel):
                     ))
 
         insn_id_to_inames[insn.id] = iname_deps
-        insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
+        insn_assignee_inames[insn.id] = (
+                write_deps & kernel.all_inames()
+                | insn.stop_iname_dep_propagation)
 
     written_vars = kernel.get_written_variables()
 
