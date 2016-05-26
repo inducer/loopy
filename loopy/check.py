@@ -93,7 +93,7 @@ def check_for_unused_hw_axes_in_insns(kernel):
                         ",".join(str(i) for i in group_axes),
                         ",".join(str(i) for i in group_axes_used)))
         if local_axes != local_axes_used:
-            raise LoopyError("instruction '%s' does not use all local hw axes"
+            raise LoopyError("instruction '%s' does not use all local hw axes "
                     "(available: %s used:%s)"
                     % (insn.id,
                         ",".join(str(i) for i in local_axes),
