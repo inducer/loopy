@@ -500,12 +500,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
     def map_reduction_seq(expr, rec, nresults, arg_dtype,
             reduction_dtypes):
         outer_insn_inames = temp_kernel.insn_inames(insn)
-        ncomp = len(reduction_dtypes)
 
         from pymbolic import var
         acc_var_names = [
                 var_name_gen("acc_"+"_".join(expr.inames))
-                for i in range(ncomp)]
+                for i in range(nresults)]
         acc_vars = tuple(var(n) for n in acc_var_names)
 
         from loopy.kernel.data import TemporaryVariable, temp_var_scope
@@ -584,7 +583,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
     def map_reduction_local(expr, rec, nresults, arg_dtype,
             reduction_dtypes):
         red_iname, = expr.inames
-        ncomp = len(reduction_dtypes)
 
         size = _get_int_iname_size(red_iname)
 
@@ -619,7 +617,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
 
         acc_var_names = [
                 var_name_gen("acc_"+red_iname)
-                for i in range(ncomp)]
+                for i in range(nresults)]
         acc_vars = tuple(var(n) for n in acc_var_names)
 
         from loopy.kernel.data import TemporaryVariable, temp_var_scope
