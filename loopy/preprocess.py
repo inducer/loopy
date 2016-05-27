@@ -417,6 +417,9 @@ def find_temporary_scope(kernel):
 def add_default_dependencies(kernel):
     logger.debug("%s: default deps" % kernel.name)
 
+    from loopy.transform.subst import expand_subst
+    expanded_kernel = expand_subst(kernel)
+
     writer_map = kernel.writer_map()
 
     arg_names = set(arg.name for arg in kernel.args)
@@ -425,7 +428,7 @@ def add_default_dependencies(kernel):
 
     dep_map = dict(
             (insn.id, insn.read_dependency_names() & var_names)
-            for insn in kernel.instructions)
+            for insn in expanded_kernel.instructions)
 
     new_insns = []
     for insn in kernel.instructions:
