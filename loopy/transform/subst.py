@@ -460,6 +460,9 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 # {{{ expand_subst
 
 def expand_subst(kernel, within=None):
+    if not kernel.substitutions:
+        return kernel
+
     logger.debug("%s: expand subst" % kernel.name)
 
     from loopy.symbolic import RuleAwareSubstitutionRuleExpander
