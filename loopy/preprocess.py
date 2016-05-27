@@ -895,6 +895,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     instructions=new_insns + insn_queue,
                     temporary_variables=new_temporary_variables,
                     domains=domains)
+            temp_kernel = lp.replace_instruction_ids(
+                    temp_kernel, insn_id_replacements)
 
         else:
             # nothing happened, we're done with insn
