@@ -604,7 +604,7 @@ def test_small_batched_matvec(ctx_factory):
     Np = 36  # noqa
 
     knl = lp.make_kernel(
-            "[K] -> {[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,
+            "{[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,
             [
                 "result[k, i] = sum(j, d[i, j]*f[k, j])"
                 ],

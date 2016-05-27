@@ -572,7 +572,6 @@ def test_fuzz_code_generator(ctx_factory):
 
 
 def test_empty_reduction(ctx_factory):
-    dtype = np.dtype(np.float32)
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
@@ -581,15 +580,14 @@ def test_empty_reduction(ctx_factory):
                 "{[i]: 0<=i<20}",
                 "[i] -> {[j]: 0<=j<0}"
                 ],
-            [
-                "a[i] = sum(j, j)",
-                ],
-            [
-                lp.GlobalArg("a", dtype, (20,)),
-                ])
-    cknl = lp.CompiledKernel(ctx, knl)
+            "a[i] = sum(j, j)",
+            )
 
-    evt, (a,) = cknl(queue)
+    knl = lp.realize_reduction(knl)
+    print(knl)
+
+    knl = lp.set_options(knl, write_cl=True)
+    evt, (a,) = knl(queue)
 
     assert (a.get() == 0).all()
 
