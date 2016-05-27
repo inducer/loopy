@@ -546,7 +546,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     expr.expr, expr.inames),
                 depends_on=frozenset([init_insn.id]) | insn.depends_on,
                 forced_iname_deps=update_insn_iname_deps,
-                forced_iname_deps_is_final=insn.forced_iname_deps_is_final)
+                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
+                stop_iname_dep_propagation=frozenset(expr.inames))
 
         generated_insns.append(reduction_insn)
 
