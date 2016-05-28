@@ -790,7 +790,7 @@ class LoopKernel(RecordWithoutPickling):
         result = {}
 
         for insn in self.instructions:
-            for var_name, _ in insn.assignees_and_indices():
+            for var_name in insn.assignee_var_names():
                 result.setdefault(var_name, set()).add(insn.id)
 
         return result
@@ -807,7 +807,7 @@ class LoopKernel(RecordWithoutPickling):
         return frozenset(
                 var_name
                 for insn in self.instructions
-                for var_name, _ in insn.assignees_and_indices())
+                for var_name in insn.assignee_var_names())
 
     @memoize_method
     def get_temporary_to_base_storage_map(self):

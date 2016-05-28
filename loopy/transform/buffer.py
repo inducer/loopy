@@ -239,8 +239,27 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         if not within(kernel, insn.id, ()):
             continue
 
-        for assignee, index in insn.assignees_and_indices():
-            if assignee == var_name:
+        from pymbolic.primitives import Variable, Subscript
+        from loopy.symbolic import LinearSubscript
+
+        for assignee in insn.assignees:
+            if isinstance(assignee, Variable):
+                assignee_name = assignee.name
+                index = ()
+
+            elif isinstance(assignee, Subscript):
+                assignee_name = assignee.aggregate.name
+                index = assignee.index_tuple
+
+            elif isinstance(assignee, LinearSubscript):
+                if assignee.aggregate.name == var_name:
+                    raise LoopyError("buffer_array may not be applied in the "
+                            "presence of linear write indexing into '%s'" % var_name)
+
+            else:
+                raise LoopyError("invalid lvalue '%s'" % assignee)
+
+            if assignee_name == var_name:
                 within_inames.update(
                         (get_dependencies(index) & kernel.all_inames())
                         - buffer_inames_set)
@@ -396,8 +415,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     did_write = False
     for insn_id in aar.modified_insn_ids:
         insn = kernel.id_to_insn[insn_id]
-        if any(assignee_name == buf_var_name
-                for assignee_name, _ in insn.assignees_and_indices()):
+        if buf_var_name in insn.assignee_var_names():
             did_write = True
 
     # {{{ add init_insn_id to depends_on

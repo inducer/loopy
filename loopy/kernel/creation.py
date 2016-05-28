@@ -244,9 +244,10 @@ def parse_insn(insn):
         else:
             temp_var_types.append(None)
 
+        from loopy.symbolic import LinearSubscript
         if isinstance(lhs_i, Variable):
             assignee_names.append(lhs_i.name)
-        elif isinstance(lhs_i, Subscript):
+        elif isinstance(lhs_i, (Subscript, LinearSubscript)):
             assignee_names.append(lhs_i.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
@@ -551,7 +552,7 @@ class ArgumentGuesser:
         from loopy.symbolic import get_dependencies
         for insn in instructions:
             if isinstance(insn, MultiAssignmentBase):
-                for assignee_var_name, _ in insn.assignees_and_indices():
+                for assignee_var_name in insn.assignee_var_names():
                     self.all_written_names.add(assignee_var_name)
                     self.all_names.update(get_dependencies(
                         self.submap(insn.assignees)))
@@ -619,8 +620,8 @@ class ArgumentGuesser:
 
         for insn in self.instructions:
             if isinstance(insn, MultiAssignmentBase):
-                for (assignee_var_name, _), temp_var_type in zip(
-                        insn.assignees_and_indices(),
+                for assignee_var_name, temp_var_type in zip(
+                        insn.assignee_var_names(),
                         insn.temp_var_types):
                     if temp_var_type is not None:
                         temp_var_names.add(assignee_var_name)
@@ -713,7 +714,7 @@ def check_written_variable_names(knl):
             | set(six.iterkeys(knl.temporary_variables)))
 
     for insn in knl.instructions:
-        for var_name, _ in insn.assignees_and_indices():
+        for var_name in insn.assignee_var_names():
             if var_name not in admissible_vars:
                 raise RuntimeError("variable '%s' not declared or not "
                         "allowed for writing" % var_name)
@@ -810,8 +811,8 @@ def create_temporaries(knl, default_order):
 
     for insn in knl.instructions:
         if isinstance(insn, MultiAssignmentBase):
-            for (assignee_name, _), temp_var_type in zip(
-                    insn.assignees_and_indices(),
+            for assignee_name, temp_var_type in zip(
+                    insn.assignee_var_names(),
                     insn.temp_var_types):
 
                 if temp_var_type is None:
@@ -855,7 +856,6 @@ def determine_shapes_of_temporaries(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
     from loopy.symbolic import AccessRangeMapper
-    from pymbolic import var
     import loopy as lp
 
     new_temp_vars = {}
@@ -863,10 +863,8 @@ def determine_shapes_of_temporaries(knl):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             armap = AccessRangeMapper(knl, tv.name)
             for insn in knl.instructions:
-                for assignee_name, assignee_index in insn.assignees_and_indices():
-                    if assignee_index:
-                        armap(var(assignee_name).index(assignee_index),
-                                knl.insn_inames(insn))
+                for assignee in insn.assignees:
+                    armap(assignee)
 
             if armap.access_range is not None:
                 base_indices, shape = list(zip(*[
@@ -949,7 +947,6 @@ def guess_arg_shape_if_requested(kernel, default_order):
                 from traceback import print_exc
                 print_exc()
 
-                from loopy.diagnostic import LoopyError
                 raise LoopyError(
                         "Failed to (automatically, as requested) find "
                         "shape/strides for argument '%s'. "
@@ -959,6 +956,14 @@ def guess_arg_shape_if_requested(kernel, default_order):
 
             if armap.access_range is None:
                 if armap.bad_subscripts:
+                    from loopy.symbolic import LinearSubscript
+                    if any(isinstance(sub, LinearSubscript)
+                            for sub in armap.bad_subscripts):
+                        raise LoopyError("cannot determine access range for '%s': "
+                                "linear subscript(s) in '%s'"
+                                % (arg.name, ", ".join(
+                                        str(i) for i in armap.bad_subscripts)))
+
                     n_axes_in_subscripts = set(
                             len(sub.index_tuple) for sub in armap.bad_subscripts)
 
@@ -972,7 +977,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
                         # Leave shape undetermined--we can live with that for 1D.
                         shape = (None,)
                     else:
-                        raise RuntimeError("cannot determine access range for '%s': "
+                        raise LoopyError("cannot determine access range for '%s': "
                                 "undetermined index in subscript(s) '%s'"
                                 % (arg.name, ", ".join(
                                         str(i) for i in armap.bad_subscripts)))

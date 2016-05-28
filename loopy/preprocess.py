@@ -140,8 +140,8 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
                 result_dtypes = type_inf_mapper(expr, multiple_types_ok=True)
 
                 result = None
-                for (assignee, _), comp_dtype in zip(
-                        writer_insn.assignees_and_indices(), result_dtypes):
+                for assignee, comp_dtype in zip(
+                        writer_insn.assignee_var_names(), result_dtypes):
                     if assignee == var_name:
                         result = comp_dtype
                         break
@@ -305,12 +305,11 @@ def _get_compute_inames_tagged(kernel, insn, tag_base):
 
 
 def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_name):
-    from loopy.symbolic import get_dependencies
-
     return set(iname
-            for aname, aindices in insn.assignees_and_indices()
-            for iname in get_dependencies(aindices)
-                & kernel.all_inames()
+            for aname, adeps in zip(
+                insn.assignee_var_names(),
+                insn.assignee_subscript_deps())
+            for iname in adeps & kernel.all_inames()
             if aname == tv_name
             if isinstance(kernel.iname_to_tag.get(iname), tag_base))
 
@@ -963,7 +962,7 @@ def find_idempotence(kernel):
 
         if not boostable:
             non_idempotently_updated_vars.update(
-                    var_name for var_name, _ in insn.assignees_and_indices())
+                    insn.assignee_var_names())
 
         insn = insn.copy(boostable=boostable)
 

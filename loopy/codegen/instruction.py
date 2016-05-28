@@ -122,7 +122,25 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
     # }}}
 
-    (assignee_var_name, assignee_indices), = insn.assignees_and_indices()
+    from pymbolic.primitives import Variable, Subscript
+    from loopy.symbolic import LinearSubscript
+
+    lhs = insn.assignee
+    if isinstance(lhs, Variable):
+        assignee_var_name = lhs.name
+        assignee_indices = ()
+
+    elif isinstance(lhs, Subscript):
+        assignee_var_name = lhs.aggregate.name
+        assignee_indices = lhs.index_tuple
+
+    elif isinstance(lhs, LinearSubscript):
+        assignee_var_name = lhs.aggregate.name
+        assignee_indices = (lhs.index,)
+
+    else:
+        raise RuntimeError("invalid lvalue '%s'" % lhs)
+
     lhs_var = kernel.get_var_descriptor(assignee_var_name)
     lhs_dtype = lhs_var.dtype
 

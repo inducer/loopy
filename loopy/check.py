@@ -154,22 +154,13 @@ def _is_racing_iname_tag(tv, tag):
 
 
 def check_for_write_races(kernel):
-    from loopy.symbolic import DependencyMapper
     from loopy.kernel.data import ParallelTag
-    depmap = DependencyMapper(composite_leaves=False)
 
     iname_to_tag = kernel.iname_to_tag.get
     for insn in kernel.instructions:
-        for assignee_name, assignee_indices in insn.assignees_and_indices():
-            assignee_indices = depmap(assignee_indices)
-
-            def strip_var(expr):
-                from pymbolic.primitives import Variable
-                assert isinstance(expr, Variable)
-                return expr.name
-
-            assignee_indices = set(strip_var(index) for index in assignee_indices)
-
+        for assignee_name, assignee_indices in zip(
+                insn.assignee_var_names(),
+                insn.assignee_subscript_deps()):
             assignee_inames = assignee_indices & kernel.all_inames()
             if not assignee_inames <= kernel.insn_inames(insn):
                 raise LoopyError(
@@ -332,7 +323,7 @@ def check_bounds(kernel):
 
 def check_write_destinations(kernel):
     for insn in kernel.instructions:
-        for wvar, _ in insn.assignees_and_indices():
+        for wvar in insn.assignee_var_names():
             if wvar in kernel.all_inames():
                 raise LoopyError("iname '%s' may not be written" % wvar)
 

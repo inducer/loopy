@@ -399,8 +399,9 @@ class CASTBuilder(ASTBuilderBase):
         if isinstance(func_id, Variable):
             func_id = func_id.name
 
-        assignee_var_descriptors = [codegen_state.kernel.get_var_descriptor(a)
-                for a, _ in insn.assignees_and_indices()]
+        assignee_var_descriptors = [
+                codegen_state.kernel.get_var_descriptor(a)
+                for a in insn.assignee_var_names()]
 
         par_dtypes = tuple(ecm.infer_type(par) for par in parameters)
 

@@ -1124,6 +1124,26 @@ def test_global_temporary(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
+def test_assign_to_linear_subscript(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl1 = lp.make_kernel(
+            "{ [i]: 0<=i<n}",
+            "a[i,i] = 1")
+    knl2 = lp.make_kernel(
+            "{ [i]: 0<=i<n}",
+            "a[[i*n + i]] = 1",
+            [lp.GlobalArg("a", shape="n,n"), "..."])
+
+    a1 = cl.array.zeros(queue, (10, 10), np.float32)
+    knl1(queue, a=a1)
+    a2 = cl.array.zeros(queue, (10, 10), np.float32)
+    knl2(queue, a=a2)
+
+    assert np.array_equal(a1.get(),  a2.get())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
