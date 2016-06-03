@@ -296,10 +296,9 @@ class DifferentiationContext(object):
             return None
 
         assert isinstance(orig_writer_insn, lp.Assignment)
-        from pymbolic import Variable, Subscript
-        if isinstance(orig_writer_insn.assignee, Subscript):
+        if isinstance(orig_writer_insn.assignee, p.Subscript):
             lhs_ind = orig_writer_insn.assignee.index_tuple
-        elif isinstance(orig_writer_insn.assignee, Variable):
+        elif isinstance(orig_writer_insn.assignee, p.Variable):
             lhs_ind = ()
         else:
             raise LoopyError(

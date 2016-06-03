@@ -394,7 +394,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         from loopy.kernel.data import Assignment
         assert isinstance(def_insn, Assignment)
 
-        from pymbolic import Variable, Subscript
+        from pymbolic.primitives import Variable, Subscript
         if isinstance(def_insn.assignee, Subscript):
             indices = def_insn.assignee.index_tuple
         elif isinstance(def_insn.assignee, Variable):
