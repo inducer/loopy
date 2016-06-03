@@ -864,7 +864,7 @@ def determine_shapes_of_temporaries(knl):
             armap = AccessRangeMapper(knl, tv.name)
             for insn in knl.instructions:
                 for assignee in insn.assignees:
-                    armap(assignee)
+                    armap(assignee, knl.insn_inames(insn))
 
             if armap.access_range is not None:
                 base_indices, shape = list(zip(*[
