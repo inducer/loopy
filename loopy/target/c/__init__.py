@@ -233,7 +233,7 @@ class CASTBuilder(ASTBuilderBase):
                         [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
                             for idi in codegen_state.implemented_data_info])
 
-    def get_temporary_decls(self, codegen_state):
+    def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import temp_var_scope
 
         kernel = codegen_state.kernel
@@ -261,7 +261,7 @@ class CASTBuilder(ASTBuilderBase):
                         temp_decls.append(
                                 self.wrap_temporary_decl(
                                     self.get_temporary_decl(
-                                        kernel, tv, idi), tv.scope))
+                                        kernel, schedule_index, tv, idi), tv.scope))
 
             else:
                 offset = 0
@@ -346,7 +346,7 @@ class CASTBuilder(ASTBuilderBase):
         return ExpressionToCMapper(
                 codegen_state, fortran_abi=self.target.fortran_abi)
 
-    def get_temporary_decl(self, knl, temp_var, decl_info):
+    def get_temporary_decl(self, knl, schedule_index, temp_var, decl_info):
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
         if decl_info.shape:

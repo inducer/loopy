@@ -74,12 +74,19 @@ class ExprToISPCMapper(ExpressionToCMapper):
                         "for constant '%s'" % expr)
 
     def map_variable(self, expr, enclosing_prec, type_context):
-        if expr.name in self.kernel.temporary_variables:
-            gsize, lsize = self.kernel.get_grid_sizes_as_exprs()
+        tv = self.kernel.temporary_variables.get(expr.name)
+
+        from loopy.kernel.data import temp_var_scope
+        if tv is not None and tv.scope == temp_var_scope.PRIVATE:
+            # FIXME: This is a pretty coarse way of deciding what
+            # private temporaries get duplicated. Refine? (See also
+            # below in decl generation)
+            gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:
                 return "%s[programIndex]" % expr.name
             else:
                 return expr.name
+
         else:
             return super(ExprToISPCMapper, self).map_variable(
                     expr, enclosing_prec, type_context)
@@ -291,7 +298,7 @@ class ISPCASTBuilder(CASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def get_temporary_decl(self, knl, temp_var, decl_info):
+    def get_temporary_decl(self, knl, sched_index, temp_var, decl_info):
         from loopy.target.c import POD  # uses the correct complex type
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
@@ -299,7 +306,10 @@ class ISPCASTBuilder(CASTBuilder):
 
         from loopy.kernel.data import temp_var_scope
         if temp_var.scope == temp_var_scope.PRIVATE:
-            gsize, lsize = knl.get_grid_sizes_as_exprs()
+            # FIXME: This is a pretty coarse way of deciding what
+            # private temporaries get duplicated. Refine? (See also
+            # above in expr to code mapper)
+            _, lsize = knl.get_grid_size_upper_bounds_as_exprs()
             shape = lsize + shape
 
         if shape:

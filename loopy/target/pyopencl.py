@@ -631,8 +631,8 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         # no such thing in Python
         return None
 
-    def get_temporary_decls(self, codegen_state):
-        # FIXME: Create global temporaries
+    def get_temporary_decls(self, codegen_state, schedule_state):
+        # Temporaries allocated in get_function_definition
         return []
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):

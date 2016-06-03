@@ -241,7 +241,7 @@ def wrap_in_if(codegen_state, condition_exprs, inner):
 
 def generate_host_or_device_program(codegen_state, schedule_index):
     ast_builder = codegen_state.ast_builder
-    temp_decls = ast_builder.get_temporary_decls(codegen_state)
+    temp_decls = ast_builder.get_temporary_decls(codegen_state, schedule_index)
 
     from functools import partial
 
