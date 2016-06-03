@@ -1287,7 +1287,10 @@ class AccessRangeMapper(WalkMapper):
             self.access_range = self.access_range | access_range
 
     def map_linear_subscript(self, expr, inames):
-        self.bad_subscripts.append(expr)
+        self.rec(expr.index, inames)
+
+        if expr.aggregate.name == self.arg_name:
+            self.bad_subscripts.append(expr)
 
     def map_reduction(self, expr, inames):
         return WalkMapper.map_reduction(self, expr, inames | set(expr.inames))
