@@ -156,7 +156,7 @@ class ASTBuilderBase(object):
     def generate_top_of_body(self, codegen_state):
         return []
 
-    def get_temporary_decls(self, codegen_state):
+    def get_temporary_decls(self, codegen_state, schedule_index):
         raise NotImplementedError
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
@@ -239,7 +239,7 @@ class DummyHostASTBuilder(ASTBuilderBase):
             schedule_index):
         return None
 
-    def get_temporary_decls(self, codegen_state):
+    def get_temporary_decls(self, codegen_state, schedule_index):
         return []
 
     def get_expression_to_code_mapper(self, codegen_state):
