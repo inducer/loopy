@@ -628,23 +628,6 @@ def test_small_batched_matvec(ctx_factory):
             parameters=dict(K=K))
 
 
-def test_outer_product(ctx_factory):
-    logging.basicConfig(level=logging.DEBUG)
-    #ctx = ctx_factory()
-
-    knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<n}}",
-            """
-            z = a[i]*b[j]  {id=init_z}
-            z = z*2        {id=mult_z,dep=init_z}
-            c[i,j] = z     {dep=mult_z}
-            """)
-
-    print(knl)
-
-    assert knl.insn_inames("mult_z") == frozenset(["i", "j"])
-
-
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
