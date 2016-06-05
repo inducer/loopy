@@ -139,7 +139,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         temporary_name=None,
         temporary_scope=None, temporary_is_local=None,
         footprint_subscripts=None,
-        fetch_bounding_box=False):
+        fetch_bounding_box=False,
+        fetch_outer_inames=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
@@ -152,6 +153,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         directly by putting an index expression into *var_name*. Substitutions
         such as those occurring in dimension splits are recorded and also
         applied to these indices.
+
+    :arg fetch_outer_inames: The inames within which the fetch
+        instruction is nested. If *None*, make an educated guess.
 
     This function combines :func:`extract_subst` and :func:`precompute`.
     """
@@ -246,7 +250,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
-            temporary_scope=temporary_scope, temporary_is_local=temporary_is_local)
+            temporary_scope=temporary_scope, temporary_is_local=temporary_is_local,
+            precompute_outer_inames=fetch_outer_inames)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
