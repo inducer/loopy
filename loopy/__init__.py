@@ -62,7 +62,7 @@ from loopy.library.reduction import register_reduction_parser
 from loopy.transform.iname import (
         set_loop_priority,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
-        rename_iname, link_inames, remove_unused_inames,
+        rename_iname, remove_unused_inames,
         split_reduction_inward, split_reduction_outward,
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique)
@@ -159,7 +159,7 @@ __all__ = [
         "set_loop_priority",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
-        "rename_iname", "link_inames", "remove_unused_inames",
+        "rename_iname", "remove_unused_inames",
         "split_reduction_inward", "split_reduction_outward",
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",

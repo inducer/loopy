@@ -854,17 +854,20 @@ def test_make_copy_kernel(ctx_factory):
 def test_auto_test_can_detect_problems(ctx_factory):
     ctx = ctx_factory()
 
-    knl = lp.make_kernel(
+    ref_knl = lp.make_kernel(
         "{[i,j]: 0<=i,j<n}",
         """
         a[i,j] = 25
         """)
 
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        """
+        a[i,i] = 25
+        """)
+
+    ref_knl = lp.add_and_infer_dtypes(ref_knl, dict(a=np.float32))
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
-
-    ref_knl = knl
-
-    knl = lp.link_inames(knl, "i,j", "i0")
 
     from loopy.diagnostic import AutomaticTestFailure
     with pytest.raises(AutomaticTestFailure):
