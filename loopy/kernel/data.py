@@ -502,7 +502,7 @@ class InstructionBase(Record):
 
         a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
         with which no barrier synchronization is necessary, even given the existence
-        of a dependency chain and apparently conflicting writes
+        of a dependency chain and apparently conflicting access
 
     .. rubric:: Conditionals
 
@@ -538,7 +538,8 @@ class InstructionBase(Record):
 
         A :class:`set` of inames into which the instruction
         may need to be boosted, as a heuristic help for the scheduler.
-        Also allowed to be *None*.
+        Also allowed to be *None* to indicate that this hasn't been
+        decided yet.
 
     .. rubric:: Tagging
 
