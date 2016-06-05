@@ -122,7 +122,7 @@ def check_for_inactive_iname_access(kernel):
 
         if not expression_inames <= kernel.insn_inames(insn):
             raise LoopyError(
-                    "instructiosn '%s' references "
+                    "instruction '%s' references "
                     "inames that the instruction does not depend on"
                     % insn.id)
 
