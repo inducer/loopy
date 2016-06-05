@@ -239,6 +239,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, temporary_name=None, precompute_inames=None,
+        precompute_outer_inames=None,
         storage_axis_to_tag={}, default_tag="l.auto", dtype=None,
         fetch_bounding_box=False,
         temporary_scope=None, temporary_is_local=None,
@@ -306,6 +307,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         be shorter than the (provided or automatically found) *storage_axes*
         tuple, in which case names will be automatically created.
         May also equivalently be a comma-separated string.
+
+    :arg precompute_outer_inames: The inames within which the compute
+        instruction is nested. If *None*, guess from dependencies.
 
     :arg compute_insn_id: The ID of the instruction performing the precomputation.
 
@@ -766,11 +770,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             id=compute_insn_id,
             assignee=assignee,
             expression=compute_expression,
-            forced_iname_deps=(
-                frozenset(non1_storage_axis_names)
-                | frozenset(
-                    (expanding_usage_arg_deps | value_inames)
-                    - sweep_inames_set))
+            # forced_iname_deps determined below
             )
 
     # }}}
@@ -788,6 +788,29 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     kernel = kernel.copy(
             instructions=[compute_insn] + kernel.instructions)
     kernel = rule_mapping_context.finish_kernel(kernel)
+
+    # }}}
+
+    # {{{ determine inames for compute insn
+
+    if precompute_outer_inames is None:
+        from loopy.kernel.tools import guess_iname_deps_based_on_var_use
+        precompute_outer_inames = (
+                    frozenset(non1_storage_axis_names)
+                    | frozenset(
+                        (expanding_usage_arg_deps | value_inames)
+                        - sweep_inames_set)
+                    | guess_iname_deps_based_on_var_use(kernel, compute_insn))
+    else:
+        if not isinstance(precompute_outer_inames, frozenset):
+            raise TypeError("precompute_outer_inames must be a frozenset")
+
+    kernel = kernel.copy(
+            instructions=[
+                insn.copy(forced_iname_deps=precompute_outer_inames)
+                if insn.id == compute_insn_id
+                else insn
+                for insn in kernel.instructions])
 
     # }}}
 
