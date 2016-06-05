@@ -490,7 +490,10 @@ def count(kernel, set):
     except AttributeError:
         pass
 
-    count = 0
+    count = isl.PwQPolynomial.zero(
+            set.space
+            .drop_dims(dim_type.set, 0, set.dim(dim_type.set))
+            .add_dims(dim_type.set, 1))
 
     set = set.make_disjoint()
 
