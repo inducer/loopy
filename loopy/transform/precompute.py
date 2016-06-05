@@ -309,7 +309,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         May also equivalently be a comma-separated string.
 
     :arg precompute_outer_inames: The inames within which the compute
-        instruction is nested. If *None*, guess from dependencies.
+        instruction is nested. If *None*, make an educated guess.
 
     :arg compute_insn_id: The ID of the instruction performing the precomputation.
 
