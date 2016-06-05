@@ -74,7 +74,7 @@ def test_convolution(ctx_factory):
             "..."
             ],
         assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1 and nimgs>=0",
-        flags="annotate_inames",
+        options="annotate_inames",
         defines=dict(ncolors=3))
 
     f_w = 3
@@ -102,8 +102,8 @@ def test_convolution(ctx_factory):
         return knl
 
     for variant in [
-            variant_0,
-            variant_1,
+            #variant_0,
+            #variant_1,
             variant_2
             ]:
         lp.auto_test_vs_ref(ref_knl, ctx, variant(knl),
