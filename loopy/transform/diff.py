@@ -310,7 +310,9 @@ class DifferentiationContext(object):
                 id=new_insn_id,
                 assignee=var(new_var_name)[
                     lhs_ind + diff_iname_exprs],
-                expression=diff_expr)
+                expression=diff_expr,
+                forced_iname_deps=(
+                    orig_writer_insn.forced_iname_deps | frozenset(diff_inames)))
 
         self.new_instructions.append(insn)
 

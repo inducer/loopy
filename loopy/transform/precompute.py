@@ -480,8 +480,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     from loopy.symbolic import SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
-    value_inames = get_dependencies(
-            submap(subst.expression)
+    value_inames = (
+            get_dependencies(submap(subst.expression))
+            - frozenset(subst.arguments)
             ) & kernel.all_inames()
     if value_inames - expanding_usage_arg_deps < extra_storage_axes:
         raise RuntimeError("unreferenced sweep inames specified: "
@@ -728,8 +729,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     assignee = var(temporary_name)
 
     if non1_storage_axis_names:
-        assignee = assignee.index(
-                tuple(var(iname) for iname in non1_storage_axis_names))
+        assignee = assignee[
+                tuple(var(iname) for iname in non1_storage_axis_names)]
 
     # {{{ process substitutions on compute instruction
 
@@ -764,7 +765,13 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     compute_insn = Assignment(
             id=compute_insn_id,
             assignee=assignee,
-            expression=compute_expression)
+            expression=compute_expression,
+            forced_iname_deps=(
+                frozenset(non1_storage_axis_names)
+                | frozenset(
+                    (expanding_usage_arg_deps | value_inames)
+                    - sweep_inames_set))
+            )
 
     # }}}
 

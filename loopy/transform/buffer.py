@@ -400,7 +400,9 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     init_instruction = Assignment(id=init_insn_id,
                 assignee=buf_var_init,
                 expression=init_expression,
-                forced_iname_deps=frozenset(within_inames),
+                forced_iname_deps=(
+                    frozenset(within_inames)
+                    | frozenset(non1_init_inames)),
                 depends_on=frozenset(),
                 depends_on_is_final=True)
 
@@ -475,9 +477,12 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         store_instruction = Assignment(
                     id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
                     depends_on=frozenset(aar.modified_insn_ids),
+                    no_sync_with=frozenset([init_insn_id]),
                     assignee=store_target,
                     expression=store_expression,
-                    forced_iname_deps=frozenset(within_inames))
+                    forced_iname_deps=(
+                        frozenset(within_inames)
+                        | frozenset(non1_store_inames)))
     else:
         did_write = False
 

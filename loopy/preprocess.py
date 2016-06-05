@@ -544,8 +544,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     expr.expr, expr.inames),
                 depends_on=frozenset([init_insn.id]) | insn.depends_on,
                 forced_iname_deps=update_insn_iname_deps,
-                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
-                stop_iname_dep_propagation=frozenset(expr.inames))
+                forced_iname_deps_is_final=insn.forced_iname_deps_is_final)
 
         generated_insns.append(reduction_insn)
 
@@ -716,8 +715,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
         new_insn_add_depends_on.add(prev_id)
         new_insn_add_no_sync_with.add(prev_id)
         new_insn_add_forced_iname_deps.add(stage_exec_iname or base_exec_iname)
-        new_insn_add_stop_iname_dep_propagation.add(
-                stage_exec_iname or base_exec_iname)
 
         if nresults == 1:
             assert len(acc_vars) == 1
@@ -828,7 +825,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
         new_insn_add_depends_on = set()
         new_insn_add_no_sync_with = set()
         new_insn_add_forced_iname_deps = set()
-        new_insn_add_stop_iname_dep_propagation = set()
 
         generated_insns = []
 
@@ -859,11 +855,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     | frozenset(new_insn_add_no_sync_with),
                     forced_iname_deps=(
                         temp_kernel.insn_inames(insn)
-                        | new_insn_add_forced_iname_deps),
-                    stop_iname_dep_propagation=(
-                        insn.stop_iname_dep_propagation
-                        | new_insn_add_stop_iname_dep_propagation),
-                    )
+                        | new_insn_add_forced_iname_deps))
 
             kwargs.pop("id")
             kwargs.pop("expression")

@@ -669,9 +669,11 @@ class LoopKernel(RecordWithoutPickling):
         """Return a mapping from instruction ids to inames inside which
         they should be run.
         """
+        result = {}
+        for insn in self.instructions:
+            result[insn.id] = insn.forced_iname_deps
 
-        from loopy.kernel.tools import find_all_insn_inames
-        return find_all_insn_inames(self)
+        return result
 
     @memoize_method
     def all_referenced_inames(self):
@@ -681,11 +683,9 @@ class LoopKernel(RecordWithoutPickling):
         return result
 
     def insn_inames(self, insn):
-        from loopy.kernel.data import InstructionBase
-        if isinstance(insn, InstructionBase):
-            return self.all_insn_inames()[insn.id]
-        else:
-            return self.all_insn_inames()[insn]
+        if isinstance(insn, str):
+            insn = self.id_to_insn[insn]
+        return insn.forced_iname_deps
 
     @memoize_method
     def iname_to_insns(self):

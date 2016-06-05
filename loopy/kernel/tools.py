@@ -30,7 +30,7 @@ from six.moves import intern
 import numpy as np
 import islpy as isl
 from islpy import dim_type
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, warn_with_kernel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -164,9 +164,7 @@ def find_all_insn_inames(kernel):
                     ))
 
         insn_id_to_inames[insn.id] = iname_deps
-        insn_assignee_inames[insn.id] = (
-                write_deps & kernel.all_inames()
-                | insn.stop_iname_dep_propagation)
+        insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
 
     written_vars = kernel.get_written_variables()
 
@@ -216,8 +214,14 @@ def find_all_insn_inames(kernel):
 
                 if inames_new != inames_old:
                     did_something = True
-                    logger.debug("%s: find_all_insn_inames: %s -> %s (dep-based)" % (
-                        kernel.name, insn.id, ", ".join(sorted(inames_new))))
+
+                    warn_with_kernel(kernel, "inferred_iname",
+                            "The iname(s) '%s' on instruction '%s' was "
+                            "automatically added. "
+                            "This is deprecated. Please add the iname "
+                            "to the instruction "
+                            "implicitly, e.g. by adding '{inames=...}"
+                            % (inames_new-inames_old, insn.id))
 
             # }}}
 
@@ -247,8 +251,14 @@ def find_all_insn_inames(kernel):
             if inames_new != inames_old:
                 did_something = True
                 insn_id_to_inames[insn.id] = frozenset(inames_new)
-                logger.debug("%s: find_all_insn_inames: %s -> %s (domain-based)" % (
-                    kernel.name, insn.id, ", ".join(sorted(inames_new))))
+
+                warn_with_kernel(kernel, "inferred_iname",
+                        "The iname(s) '%s' on instruction '%s' was "
+                        "automatically added. "
+                        "This is deprecated. Please add the iname "
+                        "to the instruction "
+                        "implicitly, e.g. by adding '{inames=...}"
+                        % (inames_new-inames_old, insn.id))
 
             # }}}
 

@@ -1084,6 +1084,19 @@ def resolve_wildcard_deps(knl):
 # }}}
 
 
+# {{{ add inferred iname deps
+
+def add_inferred_inames(knl):
+    from loopy.kernel.tools import find_all_insn_inames
+    insn_inames = find_all_insn_inames(knl)
+
+    return knl.copy(instructions=[
+            insn.copy(forced_iname_deps=insn_inames[insn.id])
+            for insn in knl.instructions])
+
+# }}}
+
+
 # {{{ kernel creation top-level
 
 def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
@@ -1302,6 +1315,20 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_nonexistent_iname_deps(knl)
 
     knl = create_temporaries(knl, default_order)
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must create temporaries before inferring inames (because those temporaries
+    # mediate dependencies that are then used for iname propagation.)
+    # -------------------------------------------------------------------------
+    # NOTE: add_inferred_inames will be phased out and throws warnings if it
+    # does something.
+    knl = add_inferred_inames(knl)
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must infer inames before determining shapes.
+    # -------------------------------------------------------------------------
     knl = determine_shapes_of_temporaries(knl)
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)

@@ -1142,8 +1142,8 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 
     # {{{ change domains
 
-    new_inames_set = set(new_inames)
-    old_inames_set = set(old_inames)
+    new_inames_set = frozenset(new_inames)
+    old_inames_set = frozenset(old_inames)
 
     new_domains = []
     for idom, dom in enumerate(kernel.domains):
@@ -1229,7 +1229,26 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 
     # }}}
 
-    return kernel.copy(domains=new_domains)
+    # {{{ switch iname refs in instructions
+
+    def fix_iname_set(insn_id, inames):
+        if old_inames_set <= inames:
+            return (inames - old_inames_set) | new_inames_set
+        elif old_inames_set & inames:
+            raise LoopyError("instruction '%s' uses only a part (%s), not all, "
+                    "of the old inames"
+                    % (insn_id, ", ".join(old_inames_set & inames)))
+        else:
+            return inames
+
+    new_instructions = [
+            insn.copy(forced_iname_deps=fix_iname_set(
+                insn.id, insn.forced_iname_deps))
+            for insn in kernel.instructions]
+
+    # }}}
+
+    return kernel.copy(domains=new_domains, instructions=new_instructions)
 
 # }}}
 
