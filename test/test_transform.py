@@ -133,6 +133,8 @@ def test_fusion():
 
     knl = lp.fuse_kernels([exp_kernel, sum_kernel])
 
+    print(knl)
+
 
 def test_alias_temporaries(ctx_factory):
     ctx = ctx_factory()
