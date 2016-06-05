@@ -235,7 +235,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
             new_insns.append(insn)
             continue
 
-        index_key = insn.assignee.subscript
+        index_key = extract_index_key(insn.assignee)
 
         lhs = insn.assignee
         rhs = insn.expression
