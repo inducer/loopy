@@ -75,7 +75,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
 
         from loopy.codegen.result import generate_host_or_device_program
         codegen_result = generate_host_or_device_program(
-                new_codegen_state, sched_index + 1)
+                new_codegen_state, sched_index)
 
         glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
                 get_insn_ids_for_block_at(kernel.schedule, sched_index))

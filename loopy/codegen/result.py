@@ -246,14 +246,17 @@ def generate_host_or_device_program(codegen_state, schedule_index):
     from functools import partial
 
     from loopy.codegen.control import build_loop_nest
-    next_func = partial(build_loop_nest, schedule_index=schedule_index)
-
     if codegen_state.is_generating_device_code:
+        from loopy.schedule import CallKernel
+        assert isinstance(codegen_state.kernel.schedule[schedule_index], CallKernel)
+
         from loopy.codegen.loop import set_up_hw_parallel_loops
         codegen_result = set_up_hw_parallel_loops(
-                codegen_state, schedule_index, next_func=next_func)
+                codegen_state, schedule_index,
+                next_func=partial(build_loop_nest,
+                    schedule_index=schedule_index + 1))
     else:
-        codegen_result = next_func(codegen_state)
+        codegen_result = build_loop_nest(codegen_state, schedule_index)
 
     codegen_result = merge_codegen_results(
             codegen_state,
