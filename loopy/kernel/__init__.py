@@ -918,9 +918,7 @@ class LoopKernel(RecordWithoutPickling):
 
         all_inames_by_insns = set()
         for insn_id in insn_ids:
-            insn = self.id_to_insn[insn_id]
-
-            all_inames_by_insns |= self.insn_inames(insn)
+            all_inames_by_insns |= self.insn_inames(insn_id)
 
         if not all_inames_by_insns <= self.all_inames():
             raise RuntimeError("some inames collected from instructions (%s) "
@@ -935,7 +933,7 @@ class LoopKernel(RecordWithoutPickling):
                 GroupIndexTag, LocalIndexTag,
                 AutoLocalIndexTagBase)
 
-        for iname in self.all_inames():
+        for iname in all_inames_by_insns:
             tag = self.iname_to_tag.get(iname)
 
             if isinstance(tag, GroupIndexTag):
