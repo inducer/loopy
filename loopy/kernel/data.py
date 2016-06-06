@@ -678,13 +678,13 @@ class InstructionBase(Record):
 
     @property
     def assignee_name(self):
-        """A convenience wrapper around :meth:`assignee_names`
+        """A convenience wrapper around :meth:`assignee_var_names`
         that returns the the name of the variable being assigned.
         If more than one variable is being modified in the instruction,
         :raise:`ValueError` is raised.
         """
 
-        names = self.assignee_names()
+        names = self.assignee_var_names()
 
         if len(names) != 1:
             raise ValueError("expected exactly one assignment in instruction "
