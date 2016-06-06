@@ -565,7 +565,7 @@ def generate_loop_schedules_internal(
             print()
         print(75*"=")
         print("KERNEL:")
-        print(kernel)
+        print(kernel.stringify(with_dependencies=True))
         print(75*"=")
         print("CURRENT SCHEDULE:")
         print(dump_schedule(sched_state.kernel, sched_state.schedule))
