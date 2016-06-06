@@ -146,15 +146,156 @@ def expand_defines_in_expr(expr, defines):
 # }}}
 
 
+# {{{ instruction options
+
+def get_default_insn_options_dict():
+    return {
+        "depends_on": None,
+        "depends_on_is_final": False,
+        "no_sync_with": None,
+        "groups": None,
+        "conflicts_with_groups": None,
+        "insn_id": None,
+        "inames_to_dup": [],
+        "priority": 0,
+        "forced_iname_deps_is_final": False,
+        "forced_iname_deps": frozenset(),
+        "predicates": frozenset(),
+        "tags": (),
+        "atomicity": (),
+        }
+
+
+def parse_insn_options(opt_dict, options_str, assignee_names=None):
+    if options_str is None:
+        return opt_dict
+
+    result = opt_dict.copy()
+
+    for option in options_str.split(","):
+        option = option.strip()
+        if not option:
+            raise RuntimeError("empty option supplied")
+
+        equal_idx = option.find("=")
+        if equal_idx == -1:
+            opt_key = option
+            opt_value = None
+        else:
+            opt_key = option[:equal_idx].strip()
+            opt_value = option[equal_idx+1:].strip()
+
+        if opt_key == "id" and opt_value is not None:
+            result["insn_id"] = intern(opt_value)
+        elif opt_key == "id_prefix" and opt_value is not None:
+            result["insn_id"] = UniqueName(opt_value)
+        elif opt_key == "priority" and opt_value is not None:
+            result["priority"] = int(opt_value)
+        elif opt_key == "dup" and opt_value is not None:
+            for value in opt_value.split(":"):
+                arrow_idx = value.find("->")
+                if arrow_idx >= 0:
+                    result["inames_to_dup"].append(
+                            (value[:arrow_idx], value[arrow_idx+2:]))
+                else:
+                    result["inames_to_dup"].append((value, None))
+
+        elif opt_key == "dep" and opt_value is not None:
+            if opt_value.startswith("*"):
+                result["depends_on_is_final"] = True
+                opt_value = (opt_value[1:]).strip()
+
+            result["depends_on"] = frozenset(
+                    intern(dep.strip()) for dep in opt_value.split(":")
+                    if dep.strip())
+
+        elif opt_key == "nosync" and opt_value is not None:
+            result["no_sync_with"] = frozenset(
+                    intern(dep.strip()) for dep in opt_value.split(":")
+                    if dep.strip())
+
+        elif opt_key == "groups" and opt_value is not None:
+            result["groups"] = frozenset(
+                    intern(grp.strip()) for grp in opt_value.split(":")
+                    if grp.strip())
+
+        elif opt_key == "conflicts" and opt_value is not None:
+            result["conflicts_with_groups"] = frozenset(
+                    intern(grp.strip()) for grp in opt_value.split(":")
+                    if grp.strip())
+
+        elif opt_key == "inames" and opt_value is not None:
+            if opt_value.startswith("+"):
+                result["forced_iname_deps_is_final"] = False
+                opt_value = (opt_value[1:]).strip()
+            else:
+                result["forced_iname_deps_is_final"] = True
+
+            result["forced_iname_deps"] = intern_frozenset_of_ids(
+                    opt_value.split(":"))
+
+        elif opt_key == "if" and opt_value is not None:
+            result["predicates"] = intern_frozenset_of_ids(opt_value.split(":"))
+
+        elif opt_key == "tags" and opt_value is not None:
+            result["tags"] = tuple(
+                    tag.strip() for tag in opt_value.split(":")
+                    if tag.strip())
+
+        elif opt_key == "atomic":
+            if assignee_names is None:
+                raise LoopyError("'atomic' option may only be specified "
+                        "on an actual instruction")
+            if len(assignee_names) != 1:
+                raise LoopyError("atomic operations with more than one "
+                        "left-hand side not supported")
+            assignee_name, = assignee_names
+
+            import loopy as lp
+            if opt_value is None:
+                result["atomicity"] = result["atomicity"] + (
+                        lp.AtomicUpdate(assignee_name),)
+            else:
+                for v in opt_value.split(":"):
+                    if v == "init":
+                        result["atomicity"] = result["atomicity"] + (
+                                lp.AtomicInit(assignee_name),)
+                    else:
+                        raise LoopyError("atomicity directive not "
+                                "understood: %s"
+                                % v)
+            del assignee_name
+
+        else:
+            raise ValueError(
+                    "unrecognized instruction option '%s' "
+                    "(maybe a missing/extraneous =value?)"
+                    % opt_key)
+
+    return result
+
+# }}}
+
+
 # {{{ parse instructions
 
+OPTIONS_RE = re.compile(
+        "^"
+        "(?P<indent>\s*)"
+        "\{(?P<options>.+)\}"
+        "\s*$")
+
 INSN_RE = re.compile(
-        "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
-        "\s*?(?:\{(?P<options>.+)\}\s*)?$"
-        )
+        "^"
+        "(?P<indent>\s*)"
+        "(?P<lhs>.+?)"
+        "\s*(?<!\:)=\s*"
+        "(?P<rhs>.+?)"
+        "\s*?"
+        "(?:\{(?P<options>.+)\}\s*)?$")
+
 SUBST_RE = re.compile(
-        r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$"
-        )
+        r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
 
 
 def parse_insn(insn):
@@ -224,6 +365,8 @@ def parse_insn(insn):
                 arguments=tuple(arg_names),
                 expression=rhs), []
 
+    assert insn_match is not None
+
     # }}}
 
     if not isinstance(lhs, tuple):
@@ -259,138 +402,25 @@ def parse_insn(insn):
     temp_var_types = tuple(temp_var_types)
     del new_lhs
 
-    if insn_match is not None:
-        depends_on = None
-        depends_on_is_final = False
-        no_sync_with = None
-        insn_groups = None
-        conflicts_with_groups = None
-        insn_id = None
-        inames_to_dup = []
-        priority = 0
-        forced_iname_deps_is_final = False
-        forced_iname_deps = frozenset()
-        predicates = frozenset()
-        tags = ()
-        atomicity = ()
+    insn_options = parse_insn_options(
+            get_default_insn_options_dict(),
+            groups["options"],
+            assignee_names=assignee_names)
 
-        if groups["options"] is not None:
-            for option in groups["options"].split(","):
-                option = option.strip()
-                if not option:
-                    raise RuntimeError("empty option supplied")
+    insn_id = insn_options.pop("insn_id", None)
+    inames_to_dup = insn_options.pop("inames_to_dup", None)
 
-                equal_idx = option.find("=")
-                if equal_idx == -1:
-                    opt_key = option
-                    opt_value = None
-                else:
-                    opt_key = option[:equal_idx].strip()
-                    opt_value = option[equal_idx+1:].strip()
+    kwargs = dict(
+                id=(
+                    intern(insn_id)
+                    if isinstance(insn_id, str)
+                    else insn_id),
+                **insn_options)
 
-                if opt_key == "id" and opt_value is not None:
-                    insn_id = intern(opt_value)
-                elif opt_key == "id_prefix" and opt_value is not None:
-                    insn_id = UniqueName(opt_value)
-                elif opt_key == "priority" and opt_value is not None:
-                    priority = int(opt_value)
-                elif opt_key == "dup" and opt_value is not None:
-                    for value in opt_value.split(":"):
-                        arrow_idx = value.find("->")
-                        if arrow_idx >= 0:
-                            inames_to_dup.append(
-                                    (value[:arrow_idx], value[arrow_idx+2:]))
-                        else:
-                            inames_to_dup.append((value, None))
-
-                elif opt_key == "dep" and opt_value is not None:
-                    if opt_value.startswith("*"):
-                        depends_on_is_final = True
-                        opt_value = (opt_value[1:]).strip()
-
-                    depends_on = frozenset(
-                            intern(dep.strip()) for dep in opt_value.split(":")
-                            if dep.strip())
-
-                elif opt_key == "nosync" and opt_value is not None:
-                    no_sync_with = frozenset(
-                            intern(dep.strip()) for dep in opt_value.split(":")
-                            if dep.strip())
-
-                elif opt_key == "groups" and opt_value is not None:
-                    insn_groups = frozenset(
-                            intern(grp.strip()) for grp in opt_value.split(":")
-                            if grp.strip())
-
-                elif opt_key == "conflicts" and opt_value is not None:
-                    conflicts_with_groups = frozenset(
-                            intern(grp.strip()) for grp in opt_value.split(":")
-                            if grp.strip())
-
-                elif opt_key == "inames" and opt_value is not None:
-                    if opt_value.startswith("+"):
-                        forced_iname_deps_is_final = False
-                        opt_value = (opt_value[1:]).strip()
-                    else:
-                        forced_iname_deps_is_final = True
-
-                    forced_iname_deps = intern_frozenset_of_ids(opt_value.split(":"))
-
-                elif opt_key == "if" and opt_value is not None:
-                    predicates = intern_frozenset_of_ids(opt_value.split(":"))
-
-                elif opt_key == "tags" and opt_value is not None:
-                    tags = tuple(
-                            tag.strip() for tag in opt_value.split(":")
-                            if tag.strip())
-
-                elif opt_key == "atomic":
-                    if len(assignee_names) != 1:
-                        raise LoopyError("atomic operations with more than one "
-                                "left-hand side not supported")
-                    assignee_name, = assignee_names
-
-                    if opt_value is None:
-                        atomicity = atomicity + (
-                                lp.AtomicUpdate(assignee_name),)
-                    else:
-                        for v in opt_value.split(":"):
-                            if v == "init":
-                                atomicity = atomicity + (
-                                        lp.AtomicInit(assignee_name),)
-                            else:
-                                raise LoopyError("atomicity directive not "
-                                        "understood: %s"
-                                        % v)
-                    del assignee_name
-
-                else:
-                    raise ValueError(
-                            "unrecognized instruction option '%s' "
-                            "(maybe a missing/extraneous =value?)"
-                            % opt_key)
-
-        kwargs = dict(
-                    id=(
-                        intern(insn_id)
-                        if isinstance(insn_id, str)
-                        else insn_id),
-                    depends_on=depends_on,
-                    depends_on_is_final=depends_on_is_final,
-                    no_sync_with=no_sync_with,
-                    groups=insn_groups,
-                    conflicts_with_groups=conflicts_with_groups,
-                    forced_iname_deps_is_final=forced_iname_deps_is_final,
-                    forced_iname_deps=forced_iname_deps,
-                    priority=priority,
-                    predicates=predicates,
-                    tags=tags,
-                    atomicity=atomicity)
-
-        from loopy.kernel.data import make_assignment
-        return make_assignment(
-                lhs, rhs, temp_var_types, **kwargs
-                ), inames_to_dup
+    from loopy.kernel.data import make_assignment
+    return make_assignment(
+            lhs, rhs, temp_var_types, **kwargs
+            ), inames_to_dup
 
 
 def parse_if_necessary(insn, defines):
