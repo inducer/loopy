@@ -241,8 +241,10 @@ def no_test_global_parallel_reduction(ctx_factory, size):
 
 
 @pytest.mark.parametrize("size", [10000])
-def no_test_global_parallel_reduction_simpler(ctx_factory, size):
+def test_global_parallel_reduction_simpler(ctx_factory, size):
     ctx = ctx_factory()
+
+    pytest.xfail("very sensitive to kernel ordering, fails unused hw-axis check")
 
     knl = lp.make_kernel(
             "{[l,g,j]: 0 <= l < nl and 0 <= g,j < ng}",
