@@ -142,7 +142,7 @@ def generate_sub_sched_items(schedule, start_idx):
 def get_insn_ids_for_block_at(schedule, start_idx):
     return frozenset(
             sub_sched_item.insn_id
-            for sub_sched_item in generate_sub_sched_items(
+            for i, sub_sched_item in generate_sub_sched_items(
                 schedule, start_idx)
             if isinstance(sub_sched_item, RunInstruction))
 
