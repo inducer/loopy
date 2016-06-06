@@ -74,12 +74,11 @@ def test_convolution(ctx_factory):
             "..."
             ],
         assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1 and nimgs>=0",
-        options="annotate_inames",
-        defines=dict(ncolors=3))
+        options="annotate_inames")
 
     f_w = 3
 
-    knl = lp.fix_parameters(knl, f_w=f_w)
+    knl = lp.fix_parameters(knl, f_w=f_w, ncolors=3)
 
     ref_knl = knl
 
@@ -142,8 +141,9 @@ def test_convolution_with_nonzero_base(ctx_factory):
             "..."
             ],
         assumptions="f_w>=1 and im_w, im_h >= 2*f_w+1 and nfeats>=1 and nimgs>=0",
-        flags="annotate_inames",
-        defines=dict(ncolors=3))
+        options="annotate_inames")
+
+    knl = lp.fix_parameters(knl, ncolors=3)
 
     ref_knl = knl
 

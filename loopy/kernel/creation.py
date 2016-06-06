@@ -1179,14 +1179,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg preamble_generators: a list of functions of signature
         (seen_dtypes, seen_functions) where seen_functions is a set of
         (name, c_name, arg_dtypes), generating extra entries for *preambles*.
-    :arg defines: a dictionary of replacements to be made in instructions given
-        as strings before parsing. A macro instance intended to be replaced
-        should look like "MACRO" in the instruction code. The expansion given
-        in this parameter is allowed to be a list. In this case, instructions
-        are generated for *each* combination of macro values.
-
-        These defines may also be used in the domain and in argument shapes and
-        strides. They are expanded only upon kernel creation.
     :arg default_order: "C" (default) or "F"
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
         *offset* in :attr:`GlobalArg` for guessed arguments.
@@ -1219,6 +1211,12 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     options = kwargs.pop("options", None)
     flags = kwargs.pop("flags", None)
     target = kwargs.pop("target", None)
+
+    if defines:
+        from warnings import warn
+        warn("'defines' argument to make_kernel is deprecated. "
+                "Use lp.fix_parameters instead",
+                DeprecationWarning, stacklevel=2)
 
     if target is None:
         from loopy import _DEFAULT_TARGET
