@@ -243,7 +243,6 @@ def no_test_global_parallel_reduction(ctx_factory, size):
 @pytest.mark.parametrize("size", [10000])
 def test_global_parallel_reduction_simpler(ctx_factory, size):
     ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
             "{[l,g,j]: 0 <= l < nl and 0 <= g,j < ng}",
@@ -268,15 +267,7 @@ def test_global_parallel_reduction_simpler(ctx_factory, size):
     knl = lp.split_reduction_outward(knl, "l_inner")
     knl = lp.tag_inames(knl, "g:g.0,j:l.0")
 
-    evt, (result,) = knl(queue, nl=size)
-    evt, (result_ref,) = ref_knl(queue, nl=size)
-
-    nsamples = size * 2 * ng
-    print(result.get()/nsamples, result_ref.get()/nsamples)
-    assert abs(result.get() - result_ref.get()) / abs(result_ref.get()) < 1e-5
-
-    # FIXME: auto_test breaks
-    #lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nl": size})
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nl": size})
 
 
 def test_argmax(ctx_factory):
