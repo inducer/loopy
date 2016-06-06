@@ -241,7 +241,7 @@ def no_test_global_parallel_reduction(ctx_factory, size):
 
 
 @pytest.mark.parametrize("size", [10000])
-def test_global_parallel_reduction_simpler(ctx_factory, size):
+def no_test_global_parallel_reduction_simpler(ctx_factory, size):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
