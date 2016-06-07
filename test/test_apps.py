@@ -183,22 +183,26 @@ def test_rob_stroud_bernstein(ctx_factory):
                     0 <= i2 < nqp1d and \
                     0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 }",
             """
-                <> xi = qpts[1, i2] {inames=+el}
+            for el,i2
+                <> xi = qpts[1, i2]
                 <> s = 1-xi
                 <> r = xi/s
-                <> aind = 0 {id=aind_init,inames=+i2:el}
+                <> aind = 0 {id=aind_init}
 
-                <> w = s**(deg-alpha1) {id=init_w}
+                for alpha1
+                    <> w = s**(deg-alpha1) {id=init_w}
 
-                tmp[el,alpha1,i2] = tmp[el,alpha1,i2] + w * coeffs[aind] \
-                        {id=write_tmp,inames=+alpha2}
-                w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
-                        {id=update_w,dep=init_w:write_tmp}
-                aind = aind + 1 \
-                        {id=aind_incr,\
-                        dep=aind_init:write_tmp:update_w, \
-                        inames=+el:i2:alpha1:alpha2}
-                """,
+                    for alpha2
+                        tmp[el,alpha1,i2] = tmp[el,alpha1,i2] + w * coeffs[aind] \
+                                {id=write_tmp}
+                        w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
+                                {id=update_w,dep=init_w:write_tmp}
+                        aind = aind + 1 \
+                                {id=aind_incr,dep=aind_init:write_tmp:update_w}
+                    end
+                end
+            end
+            """,
             [
                 # Must declare coeffs to have "no" shape, to keep loopy
                 # from trying to figure it out the shape automatically.
@@ -230,52 +234,63 @@ def test_rob_stroud_bernstein_full(ctx_factory):
     # NOTE: result would have to be zero-filled beforehand
 
     knl = lp.make_kernel(
-            "{[el, i2, alpha1,alpha2, i1_2, alpha1_2, i2_2]: \
-                    0 <= el < nels and \
-                    0 <= i2 < nqp1d and \
-                    0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 and\
-                    \
-                    0 <= i1_2 < nqp1d and \
-                    0 <= alpha1_2 <= deg and \
-                    0 <= i2_2 < nqp1d \
-                    }",
-            """
-                <> xi = qpts[1, i2] {inames=+el}
+        "{[el, i2, alpha1,alpha2, i1_2, alpha1_2, i2_2]: \
+                0 <= el < nels and \
+                0 <= i2 < nqp1d and \
+                0 <= alpha1 <= deg and 0 <= alpha2 <= deg-alpha1 and\
+                \
+                0 <= i1_2 < nqp1d and \
+                0 <= alpha1_2 <= deg and \
+                0 <= i2_2 < nqp1d \
+                }",
+        """
+        for el
+            for i2
+                <> xi = qpts[1, i2]
                 <> s = 1-xi
                 <> r = xi/s
-                <> aind = 0 {id=aind_init,inames=+i2:el}
+                <> aind = 0 {id=aind_init}
 
-                <> w = s**(deg-alpha1) {id=init_w}
+                for alpha1
+                    <> w = s**(deg-alpha1) {id=init_w}
 
-                <> tmp[alpha1,i2] = tmp[alpha1,i2] + w * coeffs[aind] \
-                        {id=write_tmp,inames=+alpha2}
-                w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
-                        {id=update_w,dep=init_w:write_tmp}
-                aind = aind + 1 \
-                        {id=aind_incr,\
-                        dep=aind_init:write_tmp:update_w, \
-                        inames=+el:i2:alpha1:alpha2}
+                    <> tmp[alpha1,i2] = tmp[alpha1,i2] + w * coeffs[aind] \
+                            {id=write_tmp}
+                    for alpha2
+                        w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
+                            {id=update_w,dep=init_w:write_tmp}
+                        aind = aind + 1 \
+                            {id=aind_incr,dep=aind_init:write_tmp:update_w}
+                    end
+                end
+            end
 
-                <> xi2 = qpts[0, i1_2] {dep=aind_incr,inames=+el}
+            for i1_2
+                <> xi2 = qpts[0, i1_2] {dep=aind_incr}
                 <> s2 = 1-xi2
                 <> r2 = xi2/s2
                 <> w2 = s2**deg
 
-                result[el, i1_2, i2_2] = result[el, i1_2, i2_2] + \
-                        w2 * tmp[alpha1_2, i2_2] \
-                        {inames=el:alpha1_2:i1_2:i2_2}
+                for alpha1_2
+                    for i2_2
+                        result[el, i1_2, i2_2] = result[el, i1_2, i2_2] + \
+                                w2 * tmp[alpha1_2, i2_2]
+                    end
 
-                w2 = w2 * r2 * (deg-alpha1_2) / (1+alpha1_2)
-                """,
-            [
-                # Must declare coeffs to have "no" shape, to keep loopy
-                # from trying to figure it out the shape automatically.
+                    w2 = w2 * r2 * (deg-alpha1_2) / (1+alpha1_2)
+                end
+            end
+        end
+        """,
+        [
+            # Must declare coeffs to have "no" shape, to keep loopy
+            # from trying to figure it out the shape automatically.
 
-                lp.GlobalArg("coeffs", None, shape=None),
-                "..."
-                ],
-            assumptions="deg>=0 and nels>=1"
-            )
+            lp.GlobalArg("coeffs", None, shape=None),
+            "..."
+            ],
+        assumptions="deg>=0 and nels>=1"
+        )
 
     knl = lp.fix_parameters(knl, nqp1d=7, deg=4)
 

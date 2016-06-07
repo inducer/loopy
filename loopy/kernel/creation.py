@@ -277,17 +277,23 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 # }}}
 
 
-# {{{ parse instructions
+# {{{ parse one instruction
 
-OPTIONS_RE = re.compile(
+WITH_OPTIONS_RE = re.compile(
         "^"
-        "(?P<indent>\s*)"
+        "\s*with\s*"
         "\{(?P<options>.+)\}"
+        "\s*$")
+
+FOR_RE = re.compile(
+        "^"
+        "\s*for\s*"
+        "(?P<inames>[ ,\w]+)"
         "\s*$")
 
 INSN_RE = re.compile(
         "^"
-        "(?P<indent>\s*)"
+        "\s*"
         "(?P<lhs>.+?)"
         "\s*(?<!\:)=\s*"
         "(?P<rhs>.+?)"
@@ -298,7 +304,7 @@ SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
 
 
-def parse_insn(insn):
+def parse_insn(groups, insn_options):
     """
     :return: a tuple ``(insn, inames_to_dup)``, where insn is a
         :class:`Assignment`, a :class:`CallInstruction`,
@@ -307,18 +313,6 @@ def parse_insn(insn):
     """
 
     import loopy as lp
-
-    insn_match = INSN_RE.match(insn)
-    subst_match = SUBST_RE.match(insn)
-    if insn_match is not None and subst_match is not None:
-        raise RuntimeError("instruction parse error: %s" % insn)
-
-    if insn_match is not None:
-        groups = insn_match.groupdict()
-    elif subst_match is not None:
-        groups = subst_match.groupdict()
-    else:
-        raise RuntimeError("instruction parse error at '%s'" % insn)
 
     from loopy.symbolic import parse
     try:
@@ -335,39 +329,8 @@ def parse_insn(insn):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Call, Subscript
+    from pymbolic.primitives import Variable, Subscript
     from loopy.symbolic import TypeAnnotation
-
-    # {{{ deal with subst rules
-
-    if subst_match is not None:
-        assert insn_match is None
-        if isinstance(lhs, Variable):
-            subst_name = lhs.name
-            arg_names = []
-        elif isinstance(lhs, Call):
-            if not isinstance(lhs.function, Variable):
-                raise RuntimeError("Invalid substitution rule left-hand side")
-            subst_name = lhs.function.name
-            arg_names = []
-
-            for i, arg in enumerate(lhs.parameters):
-                if not isinstance(arg, Variable):
-                    raise RuntimeError("Invalid substitution rule "
-                                    "left-hand side: %s--arg number %d "
-                                    "is not a variable" % (lhs, i))
-                arg_names.append(arg.name)
-        else:
-            raise RuntimeError("Invalid substitution rule left-hand side")
-
-        return SubstitutionRule(
-                name=subst_name,
-                arguments=tuple(arg_names),
-                expression=rhs), []
-
-    assert insn_match is not None
-
-    # }}}
 
     if not isinstance(lhs, tuple):
         lhs = (lhs,)
@@ -403,12 +366,12 @@ def parse_insn(insn):
     del new_lhs
 
     insn_options = parse_insn_options(
-            get_default_insn_options_dict(),
+            insn_options,
             groups["options"],
             assignee_names=assignee_names)
 
     insn_id = insn_options.pop("insn_id", None)
-    inames_to_dup = insn_options.pop("inames_to_dup", None)
+    inames_to_dup = insn_options.pop("inames_to_dup", [])
 
     kwargs = dict(
                 id=(
@@ -422,37 +385,159 @@ def parse_insn(insn):
             lhs, rhs, temp_var_types, **kwargs
             ), inames_to_dup
 
+# }}}
 
-def parse_if_necessary(insn, defines):
-    if isinstance(insn, InstructionBase):
-        yield insn.copy(
-                id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
-                depends_on=frozenset(intern(dep) for dep in insn.depends_on),
-                groups=frozenset(intern(grp) for grp in insn.groups),
-                conflicts_with_groups=frozenset(
-                    intern(grp) for grp in insn.conflicts_with_groups),
-                forced_iname_deps=frozenset(
-                    intern(iname) for iname in insn.forced_iname_deps),
-                predicates=frozenset(
-                    intern(pred) for pred in insn.predicates),
-                ), []
-        return
-    elif not isinstance(insn, str):
-        raise TypeError("Instructions must be either an Instruction "
-                "instance or a parseable string. got '%s' instead."
-                % type(insn))
 
-    for insn in insn.split("\n"):
-        comment_start = insn.find("#")
-        if comment_start >= 0:
-            insn = insn[:comment_start]
+# {{{ parse_subst_rule
 
-        insn = insn.strip()
-        if not insn:
+def parse_subst_rule(groups):
+    from loopy.symbolic import parse
+    try:
+        lhs = parse(groups["lhs"])
+    except:
+        print("While parsing left hand side '%s', "
+                "the following error occurred:" % groups["lhs"])
+        raise
+
+    try:
+        rhs = parse(groups["rhs"])
+    except:
+        print("While parsing right hand side '%s', "
+                "the following error occurred:" % groups["rhs"])
+        raise
+
+    from pymbolic.primitives import Variable, Call
+    if isinstance(lhs, Variable):
+        subst_name = lhs.name
+        arg_names = []
+    elif isinstance(lhs, Call):
+        if not isinstance(lhs.function, Variable):
+            raise RuntimeError("Invalid substitution rule left-hand side")
+        subst_name = lhs.function.name
+        arg_names = []
+
+        for i, arg in enumerate(lhs.parameters):
+            if not isinstance(arg, Variable):
+                raise RuntimeError("Invalid substitution rule "
+                                "left-hand side: %s--arg number %d "
+                                "is not a variable" % (lhs, i))
+            arg_names.append(arg.name)
+    else:
+        raise RuntimeError("Invalid substitution rule left-hand side")
+
+    return SubstitutionRule(
+            name=subst_name,
+            arguments=tuple(arg_names),
+            expression=rhs)
+
+# }}}
+
+
+# {{{ parse_instructions
+
+def parse_instructions(instructions, defines):
+    if isinstance(instructions, str):
+        instructions = [instructions]
+
+    parsed_instructions = []
+
+    # {{{ pass 1: interning, comments, whitespace, defines
+
+    for insn in instructions:
+        if isinstance(insn, InstructionBase):
+            parsed_instructions.append(
+                    insn.copy(
+                        id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
+                        depends_on=frozenset(intern(dep) for dep in insn.depends_on),
+                        groups=frozenset(intern(grp) for grp in insn.groups),
+                        conflicts_with_groups=frozenset(
+                            intern(grp) for grp in insn.conflicts_with_groups),
+                        forced_iname_deps=frozenset(
+                            intern(iname) for iname in insn.forced_iname_deps),
+                        predicates=frozenset(
+                            intern(pred) for pred in insn.predicates),
+                        ))
             continue
 
-        for sub_insn in expand_defines(insn, defines, single_valued=False):
-            yield parse_insn(sub_insn)
+        elif not isinstance(insn, str):
+            raise TypeError("Instructions must be either an Instruction "
+                    "instance or a parseable string. got '%s' instead."
+                    % type(insn))
+
+        for insn in insn.split("\n"):
+            comment_start = insn.find("#")
+            if comment_start >= 0:
+                insn = insn[:comment_start]
+
+            insn = insn.strip()
+            if not insn:
+                continue
+
+            for sub_insn in expand_defines(insn, defines, single_valued=False):
+                parsed_instructions.append(sub_insn)
+
+    # }}}
+
+    instructions = parsed_instructions
+    parsed_instructions = []
+    substitutions = {}
+    inames_to_dup = []  # one for each parsed_instruction
+
+    # {{{ pass 2: parsing
+
+    insn_options_stack = [get_default_insn_options_dict()]
+
+    for insn in instructions:
+        if isinstance(insn, InstructionBase):
+            parsed_instructions.append(insn)
+            inames_to_dup.append([])
+            continue
+
+        with_options_match = WITH_OPTIONS_RE.match(insn)
+        if with_options_match is not None:
+            insn_options_stack.append(
+                    parse_insn_options(
+                        insn_options_stack[-1],
+                        with_options_match.group("options")))
+            continue
+
+        for_match = FOR_RE.match(insn)
+        if for_match is not None:
+            options = insn_options_stack[-1].copy()
+            options["forced_iname_deps"] = (
+                    options.get("forced_iname_deps", frozenset())
+                    | frozenset(
+                        iname.strip()
+                        for iname in for_match.group("inames").split(",")))
+            options["forced_iname_deps_is_final"] = True
+
+            insn_options_stack.append(options)
+            del options
+            continue
+
+        if insn == "end":
+            insn_options_stack.pop()
+            continue
+
+        subst_match = SUBST_RE.match(insn)
+        if subst_match is not None:
+            subst = parse_subst_rule(subst_match.groupdict())
+            substitutions[subst.name] = subst
+            continue
+
+        insn_match = INSN_RE.match(insn)
+        if insn_match is not None:
+            insn, insn_inames_to_dup = parse_insn(
+                    insn_match.groupdict(), insn_options_stack[-1])
+            parsed_instructions.append(insn)
+            inames_to_dup.append(insn_inames_to_dup)
+            continue
+
+        raise RuntimeError("instruction parse error: %s" % insn)
+
+    # }}}
+
+    return parsed_instructions, inames_to_dup, substitutions
 
 # }}}
 
@@ -1275,34 +1360,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # }}}
 
-    # {{{ instruction/subst parsing
-
-    parsed_instructions = []
-    kwargs["substitutions"] = substitutions = {}
-    inames_to_dup = []
-
-    if isinstance(instructions, str):
-        instructions = [instructions]
-
-    for insn in instructions:
-        for new_insn, insn_inames_to_dup in parse_if_necessary(insn, defines):
-            if isinstance(new_insn, InstructionBase):
-                parsed_instructions.append(new_insn)
-
-                # Need to maintain 1-to-1 correspondence to instructions
-                inames_to_dup.append(insn_inames_to_dup)
-
-            elif isinstance(new_insn, SubstitutionRule):
-                substitutions[new_insn.name] = new_insn
-
-                assert not insn_inames_to_dup
-            else:
-                raise RuntimeError("unexpected type in instruction parsing")
-
-    instructions = parsed_instructions
-    del parsed_instructions
-
-    # }}}
+    instructions, inames_to_dup, substitutions = \
+            parse_instructions(instructions, defines)
 
     # {{{ find/create isl_context
 
@@ -1325,6 +1384,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     kernel_args = arg_guesser.convert_names_to_full_args(kernel_args)
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)
+
+    kwargs["substitutions"] = substitutions
 
     from loopy.kernel import LoopKernel
     knl = LoopKernel(domains, instructions, kernel_args,
