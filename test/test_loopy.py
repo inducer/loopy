@@ -1101,6 +1101,8 @@ def test_kernel_splitting_with_loop(ctx_factory):
 def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     ctx = ctx_factory()
 
+    pytest.xfail("spilling doesn't yet use local axes")
+
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
