@@ -93,6 +93,20 @@ def get_common_hw_inames(kernel, insn_ids):
         set.intersection,
         (get_hw_inames(kernel, id_to_insn[id]) for id in insn_ids))
 
+
+def remove_illegal_loops_for_hw_tagged_inames_in_schedule(kernel):
+    from loopy.kernel.data import HardwareParallelTag
+    new_schedule = []
+
+    for item in kernel.schedule:
+        if isinstance(item, (EnterLoop, LeaveLoop)):
+            tag = kernel.iname_to_tag.get(item.iname)
+            if isinstance(tag, HardwareParallelTag):
+                continue
+        new_schedule.append(item)
+
+    return kernel.copy(schedule=new_schedule)
+
 # }}}
 
 
@@ -403,11 +417,15 @@ def augment_domain_for_temporary_promotion(
         new_iname = name_gen("{name}_{mode}_dim_{dim}".
             format(name=orig_temporary.name,
                    mode=mode,
-                   dim=orig_dim + t_idx))
+                   dim=t_idx))
         domain = domain.set_dim_name(
             isl.dim_type.set, orig_dim + t_idx, new_iname)
-        #from loopy.kernel.data import auto
-        #iname_to_tag[new_iname] = auto
+        if orig_temporary.is_local:
+            # If the temporary is tagged local, then loads / stores can be done
+            # in parallel.
+            from loopy.kernel.data import AutoFitLocalIndexTag
+            iname_to_tag[new_iname] = AutoFitLocalIndexTag()
+
         dim_inames.append(new_iname)
 
         # Add size information.
@@ -614,16 +632,24 @@ def restore_and_save_temporaries(kernel):
     # }}}
 
     new_iname_to_tag.update(kernel.iname_to_tag)
-    new_temporary_variables = dict(
+    updated_temporary_variables = dict(
         (t.name, t.as_variable()) for t in new_temporaries.values())
-    new_temporary_variables.update(kernel.temporary_variables)
+    updated_temporary_variables.update(kernel.temporary_variables)
 
     kernel = kernel.copy(
         iname_to_tag=new_iname_to_tag,
-        temporary_variables=new_temporary_variables,
+        temporary_variables=updated_temporary_variables,
         instructions=kernel.instructions + new_instructions,
         schedule=new_schedule
         )
+
+    from loopy.kernel.tools import assign_automatic_axes
+    kernel = assign_automatic_axes(kernel)
+
+    # Once assign_automatic_axes() does its job, loops in the schedule
+    # for newly hardware-tagged inames are no longer necessary (and in
+    # fact illegal), so remove them.
+    kernel = remove_illegal_loops_for_hw_tagged_inames_in_schedule(kernel)
 
     return kernel
 
