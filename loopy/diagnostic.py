@@ -23,6 +23,9 @@ THE SOFTWARE.
 """
 
 
+from pytools import MovedFunctionDeprecationWrapper
+
+
 # {{{ warnings
 
 class LoopyWarningBase(UserWarning):
@@ -47,7 +50,7 @@ class WriteRaceConditionWarning(LoopyWarning):
 # }}}
 
 
-def warn(kernel, id, text, type=LoopyWarning):
+def warn_with_kernel(kernel, id, text, type=LoopyWarning):
     from fnmatch import fnmatchcase
     for sw in kernel.silenced_warnings:
         if fnmatchcase(id, sw):
@@ -58,6 +61,9 @@ def warn(kernel, id, text, type=LoopyWarning):
 
     from warnings import warn
     warn(text, type)
+
+
+warn = MovedFunctionDeprecationWrapper(warn_with_kernel)
 
 
 # {{{ errors

@@ -139,7 +139,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         temporary_name=None,
         temporary_scope=None, temporary_is_local=None,
         footprint_subscripts=None,
-        fetch_bounding_box=False):
+        fetch_bounding_box=False,
+        fetch_outer_inames=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
@@ -152,6 +153,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         directly by putting an index expression into *var_name*. Substitutions
         such as those occurring in dimension splits are recorded and also
         applied to these indices.
+
+    :arg fetch_outer_inames: The inames within which the fetch
+        instruction is nested. If *None*, make an educated guess.
 
     This function combines :func:`extract_subst` and :func:`precompute`.
     """
@@ -246,7 +250,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
-            temporary_scope=temporary_scope, temporary_is_local=temporary_is_local)
+            temporary_scope=temporary_scope, temporary_is_local=temporary_is_local,
+            precompute_outer_inames=fetch_outer_inames)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
@@ -570,5 +575,70 @@ def set_temporary_scope(kernel, temp_var_names, scope):
     return kernel.copy(temporary_variables=new_temp_vars)
 
 # }}}
+
+
+# {{{ reduction_arg_to_subst_rule
+
+def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=None):
+    if isinstance(inames, str):
+        inames = [s.strip() for s in inames.split(",")]
+
+    inames_set = frozenset(inames)
+
+    substs = knl.substitutions.copy()
+
+    var_name_gen = knl.get_var_name_generator()
+
+    def map_reduction(expr, rec, nresults=1):
+        if frozenset(expr.inames) != inames_set:
+            return type(expr)(
+                    operation=expr.operation,
+                    inames=expr.inames,
+                    expr=rec(expr.expr),
+                    allow_simultaneous=expr.allow_simultaneous)
+
+        if subst_rule_name is None:
+            subst_rule_prefix = "red_%s_arg" % "_".join(inames)
+            my_subst_rule_name = var_name_gen(subst_rule_prefix)
+        else:
+            my_subst_rule_name = subst_rule_name
+
+        if my_subst_rule_name in substs:
+            raise LoopyError("substitution rule '%s' already exists"
+                    % my_subst_rule_name)
+
+        from loopy.kernel.data import SubstitutionRule
+        substs[my_subst_rule_name] = SubstitutionRule(
+                name=my_subst_rule_name,
+                arguments=tuple(inames),
+                expression=expr.expr)
+
+        from pymbolic import var
+        iname_vars = [var(iname) for iname in inames]
+
+        return type(expr)(
+                operation=expr.operation,
+                inames=expr.inames,
+                expr=var(my_subst_rule_name)(*iname_vars),
+                allow_simultaneous=expr.allow_simultaneous)
+
+    from loopy.symbolic import ReductionCallbackMapper
+    cb_mapper = ReductionCallbackMapper(map_reduction)
+
+    from loopy.kernel.data import MultiAssignmentBase
+
+    new_insns = []
+    for insn in knl.instructions:
+        if not isinstance(insn, MultiAssignmentBase):
+            new_insns.append(insn)
+        else:
+            new_insns.append(insn.copy(expression=cb_mapper(insn.expression)))
+
+    return knl.copy(
+            instructions=new_insns,
+            substitutions=substs)
+
+# }}}
+
 
 # vim: foldmethod=marker

@@ -506,7 +506,7 @@ class InstructionBase(Record):
 
         a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
         with which no barrier synchronization is necessary, even given the existence
-        of a dependency chain and apparently conflicting writes
+        of a dependency chain and apparently conflicting access
 
     .. rubric:: Conditionals
 
@@ -542,7 +542,8 @@ class InstructionBase(Record):
 
         A :class:`set` of inames into which the instruction
         may need to be boosted, as a heuristic help for the scheduler.
-        Also allowed to be *None*.
+        Also allowed to be *None* to indicate that this hasn't been
+        decided yet.
 
     .. rubric:: Tagging
 
@@ -552,12 +553,11 @@ class InstructionBase(Record):
         of instructions.
 
     .. automethod:: __init__
-    .. automethod:: assignees_and_indices
-    .. automethod:: assignee_name
+    .. automethod:: assignee_var_names
+    .. automethod:: assignee_subscript_deps
     .. automethod:: with_transformed_expressions
     .. automethod:: write_dependency_names
     .. automethod:: dependency_names
-    .. automethod:: assignee_var_names
     .. automethod:: copy
     """
 
@@ -571,7 +571,8 @@ class InstructionBase(Record):
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             no_sync_with,
-            forced_iname_deps_is_final, forced_iname_deps, priority,
+            forced_iname_deps_is_final, forced_iname_deps,
+            priority,
             boostable, boostable_into, predicates, tags,
             insn_deps=None, insn_deps_is_final=None):
 
@@ -658,10 +659,15 @@ class InstructionBase(Record):
     def reduction_inames(self):
         raise NotImplementedError
 
-    def assignees_and_indices(self):
-        """Return a list of tuples *(assignee_var_name, subscript)*
-        where assignee_var_name is a string representing an assigned
-        variable name and subscript is a :class:`tuple`.
+    def assignee_var_names(self):
+        """Return a tuple of tuples of assignee variable names, one
+        for each quantity being assigned to.
+        """
+        raise NotImplementedError
+
+    def assignee_subscript_deps(self):
+        """Return a list of sets of variable names referred to in the subscripts
+        of the quantities being assigned to, one for each assignee.
         """
         raise NotImplementedError
 
@@ -676,20 +682,20 @@ class InstructionBase(Record):
 
     @property
     def assignee_name(self):
-        """A convenience wrapper around :meth:`assignees_and_indices`
+        """A convenience wrapper around :meth:`assignee_var_names`
         that returns the the name of the variable being assigned.
         If more than one variable is being modified in the instruction,
         :raise:`ValueError` is raised.
         """
 
-        aai = self.assignees_and_indices()
+        names = self.assignee_var_names()
 
-        if len(aai) != 1:
+        if len(names) != 1:
             raise ValueError("expected exactly one assignment in instruction "
                     "on which assignee_name is being called, found %d"
-                    % len(aai))
+                    % len(names))
 
-        (name, _), = aai
+        name, = names
         return name
 
     @memoize_method
@@ -700,18 +706,14 @@ class InstructionBase(Record):
         """
 
         result = set()
-        for assignee, indices in self.assignees_and_indices():
-            result.add(assignee)
+        for assignee in self.assignees:
             from loopy.symbolic import get_dependencies
-            result.update(get_dependencies(indices))
+            result.update(get_dependencies(assignee))
 
         return frozenset(result)
 
     def dependency_names(self):
         return self.read_dependency_names() | self.write_dependency_names()
-
-    def assignee_var_names(self):
-        return (var_name for var_name, _ in self.assignees_and_indices())
 
     def get_str_options(self):
         result = []
@@ -730,6 +732,8 @@ class InstructionBase(Record):
 
         if self.depends_on:
             result.append("deps="+":".join(self.depends_on))
+        if self.no_sync_with:
+            result.append("nosync="+":".join(self.no_sync_with))
         if self.groups:
             result.append("groups=%s" % ":".join(self.groups))
         if self.conflicts_with_groups:
@@ -738,7 +742,7 @@ class InstructionBase(Record):
             result.append("priority=%d" % self.priority)
         if self.tags:
             result.append("tags=%s" % ":".join(self.tags))
-        if hasattr(self, "atomicity"):
+        if hasattr(self, "atomicity") and self.atomicity:
             result.append("atomic=%s" % ":".join(str(a) for a in self.atomicity))
 
         return result
@@ -806,15 +810,38 @@ class InstructionBase(Record):
 # }}}
 
 
-def _get_assignee_and_index(expr):
+def _get_assignee_var_name(expr):
     from pymbolic.primitives import Variable, Subscript
+    from loopy.symbolic import LinearSubscript
+
     if isinstance(expr, Variable):
-        return (expr.name, ())
+        return expr.name
+
     elif isinstance(expr, Subscript):
         agg = expr.aggregate
         assert isinstance(agg, Variable)
 
-        return (agg.name, expr.index_tuple)
+        return agg.name
+
+    elif isinstance(expr, LinearSubscript):
+        agg = expr.aggregate
+        assert isinstance(agg, Variable)
+
+        return agg.name
+    else:
+        raise RuntimeError("invalid lvalue '%s'" % expr)
+
+
+def _get_assignee_subscript_deps(expr):
+    from pymbolic.primitives import Variable, Subscript
+    from loopy.symbolic import LinearSubscript, get_dependencies
+
+    if isinstance(expr, Variable):
+        return frozenset()
+    elif isinstance(expr, Subscript):
+        return get_dependencies(expr.index)
+    elif isinstance(expr, LinearSubscript):
+        return get_dependencies(expr.index)
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
@@ -976,8 +1003,8 @@ class MultiAssignmentBase(InstructionBase):
     def read_dependency_names(self):
         from loopy.symbolic import get_dependencies
         result = get_dependencies(self.expression)
-        for _, subscript in self.assignees_and_indices():
-            result = result | get_dependencies(subscript)
+        for subscript_deps in self.assignee_subscript_deps():
+            result = result | subscript_deps
 
         processed_predicates = frozenset(
                 pred.lstrip("!") for pred in self.predicates)
@@ -1114,8 +1141,11 @@ class Assignment(MultiAssignmentBase):
     # {{{ implement InstructionBase interface
 
     @memoize_method
-    def assignees_and_indices(self):
-        return [_get_assignee_and_index(self.assignee)]
+    def assignee_var_names(self):
+        return (_get_assignee_var_name(self.assignee),)
+
+    def assignee_subscript_deps(self):
+        return (_get_assignee_subscript_deps(self.assignee),)
 
     def with_transformed_expressions(self, f, *args):
         return self.copy(
@@ -1258,8 +1288,13 @@ class CallInstruction(MultiAssignmentBase):
     # {{{ implement InstructionBase interface
 
     @memoize_method
-    def assignees_and_indices(self):
-        return [_get_assignee_and_index(a) for a in self.assignees]
+    def assignee_var_names(self):
+        return tuple(_get_assignee_var_name(a) for a in self.assignees)
+
+    def assignee_subscript_deps(self):
+        return tuple(
+                _get_assignee_subscript_deps(a)
+                for a in self.assignees)
 
     def with_transformed_expressions(self, f, *args):
         return self.copy(
@@ -1451,17 +1486,21 @@ class CInstruction(InstructionBase):
         for name, iname_expr in self.iname_exprs:
             result.update(get_dependencies(iname_expr))
 
-        for _, subscript in self.assignees_and_indices():
-            result.update(get_dependencies(subscript))
+        for subscript_deps in self.assignee_subscript_deps():
+            result.update(subscript_deps)
 
         return frozenset(result) | self.predicates
 
     def reduction_inames(self):
         return set()
 
-    def assignees_and_indices(self):
-        return [_get_assignee_and_index(expr)
-                for expr in self.assignees]
+    def assignee_var_names(self):
+        return tuple(_get_assignee_var_name(expr) for expr in self.assignees)
+
+    def assignee_subscript_deps(self):
+        return tuple(
+                _get_assignee_subscript_deps(a)
+                for a in self.assignees)
 
     def with_transformed_expressions(self, f, *args):
         return self.copy(

@@ -295,13 +295,24 @@ class DifferentiationContext(object):
         if not diff_expr:
             return None
 
-        (_, lhs_ind), = orig_writer_insn.assignees_and_indices()
+        assert isinstance(orig_writer_insn, lp.Assignment)
+        if isinstance(orig_writer_insn.assignee, p.Subscript):
+            lhs_ind = orig_writer_insn.assignee.index_tuple
+        elif isinstance(orig_writer_insn.assignee, p.Variable):
+            lhs_ind = ()
+        else:
+            raise LoopyError(
+                    "Unrecognized LHS type in differentiation: %s"
+                    % type(orig_writer_insn.assignee).__name__)
+
         new_insn_id = self.generate_instruction_id()
         insn = lp.Assignment(
                 id=new_insn_id,
                 assignee=var(new_var_name)[
                     lhs_ind + diff_iname_exprs],
-                expression=diff_expr)
+                expression=diff_expr,
+                forced_iname_deps=(
+                    orig_writer_insn.forced_iname_deps | frozenset(diff_inames)))
 
         self.new_instructions.append(insn)
 

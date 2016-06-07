@@ -265,7 +265,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             host_storage_array = np.empty(alloc_size, dtype)
             host_array = as_strided(
                     host_storage_array, shape, numpy_strides)
-            host_array[:] = host_contig_array
+            host_array[...] = host_contig_array
 
             host_contig_array = arg_desc.ref_storage_array.get()
             storage_array = cl_array.to_device(queue, host_storage_array)

@@ -669,9 +669,11 @@ class LoopKernel(RecordWithoutPickling):
         """Return a mapping from instruction ids to inames inside which
         they should be run.
         """
+        result = {}
+        for insn in self.instructions:
+            result[insn.id] = insn.forced_iname_deps
 
-        from loopy.kernel.tools import find_all_insn_inames
-        return find_all_insn_inames(self)
+        return result
 
     @memoize_method
     def all_referenced_inames(self):
@@ -681,11 +683,9 @@ class LoopKernel(RecordWithoutPickling):
         return result
 
     def insn_inames(self, insn):
-        from loopy.kernel.data import InstructionBase
-        if isinstance(insn, InstructionBase):
-            return self.all_insn_inames()[insn.id]
-        else:
-            return self.all_insn_inames()[insn]
+        if isinstance(insn, str):
+            insn = self.id_to_insn[insn]
+        return insn.forced_iname_deps
 
     @memoize_method
     def iname_to_insns(self):
@@ -790,7 +790,7 @@ class LoopKernel(RecordWithoutPickling):
         result = {}
 
         for insn in self.instructions:
-            for var_name, _ in insn.assignees_and_indices():
+            for var_name in insn.assignee_var_names():
                 result.setdefault(var_name, set()).add(insn.id)
 
         return result
@@ -807,7 +807,7 @@ class LoopKernel(RecordWithoutPickling):
         return frozenset(
                 var_name
                 for insn in self.instructions
-                for var_name, _ in insn.assignees_and_indices())
+                for var_name in insn.assignee_var_names())
 
     @memoize_method
     def get_temporary_to_base_storage_map(self):
@@ -918,9 +918,7 @@ class LoopKernel(RecordWithoutPickling):
 
         all_inames_by_insns = set()
         for insn_id in insn_ids:
-            insn = self.id_to_insn[insn_id]
-
-            all_inames_by_insns |= self.insn_inames(insn)
+            all_inames_by_insns |= self.insn_inames(insn_id)
 
         if not all_inames_by_insns <= self.all_inames():
             raise RuntimeError("some inames collected from instructions (%s) "
@@ -935,7 +933,7 @@ class LoopKernel(RecordWithoutPickling):
                 GroupIndexTag, LocalIndexTag,
                 AutoLocalIndexTagBase)
 
-        for iname in self.all_inames():
+        for iname in all_inames_by_insns:
             tag = self.iname_to_tag.get(iname)
 
             if isinstance(tag, GroupIndexTag):
@@ -1138,6 +1136,8 @@ class LoopKernel(RecordWithoutPickling):
                 options.append("groups=%s" % ":".join(insn.groups))
             if insn.conflicts_with_groups:
                 options.append("conflicts=%s" % ":".join(insn.conflicts_with_groups))
+            if insn.no_sync_with:
+                options.append("no_sync_with=%s" % ":".join(insn.no_sync_with))
 
             if len(loop_list) > loop_list_width:
                 lines.append("[%s]" % loop_list)

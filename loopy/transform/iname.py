@@ -48,8 +48,6 @@ __doc__ = """
 
 .. autofunction:: duplicate_inames
 
-.. undocumented .. autofunction:: link_inames
-
 .. autofunction:: rename_iname
 
 .. autofunction:: remove_unused_inames
@@ -890,114 +888,6 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
 # }}}
 
 
-# {{{ link inames
-
-def link_inames(knl, inames, new_iname, within=None, tag=None):
-    # {{{ normalize arguments
-
-    if isinstance(inames, str):
-        inames = inames.split(",")
-
-    var_name_gen = knl.get_var_name_generator()
-    new_iname = var_name_gen(new_iname)
-
-    # }}}
-
-    # {{{ ensure that each iname is used at most once in each instruction
-
-    inames_set = set(inames)
-
-    if 0:
-        # FIXME!
-        for insn in knl.instructions:
-            insn_inames = knl.insn_inames(insn.id) | insn.reduction_inames()
-
-            if len(insn_inames & inames_set) > 1:
-                raise LoopyError("To-be-linked inames '%s' are used in "
-                        "instruction '%s'. No more than one such iname can "
-                        "be used in one instruction."
-                        % (", ".join(insn_inames & inames_set), insn.id))
-
-    # }}}
-
-    from loopy.kernel.tools import DomainChanger
-    domch = DomainChanger(knl, tuple(inames))
-
-    # {{{ ensure that projections are identical
-
-    unrelated_dom_inames = list(
-            set(domch.domain.get_var_names(dim_type.set))
-            - inames_set)
-
-    domain = domch.domain
-
-    # move all inames to be linked to end to prevent shuffly confusion
-    for iname in inames:
-        dt, index = domain.get_var_dict()[iname]
-        assert dt == dim_type.set
-
-        # move to tail of param dim_type
-        domain = domain.move_dims(
-                    dim_type.param, domain.dim(dim_type.param),
-                    dt, index, 1)
-        # move to tail of set dim_type
-        domain = domain.move_dims(
-                    dim_type.set, domain.dim(dim_type.set),
-                    dim_type.param, domain.dim(dim_type.param)-1, 1)
-
-    projections = [
-            domch.domain.project_out_except(
-                unrelated_dom_inames + [iname], [dim_type.set])
-            for iname in inames]
-
-    all_equal = True
-    first_proj = projections[0]
-    for proj in projections[1:]:
-        all_equal = all_equal and (proj <= first_proj and first_proj <= proj)
-
-    if not all_equal:
-        raise LoopyError("Inames cannot be linked because their domain "
-                "constraints are not the same.")
-
-    del domain  # messed up for testing, do not use
-
-    # }}}
-
-    # change the domain
-    from loopy.isl_helpers import duplicate_axes
-    knl = knl.copy(
-            domains=domch.get_domains_with(
-                duplicate_axes(domch.domain, [inames[0]], [new_iname])))
-
-    # {{{ change the code
-
-    from pymbolic import var
-    subst_dict = dict((iname, var(new_iname)) for iname in inames)
-
-    from loopy.match import parse_stack_match
-    within = parse_stack_match(within)
-
-    from pymbolic.mapper.substitutor import make_subst_func
-    rule_mapping_context = SubstitutionRuleMappingContext(
-            knl.substitutions, var_name_gen)
-    ijoin = RuleAwareSubstitutionMapper(rule_mapping_context,
-                    make_subst_func(subst_dict), within)
-
-    knl = rule_mapping_context.finish_kernel(
-            ijoin.map_kernel(knl))
-
-    # }}}
-
-    knl = remove_unused_inames(knl, inames)
-
-    if tag is not None:
-        knl = tag_inames(knl, {new_iname: tag})
-
-    return knl
-
-# }}}
-
-
 # {{{ remove unused inames
 
 def remove_unused_inames(knl, inames=None):
@@ -1252,8 +1142,8 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 
     # {{{ change domains
 
-    new_inames_set = set(new_inames)
-    old_inames_set = set(old_inames)
+    new_inames_set = frozenset(new_inames)
+    old_inames_set = frozenset(old_inames)
 
     new_domains = []
     for idom, dom in enumerate(kernel.domains):
@@ -1339,7 +1229,26 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 
     # }}}
 
-    return kernel.copy(domains=new_domains)
+    # {{{ switch iname refs in instructions
+
+    def fix_iname_set(insn_id, inames):
+        if old_inames_set <= inames:
+            return (inames - old_inames_set) | new_inames_set
+        elif old_inames_set & inames:
+            raise LoopyError("instruction '%s' uses only a part (%s), not all, "
+                    "of the old inames"
+                    % (insn_id, ", ".join(old_inames_set & inames)))
+        else:
+            return inames
+
+    new_instructions = [
+            insn.copy(forced_iname_deps=fix_iname_set(
+                insn.id, insn.forced_iname_deps))
+            for insn in kernel.instructions]
+
+    # }}}
+
+    return kernel.copy(domains=new_domains, instructions=new_instructions)
 
 # }}}
 

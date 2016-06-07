@@ -72,7 +72,7 @@ class ToCountMap:
     def __radd__(self, other):
         if other != 0:
             raise ValueError("ToCountMap: Attempted to add ToCountMap "
-                                "to {} {}. ToCountMap may only be added to "
+                                "to {0} {1}. ToCountMap may only be added to "
                                 "0 and other ToCountMap objects."
                                 .format(type(other), other))
         return self
@@ -84,7 +84,7 @@ class ToCountMap:
                 for index in self.dict.keys()))
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
-                                "ToCountMap by {} {}."
+                                "ToCountMap by {0} {1}."
                                 .format(type(other), other))
 
     __rmul__ = __mul__
@@ -490,7 +490,10 @@ def count(kernel, set):
     except AttributeError:
         pass
 
-    count = 0
+    count = isl.PwQPolynomial.zero(
+            set.space
+            .drop_dims(dim_type.set, 0, set.dim(dim_type.set))
+            .add_dims(dim_type.set, 1))
 
     set = set.make_disjoint()
 

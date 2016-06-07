@@ -142,7 +142,7 @@ def generate_sub_sched_items(schedule, start_idx):
 def get_insn_ids_for_block_at(schedule, start_idx):
     return frozenset(
             sub_sched_item.insn_id
-            for sub_sched_item in generate_sub_sched_items(
+            for i, sub_sched_item in generate_sub_sched_items(
                 schedule, start_idx)
             if isinstance(sub_sched_item, RunInstruction))
 
@@ -569,7 +569,7 @@ def generate_loop_schedules_internal(
             print()
         print(75*"=")
         print("KERNEL:")
-        print(kernel)
+        print(kernel.stringify(with_dependencies=True))
         print(75*"=")
         print("CURRENT SCHEDULE:")
         print(dump_schedule(sched_state.kernel, sched_state.schedule))
@@ -1485,15 +1485,6 @@ def generate_loop_schedules(kernel, debug_args={}):
 
                     gen_sched = insert_barriers(kernel, gen_sched,
                             reverse=False, kind="global")
-
-                    """
-                    for sched_item in gen_sched:
-                        if (
-                                isinstance(sched_item, Barrier)
-                                and sched_item.kind == "global"):
-                            raise LoopyError("kernel requires a global barrier %s"
-                                    % sched_item.comment)
-                    """
 
                     logger.info("%s: barrier insertion: local" % kernel.name)
 

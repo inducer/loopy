@@ -30,7 +30,7 @@ from six.moves import intern
 import numpy as np
 import islpy as isl
 from islpy import dim_type
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, warn_with_kernel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -125,7 +125,41 @@ def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
 # }}}
 
 
-# {{{ find_all_insn_inames fixed point iteration
+# {{{ find_all_insn_inames fixed point iteration (deprecated)
+
+def guess_iname_deps_based_on_var_use(kernel, insn, insn_id_to_inames=None):
+    # For all variables that insn depends on, find the intersection
+    # of iname deps of all writers, and add those to insn's
+    # dependencies.
+
+    result = frozenset()
+
+    writer_map = kernel.writer_map()
+
+    for tv_name in (insn.read_dependency_names() & kernel.get_written_variables()):
+        tv_implicit_inames = None
+
+        for writer_id in writer_map[tv_name]:
+            writer_insn = kernel.id_to_insn[writer_id]
+            if insn_id_to_inames is None:
+                writer_inames = writer_insn.forced_iname_deps
+            else:
+                writer_inames = insn_id_to_inames[writer_id]
+
+            writer_implicit_inames = (
+                    writer_inames
+                    - (writer_insn.write_dependency_names() & kernel.all_inames()))
+            if tv_implicit_inames is None:
+                tv_implicit_inames = writer_implicit_inames
+            else:
+                tv_implicit_inames = (tv_implicit_inames
+                        & writer_implicit_inames)
+
+        if tv_implicit_inames is not None:
+            result = result | tv_implicit_inames
+
+    return result - insn.reduction_inames()
+
 
 def find_all_insn_inames(kernel):
     logger.debug("%s: find_all_insn_inames: start" % kernel.name)
@@ -166,8 +200,6 @@ def find_all_insn_inames(kernel):
         insn_id_to_inames[insn.id] = iname_deps
         insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
 
-    written_vars = kernel.get_written_variables()
-
     # fixed point iteration until all iname dep sets have converged
 
     # Why is fixed point iteration necessary here? Consider the following
@@ -190,32 +222,22 @@ def find_all_insn_inames(kernel):
 
             # {{{ depdency-based propagation
 
-            # For all variables that insn depends on, find the intersection
-            # of iname deps of all writers, and add those to insn's
-            # dependencies.
+            inames_old = insn_id_to_inames[insn.id]
+            inames_new = inames_old | guess_iname_deps_based_on_var_use(
+                    kernel, insn, insn_id_to_inames)
 
-            for tv_name in (all_read_deps[insn.id] & written_vars):
-                implicit_inames = None
+            insn_id_to_inames[insn.id] = inames_new
 
-                for writer_id in writer_map[tv_name]:
-                    writer_implicit_inames = (
-                            insn_id_to_inames[writer_id]
-                            - insn_assignee_inames[writer_id])
-                    if implicit_inames is None:
-                        implicit_inames = writer_implicit_inames
-                    else:
-                        implicit_inames = (implicit_inames
-                                & writer_implicit_inames)
+            if inames_new != inames_old:
+                did_something = True
 
-                inames_old = insn_id_to_inames[insn.id]
-                inames_new = (inames_old | implicit_inames) \
-                            - insn.reduction_inames()
-                insn_id_to_inames[insn.id] = inames_new
-
-                if inames_new != inames_old:
-                    did_something = True
-                    logger.debug("%s: find_all_insn_inames: %s -> %s (dep-based)" % (
-                        kernel.name, insn.id, ", ".join(sorted(inames_new))))
+                warn_with_kernel(kernel, "inferred_iname",
+                        "The iname(s) '%s' on instruction '%s' was "
+                        "automatically added. "
+                        "This is deprecated. Please add the iname "
+                        "to the instruction "
+                        "implicitly, e.g. by adding '{inames=...}"
+                        % (inames_new-inames_old, insn.id))
 
             # }}}
 
@@ -245,8 +267,14 @@ def find_all_insn_inames(kernel):
             if inames_new != inames_old:
                 did_something = True
                 insn_id_to_inames[insn.id] = frozenset(inames_new)
-                logger.debug("%s: find_all_insn_inames: %s -> %s (domain-based)" % (
-                    kernel.name, insn.id, ", ".join(sorted(inames_new))))
+
+                warn_with_kernel(kernel, "inferred_iname",
+                        "The iname(s) '%s' on instruction '%s' was "
+                        "automatically added. "
+                        "This is deprecated. Please add the iname "
+                        "to the instruction "
+                        "implicitly, e.g. by adding '{inames=...}"
+                        % (inames_new-inames_old, insn.id))
 
             # }}}
 

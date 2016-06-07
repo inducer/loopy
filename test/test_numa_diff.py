@@ -93,7 +93,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
     # turn the first reads into subst rules
     local_prep_var_names = set()
     for insn in lp.find_instructions(hsv, "tag:local_prep"):
-        (assignee, _), = insn.assignees_and_indices()
+        assignee, = insn.assignee_var_names()
         local_prep_var_names.add(assignee)
         hsv = lp.assignment_to_subst(hsv, assignee)
 
@@ -122,7 +122,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
                   ("rknl", rflux_insn, ("j", "n",), rtmps, ("jj", "ii",)),
                   ("sknl", sflux_insn, ("i", "n",), stmps, ("ii", "jj",)),
                   ]:
-            (flux_var, _), = insn.assignees_and_indices()
+            flux_var, = insn.assignee_var_names()
             print(insn)
 
             reader, = lp.find_instructions(hsv,

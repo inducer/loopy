@@ -60,7 +60,7 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
     my_variable_names = (
             avn
             for insn in kernel.instructions
-            for avn, _ in insn.assignees_and_indices()
+            for avn in insn.assignee_var_names()
             )
 
     from pymbolic import var
@@ -89,7 +89,7 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
             if dep not in written_insn_ids:
                 write_insn(dep)
 
-        (aname, _), = insn.assignees_and_indices()
+        aname, = insn.assignee_var_names()
         result.append("%s%s : %s;" % (
             prefix, aname,
             mstr(substitute(insn.expression))))

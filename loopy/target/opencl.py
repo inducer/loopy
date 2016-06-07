@@ -556,8 +556,10 @@ class OpenCLCASTBuilder(CASTBuilder):
                 cast_str = "(%s %s *) " % (var_kind, ctype)
 
             return Block([
-                POD(self, NumpyType(lhs_dtype.dtype), old_val_var),
-                POD(self, NumpyType(lhs_dtype.dtype), new_val_var),
+                POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                    old_val_var),
+                POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                    new_val_var),
                 DoWhile(
                     "%(func_name)s("
                     "%(cast_str)s&(%(lhs_expr)s), "

@@ -611,7 +611,7 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         # no such thing in Python
         return None
 
-    def get_temporary_decls(self, codegen_state):
+    def get_temporary_decls(self, codegen_state, schedule_state):
         from genpy import Assign, Comment, Line
 
         def alloc_nbytes(tv):

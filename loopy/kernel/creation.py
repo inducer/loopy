@@ -146,18 +146,165 @@ def expand_defines_in_expr(expr, defines):
 # }}}
 
 
-# {{{ parse instructions
+# {{{ instruction options
+
+def get_default_insn_options_dict():
+    return {
+        "depends_on": None,
+        "depends_on_is_final": False,
+        "no_sync_with": None,
+        "groups": None,
+        "conflicts_with_groups": None,
+        "insn_id": None,
+        "inames_to_dup": [],
+        "priority": 0,
+        "forced_iname_deps_is_final": False,
+        "forced_iname_deps": frozenset(),
+        "predicates": frozenset(),
+        "tags": (),
+        "atomicity": (),
+        }
+
+
+def parse_insn_options(opt_dict, options_str, assignee_names=None):
+    if options_str is None:
+        return opt_dict
+
+    result = opt_dict.copy()
+
+    for option in options_str.split(","):
+        option = option.strip()
+        if not option:
+            raise RuntimeError("empty option supplied")
+
+        equal_idx = option.find("=")
+        if equal_idx == -1:
+            opt_key = option
+            opt_value = None
+        else:
+            opt_key = option[:equal_idx].strip()
+            opt_value = option[equal_idx+1:].strip()
+
+        if opt_key == "id" and opt_value is not None:
+            result["insn_id"] = intern(opt_value)
+        elif opt_key == "id_prefix" and opt_value is not None:
+            result["insn_id"] = UniqueName(opt_value)
+        elif opt_key == "priority" and opt_value is not None:
+            result["priority"] = int(opt_value)
+        elif opt_key == "dup" and opt_value is not None:
+            for value in opt_value.split(":"):
+                arrow_idx = value.find("->")
+                if arrow_idx >= 0:
+                    result["inames_to_dup"].append(
+                            (value[:arrow_idx], value[arrow_idx+2:]))
+                else:
+                    result["inames_to_dup"].append((value, None))
+
+        elif opt_key == "dep" and opt_value is not None:
+            if opt_value.startswith("*"):
+                result["depends_on_is_final"] = True
+                opt_value = (opt_value[1:]).strip()
+
+            result["depends_on"] = frozenset(
+                    intern(dep.strip()) for dep in opt_value.split(":")
+                    if dep.strip())
+
+        elif opt_key == "nosync" and opt_value is not None:
+            result["no_sync_with"] = frozenset(
+                    intern(dep.strip()) for dep in opt_value.split(":")
+                    if dep.strip())
+
+        elif opt_key == "groups" and opt_value is not None:
+            result["groups"] = frozenset(
+                    intern(grp.strip()) for grp in opt_value.split(":")
+                    if grp.strip())
+
+        elif opt_key == "conflicts" and opt_value is not None:
+            result["conflicts_with_groups"] = frozenset(
+                    intern(grp.strip()) for grp in opt_value.split(":")
+                    if grp.strip())
+
+        elif opt_key == "inames" and opt_value is not None:
+            if opt_value.startswith("+"):
+                result["forced_iname_deps_is_final"] = False
+                opt_value = (opt_value[1:]).strip()
+            else:
+                result["forced_iname_deps_is_final"] = True
+
+            result["forced_iname_deps"] = intern_frozenset_of_ids(
+                    opt_value.split(":"))
+
+        elif opt_key == "if" and opt_value is not None:
+            result["predicates"] = intern_frozenset_of_ids(opt_value.split(":"))
+
+        elif opt_key == "tags" and opt_value is not None:
+            result["tags"] = tuple(
+                    tag.strip() for tag in opt_value.split(":")
+                    if tag.strip())
+
+        elif opt_key == "atomic":
+            if assignee_names is None:
+                raise LoopyError("'atomic' option may only be specified "
+                        "on an actual instruction")
+            if len(assignee_names) != 1:
+                raise LoopyError("atomic operations with more than one "
+                        "left-hand side not supported")
+            assignee_name, = assignee_names
+
+            import loopy as lp
+            if opt_value is None:
+                result["atomicity"] = result["atomicity"] + (
+                        lp.AtomicUpdate(assignee_name),)
+            else:
+                for v in opt_value.split(":"):
+                    if v == "init":
+                        result["atomicity"] = result["atomicity"] + (
+                                lp.AtomicInit(assignee_name),)
+                    else:
+                        raise LoopyError("atomicity directive not "
+                                "understood: %s"
+                                % v)
+            del assignee_name
+
+        else:
+            raise ValueError(
+                    "unrecognized instruction option '%s' "
+                    "(maybe a missing/extraneous =value?)"
+                    % opt_key)
+
+    return result
+
+# }}}
+
+
+# {{{ parse one instruction
+
+WITH_OPTIONS_RE = re.compile(
+        "^"
+        "\s*with\s*"
+        "\{(?P<options>.+)\}"
+        "\s*$")
+
+FOR_RE = re.compile(
+        "^"
+        "\s*for\s*"
+        "(?P<inames>[ ,\w]+)"
+        "\s*$")
 
 INSN_RE = re.compile(
-        "\s*(?P<lhs>.+?)\s*(?<!\:)=\s*(?P<rhs>.+?)"
-        "\s*?(?:\{(?P<options>.+)\}\s*)?$"
-        )
+        "^"
+        "\s*"
+        "(?P<lhs>.+?)"
+        "\s*(?<!\:)=\s*"
+        "(?P<rhs>.+?)"
+        "\s*?"
+        "(?:\{(?P<options>.+)\}\s*)?$")
+
 SUBST_RE = re.compile(
-        r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$"
-        )
+        r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
 
 
-def parse_insn(insn):
+def parse_insn(groups, insn_options):
     """
     :return: a tuple ``(insn, inames_to_dup)``, where insn is a
         :class:`Assignment`, a :class:`CallInstruction`,
@@ -166,18 +313,6 @@ def parse_insn(insn):
     """
 
     import loopy as lp
-
-    insn_match = INSN_RE.match(insn)
-    subst_match = SUBST_RE.match(insn)
-    if insn_match is not None and subst_match is not None:
-        raise RuntimeError("instruction parse error: %s" % insn)
-
-    if insn_match is not None:
-        groups = insn_match.groupdict()
-    elif subst_match is not None:
-        groups = subst_match.groupdict()
-    else:
-        raise RuntimeError("instruction parse error at '%s'" % insn)
 
     from loopy.symbolic import parse
     try:
@@ -194,37 +329,8 @@ def parse_insn(insn):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Call, Subscript
+    from pymbolic.primitives import Variable, Subscript
     from loopy.symbolic import TypeAnnotation
-
-    # {{{ deal with subst rules
-
-    if subst_match is not None:
-        assert insn_match is None
-        if isinstance(lhs, Variable):
-            subst_name = lhs.name
-            arg_names = []
-        elif isinstance(lhs, Call):
-            if not isinstance(lhs.function, Variable):
-                raise RuntimeError("Invalid substitution rule left-hand side")
-            subst_name = lhs.function.name
-            arg_names = []
-
-            for i, arg in enumerate(lhs.parameters):
-                if not isinstance(arg, Variable):
-                    raise RuntimeError("Invalid substitution rule "
-                                    "left-hand side: %s--arg number %d "
-                                    "is not a variable" % (lhs, i))
-                arg_names.append(arg.name)
-        else:
-            raise RuntimeError("Invalid substitution rule left-hand side")
-
-        return SubstitutionRule(
-                name=subst_name,
-                arguments=tuple(arg_names),
-                expression=rhs), []
-
-    # }}}
 
     if not isinstance(lhs, tuple):
         lhs = (lhs,)
@@ -244,9 +350,10 @@ def parse_insn(insn):
         else:
             temp_var_types.append(None)
 
+        from loopy.symbolic import LinearSubscript
         if isinstance(lhs_i, Variable):
             assignee_names.append(lhs_i.name)
-        elif isinstance(lhs_i, Subscript):
+        elif isinstance(lhs_i, (Subscript, LinearSubscript)):
             assignee_names.append(lhs_i.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
@@ -258,170 +365,179 @@ def parse_insn(insn):
     temp_var_types = tuple(temp_var_types)
     del new_lhs
 
-    if insn_match is not None:
-        depends_on = None
-        depends_on_is_final = False
-        no_sync_with = None
-        insn_groups = None
-        conflicts_with_groups = None
-        insn_id = None
-        inames_to_dup = []
-        priority = 0
-        forced_iname_deps_is_final = False
-        forced_iname_deps = frozenset()
-        predicates = frozenset()
-        tags = ()
-        atomicity = ()
+    insn_options = parse_insn_options(
+            insn_options,
+            groups["options"],
+            assignee_names=assignee_names)
 
-        if groups["options"] is not None:
-            for option in groups["options"].split(","):
-                option = option.strip()
-                if not option:
-                    raise RuntimeError("empty option supplied")
+    insn_id = insn_options.pop("insn_id", None)
+    inames_to_dup = insn_options.pop("inames_to_dup", [])
 
-                equal_idx = option.find("=")
-                if equal_idx == -1:
-                    opt_key = option
-                    opt_value = None
-                else:
-                    opt_key = option[:equal_idx].strip()
-                    opt_value = option[equal_idx+1:].strip()
+    kwargs = dict(
+                id=(
+                    intern(insn_id)
+                    if isinstance(insn_id, str)
+                    else insn_id),
+                **insn_options)
 
-                if opt_key == "id" and opt_value is not None:
-                    insn_id = intern(opt_value)
-                elif opt_key == "id_prefix" and opt_value is not None:
-                    insn_id = UniqueName(opt_value)
-                elif opt_key == "priority" and opt_value is not None:
-                    priority = int(opt_value)
-                elif opt_key == "dup" and opt_value is not None:
-                    for value in opt_value.split(":"):
-                        arrow_idx = value.find("->")
-                        if arrow_idx >= 0:
-                            inames_to_dup.append(
-                                    (value[:arrow_idx], value[arrow_idx+2:]))
-                        else:
-                            inames_to_dup.append((value, None))
+    from loopy.kernel.data import make_assignment
+    return make_assignment(
+            lhs, rhs, temp_var_types, **kwargs
+            ), inames_to_dup
 
-                elif opt_key == "dep" and opt_value is not None:
-                    if opt_value.startswith("*"):
-                        depends_on_is_final = True
-                        opt_value = (opt_value[1:]).strip()
-
-                    depends_on = frozenset(
-                            intern(dep.strip()) for dep in opt_value.split(":")
-                            if dep.strip())
-
-                elif opt_key == "nosync" and opt_value is not None:
-                    no_sync_with = frozenset(
-                            intern(dep.strip()) for dep in opt_value.split(":")
-                            if dep.strip())
-
-                elif opt_key == "groups" and opt_value is not None:
-                    insn_groups = frozenset(
-                            intern(grp.strip()) for grp in opt_value.split(":")
-                            if grp.strip())
-
-                elif opt_key == "conflicts" and opt_value is not None:
-                    conflicts_with_groups = frozenset(
-                            intern(grp.strip()) for grp in opt_value.split(":")
-                            if grp.strip())
-
-                elif opt_key == "inames" and opt_value is not None:
-                    if opt_value.startswith("+"):
-                        forced_iname_deps_is_final = False
-                        opt_value = (opt_value[1:]).strip()
-                    else:
-                        forced_iname_deps_is_final = True
-
-                    forced_iname_deps = intern_frozenset_of_ids(opt_value.split(":"))
-
-                elif opt_key == "if" and opt_value is not None:
-                    predicates = intern_frozenset_of_ids(opt_value.split(":"))
-
-                elif opt_key == "tags" and opt_value is not None:
-                    tags = tuple(
-                            tag.strip() for tag in opt_value.split(":")
-                            if tag.strip())
-
-                elif opt_key == "atomic":
-                    if len(assignee_names) != 1:
-                        raise LoopyError("atomic operations with more than one "
-                                "left-hand side not supported")
-                    assignee_name, = assignee_names
-
-                    if opt_value is None:
-                        atomicity = atomicity + (
-                                lp.AtomicUpdate(assignee_name),)
-                    else:
-                        for v in opt_value.split(":"):
-                            if v == "init":
-                                atomicity = atomicity + (
-                                        lp.AtomicInit(assignee_name),)
-                            else:
-                                raise LoopyError("atomicity directive not "
-                                        "understood: %s"
-                                        % v)
-                    del assignee_name
-
-                else:
-                    raise ValueError(
-                            "unrecognized instruction option '%s' "
-                            "(maybe a missing/extraneous =value?)"
-                            % opt_key)
-
-        kwargs = dict(
-                    id=(
-                        intern(insn_id)
-                        if isinstance(insn_id, str)
-                        else insn_id),
-                    depends_on=depends_on,
-                    depends_on_is_final=depends_on_is_final,
-                    no_sync_with=no_sync_with,
-                    groups=insn_groups,
-                    conflicts_with_groups=conflicts_with_groups,
-                    forced_iname_deps_is_final=forced_iname_deps_is_final,
-                    forced_iname_deps=forced_iname_deps,
-                    priority=priority,
-                    predicates=predicates,
-                    tags=tags,
-                    atomicity=atomicity)
-
-        from loopy.kernel.data import make_assignment
-        return make_assignment(
-                lhs, rhs, temp_var_types, **kwargs
-                ), inames_to_dup
+# }}}
 
 
-def parse_if_necessary(insn, defines):
-    if isinstance(insn, InstructionBase):
-        yield insn.copy(
-                id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
-                depends_on=frozenset(intern(dep) for dep in insn.depends_on),
-                groups=frozenset(intern(grp) for grp in insn.groups),
-                conflicts_with_groups=frozenset(
-                    intern(grp) for grp in insn.conflicts_with_groups),
-                forced_iname_deps=frozenset(
-                    intern(iname) for iname in insn.forced_iname_deps),
-                predicates=frozenset(
-                    intern(pred) for pred in insn.predicates),
-                ), []
-        return
-    elif not isinstance(insn, str):
-        raise TypeError("Instructions must be either an Instruction "
-                "instance or a parseable string. got '%s' instead."
-                % type(insn))
+# {{{ parse_subst_rule
 
-    for insn in insn.split("\n"):
-        comment_start = insn.find("#")
-        if comment_start >= 0:
-            insn = insn[:comment_start]
+def parse_subst_rule(groups):
+    from loopy.symbolic import parse
+    try:
+        lhs = parse(groups["lhs"])
+    except:
+        print("While parsing left hand side '%s', "
+                "the following error occurred:" % groups["lhs"])
+        raise
 
-        insn = insn.strip()
-        if not insn:
+    try:
+        rhs = parse(groups["rhs"])
+    except:
+        print("While parsing right hand side '%s', "
+                "the following error occurred:" % groups["rhs"])
+        raise
+
+    from pymbolic.primitives import Variable, Call
+    if isinstance(lhs, Variable):
+        subst_name = lhs.name
+        arg_names = []
+    elif isinstance(lhs, Call):
+        if not isinstance(lhs.function, Variable):
+            raise RuntimeError("Invalid substitution rule left-hand side")
+        subst_name = lhs.function.name
+        arg_names = []
+
+        for i, arg in enumerate(lhs.parameters):
+            if not isinstance(arg, Variable):
+                raise RuntimeError("Invalid substitution rule "
+                                "left-hand side: %s--arg number %d "
+                                "is not a variable" % (lhs, i))
+            arg_names.append(arg.name)
+    else:
+        raise RuntimeError("Invalid substitution rule left-hand side")
+
+    return SubstitutionRule(
+            name=subst_name,
+            arguments=tuple(arg_names),
+            expression=rhs)
+
+# }}}
+
+
+# {{{ parse_instructions
+
+def parse_instructions(instructions, defines):
+    if isinstance(instructions, str):
+        instructions = [instructions]
+
+    parsed_instructions = []
+
+    # {{{ pass 1: interning, comments, whitespace, defines
+
+    for insn in instructions:
+        if isinstance(insn, InstructionBase):
+            parsed_instructions.append(
+                    insn.copy(
+                        id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
+                        depends_on=frozenset(intern(dep) for dep in insn.depends_on),
+                        groups=frozenset(intern(grp) for grp in insn.groups),
+                        conflicts_with_groups=frozenset(
+                            intern(grp) for grp in insn.conflicts_with_groups),
+                        forced_iname_deps=frozenset(
+                            intern(iname) for iname in insn.forced_iname_deps),
+                        predicates=frozenset(
+                            intern(pred) for pred in insn.predicates),
+                        ))
             continue
 
-        for sub_insn in expand_defines(insn, defines, single_valued=False):
-            yield parse_insn(sub_insn)
+        elif not isinstance(insn, str):
+            raise TypeError("Instructions must be either an Instruction "
+                    "instance or a parseable string. got '%s' instead."
+                    % type(insn))
+
+        for insn in insn.split("\n"):
+            comment_start = insn.find("#")
+            if comment_start >= 0:
+                insn = insn[:comment_start]
+
+            insn = insn.strip()
+            if not insn:
+                continue
+
+            for sub_insn in expand_defines(insn, defines, single_valued=False):
+                parsed_instructions.append(sub_insn)
+
+    # }}}
+
+    instructions = parsed_instructions
+    parsed_instructions = []
+    substitutions = {}
+    inames_to_dup = []  # one for each parsed_instruction
+
+    # {{{ pass 2: parsing
+
+    insn_options_stack = [get_default_insn_options_dict()]
+
+    for insn in instructions:
+        if isinstance(insn, InstructionBase):
+            parsed_instructions.append(insn)
+            inames_to_dup.append([])
+            continue
+
+        with_options_match = WITH_OPTIONS_RE.match(insn)
+        if with_options_match is not None:
+            insn_options_stack.append(
+                    parse_insn_options(
+                        insn_options_stack[-1],
+                        with_options_match.group("options")))
+            continue
+
+        for_match = FOR_RE.match(insn)
+        if for_match is not None:
+            options = insn_options_stack[-1].copy()
+            options["forced_iname_deps"] = (
+                    options.get("forced_iname_deps", frozenset())
+                    | frozenset(
+                        iname.strip()
+                        for iname in for_match.group("inames").split(",")))
+            options["forced_iname_deps_is_final"] = True
+
+            insn_options_stack.append(options)
+            del options
+            continue
+
+        if insn == "end":
+            insn_options_stack.pop()
+            continue
+
+        subst_match = SUBST_RE.match(insn)
+        if subst_match is not None:
+            subst = parse_subst_rule(subst_match.groupdict())
+            substitutions[subst.name] = subst
+            continue
+
+        insn_match = INSN_RE.match(insn)
+        if insn_match is not None:
+            insn, insn_inames_to_dup = parse_insn(
+                    insn_match.groupdict(), insn_options_stack[-1])
+            parsed_instructions.append(insn)
+            inames_to_dup.append(insn_inames_to_dup)
+            continue
+
+        raise RuntimeError("instruction parse error: %s" % insn)
+
+    # }}}
+
+    return parsed_instructions, inames_to_dup, substitutions
 
 # }}}
 
@@ -551,7 +667,7 @@ class ArgumentGuesser:
         from loopy.symbolic import get_dependencies
         for insn in instructions:
             if isinstance(insn, MultiAssignmentBase):
-                for assignee_var_name, _ in insn.assignees_and_indices():
+                for assignee_var_name in insn.assignee_var_names():
                     self.all_written_names.add(assignee_var_name)
                     self.all_names.update(get_dependencies(
                         self.submap(insn.assignees)))
@@ -619,8 +735,8 @@ class ArgumentGuesser:
 
         for insn in self.instructions:
             if isinstance(insn, MultiAssignmentBase):
-                for (assignee_var_name, _), temp_var_type in zip(
-                        insn.assignees_and_indices(),
+                for assignee_var_name, temp_var_type in zip(
+                        insn.assignee_var_names(),
                         insn.temp_var_types):
                     if temp_var_type is not None:
                         temp_var_names.add(assignee_var_name)
@@ -651,33 +767,6 @@ class ArgumentGuesser:
             kernel_args.append(self.make_new_arg(arg_name))
 
         return kernel_args
-
-# }}}
-
-
-# {{{ tag reduction inames as sequential
-
-def tag_reduction_inames_as_sequential(knl):
-    result = set()
-
-    for insn in knl.instructions:
-        result.update(insn.reduction_inames())
-
-    from loopy.kernel.data import ParallelTag, ForceSequentialTag
-
-    new_iname_to_tag = {}
-    for iname in result:
-        tag = knl.iname_to_tag.get(iname)
-        if tag is not None and isinstance(tag, ParallelTag):
-            raise RuntimeError("inconsistency detected: "
-                    "reduction iname '%s' has "
-                    "a parallel tag" % iname)
-
-        if tag is None:
-            new_iname_to_tag[iname] = ForceSequentialTag()
-
-    from loopy import tag_inames
-    return tag_inames(knl, new_iname_to_tag)
 
 # }}}
 
@@ -740,7 +829,7 @@ def check_written_variable_names(knl):
             | set(six.iterkeys(knl.temporary_variables)))
 
     for insn in knl.instructions:
-        for var_name, _ in insn.assignees_and_indices():
+        for var_name in insn.assignee_var_names():
             if var_name not in admissible_vars:
                 raise RuntimeError("variable '%s' not declared or not "
                         "allowed for writing" % var_name)
@@ -837,8 +926,8 @@ def create_temporaries(knl, default_order):
 
     for insn in knl.instructions:
         if isinstance(insn, MultiAssignmentBase):
-            for (assignee_name, _), temp_var_type in zip(
-                    insn.assignees_and_indices(),
+            for assignee_name, temp_var_type in zip(
+                    insn.assignee_var_names(),
                     insn.temp_var_types):
 
                 if temp_var_type is None:
@@ -882,7 +971,6 @@ def determine_shapes_of_temporaries(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
     from loopy.symbolic import AccessRangeMapper
-    from pymbolic import var
     import loopy as lp
 
     new_temp_vars = {}
@@ -890,10 +978,8 @@ def determine_shapes_of_temporaries(knl):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             armap = AccessRangeMapper(knl, tv.name)
             for insn in knl.instructions:
-                for assignee_name, assignee_index in insn.assignees_and_indices():
-                    if assignee_index:
-                        armap(var(assignee_name).index(assignee_index),
-                                knl.insn_inames(insn))
+                for assignee in insn.assignees:
+                    armap(assignee, knl.insn_inames(insn))
 
             if armap.access_range is not None:
                 base_indices, shape = list(zip(*[
@@ -976,7 +1062,6 @@ def guess_arg_shape_if_requested(kernel, default_order):
                 from traceback import print_exc
                 print_exc()
 
-                from loopy.diagnostic import LoopyError
                 raise LoopyError(
                         "Failed to (automatically, as requested) find "
                         "shape/strides for argument '%s'. "
@@ -986,6 +1071,14 @@ def guess_arg_shape_if_requested(kernel, default_order):
 
             if armap.access_range is None:
                 if armap.bad_subscripts:
+                    from loopy.symbolic import LinearSubscript
+                    if any(isinstance(sub, LinearSubscript)
+                            for sub in armap.bad_subscripts):
+                        raise LoopyError("cannot determine access range for '%s': "
+                                "linear subscript(s) in '%s'"
+                                % (arg.name, ", ".join(
+                                        str(i) for i in armap.bad_subscripts)))
+
                     n_axes_in_subscripts = set(
                             len(sub.index_tuple) for sub in armap.bad_subscripts)
 
@@ -999,7 +1092,7 @@ def guess_arg_shape_if_requested(kernel, default_order):
                         # Leave shape undetermined--we can live with that for 1D.
                         shape = (None,)
                     else:
-                        raise RuntimeError("cannot determine access range for '%s': "
+                        raise LoopyError("cannot determine access range for '%s': "
                                 "undetermined index in subscript(s) '%s'"
                                 % (arg.name, ", ".join(
                                         str(i) for i in armap.bad_subscripts)))
@@ -1106,6 +1199,19 @@ def resolve_wildcard_deps(knl):
 # }}}
 
 
+# {{{ add inferred iname deps
+
+def add_inferred_inames(knl):
+    from loopy.kernel.tools import find_all_insn_inames
+    insn_inames = find_all_insn_inames(knl)
+
+    return knl.copy(instructions=[
+            insn.copy(forced_iname_deps=insn_inames[insn.id])
+            for insn in knl.instructions])
+
+# }}}
+
+
 # {{{ kernel creation top-level
 
 def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
@@ -1158,14 +1264,6 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg preamble_generators: a list of functions of signature
         (seen_dtypes, seen_functions) where seen_functions is a set of
         (name, c_name, arg_dtypes), generating extra entries for *preambles*.
-    :arg defines: a dictionary of replacements to be made in instructions given
-        as strings before parsing. A macro instance intended to be replaced
-        should look like "MACRO" in the instruction code. The expansion given
-        in this parameter is allowed to be a list. In this case, instructions
-        are generated for *each* combination of macro values.
-
-        These defines may also be used in the domain and in argument shapes and
-        strides. They are expanded only upon kernel creation.
     :arg default_order: "C" (default) or "F"
     :arg default_offset: 0 or :class:`loopy.auto`. The default value of
         *offset* in :attr:`GlobalArg` for guessed arguments.
@@ -1198,6 +1296,12 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     options = kwargs.pop("options", None)
     flags = kwargs.pop("flags", None)
     target = kwargs.pop("target", None)
+
+    if defines:
+        from warnings import warn
+        warn("'defines' argument to make_kernel is deprecated. "
+                "Use lp.fix_parameters instead",
+                DeprecationWarning, stacklevel=2)
 
     if target is None:
         from loopy import _DEFAULT_TARGET
@@ -1256,34 +1360,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # }}}
 
-    # {{{ instruction/subst parsing
-
-    parsed_instructions = []
-    kwargs["substitutions"] = substitutions = {}
-    inames_to_dup = []
-
-    if isinstance(instructions, str):
-        instructions = [instructions]
-
-    for insn in instructions:
-        for new_insn, insn_inames_to_dup in parse_if_necessary(insn, defines):
-            if isinstance(new_insn, InstructionBase):
-                parsed_instructions.append(new_insn)
-
-                # Need to maintain 1-to-1 correspondence to instructions
-                inames_to_dup.append(insn_inames_to_dup)
-
-            elif isinstance(new_insn, SubstitutionRule):
-                substitutions[new_insn.name] = new_insn
-
-                assert not insn_inames_to_dup
-            else:
-                raise RuntimeError("unexpected type in instruction parsing")
-
-    instructions = parsed_instructions
-    del parsed_instructions
-
-    # }}}
+    instructions, inames_to_dup, substitutions = \
+            parse_instructions(instructions, defines)
 
     # {{{ find/create isl_context
 
@@ -1307,6 +1385,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     kernel_args = arg_guesser.convert_names_to_full_args(kernel_args)
     kernel_args = arg_guesser.guess_kernel_args_if_requested(kernel_args)
 
+    kwargs["substitutions"] = substitutions
+
     from loopy.kernel import LoopKernel
     knl = LoopKernel(domains, instructions, kernel_args,
             temporary_variables=temporary_variables,
@@ -1324,8 +1404,21 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_nonexistent_iname_deps(knl)
 
     knl = create_temporaries(knl, default_order)
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must create temporaries before inferring inames (because those temporaries
+    # mediate dependencies that are then used for iname propagation.)
+    # -------------------------------------------------------------------------
+    # NOTE: add_inferred_inames will be phased out and throws warnings if it
+    # does something.
+    knl = add_inferred_inames(knl)
+    # -------------------------------------------------------------------------
+    # Ordering dependency:
+    # -------------------------------------------------------------------------
+    # Must infer inames before determining shapes.
+    # -------------------------------------------------------------------------
     knl = determine_shapes_of_temporaries(knl)
-    knl = tag_reduction_inames_as_sequential(knl)
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
