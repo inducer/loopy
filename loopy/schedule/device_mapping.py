@@ -433,7 +433,7 @@ def augment_domain_for_temporary_promotion(
         domain &= aff[0].le_set(aff[new_iname])
         size = orig_temporary.shape[t_idx]
         from loopy.symbolic import aff_from_expr
-        domain &= aff[new_iname].le_set(aff_from_expr(domain.space, size))
+        domain &= aff[new_iname].lt_set(aff_from_expr(domain.space, size))
 
     hw_inames = []
 
