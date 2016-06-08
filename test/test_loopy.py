@@ -1104,13 +1104,16 @@ def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            <> t_private = a[k,i+1]
+            <> t_private_scalar = a[k,i+1]
+            <> t_private_array[i % 2] = a[k,i+1]
             c[k,i] = a[k,i+1]
-            out[k,i] = c[k,i] + t_private
+            out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
             """)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+    knl = lp.set_temporary_scope(knl, "t_private_scalar", "private")
+    knl = lp.set_temporary_scope(knl, "t_private_array", "private")
 
     ref_knl = knl
 
