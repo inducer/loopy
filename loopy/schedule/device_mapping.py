@@ -325,6 +325,10 @@ class PromotedTemporary(Record):
 
 def determine_temporaries_to_promote(kernel, temporaries, name_gen):
     """
+    For each temporary in the passed list of temporaries, construct a
+    :class:`PromotedTemporary` which describes how the temporary should
+    get promoted into global storage.
+
     :returns: A :class:`dict` mapping temporary names from `temporaries` to
               :class:`PromotedTemporary` objects
     """
@@ -343,6 +347,18 @@ def determine_temporaries_to_promote(kernel, temporaries, name_gen):
         assert temporary.base_storage is None, \
             "Cannot promote temporaries with base_storage to global"
 
+        # `hw_inames`: The set of hw-parallel tagged inames that this temporary
+        # is associated with. This is used for determining the shape of the
+        # global storage needed for saving and restoring the temporary across
+        # kernel calls.
+        #
+        # TODO: Make a policy decision about which dimensions to use. Currently,
+        # the code looks at each instruction that defines or uses the temporary,
+        # and takes the common set of hw-parallel tagged inames associated with
+        # these instructions.
+        #
+        # Furthermore, in the case of local temporaries, inames that are tagged
+        # hw-local do not contribute to the global storage shape.
         hw_inames = get_common_hw_inames(kernel,
             def_lists[temporary.name] + use_lists[temporary.name])
 
@@ -350,6 +366,8 @@ def determine_temporaries_to_promote(kernel, temporaries, name_gen):
         hw_inames = sorted(hw_inames,
             key=lambda iname: str(kernel.iname_to_tag[iname]))
 
+        # Calculate the sizes of the dimensions that get added in front for
+        # the global storage of the temporary.
         shape_prefix = []
 
         backing_hw_inames = []
