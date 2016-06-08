@@ -566,7 +566,7 @@ def restore_and_save_temporaries(kernel):
             for tval in tvals:
                 from loopy.kernel.tools import DomainChanger
                 tval_hw_inames = new_temporaries[tval].hw_inames
-                dchg = DomainChanger(kernel,
+                dchg = DomainChanger(new_kernel,
                     frozenset(sched_item.extra_inames + tval_hw_inames))
                 domain = dchg.domain
 
