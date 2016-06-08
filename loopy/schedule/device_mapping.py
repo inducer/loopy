@@ -260,7 +260,7 @@ def compute_live_temporaries(kernel, schedule):
                 live_in[idx] = live_out[idx] = live_in[idx + 1]
                 idx -= 1
             else:
-                raise LoopyError("unexepcted type of schedule item: %s"
+                raise LoopyError("unexpected type of schedule item: %s"
                         % type(sched_item).__name__)
 
     # }}}
@@ -732,7 +732,7 @@ def map_schedule_onto_host_or_device_impl(kernel):
                     current_chunk.append(sched_item)
                 i += 1
             else:
-                raise LoopyError("unexepcted type of schedule item: %s"
+                raise LoopyError("unexpected type of schedule item: %s"
                         % type(sched_item).__name__)
 
         if current_chunk and schedule_required_splitting:
