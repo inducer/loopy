@@ -439,8 +439,8 @@ def augment_domain_for_temporary_promotion(
         domain = domain.set_dim_name(
             isl.dim_type.set, orig_dim + t_idx, new_iname)
         if orig_temporary.is_local:
-            # If the temporary is tagged local, then loads / stores can be done
-            # in parallel.
+            # If the temporary is has local scope, then loads / stores can be
+            # done in parallel.
             from loopy.kernel.data import AutoFitLocalIndexTag
             iname_to_tag[new_iname] = AutoFitLocalIndexTag()
 
