@@ -87,11 +87,8 @@ def get_common_hw_inames(kernel, insn_ids):
     # Get the list of hardware inames in which the temporary is defined.
     if len(insn_ids) == 0:
         return set()
-    id_to_insn = kernel.id_to_insn
-    from six.moves import reduce
-    return reduce(
-        set.intersection,
-        (get_hw_inames(kernel, id_to_insn[id]) for id in insn_ids))
+    return set.intersection(
+        *(get_hw_inames(kernel, kernel.id_to_insn[id]) for id in insn_ids))
 
 
 def remove_illegal_loops_for_hw_tagged_inames_in_schedule(kernel):
