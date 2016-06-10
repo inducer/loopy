@@ -183,7 +183,11 @@ class ExpressionToCMapper(RecursiveMapper):
         from loopy.kernel.array import get_access_info
         from pymbolic import evaluate
 
-        access_info = get_access_info(self.kernel.target, ary, expr.index,
+        from loopy.symbolic import simplify_using_affs
+        index_tuple = tuple(
+                simplify_using_affs(self.kernel, idx) for idx in expr.index_tuple)
+
+        access_info = get_access_info(self.kernel.target, ary, index_tuple,
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 
