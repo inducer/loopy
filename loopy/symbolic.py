@@ -1090,12 +1090,16 @@ def simplify_using_aff(kernel, expr):
 
     domain = kernel.get_inames_domain(inames)
 
+    from pymbolic.mapper.evaluator import UnknownVariableError
+
     try:
         with isl.SuppressedWarnings(kernel.isl_context):
             aff = aff_from_expr(domain.space, expr)
     except isl.Error:
         return expr
     except TypeError:
+        return expr
+    except UnknownVariableError:
         return expr
 
     # FIXME: Deal with assumptions, too.
