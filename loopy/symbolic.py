@@ -1083,6 +1083,29 @@ def aff_from_expr(space, expr, vars_to_zero=set()):
 # }}}
 
 
+# {{{ simplify using affs
+
+def simplify_using_affs(kernel, expr):
+    inames = get_dependencies(expr) & kernel.all_inames()
+
+    domain = kernel.get_inames_domain(inames)
+
+    try:
+        with isl.SuppressedWarnings(kernel.isl_context):
+            aff = aff_from_expr(domain.space, expr)
+    except isl.Error:
+        return expr
+    except TypeError:
+        return expr
+
+    # FIXME: Deal with assumptions, too.
+    aff = aff.gist(domain)
+
+    return aff_to_expr(aff)
+
+# }}}
+
+
 # {{{ expression <-> constraint conversion
 
 def eq_constraint_from_expr(space, expr):

@@ -29,6 +29,8 @@ from islpy import dim_type
 
 from loopy.kernel.data import ImageArg
 
+from pytools import MovedFunctionDeprecationWrapper
+
 
 # {{{ convenience: add_prefetch
 
@@ -300,11 +302,11 @@ def change_arg_to_image(knl, name):
 
 # {{{ tag data axes
 
-def tag_data_axes(knl, ary_names, dim_tags):
+def tag_array_axes(knl, ary_names, dim_tags):
     from loopy.kernel.tools import ArrayChanger
 
     if isinstance(ary_names, str):
-        ary_names = ary_names.split(",")
+        ary_names = [ary_name.strip() for ary_name in ary_names.split(",")]
 
     for ary_name in ary_names:
         achng = ArrayChanger(knl, ary_name)
@@ -322,12 +324,15 @@ def tag_data_axes(knl, ary_names, dim_tags):
 
     return knl
 
+
+tag_data_axes = MovedFunctionDeprecationWrapper(tag_array_axes)
+
 # }}}
 
 
-# {{{ set_array_dim_names
+# {{{ set_array_axis_names
 
-def set_array_dim_names(kernel, ary_names, dim_names):
+def set_array_axis_names(kernel, ary_names, dim_names):
     from loopy.kernel.tools import ArrayChanger
     if isinstance(ary_names, str):
         ary_names = ary_names.split(",")
@@ -344,6 +349,8 @@ def set_array_dim_names(kernel, ary_names, dim_names):
         kernel = achng.with_changed_array(ary)
 
     return kernel
+
+set_array_dim_names = MovedFunctionDeprecationWrapper(set_array_axis_names)
 
 # }}}
 

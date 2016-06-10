@@ -44,16 +44,16 @@ Influencing data access
 
 .. autofunction:: change_arg_to_image
 
-.. autofunction:: tag_data_axes
+.. autofunction:: tag_array_axes
 
 .. autofunction:: remove_unused_arguments
 
-.. autofunction:: set_array_dim_names
+.. autofunction:: set_array_axis_names
 
 Padding Data
 ------------
 
-.. autofunction:: split_array_dim
+.. autofunction:: split_array_axis
 
 .. autofunction:: find_padding_multiple
 
