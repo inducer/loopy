@@ -75,8 +75,10 @@ from loopy.transform.instruction import (
         tag_instructions)
 
 from loopy.transform.data import (
-        add_prefetch, change_arg_to_image, tag_data_axes,
-        set_array_dim_names, remove_unused_arguments,
+        add_prefetch, change_arg_to_image,
+        tag_array_axes, tag_data_axes,
+        set_array_axis_names, set_array_dim_names,
+        remove_unused_arguments,
         alias_temporaries, set_argument_order,
         rename_argument,
         set_temporary_scope)
@@ -94,7 +96,8 @@ from loopy.transform.arithmetic import (
         collect_common_factors_on_increment)
 
 from loopy.transform.padding import (
-        split_array_dim, split_arg_axis, find_padding_multiple,
+        split_array_axis, split_array_dim, split_arg_axis,
+        find_padding_multiple,
         add_padding)
 
 from loopy.transform.ilp import realize_ilp
@@ -164,8 +167,10 @@ __all__ = [
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
 
-        "add_prefetch", "change_arg_to_image", "tag_data_axes",
-        "set_array_dim_names", "remove_unused_arguments",
+        "add_prefetch", "change_arg_to_image",
+        "tag_array_axes", "tag_data_axes",
+        "set_array_axis_names", "set_array_dim_names",
+        "remove_unused_arguments",
         "alias_temporaries", "set_argument_order",
         "rename_argument", "set_temporary_scope",
 
@@ -183,8 +188,8 @@ __all__ = [
 
         "fold_constants", "collect_common_factors_on_increment",
 
-        "split_array_dim", "split_arg_axis", "find_padding_multiple",
-        "add_padding",
+        "split_array_axis", "split_array_dim", "split_arg_axis",
+        "find_padding_multiple", "add_padding",
 
         "realize_ilp",
 
@@ -387,8 +392,8 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             "output[%s] = input[%s]"
             % (commad_indices, commad_indices))
 
-    result = tag_data_axes(result, "input", old_dim_tags)
-    result = tag_data_axes(result, "output", new_dim_tags)
+    result = tag_array_axes(result, "input", old_dim_tags)
+    result = tag_array_axes(result, "output", new_dim_tags)
 
     unrolled_tags = (SeparateArrayArrayDimTag, VectorArrayDimTag)
     for i in range(rank):
