@@ -1083,9 +1083,9 @@ def aff_from_expr(space, expr, vars_to_zero=set()):
 # }}}
 
 
-# {{{ simplify using affs
+# {{{ simplify using aff
 
-def simplify_using_affs(kernel, expr):
+def simplify_using_aff(kernel, expr):
     inames = get_dependencies(expr) & kernel.all_inames()
 
     domain = kernel.get_inames_domain(inames)

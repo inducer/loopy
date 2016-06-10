@@ -215,9 +215,9 @@ def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
             outer_index = Variable(outer_iname)
 
         else:
-            from loopy.symbolic import simplify_using_affs
-            inner_index = simplify_using_affs(kernel, axis_idx % count)
-            outer_index = simplify_using_affs(kernel, axis_idx // count)
+            from loopy.symbolic import simplify_using_aff
+            inner_index = simplify_using_aff(kernel, axis_idx % count)
+            outer_index = simplify_using_aff(kernel, axis_idx // count)
 
         idx[axis_nr] = inner_index
 
@@ -361,9 +361,9 @@ def split_array_axis(kernel, array_name, axis_nr, count, order="C"):
 
         axis_idx = idx[axis_nr]
 
-        from loopy.symbolic import simplify_using_affs
-        inner_index = simplify_using_affs(kernel, axis_idx % count)
-        outer_index = simplify_using_affs(kernel, axis_idx // count)
+        from loopy.symbolic import simplify_using_aff
+        inner_index = simplify_using_aff(kernel, axis_idx % count)
+        outer_index = simplify_using_aff(kernel, axis_idx // count)
 
         idx[axis_nr] = inner_index
 
