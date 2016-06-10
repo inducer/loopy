@@ -54,10 +54,11 @@ copyright = u'2016, Andreas Klöckner'
 #
 # The short X.Y version.
 ver_dic = {}
-with open("../loopy/version.py") as vpy_file:
+_version_source = "../loopy/version.py"
+with open(_version_source) as vpy_file:
     version_py = vpy_file.read()
 
-exec(compile(version_py, "../loopy/version.py", 'exec'), ver_dic)
+exec(compile(version_py, _version_source, 'exec'), ver_dic)
 version = ".".join(str(x) for x in ver_dic["VERSION"])
 # The full version, including alpha/beta/rc tags.
 release = ver_dic["VERSION_TEXT"]
