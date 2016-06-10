@@ -125,7 +125,7 @@ from loopy.auto_test import auto_test_vs_ref
 from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
-from loopy.target import TargetBase
+from loopy.target import TargetBase, ASTBuilderBase
 from loopy.target.c import CTarget
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
@@ -228,6 +228,7 @@ __all__ = [
 
         "TargetBase", "CTarget", "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
+        "ASTBuilderBase",
 
         # {{{ from this file
 

@@ -314,7 +314,9 @@ class TemporaryVariable(ArrayBase):
         The name of a storage array that is to be used to actually
         hold the data in this temporary.
 
-    .. autoattribute:: scope
+    .. attribute:: scope
+
+        One of :class:`temp_var_scope`.
     """
 
     min_target_axes = 0
