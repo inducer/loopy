@@ -300,9 +300,15 @@ def change_arg_to_image(knl, name):
 # }}}
 
 
-# {{{ tag data axes
+# {{{ tag array axes
 
 def tag_array_axes(knl, ary_names, dim_tags):
+    """
+    .. versionchanged:: 2016.2
+
+        This function was called :func:`tag_data_axes` before version 2016.2.
+    """
+
     from loopy.kernel.tools import ArrayChanger
 
     if isinstance(ary_names, str):
@@ -333,6 +339,11 @@ tag_data_axes = MovedFunctionDeprecationWrapper(tag_array_axes)
 # {{{ set_array_axis_names
 
 def set_array_axis_names(kernel, ary_names, dim_names):
+    """
+    .. versionchanged:: 2016.2
+
+        This function was called :func:`set_array_dim_names` before version 2016.2.
+    """
     from loopy.kernel.tools import ArrayChanger
     if isinstance(ary_names, str):
         ary_names = ary_names.split(",")

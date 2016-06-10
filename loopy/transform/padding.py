@@ -262,6 +262,11 @@ def split_array_axis(kernel, array_name, axis_nr, count, order="C"):
 
     :arg order: The way the split array axis should be linearized.
         May be "C" or "F" to indicate C/Fortran (row/column)-major order.
+
+    .. versionchanged:: 2016.2
+
+        There was a more complicated, dumber function called :func:`split_array_dim`
+        that had the role of this function in versions prior to 2016.2.
     """
 
     if count == 1:
