@@ -534,7 +534,7 @@ Consider this example:
       for (int i_outer = 0; i_outer <= -1 + ((15 + n) / 16); ++i_outer)
         for (int i_inner = 0; i_inner <= 15; ++i_inner)
           if (-1 + -1 * i_inner + -16 * i_outer + n >= 0)
-            a[i_inner + i_outer * 16] = 0.0f;
+            a[16 * i_outer + i_inner] = 0.0f;
     ...
 
 By default, the new, split inames are named *OLD_outer* and *OLD_inner*,
@@ -561,7 +561,7 @@ relation to loop nesting. For example, it's perfectly possible to request
       for (int i_inner = 0; i_inner <= 15; ++i_inner)
         if (-1 + -1 * i_inner + n >= 0)
           for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
-            a[i_inner + i_outer * 16] = 0.0f;
+            a[16 * i_outer + i_inner] = 0.0f;
     ...
 
 Notice how loopy has automatically generated guard conditionals to make
@@ -588,7 +588,7 @@ commonly called 'loop tiling':
         for (int j_outer = 0; j_outer <= ((-16 + n) / 16); ++j_outer)
           for (int i_inner = 0; i_inner <= 15; ++i_inner)
             for (int j_inner = 0; j_inner <= 15; ++j_inner)
-              out[n * (i_inner + i_outer * 16) + j_inner + j_outer * 16] = a[n * (j_inner + j_outer * 16) + i_inner + i_outer * 16];
+              out[n * (16 * i_outer + i_inner) + 16 * j_outer + j_inner] = a[n * (16 * j_outer + j_inner) + 16 * i_outer + i_inner];
     ...
 
 .. }}}
@@ -630,10 +630,10 @@ loop's tag to ``"unr"``:
     ...
       for (int i_outer = 0; i_outer <= int_floor_div_pos_b(-4 + n, 4); ++i_outer)
       {
-        a[0 + i_outer * 4] = 0.0f;
-        a[1 + i_outer * 4] = 0.0f;
-        a[2 + i_outer * 4] = 0.0f;
-        a[3 + i_outer * 4] = 0.0f;
+        a[4 * i_outer + 0] = 0.0f;
+        a[4 * i_outer + 1] = 0.0f;
+        a[4 * i_outer + 2] = 0.0f;
+        a[4 * i_outer + 3] = 0.0f;
       }
     ...
 
@@ -705,7 +705,7 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *restrict a, int const n)
     {
       if (-1 + -128 * gid(0) + -1 * lid(0) + n >= 0)
-        a[lid(0) + gid(0) * 128] = 0.0f;
+        a[128 * gid(0) + lid(0)] = 0.0f;
     }
 
 Loopy requires that workgroup sizes are fixed and constant at compile time.
@@ -750,13 +750,13 @@ assumption:
     ...
       for (int i_outer = 0; i_outer <= -1 + ((3 + n) / 4); ++i_outer)
       {
-        a[0 + i_outer * 4] = 0.0f;
+        a[4 * i_outer + 0] = 0.0f;
         if (-2 + -4 * i_outer + n >= 0)
-          a[1 + i_outer * 4] = 0.0f;
+          a[4 * i_outer + 1] = 0.0f;
         if (-3 + -4 * i_outer + n >= 0)
-          a[2 + i_outer * 4] = 0.0f;
+          a[4 * i_outer + 2] = 0.0f;
         if (-4 + -4 * i_outer + n >= 0)
-          a[3 + i_outer * 4] = 0.0f;
+          a[4 * i_outer + 3] = 0.0f;
       }
     ...
 
@@ -780,22 +780,22 @@ enabling some cost savings:
       /* bulk slab for 'i_outer' */
       for (int i_outer = 0; i_outer <= -2 + ((3 + n) / 4); ++i_outer)
       {
-        a[0 + i_outer * 4] = 0.0f;
-        a[1 + i_outer * 4] = 0.0f;
-        a[2 + i_outer * 4] = 0.0f;
-        a[3 + i_outer * 4] = 0.0f;
+        a[4 * i_outer + 0] = 0.0f;
+        a[4 * i_outer + 1] = 0.0f;
+        a[4 * i_outer + 2] = 0.0f;
+        a[4 * i_outer + 3] = 0.0f;
       }
       /* final slab for 'i_outer' */
       for (int i_outer = -1 + n + -1 * (3 * n / 4); i_outer <= -1 + ((3 + n) / 4); ++i_outer)
         if (-1 + n >= 0)
         {
-          a[0 + i_outer * 4] = 0.0f;
+          a[4 * i_outer + 0] = 0.0f;
           if (-2 + -4 * i_outer + n >= 0)
-            a[1 + i_outer * 4] = 0.0f;
+            a[4 * i_outer + 1] = 0.0f;
           if (-3 + -4 * i_outer + n >= 0)
-            a[2 + i_outer * 4] = 0.0f;
+            a[4 * i_outer + 2] = 0.0f;
           if (4 + 4 * i_outer + -1 * n == 0)
-            a[3 + i_outer * 4] = 0.0f;
+            a[4 * i_outer + 3] = 0.0f;
         }
     ...
 
@@ -1020,7 +1020,7 @@ earlier:
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
         acc_k = 0.0f;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
-        a_fetch[lid(0)] = a[lid(0) + 16 * gid(0)];
+        a_fetch[lid(0)] = a[16 * gid(0) + lid(0)];
       barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch (insn_k_update depends on a_fetch_rule) */;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
@@ -1187,9 +1187,9 @@ When we ask to see the code, the issue becomes apparent:
       float a_fetch[16];
     <BLANKLINE>
       ...
-          a_fetch[lid(0)] = a[n * (lid(0) + 16 * gid(1)) + lid(1) + 16 * gid(0)];
+          a_fetch[lid(0)] = a[n * (16 * gid(1) + lid(0)) + 16 * gid(0) + lid(1)];
       ...
-          out[n * (lid(1) + gid(0) * 16) + lid(0) + gid(1) * 16] = a_fetch[lid(0)];
+          out[n * (16 * gid(0) + lid(1)) + 16 * gid(1) + lid(0)] = a_fetch[lid(0)];
       ...
     }
 
@@ -1493,9 +1493,9 @@ Now to make things more interesting, we'll create a kernel with barriers:
         for (int i = 0; i <= 49; ++i)
         {
           barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
-          c[990 * i + 99 * j + lid(0) + 1 + gid(0) * 128] = 2 * a[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128];
+          c[990 * i + 99 * j + lid(0) + 1] = 2 * a[980 * i + 98 * j + lid(0) + 1];
           barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
-          e[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128] = c[990 * i + 99 * j + 1 + lid(0) + 1 + gid(0) * 128] + c[990 * i + 99 * j + -1 + lid(0) + 1 + gid(0) * 128];
+          e[980 * i + 98 * j + lid(0) + 1] = c[990 * i + 99 * j + 1 + lid(0) + 1] + c[990 * i + 99 * j + -1 + lid(0) + 1];
         }
     }
 
