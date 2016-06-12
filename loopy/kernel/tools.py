@@ -232,12 +232,12 @@ def find_all_insn_inames(kernel):
                 did_something = True
 
                 warn_with_kernel(kernel, "inferred_iname",
-                        "The iname(s) '%s' on instruction '%s' was "
-                        "automatically added. "
+                        "The iname(s) '%s' on instruction '%s' in kernel '%s' "
+                        "was/were automatically added. "
                         "This is deprecated. Please add the iname "
                         "to the instruction "
-                        "implicitly, e.g. by adding '{inames=...}"
-                        % (inames_new-inames_old, insn.id))
+                        "explicitly, e.g. by adding 'for' loops"
+                        % (", ".join(inames_new-inames_old), insn.id, kernel.name))
 
             # }}}
 
