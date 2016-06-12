@@ -960,8 +960,12 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
         from pymbolic.primitives import Variable
         new_insn = Assignment(
                 id=None,
-                assignee=Variable(new_var_name), expression=expr,
-                predicates=insn.predicates)
+                assignee=Variable(new_var_name),
+                expression=expr,
+                predicates=insn.predicates,
+                forced_iname_deps=insn.forced_iname_deps,
+                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
+                )
         newly_created_insn_ids.add(new_insn.id)
         new_insns.append(new_insn)
 
