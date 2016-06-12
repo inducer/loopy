@@ -161,7 +161,7 @@ def get_default_insn_options_dict():
         "forced_iname_deps_is_final": False,
         "forced_iname_deps": frozenset(),
         "predicates": frozenset(),
-        "tags": (),
+        "tags": frozenset(),
         "atomicity": (),
         }
 
@@ -238,7 +238,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             result["predicates"] = intern_frozenset_of_ids(opt_value.split(":"))
 
         elif opt_key == "tags" and opt_value is not None:
-            result["tags"] = tuple(
+            result["tags"] = frozenset(
                     tag.strip() for tag in opt_value.split(":")
                     if tag.strip())
 

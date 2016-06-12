@@ -551,8 +551,8 @@ class InstructionBase(Record):
 
     .. attribute:: tags
 
-        A tuple of string identifiers that can be used to identify groups
-        of instructions.
+        A :class:`frozenset` of string identifiers that can be used to
+        identify groups of instructions.
 
     .. automethod:: __init__
     .. automethod:: assignee_var_names
@@ -611,7 +611,11 @@ class InstructionBase(Record):
                     "actually specifying depends_on")
 
         if tags is None:
-            tags = ()
+            tags = frozenset()
+
+        if not isinstance(tags, frozenset):
+            # was previously allowed to be tuple
+            tags = frozenset(tags)
 
         # Periodically reenable these and run the tests to ensure all
         # performance-relevant identifiers are interned.
