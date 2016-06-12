@@ -536,6 +536,10 @@ def parse_instructions(instructions, defines):
                 # not final, add inames from current scope
                 insn = insn.copy(
                         forced_iname_deps=insn.forced_iname_deps | local_fids,
+                        forced_iname_deps_is_final=(
+                            # If it's inside a for/with block, then it's
+                            # final now.
+                            bool(local_fids)),
                         tags=(
                             insn.tags
                             | insn_options_stack[-1]["tags"]),
