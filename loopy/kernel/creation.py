@@ -153,8 +153,8 @@ def get_default_insn_options_dict():
         "depends_on": None,
         "depends_on_is_final": False,
         "no_sync_with": None,
-        "groups": None,
-        "conflicts_with_groups": None,
+        "groups": frozenset(),
+        "conflicts_with_groups": frozenset(),
         "insn_id": None,
         "inames_to_dup": [],
         "priority": 0,
@@ -169,6 +169,8 @@ def get_default_insn_options_dict():
 def parse_insn_options(opt_dict, options_str, assignee_names=None):
     if options_str is None:
         return opt_dict
+
+    is_with_block = assignee_names is None
 
     result = opt_dict.copy()
 
@@ -186,12 +188,30 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             opt_value = option[equal_idx+1:].strip()
 
         if opt_key == "id" and opt_value is not None:
+            if is_with_block:
+                raise LoopyError("'id' option may not be specified "
+                        "in a 'with' block")
+
             result["insn_id"] = intern(opt_value)
+
         elif opt_key == "id_prefix" and opt_value is not None:
+            if is_with_block:
+                raise LoopyError("'id_prefix' option may not be specified "
+                        "in a 'with' block")
             result["insn_id"] = UniqueName(opt_value)
+
         elif opt_key == "priority" and opt_value is not None:
+            if is_with_block:
+                raise LoopyError("'priority' option may not be specified "
+                        "in a 'with' block")
+
             result["priority"] = int(opt_value)
+
         elif opt_key == "dup" and opt_value is not None:
+            if is_with_block:
+                raise LoopyError("'dup' option may not be specified "
+                        "in a 'with' block")
+
             for value in opt_value.split(":"):
                 arrow_idx = value.find("->")
                 if arrow_idx >= 0:
@@ -201,6 +221,10 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                     result["inames_to_dup"].append((value, None))
 
         elif opt_key == "dep" and opt_value is not None:
+            if is_with_block:
+                raise LoopyError("'dep' option may not be specified "
+                        "in a 'with' block")
+
             if opt_value.startswith("*"):
                 result["depends_on_is_final"] = True
                 opt_value = (opt_value[1:]).strip()
@@ -210,6 +234,10 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                     if dep.strip())
 
         elif opt_key == "nosync" and opt_value is not None:
+            if is_with_block:
+                raise LoopyError("'nosync' option may not be specified "
+                        "in a 'with' block")
+
             result["no_sync_with"] = frozenset(
                     intern(dep.strip()) for dep in opt_value.split(":")
                     if dep.strip())
@@ -243,9 +271,10 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                     if tag.strip())
 
         elif opt_key == "atomic":
-            if assignee_names is None:
-                raise LoopyError("'atomic' option may only be specified "
-                        "on an actual instruction")
+            if is_with_block:
+                raise LoopyError("'atomic' option may not be specified "
+                        "in a with block")
+
             if len(assignee_names) != 1:
                 raise LoopyError("atomic operations with more than one "
                         "left-hand side not supported")
@@ -489,8 +518,43 @@ def parse_instructions(instructions, defines):
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
+            local_fids = insn_options_stack[-1]["forced_iname_deps"]
+
+            if insn.forced_iname_deps_is_final:
+                if not (
+                        insn_options_stack[-1].forced_iname_deps
+                        <= insn.forced_iname_deps):
+                    raise LoopyError("non-parsed instruction '%s' without "
+                            "inames '%s' (but with final iname dependencies) "
+                            "found inside 'for'/'with' block for inames "
+                            "'%s'"
+                            % (insn.id,
+                                ", ".join(local_fids - insn.forced_iname_deps),
+                                insn_options_stack[-1].forced_iname_deps))
+
+            else:
+                # not final, add inames from current scope
+                insn = insn.copy(
+                        forced_iname_deps=insn.forced_iname_deps | local_fids,
+                        tags=(
+                            insn.tags
+                            | insn_options_stack[-1]["tags"]),
+                        predicates=(
+                            insn.predicates
+                            | insn_options_stack[-1]["predicates"]),
+                        groups=(
+                            insn.groups
+                            | insn_options_stack[-1]["groups"]),
+                        conflicts_with_groups=(
+                            insn.groups
+                            | insn_options_stack[-1]["conflicts_with_groups"]),
+                        )
+
             parsed_instructions.append(insn)
             inames_to_dup.append([])
+
+            del local_fids
+
             continue
 
         with_options_match = WITH_OPTIONS_RE.match(insn)
@@ -533,7 +597,11 @@ def parse_instructions(instructions, defines):
             inames_to_dup.append(insn_inames_to_dup)
             continue
 
-        raise RuntimeError("instruction parse error: %s" % insn)
+        raise LoopyError("instruction parse error: %s" % insn)
+
+    if len(insn_options_stack) != 1:
+        raise LoopyError("unbalanced number of 'for'/'with' and 'end' "
+                "declarations")
 
     # }}}
 
