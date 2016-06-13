@@ -39,7 +39,7 @@ from loopy.library.function import (
         default_function_mangler,
         single_arg_function_mangler)
 
-from loopy.diagnostic import CannotBranchDomainTree
+from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 
 
 # {{{ unique var names
@@ -1055,129 +1055,173 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ pretty-printing
 
-    def stringify(self, with_dependencies=False):
+    def stringify(self, what=None, with_dependencies=False):
+        all_what = set([
+            "name",
+            "arguments",
+            "domains",
+            "tags",
+            "variables",
+            "rules",
+            "instructions",
+            "Dependencies",
+            "schedule",
+            ])
+
+        first_letter_to_what = dict(
+                (w[0], w) for w in all_what)
+        assert len(first_letter_to_what) == len(all_what)
+
+        if what is None:
+            what = all_what.copy()
+            if not with_dependencies:
+                what.remove("Dependencies")
+
+        if isinstance(what, str):
+            if "," in what:
+                what = what.split(",")
+                what = set(s.strip() for s in what)
+            else:
+                what = set(
+                        first_letter_to_what[w]
+                        for w in what)
+
+        if not (what <= all_what):
+            raise LoopyError("invalid 'what' passed: %s"
+                    % ", ".join(what-all_what))
+
         lines = []
 
         from loopy.preprocess import add_default_dependencies
         kernel = add_default_dependencies(self)
 
         sep = 75*"-"
-        lines.append(sep)
-        lines.append("KERNEL: " + kernel.name)
-        lines.append(sep)
-        lines.append("ARGUMENTS:")
-        for arg_name in sorted(kernel.arg_dict):
-            lines.append(str(kernel.arg_dict[arg_name]))
-        lines.append(sep)
-        lines.append("DOMAINS:")
-        for dom, parents in zip(kernel.domains, kernel.all_parents_per_domain()):
-            lines.append(len(parents)*"  " + str(dom))
 
-        lines.append(sep)
-        lines.append("INAME IMPLEMENTATION TAGS:")
-        for iname in sorted(kernel.all_inames()):
-            line = "%s: %s" % (iname, kernel.iname_to_tag.get(iname))
-            lines.append(line)
+        if "name" in what:
+            lines.append(sep)
+            lines.append("KERNEL: " + kernel.name)
 
-        if kernel.temporary_variables:
+        if "arguments" in what:
+            lines.append(sep)
+            lines.append("ARGUMENTS:")
+            for arg_name in sorted(kernel.arg_dict):
+                lines.append(str(kernel.arg_dict[arg_name]))
+
+        if "domains" in what:
+            lines.append(sep)
+            lines.append("DOMAINS:")
+            for dom, parents in zip(kernel.domains, kernel.all_parents_per_domain()):
+                lines.append(len(parents)*"  " + str(dom))
+
+        if "tags" in what:
+            lines.append(sep)
+            lines.append("INAME IMPLEMENTATION TAGS:")
+            for iname in sorted(kernel.all_inames()):
+                line = "%s: %s" % (iname, kernel.iname_to_tag.get(iname))
+                lines.append(line)
+
+        if "variables" in what and kernel.temporary_variables:
             lines.append(sep)
             lines.append("TEMPORARIES:")
             for tv in sorted(six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
                 lines.append(str(tv))
 
-        if kernel.substitutions:
+        if "rules" in what and kernel.substitutions:
             lines.append(sep)
             lines.append("SUBSTIUTION RULES:")
             for rule_name in sorted(six.iterkeys(kernel.substitutions)):
                 lines.append(str(kernel.substitutions[rule_name]))
 
-        lines.append(sep)
-        lines.append("INSTRUCTIONS:")
-        loop_list_width = 35
+        if "instructions" in what:
+            lines.append(sep)
+            lines.append("INSTRUCTIONS:")
+            loop_list_width = 35
 
-        printed_insn_ids = set()
+            printed_insn_ids = set()
 
-        Fore = self.options._fore
-        Style = self.options._style
+            Fore = self.options._fore
+            Style = self.options._style
 
-        def print_insn(insn):
-            if insn.id in printed_insn_ids:
-                return
-            printed_insn_ids.add(insn.id)
+            def print_insn(insn):
+                if insn.id in printed_insn_ids:
+                    return
+                printed_insn_ids.add(insn.id)
 
-            for dep_id in sorted(insn.depends_on):
-                print_insn(kernel.id_to_insn[dep_id])
+                for dep_id in sorted(insn.depends_on):
+                    print_insn(kernel.id_to_insn[dep_id])
 
-            if isinstance(insn, lp.MultiAssignmentBase):
-                lhs = ", ".join(str(a) for a in insn.assignees)
-                rhs = str(insn.expression)
-                trailing = []
-            elif isinstance(insn, lp.CInstruction):
-                lhs = ", ".join(str(a) for a in insn.assignees)
-                rhs = "CODE(%s|%s)" % (
-                        ", ".join(str(x) for x in insn.read_variables),
-                        ", ".join("%s=%s" % (name, expr)
-                            for name, expr in insn.iname_exprs))
+                if isinstance(insn, lp.MultiAssignmentBase):
+                    lhs = ", ".join(str(a) for a in insn.assignees)
+                    rhs = str(insn.expression)
+                    trailing = []
+                elif isinstance(insn, lp.CInstruction):
+                    lhs = ", ".join(str(a) for a in insn.assignees)
+                    rhs = "CODE(%s|%s)" % (
+                            ", ".join(str(x) for x in insn.read_variables),
+                            ", ".join("%s=%s" % (name, expr)
+                                for name, expr in insn.iname_exprs))
 
-                trailing = ["    "+l for l in insn.code.split("\n")]
+                    trailing = ["    "+l for l in insn.code.split("\n")]
 
-            loop_list = ",".join(sorted(kernel.insn_inames(insn)))
+                loop_list = ",".join(sorted(kernel.insn_inames(insn)))
 
-            options = [Fore.GREEN+insn.id+Style.RESET_ALL]
-            if insn.priority:
-                options.append("priority=%d" % insn.priority)
-            if insn.tags:
-                options.append("tags=%s" % ":".join(insn.tags))
-            if isinstance(insn, lp.Assignment) and insn.atomicity:
-                options.append("atomic=%s" % ":".join(
-                    str(a) for a in insn.atomicity))
-            if insn.groups:
-                options.append("groups=%s" % ":".join(insn.groups))
-            if insn.conflicts_with_groups:
-                options.append("conflicts=%s" % ":".join(insn.conflicts_with_groups))
-            if insn.no_sync_with:
-                options.append("no_sync_with=%s" % ":".join(insn.no_sync_with))
+                options = [Fore.GREEN+insn.id+Style.RESET_ALL]
+                if insn.priority:
+                    options.append("priority=%d" % insn.priority)
+                if insn.tags:
+                    options.append("tags=%s" % ":".join(insn.tags))
+                if isinstance(insn, lp.Assignment) and insn.atomicity:
+                    options.append("atomic=%s" % ":".join(
+                        str(a) for a in insn.atomicity))
+                if insn.groups:
+                    options.append("groups=%s" % ":".join(insn.groups))
+                if insn.conflicts_with_groups:
+                    options.append(
+                            "conflicts=%s" % ":".join(insn.conflicts_with_groups))
+                if insn.no_sync_with:
+                    options.append("no_sync_with=%s" % ":".join(insn.no_sync_with))
 
-            if len(loop_list) > loop_list_width:
-                lines.append("[%s]" % loop_list)
-                lines.append("%s%s <- %s   # %s" % (
-                    (loop_list_width+2)*" ", Fore.BLUE+lhs+Style.RESET_ALL,
-                    Fore.MAGENTA+rhs+Style.RESET_ALL,
-                    ", ".join(options)))
-            else:
-                lines.append("[%s]%s%s <- %s   # %s" % (
-                    loop_list, " "*(loop_list_width-len(loop_list)),
-                    Fore.BLUE + lhs + Style.RESET_ALL,
-                    Fore.MAGENTA+rhs+Style.RESET_ALL,
-                    ",".join(options)))
+                if len(loop_list) > loop_list_width:
+                    lines.append("[%s]" % loop_list)
+                    lines.append("%s%s <- %s   # %s" % (
+                        (loop_list_width+2)*" ", Fore.BLUE+lhs+Style.RESET_ALL,
+                        Fore.MAGENTA+rhs+Style.RESET_ALL,
+                        ", ".join(options)))
+                else:
+                    lines.append("[%s]%s%s <- %s   # %s" % (
+                        loop_list, " "*(loop_list_width-len(loop_list)),
+                        Fore.BLUE + lhs + Style.RESET_ALL,
+                        Fore.MAGENTA+rhs+Style.RESET_ALL,
+                        ",".join(options)))
 
-            lines.extend(trailing)
+                lines.extend(trailing)
 
-            if insn.predicates:
-                lines.append(10*" " + "if (%s)" % " && ".join(insn.predicates))
+                if insn.predicates:
+                    lines.append(10*" " + "if (%s)" % " && ".join(insn.predicates))
 
-        import loopy as lp
-        for insn in kernel.instructions:
-            print_insn(insn)
+            import loopy as lp
+            for insn in kernel.instructions:
+                print_insn(insn)
 
         dep_lines = []
         for insn in kernel.instructions:
             if insn.depends_on:
                 dep_lines.append("%s : %s" % (insn.id, ",".join(insn.depends_on)))
-        if dep_lines and with_dependencies:
+
+        if "Dependencies" in what and dep_lines:
             lines.append(sep)
             lines.append("DEPENDENCIES: "
                     "(use loopy.show_dependency_graph to visualize)")
             lines.extend(dep_lines)
 
-        lines.append(sep)
-
-        if kernel.schedule is not None:
+        if "schedule" in what and kernel.schedule is not None:
+            lines.append(sep)
             lines.append("SCHEDULE:")
             from loopy.schedule import dump_schedule
             lines.append(dump_schedule(kernel, kernel.schedule))
-            lines.append(sep)
+
+        lines.append(sep)
 
         return "\n".join(lines)
 
