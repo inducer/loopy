@@ -1106,13 +1106,16 @@ def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            <> t_private = a[k,i+1]
+            <> t_private_scalar = a[k,i+1]
+            <> t_private_array[i % 2] = a[k,i+1]
             c[k,i] = a[k,i+1]
-            out[k,i] = c[k,i] + t_private
+            out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
             """)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+    knl = lp.set_temporary_scope(knl, "t_private_scalar", "private")
+    knl = lp.set_temporary_scope(knl, "t_private_array", "private")
 
     ref_knl = knl
 
@@ -1136,6 +1139,46 @@ def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     print(cgr.host_code())
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
+def test_kernel_splitting_with_loop_and_local_temporary(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i,k]: 0<=i<n and 0<=k<3 }",
+            """
+            <> t_local[i % 8,k] = i % 8
+            c[k,i] = a[k,i+1]
+            out[k,i] = c[k,i] + t_local[i % 8,k]
+            """)
+
+    knl = lp.add_and_infer_dtypes(knl,
+            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+
+    knl = lp.set_temporary_scope(knl, "t_local", "local")
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 8, outer_tag="g.0", inner_tag="l.0")
+
+    # schedule
+    from loopy.preprocess import preprocess_kernel
+    knl = preprocess_kernel(knl)
+
+    from loopy.schedule import get_one_scheduled_kernel
+    knl = get_one_scheduled_kernel(knl)
+
+    # map schedule onto host or device
+    print(knl)
+
+    cgr = lp.generate_code_v2(knl)
+
+    assert len(cgr.device_programs) == 2
+
+    print(cgr.device_code())
+    print(cgr.host_code())
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=8))
 
 
 def test_global_temporary(ctx_factory):
