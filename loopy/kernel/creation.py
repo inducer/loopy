@@ -522,8 +522,7 @@ def parse_instructions(instructions, defines):
 
             if insn.forced_iname_deps_is_final:
                 if not (
-                        insn_options_stack[-1].forced_iname_deps
-                        <= insn.forced_iname_deps):
+                        local_fids <= insn.forced_iname_deps):
                     raise LoopyError("non-parsed instruction '%s' without "
                             "inames '%s' (but with final iname dependencies) "
                             "found inside 'for'/'with' block for inames "
