@@ -1577,8 +1577,8 @@ def get_one_scheduled_kernel(kernel):
     if ambiguous:
         from warnings import warn
         from loopy.diagnostic import LoopyWarning
-        warn("kernel scheduling was ambiguous--more than one "
-                "schedule found, ignoring", LoopyWarning,
+        warn("scheduling for kernel '%s' was ambiguous--more than one "
+                "schedule found, ignoring" % kernel.name, LoopyWarning,
                 stacklevel=2)
 
     if CACHING_ENABLED and not from_cache:
