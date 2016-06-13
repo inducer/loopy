@@ -179,7 +179,7 @@ def tag_instructions(kernel, new_tag, within=None):
     for insn in kernel.instructions:
         if within(kernel, insn):
             new_insns.append(
-                    insn.copy(tags=insn.tags + frozenset([new_tag])))
+                    insn.copy(tags=insn.tags | frozenset([new_tag])))
         else:
             new_insns.append(insn)
 
