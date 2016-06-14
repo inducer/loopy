@@ -115,6 +115,9 @@ class Options(Record):
 
         A :class:`bool`. Whether to allow colors in terminal output
 
+    .. rubric:: Features
+
+    .. attribute:: disable_global_barriers
     """
 
     def __init__(
@@ -134,8 +137,10 @@ class Options(Record):
             write_wrapper=False, highlight_wrapper=False,
             write_cl=False, highlight_cl=False,
             edit_cl=False, cl_build_options=[],
-            allow_terminal_colors=True
+            allow_terminal_colors=True,
+            disable_global_barriers=False,
             ):
+
         Record.__init__(
                 self,
 
@@ -149,6 +154,7 @@ class Options(Record):
                 write_cl=write_cl, highlight_cl=highlight_cl,
                 edit_cl=edit_cl, cl_build_options=cl_build_options,
                 allow_terminal_colors=allow_terminal_colors,
+                disable_global_barriers=disable_global_barriers,
                 )
 
     def update(self, other):

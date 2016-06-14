@@ -1481,10 +1481,11 @@ def generate_loop_schedules(kernel, debug_args={}):
                 gsize, lsize = kernel.get_grid_size_upper_bounds()
 
                 if gsize or lsize:
-                    logger.info("%s: barrier insertion: global" % kernel.name)
+                    if not kernel.options.disable_global_barriers:
+                        logger.info("%s: barrier insertion: global" % kernel.name)
 
-                    gen_sched = insert_barriers(kernel, gen_sched,
-                            reverse=False, kind="global")
+                        gen_sched = insert_barriers(kernel, gen_sched,
+                                reverse=False, kind="global")
 
                     logger.info("%s: barrier insertion: local" % kernel.name)
 
