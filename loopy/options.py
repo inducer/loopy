@@ -137,9 +137,17 @@ class Options(Record):
             write_wrapper=False, highlight_wrapper=False,
             write_cl=False, highlight_cl=False,
             edit_cl=False, cl_build_options=[],
-            allow_terminal_colors=True,
+            allow_terminal_colors=None,
             disable_global_barriers=False,
             ):
+
+        if allow_terminal_colors is None:
+            try:
+                import colorama  # noqa
+            except ImportError:
+                allow_terminal_colors = False
+            else:
+                allow_terminal_colors = True
 
         Record.__init__(
                 self,
