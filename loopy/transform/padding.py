@@ -252,23 +252,7 @@ split_arg_axis = MovedFunctionDeprecationWrapper(split_array_dim)
 
 # {{{ split_array_axis
 
-def split_array_axis(kernel, array_name, axis_nr, count, order="C"):
-    """
-    :arg array: may name a temporary variable or an argument.
-
-    :arg axis_nr: the (zero-based) index of the axis that should be split.
-
-    :arg count: The group size to use in the split.
-
-    :arg order: The way the split array axis should be linearized.
-        May be "C" or "F" to indicate C/Fortran (row/column)-major order.
-
-    .. versionchanged:: 2016.2
-
-        There was a more complicated, dumber function called :func:`split_array_dim`
-        that had the role of this function in versions prior to 2016.2.
-    """
-
+def _split_array_axis_inner(kernel, array_name, axis_nr, count, order="C"):
     if count == 1:
         return kernel
 
@@ -381,6 +365,33 @@ def split_array_axis(kernel, array_name, axis_nr, count, order="C"):
     aash = ArrayAxisSplitHelper(rule_mapping_context,
             set([array_name]), split_access_axis)
     kernel = rule_mapping_context.finish_kernel(aash.map_kernel(kernel))
+
+    return kernel
+
+
+def split_array_axis(kernel, array_names, axis_nr, count, order="C"):
+    """
+    :arg array: a list of names of temporary variables or arguments. May
+        also be a comma-separated string of these.
+
+    :arg axis_nr: the (zero-based) index of the axis that should be split.
+
+    :arg count: The group size to use in the split.
+
+    :arg order: The way the split array axis should be linearized.
+        May be "C" or "F" to indicate C/Fortran (row/column)-major order.
+
+    .. versionchanged:: 2016.2
+
+        There was a more complicated, dumber function called :func:`split_array_dim`
+        that had the role of this function in versions prior to 2016.2.
+    """
+
+    if isinstance(array_names, str):
+        array_names = [i.strip() for i in array_names.split(",") if i.strip()]
+
+    for array_name in array_names:
+        kernel = _split_array_axis_inner(kernel, array_name, axis_nr, count, order)
 
     return kernel
 
