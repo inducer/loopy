@@ -334,6 +334,8 @@ def pre_schedule_checks(kernel):
 
 # {{{ post-schedule / pre-code-generation checks
 
+# {{{ check for unused hw axes
+
 def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     from loopy.schedule import (CallKernel, RunInstruction,
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
@@ -415,6 +417,10 @@ def check_for_unused_hw_axes_in_insns(kernel):
     if kernel.schedule:
         _check_for_unused_hw_axes_in_kernel_chunk(kernel)
 
+# }}}
+
+
+# {{{ check that atomic ops are used exactly on atomic arrays
 
 def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
     from loopy.kernel.data import ArrayBase, Assignment
@@ -446,6 +452,10 @@ def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
                         ",".join(accessed_atomic_vars - atomic_accesses),
                         insn.id))
 
+# }}}
+
+
+# {{{ check that shapes and strides are arguments
 
 def check_that_shapes_and_strides_are_arguments(kernel):
     from loopy.kernel.data import ValueArg
@@ -485,6 +495,8 @@ def check_that_shapes_and_strides_are_arguments(kernel):
                         raise LoopyError("'%s' has a stride that depends on "
                                 "non-argument(s): %s" % (
                                     arg.name, ", ".join(deps-integer_arg_names)))
+
+# }}}
 
 
 def pre_codegen_checks(kernel):
