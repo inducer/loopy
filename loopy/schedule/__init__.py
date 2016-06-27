@@ -383,11 +383,11 @@ def dump_schedule(kernel, schedule):
     from loopy.kernel.data import MultiAssignmentBase
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
-            lines.append(indent + "LOOP %s" % sched_item.iname)
+            lines.append(indent + "FOR %s" % sched_item.iname)
             indent += "    "
         elif isinstance(sched_item, LeaveLoop):
             indent = indent[:-4]
-            lines.append(indent + "ENDLOOP %s" % sched_item.iname)
+            lines.append(indent + "END %s" % sched_item.iname)
         elif isinstance(sched_item, CallKernel):
             lines.append(indent +
                          "CALL KERNEL %s(extra_args=%s, extra_inames=%s)" % (
