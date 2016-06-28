@@ -335,11 +335,15 @@ class ExpressionToCMapper(RecursiveMapper):
     def map_comparison(self, expr, enclosing_prec, type_context):
         from pymbolic.mapper.stringifier import PREC_COMPARISON
 
+        inner_type_context = dtype_to_type_context(
+                self.kernel.target,
+                self.infer_type(expr.left - expr.right))
+
         return self.parenthesize_if_needed(
                 "%s %s %s" % (
-                    self.rec(expr.left, PREC_COMPARISON, None),
+                    self.rec(expr.left, PREC_COMPARISON, inner_type_context),
                     expr.operator,
-                    self.rec(expr.right, PREC_COMPARISON, None)),
+                    self.rec(expr.right, PREC_COMPARISON, inner_type_context)),
                 enclosing_prec, PREC_COMPARISON)
 
     def map_constant(self, expr, enclosing_prec, type_context):
