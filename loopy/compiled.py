@@ -297,6 +297,33 @@ def generate_integer_arg_finding_from_strides(gen, kernel, implemented_data_info
 # }}}
 
 
+# {{{ check that value args are present
+
+def generate_value_arg_check(gen, kernel, implemented_data_info):
+    if kernel.options.skip_arg_checks:
+        return
+
+    from loopy.kernel.data import ValueArg
+
+    gen("# {{{ check that value args are present")
+    gen("")
+
+    for arg in implemented_data_info:
+        if not issubclass(arg.arg_class, ValueArg):
+            continue
+
+        gen("if %s is None:" % arg.name)
+        with Indentation(gen):
+            gen("raise TypeError(\"value argument '%s' for "
+                    "was not given and could not be automatically "
+                    "determined\")" % arg.name)
+
+    gen("# }}}")
+    gen("")
+
+# }}}
+
+
 # {{{ arg setup
 
 def generate_arg_setup(gen, kernel, implemented_data_info, options):
@@ -590,6 +617,7 @@ def generate_invoker(kernel, codegen_result):
     generate_integer_arg_finding_from_shapes(gen, kernel, implemented_data_info)
     generate_integer_arg_finding_from_offsets(gen, kernel, implemented_data_info)
     generate_integer_arg_finding_from_strides(gen, kernel, implemented_data_info)
+    generate_value_arg_check(gen, kernel, implemented_data_info)
 
     args = generate_arg_setup(gen, kernel, implemented_data_info, options)
 
