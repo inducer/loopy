@@ -28,7 +28,7 @@ from six.moves import range
 from islpy import dim_type
 import islpy as isl
 from loopy.symbolic import WalkMapper
-from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn
+from loopy.diagnostic import LoopyError, WriteRaceConditionWarning, warn_with_kernel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -152,7 +152,7 @@ def check_for_write_races(kernel):
                     raceable_parallel_insn_inames - assignee_inames
 
             if race_inames:
-                warn(kernel, "write_race(%s)" % insn.id,
+                warn_with_kernel(kernel, "write_race(%s)" % insn.id,
                         "instruction '%s' contains a write race: "
                         "instruction will be run across parallel iname(s) "
                         "'%s', which is/are not referenced in the lhs index"
