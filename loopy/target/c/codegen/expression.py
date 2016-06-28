@@ -373,7 +373,7 @@ class ExpressionToCMapper(RecursiveMapper):
                 if is_integer(expr):
                     return str(expr)
 
-                raise RuntimeError("don't know how to generated code "
+                raise RuntimeError("don't know how to generate code "
                         "for constant '%s'" % expr)
 
     def map_call(self, expr, enclosing_prec, type_context):
