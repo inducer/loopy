@@ -60,7 +60,7 @@ def warn_with_kernel(kernel, id, text, type=LoopyWarning):
             % id)
 
     from warnings import warn
-    warn(text, type)
+    warn("in kernel %s: %s" % (kernel.name, text), type, stacklevel=2)
 
 
 warn = MovedFunctionDeprecationWrapper(warn_with_kernel)
