@@ -464,17 +464,38 @@ def parse_subst_rule(groups):
 
 # {{{ parse_instructions
 
+_PAREN_PAIRS = {
+        "(": (+1, "("),
+        ")": (-1, "("),
+        "[": (+1, "["),
+        "]": (-1, "["),
+        "{": (+1, "{"),
+        "}": (-1, "}"),
+        }
+
+
+def _count_open_paren_symbols(s):
+    result = 0
+    for c in s:
+        val = _PAREN_PAIRS.get(c)
+        if val is not None:
+            increment, cls = val
+            result += increment
+
+    return result
+
+
 def parse_instructions(instructions, defines):
     if isinstance(instructions, str):
         instructions = [instructions]
 
-    parsed_instructions = []
+    new_instructions = []
 
-    # {{{ pass 1: interning, comments, whitespace, defines
+    # {{{ pass 1: interning, comments, whitespace
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
-            parsed_instructions.append(
+            new_instructions.append(
                     insn.copy(
                         id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
                         depends_on=frozenset(intern(dep) for dep in insn.depends_on),
@@ -502,17 +523,66 @@ def parse_instructions(instructions, defines):
             if not insn:
                 continue
 
-            for sub_insn in expand_defines(insn, defines, single_valued=False):
-                parsed_instructions.append(sub_insn)
+            new_instructions.append(insn)
 
     # }}}
 
-    instructions = parsed_instructions
-    parsed_instructions = []
+    instructions = new_instructions
+    new_instructions = []
+
+    # {{{ pass 2: join-by-paren
+
+    insn_buffer = None
+
+    for i, insn in enumerate(instructions):
+        if isinstance(insn, InstructionBase):
+            if insn_buffer is not None:
+                raise LoopyError("cannot join instruction lines "
+                        "by paren-like delimiters "
+                        "across InstructionBase instance at instructions index %d"
+                        % i)
+
+            new_instructions.append(insn)
+        else:
+            if insn_buffer is not None:
+                insn_buffer = insn_buffer + " " + insn
+                if _count_open_paren_symbols(insn_buffer) == 0:
+                    new_instructions.append(insn_buffer)
+                    insn_buffer = None
+
+            else:
+                if _count_open_paren_symbols(insn) == 0:
+                    new_instructions.append(insn)
+                else:
+                    insn_buffer = insn
+
+    if insn_buffer is not None:
+        raise LoopyError("unclosed paren-like delimiter at end of 'instructions' "
+                "while attempting to join lines by paren-like delimiters")
+
+    # }}}
+
+    instructions = new_instructions
+    new_instructions = []
+
+    # {{{ pass 3: defines
+
+    for insn in instructions:
+        if isinstance(insn, InstructionBase):
+            new_instructions.append(insn)
+        else:
+            for sub_insn in expand_defines(insn, defines, single_valued=False):
+                new_instructions.append(sub_insn)
+
+    # }}}
+
+    instructions = new_instructions
+    new_instructions = []
+
     substitutions = {}
     inames_to_dup = []  # one for each parsed_instruction
 
-    # {{{ pass 2: parsing
+    # {{{ pass 4: parsing
 
     insn_options_stack = [get_default_insn_options_dict()]
 
@@ -553,7 +623,7 @@ def parse_instructions(instructions, defines):
                             | insn_options_stack[-1]["conflicts_with_groups"]),
                         )
 
-            parsed_instructions.append(insn)
+            new_instructions.append(insn)
             inames_to_dup.append([])
 
             del local_fids
@@ -596,7 +666,7 @@ def parse_instructions(instructions, defines):
         if insn_match is not None:
             insn, insn_inames_to_dup = parse_insn(
                     insn_match.groupdict(), insn_options_stack[-1])
-            parsed_instructions.append(insn)
+            new_instructions.append(insn)
             inames_to_dup.append(insn_inames_to_dup)
             continue
 
@@ -608,7 +678,7 @@ def parse_instructions(instructions, defines):
 
     # }}}
 
-    return parsed_instructions, inames_to_dup, substitutions
+    return new_instructions, inames_to_dup, substitutions
 
 # }}}
 
