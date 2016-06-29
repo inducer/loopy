@@ -314,7 +314,7 @@ def generate_value_arg_check(gen, kernel, implemented_data_info):
 
         gen("if %s is None:" % arg.name)
         with Indentation(gen):
-            gen("raise TypeError(\"value argument '%s' for "
+            gen("raise TypeError(\"value argument '%s' "
                     "was not given and could not be automatically "
                     "determined\")" % arg.name)
 
