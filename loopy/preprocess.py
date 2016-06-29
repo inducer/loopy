@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 import six
 from loopy.diagnostic import (
-        LoopyError, WriteRaceConditionWarning, warn,
+        LoopyError, WriteRaceConditionWarning, warn_with_kernel,
         LoopyAdvisory, DependencyTypeInferenceFailure)
 
 import islpy as isl
@@ -369,7 +369,7 @@ def find_temporary_scope(kernel):
                     ]:
 
                 if (apin != cpin and bool(locparallel_assignee_inames)):
-                    warn(kernel, "write_race_local(%s)" % insn_id,
+                    warn_with_kernel(kernel, "write_race_local(%s)" % insn_id,
                             "instruction '%s' looks invalid: "
                             "it assigns to indices based on %s IDs, but "
                             "its temporary '%s' cannot be made %s because "
@@ -390,7 +390,7 @@ def find_temporary_scope(kernel):
             desired_scope_per_insn.append(desired_scope)
 
         if not desired_scope_per_insn:
-            warn(kernel, "temp_to_write(%s)" % temp_var.name,
+            warn_with_kernel(kernel, "temp_to_write(%s)" % temp_var.name,
                     "temporary variable '%s' never written, eliminating"
                     % temp_var.name, LoopyAdvisory)
 
@@ -442,7 +442,7 @@ def add_default_dependencies(kernel):
                 all_my_var_writers |= var_writers
 
                 if not var_writers and var not in arg_names:
-                    warn(kernel, "read_no_write(%s)" % var,
+                    warn_with_kernel(kernel, "read_no_write(%s)" % var,
                             "temporary variable '%s' is read, but never written."
                             % var)
 
@@ -802,8 +802,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
             return map_reduction_local(expr, rec, nresults, arg_dtype,
                     reduction_dtypes)
         else:
-            from loopy.diagnostic import warn
-            warn(kernel, "empty_reduction",
+            from loopy.diagnostic import warn_with_kernel
+            warn_with_kernel(kernel, "empty_reduction",
                     "Empty reduction found (no inames to reduce over). "
                     "Eliminating.")
 
