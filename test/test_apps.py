@@ -406,6 +406,35 @@ def test_stencil_with_overfetch(ctx_factory):
                 op_count=[n*n], parameters=dict(n=n), op_label=["cells"])
 
 
+def test_sum_factorization():
+    knl = lp.make_kernel(
+        "{[i,j,ip,jp,k,l]: "
+        "0<=i<I and 0<=j<J and 0<=ip<IP and 0<=jp<JP and 0<=k,l<Q}",
+        """
+        phi1(i, x) := x**i
+        phi2(i, x) := x**i
+        psi1(i, x) := x**i
+        psi2(i, x) := x**i
+        a(x, y) := 1
+
+        A[i,j,ip,jp] = sum(k,sum(l,
+            phi1(i,x[0,k]) * phi2(j,x[1,l])
+            * psi1(ip, x[0,k]) * psi2(jp, x[1, l])
+            * w[0,k] * w[1,l]
+            * a(x[0,k], x[1,l])
+        ))
+        """)
+
+    pytest.xfail("extract_subst is currently too stupid for sum factorization")
+
+    knl = lp.extract_subst(knl, "temp_array",
+            "phi1(i,x[0,k]) *psi1(ip, x[0,k]) * w[0,k]")
+    knl = lp.extract_subst(knl, "temp_array",
+            "sum(k, phi1(i,x[0,k]) *psi1(ip, x[0,k]) * w[0,k])")
+
+    print(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
