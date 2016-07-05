@@ -1262,6 +1262,9 @@ def guess_arg_shape_if_requested(kernel, default_order):
                                 "argument '%s', the following "
                                 "exception occurred:" % (i, arg.name),
                                 file=sys.stderr)
+                        print("*** ADVICE: You may need to manually specify the "
+                                "shape of argument '%s'." % (arg.name),
+                                file=sys.stderr)
                         raise
 
                 shape = tuple(shape)
