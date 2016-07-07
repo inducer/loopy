@@ -30,6 +30,8 @@ from loopy.kernel.data import ValueArg, GlobalArg
 import islpy as isl
 
 __doc__ = """
+.. currentmodule:: loopy
+
 .. autofunction:: to_batched
 """
 
