@@ -165,6 +165,14 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
 
+    if (name == "abs"
+            and len(arg_dtypes) == 1
+            and arg_dtypes[0].numpy_dtype.kind == "f"):
+        return CallMangleInfo(
+                target_name="fabs",
+                result_dtypes=arg_dtypes,
+                arg_dtypes=arg_dtypes)
+
     if name in ["max", "min"] and len(arg_dtypes) == 2:
         dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for dtype in arg_dtypes])
