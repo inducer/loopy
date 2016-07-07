@@ -243,11 +243,11 @@ man_pages = [
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
-    'http://docs.python.org/': None,
-    'http://documen.tician.de/islpy': None,
-    'http://documen.tician.de/pyopencl': None,
-    'http://documen.tician.de/cgen': None,
-    'http://docs.scipy.org/doc/numpy/': None,
+    'https://docs.python.org/3': None,
+    'https://documen.tician.de/islpy': None,
+    'https://documen.tician.de/pyopencl': None,
+    'https://documen.tician.de/cgen': None,
+    'https://docs.scipy.org/doc/numpy/': None,
     }
 
 autoclass_content = "class"
