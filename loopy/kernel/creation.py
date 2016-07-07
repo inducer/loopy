@@ -489,12 +489,18 @@ def parse_instructions(instructions, defines):
     if isinstance(instructions, str):
         instructions = [instructions]
 
+    substitutions = {}
+
     new_instructions = []
 
     # {{{ pass 1: interning, comments, whitespace
 
     for insn in instructions:
-        if isinstance(insn, InstructionBase):
+        if isinstance(insn, SubstitutionRule):
+            substitutions[insn.name] = insn
+            continue
+
+        elif isinstance(insn, InstructionBase):
             new_instructions.append(
                     insn.copy(
                         id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
@@ -579,7 +585,6 @@ def parse_instructions(instructions, defines):
     instructions = new_instructions
     new_instructions = []
 
-    substitutions = {}
     inames_to_dup = []  # one for each parsed_instruction
 
     # {{{ pass 4: parsing
