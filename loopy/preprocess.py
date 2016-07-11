@@ -390,9 +390,14 @@ def find_temporary_scope(kernel):
             desired_scope_per_insn.append(desired_scope)
 
         if not desired_scope_per_insn:
-            warn_with_kernel(kernel, "temp_to_write(%s)" % temp_var.name,
-                    "temporary variable '%s' never written, eliminating"
-                    % temp_var.name, LoopyAdvisory)
+            if temp_var.initializer is None:
+                warn_with_kernel(kernel, "temp_to_write(%s)" % temp_var.name,
+                        "temporary variable '%s' never written, eliminating"
+                        % temp_var.name, LoopyAdvisory)
+            else:
+                raise LoopyError("temporary variable '%s': never written, "
+                        "cannot automatically determine scope"
+                        % temp_var.name)
 
             continue
 
@@ -442,9 +447,11 @@ def add_default_dependencies(kernel):
                 all_my_var_writers |= var_writers
 
                 if not var_writers and var not in arg_names:
-                    warn_with_kernel(kernel, "read_no_write(%s)" % var,
-                            "temporary variable '%s' is read, but never written."
-                            % var)
+                    tv = kernel.temporary_variables[var]
+                    if tv.initializer is None:
+                        warn_with_kernel(kernel, "read_no_write(%s)" % var,
+                                "temporary variable '%s' is read, but never written."
+                                % var)
 
                 if len(var_writers) == 1:
                     auto_deps.update(

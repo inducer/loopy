@@ -648,7 +648,9 @@ def add_extra_args_to_schedule(kernel):
                    kernel, kernel.schedule, idx + 1, block_bounds[idx] - 1)
             # Filter out temporaries that are global.
             extra_args = (tv for tv in defs | uses if
-                kernel.temporary_variables[tv].scope == temp_var_scope.GLOBAL)
+                kernel.temporary_variables[tv].scope == temp_var_scope.GLOBAL
+                and
+                kernel.temporary_variables[tv].initializer is None)
             new_schedule.append(sched_item.copy(extra_args=sorted(extra_args)))
         else:
             new_schedule.append(sched_item)

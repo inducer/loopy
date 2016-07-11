@@ -462,6 +462,10 @@ class OpenCLCASTBuilder(CASTBuilder):
             raise ValueError("unexpected temporary variable scope: %s"
                     % scope)
 
+    def wrap_global_constant(self, decl):
+        from cgen.opencl import CLConstant
+        return CLConstant(decl)
+
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from cgen.opencl import CLGlobal
 

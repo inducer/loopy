@@ -49,9 +49,13 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
         self.sequential = sequential
 
     def needs_batch_subscript(self, name):
+        tv = self.kernel.temporary_variables.get(name)
         return (
                 (not self.sequential
-                    and name in self.kernel.temporary_variables)
+                    and (tv is not None
+                        and not (
+                            tv.initializer is not None
+                            and tv.read_only)))
                 or
                 name in self.batch_varying_args)
 
@@ -70,6 +74,15 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
             return super(_BatchVariableChanger, self).map_variable(expr, expn_state)
 
         return expr.aggregate[self.batch_iname_expr]
+
+
+def _add_unique_dim_name(name, dim_names):
+    if dim_names is None:
+        return dim_names
+
+    from pytools import UniqueNameGenerator
+    ng = UniqueNameGenerator(set(dim_names))
+    return (ng(name),) + tuple(dim_names)
 
 
 def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
@@ -118,7 +131,8 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
             else:
                 arg = arg.copy(
                         shape=(nbatches_expr,) + arg.shape,
-                        dim_tags=("c",) * (len(arg.shape) + 1))
+                        dim_tags=("c",) * (len(arg.shape) + 1),
+                        dim_names=_add_unique_dim_name("ibatch", arg.dim_names))
 
         new_args.append(arg)
 
@@ -130,9 +144,13 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
         new_temps = {}
 
         for temp in six.itervalues(knl.temporary_variables):
-            new_temps[temp.name] = temp.copy(
-                    shape=(nbatches_expr,) + temp.shape,
-                    dim_tags=("c",) * (len(arg.shape) + 1))
+            if temp.initializer is not None and temp.read_only:
+                new_temps[temp.name] = temp
+            else:
+                new_temps[temp.name] = temp.copy(
+                        shape=(nbatches_expr,) + temp.shape,
+                        dim_tags=("c",) * (len(temp.shape) + 1),
+                        dim_names=_add_unique_dim_name("ibatch", temp.dim_names))
 
         knl = knl.copy(temporary_variables=new_temps)
     else:

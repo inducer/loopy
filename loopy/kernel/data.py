@@ -317,6 +317,16 @@ class TemporaryVariable(ArrayBase):
     .. attribute:: scope
 
         One of :class:`temp_var_scope`.
+
+    .. attribute:: initializer
+
+        *None* or a :class:`numpy.ndarray` of data to be used to initialize the
+        array.
+
+    .. attribute:: read_only
+
+        A :class:`bool` indicating whether the variable may be written during
+        its lifetime. If *True*, *initializer* must be given.
     """
 
     min_target_axes = 0
@@ -326,21 +336,68 @@ class TemporaryVariable(ArrayBase):
             "storage_shape",
             "base_indices",
             "scope",
-            "base_storage"
+            "base_storage",
+            "initializer",
+            "read_only",
             ]
 
     def __init__(self, name, dtype=None, shape=(), scope=auto,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
-            base_storage=None):
+            base_storage=None, initializer=None, read_only=False):
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
         :arg base_indices: :class:`loopy.auto` or a tuple of base indices
         """
 
+        if initializer is None:
+            pass
+        elif isinstance(initializer, np.ndarray):
+            if offset != 0:
+                raise LoopyError(
+                        "temporary variable '%s': "
+                        "offset must be 0 if initializer specified"
+                        % name)
+
+            if dtype is auto or dtype is None:
+                from loopy.types import NumpyType
+                dtype = NumpyType(initializer.dtype)
+            elif dtype.numpy_dtype != initializer.dtype:
+                raise LoopyError(
+                        "temporary variable '%s': "
+                        "dtype of initializer does not match "
+                        "dtype of array."
+                        % name)
+
+            if shape is auto:
+                shape = initializer.shape
+
+        else:
+            raise LoopyError(
+                    "temporary variable '%s': "
+                    "initializer must be None or a numpy array"
+                    % name)
+
         if base_indices is None:
             base_indices = (0,) * len(shape)
+
+        if (not read_only
+                and initializer is not None
+                and scope == temp_var_scope.GLOBAL):
+            raise LoopyError(
+                    "temporary variable '%s': "
+                    "read-write global variables with initializer "
+                    "are not currently supported "
+                    "(did you mean to set read_only=True?)"
+                    % name)
+
+        if base_storage is not None and initializer is not None:
+            raise LoopyError(
+                    "temporary variable '%s': "
+                    "base_storage and initializer are "
+                    "mutually exclusive"
+                    % name)
 
         ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
@@ -348,7 +405,9 @@ class TemporaryVariable(ArrayBase):
                 order="C",
                 base_indices=base_indices, scope=scope,
                 storage_shape=storage_shape,
-                base_storage=base_storage)
+                base_storage=base_storage,
+                initializer=initializer,
+                read_only=read_only)
 
     @property
     def is_local(self):
@@ -405,7 +464,11 @@ class TemporaryVariable(ArrayBase):
                 and self.storage_shape == other.storage_shape
                 and self.base_indices == other.base_indices
                 and self.scope == other.scope
-                and self.base_storage == other.base_storage)
+                and self.base_storage == other.base_storage
+                and (
+                    (self.initializer is None and other.initializer is None)
+                    or np.array_equal(self.initializer, other.initializer))
+                and self.read_only == other.read_only)
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -415,7 +478,13 @@ class TemporaryVariable(ArrayBase):
         super(TemporaryVariable, self).update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
-        key_builder.rec(key_hash, self.scope)
+
+        initializer = self.initializer
+        if initializer is not None:
+            initializer = (initializer.tolist(), initializer.dtype)
+        key_builder.rec(key_hash, initializer)
+
+        key_builder.rec(key_hash, self.read_only)
 
 # }}}
 

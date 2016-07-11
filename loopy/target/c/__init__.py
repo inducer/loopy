@@ -129,6 +129,64 @@ class POD(Declarator):
 # }}}
 
 
+# {{{ array literals
+
+def generate_linearized_array(array, value):
+    from pytools import product
+    size = product(shape_ax for shape_ax in array.shape)
+
+    if not isinstance(size, int):
+        raise LoopyError("cannot produce literal for array '%s': "
+                "shape is not a compile-time constant"
+                % array.name)
+
+    strides = []
+
+    data = np.zeros(size, array.dtype.numpy_dtype)
+
+    from loopy.kernel.array import FixedStrideArrayDimTag
+    for i, dim_tag in enumerate(array.dim_tags):
+        if isinstance(dim_tag, FixedStrideArrayDimTag):
+
+            if not isinstance(dim_tag.stride, int):
+                raise LoopyError("cannot produce literal for array '%s': "
+                        "stride along axis %d (1-based) is not a "
+                        "compile-time constant"
+                        % (array.name, i+1))
+
+            strides.append(dim_tag.stride)
+
+        else:
+            raise LoopyError("cannot produce literal for array '%s': "
+                    "dim_tag type '%s' not supported"
+                    % (array.name, type(dim_tag).__name__))
+
+    assert array.offset == 0
+
+    from pytools import indices_in_shape
+    for ituple in indices_in_shape(value.shape):
+        i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides))
+        data[i] = value[ituple]
+
+    return data
+
+
+def generate_array_literal(codegen_state, array, value):
+    data = generate_linearized_array(array, value)
+
+    ecm = codegen_state.expression_to_code_mapper
+
+    from pymbolic.mapper.stringifier import PREC_NONE
+    from loopy.expression import dtype_to_type_context
+
+    type_context = dtype_to_type_context(codegen_state.kernel.target, array.dtype)
+    return "{ %s }" % ", ".join(
+            ecm(d_i, PREC_NONE, type_context, array.dtype)
+            for d_i in data)
+
+# }}}
+
+
 class CTarget(TargetBase):
     """A target for plain "C", without any parallel extensions.
     """
@@ -199,8 +257,45 @@ class CASTBuilder(ASTBuilderBase):
     def get_function_definition(self, codegen_state, codegen_result,
             schedule_index,
             function_decl, function_body):
-        from cgen import FunctionBody
-        return FunctionBody(function_decl, function_body)
+        kernel = codegen_state.kernel
+
+        from cgen import (
+                FunctionBody,
+
+                # Post-mid-2016 cgens have 'Collection', too.
+                Module as Collection,
+                Initializer,
+                Line)
+
+        result = []
+
+        from loopy.kernel.data import temp_var_scope
+
+        for tv in sorted(
+                six.itervalues(kernel.temporary_variables),
+                key=lambda tv: tv.name):
+
+            if tv.scope == temp_var_scope.GLOBAL and tv.initializer is not None:
+                assert tv.read_only
+
+                decl_info, = tv.decl_info(self.target,
+                                index_dtype=kernel.index_dtype)
+                decl = self.wrap_global_constant(
+                        self.get_temporary_decl(
+                            kernel, schedule_index, tv,
+                            decl_info))
+
+                if tv.initializer is not None:
+                    decl = Initializer(decl, generate_array_literal(
+                        codegen_state, tv, tv.initializer))
+
+                result.append(decl)
+
+        fbody = FunctionBody(function_decl, function_body)
+        if not result:
+            return fbody
+        else:
+            return Collection(result+[Line(), fbody])
 
     def idi_to_cgen_declarator(self, kernel, idi):
         from loopy.kernel.data import InameArg
@@ -259,14 +354,21 @@ class CASTBuilder(ASTBuilderBase):
 
             if not tv.base_storage:
                 for idi in decl_info:
-                    # global temp vars are mapped to arguments
+                    # global temp vars are mapped to arguments or global declarations
                     if tv.scope != temp_var_scope.GLOBAL:
-                        temp_decls.append(
-                                self.wrap_temporary_decl(
-                                    self.get_temporary_decl(
-                                        kernel, schedule_index, tv, idi), tv.scope))
+                        decl = self.wrap_temporary_decl(
+                                self.get_temporary_decl(
+                                    kernel, schedule_index, tv, idi), tv.scope)
+
+                        if tv.initializer is not None:
+                            decl = Initializer(decl, generate_array_literal(
+                                codegen_state, tv, tv.initializer))
+
+                        temp_decls.append(decl)
 
             else:
+                assert tv.initializer is None
+
                 offset = 0
                 base_storage_sizes.setdefault(tv.base_storage, []).append(
                         tv.nbytes)
@@ -352,6 +454,10 @@ class CASTBuilder(ASTBuilderBase):
     def get_temporary_decl(self, knl, schedule_index, temp_var, decl_info):
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
+        if temp_var.read_only:
+            from cgen import Const
+            temp_var_decl = Const(temp_var_decl)
+
         if decl_info.shape:
             from cgen import ArrayOf
             temp_var_decl = ArrayOf(temp_var_decl,
@@ -360,6 +466,9 @@ class CASTBuilder(ASTBuilderBase):
         return temp_var_decl
 
     def wrap_temporary_decl(self, decl, scope):
+        return decl
+
+    def wrap_global_constant(self, decl):
         return decl
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):

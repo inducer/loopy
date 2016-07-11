@@ -311,6 +311,10 @@ class CUDACASTBuilder(CASTBuilder):
             raise ValueError("unexpected temporary variable scope: %s"
                     % scope)
 
+    def wrap_global_constant(self, decl):
+        from cgen.opencl import CudaConstant
+        return CudaConstant(decl)
+
     def get_global_arg_decl(self, name, shape, dtype, is_written):
         from loopy.target.c import POD  # uses the correct complex type
         from cgen import Const
