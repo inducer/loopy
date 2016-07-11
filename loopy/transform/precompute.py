@@ -252,25 +252,25 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     :arg subst_use: Describes what to prefetch.
 
-    The following objects may be given for *subst_use*:
+        The following objects may be given for *subst_use*:
 
-    * The name of the substitution rule.
+        * The name of the substitution rule.
 
-    * The tagged name ("name$tag") of the substitution rule.
+        * The tagged name ("name$tag") of the substitution rule.
 
-    * A list of invocations of the substitution rule.
-      This list of invocations, when swept across *sweep_inames*, then serves
-      to define the footprint of the precomputation.
+        * A list of invocations of the substitution rule.
+          This list of invocations, when swept across *sweep_inames*, then serves
+          to define the footprint of the precomputation.
 
-      Invocations may be tagged ("name$tag") to filter out a subset of the
-      usage sites of the substitution rule. (Namely those usage sites that
-      use the same tagged name.)
+          Invocations may be tagged ("name$tag") to filter out a subset of the
+          usage sites of the substitution rule. (Namely those usage sites that
+          use the same tagged name.)
 
-      Invocations may be given as a string or as a
-      :class:`pymbolic.primitives.Expression` object.
+          Invocations may be given as a string or as a
+          :class:`pymbolic.primitives.Expression` object.
 
-      If only one invocation is to be given, then the only entry of the list
-      may be given directly.
+          If only one invocation is to be given, then the only entry of the list
+          may be given directly.
 
     If the list of invocations generating the footprint is not given,
     all (tag-matching, if desired) usage sites of the substitution rule
@@ -286,8 +286,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
       within its arguments. A new, dedicated storage axis is allocated for
       such an axis.
 
-    :arg sweep_inames: A :class:`list` of inames and/or rule argument
-        names to be swept.
+    :arg sweep_inames: A :class:`list` of inames to be swept.
         May also equivalently be a comma-separated string.
     :arg storage_axes: A :class:`list` of inames and/or rule argument
         names/indices to be used as storage axes.
@@ -311,7 +310,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     :arg precompute_outer_inames: The inames within which the compute
         instruction is nested. If *None*, make an educated guess.
 
-    :arg compute_insn_id: The ID of the instruction performing the precomputation.
+    :arg compute_insn_id: The ID of the instruction generated to perform the
+        precomputation.
 
     If `storage_axes` is not specified, it defaults to the arrangement
     `<direct sweep axes><arguments>` with the direct sweep axes being the
