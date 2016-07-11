@@ -781,6 +781,12 @@ class ArrayBase(Record):
 
             kwargs["strides"] = strides
 
+        if dim_names is not None and not isinstance(dim_names, tuple):
+            pu.db
+            from warnings import warn
+            warn("dim_names is not a tuple when calling ArrayBase constructor",
+                    DeprecationWarning, stacklevel=2)
+
         Record.__init__(self,
                 name=name,
                 dtype=dtype,
