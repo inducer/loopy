@@ -837,7 +837,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 base_indices=(0,)*len(new_temp_shape),
                 shape=tuple(abm.non1_storage_shape),
                 scope=temporary_scope,
-                dim_names=non1_storage_axis_names)
+                dim_names=tuple(non1_storage_axis_names))
 
     else:
         temp_var = new_temporary_variables[temporary_name]
