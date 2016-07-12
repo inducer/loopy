@@ -1237,6 +1237,25 @@ def test_finite_difference_expr_subst(ctx_factory):
     evt, _ = precomp_knl(queue, u=u, h=h)
 
 
+def test_unschedulable_kernel_detection():
+    knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
+                         """
+                         mat1[i,j] = mat1[i,j] + 1 {inames=i:j, id=i1}
+                         mat2[j] = mat2[j] + 1 {inames=j, id=i2}
+                         mat3[i] = mat3[i] + 1 {inames=i, id=i3}
+                         """)
+
+    knl = lp.preprocess_kernel(knl)
+
+    # Check that loopy can detect the unschedulability of the kernel
+    assert lp.needs_iname_duplication(knl)
+    assert len([opt for opt in lp.get_iname_duplication_options(knl)]) == 4
+
+    for inames, insns in lp.get_iname_duplication_options(knl):
+        fixed_knl = lp.duplicate_inames(knl, inames, insns)
+        assert not lp.needs_iname_duplication(fixed_knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
