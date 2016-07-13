@@ -1255,6 +1255,17 @@ def test_unschedulable_kernel_detection():
         fixed_knl = lp.duplicate_inames(knl, inames, insns)
         assert not lp.needs_iname_duplication(fixed_knl)
 
+    knl = lp.make_kernel(["{[i,j,k,l,m]:0<=i,j,k,l,m<n}"],
+                         """
+                         mat1[l,m,i,j,k] = mat1[l,m,i,j,k] + 1 {inames=i:j:k:l:m}
+                         mat2[l,m,j,k] = mat2[l,m,j,k] + 1 {inames=j:k:l:m}
+                         mat3[l,m,k] = mat3[l,m,k] + 11 {inames=k:l:m}
+                         mat4[l,m,i] = mat4[l,m,i] + 1 {inames=i:l:m}
+                         """)
+
+    assert lp.needs_iname_duplication(knl)
+    assert len([opt for opt in lp.get_iname_duplication_options(knl)]) == 10
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
