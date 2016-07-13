@@ -800,17 +800,8 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 
 def _get_iname_duplication_options(insn_deps):
     # Remove common inames of the current insn_deps, as they are not relevant for splitting.
-    def remove_common_iname(deps):
-        common = frozenset({}).union(*insn_deps).intersection(*insn_deps)
-        if common:
-            iname = iter(common).next()
-            return frozenset(d - frozenset([iname]) for d in deps) - frozenset([frozenset([])]), False
-        else:
-            return deps, True
-
-    stop = False
-    while not stop:
-        insn_deps, stop = remove_common_iname(insn_deps)
+    common = frozenset([]).union(*insn_deps).intersection(*insn_deps)
+    insn_deps = frozenset(dep - common for dep in insn_deps) - frozenset([frozenset([])])
 
     # Try finding a partitioning of the remaining inames, such that all instructions
     # use only inames from one of the disjoint sets from the partitioning.
