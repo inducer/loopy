@@ -218,7 +218,7 @@ class CUDACASTBuilder(CASTBuilder):
 
     def function_manglers(self):
         return (
-                super(CudaTarget, self).function_manglers() + [
+                super(CUDACASTBuilder, self).function_manglers() + [
                     cuda_function_mangler
                     ])
 
@@ -343,5 +343,7 @@ class CUDACASTBuilder(CASTBuilder):
         return CudaConstant(arg_decl)
 
     # }}}
+
+# }}}
 
 # vim: foldmethod=marker
