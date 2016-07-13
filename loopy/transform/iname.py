@@ -837,7 +837,7 @@ def _get_iname_duplication_options(insn_deps):
             # For each element of the power set without the empty and the full set, one
             # duplication option is generated.
             for insns_to_dup in it.chain.from_iterable(it.combinations(iname_insns, l) for l in range(1, len(iname_insns))):
-                yield iname, insns_to_dup
+                yield iname, tuple(insn.union(common) for insn in insns_to_dup)
 
     # If partitioning was empty, we have recursed successfully and yield nothing
 
