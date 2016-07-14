@@ -1,6 +1,6 @@
 include test/*.py
 include test/*.f90
-recursive-include examples *.py *.cl *.floopy *.sh *.ipynb
+recursive-include examples *.py *.cl *.floopy *.sh *.ipynb *.cpp
 recursive-include contrib *.vim
 
 include build-helpers/*.sh
