@@ -17,7 +17,7 @@ run this beforehand::
     python get-pip.py
 
 For a more manual installation, `download the source
-<http://pypi.python.org/pypi/islpy>`_, unpack it, and say::
+<http://pypi.python.org/pypi/Loopy>`_, unpack it, and say::
 
     python setup.py install
 
