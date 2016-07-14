@@ -245,6 +245,10 @@ This list is always growing, but here are a few pointers:
 
   Use :func:`loopy.register_function_manglers`.
 
+* Loop collapse
+
+  Use :func:`loopy.join_inames`.
+
 Uh-oh. I got a scheduling error. Any hints?
 -------------------------------------------
 
