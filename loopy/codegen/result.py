@@ -26,6 +26,23 @@ import six
 from pytools import Record
 
 
+def process_preambles(preambles):
+    seen_preamble_tags = set()
+    dedup_preambles = []
+
+    for tag, preamble in sorted(preambles, key=lambda tag_code: tag_code[0]):
+        if tag in seen_preamble_tags:
+            continue
+
+        seen_preamble_tags.add(tag)
+        dedup_preambles.append(preamble)
+
+    from loopy.tools import remove_common_indentation
+    return [
+            remove_common_indentation(lines) + "\n"
+            for lines in dedup_preambles]
+
+
 # {{{ code generation result
 
 class GeneratedProgram(Record):
@@ -65,6 +82,7 @@ class CodeGenerationResult(Record):
 
     .. automethod:: host_code
     .. automethod:: device_code
+    .. automethod:: all_code
 
     .. attribute:: implemented_data_info
 
@@ -96,7 +114,7 @@ class CodeGenerationResult(Record):
                 **kwargs)
 
     def host_code(self):
-        preamble_codes = getattr(self, "host_preambles", [])
+        preamble_codes = process_preambles(getattr(self, "host_preambles", []))
 
         return (
                 "".join(preamble_codes)
@@ -104,12 +122,26 @@ class CodeGenerationResult(Record):
                 str(self.host_program.ast))
 
     def device_code(self):
-        preamble_codes = getattr(self, "device_preambles", [])
+        preamble_codes = process_preambles(getattr(self, "device_preambles", []))
 
         return (
                 "".join(preamble_codes)
                 + "\n"
                 + "\n\n".join(str(dp.ast) for dp in self.device_programs))
+
+    def all_code(self):
+        preamble_codes = process_preambles(
+                getattr(self, "host_preambles", [])
+                +
+                getattr(self, "device_preambles", [])
+                )
+
+        return (
+                "".join(preamble_codes)
+                + "\n"
+                + "\n\n".join(str(dp.ast) for dp in self.device_programs)
+                + "\n\n"
+                + str(self.host_program.ast))
 
     def current_program(self, codegen_state):
         if codegen_state.is_generating_device_code:

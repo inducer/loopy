@@ -193,6 +193,37 @@ def test_clamp(ctx_factory):
     evt, (out,) = knl(queue, x=x, a=np.float32(12), b=np.float32(15))
 
 
+def test_numba_target():
+    knl = lp.make_kernel(
+        "{[i,j,k]: 0<=i,j<M and 0<=k<N}",
+        "D[i,j] = sqrt(sum(k, (X[i, k]-X[j, k])**2))",
+        target=lp.NumbaTarget())
+
+    knl = lp.add_and_infer_dtypes(knl, {"X": np.float32})
+
+    print(lp.generate_code_v2(knl).device_code())
+
+
+def test_numba_cuda_target():
+    knl = lp.make_kernel(
+        "{[i,j,k]: 0<=i,j<M and 0<=k<N}",
+        "D[i,j] = sqrt(sum(k, (X[i, k]-X[j, k])**2))",
+        target=lp.NumbaCudaTarget())
+
+    knl = lp.assume(knl, "M>0")
+    knl = lp.split_iname(knl, "i", 16, outer_tag='g.0')
+    knl = lp.split_iname(knl, "j", 128, inner_tag='l.0', slabs=(0, 1))
+    knl = lp.add_prefetch(knl, "X[i,:]")
+    knl = lp.fix_parameters(knl, N=3)
+    knl = lp.set_loop_priority(knl, "i_inner,j_outer")
+    knl = lp.tag_inames(knl, "k:unr")
+    knl = lp.tag_array_axes(knl, "X", "N0,N1")
+
+    knl = lp.add_and_infer_dtypes(knl, {"X": np.float32})
+
+    print(lp.generate_code_v2(knl).all_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

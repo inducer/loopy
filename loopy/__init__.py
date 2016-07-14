@@ -131,6 +131,8 @@ from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
+from loopy.target.numba import NumbaTarget, NumbaCudaTarget
+
 
 __all__ = [
         "TaggedVariable", "Reduction", "LinearSubscript",
@@ -228,6 +230,7 @@ __all__ = [
 
         "TargetBase", "CTarget", "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
+        "NumbaTarget", "NumbaCudaTarget",
         "ASTBuilderBase",
 
         # {{{ from this file

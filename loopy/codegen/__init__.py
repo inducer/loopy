@@ -502,23 +502,7 @@ def generate_code_v2(kernel):
     for prea_gen in preamble_generators:
         preambles.extend(prea_gen(preamble_info))
 
-    seen_preamble_tags = set()
-    dedup_preambles = []
-
-    for tag, preamble in sorted(preambles, key=lambda tag_code: tag_code[0]):
-        if tag in seen_preamble_tags:
-            continue
-
-        seen_preamble_tags.add(tag)
-        dedup_preambles.append(preamble)
-
-    from loopy.tools import remove_common_indentation
-    preamble_codes = [
-            remove_common_indentation(lines) + "\n"
-            for lines in dedup_preambles]
-
-    codegen_result = codegen_result.copy(
-            device_preambles=preamble_codes)
+    codegen_result = codegen_result.copy(device_preambles=preambles)
 
     # }}}
 

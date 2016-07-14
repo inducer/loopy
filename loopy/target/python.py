@@ -24,11 +24,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
+import numpy as np
 
+from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
 from loopy.expression import TypeInferenceMapper
 from loopy.kernel.data import ValueArg
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
 
 
@@ -43,6 +46,9 @@ class ExpressionToPythonMapper(StringifyMapper):
             type_inf_mapper = TypeInferenceMapper(self.kernel)
         self.type_inf_mapper = type_inf_mapper
 
+    def handle_unsupported_expression(self, victim, enclosing_prec):
+        return Mapper.handle_unsupported_expression(self, victim, enclosing_prec)
+
     def rec(self, expr, prec, type_context=None, needed_dtype=None):
         return super(ExpressionToPythonMapper, self).rec(expr, prec)
 
@@ -52,6 +58,12 @@ class ExpressionToPythonMapper(StringifyMapper):
         return repr(expr)
 
     def map_variable(self, expr, enclosing_prec):
+        if expr.name in self.codegen_state.var_subst_map:
+            # Unimplemented: annotate_inames
+            return str(self.rec(
+                self.codegen_state.var_subst_map[expr.name],
+                enclosing_prec))
+
         if expr.name in self.kernel.all_inames():
             return super(ExpressionToPythonMapper, self).map_variable(
                     expr, enclosing_prec)
@@ -61,23 +73,146 @@ class ExpressionToPythonMapper(StringifyMapper):
             return super(ExpressionToPythonMapper, self).map_variable(
                     expr, enclosing_prec)
 
-        raise LoopyError("may not refer to %s '%s' in host code"
-                % (type(var_descr).__name__, expr.name))
+        return super(ExpressionToPythonMapper, self).map_variable(
+                expr, enclosing_prec)
 
     def map_subscript(self, expr, enclosing_prec):
-        raise LoopyError("may not subscript '%s' in host code"
-                % expr.aggregate.name)
+        return super(ExpressionToPythonMapper, self).map_subscript(
+                expr, enclosing_prec)
+
+    def map_call(self, expr, enclosing_prec):
+        from pymbolic.primitives import Variable
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        identifier = expr.function
+
+        if identifier.name in ["indexof", "indexof_vec"]:
+            raise LoopyError(
+                    "indexof, indexof_vec not yet supported in Python")
+
+        if isinstance(identifier, Variable):
+            identifier = identifier.name
+
+        par_dtypes = tuple(self.type_inf_mapper(par) for par in expr.parameters)
+
+        str_parameters = None
+
+        mangle_result = self.kernel.mangle_function(
+                identifier, par_dtypes,
+                ast_builder=self.codegen_state.ast_builder)
+
+        if mangle_result is None:
+            raise RuntimeError("function '%s' unknown--"
+                    "maybe you need to register a function mangler?"
+                    % identifier)
+
+        if len(mangle_result.result_dtypes) != 1:
+            raise LoopyError("functions with more or fewer than one return value "
+                    "may not be used in an expression")
+
+        str_parameters = [
+                self.rec(par, PREC_NONE)
+                for par, par_dtype, tgt_dtype in zip(
+                    expr.parameters, par_dtypes, mangle_result.arg_dtypes)]
+
+        from loopy.codegen import SeenFunction
+        self.codegen_state.seen_functions.add(
+                SeenFunction(identifier,
+                    mangle_result.target_name,
+                    mangle_result.arg_dtypes or par_dtypes))
+
+        return "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
+
+    def map_group_hw_index(self, expr, enclosing_prec):
+        raise LoopyError("plain Python does not have group hw axes")
+
+    def map_local_hw_index(self, expr, enclosing_prec):
+        raise LoopyError("plain Python does not have local hw axes")
 
 # }}}
 
 
 # {{{ ast builder
 
+def _numpy_single_arg_function_mangler(kernel, name, arg_dtypes):
+    if (not isinstance(name, str)
+            or not hasattr(np, name)
+            or len(arg_dtypes) != 1):
+        return None
+
+    arg_dtype, = arg_dtypes
+
+    from loopy.kernel.data import CallMangleInfo
+    return CallMangleInfo(
+            target_name="_lpy_np."+name,
+            result_dtypes=(arg_dtype,),
+            arg_dtypes=arg_dtypes)
+
+
+def _base_python_preamble_generator(preamble_info):
+    yield ("00_future", "from __future__ import division, print_function\n")
+    yield ("05_numpy_import", """
+            import numpy as _lpy_np
+            """)
+
+
 class PythonASTBuilderBase(ASTBuilderBase):
     """A Python host AST builder for integration with PyOpenCL.
     """
 
     # {{{ code generation guts
+
+    def function_manglers(self):
+        return (
+                super(PythonASTBuilderBase, self).function_manglers() + [
+                    _numpy_single_arg_function_mangler,
+                    ])
+
+    def preamble_generators(self):
+        return (
+                super(PythonASTBuilderBase, self).preamble_generators() + [
+                    _base_python_preamble_generator
+                    ])
+
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        return None
+
+    def get_function_definition(self, codegen_state, codegen_result,
+            schedule_index,
+            function_decl, function_body):
+
+        assert function_decl is None
+
+        from genpy import Function
+        return Function(
+                codegen_result.current_program(codegen_state).name,
+                [idi.name for idi in codegen_state.implemented_data_info],
+                function_body)
+
+    def get_temporary_decls(self, codegen_state, schedule_index):
+        kernel = codegen_state.kernel
+        ecm = codegen_state.expression_to_code_mapper
+
+        result = []
+
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from genpy import Assign
+
+        for tv in sorted(
+                six.itervalues(kernel.temporary_variables),
+                key=lambda tv: tv.name):
+            if tv.shape:
+                result.append(
+                        Assign(
+                            tv.name,
+                            "_lpy_np.empty(%s, dtype=%s)"
+                            % (
+                                ecm(tv.shape, PREC_NONE, "i"),
+                                "_lpy_np."+tv.dtype.numpy_dtype.name
+                                )))
+
+        return result
 
     def get_expression_to_code_mapper(self, codegen_state):
         return ExpressionToPythonMapper(codegen_state)
@@ -120,6 +255,10 @@ class PythonASTBuilderBase(ASTBuilderBase):
     def emit_if(self, condition_str, ast):
         from genpy import If
         return If(condition_str, ast)
+
+    def emit_assignment(self, codegen_state, lhs, rhs):
+        from genpy import Assign
+        return Assign(lhs, rhs)
 
     # }}}
 

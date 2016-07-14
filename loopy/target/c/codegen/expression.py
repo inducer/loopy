@@ -732,7 +732,7 @@ class ExpressionToCMapper(RecursiveMapper):
         raise LoopyError("plain C does not have group hw axes")
 
     def map_local_hw_index(self, expr, enclosing_prec, type_context):
-        raise LoopyError("plain C does not have group hw axes")
+        raise LoopyError("plain C does not have local hw axes")
 
 # }}}
 
