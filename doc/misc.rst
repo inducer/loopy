@@ -83,8 +83,204 @@ OTHER DEALINGS IN THE SOFTWARE.
 Frequently Asked Questions
 ==========================
 
-The FAQ is maintained collaboratively on the
-`Wiki FAQ page <http://wiki.tiker.net/Loopy/FrequentlyAskedQuestions>`_.
+Is Loopy specific to OpenCL?
+----------------------------
+
+No, absolutely not. You can switch to a different code generation target
+(subclasses of :class:`loopy.TargetBase`) by using (say)::
+
+    knl = knl.copy(target=loopy.CudaTarget())
+
+Also see :ref:`targets`. (Py)OpenCL right now has the best support for
+running kernels directly out of the box, but that could easily be expanded.
+Open an issue to discuss what you need.
+
+In the meantime, you can generate code simply by saying::
+
+    cg_result = loopy.generate_code_v2(knl)
+    print(cg_result.host_code())
+    print(cg_result.device_code())
+
+For what types of codes does :mod:`loopy` work well?
+----------------------------------------------------
+
+Any array-based/number-crunching code whose control flow is not *too*
+data dependent should be expressible. For example:
+
+* Sparse matrix-vector multiplies, despite data-dependent control
+  flow (varying row lengths, say), is easy and natural to express.
+
+* Looping until convergence on the other hand is an example
+  of something that can't be expressed easily. Such checks
+  would have to be performed outside of :mod:`loopy` code.
+
+Can I see some examples?
+------------------------
+
+Loopy has a ton of tests, and right now, those are probably the best
+source of examples. Here are some links:
+
+* `Tests directory <https://github.com/inducer/loopy/tree/master/test>`_
+* `Applications tests <https://github.com/inducer/loopy/blob/master/test/test_apps.py>`_
+* `Feature tests <https://github.com/inducer/loopy/blob/master/test/test_loopy.py>`_
+
+Here's a more complicated example of a loopy code:
+
+.. literalinclude:: ../examples/python/find-centers.py
+    :language: c
+
+This example is included in the :mod:`loopy` distribution as
+:download:`examples/python/find-centers.py <../examples/python/find-centers.py>`.
+What this does is find nearby "centers" satisfying some criteria
+for an array of points ("targets").
+
+What types of transformations can I do?
+---------------------------------------
+
+This list is always growing, but here are a few pointers:
+
+* Unroll
+
+  Use :func:`loopy.tag_inames` with the ``"unr"`` tag.
+  Unrolled loops must have a fixed size. (See either
+  :func:`loopy.split_iname` or :func:`loopy.fix_parameters`.)
+
+* Stride changes (Row/column/something major)
+
+  Use :func:`loopy.tag_array_axes` with (e.g.) ``stride:17`` or
+  ``N1,N2,N0`` to determine how each axis of an array is realized.
+
+* Prefetch
+
+  Use :func:`loopy.add_prefetch`.
+
+* Reorder loops
+
+  Use :func:`loopy.set_loop_priority`.
+
+* Precompute subexpressions:
+
+  Use a :ref:`substitution-rule` to assign a name to a subexpression,
+  using may be :func:`loopy.assignment_to_subst` or :func:`extract_subst`.
+  Then use :func:`loopy.precompute` to create an (array or scalar)
+  temporary with precomputed values.
+
+* Tile:
+
+  Use :func:`loopy.split_iname` to produce enough loops, then use
+  :func:`loopy.set_loop_priority` to set the ordering.
+
+* Fix constants
+
+  Use :func:`loopy.fix_parameters`.
+
+* Parallelize (across cores)
+
+  Use :func:`loopy.tag_inames` with the ``"g.0"``, ``"g.1"`` (and so on) tags.
+
+* Parallelize (across vector lanes)
+
+  Use :func:`loopy.tag_inames` with the ``"l.0"``, ``"l.1"`` (and so on) tags.
+
+* Affinely map loop domains
+
+  Use :func:`loopy.affine_map_inames`.
+
+* Texture-based data access
+
+  Use :func:`loopy.change_arg_to_image` to use texture memory
+  for an argument.
+
+* Kernel Fusion
+
+  Use :func:`loopy.fuse_kernels`.
+
+* Explicit-SIMD Vectorization
+
+  Use :func:`loopy.tag_inames` with the ``"vec"`` iname tag.
+  Note that the corresponding axis of an array must
+  also be tagged using the ``"vec"`` array axis tag
+  (using :func:`tag_array_axes`) in order for vector code to be
+  generated.
+
+  Vectorized loops (and array axes) must have a fixed size. (See either
+  :func:`split_iname` or :func:`fix_parameters` along with
+  :func:`split_array_axis`.)
+
+* Reuse of Temporary Storage
+
+  Use :func:`loopy.alias_temporaries` to reduce the size of intermediate
+  storage.
+
+* SoA $\leftrightarrow$ AoS
+
+  Use :func:`tag_array_axes` with the ``"sep"`` array axis tag
+  to generate separate arrays for each entry of a short, fixed-length
+  array axis.
+
+  Separated array axes must have a fixed size. (See either
+  :func:`loopy.split_array_axis`.)
+
+* Realization of Instruction-level parallelism
+
+  Use :func:`loopy.tag_inames` with the ``"ilp"`` tag.
+  ILP loops must have a fixed size. (See either
+  :func:`split_iname` or :func:`fix_parameters`.)
+
+* Type inference
+
+  Use :func:`loopy.add_and_infer_dtypes`.
+
+* Convey assumptions:
+
+  Use :func:`loopy.assume` to say, e.g.
+  ``loopy.assume(knl, "N mod 4 = 0")`` or
+  ``loopy.assume(knl, "N > 0")``.
+
+* Perform batch computations
+
+  Use :func:`loopy.to_batched`.
+
+* Interface with your own library functions
+
+  Use :func:`loopy.register_function_manglers`.
+
+Uh-oh. I got a scheduling error. Any hints?
+-------------------------------------------
+
+* Make sure that dependencies between instructions are as
+  you intend.
+
+  Use :func:`loopy.show_dependency_graph` to check.
+
+  There's a heuristic that tries to help find dependencies. If there's
+  only a single write to a variable, then it adds dependencies from all
+  readers to the writer. In your case, that's actually counterproductive,
+  because it creates a circular dependency, hence the scheduling issue.
+  So you'll have to turn that off, like so::
+
+      knl = lp.make_kernel(
+          "{ [t]: 0 <= t < T}",
+          """
+          <> xt = x[t] {id=fetch,dep=*}
+          x[t + 1] = xt * 0.1 {dep=fetch}
+          """)
+
+* Make sure that your loops are correctly nested.
+
+  Print the kernel to make sure all instructions are within
+  the set of inames you intend them to be in.
+
+* One iname is one for loop.
+
+  For sequential loops, one iname corresponds to exactly one
+  ``for`` loop in generated code. Loopy will not generate multiple
+  loops from one iname.
+
+* Make sure that your loops are correctly nested.
+
+  The scheduler will try to be as helpful as it can in telling
+  you where it got stuck.
 
 Citing Loopy
 ============

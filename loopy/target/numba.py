@@ -167,7 +167,7 @@ class NumbaCudaASTBuilder(NumbaBaseASTBuilder):
 
 
 class NumbaCudaTarget(TargetBase):
-    """A target for plain Python, without any parallel extensions.
+    """A target for Numba with CUDA extensions.
     """
 
     host_program_name_suffix = ""

@@ -468,6 +468,8 @@ Kernel Options
 
 .. autoclass:: Options
 
+.. _targets:
+
 Targets
 -------
 

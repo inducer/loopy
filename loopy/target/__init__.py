@@ -36,6 +36,8 @@ __doc__ = """
 .. autoclass:: OpenCLTarget
 .. autoclass:: PyOpenCLTarget
 .. autoclass:: ISPCTarget
+.. autoclass:: NumbaTarget
+.. autoclass:: NumbaCudaTarget
 
 """
 
