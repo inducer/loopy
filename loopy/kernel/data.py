@@ -1358,7 +1358,11 @@ class CallInstruction(MultiAssignmentBase):
 
         self.assignees = assignees
         self.expression = expression
-        self.temp_var_types = temp_var_types
+
+        if temp_var_types is None:
+            self.temp_var_types = (None,) * len(self.assignees)
+        else:
+            self.temp_var_types = temp_var_types
 
     # {{{ implement InstructionBase interface
 
