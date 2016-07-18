@@ -553,6 +553,11 @@ class CASTBuilder(ASTBuilderBase):
 
         result = "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
 
+        # In case of no assignees, we are done
+        if len(mangle_result.result_dtypes) == 0:
+            from cgen import Line
+            return Line(result + ';')
+
         result = ecm.wrap_in_typecast(
                 mangle_result.result_dtypes[0],
                 assignee_var_descriptors[0].dtype,
