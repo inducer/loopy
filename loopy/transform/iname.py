@@ -798,10 +798,12 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 
 # {{{ iname duplication for schedulability
 
-def _get_iname_duplication_options(insn_deps):
+def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
     # Remove common inames of the current insn_deps, as they are not relevant for splitting.
     common = frozenset([]).union(*insn_deps).intersection(*insn_deps)
     insn_deps = frozenset(dep - common for dep in insn_deps) - frozenset([frozenset([])])
+    # Join the common inames with those found in recursion
+    common = common.union(old_common_inames)
 
     # Try finding a partitioning of the remaining inames, such that all instructions
     # use only inames from one of the disjoint sets from the partitioning.
@@ -822,7 +824,7 @@ def _get_iname_duplication_options(insn_deps):
     if len(partitioning) > 1:
         for part in partitioning:
             working_set = frozenset(s for s in insn_deps if s.issubset(part))
-            for option in _get_iname_duplication_options(working_set):
+            for option in _get_iname_duplication_options(working_set, common):
                 yield option
     # If exactly one set was found, an iname duplication is necessary
     elif len(partitioning) == 1:
