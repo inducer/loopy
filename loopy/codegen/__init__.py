@@ -365,6 +365,15 @@ code_gen_cache = PersistentDict("loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
+class PreambleInfo(Record):
+    """
+    .. attribute:: kernel
+    .. attribute:: seen_dtypes
+    .. attribute:: seen_functions
+    .. attribute:: seen_atomic_dtypes
+    """
+
+
 # {{{ main code generation entrypoint
 
 def generate_code_v2(kernel):
@@ -484,11 +493,6 @@ def generate_code_v2(kernel):
         seen_dtypes.add(tv.dtype)
 
     preambles = kernel.preambles[:]
-
-    from pytools import Record
-
-    class PreambleInfo(Record):
-        pass
 
     preamble_info = PreambleInfo(
             kernel=kernel,

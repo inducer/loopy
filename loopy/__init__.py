@@ -46,7 +46,7 @@ from loopy.kernel.data import (
         CallInstruction, CInstruction,
         temp_var_scope, TemporaryVariable,
         SubstitutionRule,
-        PreambleInfo, CallMangleInfo)
+        CallMangleInfo)
 
 from loopy.kernel import LoopKernel, kernel_state
 from loopy.kernel.tools import (
@@ -115,6 +115,7 @@ from loopy.statistics import (get_op_poly, sum_ops_to_dtypes,
         sum_mem_access_to_bytes,
         gather_access_footprints, gather_access_footprint_bytes)
 from loopy.codegen import (
+        PreambleInfo,
         generate_code, generate_code_v2, generate_body)
 from loopy.codegen.result import (
         GeneratedProgram,
@@ -147,7 +148,7 @@ __all__ = [
         "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
         "temp_var_scope", "TemporaryVariable",
         "SubstitutionRule",
-        "PreambleInfo", "CallMangleInfo",
+        "CallMangleInfo",
 
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
@@ -209,6 +210,7 @@ __all__ = [
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules", "get_one_scheduled_kernel",
         "GeneratedProgram", "CodeGenerationResult",
+        "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
         "get_op_poly", "sum_ops_to_dtypes", "get_gmem_access_poly",
