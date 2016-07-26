@@ -46,7 +46,7 @@ from loopy.kernel.data import (
         CallInstruction, CInstruction,
         temp_var_scope, TemporaryVariable,
         SubstitutionRule,
-        CallMangleInfo)
+        PreambleInfo, CallMangleInfo)
 
 from loopy.kernel import LoopKernel, kernel_state
 from loopy.kernel.tools import (
@@ -147,7 +147,7 @@ __all__ = [
         "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
         "temp_var_scope", "TemporaryVariable",
         "SubstitutionRule",
-        "CallMangleInfo",
+        "PreambleInfo", "CallMangleInfo",
 
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
@@ -288,6 +288,13 @@ def set_options(kernel, *args, **kwargs):
 # {{{ library registration
 
 def register_preamble_generators(kernel, preamble_generators):
+    """
+    :arg manglers: list of functions of signature ``(preamble_info)``
+        generating tuples ``(sortable_str_identifier, code)``,
+        where *preamble_info* is a :class:`PreambleInfo`.
+
+    :returns: *kernel* with *manglers* registered
+    """
     new_pgens = kernel.preamble_generators[:]
     for pgen in preamble_generators:
         if pgen not in new_pgens:

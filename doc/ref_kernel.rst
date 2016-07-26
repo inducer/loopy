@@ -501,6 +501,8 @@ Symbols
 Functions
 ^^^^^^^^^
 
+.. autoclass:: PreambleInfo
+
 .. autoclass:: CallMangleInfo
 
 .. _reductions:
