@@ -48,6 +48,10 @@ __doc__ = """
 
 .. autofunction:: duplicate_inames
 
+.. autofunction:: get_iname_duplication_options
+
+.. autofunction:: needs_iname_duplication
+
 .. autofunction:: rename_iname
 
 .. autofunction:: remove_unused_inames
@@ -845,10 +849,32 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
 
 
 def get_iname_duplication_options(knl):
-    """
-    returns all options to duplicate inames, if duplication of an iname is necessary
-    to ensure the schedulability of the kernel. duplication options are returned as
-    tuples (iname, within) as understood by loopy.duplicate_inames
+    """List options for duplication of inames, if necessary for schedulability
+
+    :returns: a generator listing all options to duplicate inames, if duplication of an iname is necessary
+        to ensure the schedulability of the kernel. Duplication options are returned as
+        tuples (iname, within) as understood by :func:`duplicate_inames`. There is no guarantee,
+        that the transformed kernel will be schedulable, because multiple duplications of iname
+        may be necessary.
+
+    Some kernels require the duplication of inames in order to be schedulable, as the
+    forced iname dependencies define an over-determined problem to the scheduler.
+    Consider the following minimal example:
+
+        knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
+                             \"\"\"
+                             mat1[i,j] = mat1[i,j] + 1 {inames=i:j, id=i1}
+                             mat2[j] = mat2[j] + 1 {inames=j, id=i2}
+                             mat3[i] = mat3[i] + 1 {inames=i, id=i3}
+                             \"\"\")
+
+    In the example, there are four possibilities to resolve the problem
+    * duplicating i in instruction i3
+    * duplicating i in instruction i1 and i3
+    * duplicating j in instruction i2
+    * duplicating i in instruction i2 and i3
+
+    Use :func:`needs_iname_duplication` to decide, whether an iname needs to be duplicated in a given kernel.
     """
     # First we extract the minimal necessary information from the kernel
     insn_deps = frozenset(insn.forced_iname_deps for insn in knl.instructions)
@@ -857,13 +883,14 @@ def get_iname_duplication_options(knl):
     for iname, insns in _get_iname_duplication_options(insn_deps):
         # Reconstruct an object that may be passed to the within parameter of
         # loopy.duplicate_inames
-        within = ' or '.join('id:%s' % insn.id for insn in knl.instructions if insn.forced_iname_deps in insns)
+        from loopy.match import Id, Or
+        within = Or(list(Id(insn.id) for insn in knl.instructions if insn.forced_iname_deps in insns))
         yield iname, within
 
 
 def needs_iname_duplication(knl):
     """
-    returns a bool indicating whether this kernel needs an iname duplication
+    :returns: a :class:`bool` indicating whether this kernel needs an iname duplication
     in order to be schedulable.
     """
     return bool(next(get_iname_duplication_options(knl), False))

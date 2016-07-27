@@ -1249,7 +1249,7 @@ def test_unschedulable_kernel_detection():
 
     # Check that loopy can detect the unschedulability of the kernel
     assert lp.needs_iname_duplication(knl)
-    assert len([opt for opt in lp.get_iname_duplication_options(knl)]) == 4
+    assert len(list(lp.get_iname_duplication_options(knl))) == 4
 
     for inames, insns in lp.get_iname_duplication_options(knl):
         fixed_knl = lp.duplicate_inames(knl, inames, insns)
@@ -1264,7 +1264,7 @@ def test_unschedulable_kernel_detection():
                          """)
 
     assert lp.needs_iname_duplication(knl)
-    assert len([opt for opt in lp.get_iname_duplication_options(knl)]) == 10
+    assert len(list(lp.get_iname_duplication_options(knl))) == 10
 
 
 if __name__ == "__main__":
