@@ -882,7 +882,7 @@ def get_iname_duplication_options(knl):
                              mat3[i] = mat3[i] + 1 {inames=i, id=i3}
                              \"\"\")
 
-    In the example, there are four possibilities to resolve the problem
+    In the example, there are four possibilities to resolve the problem:
     * duplicating i in instruction i3
     * duplicating i in instruction i1 and i3
     * duplicating j in instruction i2
