@@ -1254,7 +1254,6 @@ def _f_preamble_gen(preamble_info):
             r"""
             void f()
             {
-                printf("Hi!\n");
             }
             """)
 
