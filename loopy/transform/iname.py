@@ -896,6 +896,12 @@ def get_iname_duplication_options(knl):
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_deps):
+        # Check whether this iname has a parallel tag and discard it if so
+        from loopy.kernel.data import ParallelTag
+        if (iname in knl.iname_to_tag
+                    and isinstance(knl.iname_to_tag[iname], ParallelTag)):
+            continue
+
         # Reconstruct an object that may be passed to the within parameter of
         # loopy.duplicate_inames
         from loopy.match import Id, Or
