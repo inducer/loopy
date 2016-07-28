@@ -34,6 +34,30 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# {{{ sanity checks run before preprocessing
+
+def check_identifiers_in_subst_rules(knl):
+    """Substitution rules may only refer to kernel-global quantities or their
+    own arguments.
+    """
+
+    from loopy.symbolic import get_dependencies
+
+    allowed_identifiers = knl.all_variable_names()
+
+    for rule in six.itervalues(knl.substitutions):
+        deps = get_dependencies(rule.expression)
+        rule_allowed_identifiers = allowed_identifiers | frozenset(rule.arguments)
+
+        if not deps <= rule_allowed_identifiers:
+            raise LoopyError("kernel '%s': substitution rule '%s' refers to "
+                    "identifier(s) '%s' which are neither rule arguments nor "
+                    "kernel-global identifiers"
+                    % (knl.name, ", ".join(deps-rule_allowed_identifiers)))
+
+# }}}
+
+
 # {{{ sanity checks run pre-scheduling
 
 def check_insn_attributes(kernel):

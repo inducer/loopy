@@ -1063,6 +1063,9 @@ def preprocess_kernel(kernel, device=None):
 
     logger.info("%s: preprocess start" % kernel.name)
 
+    from loopy.check import check_identifiers_in_subst_rules
+    check_identifiers_in_subst_rules(kernel)
+
     # {{{ check that there are no l.auto-tagged inames
 
     from loopy.kernel.data import AutoLocalIndexTagBase
