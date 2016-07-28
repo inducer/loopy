@@ -66,7 +66,7 @@ from loopy.transform.iname import (
         split_reduction_inward, split_reduction_outward,
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
-        needs_iname_duplication, get_iname_duplication_options)
+        has_schedulable_iname_nesting, get_iname_duplication_options)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,

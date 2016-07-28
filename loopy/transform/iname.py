@@ -50,7 +50,7 @@ __doc__ = """
 
 .. autofunction:: get_iname_duplication_options
 
-.. autofunction:: needs_iname_duplication
+.. autofunction:: has_schedulable_iname_nesting
 
 .. autofunction:: rename_iname
 
@@ -888,7 +888,7 @@ def get_iname_duplication_options(knl):
     * duplicating j in instruction i2
     * duplicating i in instruction i2 and i3
 
-    Use :func:`needs_iname_duplication` to decide, whether an iname needs to be
+    Use :func:`has_schedulable_iname_nesting` to decide, whether an iname needs to be
     duplicated in a given kernel.
     """
     # First we extract the minimal necessary information from the kernel
@@ -905,12 +905,12 @@ def get_iname_duplication_options(knl):
         yield iname, within
 
 
-def needs_iname_duplication(knl):
+def has_schedulable_iname_nesting(knl):
     """
     :returns: a :class:`bool` indicating whether this kernel needs
         an iname duplication in order to be schedulable.
     """
-    return bool(next(get_iname_duplication_options(knl), False))
+    return not bool(next(get_iname_duplication_options(knl), False))
 
 # }}}
 
