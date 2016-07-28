@@ -33,7 +33,7 @@ from pytools import memoize, memoize_method, Record
 import pytools.lex
 
 from pymbolic.primitives import (
-        Leaf, AlgebraicLeaf, Expression, Variable, CommonSubexpression)
+        Leaf, Expression, Variable, CommonSubexpression)
 
 from pymbolic.mapper import (
         CombineMapper as CombineMapperBase,
@@ -102,6 +102,8 @@ class IdentityMapperMixin(object):
 
     map_linear_subscript = IdentityMapperBase.map_subscript
 
+    map_rule_argument = map_group_hw_index
+
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
@@ -131,6 +133,8 @@ class WalkMapper(WalkMapperBase):
         self.visit(expr)
 
     map_linear_subscript = WalkMapperBase.map_subscript
+
+    map_rule_argument = map_group_hw_index
 
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
@@ -180,6 +184,9 @@ class StringifyMapper(StringifyMapperBase):
         return "%s<%s>" % (
                 type(expr).__name__,
                 ", ".join(str(a) for a in expr.__getinitargs__()))
+
+    def map_rule_argument(self, expr, enclosing_prec):
+        return "<arg%d>" % expr.index
 
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
@@ -357,7 +364,7 @@ class TaggedVariable(Variable):
     mapper_method = intern("map_tagged_variable")
 
 
-class Reduction(AlgebraicLeaf):
+class Reduction(Expression):
     """Represents a reduction operation on :attr:`expr`
     across :attr:`inames`.
 
@@ -437,7 +444,7 @@ class Reduction(AlgebraicLeaf):
     mapper_method = intern("map_reduction")
 
 
-class LinearSubscript(AlgebraicLeaf):
+class LinearSubscript(Expression):
     """Represents a linear index into a multi-dimensional array, completely
     ignoring any multi-dimensional layout.
     """
@@ -455,6 +462,26 @@ class LinearSubscript(AlgebraicLeaf):
         return StringifyMapper
 
     mapper_method = intern("map_linear_subscript")
+
+
+class RuleArgument(Expression):
+    """Represents a (numbered) argument of a :class:`loopy.SubstitutionRule`.
+    Only used internally in the rule-aware mappers to match subst rules
+    independently of argument names.
+    """
+
+    init_arg_names = ("index",)
+
+    def __init__(self, index):
+        self.index = index
+
+    def __getinitargs__(self):
+        return (self.index,)
+
+    def stringifier(self):
+        return StringifyMapper
+
+    mapper_method = intern("map_rule_argument")
 
 # }}}
 
@@ -544,32 +571,47 @@ def rename_subst_rules_in_instructions(insns, renames):
 
 
 class SubstitutionRuleMappingContext(object):
+    def _get_subst_rule_key(self, args, body):
+        subst_dict = dict(
+                (arg, RuleArgument(i))
+                for i, arg in enumerate(args))
+
+        from pymbolic.mapper.substitutor import make_subst_func
+        arg_subst_map = SubstitutionMapper(make_subst_func(subst_dict))
+
+        return arg_subst_map(body)
+
     def __init__(self, old_subst_rules, make_unique_var_name):
         self.old_subst_rules = old_subst_rules
         self.make_unique_var_name = make_unique_var_name
 
         # maps subst rule (args, bodies) to (names, original_name)
         self.subst_rule_registry = dict(
-                ((rule.arguments, rule.expression), (name, name))
+                (self._get_subst_rule_key(rule.arguments, rule.expression),
+                    (name, rule.arguments, rule.expression))
                 for name, rule in six.iteritems(old_subst_rules))
 
-        # maps subst rule (args, bodies) to use counts
-        self.subst_rule_use_count = {}
+        # maps subst rule (args, bodies) to a list of old names,
+        # which doubles as (a) a histogram of uses and (b) a way
+        # to deterministically find the 'lexicographically earliest'
+        # name
+        self.subst_rule_old_names = {}
 
     def register_subst_rule(self, original_name, args, body):
         """Returns a name (as a string) for a newly created substitution
         rule.
         """
-        key = (args, body)
+        key = self._get_subst_rule_key(args, body)
         reg_value = self.subst_rule_registry.get(key)
 
         if reg_value is None:
-            new_name = self.make_unique_var_name(original_name)
-            self.subst_rule_registry[key] = (new_name, original_name)
+            # These names are temporary and won't stick around.
+            new_name = self.make_unique_var_name("_lpy_tmp_"+original_name)
+            self.subst_rule_registry[key] = (new_name, args, body)
         else:
-            new_name, _ = reg_value
+            new_name, _, _ = reg_value
 
-        self.subst_rule_use_count[key] = self.subst_rule_use_count.get(key, 0) + 1
+        self.subst_rule_old_names.setdefault(key, []).append(original_name)
         return new_name
 
     def _get_new_substitutions_and_renames(self):
@@ -591,27 +633,31 @@ class SubstitutionRuleMappingContext(object):
 
         from loopy.kernel.data import SubstitutionRule
 
-        orig_name_histogram = {}
-        for key, (name, orig_name) in six.iteritems(self.subst_rule_registry):
-            if self.subst_rule_use_count.get(key, 0):
-                orig_name_histogram[orig_name] = \
-                        orig_name_histogram.get(orig_name, 0) + 1
-
         result = {}
         renames = {}
 
-        for key, (name, orig_name) in six.iteritems(self.subst_rule_registry):
-            args, body = key
+        used_names = set()
 
-            if self.subst_rule_use_count.get(key, 0):
-                if orig_name_histogram[orig_name] == 1 and name != orig_name:
-                    renames[name] = orig_name
-                    name = orig_name
+        for key, (name, args, body) in six.iteritems(
+                self.subst_rule_registry):
+            orig_names = self.subst_rule_old_names.get(key, [])
 
-                result[name] = SubstitutionRule(
-                        name=name,
-                        arguments=args,
-                        expression=body)
+            # If no orig_names are found, then this particular
+            # subst rule was never referenced, and so it's fine
+            # to leave out.
+
+            if not orig_names:
+                continue
+
+            new_name = min(orig_names)
+            if new_name in used_names:
+                new_name = self.make_unique_var_name(new_name)
+
+            renames[name] = new_name
+            result[new_name] = SubstitutionRule(
+                    name=name,
+                    arguments=args,
+                    expression=body)
 
         # {{{ perform renames on new substitutions
 
