@@ -495,7 +495,7 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     # {{{ code generation for atomic update
 
-    def generate_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
+    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
         from pymbolic.mapper.stringifier import PREC_NONE
 

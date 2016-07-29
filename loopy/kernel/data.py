@@ -623,6 +623,9 @@ class InstructionBase(Record):
         A :class:`frozenset` of string identifiers that can be used to
         identify groups of instructions.
 
+        Tags starting with exclamation marks (``!``) are reserved and may have
+        specific meanings defined by :mod:`loopy` or its targets.
+
     .. automethod:: __init__
     .. automethod:: assignee_var_names
     .. automethod:: assignee_subscript_deps

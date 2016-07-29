@@ -356,6 +356,117 @@ class ISPCASTBuilder(CASTBuilder):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(result)
 
+    def emit_assignment(self, codegen_state, insn):
+        kernel = codegen_state.kernel
+        ecm = codegen_state.expression_to_code_mapper
+
+        assignee_var_name, = insn.assignee_var_names()
+
+        lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
+        lhs_dtype = lhs_var.dtype
+
+        if insn.atomicity:
+            raise NotImplementedError("atomic ops in ISPC")
+
+        from loopy.expression import dtype_to_type_context
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
+        rhs_code = ecm(insn.expression, prec=PREC_NONE,
+                    type_context=rhs_type_context,
+                    needed_dtype=lhs_dtype)
+
+        lhs = insn.assignee
+
+        # {{{ handle streaming stores
+
+        if "!streaming_store" in insn.tags:
+            ary = ecm.find_array(lhs)
+
+            from loopy.kernel.array import get_access_info
+            from pymbolic import evaluate
+
+            from loopy.symbolic import simplify_using_aff
+            index_tuple = tuple(
+                    simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
+
+            access_info = get_access_info(kernel.target, ary, index_tuple,
+                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
+                    codegen_state.vectorization_info)
+
+            from loopy.kernel.data import GlobalArg, TemporaryVariable
+
+            if not isinstance(ary, (GlobalArg, TemporaryVariable)):
+                raise LoopyError("array type not supported in ISPC: %s"
+                        % type(ary).__name)
+
+            if len(access_info.subscripts) != 1:
+                raise LoopyError("streaming stores must have a subscript")
+            subscript, = access_info.subscripts
+
+            from pymbolic.primitives import Sum, flattened_sum, Variable
+            if isinstance(subscript, Sum):
+                terms = subscript.children
+            else:
+                terms = (subscript.children,)
+
+            new_terms = []
+
+            from loopy.kernel.data import LocalIndexTag
+            from loopy.symbolic import get_dependencies
+
+            saw_l0 = False
+            for term in terms:
+                if (isinstance(term, Variable)
+                        and isinstance(
+                            kernel.iname_to_tag.get(term.name), LocalIndexTag)
+                        and kernel.iname_to_tag.get(term.name).axis == 0):
+                    if saw_l0:
+                        raise LoopyError("streaming store must have stride 1 "
+                                "in local index, got: %s" % subscript)
+                    saw_l0 = True
+                    continue
+                else:
+                    for dep in get_dependencies(term):
+                        if (
+                                isinstance(
+                                    kernel.iname_to_tag.get(dep), LocalIndexTag)
+                                and kernel.iname_to_tag.get(dep).axis == 0):
+                            raise LoopyError("streaming store must have stride 1 "
+                                    "in local index, got: %s" % subscript)
+
+                    new_terms.append(term)
+
+            if not saw_l0:
+                raise LoopyError("streaming store must have stride 1 in "
+                        "local index, got: %s" % subscript)
+
+            if access_info.vector_index is not None:
+                raise LoopyError("streaming store may not use a short-vector "
+                        "data type")
+
+            rhs_has_programindex = any(
+                    isinstance(
+                        kernel.iname_to_tag.get(dep), LocalIndexTag)
+                    and kernel.iname_to_tag.get(dep).axis == 0
+                    for dep in get_dependencies(insn.expression))
+
+            if not rhs_has_programindex:
+                rhs_code = "broadcast(%s, 0)" % rhs_code
+
+            from cgen import Statement
+            return Statement(
+                    "streaming_store(%s + %s, %s)"
+                    % (
+                        access_info.array_name,
+                        ecm(flattened_sum(new_terms), PREC_NONE, 'i'),
+                        rhs_code))
+
+        # }}}
+
+        from cgen import Assign
+        return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
+
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             static_lbound, static_ubound, inner):
         ecm = codegen_state.expression_to_code_mapper
