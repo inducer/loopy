@@ -535,7 +535,7 @@ class CASTBuilder(ASTBuilderBase):
         elif isinstance(lhs_atomicity, AtomicUpdate):
             codegen_state.seen_atomic_dtypes.add(lhs_dtype)
             return codegen_state.ast_builder.emit_atomic_update(
-                    kernel, codegen_state, lhs_atomicity, lhs_var,
+                    codegen_state, lhs_atomicity, lhs_var,
                     insn.assignee, insn.expression,
                     lhs_dtype, rhs_type_context)
 
