@@ -1,8 +1,6 @@
 """Pymbolic mappers for loopy."""
 
 from __future__ import division, absolute_import
-import six
-from six.moves import range, zip, reduce
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -27,7 +25,8 @@ THE SOFTWARE.
 """
 
 
-from six.moves import intern
+import six
+from six.moves import range, zip, reduce, intern
 
 from pytools import memoize, memoize_method, Record
 import pytools.lex
@@ -654,8 +653,10 @@ class SubstitutionRuleMappingContext(object):
                 new_name = self.make_unique_var_name(new_name)
 
             renames[name] = new_name
+            used_names.add(new_name)
+
             result[new_name] = SubstitutionRule(
-                    name=name,
+                    name=new_name,
                     arguments=args,
                     expression=body)
 
