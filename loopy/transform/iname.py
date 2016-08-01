@@ -819,7 +819,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
         common = common.union(old_common_inames)
 
         # Go into recursion
-        for option in _get_iname_duplication_options(insn_deps, old_common_inames=common):
+        for option in _get_iname_duplication_options(insn_deps, common):
             yield option
         # Do not yield anything beyond here!
         return
@@ -847,7 +847,8 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
     if len(partitioning) > 1:
         for part in partitioning:
             working_set = frozenset(s for s in insn_deps if s.issubset(part))
-            for option in _get_iname_duplication_options(working_set, old_common_inames):
+            for option in _get_iname_duplication_options(working_set,
+                                                         old_common_inames):
                 yield option
     # If exactly one set was found, an iname duplication is necessary
     elif len(partitioning) == 1:
@@ -865,7 +866,9 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
             for insns_to_dup in it.chain.from_iterable(
                     it.combinations(iname_insns, l)
                     for l in range(1, len(iname_insns))):
-                yield iname, tuple(insn.union(old_common_inames) for insn in insns_to_dup)
+                yield (
+                    iname,
+                    tuple(insn.union(old_common_inames) for insn in insns_to_dup))
 
     # If partitioning was empty, we have recursed successfully and yield nothing
 
@@ -901,9 +904,10 @@ def get_iname_duplication_options(knl):
     duplicated in a given kernel.
     """
     # First we extract the minimal necessary information from the kernel
-    insn_deps = frozenset(insn.forced_iname_deps for insn in knl.instructions)
-                -
-                frozenset([frozenset([])])
+    insn_deps = (
+        frozenset(insn.forced_iname_deps for insn in knl.instructions)
+        -
+        frozenset([frozenset([])]))
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_deps):
