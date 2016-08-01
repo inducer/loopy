@@ -303,6 +303,24 @@ def check_write_destinations(kernel):
                     or wvar in kernel.arg_dict) and wvar not in kernel.all_params():
                 raise LoopyError
 
+
+def check_has_schedulable_iname_nesting(kernel):
+    from loopy.transform.iname import (has_schedulable_iname_nesting,
+                                       get_iname_duplication_options)
+    if not has_schedulable_iname_nesting(kernel):
+        opt = get_iname_duplication_options(kernel)
+        import itertools as it
+        raise LoopyError("Kernel does not have a schedulable iname nesting. "
+                "In order for there to exist a feasible loop nesting, you "
+                "may need to duplicate an iname. To do so, call "
+                "loopy.duplicate_iname. Use loopy.get_iname_duplication_options "
+                "to get hints about which iname to duplicate. Here are some "
+                "options: "
+                "\n* Duplicate %s within instructions %s"
+                "\n* Duplicate %s within instructions %s"
+                "\n* Duplicate %s within instructions %s"
+                     % tuple(it.chain(*tuple(it.islice(opt, 3)))))
+
 # }}}
 
 
@@ -319,6 +337,7 @@ def pre_schedule_checks(kernel):
         check_for_data_dependent_parallel_bounds(kernel)
         check_bounds(kernel)
         check_write_destinations(kernel)
+        check_has_schedulable_iname_nesting(kernel)
 
         logger.info("pre-schedule check %s: done" % kernel.name)
     except KeyboardInterrupt:
