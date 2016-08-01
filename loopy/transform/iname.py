@@ -807,13 +807,22 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
     # Remove common inames of the current insn_deps, as they are not relevant
     # for splitting.
     common = frozenset([]).union(*insn_deps).intersection(*insn_deps)
-    insn_deps = (
+
+    # If common inames were found, we reduce the problem and go into recursion
+    if common:
+        # Remove the common inames from the instruction dependencies
+        insn_deps = (
             frozenset(dep - common for dep in insn_deps)
             -
             frozenset([frozenset([])]))
+        # Join the common inames with those previously found
+        common = common.union(old_common_inames)
 
-    # Join the common inames with those found in recursion
-    common = common.union(old_common_inames)
+        # Go into recursion
+        for option in _get_iname_duplication_options(insn_deps, old_common_inames=common):
+            yield option
+        # Do not yield anything beyond here!
+        return
 
     # Try finding a partitioning of the remaining inames, such that all instructions
     # use only inames from one of the disjoint sets from the partitioning.
@@ -838,7 +847,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
     if len(partitioning) > 1:
         for part in partitioning:
             working_set = frozenset(s for s in insn_deps if s.issubset(part))
-            for option in _get_iname_duplication_options(working_set, common):
+            for option in _get_iname_duplication_options(working_set, old_common_inames):
                 yield option
     # If exactly one set was found, an iname duplication is necessary
     elif len(partitioning) == 1:
@@ -856,7 +865,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
             for insns_to_dup in it.chain.from_iterable(
                     it.combinations(iname_insns, l)
                     for l in range(1, len(iname_insns))):
-                yield iname, tuple(insn.union(common) for insn in insns_to_dup)
+                yield iname, tuple(insn.union(old_common_inames) for insn in insns_to_dup)
 
     # If partitioning was empty, we have recursed successfully and yield nothing
 
