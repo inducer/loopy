@@ -871,13 +871,25 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
             kwargs.pop("temp_var_type", None)
             kwargs.pop("temp_var_types", None)
 
-            replacement_insns = [
-                    lp.Assignment(
-                        id=insn_id_gen(insn.id),
-                        assignee=assignee,
-                        expression=new_expr,
-                        **kwargs)
-                    for assignee, new_expr in zip(insn.assignees, new_expressions)]
+            if isinstance(insn.expression, Reduction) and nresults > 1:
+                replacement_insns = [
+                        lp.Assignment(
+                            id=insn_id_gen(insn.id),
+                            assignee=assignee,
+                            expression=new_expr,
+                            **kwargs)
+                        for assignee, new_expr in zip(
+                            insn.assignees, new_expressions)]
+
+            else:
+                new_expr, = new_expressions
+                replacement_insns = [
+                        make_assignment(
+                            id=insn_id_gen(insn.id),
+                            assignees=insn.assignees,
+                            expression=new_expr,
+                            **kwargs)
+                        ]
 
             insn_id_replacements[insn.id] = [
                     rinsn.id for rinsn in replacement_insns]

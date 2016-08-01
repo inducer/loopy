@@ -1255,6 +1255,16 @@ def test_call_with_no_returned_value(ctx_factory):
     evt, _ = knl(queue)
 
 
+def test_regression_no_ret_call_removal(ctx_factory):
+    # https://github.com/inducer/loopy/issues/32
+    knl = lp.make_kernel(
+            "{[i] : 0<=i<n}",
+            "f(sum(i, x[i]))")
+    knl = lp.add_and_infer_dtypes(knl, {"x": np.float32})
+    knl = lp.preprocess_kernel(knl)
+    assert len(knl.instructions) == 3
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
