@@ -273,7 +273,7 @@ def find_all_insn_inames(kernel):
                         "automatically added. "
                         "This is deprecated. Please add the iname "
                         "to the instruction "
-                        "explicitly, e.g. by adding '{inames=...}"
+                        "explicitly, e.g. by adding 'for' loops"
                         % (", ".join(inames_new-inames_old), insn.id))
 
             # }}}
