@@ -1417,9 +1417,7 @@ class CallInstruction(MultiAssignmentBase):
 
 
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
-    if len(assignees) < 1:
-        raise LoopyError("every instruction must have a left-hand side")
-    elif len(assignees) > 1:
+    if len(assignees) > 1 or len(assignees) == 0:
         atomicity = kwargs.pop("atomicity", ())
         if atomicity:
             raise LoopyError("atomic operations with more than one "
