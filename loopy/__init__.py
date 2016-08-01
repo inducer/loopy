@@ -170,6 +170,7 @@ __all__ = [
         "split_reduction_inward", "split_reduction_outward",
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
+        "has_schedulable_iname_nesting", "get_iname_duplication_options",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
