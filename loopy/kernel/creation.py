@@ -833,10 +833,11 @@ class ArgumentGuesser:
             if isinstance(insn, MultiAssignmentBase):
                 for assignee_var_name in insn.assignee_var_names():
                     self.all_written_names.add(assignee_var_name)
-                    self.all_names.update(get_dependencies(
-                        self.submap(insn.assignees)))
-                    self.all_names.update(get_dependencies(
-                        self.submap(insn.expression)))
+
+                self.all_names.update(get_dependencies(
+                    self.submap(insn.assignees)))
+                self.all_names.update(get_dependencies(
+                    self.submap(insn.expression)))
 
     def find_index_rank(self, name):
         irf = IndexRankFinder(name)
