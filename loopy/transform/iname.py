@@ -902,6 +902,8 @@ def get_iname_duplication_options(knl):
     """
     # First we extract the minimal necessary information from the kernel
     insn_deps = frozenset(insn.forced_iname_deps for insn in knl.instructions)
+                -
+                frozenset([frozenset([])])
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_deps):
