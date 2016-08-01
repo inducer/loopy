@@ -308,18 +308,16 @@ def check_has_schedulable_iname_nesting(kernel):
     from loopy.transform.iname import (has_schedulable_iname_nesting,
                                        get_iname_duplication_options)
     if not has_schedulable_iname_nesting(kernel):
-        opt = get_iname_duplication_options(kernel)
         import itertools as it
+        opt = get_iname_duplication_options(kernel)
+        opt_str = "\n".join("* Duplicate %s within instructions %s" % (i, w)
+                            for i, w in it.islice(opt, 3))
         raise LoopyError("Kernel does not have a schedulable iname nesting. "
                 "In order for there to exist a feasible loop nesting, you "
                 "may need to duplicate an iname. To do so, call "
                 "loopy.duplicate_iname. Use loopy.get_iname_duplication_options "
                 "to get hints about which iname to duplicate. Here are some "
-                "options: "
-                "\n* Duplicate %s within instructions %s"
-                "\n* Duplicate %s within instructions %s"
-                "\n* Duplicate %s within instructions %s"
-                     % tuple(it.chain(*tuple(it.islice(opt, 3)))))
+                "options:\n%s" % opt_str)
 
 # }}}
 
