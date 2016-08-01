@@ -329,6 +329,13 @@ INSN_RE = re.compile(
         "\s*?"
         "(?:\{(?P<options>.+)\}\s*)?$")
 
+EMPTY_LHS_INSN_RE = re.compile(
+        "^"
+        "\s*"
+        "(?P<rhs>.+?)"
+        "\s*?"
+        "(?:\{(?P<options>.+)\}\s*)?$")
+
 SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
 
@@ -342,14 +349,17 @@ def parse_insn(groups, insn_options):
     """
 
     import loopy as lp
-
     from loopy.symbolic import parse
-    try:
-        lhs = parse(groups["lhs"])
-    except:
-        print("While parsing left hand side '%s', "
-                "the following error occurred:" % groups["lhs"])
-        raise
+
+    if "lhs" in groups:
+        try:
+            lhs = parse(groups["lhs"])
+        except:
+            print("While parsing left hand side '%s', "
+                    "the following error occurred:" % groups["lhs"])
+            raise
+    else:
+        lhs = ()
 
     try:
         rhs = parse(groups["rhs"])
@@ -668,6 +678,14 @@ def parse_instructions(instructions, defines):
             continue
 
         insn_match = INSN_RE.match(insn)
+        if insn_match is not None:
+            insn, insn_inames_to_dup = parse_insn(
+                    insn_match.groupdict(), insn_options_stack[-1])
+            new_instructions.append(insn)
+            inames_to_dup.append(insn_inames_to_dup)
+            continue
+
+        insn_match = EMPTY_LHS_INSN_RE.match(insn)
         if insn_match is not None:
             insn, insn_inames_to_dup = parse_insn(
                     insn_match.groupdict(), insn_options_stack[-1])
