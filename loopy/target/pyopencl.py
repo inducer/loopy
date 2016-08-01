@@ -615,7 +615,9 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         from genpy import Assign, Comment, Line
 
         def alloc_nbytes(tv):
-            return tv.dtype.numpy_dtype.itemsize
+            from six.moves import reduce
+            from operator import mul
+            return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
         from loopy.kernel.data import temp_var_scope
 

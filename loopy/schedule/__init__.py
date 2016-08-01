@@ -1053,7 +1053,7 @@ class DependencyRecord(Record):
 
 
 def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
-    """If there exists a depdency between target and source and the two access
+    """If there exists a dependency between target and source and the two access
     a common variable of *var_kind* in a way that requires a barrier (essentially,
     at least one write), then the function will return a tuple
     ``(target, source, var_name)``. Otherwise, it will return *None*.
