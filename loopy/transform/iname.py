@@ -66,6 +66,8 @@ __doc__ = """
 
 .. autofunction:: make_reduction_inames_unique
 
+.. autofunction:: add_inames_to_insn
+
 """
 
 
@@ -1421,5 +1423,46 @@ def make_reduction_inames_unique(kernel, inames=None, within=None):
     return kernel
 
 # }}}
+
+
+# {{{ add_inames_to_insn
+
+def add_inames_to_insn(knl, inames, insn_match):
+    """
+    :arg inames: a frozenset of inames that will be added to the
+        instructions matched by *insn_match*, or a comma-separated
+        string that parses to such a tuple.
+    :arg insn_match: An instruction match as understood by
+        :func:`loopy.match.parse_match`.
+
+    :returns: an :class:`GroupIndexTag` or :class:`LocalIndexTag`
+        that is not being used within the instructions matched by
+        *insn_match*.
+
+    .. versionadded:: 2016.3
+    """
+
+    if isinstance(inames, str):
+        inames = frozenset(s.strip() for s in inames.split(","))
+
+    if not isinstance(inames, frozenset):
+        raise TypeError("'inames' must be a frozenset")
+
+    from loopy.match import parse_match
+    match = parse_match(insn_match)
+
+    new_instructions = []
+
+    for insn in knl.instructions:
+        if match(knl, insn):
+            new_instructions.append(
+                    insn.copy(forced_iname_deps=insn.forced_iname_deps | inames))
+        else:
+            new_instructions.append(insn)
+
+    return knl.copy(instructions=new_instructions)
+
+# }}}
+
 
 # vim: foldmethod=marker
