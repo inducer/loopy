@@ -1291,6 +1291,8 @@ class CallInstruction(MultiAssignmentBase):
 
     .. attribute:: assignees
 
+        A :class:`tuple` of left-hand sides for the assignment
+
     .. attribute:: expression
 
     The following attributes are only used until
@@ -1348,6 +1350,11 @@ class CallInstruction(MultiAssignmentBase):
         from loopy.symbolic import parse
         if isinstance(assignees, str):
             assignees = parse(assignees)
+        if not isinstance(assignees, tuple):
+            raise LoopyError("'assignees' argument to CallInstruction "
+                    "must be a tuple or a string parseable to a tuple"
+                    "--got '%s'" % type(assignees).__name__)
+
         if isinstance(expression, str):
             expression = parse(expression)
 
