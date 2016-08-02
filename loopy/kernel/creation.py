@@ -316,8 +316,14 @@ WITH_OPTIONS_RE = re.compile(
 
 FOR_RE = re.compile(
         "^"
-        "\s*for\s*"
+        "\s*(for|for_indep)\s+"
         "(?P<inames>[ ,\w]*)"
+        "\s*$")
+
+IF_RE = re.compile(
+        "^"
+        "\s*if\s+"
+        "(?P<predicate>\w+)"
         "\s*$")
 
 INSN_RE = re.compile(
@@ -667,6 +673,21 @@ def parse_instructions(instructions, defines):
                     options.get("forced_iname_deps", frozenset())
                     | added_inames)
             options["forced_iname_deps_is_final"] = True
+
+            insn_options_stack.append(options)
+            del options
+            continue
+
+        if_match = IF_RE.match(insn)
+        if if_match is not None:
+            options = insn_options_stack[-1].copy()
+            predicate = if_match.group("predicate")
+            if not predicate:
+                raise LoopyError("'if' without predicate encountered")
+
+            options["predicates"] = (
+                    options.get("predicates", frozenset())
+                    | frozenset([predicate]))
 
             insn_options_stack.append(options)
             del options
