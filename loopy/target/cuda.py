@@ -327,7 +327,7 @@ class CUDACASTBuilder(CASTBuilder):
 
         return arg_decl
 
-    def get_image_arg_decl(self, name, shape, dtype, is_written):
+    def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError("not yet: texture arguments in CUDA")
 
     def get_constant_arg_decl(self, name, shape, dtype, is_written):
