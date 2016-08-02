@@ -126,10 +126,14 @@ def test_multi_nested_dependent_reduction(ctx_factory):
                 "{[isrc_box]: 0 <= isrc_box < nboxes}",
                 "{[isrc]: 0 <= isrc < npart}"
                 ],
-            [
-                "<> npart = nparticles_per_box[isrc_box]",
-                "a[itgt] = sum((isrc_box, isrc), 1)",
-                ],
+            """
+            for itgt
+                for isrc_box
+                    <> npart = nparticles_per_box[isrc_box]
+                end
+                a[itgt] = sum((isrc_box, isrc), 1)
+            end
+            """,
             [
                 lp.ValueArg("n", np.int32),
                 lp.GlobalArg("a", dtype, ("n",)),
@@ -154,11 +158,15 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
                 "{[isrc_box]: 0 <= isrc_box < nboxes}",
                 "{[isrc]: 0 <= isrc < npart}"
                 ],
-            [
-                "<> npart = nparticles_per_box[isrc_box]",
-                "<> boxsum = sum(isrc, isrc+isrc_box+itgt)",
-                "a[itgt] = sum(isrc_box, boxsum)",
-                ],
+            """
+            for itgt
+                for isrc_box
+                    <> npart = nparticles_per_box[isrc_box]
+                    <> boxsum = sum(isrc, isrc+isrc_box+itgt)
+                end
+                a[itgt] = sum(isrc_box, boxsum)
+            end
+            """,
             [
                 lp.ValueArg("n", np.int32),
                 lp.GlobalArg("a", dtype, ("n",)),

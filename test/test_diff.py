@@ -65,6 +65,8 @@ def test_diff(ctx_factory):
     dknl, diff_map = diff_kernel(knl, "z", "x")
     dknl = lp.remove_unused_arguments(dknl)
 
+    dknl = lp.add_inames_to_insn(dknl, "diff_i0", "writes:a_dx or writes:a")
+
     print(dknl)
 
     n = 50
