@@ -302,7 +302,12 @@ def check_bounds(kernel):
             continue
 
         acm = _AccessCheckMapper(kernel, domain, insn.id)
-        insn.with_transformed_expressions(acm)
+
+        def run_acm(expr):
+            acm(expr)
+            return expr
+
+        insn.with_transformed_expressions(run_acm)
 
 
 def check_write_destinations(kernel):
