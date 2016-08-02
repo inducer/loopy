@@ -1288,7 +1288,7 @@ def test_call_with_no_returned_value(ctx_factory):
 
     knl = lp.make_kernel(
         "{:}",
-        [lp.CallInstruction([], p.Call(p.Variable("f"), ()))]
+        [lp.CallInstruction((), p.Call(p.Variable("f"), ()))]
         )
 
     from library_for_test import no_ret_f_mangler, no_ret_f_preamble_gen
