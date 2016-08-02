@@ -215,10 +215,10 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             for value in opt_value.split(":"):
                 arrow_idx = value.find("->")
                 if arrow_idx >= 0:
-                    result["inames_to_dup"].append(
+                    result.setdefault("inames_to_dup", []).append(
                             (value[:arrow_idx], value[arrow_idx+2:]))
                 else:
-                    result["inames_to_dup"].append((value, None))
+                    result.setdefault("inames_to_dup", []).append((value, None))
 
         elif opt_key == "dep" and opt_value is not None:
             if is_with_block:
@@ -316,7 +316,7 @@ WITH_OPTIONS_RE = re.compile(
 
 FOR_RE = re.compile(
         "^"
-        "\s*(for|for_indep)\s+"
+        "\s*(for)\s+"
         "(?P<inames>[ ,\w]*)"
         "\s*$")
 
@@ -1618,10 +1618,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             **kwargs)
 
     from loopy import duplicate_inames
+    from loopy.match import Id
     for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
         for old_iname, new_iname in insn_inames_to_dup:
             knl = duplicate_inames(knl, old_iname,
-                    within=insn.id, new_inames=new_iname)
+                    within=Id(insn.id), new_inames=new_iname)
 
     check_for_nonexistent_iname_deps(knl)
 
