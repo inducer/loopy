@@ -842,9 +842,12 @@ class ArgumentGuesser:
     def find_index_rank(self, name):
         irf = IndexRankFinder(name)
 
+        def run_irf(expr):
+            irf(self.submap(expr))
+            return expr
+
         for insn in self.instructions:
-            insn.with_transformed_expressions(
-                    lambda expr: irf(self.submap(expr)))
+            insn.with_transformed_expressions(run_irf)
 
         if not irf.index_ranks:
             return 0
