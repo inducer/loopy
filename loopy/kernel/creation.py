@@ -317,7 +317,7 @@ WITH_OPTIONS_RE = re.compile(
 FOR_RE = re.compile(
         "^"
         "\s*for\s*"
-        "(?P<inames>[ ,\w]+)"
+        "(?P<inames>[ ,\w]*)"
         "\s*$")
 
 INSN_RE = re.compile(
@@ -656,11 +656,16 @@ def parse_instructions(instructions, defines):
         for_match = FOR_RE.match(insn)
         if for_match is not None:
             options = insn_options_stack[-1].copy()
+            added_inames = frozenset(
+                    iname.strip()
+                    for iname in for_match.group("inames").split(",")
+                    if iname.strip())
+            if not added_inames:
+                raise LoopyError("'for' without inames encountered")
+
             options["forced_iname_deps"] = (
                     options.get("forced_iname_deps", frozenset())
-                    | frozenset(
-                        iname.strip()
-                        for iname in for_match.group("inames").split(",")))
+                    | added_inames)
             options["forced_iname_deps_is_final"] = True
 
             insn_options_stack.append(options)
