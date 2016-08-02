@@ -1400,6 +1400,27 @@ def resolve_wildcard_deps(knl):
 # }}}
 
 
+# {{{ add used inames deps
+
+def add_used_inames(knl):
+    new_insns = []
+
+    for insn in knl.instructions:
+        deps = insn.read_dependency_names() | insn.write_dependency_names()
+        iname_deps = deps & knl.all_inames()
+
+        new_forced_iname_deps = insn.forced_iname_deps | iname_deps
+
+        if new_forced_iname_deps != insn.forced_iname_deps:
+            insn = insn.copy(forced_iname_deps=new_forced_iname_deps)
+
+        new_insns.append(insn)
+
+    return knl.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ add inferred iname deps
 
 def add_inferred_inames(knl):
@@ -1611,6 +1632,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # Must create temporaries before inferring inames (because those temporaries
     # mediate dependencies that are then used for iname propagation.)
     # -------------------------------------------------------------------------
+    knl = add_used_inames(knl)
     # NOTE: add_inferred_inames will be phased out and throws warnings if it
     # does something.
     knl = add_inferred_inames(knl)
