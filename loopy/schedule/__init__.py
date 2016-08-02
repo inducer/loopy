@@ -27,7 +27,7 @@ import six
 from pytools import Record
 import sys
 import islpy as isl
-from loopy.diagnostic import LoopyError  # noqa
+from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -890,6 +890,10 @@ def generate_loop_schedules_internal(
                 writer_insn, = kernel.writer_map()[domain_par]
                 if writer_insn not in sched_state.scheduled_insn_ids:
                     data_dep_written = False
+                    if debug_mode:
+                        print("iname '%s' not scheduled because domain "
+                                "parameter '%s' is not yet available"
+                                % (iname, domain_par))
                     break
 
             if not data_dep_written:
@@ -1016,11 +1020,12 @@ def generate_loop_schedules_internal(
         debug.log_success(sched_state.schedule)
 
         for boost_insn_id, boost_inames in sched_state.uses_of_boostability:
-            from warnings import warn
-            warn("kernel '%s': instruction '%s' was implicitly nested inside "
+            warn_with_kernel(
+                    kernel, "used_boostability",
+                    "instruction '%s' was implicitly nested inside "
                     "inames '%s' based on an idempotence heuristic. "
                     "This is deprecated and will stop working in loopy 2017.x."
-                    % (kernel.name, boost_insn_id, ", ".join(boost_inames)),
+                    % (boost_insn_id, ", ".join(boost_inames)),
                     DeprecationWarning)
 
         yield sched_state.schedule
