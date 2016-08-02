@@ -603,19 +603,6 @@ class InstructionBase(Record):
 
     .. rubric:: Iname dependencies
 
-    .. attribute:: boostable
-
-        Whether the instruction may safely be executed inside more loops than
-        advertised without changing the meaning of the program. Allowed values
-        are *None* (for unknown), *True*, and *False*.
-
-    .. attribute:: boostable_into
-
-        A :class:`set` of inames into which the instruction
-        may need to be boosted, as a heuristic help for the scheduler.
-        Also allowed to be *None* to indicate that this hasn't been
-        decided yet.
-
     .. rubric:: Tagging
 
     .. attribute:: tags
@@ -634,6 +621,9 @@ class InstructionBase(Record):
     .. automethod:: dependency_names
     .. automethod:: copy
     """
+
+    # boostable and boostable_into are deprecated and will be removed in
+    # version 2017.x.
 
     fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "

@@ -1121,6 +1121,8 @@ def preprocess_kernel(kernel, device=None):
     kernel = add_axes_to_temporaries_for_ilp_and_vec(kernel)
 
     kernel = find_temporary_scope(kernel)
+
+    # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)
     kernel = limit_boostability(kernel)
 

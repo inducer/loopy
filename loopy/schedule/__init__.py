@@ -529,6 +529,11 @@ class SchedulerState(Record):
         A mapping from instruction group names to the number of instructions
         in them that are left to schedule. If a group name occurs in this
         mapping, that group is considered active.
+
+    .. attribute:: uses_of_boostability
+
+        Used to produce warnings about deprecated 'boosting' behavior
+        Should be removed along with boostability in 2017.x.
     """
 
     @property
@@ -624,6 +629,7 @@ def generate_loop_schedules_internal(
         # If insn is boostable, it may be placed inside a more deeply
         # nested loop without harm.
 
+        orig_have = have
         if allow_boost:
             # Note that the inames in 'insn.boostable_into' necessarily won't
             # be contained in 'want'.
@@ -685,12 +691,21 @@ def generate_loop_schedules_internal(
 
             # }}}
 
+            new_uses_of_boostability = []
+            if allow_boost:
+                if orig_have & insn.boostable_into:
+                    new_uses_of_boostability.append(
+                            (insn.id, orig_have & insn.boostable_into))
+
             new_sched_state = sched_state.copy(
                     scheduled_insn_ids=sched_state.scheduled_insn_ids | iid_set,
                     unscheduled_insn_ids=sched_state.unscheduled_insn_ids - iid_set,
                     schedule=(
                         sched_state.schedule + (RunInstruction(insn_id=insn.id),)),
                     active_group_counts=new_active_group_counts,
+                    uses_of_boostability=(
+                        sched_state.uses_of_boostability
+                        + new_uses_of_boostability)
                     )
 
             # Don't be eager about entering/leaving loops--if progress has been
@@ -999,6 +1014,14 @@ def generate_loop_schedules_internal(
     if not sched_state.active_inames and not sched_state.unscheduled_insn_ids:
         # if done, yield result
         debug.log_success(sched_state.schedule)
+
+        for boost_insn_id, boost_inames in sched_state.uses_of_boostability:
+            from warnings import warn
+            warn("kernel '%s': instruction '%s' was implicitly nested inside "
+                    "inames '%s' based on an idempotence heuristic. "
+                    "This is deprecated and will stop working in loopy 2017.x."
+                    % (kernel.name, boost_insn_id, ", ".join(boost_inames)),
+                    DeprecationWarning)
 
         yield sched_state.schedule
 
@@ -1437,7 +1460,9 @@ def generate_loop_schedules(kernel, debug_args={}):
             parallel_inames=parallel_inames - ilp_inames - vec_inames,
 
             group_insn_counts=group_insn_counts(kernel),
-            active_group_counts={})
+            active_group_counts={},
+
+            uses_of_boostability=[])
 
     generators = [
             generate_loop_schedules_internal(sched_state,
