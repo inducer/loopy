@@ -577,7 +577,12 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     :arg iname_to_tag: a list of tuples ``(iname, new_tag)``. *new_tag* is given
         as an instance of a subclass of :class:`loopy.kernel.data.IndexTag` or
         as a string as shown in :ref:`iname-tags`. May also be a dictionary
-        for backwards compatibility.
+        for backwards compatibility. *iname* may also be a wildcard using ``*``
+        and ``?``.
+
+    .. versionchanged:: 2016.3
+
+        Added wildcards.
     """
 
     if isinstance(iname_to_tag, dict):
@@ -612,14 +617,35 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
     from loopy.kernel.data import (ParallelTag, AutoLocalIndexTagBase,
             ForceSequentialTag)
 
-    new_iname_to_tag = kernel.iname_to_tag.copy()
-    for iname, new_tag in iname_to_tag:
-        if iname not in kernel.all_inames():
-            if ignore_nonexistent:
-                continue
-            else:
-                raise LoopyError("iname '%s' does not exist" % iname)
+    # {{{ globbing
 
+    all_inames = kernel.all_inames()
+
+    from loopy.match import re_from_glob
+    new_iname_to_tag = {}
+    for iname, new_tag in iname_to_tag:
+        if '*' in iname or '?' in iname:
+            match_re = re_from_glob(iname)
+            for sub_iname in all_inames:
+                if match_re.match(sub_iname):
+                    new_iname_to_tag[sub_iname] = new_tag
+
+        else:
+            if iname not in all_inames:
+                if ignore_nonexistent:
+                    continue
+                else:
+                    raise LoopyError("iname '%s' does not exist" % iname)
+
+            new_iname_to_tag[iname] = new_tag
+
+    iname_to_tag = new_iname_to_tag
+    del new_iname_to_tag
+
+    # }}}
+
+    knl_iname_to_tag = kernel.iname_to_tag.copy()
+    for iname, new_tag in six.iteritems(iname_to_tag):
         old_tag = kernel.iname_to_tag.get(iname)
 
         retag_ok = False
@@ -650,9 +676,9 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
             raise LoopyError("'%s' is already tagged '%s'--cannot retag"
                     % (iname, old_tag))
 
-        new_iname_to_tag[iname] = new_tag
+        knl_iname_to_tag[iname] = new_tag
 
-    return kernel.copy(iname_to_tag=new_iname_to_tag)
+    return kernel.copy(iname_to_tag=knl_iname_to_tag)
 
 # }}}
 
