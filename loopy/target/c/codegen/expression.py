@@ -194,10 +194,26 @@ class ExpressionToCMapper(RecursiveMapper):
         from loopy.kernel.data import ImageArg, GlobalArg, TemporaryVariable
 
         if isinstance(ary, ImageArg):
-            base_access = ("read_imagef(%s, loopy_sampler, (float%d)(%s))"
-                    % (ary.name, ary.dimensions,
-                        ", ".join(self.rec(idx, PREC_NONE, 'i')
-                            for idx in expr.index[::-1])))
+            extra_axes = 0
+
+            num_target_axes = ary.num_target_axes()
+            if num_target_axes in [1, 2]:
+                idx_vec_type = "float2"
+                extra_axes = 2-num_target_axes
+            elif num_target_axes == 3:
+                idx_vec_type = "float4"
+                extra_axes = 4-num_target_axes
+            else:
+                raise LoopyError("unsupported number (%d) of target axes in image"
+                        % num_target_axes)
+
+            idx_tuple = expr.index_tuple[::-1] + (0,) * extra_axes
+
+            idx_str = ", ".join(self.rec(idx, PREC_NONE, 'i')
+                    for idx in idx_tuple)
+
+            base_access = ("read_imagef(%s, loopy_sampler, (%s) (%s))"
+                    % (ary.name, idx_vec_type, idx_str))
 
             if ary.dtype.numpy_dtype == np.float32:
                 return base_access+".x"
