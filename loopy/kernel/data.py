@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 
 from six.moves import intern
+from warnings import warn
 import numpy as np  # noqa
 from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
@@ -590,16 +591,10 @@ class InstructionBase(Record):
 
     .. rubric:: Iname dependencies
 
-    .. attribute:: within_inames_is_final
-
-        A :class:`bool` determining whether :attr:`within_inames` constitutes
-        the *entire* list of iname dependencies.
-
     .. attribute:: within_inames
 
-        A :class:`frozenset` of inames that are added to the list of iname
-        dependencies *or* constitute the entire list of iname dependencies,
-        depending on the value of :attr:`within_inames_is_final`.
+        A :class:`frozenset` of inames identifying the loops within which this
+        instruction will be executed.
 
     .. rubric:: Iname dependencies
 
@@ -622,8 +617,8 @@ class InstructionBase(Record):
     .. automethod:: copy
     """
 
-    # boostable and boostable_into are deprecated and will be removed in
-    # version 2017.x.
+    # within_inames_is_final, boostable and boostable_into are deprecated and
+    # will be removed in version 2017.x.
 
     fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "
@@ -638,17 +633,31 @@ class InstructionBase(Record):
             within_inames_is_final, within_inames,
             priority,
             boostable, boostable_into, predicates, tags,
-            insn_deps=None, insn_deps_is_final=None):
+            insn_deps=None, insn_deps_is_final=None,
+            forced_iname_deps=None, forced_iname_deps_is_final=None):
+
+        # {{{ backwards compatibility goop
 
         if depends_on is not None and insn_deps is not None:
-            raise ValueError("may not specify both insn_deps and depends_on")
+            raise LoopyError("may not specify both insn_deps and depends_on")
         elif insn_deps is not None:
-            from warnings import warn
             warn("insn_deps is deprecated, use depends_on",
                     DeprecationWarning, stacklevel=2)
 
             depends_on = insn_deps
             depends_on_is_final = insn_deps_is_final
+
+        if forced_iname_deps is not None and within_inames is not None:
+            raise LoopyError("may not specify both forced_iname_deps "
+                    "and within_inames")
+        elif forced_iname_deps is not None:
+            warn("forced_iname_deps is deprecated, use within_inames",
+                    DeprecationWarning, stacklevel=2)
+
+            within_inames = forced_iname_deps
+            within_inames_is_final = forced_iname_deps_is_final
+
+        # }}}
 
         if depends_on is None:
             depends_on = frozenset()
@@ -709,15 +718,36 @@ class InstructionBase(Record):
                 predicates=predicates,
                 tags=tags)
 
-    # legacy
+    # {{{ backwards compatibility goop
+
     @property
     def insn_deps(self):
+        warn("insn_deps is deprecated, use depends_on",
+                DeprecationWarning, stacklevel=2)
+
         return self.depends_on
 
     # legacy
     @property
     def insn_deps_is_final(self):
+        warn("insn_deps_is_final is deprecated, use depends_on_is_final",
+                DeprecationWarning, stacklevel=2)
+
         return self.depends_on_is_final
+
+    @property
+    def forced_iname_deps(self):
+        warn("forced_iname_deps is deprecated, use within_inames",
+                DeprecationWarning, stacklevel=2)
+        return self.within_inames
+
+    @property
+    def forced_iname_deps_is_final(self):
+        warn("forced_iname_deps_is_final is deprecated, use within_inames_is_final",
+                DeprecationWarning, stacklevel=2)
+        return self.within_inames_is_final
+
+    # }}}
 
     # {{{ abstract interface
 
@@ -1168,7 +1198,8 @@ class Assignment(MultiAssignmentBase):
             boostable=None, boostable_into=None, tags=None,
             temp_var_type=None, atomicity=(),
             priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None):
+            insn_deps=None, insn_deps_is_final=None,
+            forced_iname_deps=None, forced_iname_deps_is_final=None):
 
         super(Assignment, self).__init__(
                 id=id,
@@ -1185,7 +1216,9 @@ class Assignment(MultiAssignmentBase):
                 predicates=predicates,
                 tags=tags,
                 insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final)
+                insn_deps_is_final=insn_deps_is_final,
+                forced_iname_deps=forced_iname_deps,
+                forced_iname_deps_is_final=forced_iname_deps_is_final)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -1312,7 +1345,9 @@ class CallInstruction(MultiAssignmentBase):
             boostable=None, boostable_into=None, tags=None,
             temp_var_types=None,
             priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None):
+            insn_deps=None, insn_deps_is_final=None,
+            forced_iname_deps=None,
+            forced_iname_deps_is_final=None):
 
         super(CallInstruction, self).__init__(
                 id=id,
@@ -1329,7 +1364,9 @@ class CallInstruction(MultiAssignmentBase):
                 predicates=predicates,
                 tags=tags,
                 insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final)
+                insn_deps_is_final=insn_deps_is_final,
+                forced_iname_deps=forced_iname_deps,
+                forced_iname_deps_is_final=forced_iname_deps_is_final)
 
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
