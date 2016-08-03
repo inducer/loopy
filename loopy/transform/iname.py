@@ -223,16 +223,16 @@ def _split_iname_backend(kernel, split_iname,
 
     new_insns = []
     for insn in kernel.instructions:
-        if split_iname in insn.forced_iname_deps:
-            new_forced_iname_deps = (
-                    (insn.forced_iname_deps.copy()
+        if split_iname in insn.within_inames:
+            new_within_inames = (
+                    (insn.within_inames.copy()
                     - frozenset([split_iname]))
                     | frozenset([outer_iname, inner_iname]))
         else:
-            new_forced_iname_deps = insn.forced_iname_deps
+            new_within_inames = insn.within_inames
 
         insn = insn.copy(
-                forced_iname_deps=new_forced_iname_deps)
+                within_inames=new_within_inames)
 
         new_insns.append(insn)
 
@@ -526,7 +526,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
         if within is None:
             new_domain = new_domain.project_out(iname_dt, iname_idx, 1)
 
-    def subst_forced_iname_deps(fid):
+    def subst_within_inames(fid):
         result = set()
         for iname in fid:
             if iname in inames:
@@ -538,7 +538,7 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
     new_insns = [
             insn.copy(
-                forced_iname_deps=subst_forced_iname_deps(insn.forced_iname_deps))
+                within_inames=subst_within_inames(insn.within_inames))
             for insn in kernel.instructions]
 
     kernel = (kernel
@@ -733,8 +733,8 @@ class _InameDuplicator(RuleAwareIdentityMapper):
 
         new_fid = frozenset(
                 self.old_to_new.get(iname, iname)
-                for iname in insn.forced_iname_deps)
-        return insn.copy(forced_iname_deps=new_fid)
+                for iname in insn.within_inames)
+        return insn.copy(within_inames=new_fid)
 
 
 def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
@@ -894,11 +894,11 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
 
         new_instructions = []
         for insn in knl.instructions:
-            if (old_iname in insn.forced_iname_deps
+            if (old_iname in insn.within_inames
                     and within(knl, insn, ())):
                 insn = insn.copy(
-                        forced_iname_deps=(
-                            (insn.forced_iname_deps - frozenset([old_iname]))
+                        within_inames=(
+                            (insn.within_inames - frozenset([old_iname]))
                             | frozenset([new_iname])))
 
             new_instructions.append(insn)
@@ -1270,8 +1270,8 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
             return inames
 
     new_instructions = [
-            insn.copy(forced_iname_deps=fix_iname_set(
-                insn.id, insn.forced_iname_deps))
+            insn.copy(within_inames=fix_iname_set(
+                insn.id, insn.within_inames))
             for insn in kernel.instructions]
 
     # }}}
@@ -1482,7 +1482,7 @@ def add_inames_to_insn(knl, inames, insn_match):
     for insn in knl.instructions:
         if match(knl, insn):
             new_instructions.append(
-                    insn.copy(forced_iname_deps=insn.forced_iname_deps | inames))
+                    insn.copy(within_inames=insn.within_inames | inames))
         else:
             new_instructions.append(insn)
 

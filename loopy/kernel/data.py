@@ -590,16 +590,16 @@ class InstructionBase(Record):
 
     .. rubric:: Iname dependencies
 
-    .. attribute:: forced_iname_deps_is_final
+    .. attribute:: within_inames_is_final
 
-        A :class:`bool` determining whether :attr:`forced_iname_deps` constitutes
+        A :class:`bool` determining whether :attr:`within_inames` constitutes
         the *entire* list of iname dependencies.
 
-    .. attribute:: forced_iname_deps
+    .. attribute:: within_inames
 
         A :class:`frozenset` of inames that are added to the list of iname
         dependencies *or* constitute the entire list of iname dependencies,
-        depending on the value of :attr:`forced_iname_deps_is_final`.
+        depending on the value of :attr:`within_inames_is_final`.
 
     .. rubric:: Iname dependencies
 
@@ -629,13 +629,13 @@ class InstructionBase(Record):
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
-            "forced_iname_deps_is_final forced_iname_deps "
+            "within_inames_is_final within_inames "
             "priority boostable boostable_into".split())
 
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             no_sync_with,
-            forced_iname_deps_is_final, forced_iname_deps,
+            within_inames_is_final, within_inames,
             priority,
             boostable, boostable_into, predicates, tags,
             insn_deps=None, insn_deps_is_final=None):
@@ -662,8 +662,8 @@ class InstructionBase(Record):
         if no_sync_with is None:
             no_sync_with = frozenset()
 
-        if forced_iname_deps_is_final is None:
-            forced_iname_deps_is_final = False
+        if within_inames_is_final is None:
+            within_inames_is_final = False
 
         if depends_on_is_final is None:
             depends_on_is_final = False
@@ -687,10 +687,10 @@ class InstructionBase(Record):
         # assert all(is_interned(dep) for dep in depends_on)
         # assert all(is_interned(grp) for grp in groups)
         # assert all(is_interned(grp) for grp in conflicts_with_groups)
-        # assert all(is_interned(iname) for iname in forced_iname_deps)
+        # assert all(is_interned(iname) for iname in within_inames)
         # assert all(is_interned(pred) for pred in predicates)
 
-        assert isinstance(forced_iname_deps, frozenset)
+        assert isinstance(within_inames, frozenset)
         assert isinstance(depends_on, frozenset) or depends_on is None
         assert isinstance(groups, frozenset)
         assert isinstance(conflicts_with_groups, frozenset)
@@ -701,8 +701,8 @@ class InstructionBase(Record):
                 depends_on_is_final=depends_on_is_final,
                 no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
                 priority=priority,
                 boostable=boostable,
                 boostable_into=boostable_into,
@@ -870,8 +870,8 @@ class InstructionBase(Record):
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
-        self.forced_iname_deps = (
-                intern_frozenset_of_ids(self.forced_iname_deps))
+        self.within_inames = (
+                intern_frozenset_of_ids(self.within_inames))
         self.predicates = (
                 intern_frozenset_of_ids(self.predicates))
 
@@ -1163,8 +1163,8 @@ class Assignment(MultiAssignmentBase):
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
-            forced_iname_deps_is_final=None,
-            forced_iname_deps=frozenset(),
+            within_inames_is_final=None,
+            within_inames=frozenset(),
             boostable=None, boostable_into=None, tags=None,
             temp_var_type=None, atomicity=(),
             priority=0, predicates=frozenset(),
@@ -1177,8 +1177,8 @@ class Assignment(MultiAssignmentBase):
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
@@ -1307,8 +1307,8 @@ class CallInstruction(MultiAssignmentBase):
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
-            forced_iname_deps_is_final=None,
-            forced_iname_deps=frozenset(),
+            within_inames_is_final=None,
+            within_inames=frozenset(),
             boostable=None, boostable_into=None, tags=None,
             temp_var_types=None,
             priority=0, predicates=frozenset(),
@@ -1321,8 +1321,8 @@ class CallInstruction(MultiAssignmentBase):
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
@@ -1489,7 +1489,7 @@ class CInstruction(InstructionBase):
             id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
-            forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
+            within_inames_is_final=None, within_inames=frozenset(),
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset(), tags=None,
             insn_deps=None, insn_deps_is_final=None):
@@ -1509,8 +1509,8 @@ class CInstruction(InstructionBase):
                 depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority, predicates=predicates, tags=tags,

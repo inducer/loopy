@@ -64,11 +64,11 @@ def check_insn_attributes(kernel):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
     for insn in kernel.instructions:
-        if not insn.forced_iname_deps <= kernel.all_inames():
+        if not insn.within_inames <= kernel.all_inames():
             raise LoopyError("insn '%s' has unknown forced iname "
                     "dependencies: %s"
                     % (insn.id, ", ".join(
-                        insn.forced_iname_deps - kernel.all_inames())))
+                        insn.within_inames - kernel.all_inames())))
 
         if insn.depends_on is not None and not insn.depends_on <= all_insn_ids:
             raise LoopyError("insn '%s' has unknown instruction "

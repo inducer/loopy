@@ -528,8 +528,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
         init_insn = make_assignment(
                 id=init_id,
                 assignees=acc_vars,
-                forced_iname_deps=outer_insn_inames - frozenset(expr.inames),
-                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
+                within_inames=outer_insn_inames - frozenset(expr.inames),
+                within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset(),
                 expression=expr.operation.neutral_element(arg_dtype, expr.inames))
 
@@ -539,8 +539,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                 based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)))
 
         update_insn_iname_deps = temp_kernel.insn_inames(insn) | set(expr.inames)
-        if insn.forced_iname_deps_is_final:
-            update_insn_iname_deps = insn.forced_iname_deps | set(expr.inames)
+        if insn.within_inames_is_final:
+            update_insn_iname_deps = insn.within_inames | set(expr.inames)
 
         reduction_insn = make_assignment(
                 id=update_id,
@@ -550,8 +550,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     acc_vars if len(acc_vars) > 1 else acc_vars[0],
                     expr.expr, expr.inames),
                 depends_on=frozenset([init_insn.id]) | insn.depends_on,
-                forced_iname_deps=update_insn_iname_deps,
-                forced_iname_deps_is_final=insn.forced_iname_deps_is_final)
+                within_inames=update_insn_iname_deps,
+                within_inames_is_final=insn.within_inames_is_final)
 
         generated_insns.append(reduction_insn)
 
@@ -644,8 +644,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     acc_var[outer_local_iname_vars + (var(base_exec_iname),)]
                     for acc_var in acc_vars),
                 expression=neutral,
-                forced_iname_deps=base_iname_deps | frozenset([base_exec_iname]),
-                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
+                within_inames=base_iname_deps | frozenset([base_exec_iname]),
+                within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset())
         generated_insns.append(init_insn)
 
@@ -657,10 +657,10 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     for acc_var in acc_vars),
                 expression=expr.operation(
                     arg_dtype, neutral, expr.expr, expr.inames),
-                forced_iname_deps=(
+                within_inames=(
                     (outer_insn_inames - frozenset(expr.inames))
                     | frozenset([red_iname])),
-                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
+                within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset([init_id]) | insn.depends_on,
                 no_sync_with=frozenset([init_id]))
         generated_insns.append(transfer_insn)
@@ -706,9 +706,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                                     var(stage_exec_iname) + new_size,)]
                             for acc_var in acc_vars]),
                         expr.inames),
-                    forced_iname_deps=(
+                    within_inames=(
                         base_iname_deps | frozenset([stage_exec_iname])),
-                    forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
+                    within_inames_is_final=insn.within_inames_is_final,
                     depends_on=frozenset([prev_id]),
                     )
 
@@ -721,7 +721,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
 
         new_insn_add_depends_on.add(prev_id)
         new_insn_add_no_sync_with.add(prev_id)
-        new_insn_add_forced_iname_deps.add(stage_exec_iname or base_exec_iname)
+        new_insn_add_within_inames.add(stage_exec_iname or base_exec_iname)
 
         if nresults == 1:
             assert len(acc_vars) == 1
@@ -831,7 +831,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
     while insn_queue:
         new_insn_add_depends_on = set()
         new_insn_add_no_sync_with = set()
-        new_insn_add_forced_iname_deps = set()
+        new_insn_add_within_inames = set()
 
         generated_insns = []
 
@@ -860,9 +860,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     | frozenset(new_insn_add_depends_on),
                     no_sync_with=insn.no_sync_with
                     | frozenset(new_insn_add_no_sync_with),
-                    forced_iname_deps=(
+                    within_inames=(
                         temp_kernel.insn_inames(insn)
-                        | new_insn_add_forced_iname_deps))
+                        | new_insn_add_within_inames))
 
             kwargs.pop("id")
             kwargs.pop("expression")

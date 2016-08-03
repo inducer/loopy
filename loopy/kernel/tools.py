@@ -142,7 +142,7 @@ def guess_iname_deps_based_on_var_use(kernel, insn, insn_id_to_inames=None):
         for writer_id in writer_map[tv_name]:
             writer_insn = kernel.id_to_insn[writer_id]
             if insn_id_to_inames is None:
-                writer_inames = writer_insn.forced_iname_deps
+                writer_inames = writer_insn.within_inames
             else:
                 writer_inames = insn_id_to_inames[writer_id]
 
@@ -180,12 +180,12 @@ def find_all_insn_inames(kernel):
         all_write_deps[insn.id] = write_deps = insn.write_dependency_names()
         deps = read_deps | write_deps
 
-        if insn.forced_iname_deps_is_final:
-            iname_deps = insn.forced_iname_deps
+        if insn.within_inames_is_final:
+            iname_deps = insn.within_inames
         else:
             iname_deps = (
                     deps & kernel.all_inames()
-                    | insn.forced_iname_deps)
+                    | insn.within_inames)
 
         assert isinstance(read_deps, frozenset), type(insn)
         assert isinstance(write_deps, frozenset), type(insn)
@@ -217,7 +217,7 @@ def find_all_insn_inames(kernel):
         did_something = False
         for insn in kernel.instructions:
 
-            if insn.forced_iname_deps_is_final:
+            if insn.within_inames_is_final:
                 continue
 
             # {{{ depdency-based propagation

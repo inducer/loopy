@@ -169,7 +169,7 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
     batch_iname_set = frozenset([batch_iname])
     kernel = kernel.copy(
             instructions=[
-                insn.copy(forced_iname_deps=insn.forced_iname_deps | batch_iname_set)
+                insn.copy(within_inames=insn.within_inames | batch_iname_set)
                 for insn in kernel.instructions])
 
     return kernel

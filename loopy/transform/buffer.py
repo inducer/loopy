@@ -400,7 +400,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     init_instruction = Assignment(id=init_insn_id,
                 assignee=buf_var_init,
                 expression=init_expression,
-                forced_iname_deps=(
+                within_inames=(
                     frozenset(within_inames)
                     | frozenset(non1_init_inames)),
                 depends_on=frozenset(),
@@ -480,7 +480,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                     no_sync_with=frozenset([init_insn_id]),
                     assignee=store_target,
                     expression=store_expression,
-                    forced_iname_deps=(
+                    within_inames=(
                         frozenset(within_inames)
                         | frozenset(non1_store_inames)))
     else:

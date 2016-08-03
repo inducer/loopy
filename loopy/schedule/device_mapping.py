@@ -606,8 +606,8 @@ def restore_and_save_temporaries(kernel):
 
                 from loopy.kernel.data import Assignment
                 new_insn = Assignment(*args, id=insn_id,
-                    forced_iname_deps=frozenset(hw_inames + dim_inames),
-                    forced_iname_deps_is_final=True)
+                    within_inames=frozenset(hw_inames + dim_inames),
+                    within_inames_is_final=True)
 
                 new_instructions.append(new_insn)
 

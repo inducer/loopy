@@ -770,7 +770,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             id=compute_insn_id,
             assignee=assignee,
             expression=compute_expression,
-            # forced_iname_deps determined below
+            # within_inames determined below
             )
 
     # }}}
@@ -807,7 +807,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     kernel = kernel.copy(
             instructions=[
-                insn.copy(forced_iname_deps=precompute_outer_inames)
+                insn.copy(within_inames=precompute_outer_inames)
                 if insn.id == compute_insn_id
                 else insn
                 for insn in kernel.instructions])

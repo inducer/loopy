@@ -158,8 +158,8 @@ def get_default_insn_options_dict():
         "insn_id": None,
         "inames_to_dup": [],
         "priority": 0,
-        "forced_iname_deps_is_final": False,
-        "forced_iname_deps": frozenset(),
+        "within_inames_is_final": False,
+        "within_inames": frozenset(),
         "predicates": frozenset(),
         "tags": frozenset(),
         "atomicity": (),
@@ -254,12 +254,12 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
         elif opt_key == "inames" and opt_value is not None:
             if opt_value.startswith("+"):
-                result["forced_iname_deps_is_final"] = False
+                result["within_inames_is_final"] = False
                 opt_value = (opt_value[1:]).strip()
             else:
-                result["forced_iname_deps_is_final"] = True
+                result["within_inames_is_final"] = True
 
-            result["forced_iname_deps"] = intern_frozenset_of_ids(
+            result["within_inames"] = intern_frozenset_of_ids(
                     opt_value.split(":"))
 
         elif opt_key == "if" and opt_value is not None:
@@ -524,8 +524,8 @@ def parse_instructions(instructions, defines):
                         groups=frozenset(intern(grp) for grp in insn.groups),
                         conflicts_with_groups=frozenset(
                             intern(grp) for grp in insn.conflicts_with_groups),
-                        forced_iname_deps=frozenset(
-                            intern(iname) for iname in insn.forced_iname_deps),
+                        within_inames=frozenset(
+                            intern(iname) for iname in insn.within_inames),
                         predicates=frozenset(
                             intern(pred) for pred in insn.predicates),
                         ))
@@ -609,27 +609,27 @@ def parse_instructions(instructions, defines):
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
-            local_fids = insn_options_stack[-1]["forced_iname_deps"]
+            local_w_inames = insn_options_stack[-1]["within_inames"]
 
-            if insn.forced_iname_deps_is_final:
+            if insn.within_inames_is_final:
                 if not (
-                        local_fids <= insn.forced_iname_deps):
+                        local_w_inames <= insn.within_inames):
                     raise LoopyError("non-parsed instruction '%s' without "
                             "inames '%s' (but with final iname dependencies) "
                             "found inside 'for'/'with' block for inames "
                             "'%s'"
                             % (insn.id,
-                                ", ".join(local_fids - insn.forced_iname_deps),
-                                insn_options_stack[-1].forced_iname_deps))
+                                ", ".join(local_w_inames - insn.within_inames),
+                                insn_options_stack[-1].within_inames))
 
             else:
                 # not final, add inames from current scope
                 insn = insn.copy(
-                        forced_iname_deps=insn.forced_iname_deps | local_fids,
-                        forced_iname_deps_is_final=(
+                        within_inames=insn.within_inames | local_w_inames,
+                        within_inames_is_final=(
                             # If it's inside a for/with block, then it's
                             # final now.
-                            bool(local_fids)),
+                            bool(local_w_inames)),
                         tags=(
                             insn.tags
                             | insn_options_stack[-1]["tags"]),
@@ -647,7 +647,7 @@ def parse_instructions(instructions, defines):
             new_instructions.append(insn)
             inames_to_dup.append([])
 
-            del local_fids
+            del local_w_inames
 
             continue
 
@@ -669,10 +669,10 @@ def parse_instructions(instructions, defines):
             if not added_inames:
                 raise LoopyError("'for' without inames encountered")
 
-            options["forced_iname_deps"] = (
-                    options.get("forced_iname_deps", frozenset())
+            options["within_inames"] = (
+                    options.get("within_inames", frozenset())
                     | added_inames)
-            options["forced_iname_deps_is_final"] = True
+            options["within_inames_is_final"] = True
 
             insn_options_stack.append(options)
             del options
@@ -989,13 +989,13 @@ def check_for_duplicate_names(knl):
 
 def check_for_nonexistent_iname_deps(knl):
     for insn in knl.instructions:
-        if not set(insn.forced_iname_deps) <= knl.all_inames():
+        if not set(insn.within_inames) <= knl.all_inames():
             raise ValueError("In instruction '%s': "
                     "cannot force dependency on inames '%s'--"
                     "they don't exist" % (
                         insn.id,
                         ",".join(
-                            set(insn.forced_iname_deps)-knl.all_inames())))
+                            set(insn.within_inames)-knl.all_inames())))
 
 
 def check_for_multiple_writes_to_loop_bounds(knl):
@@ -1085,8 +1085,8 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
                 assignee=Variable(new_var_name),
                 expression=expr,
                 predicates=insn.predicates,
-                forced_iname_deps=insn.forced_iname_deps,
-                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
+                within_inames=insn.within_inames,
+                within_inames_is_final=insn.within_inames_is_final,
                 )
         newly_created_insn_ids.add(new_insn.id)
         new_insns.append(new_insn)
@@ -1409,10 +1409,10 @@ def add_used_inames(knl):
         deps = insn.read_dependency_names() | insn.write_dependency_names()
         iname_deps = deps & knl.all_inames()
 
-        new_forced_iname_deps = insn.forced_iname_deps | iname_deps
+        new_within_inames = insn.within_inames | iname_deps
 
-        if new_forced_iname_deps != insn.forced_iname_deps:
-            insn = insn.copy(forced_iname_deps=new_forced_iname_deps)
+        if new_within_inames != insn.within_inames:
+            insn = insn.copy(within_inames=new_within_inames)
 
         new_insns.append(insn)
 
@@ -1428,7 +1428,7 @@ def add_inferred_inames(knl):
     insn_inames = find_all_insn_inames(knl)
 
     return knl.copy(instructions=[
-            insn.copy(forced_iname_deps=insn_inames[insn.id])
+            insn.copy(within_inames=insn_inames[insn.id])
             for insn in knl.instructions])
 
 # }}}

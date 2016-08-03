@@ -989,7 +989,7 @@ def test_atomic(ctx_factory, dtype):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
 
 
-def test_forced_iname_deps_and_reduction():
+def test_within_inames_and_reduction():
     # See https://github.com/inducer/loopy/issues/24
 
     # This is (purposefully) somewhat un-idiomatic, to replicate the conditions
@@ -1005,8 +1005,8 @@ def test_forced_iname_deps_and_reduction():
     from pymbolic.primitives import Subscript, Variable
     i2 = lp.Assignment("a",
             lp.Reduction("sum", "j", Subscript(Variable("phi"), Variable("j"))),
-            forced_iname_deps=frozenset(),
-            forced_iname_deps_is_final=True)
+            within_inames=frozenset(),
+            within_inames_is_final=True)
 
     k = lp.make_kernel("{[i,j] : 0<=i,j<n}",
             [i1, i2],

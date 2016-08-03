@@ -671,7 +671,7 @@ class LoopKernel(RecordWithoutPickling):
         """
         result = {}
         for insn in self.instructions:
-            result[insn.id] = insn.forced_iname_deps
+            result[insn.id] = insn.within_inames
 
         return result
 
@@ -685,7 +685,7 @@ class LoopKernel(RecordWithoutPickling):
     def insn_inames(self, insn):
         if isinstance(insn, str):
             insn = self.id_to_insn[insn]
-        return insn.forced_iname_deps
+        return insn.within_inames
 
     @memoize_method
     def iname_to_insns(self):
