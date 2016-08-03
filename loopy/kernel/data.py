@@ -1226,13 +1226,10 @@ class Assignment(MultiAssignmentBase):
         if isinstance(expression, str):
             expression = parse(expression)
 
-        # FIXME: It may be worth it to enable this check eventually.
-        # For now, it causes grief with certain 'checky' uses of the
-        # with_transformed_expressions(). (notably the access checker)
-        #
-        # from pymbolic.primitives import Variable, Subscript
-        # if not isinstance(assignee, (Variable, Subscript)):
-        #     raise LoopyError("invalid lvalue '%s'" % assignee)
+        from pymbolic.primitives import Variable, Subscript
+        from loopy.symbolic import LinearSubscript
+        if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+            raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignee = assignee
         self.expression = expression
@@ -1385,13 +1382,11 @@ class CallInstruction(MultiAssignmentBase):
         if isinstance(expression, str):
             expression = parse(expression)
 
-        # FIXME: It may be worth it to enable this check eventually.
-        # For now, it causes grief with certain 'checky' uses of the
-        # with_transformed_expressions(). (notably the access checker)
-        #
-        # from pymbolic.primitives import Variable, Subscript
-        # if not isinstance(assignee, (Variable, Subscript)):
-        #     raise LoopyError("invalid lvalue '%s'" % assignee)
+        from pymbolic.primitives import Variable, Subscript
+        from loopy.symbolic import LinearSubscript
+        for assignee in assignees:
+            if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+                raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignees = assignees
         self.expression = expression
