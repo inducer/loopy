@@ -1576,7 +1576,7 @@ def get_one_scheduled_kernel(kernel):
         try:
             result, ambiguous = schedule_cache[sched_cache_key]
 
-            logger.info("%s: schedule cache hit" % kernel.name)
+            logger.debug("%s: schedule cache hit" % kernel.name)
             from_cache = True
         except KeyError:
             pass

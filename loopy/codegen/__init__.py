@@ -402,7 +402,7 @@ def generate_code_v2(kernel):
         input_kernel = kernel
         try:
             result = code_gen_cache[input_kernel]
-            logger.info("%s: code generation cache hit" % kernel.name)
+            logger.debug("%s: code generation cache hit" % kernel.name)
             return result
         except KeyError:
             pass

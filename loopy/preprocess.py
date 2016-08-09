@@ -1066,7 +1066,7 @@ def preprocess_kernel(kernel, device=None):
 
         try:
             result = preprocess_cache[kernel]
-            logger.info("%s: preprocess cache hit" % kernel.name)
+            logger.debug("%s: preprocess cache hit" % kernel.name)
             return result
         except KeyError:
             pass
