@@ -307,8 +307,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         tuple, in which case names will be automatically created.
         May also equivalently be a comma-separated string.
 
-    :arg precompute_outer_inames: The inames within which the compute
-        instruction is nested. If *None*, make an educated guess.
+    :arg precompute_outer_inames: A :class:`frozenset` of inames within which
+        the compute instruction is nested. If *None*, make an educated guess.
+        May also be specified as a comma-separated string.
 
     :arg compute_insn_id: The ID of the instruction generated to perform the
         precomputation.
@@ -360,6 +361,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     if isinstance(precompute_inames, str):
         precompute_inames = [iname.strip() for iname in precompute_inames.split(",")]
+
+    if isinstance(precompute_outer_inames, str):
+        precompute_outer_inames = frozenset(
+                iname.strip() for iname in precompute_outer_inames.split(","))
 
     if isinstance(subst_use, str):
         subst_use = [subst_use]
@@ -804,6 +809,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     else:
         if not isinstance(precompute_outer_inames, frozenset):
             raise TypeError("precompute_outer_inames must be a frozenset")
+
+        precompute_outer_inames = precompute_outer_inames \
+                | frozenset(non1_storage_axis_names)
 
     kernel = kernel.copy(
             instructions=[

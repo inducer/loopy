@@ -140,9 +140,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
                 precompute_inames=flux_precomp_inames + flux_ilp_inames,
                 default_tag=None)
             if flux_var.endswith("_s"):
-                hsv = lp.tag_data_axes(hsv, flux_store_name, "N0,N1,N2?")
+                hsv = lp.tag_array_axes(hsv, flux_store_name, "N0,N1,N2?")
             else:
-                hsv = lp.tag_data_axes(hsv, flux_store_name, "N1,N0,N2?")
+                hsv = lp.tag_array_axes(hsv, flux_store_name, "N1,N0,N2?")
 
             n_iname = "n_"+flux_var.replace("_r", "").replace("_s", "")
             if n_iname.endswith("_0"):
@@ -190,9 +190,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
               Q_dim_field_outer="unr"))
 
     # buffer axes need to be vectorized in order for this to work
-    hsv = lp.tag_data_axes(hsv, "rhsQ_buf", "c?,vec,c")
-    hsv = lp.tag_data_axes(hsv, "Q_fetch", "c?,vec,c")
-    hsv = lp.tag_data_axes(hsv, "D_fetch", "f,f")
+    hsv = lp.tag_array_axes(hsv, "rhsQ_buf", "c?,vec,c")
+    hsv = lp.tag_array_axes(hsv, "Q_fetch", "c?,vec,c")
+    hsv = lp.tag_array_axes(hsv, "D_fetch", "f,f")
     hsv = lp.tag_inames(hsv,
             {"Q_dim_k": "unr", "rhsQ_init_k": "unr", "rhsQ_store_k": "unr"},
             ignore_nonexistent=True)

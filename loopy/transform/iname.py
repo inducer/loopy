@@ -84,7 +84,7 @@ def set_loop_priority(kernel, loop_priority):
     """
 
     if isinstance(loop_priority, str):
-        loop_priority = [s.strip() for s in loop_priority.split(",")]
+        loop_priority = [s.strip() for s in loop_priority.split(",") if s.strip()]
 
     return kernel.copy(loop_priority=loop_priority)
 

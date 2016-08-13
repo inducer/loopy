@@ -23,17 +23,17 @@ def fix_euler_parameters(kernel, p_p0, p_Gamma, p_R):
 
 
 def set_q_storage_format(kernel, name):
-    kernel = lp.set_array_dim_names(kernel, name, "i,j,k,field,e")
+    kernel = lp.set_array_axis_names(kernel, name, "i,j,k,field,e")
 
     kernel = lp.split_array_dim(
         kernel, (name, 3, "F"), 4, auto_split_inames=False)
-    kernel = lp.tag_data_axes(kernel, name, "N0,N1,N2,vec,N4,N3")
+    kernel = lp.tag_array_axes(kernel, name, "N0,N1,N2,vec,N4,N3")
 
     return kernel
 
 
 def set_D_storage_format(kernel):
-    return lp.tag_data_axes(kernel, "D", "f,f")
+    return lp.tag_array_axes(kernel, "D", "f,f")
 
 
 def set_up_volume_loop(kernel, Nq):

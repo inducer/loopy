@@ -226,6 +226,13 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
 
     # }}}
 
+    common_factors = [
+            (ik, cf) for ik, cf in common_factors
+            if cf]
+
+    if not common_factors:
+        raise LoopyError("no common factors found")
+
     # {{{ remove common factors
 
     new_insns = []
