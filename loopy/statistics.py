@@ -308,7 +308,8 @@ class GlobalSubscriptCounter(CombineMapper):
         from pymbolic.primitives import Variable
         for idx, axis_tag in zip(index, array.dim_tags):
 
-            coeffs = CoefficientCollector()(idx)
+            from loopy.symbolic import simplify_using_aff
+            coeffs = CoefficientCollector()(simplify_using_aff(self.knl, idx))
             # check if he contains the lid 0 guy
             try:
                 coeff_id0 = coeffs[Variable(local_id0)]
