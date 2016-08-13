@@ -891,7 +891,10 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
-    kernel = preprocess_kernel(kernel)
+
+    from loopy.kernel import kernel_state
+    if kernel.state < kernel_state.PREPROCESSED:
+        kernel = preprocess_kernel(kernel)
 
     write_footprints = []
     read_footprints = []
@@ -938,6 +941,13 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
         accesses on which the footprint cannot be determined (e.g.
         data-dependent or nonlinear indices)
     """
+
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    kernel = infer_unknown_types(kernel, expect_completion=True)
+
+    from loopy.kernel import kernel_state
+    if kernel.state < kernel_state.PREPROCESSED:
+        kernel = preprocess_kernel(kernel)
 
     result = {}
     fp = gather_access_footprints(kernel, ignore_uncountable=ignore_uncountable)
