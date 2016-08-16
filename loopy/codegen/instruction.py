@@ -151,7 +151,8 @@ def generate_assignment_instruction_code(codegen_state, insn):
         if codegen_state.vectorization_info and is_vector:
             raise Unvectorizable("tracing does not support vectorization")
 
-        lhs_code = str(insn.assignee)
+        from pymbolic.mapper.stringifier import PREC_NONE
+        lhs_code = codegen_state.expression_to_code_mapper(insn.assignee, PREC_NONE)
 
         from cgen import Statement as S  # noqa
 

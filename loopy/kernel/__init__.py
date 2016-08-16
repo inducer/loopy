@@ -1363,7 +1363,7 @@ class LoopKernel(RecordWithoutPickling):
                     return False
 
                 for set_a, set_b in zip(self.domains, other.domains):
-                    if not set_a.plain_is_equal(set_b):
+                    if not (set_a.plain_is_equal(set_b) or set_a.is_equal(set_b)):
                         return False
 
             elif field_name == "assumptions":
