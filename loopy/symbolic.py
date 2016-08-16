@@ -57,8 +57,6 @@ from pymbolic.mapper.constant_folder import \
 
 from pymbolic.parser import Parser as ParserBase
 
-from loopy.diagnostic import LoopyError
-
 import islpy as isl
 from islpy import dim_type
 
@@ -1056,7 +1054,7 @@ class ArrayAccessFinder(CombineMapper):
 
 # {{{ (pw)aff to expr conversion
 
-def aff_to_expr(aff, _floor=False):
+def aff_to_expr(aff):
     from pymbolic import var
 
     denom = aff.get_denominator_val().to_python()
@@ -1072,16 +1070,9 @@ def aff_to_expr(aff, _floor=False):
     for i in range(aff.dim(dim_type.div)):
         coeff = (aff.get_coefficient_val(dim_type.div, i)*denom).to_python()
         if coeff:
-            result += coeff*aff_to_expr(aff.get_div(i), _floor=True)
+            result += coeff*aff_to_expr(aff.get_div(i))
 
-    if _floor:
-        return result // denom
-    else:
-        if denom != 1:
-            raise LoopyError("integer expression with true division: %s"
-                    % aff)
-        else:
-            return result
+    return result // denom
 
 
 def pw_aff_to_expr(pw_aff, int_ok=False):
