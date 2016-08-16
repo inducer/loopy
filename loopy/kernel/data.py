@@ -671,6 +671,9 @@ class InstructionBase(Record):
         if no_sync_with is None:
             no_sync_with = frozenset()
 
+        if within_inames is None:
+            within_inames = frozenset()
+
         if within_inames_is_final is None:
             within_inames_is_final = False
 
@@ -1194,7 +1197,7 @@ class Assignment(MultiAssignmentBase):
             conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None,
-            within_inames=frozenset(),
+            within_inames=None,
             boostable=None, boostable_into=None, tags=None,
             temp_var_type=None, atomicity=(),
             priority=0, predicates=frozenset(),
@@ -1338,7 +1341,7 @@ class CallInstruction(MultiAssignmentBase):
             conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None,
-            within_inames=frozenset(),
+            within_inames=None,
             boostable=None, boostable_into=None, tags=None,
             temp_var_types=None,
             priority=0, predicates=frozenset(),
@@ -1521,7 +1524,7 @@ class CInstruction(InstructionBase):
             id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
-            within_inames_is_final=None, within_inames=frozenset(),
+            within_inames_is_final=None, within_inames=None,
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset(), tags=None,
             insn_deps=None, insn_deps_is_final=None):
