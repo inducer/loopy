@@ -1100,21 +1100,81 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
     (set, aff), = pieces
     return aff_to_expr(aff)
 
+# }}}
 
-def aff_from_expr(space, expr, vars_to_zero=set()):
-    zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
-    context = {}
-    for name, (dt, pos) in six.iteritems(space.get_var_dict()):
-        if dt == dim_type.set:
-            dt = dim_type.in_
 
-        context[name] = zero.set_coefficient_val(dt, pos, 1)
+# {{{ (pw)aff_from_expr
 
-    for name in vars_to_zero:
-        context[name] = zero
+class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
+    def __init__(self, space, vars_to_zero):
+        self.zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(space))
 
-    from pymbolic import evaluate
-    return zero + evaluate(expr, context)
+        context = {}
+        for name, (dt, pos) in six.iteritems(space.get_var_dict()):
+            if dt == dim_type.set:
+                dt = dim_type.in_
+
+            context[name] = isl.PwAff.from_aff(
+                    self.zero.set_coefficient_val(dt, pos, 1))
+
+        for v in vars_to_zero:
+            context[v] = self.zero
+
+        self.pw_zero = isl.PwAff.from_aff(self.zero)
+
+        super(PwAffEvaluationMapper, self).__init__(context)
+
+    def map_constant(self, expr):
+        return self.pw_zero + expr
+
+    def map_min(self, expr):
+        from functools import reduce
+        return reduce(
+                lambda a, b: a.min(b),
+                (self.rec(ch) for ch in expr.children))
+
+    def map_max(self, expr):
+        from functools import reduce
+        return reduce(
+                lambda a, b: a.max(b),
+                (self.rec(ch) for ch in expr.children))
+
+    def map_quotient(self, expr):
+        raise TypeError("true division in '%s' not supported "
+                "for as-pwaff evaluation" % expr)
+
+    def map_floor_div(self, expr):
+        num = self.rec(expr.numerator)
+        denom = self.rec(expr.denominator)
+        return num.div(denom).floor()
+
+    def map_remainder(self, expr):
+        num = self.rec(expr.numerator)
+        denom = self.rec(expr.denominator)
+        if not denom.is_cst():
+            raise TypeError("modulo non-constant in '%s' not supported "
+                    "for as-pwaff evaluation" % expr)
+
+        (s, denom_aff), = denom.get_pieces()
+        denom = denom_aff.get_constant_val()
+
+        return num.mod_val(denom)
+
+
+def aff_from_expr(space, expr, vars_to_zero=frozenset()):
+    pwaff = pwaff_from_expr(space, expr, vars_to_zero).coalesce()
+
+    pieces = pwaff.get_pieces()
+    if len(pieces) == 1:
+        (s, aff), = pieces
+        return aff
+    else:
+        raise RuntimeError("expression '%s' could not be converted to a "
+                "non-piecewise quasi-affine expression" % expr)
+
+
+def pwaff_from_expr(space, expr, vars_to_zero=frozenset()):
+    return PwAffEvaluationMapper(space, vars_to_zero)(expr)
 
 # }}}
 
