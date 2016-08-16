@@ -1052,15 +1052,10 @@ class ArrayAccessFinder(CombineMapper):
 # }}}
 
 
-# {{{ aff <-> expr conversion
+# {{{ (pw)aff to expr conversion
 
-def aff_to_expr(aff, except_name=None, error_on_name=None):
-    if except_name is not None and error_on_name is not None:
-        raise ValueError("except_name and error_on_name may not be specified "
-                "at the same time")
+def aff_to_expr(aff):
     from pymbolic import var
-
-    except_coeff = 0
 
     denom = aff.get_denominator_val().to_python()
 
@@ -1070,29 +1065,14 @@ def aff_to_expr(aff, except_name=None, error_on_name=None):
             coeff = (aff.get_coefficient_val(dt, i)*denom).to_python()
             if coeff:
                 dim_name = aff.get_dim_name(dt, i)
-                if dim_name == except_name:
-                    except_coeff += coeff
-                elif dim_name == error_on_name:
-                    raise RuntimeError("'%s' occurred in this subexpression--"
-                            "this is not allowed" % dim_name)
-                else:
-                    result += coeff*var(dim_name)
-
-    error_on_name = error_on_name or except_name
+                result += coeff*var(dim_name)
 
     for i in range(aff.dim(dim_type.div)):
         coeff = (aff.get_coefficient_val(dim_type.div, i)*denom).to_python()
         if coeff:
-            result += coeff*aff_to_expr(aff.get_div(i), error_on_name=error_on_name)
+            result += coeff*aff_to_expr(aff.get_div(i))
 
-    if except_name is not None:
-        if except_coeff % denom != 0:
-            raise RuntimeError("coefficient of '%s' is not divisible by "
-                    "aff denominator" % except_name)
-
-        return result // denom, except_coeff // denom
-    else:
-        return result // denom
+    return result // denom
 
 
 def pw_aff_to_expr(pw_aff, int_ok=False):
