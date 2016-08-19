@@ -139,6 +139,9 @@ class Options(Record):
             edit_cl=False, cl_build_options=[],
             allow_terminal_colors=None,
             disable_global_barriers=False,
+
+            # intentionally undocumented
+            enable_boostable=False,
             ):
 
         if allow_terminal_colors is None:
@@ -163,6 +166,8 @@ class Options(Record):
                 edit_cl=edit_cl, cl_build_options=cl_build_options,
                 allow_terminal_colors=allow_terminal_colors,
                 disable_global_barriers=disable_global_barriers,
+
+                enable_boostable=enable_boostable,
                 )
 
     def update(self, other):

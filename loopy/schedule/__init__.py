@@ -909,7 +909,9 @@ def generate_loop_schedules_internal(
             for insn_id in reachable_insn_ids:
                 insn = kernel.id_to_insn[insn_id]
 
-                want = kernel.insn_inames(insn) | insn.boostable_into
+                want = kernel.insn_inames(insn)
+                if kernel.options.enable_boostable:
+                    want = want | insn.boostable_into
 
                 if hypothetically_active_loops <= want:
                     if usefulness is None:
@@ -1031,7 +1033,10 @@ def generate_loop_schedules_internal(
         yield sched_state.schedule
 
     else:
-        if not allow_boost and allow_boost is not None:
+        if (
+                kernel.options.enable_boostable
+                and not allow_boost
+                and allow_boost is not None):
             # try again with boosting allowed
             for sub_sched in generate_loop_schedules_internal(
                     sched_state,

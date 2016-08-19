@@ -1123,8 +1123,9 @@ def preprocess_kernel(kernel, device=None):
     kernel = find_temporary_scope(kernel)
 
     # boostability should be removed in 2017.x.
-    kernel = find_idempotence(kernel)
-    kernel = limit_boostability(kernel)
+    if kernel.options.enable_boostable:
+        kernel = find_idempotence(kernel)
+        kernel = limit_boostability(kernel)
 
     kernel = kernel.target.preprocess(kernel)
 
