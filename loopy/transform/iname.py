@@ -913,7 +913,10 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             -
             frozenset([frozenset([])]))
     else:
-        insn_deps = frozenset(insn.forced_iname_deps for insn in knl.instructions)
+        insn_deps = (
+            frozenset(insn.forced_iname_deps for insn in knl.instructions)
+            -
+            frozenset([frozenset([])]))
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_deps):
