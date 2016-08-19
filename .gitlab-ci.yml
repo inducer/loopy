@@ -88,6 +88,8 @@ CentOS binary:
     - build-helpers/loopy-centos6
   tags:
   - docker
+  only:
+  - master
 
 Documentation:
   script:
