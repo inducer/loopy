@@ -939,7 +939,11 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
         within = Or(tuple(
             Id(insn.id) for insn in knl.instructions
             if insn.forced_iname_deps in insns))
-        yield iname, within
+
+        # Only yield the result if an instruction matched. With use_boostable_into=True
+        # this is not always true.
+        if within.children:
+            yield iname, within
 
 
 def has_schedulable_iname_nesting(knl):
