@@ -920,18 +920,18 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_deps):
+        # Check whether this iname has a parallel tag and discard it if so
+        from loopy.kernel.data import ParallelTag
+        if (iname in knl.iname_to_tag
+                    and isinstance(knl.iname_to_tag[iname], ParallelTag)):
+            continue
+
         # If we find a duplication option and fo not use boostable_into
         # information, we restart this generator with use_boostable_into=True
         if not use_boostable_into:
             for option in get_iname_duplication_options(knl, True):
                 yield option
             return
-
-        # Check whether this iname has a parallel tag and discard it if so
-        from loopy.kernel.data import ParallelTag
-        if (iname in knl.iname_to_tag
-                    and isinstance(knl.iname_to_tag[iname], ParallelTag)):
-            continue
 
         # Reconstruct an object that may be passed to the within parameter of
         # loopy.duplicate_inames
