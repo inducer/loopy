@@ -873,7 +873,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
     # If partitioning was empty, we have recursed successfully and yield nothing
 
 
-def get_iname_duplication_options(knl):
+def get_iname_duplication_options(knl, use_boostable_into=False):
     """List options for duplication of inames, if necessary for schedulability
 
     :returns: a generator listing all options to duplicate inames, if duplication
@@ -904,16 +904,26 @@ def get_iname_duplication_options(knl):
     duplicated in a given kernel.
     """
     # First we extract the minimal necessary information from the kernel
-    insn_deps = (
-        frozenset(insn.forced_iname_deps.union(
-            insn.boostable_into if insn.boostable_into is not None
-            else frozenset([]))
-            for insn in knl.instructions)
-        -
-        frozenset([frozenset([])]))
+    if use_boostable_into:
+        insn_deps = (
+            frozenset(insn.forced_iname_deps.union(
+                insn.boostable_into if insn.boostable_into is not None
+                else frozenset([]))
+                for insn in knl.instructions)
+            -
+            frozenset([frozenset([])]))
+    else:
+        insn_deps = frozenset(insn.forced_iname_deps for insn in knl.instructions)
 
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_deps):
+        # If we find a duplication option and fo not use boostable_into
+        # information, we restart this generator with use_boostable_into=True
+        if not use_boostable_into:
+            for option in get_iname_duplication_options(knl, True):
+                yield option
+            return
+
         # Check whether this iname has a parallel tag and discard it if so
         from loopy.kernel.data import ParallelTag
         if (iname in knl.iname_to_tag
