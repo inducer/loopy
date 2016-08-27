@@ -776,7 +776,7 @@ def parse_domains(domains, defines):
                 parameters = (_gather_isl_identifiers(dom)
                         - _find_inames_in_set(dom)
                         - _find_existentially_quantified_inames(dom))
-                dom = "[%s] -> %s" % (",".join(parameters), dom)
+                dom = "[%s] -> %s" % (",".join(sorted(parameters)), dom)
 
             try:
                 dom = isl.BasicSet.read_from_str(isl.DEFAULT_CONTEXT, dom)
