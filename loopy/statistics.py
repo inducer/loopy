@@ -834,8 +834,8 @@ def get_lmem_access_poly(knl):
                            key.dtype, direction='load')
                           ] = subs_expr.dict.pop(key)
         subs_assignee = subscript_counter(insn.assignee)
-        for key in subs_assignee.dict:
-            print(key.dtype, key.direction, subs_assignee.dict[key])
+        #for key in subs_assignee.dict:
+        #    print(key.dtype, key.direction, subs_assignee.dict[key])
 
         # for now, not counting stores in local mem
         '''
