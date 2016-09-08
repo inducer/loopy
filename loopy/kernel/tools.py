@@ -63,10 +63,11 @@ def _add_dtypes(knl, dtype_dict):
     dtype_dict = dtype_dict.copy()
     new_args = []
 
+    from loopy.types import to_loopy_type
     for arg in knl.args:
         new_dtype = dtype_dict.pop(arg.name, None)
         if new_dtype is not None:
-            new_dtype = np.dtype(new_dtype)
+            new_dtype = to_loopy_type(new_dtype)
             if arg.dtype is not None and arg.dtype != new_dtype:
                 raise RuntimeError(
                         "argument '%s' already has a different dtype "
