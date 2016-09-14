@@ -640,7 +640,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         self.context = context
 
         from loopy.target.pyopencl import PyOpenCLTarget
-        if not isinstance(kernel.target, PyOpenCLTarget):
+        if isinstance(kernel.target, PyOpenCLTarget):
             self.kernel = kernel.copy(target=PyOpenCLTarget(context.devices[0]))
 
     @memoize_method
