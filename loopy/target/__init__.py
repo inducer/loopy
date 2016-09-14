@@ -131,7 +131,7 @@ class TargetBase(object):
         """
         raise NotImplementedError()
 
-    def get_kernel_executor(self, *args, **kwargs):
+    def get_kernel_executor(self, kernel, *args, **kwargs):
         """
         :returns: an immutable type to be used as the cache key for
             kernel executor caching.
