@@ -444,7 +444,7 @@ def auto_test_vs_ref(
             print(75*"-")
             print("Reference Code:")
             print(75*"-")
-            print(get_highlighted_cl_code(ref_compiled.code))
+            print(get_highlighted_cl_code(ref_compiled.get_code()))
             print(75*"-")
 
         ref_cl_kernel_info = ref_compiled.cl_kernel_info(frozenset())
