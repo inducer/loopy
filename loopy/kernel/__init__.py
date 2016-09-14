@@ -303,6 +303,8 @@ class LoopKernel(RecordWithoutPickling):
                 state=state,
                 target=target)
 
+        self._kernel_executor_cache = {}
+
     # }}}
 
     # {{{ function mangling
@@ -1262,14 +1264,15 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ direct execution
 
-    @memoize_method
-    def get_compiled_kernel(self, ctx):
-        from loopy.compiled import CompiledKernel
-        return CompiledKernel(ctx, self)
+    def __call__(self, *args, **kwargs):
+        key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
+        try:
+            kex = self._kernel_executor_cache[key]
+        except KeyError:
+            kex = self.target.get_kernel_executor(self, *args, **kwargs)
+            self._kernel_executor_cache[key] = kex
 
-    def __call__(self, queue, **kwargs):
-        cknl = self.get_compiled_kernel(queue.context)
-        return cknl(queue, **kwargs)
+        return kex(*args, **kwargs)
 
     # }}}
 

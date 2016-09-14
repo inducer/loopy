@@ -25,98 +25,16 @@ THE SOFTWARE.
 import six
 from six.moves import range, zip
 
-import numpy as np
 from pytools import Record, memoize_method
 from loopy.diagnostic import ParameterFinderWarning
 from pytools.py_codegen import (
         Indentation, PythonFunctionGenerator)
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
+from loopy.execution import KernelExecutorBase
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-# {{{ object array argument packing
-
-class _PackingInfo(Record):
-    """
-    .. attribute:: name
-    .. attribute:: sep_shape
-
-    .. attribute:: subscripts_and_names
-
-        A list of type ``[(index, unpacked_name), ...]``.
-    """
-
-
-class SeparateArrayPackingController(object):
-    """For argument arrays with axes tagged to be implemented as separate
-    arrays, this class provides preprocessing of the incoming arguments so that
-    all sub-arrays may be passed in one object array (under the original,
-    un-split argument name) and are unpacked into separate arrays before being
-    passed to the kernel.
-
-    It also repacks outgoing arrays of this type back into an object array.
-    """
-
-    def __init__(self, kernel):
-        # map from arg name
-        self.packing_info = {}
-
-        from loopy.kernel.array import ArrayBase
-        for arg in kernel.args:
-            if not isinstance(arg, ArrayBase):
-                continue
-
-            if arg.shape is None or arg.dim_tags is None:
-                continue
-
-            subscripts_and_names = arg.subscripts_and_names()
-
-            if subscripts_and_names is None:
-                continue
-
-            self.packing_info[arg.name] = _PackingInfo(
-                    name=arg.name,
-                    sep_shape=arg.sep_shape(),
-                    subscripts_and_names=subscripts_and_names,
-                    is_written=arg.name in kernel.get_written_variables())
-
-    def unpack(self, kernel_kwargs):
-        if not self.packing_info:
-            return kernel_kwargs
-
-        kernel_kwargs = kernel_kwargs.copy()
-
-        for packing_info in six.itervalues(self.packing_info):
-            arg_name = packing_info.name
-            if packing_info.name in kernel_kwargs:
-                arg = kernel_kwargs[arg_name]
-                for index, unpacked_name in packing_info.subscripts_and_names:
-                    assert unpacked_name not in kernel_kwargs
-                    kernel_kwargs[unpacked_name] = arg[index]
-                del kernel_kwargs[arg_name]
-
-        return kernel_kwargs
-
-    def pack(self, outputs):
-        if not self.packing_info:
-            return outputs
-
-        for packing_info in six.itervalues(self.packing_info):
-            if not packing_info.is_written:
-                continue
-
-            result = outputs[packing_info.name] = \
-                    np.zeros(packing_info.sep_shape, dtype=np.object)
-
-            for index, unpacked_name in packing_info.subscripts_and_names:
-                result[index] = outputs.pop(unpacked_name)
-
-        return outputs
-
-# }}}
 
 
 # {{{ invoker generation
@@ -690,7 +608,7 @@ def generate_invoker(kernel, codegen_result):
 # }}}
 
 
-# {{{ compiled kernel object
+# {{{ kernel executor
 
 class _CLKernelInfo(Record):
     pass
@@ -700,7 +618,7 @@ class _CLKernels(object):
     pass
 
 
-class CompiledKernel:
+class PyOpenCLKernelExecutor(KernelExecutorBase):
     """An object connecting a kernel to a :class:`pyopencl.Context`
     for execution.
 
@@ -717,50 +635,13 @@ class CompiledKernel:
             specific arguments.
         """
 
+        super(PyOpenCLKernelExecutor, self).__init__(kernel)
+
         self.context = context
 
         from loopy.target.pyopencl import PyOpenCLTarget
-        self.kernel = kernel.copy(target=PyOpenCLTarget(context.devices[0]))
-
-        self.packing_controller = SeparateArrayPackingController(kernel)
-
-        self.output_names = tuple(arg.name for arg in self.kernel.args
-                if arg.name in self.kernel.get_written_variables())
-
-    @memoize_method
-    def get_typed_and_scheduled_kernel(self, var_to_dtype_set):
-        kernel = self.kernel
-
-        from loopy.kernel.tools import add_dtypes
-
-        if var_to_dtype_set:
-            var_to_dtype = {}
-            for var, dtype in var_to_dtype_set:
-                try:
-                    dest_name = kernel.impl_arg_to_arg[var].name
-                except KeyError:
-                    dest_name = var
-
-                try:
-                    var_to_dtype[dest_name] = dtype
-                except KeyError:
-                    raise LoopyError("cannot set type for '%s': "
-                            "no known variable/argument with that name"
-                            % var)
-
-            kernel = add_dtypes(kernel, var_to_dtype)
-
-            from loopy.preprocess import infer_unknown_types
-            kernel = infer_unknown_types(kernel, expect_completion=True)
-
-        if kernel.schedule is None:
-            from loopy.preprocess import preprocess_kernel
-            kernel = preprocess_kernel(kernel)
-
-            from loopy.schedule import get_one_scheduled_kernel
-            kernel = get_one_scheduled_kernel(kernel)
-
-        return kernel
+        if not isinstance(kernel.target, PyOpenCLTarget):
+            self.kernel = kernel.copy(target=PyOpenCLTarget(context.devices[0]))
 
     @memoize_method
     def cl_kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
@@ -822,14 +703,6 @@ class CompiledKernel:
         return get_highlighted_cl_code(
                 self.get_code(arg_to_dtype))
 
-    @property
-    def code(self):
-        from warnings import warn
-        warn("CompiledKernel.code is deprecated. Use .get_code() instead.",
-                DeprecationWarning, stacklevel=2)
-
-        return self.get_code()
-
     # }}}
 
     def __call__(self, queue, **kwargs):
@@ -865,25 +738,7 @@ class CompiledKernel:
 
         kwargs = self.packing_controller.unpack(kwargs)
 
-        impl_arg_to_arg = self.kernel.impl_arg_to_arg
-        arg_to_dtype = {}
-        for arg_name, val in six.iteritems(kwargs):
-            arg = impl_arg_to_arg.get(arg_name, None)
-
-            if arg is None:
-                # offsets, strides and such
-                continue
-
-            if arg.dtype is None and val is not None:
-                try:
-                    dtype = val.dtype
-                except AttributeError:
-                    pass
-                else:
-                    arg_to_dtype[arg_name] = dtype
-
-        kernel_info = self.cl_kernel_info(
-                frozenset(six.iteritems(arg_to_dtype)))
+        kernel_info = self.cl_kernel_info(self.arg_to_dtype_set(kwargs))
 
         return kernel_info.invoker(
                 kernel_info.cl_kernels, queue, allocator, wait_for,
