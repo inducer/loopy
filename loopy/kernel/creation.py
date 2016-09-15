@@ -158,8 +158,8 @@ def get_default_insn_options_dict():
         "insn_id": None,
         "inames_to_dup": [],
         "priority": 0,
-        "forced_iname_deps_is_final": False,
-        "forced_iname_deps": frozenset(),
+        "within_inames_is_final": False,
+        "within_inames": frozenset(),
         "predicates": frozenset(),
         "tags": frozenset(),
         "atomicity": (),
@@ -215,10 +215,10 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             for value in opt_value.split(":"):
                 arrow_idx = value.find("->")
                 if arrow_idx >= 0:
-                    result["inames_to_dup"].append(
+                    result.setdefault("inames_to_dup", []).append(
                             (value[:arrow_idx], value[arrow_idx+2:]))
                 else:
-                    result["inames_to_dup"].append((value, None))
+                    result.setdefault("inames_to_dup", []).append((value, None))
 
         elif opt_key == "dep" and opt_value is not None:
             if is_with_block:
@@ -254,12 +254,12 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
         elif opt_key == "inames" and opt_value is not None:
             if opt_value.startswith("+"):
-                result["forced_iname_deps_is_final"] = False
+                result["within_inames_is_final"] = False
                 opt_value = (opt_value[1:]).strip()
             else:
-                result["forced_iname_deps_is_final"] = True
+                result["within_inames_is_final"] = True
 
-            result["forced_iname_deps"] = intern_frozenset_of_ids(
+            result["within_inames"] = intern_frozenset_of_ids(
                     opt_value.split(":"))
 
         elif opt_key == "if" and opt_value is not None:
@@ -316,8 +316,14 @@ WITH_OPTIONS_RE = re.compile(
 
 FOR_RE = re.compile(
         "^"
-        "\s*for\s*"
-        "(?P<inames>[ ,\w]+)"
+        "\s*(for)\s+"
+        "(?P<inames>[ ,\w]*)"
+        "\s*$")
+
+IF_RE = re.compile(
+        "^"
+        "\s*if\s+"
+        "(?P<predicate>\w+)"
         "\s*$")
 
 INSN_RE = re.compile(
@@ -325,6 +331,13 @@ INSN_RE = re.compile(
         "\s*"
         "(?P<lhs>.+?)"
         "\s*(?<!\:)=\s*"
+        "(?P<rhs>.+?)"
+        "\s*?"
+        "(?:\{(?P<options>.+)\}\s*)?$")
+
+EMPTY_LHS_INSN_RE = re.compile(
+        "^"
+        "\s*"
         "(?P<rhs>.+?)"
         "\s*?"
         "(?:\{(?P<options>.+)\}\s*)?$")
@@ -342,14 +355,17 @@ def parse_insn(groups, insn_options):
     """
 
     import loopy as lp
-
     from loopy.symbolic import parse
-    try:
-        lhs = parse(groups["lhs"])
-    except:
-        print("While parsing left hand side '%s', "
-                "the following error occurred:" % groups["lhs"])
-        raise
+
+    if "lhs" in groups:
+        try:
+            lhs = parse(groups["lhs"])
+        except:
+            print("While parsing left hand side '%s', "
+                    "the following error occurred:" % groups["lhs"])
+            raise
+    else:
+        lhs = ()
 
     try:
         rhs = parse(groups["rhs"])
@@ -508,8 +524,8 @@ def parse_instructions(instructions, defines):
                         groups=frozenset(intern(grp) for grp in insn.groups),
                         conflicts_with_groups=frozenset(
                             intern(grp) for grp in insn.conflicts_with_groups),
-                        forced_iname_deps=frozenset(
-                            intern(iname) for iname in insn.forced_iname_deps),
+                        within_inames=frozenset(
+                            intern(iname) for iname in insn.within_inames),
                         predicates=frozenset(
                             intern(pred) for pred in insn.predicates),
                         ))
@@ -593,27 +609,27 @@ def parse_instructions(instructions, defines):
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
-            local_fids = insn_options_stack[-1]["forced_iname_deps"]
+            local_w_inames = insn_options_stack[-1]["within_inames"]
 
-            if insn.forced_iname_deps_is_final:
+            if insn.within_inames_is_final:
                 if not (
-                        local_fids <= insn.forced_iname_deps):
+                        local_w_inames <= insn.within_inames):
                     raise LoopyError("non-parsed instruction '%s' without "
                             "inames '%s' (but with final iname dependencies) "
                             "found inside 'for'/'with' block for inames "
                             "'%s'"
                             % (insn.id,
-                                ", ".join(local_fids - insn.forced_iname_deps),
-                                insn_options_stack[-1].forced_iname_deps))
+                                ", ".join(local_w_inames - insn.within_inames),
+                                insn_options_stack[-1].within_inames))
 
             else:
                 # not final, add inames from current scope
                 insn = insn.copy(
-                        forced_iname_deps=insn.forced_iname_deps | local_fids,
-                        forced_iname_deps_is_final=(
+                        within_inames=insn.within_inames | local_w_inames,
+                        within_inames_is_final=(
                             # If it's inside a for/with block, then it's
                             # final now.
-                            bool(local_fids)),
+                            bool(local_w_inames)),
                         tags=(
                             insn.tags
                             | insn_options_stack[-1]["tags"]),
@@ -631,7 +647,7 @@ def parse_instructions(instructions, defines):
             new_instructions.append(insn)
             inames_to_dup.append([])
 
-            del local_fids
+            del local_w_inames
 
             continue
 
@@ -646,12 +662,32 @@ def parse_instructions(instructions, defines):
         for_match = FOR_RE.match(insn)
         if for_match is not None:
             options = insn_options_stack[-1].copy()
-            options["forced_iname_deps"] = (
-                    options.get("forced_iname_deps", frozenset())
-                    | frozenset(
-                        iname.strip()
-                        for iname in for_match.group("inames").split(",")))
-            options["forced_iname_deps_is_final"] = True
+            added_inames = frozenset(
+                    iname.strip()
+                    for iname in for_match.group("inames").split(",")
+                    if iname.strip())
+            if not added_inames:
+                raise LoopyError("'for' without inames encountered")
+
+            options["within_inames"] = (
+                    options.get("within_inames", frozenset())
+                    | added_inames)
+            options["within_inames_is_final"] = True
+
+            insn_options_stack.append(options)
+            del options
+            continue
+
+        if_match = IF_RE.match(insn)
+        if if_match is not None:
+            options = insn_options_stack[-1].copy()
+            predicate = if_match.group("predicate")
+            if not predicate:
+                raise LoopyError("'if' without predicate encountered")
+
+            options["predicates"] = (
+                    options.get("predicates", frozenset())
+                    | frozenset([predicate]))
 
             insn_options_stack.append(options)
             del options
@@ -668,6 +704,14 @@ def parse_instructions(instructions, defines):
             continue
 
         insn_match = INSN_RE.match(insn)
+        if insn_match is not None:
+            insn, insn_inames_to_dup = parse_insn(
+                    insn_match.groupdict(), insn_options_stack[-1])
+            new_instructions.append(insn)
+            inames_to_dup.append(insn_inames_to_dup)
+            continue
+
+        insn_match = EMPTY_LHS_INSN_RE.match(insn)
         if insn_match is not None:
             insn, insn_inames_to_dup = parse_insn(
                     insn_match.groupdict(), insn_options_stack[-1])
@@ -732,7 +776,7 @@ def parse_domains(domains, defines):
                 parameters = (_gather_isl_identifiers(dom)
                         - _find_inames_in_set(dom)
                         - _find_existentially_quantified_inames(dom))
-                dom = "[%s] -> %s" % (",".join(parameters), dom)
+                dom = "[%s] -> %s" % (",".join(sorted(parameters)), dom)
 
             try:
                 dom = isl.BasicSet.read_from_str(isl.DEFAULT_CONTEXT, dom)
@@ -815,17 +859,21 @@ class ArgumentGuesser:
             if isinstance(insn, MultiAssignmentBase):
                 for assignee_var_name in insn.assignee_var_names():
                     self.all_written_names.add(assignee_var_name)
-                    self.all_names.update(get_dependencies(
-                        self.submap(insn.assignees)))
-                    self.all_names.update(get_dependencies(
-                        self.submap(insn.expression)))
+
+                self.all_names.update(get_dependencies(
+                    self.submap(insn.assignees)))
+                self.all_names.update(get_dependencies(
+                    self.submap(insn.expression)))
 
     def find_index_rank(self, name):
         irf = IndexRankFinder(name)
 
+        def run_irf(expr):
+            irf(self.submap(expr))
+            return expr
+
         for insn in self.instructions:
-            insn.with_transformed_expressions(
-                    lambda expr: irf(self.submap(expr)))
+            insn.with_transformed_expressions(run_irf)
 
         if not irf.index_ranks:
             return 0
@@ -941,13 +989,13 @@ def check_for_duplicate_names(knl):
 
 def check_for_nonexistent_iname_deps(knl):
     for insn in knl.instructions:
-        if not set(insn.forced_iname_deps) <= knl.all_inames():
+        if not set(insn.within_inames) <= knl.all_inames():
             raise ValueError("In instruction '%s': "
                     "cannot force dependency on inames '%s'--"
                     "they don't exist" % (
                         insn.id,
                         ",".join(
-                            set(insn.forced_iname_deps)-knl.all_inames())))
+                            set(insn.within_inames)-knl.all_inames())))
 
 
 def check_for_multiple_writes_to_loop_bounds(knl):
@@ -1037,8 +1085,8 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
                 assignee=Variable(new_var_name),
                 expression=expr,
                 predicates=insn.predicates,
-                forced_iname_deps=insn.forced_iname_deps,
-                forced_iname_deps_is_final=insn.forced_iname_deps_is_final,
+                within_inames=insn.within_inames,
+                within_inames_is_final=insn.within_inames_is_final,
                 )
         newly_created_insn_ids.add(new_insn.id)
         new_insns.append(new_insn)
@@ -1352,6 +1400,27 @@ def resolve_wildcard_deps(knl):
 # }}}
 
 
+# {{{ add used inames deps
+
+def add_used_inames(knl):
+    new_insns = []
+
+    for insn in knl.instructions:
+        deps = insn.read_dependency_names() | insn.write_dependency_names()
+        iname_deps = deps & knl.all_inames()
+
+        new_within_inames = insn.within_inames | iname_deps
+
+        if new_within_inames != insn.within_inames:
+            insn = insn.copy(within_inames=new_within_inames)
+
+        new_insns.append(insn)
+
+    return knl.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ add inferred iname deps
 
 def add_inferred_inames(knl):
@@ -1359,7 +1428,7 @@ def add_inferred_inames(knl):
     insn_inames = find_all_insn_inames(knl)
 
     return knl.copy(instructions=[
-            insn.copy(forced_iname_deps=insn_inames[insn.id])
+            insn.copy(within_inames=insn_inames[insn.id])
             for insn in knl.instructions])
 
 # }}}
@@ -1549,10 +1618,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             **kwargs)
 
     from loopy import duplicate_inames
+    from loopy.match import Id
     for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
         for old_iname, new_iname in insn_inames_to_dup:
             knl = duplicate_inames(knl, old_iname,
-                    within=insn.id, new_inames=new_iname)
+                    within=Id(insn.id), new_inames=new_iname)
 
     check_for_nonexistent_iname_deps(knl)
 
@@ -1563,6 +1633,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # Must create temporaries before inferring inames (because those temporaries
     # mediate dependencies that are then used for iname propagation.)
     # -------------------------------------------------------------------------
+    knl = add_used_inames(knl)
     # NOTE: add_inferred_inames will be phased out and throws warnings if it
     # does something.
     knl = add_inferred_inames(knl)

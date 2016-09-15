@@ -124,6 +124,20 @@ class TargetBase(object):
 
     # }}}
 
+    def get_kernel_executor_cache_key(self, *args, **kwargs):
+        """
+        :returns: an immutable type to be used as the cache key for
+            kernel executor caching.
+        """
+        raise NotImplementedError()
+
+    def get_kernel_executor(self, kernel, *args, **kwargs):
+        """
+        :returns: an immutable type to be used as the cache key for
+            kernel executor caching.
+        """
+        raise NotImplementedError()
+
 
 class ASTBuilderBase(object):
     """An interface for generating (host or device) ASTs.
@@ -186,15 +200,11 @@ class ASTBuilderBase(object):
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
-    def emit_assignment(self, codegen_state, lhs, rhs):
+    def emit_assignment(self, codegen_state, insn):
         raise NotImplementedError()
 
     def emit_multiple_assignment(self, codegen_state, insn):
         raise NotImplementedError()
-
-    def emit_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype):
-        raise NotImplementedError("atomic update in target %s" % type(self).__name__)
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             static_lbound, static_ubound, inner):
@@ -254,14 +264,10 @@ class DummyHostASTBuilder(ASTBuilderBase):
     def ast_block_class(self):
         return _DummyASTBlock
 
-    def emit_assignment(self, codegen_state, lhs, rhs):
+    def emit_assignment(self, codegen_state, insn):
         return None
 
     def emit_multiple_assignment(self, codegen_state, insn):
-        return None
-
-    def emit_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
-            lhs_expr, rhs_expr, lhs_dtype):
         return None
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,

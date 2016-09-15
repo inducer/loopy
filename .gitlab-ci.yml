@@ -88,3 +88,15 @@ CentOS binary:
     - build-helpers/loopy-centos6
   tags:
   - docker
+  only:
+  - master
+
+Documentation:
+  script:
+  - EXTRA_INSTALL="numpy"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
+  - ". ./build-docs.sh"
+  tags:
+  - python3.5
+  only:
+  - master

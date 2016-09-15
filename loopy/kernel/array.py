@@ -782,7 +782,6 @@ class ArrayBase(Record):
             kwargs["strides"] = strides
 
         if dim_names is not None and not isinstance(dim_names, tuple):
-            pu.db
             from warnings import warn
             warn("dim_names is not a tuple when calling ArrayBase constructor",
                     DeprecationWarning, stacklevel=2)
@@ -1173,6 +1172,9 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
         or *None*.
     """
 
+    import loopy as lp
+    from pymbolic import var
+
     def eval_expr_assert_integer_constant(i, expr):
         from pymbolic.mapper.evaluator import UnknownVariableError
         try:
@@ -1191,6 +1193,16 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
         return result
 
+    def apply_offset(sub):
+        if ary.offset:
+            offset_name = ary.offset
+            if offset_name is lp.auto:
+                offset_name = array_name+"_offset"
+
+            return var(offset_name) + sub
+        else:
+            return sub
+
     if not isinstance(index, tuple):
         index = (index,)
 
@@ -1204,7 +1216,10 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
                     "'shape=None'?)"
                     % ary.name)
 
-        return AccessInfo(array_name=array_name, subscripts=index, vector_index=None)
+        return AccessInfo(
+                array_name=array_name,
+                subscripts=(apply_offset(index[0]),),
+                vector_index=None)
 
     if len(ary.dim_tags) != len(index):
         raise LoopyError("subscript to '%s[%s]' has the wrong "
@@ -1231,8 +1246,6 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
     for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
         if isinstance(dim_tag, FixedStrideArrayDimTag):
-            import loopy as lp
-
             stride = dim_tag.stride
 
             if is_integer(stride):
@@ -1243,7 +1256,6 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
                             % (ary.name, i, dim_tag.stride, vector_size))
 
             elif stride is lp.auto:
-                from pymbolic import var
                 stride = var(array_name + "_stride%d" % i)
 
             subscripts[dim_tag.target_axis] += (stride // vector_size)*idx
@@ -1278,11 +1290,7 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
         if num_target_axes > 1:
             raise NotImplementedError("offsets for multiple image axes")
 
-        offset_name = ary.offset
-        if offset_name is lp.auto:
-            offset_name = array_name+"_offset"
-
-        subscripts[0] = var(offset_name) + subscripts[0]
+        subscripts[0] = apply_offset(subscripts[0])
 
     return AccessInfo(
             array_name=array_name,

@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 
 from six.moves import intern
+from warnings import warn
 import numpy as np  # noqa
 from pytools import Record, memoize_method
 from loopy.kernel.array import ArrayBase
@@ -590,31 +591,12 @@ class InstructionBase(Record):
 
     .. rubric:: Iname dependencies
 
-    .. attribute:: forced_iname_deps_is_final
+    .. attribute:: within_inames
 
-        A :class:`bool` determining whether :attr:`forced_iname_deps` constitutes
-        the *entire* list of iname dependencies.
-
-    .. attribute:: forced_iname_deps
-
-        A :class:`frozenset` of inames that are added to the list of iname
-        dependencies *or* constitute the entire list of iname dependencies,
-        depending on the value of :attr:`forced_iname_deps_is_final`.
+        A :class:`frozenset` of inames identifying the loops within which this
+        instruction will be executed.
 
     .. rubric:: Iname dependencies
-
-    .. attribute:: boostable
-
-        Whether the instruction may safely be executed inside more loops than
-        advertised without changing the meaning of the program. Allowed values
-        are *None* (for unknown), *True*, and *False*.
-
-    .. attribute:: boostable_into
-
-        A :class:`set` of inames into which the instruction
-        may need to be boosted, as a heuristic help for the scheduler.
-        Also allowed to be *None* to indicate that this hasn't been
-        decided yet.
 
     .. rubric:: Tagging
 
@@ -622,6 +604,9 @@ class InstructionBase(Record):
 
         A :class:`frozenset` of string identifiers that can be used to
         identify groups of instructions.
+
+        Tags starting with exclamation marks (``!``) are reserved and may have
+        specific meanings defined by :mod:`loopy` or its targets.
 
     .. automethod:: __init__
     .. automethod:: assignee_var_names
@@ -632,30 +617,47 @@ class InstructionBase(Record):
     .. automethod:: copy
     """
 
+    # within_inames_is_final, boostable and boostable_into are deprecated and
+    # will be removed in version 2017.x.
+
     fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
-            "forced_iname_deps_is_final forced_iname_deps "
+            "within_inames_is_final within_inames "
             "priority boostable boostable_into".split())
 
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             no_sync_with,
-            forced_iname_deps_is_final, forced_iname_deps,
+            within_inames_is_final, within_inames,
             priority,
             boostable, boostable_into, predicates, tags,
-            insn_deps=None, insn_deps_is_final=None):
+            insn_deps=None, insn_deps_is_final=None,
+            forced_iname_deps=None, forced_iname_deps_is_final=None):
+
+        # {{{ backwards compatibility goop
 
         if depends_on is not None and insn_deps is not None:
-            raise ValueError("may not specify both insn_deps and depends_on")
+            raise LoopyError("may not specify both insn_deps and depends_on")
         elif insn_deps is not None:
-            from warnings import warn
             warn("insn_deps is deprecated, use depends_on",
                     DeprecationWarning, stacklevel=2)
 
             depends_on = insn_deps
             depends_on_is_final = insn_deps_is_final
+
+        if forced_iname_deps is not None and within_inames is not None:
+            raise LoopyError("may not specify both forced_iname_deps "
+                    "and within_inames")
+        elif forced_iname_deps is not None:
+            warn("forced_iname_deps is deprecated, use within_inames",
+                    DeprecationWarning, stacklevel=2)
+
+            within_inames = forced_iname_deps
+            within_inames_is_final = forced_iname_deps_is_final
+
+        # }}}
 
         if depends_on is None:
             depends_on = frozenset()
@@ -669,8 +671,11 @@ class InstructionBase(Record):
         if no_sync_with is None:
             no_sync_with = frozenset()
 
-        if forced_iname_deps_is_final is None:
-            forced_iname_deps_is_final = False
+        if within_inames is None:
+            within_inames = frozenset()
+
+        if within_inames_is_final is None:
+            within_inames_is_final = False
 
         if depends_on_is_final is None:
             depends_on_is_final = False
@@ -694,10 +699,10 @@ class InstructionBase(Record):
         # assert all(is_interned(dep) for dep in depends_on)
         # assert all(is_interned(grp) for grp in groups)
         # assert all(is_interned(grp) for grp in conflicts_with_groups)
-        # assert all(is_interned(iname) for iname in forced_iname_deps)
+        # assert all(is_interned(iname) for iname in within_inames)
         # assert all(is_interned(pred) for pred in predicates)
 
-        assert isinstance(forced_iname_deps, frozenset)
+        assert isinstance(within_inames, frozenset)
         assert isinstance(depends_on, frozenset) or depends_on is None
         assert isinstance(groups, frozenset)
         assert isinstance(conflicts_with_groups, frozenset)
@@ -708,23 +713,44 @@ class InstructionBase(Record):
                 depends_on_is_final=depends_on_is_final,
                 no_sync_with=no_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
                 priority=priority,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 predicates=predicates,
                 tags=tags)
 
-    # legacy
+    # {{{ backwards compatibility goop
+
     @property
     def insn_deps(self):
+        warn("insn_deps is deprecated, use depends_on",
+                DeprecationWarning, stacklevel=2)
+
         return self.depends_on
 
     # legacy
     @property
     def insn_deps_is_final(self):
+        warn("insn_deps_is_final is deprecated, use depends_on_is_final",
+                DeprecationWarning, stacklevel=2)
+
         return self.depends_on_is_final
+
+    @property
+    def forced_iname_deps(self):
+        warn("forced_iname_deps is deprecated, use within_inames",
+                DeprecationWarning, stacklevel=2)
+        return self.within_inames
+
+    @property
+    def forced_iname_deps_is_final(self):
+        warn("forced_iname_deps_is_final is deprecated, use within_inames_is_final",
+                DeprecationWarning, stacklevel=2)
+        return self.within_inames_is_final
+
+    # }}}
 
     # {{{ abstract interface
 
@@ -877,8 +903,8 @@ class InstructionBase(Record):
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
                 intern_frozenset_of_ids(self.conflicts_with_groups))
-        self.forced_iname_deps = (
-                intern_frozenset_of_ids(self.forced_iname_deps))
+        self.within_inames = (
+                intern_frozenset_of_ids(self.within_inames))
         self.predicates = (
                 intern_frozenset_of_ids(self.predicates))
 
@@ -1170,12 +1196,13 @@ class Assignment(MultiAssignmentBase):
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
-            forced_iname_deps_is_final=None,
-            forced_iname_deps=frozenset(),
+            within_inames_is_final=None,
+            within_inames=None,
             boostable=None, boostable_into=None, tags=None,
             temp_var_type=None, atomicity=(),
             priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None):
+            insn_deps=None, insn_deps_is_final=None,
+            forced_iname_deps=None, forced_iname_deps_is_final=None):
 
         super(Assignment, self).__init__(
                 id=id,
@@ -1184,15 +1211,17 @@ class Assignment(MultiAssignmentBase):
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
                 predicates=predicates,
                 tags=tags,
                 insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final)
+                insn_deps_is_final=insn_deps_is_final,
+                forced_iname_deps=forced_iname_deps,
+                forced_iname_deps_is_final=forced_iname_deps_is_final)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -1200,13 +1229,10 @@ class Assignment(MultiAssignmentBase):
         if isinstance(expression, str):
             expression = parse(expression)
 
-        # FIXME: It may be worth it to enable this check eventually.
-        # For now, it causes grief with certain 'checky' uses of the
-        # with_transformed_expressions(). (notably the access checker)
-        #
-        # from pymbolic.primitives import Variable, Subscript
-        # if not isinstance(assignee, (Variable, Subscript)):
-        #     raise LoopyError("invalid lvalue '%s'" % assignee)
+        from pymbolic.primitives import Variable, Subscript
+        from loopy.symbolic import LinearSubscript
+        if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+            raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignee = assignee
         self.expression = expression
@@ -1288,6 +1314,8 @@ class CallInstruction(MultiAssignmentBase):
 
     .. attribute:: assignees
 
+        A :class:`tuple` of left-hand sides for the assignment
+
     .. attribute:: expression
 
     The following attributes are only used until
@@ -1312,12 +1340,14 @@ class CallInstruction(MultiAssignmentBase):
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
-            forced_iname_deps_is_final=None,
-            forced_iname_deps=frozenset(),
+            within_inames_is_final=None,
+            within_inames=None,
             boostable=None, boostable_into=None, tags=None,
             temp_var_types=None,
             priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None):
+            insn_deps=None, insn_deps_is_final=None,
+            forced_iname_deps=None,
+            forced_iname_deps_is_final=None):
 
         super(CallInstruction, self).__init__(
                 id=id,
@@ -1326,15 +1356,17 @@ class CallInstruction(MultiAssignmentBase):
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority,
                 predicates=predicates,
                 tags=tags,
                 insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final)
+                insn_deps_is_final=insn_deps_is_final,
+                forced_iname_deps=forced_iname_deps,
+                forced_iname_deps_is_final=forced_iname_deps_is_final)
 
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
@@ -1345,16 +1377,19 @@ class CallInstruction(MultiAssignmentBase):
         from loopy.symbolic import parse
         if isinstance(assignees, str):
             assignees = parse(assignees)
+        if not isinstance(assignees, tuple):
+            raise LoopyError("'assignees' argument to CallInstruction "
+                    "must be a tuple or a string parseable to a tuple"
+                    "--got '%s'" % type(assignees).__name__)
+
         if isinstance(expression, str):
             expression = parse(expression)
 
-        # FIXME: It may be worth it to enable this check eventually.
-        # For now, it causes grief with certain 'checky' uses of the
-        # with_transformed_expressions(). (notably the access checker)
-        #
-        # from pymbolic.primitives import Variable, Subscript
-        # if not isinstance(assignee, (Variable, Subscript)):
-        #     raise LoopyError("invalid lvalue '%s'" % assignee)
+        from pymbolic.primitives import Variable, Subscript
+        from loopy.symbolic import LinearSubscript
+        for assignee in assignees:
+            if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+                raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignees = assignees
         self.expression = expression
@@ -1414,9 +1449,7 @@ class CallInstruction(MultiAssignmentBase):
 
 
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
-    if len(assignees) < 1:
-        raise LoopyError("every instruction must have a left-hand side")
-    elif len(assignees) > 1:
+    if len(assignees) > 1 or len(assignees) == 0:
         atomicity = kwargs.pop("atomicity", ())
         if atomicity:
             raise LoopyError("atomic operations with more than one "
@@ -1491,7 +1524,7 @@ class CInstruction(InstructionBase):
             id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
-            forced_iname_deps_is_final=None, forced_iname_deps=frozenset(),
+            within_inames_is_final=None, within_inames=None,
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset(), tags=None,
             insn_deps=None, insn_deps_is_final=None):
@@ -1511,8 +1544,8 @@ class CInstruction(InstructionBase):
                 depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                forced_iname_deps_is_final=forced_iname_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority, predicates=predicates, tags=tags,

@@ -63,10 +63,11 @@ def _add_dtypes(knl, dtype_dict):
     dtype_dict = dtype_dict.copy()
     new_args = []
 
+    from loopy.types import to_loopy_type
     for arg in knl.args:
         new_dtype = dtype_dict.pop(arg.name, None)
         if new_dtype is not None:
-            new_dtype = np.dtype(new_dtype)
+            new_dtype = to_loopy_type(new_dtype)
             if arg.dtype is not None and arg.dtype != new_dtype:
                 raise RuntimeError(
                         "argument '%s' already has a different dtype "
@@ -142,7 +143,7 @@ def guess_iname_deps_based_on_var_use(kernel, insn, insn_id_to_inames=None):
         for writer_id in writer_map[tv_name]:
             writer_insn = kernel.id_to_insn[writer_id]
             if insn_id_to_inames is None:
-                writer_inames = writer_insn.forced_iname_deps
+                writer_inames = writer_insn.within_inames
             else:
                 writer_inames = insn_id_to_inames[writer_id]
 
@@ -180,12 +181,12 @@ def find_all_insn_inames(kernel):
         all_write_deps[insn.id] = write_deps = insn.write_dependency_names()
         deps = read_deps | write_deps
 
-        if insn.forced_iname_deps_is_final:
-            iname_deps = insn.forced_iname_deps
+        if insn.within_inames_is_final:
+            iname_deps = insn.within_inames
         else:
             iname_deps = (
                     deps & kernel.all_inames()
-                    | insn.forced_iname_deps)
+                    | insn.within_inames)
 
         assert isinstance(read_deps, frozenset), type(insn)
         assert isinstance(write_deps, frozenset), type(insn)
@@ -217,7 +218,7 @@ def find_all_insn_inames(kernel):
         did_something = False
         for insn in kernel.instructions:
 
-            if insn.forced_iname_deps_is_final:
+            if insn.within_inames_is_final:
                 continue
 
             # {{{ depdency-based propagation
@@ -232,12 +233,12 @@ def find_all_insn_inames(kernel):
                 did_something = True
 
                 warn_with_kernel(kernel, "inferred_iname",
-                        "The iname(s) '%s' on instruction '%s' in kernel '%s' "
+                        "The iname(s) '%s' on instruction '%s' "
                         "was/were automatically added. "
                         "This is deprecated. Please add the iname "
                         "to the instruction "
                         "explicitly, e.g. by adding 'for' loops"
-                        % (", ".join(inames_new-inames_old), insn.id, kernel.name))
+                        % (", ".join(inames_new-inames_old), insn.id))
 
             # }}}
 
@@ -273,7 +274,7 @@ def find_all_insn_inames(kernel):
                         "automatically added. "
                         "This is deprecated. Please add the iname "
                         "to the instruction "
-                        "explicitly, e.g. by adding '{inames=...}"
+                        "explicitly, e.g. by adding 'for' loops"
                         % (", ".join(inames_new-inames_old), insn.id))
 
             # }}}

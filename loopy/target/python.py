@@ -256,9 +256,18 @@ class PythonASTBuilderBase(ASTBuilderBase):
         from genpy import If
         return If(condition_str, ast)
 
-    def emit_assignment(self, codegen_state, lhs, rhs):
+    def emit_assignment(self, codegen_state, insn):
+        ecm = codegen_state.expression_to_code_mapper
+
+        if insn.atomicity:
+            raise NotImplementedError("atomic ops in Python")
+
+        from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import Assign
-        return Assign(lhs, rhs)
+
+        return Assign(
+                ecm(insn.assignee, prec=PREC_NONE, type_context=None),
+                ecm(insn.expression, prec=PREC_NONE, type_context=None))
 
     # }}}
 

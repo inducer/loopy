@@ -34,17 +34,41 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# {{{ sanity checks run before preprocessing
+
+def check_identifiers_in_subst_rules(knl):
+    """Substitution rules may only refer to kernel-global quantities or their
+    own arguments.
+    """
+
+    from loopy.symbolic import get_dependencies
+
+    allowed_identifiers = knl.all_variable_names()
+
+    for rule in six.itervalues(knl.substitutions):
+        deps = get_dependencies(rule.expression)
+        rule_allowed_identifiers = allowed_identifiers | frozenset(rule.arguments)
+
+        if not deps <= rule_allowed_identifiers:
+            raise LoopyError("kernel '%s': substitution rule '%s' refers to "
+                    "identifier(s) '%s' which are neither rule arguments nor "
+                    "kernel-global identifiers"
+                    % (knl.name, ", ".join(deps-rule_allowed_identifiers)))
+
+# }}}
+
+
 # {{{ sanity checks run pre-scheduling
 
 def check_insn_attributes(kernel):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
     for insn in kernel.instructions:
-        if not insn.forced_iname_deps <= kernel.all_inames():
+        if not insn.within_inames <= kernel.all_inames():
             raise LoopyError("insn '%s' has unknown forced iname "
                     "dependencies: %s"
                     % (insn.id, ", ".join(
-                        insn.forced_iname_deps - kernel.all_inames())))
+                        insn.within_inames - kernel.all_inames())))
 
         if insn.depends_on is not None and not insn.depends_on <= all_insn_ids:
             raise LoopyError("insn '%s' has unknown instruction "
@@ -278,7 +302,12 @@ def check_bounds(kernel):
             continue
 
         acm = _AccessCheckMapper(kernel, domain, insn.id)
-        insn.with_transformed_expressions(acm)
+
+        def run_acm(expr):
+            acm(expr)
+            return expr
+
+        insn.with_transformed_expressions(run_acm)
 
 
 def check_write_destinations(kernel):
@@ -324,7 +353,7 @@ def check_has_schedulable_iname_nesting(kernel):
 
 def pre_schedule_checks(kernel):
     try:
-        logger.info("pre-schedule check %s: start" % kernel.name)
+        logger.info("%s: pre-schedule check: start" % kernel.name)
 
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
@@ -337,7 +366,7 @@ def pre_schedule_checks(kernel):
         check_write_destinations(kernel)
         check_has_schedulable_iname_nesting(kernel)
 
-        logger.info("pre-schedule check %s: done" % kernel.name)
+        logger.info("%s: pre-schedule check: done" % kernel.name)
     except KeyboardInterrupt:
         raise
     except:

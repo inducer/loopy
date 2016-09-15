@@ -27,7 +27,7 @@ import six
 from pytools import Record
 import sys
 import islpy as isl
-from loopy.diagnostic import LoopyError  # noqa
+from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -529,6 +529,11 @@ class SchedulerState(Record):
         A mapping from instruction group names to the number of instructions
         in them that are left to schedule. If a group name occurs in this
         mapping, that group is considered active.
+
+    .. attribute:: uses_of_boostability
+
+        Used to produce warnings about deprecated 'boosting' behavior
+        Should be removed along with boostability in 2017.x.
     """
 
     @property
@@ -624,6 +629,7 @@ def generate_loop_schedules_internal(
         # If insn is boostable, it may be placed inside a more deeply
         # nested loop without harm.
 
+        orig_have = have
         if allow_boost:
             # Note that the inames in 'insn.boostable_into' necessarily won't
             # be contained in 'want'.
@@ -685,12 +691,21 @@ def generate_loop_schedules_internal(
 
             # }}}
 
+            new_uses_of_boostability = []
+            if allow_boost:
+                if orig_have & insn.boostable_into:
+                    new_uses_of_boostability.append(
+                            (insn.id, orig_have & insn.boostable_into))
+
             new_sched_state = sched_state.copy(
                     scheduled_insn_ids=sched_state.scheduled_insn_ids | iid_set,
                     unscheduled_insn_ids=sched_state.unscheduled_insn_ids - iid_set,
                     schedule=(
                         sched_state.schedule + (RunInstruction(insn_id=insn.id),)),
                     active_group_counts=new_active_group_counts,
+                    uses_of_boostability=(
+                        sched_state.uses_of_boostability
+                        + new_uses_of_boostability)
                     )
 
             # Don't be eager about entering/leaving loops--if progress has been
@@ -875,6 +890,10 @@ def generate_loop_schedules_internal(
                 writer_insn, = kernel.writer_map()[domain_par]
                 if writer_insn not in sched_state.scheduled_insn_ids:
                     data_dep_written = False
+                    if debug_mode:
+                        print("iname '%s' not scheduled because domain "
+                                "parameter '%s' is not yet available"
+                                % (iname, domain_par))
                     break
 
             if not data_dep_written:
@@ -1000,6 +1019,15 @@ def generate_loop_schedules_internal(
         # if done, yield result
         debug.log_success(sched_state.schedule)
 
+        for boost_insn_id, boost_inames in sched_state.uses_of_boostability:
+            warn_with_kernel(
+                    kernel, "used_boostability",
+                    "instruction '%s' was implicitly nested inside "
+                    "inames '%s' based on an idempotence heuristic. "
+                    "This is deprecated and will stop working in loopy 2017.x."
+                    % (boost_insn_id, ", ".join(boost_inames)),
+                    DeprecationWarning)
+
         yield sched_state.schedule
 
     else:
@@ -1053,7 +1081,7 @@ class DependencyRecord(Record):
 
 
 def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
-    """If there exists a depdency between target and source and the two access
+    """If there exists a dependency between target and source and the two access
     a common variable of *var_kind* in a way that requires a barrier (essentially,
     at least one write), then the function will return a tuple
     ``(target, source, var_name)``. Otherwise, it will return *None*.
@@ -1437,7 +1465,9 @@ def generate_loop_schedules(kernel, debug_args={}):
             parallel_inames=parallel_inames - ilp_inames - vec_inames,
 
             group_insn_counts=group_insn_counts(kernel),
-            active_group_counts={})
+            active_group_counts={},
+
+            uses_of_boostability=[])
 
     generators = [
             generate_loop_schedules_internal(sched_state,
@@ -1546,7 +1576,7 @@ def get_one_scheduled_kernel(kernel):
         try:
             result, ambiguous = schedule_cache[sched_cache_key]
 
-            logger.info("%s: schedule cache hit" % kernel.name)
+            logger.debug("%s: schedule cache hit" % kernel.name)
             from_cache = True
         except KeyError:
             pass

@@ -286,6 +286,7 @@ def test_rank_one(ctx_factory):
         knl = lp.add_prefetch(knl, "a")
         knl = lp.add_prefetch(knl, "b")
         knl = lp.set_loop_priority(knl, ["i", "j"])
+        knl = lp.add_inames_to_insn(knl, "i", "writes:b_fetch")
         return knl
 
     def variant_2(knl):
@@ -330,7 +331,12 @@ def test_rank_one(ctx_factory):
 
     seq_knl = knl
 
-    for variant in [variant_1, variant_2, variant_3, variant_4]:
+    for variant in [
+            variant_1,
+            variant_2,
+            variant_3,
+            variant_4
+            ]:
         lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
                 parameters={"n": n})

@@ -989,7 +989,7 @@ def test_atomic(ctx_factory, dtype):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
 
 
-def test_forced_iname_deps_and_reduction():
+def test_within_inames_and_reduction():
     # See https://github.com/inducer/loopy/issues/24
 
     # This is (purposefully) somewhat un-idiomatic, to replicate the conditions
@@ -1005,8 +1005,8 @@ def test_forced_iname_deps_and_reduction():
     from pymbolic.primitives import Subscript, Variable
     i2 = lp.Assignment("a",
             lp.Reduction("sum", "j", Subscript(Variable("phi"), Variable("j"))),
-            forced_iname_deps=frozenset(),
-            forced_iname_deps_is_final=True)
+            within_inames=frozenset(),
+            within_inames_is_final=True)
 
     k = lp.make_kernel("{[i,j] : 0<=i,j<n}",
             [i1, i2],
@@ -1106,13 +1106,16 @@ def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            <> t_private = a[k,i+1]
+            <> t_private_scalar = a[k,i+1]
+            <> t_private_array[i % 2] = a[k,i+1]
             c[k,i] = a[k,i+1]
-            out[k,i] = c[k,i] + t_private
+            out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
             """)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+    knl = lp.set_temporary_scope(knl, "t_private_scalar", "private")
+    knl = lp.set_temporary_scope(knl, "t_private_array", "private")
 
     ref_knl = knl
 
@@ -1136,6 +1139,46 @@ def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     print(cgr.host_code())
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
+def test_kernel_splitting_with_loop_and_local_temporary(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i,k]: 0<=i<n and 0<=k<3 }",
+            """
+            <> t_local[i % 8,k] = i % 8
+            c[k,i] = a[k,i+1]
+            out[k,i] = c[k,i] + t_local[i % 8,k]
+            """)
+
+    knl = lp.add_and_infer_dtypes(knl,
+            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+
+    knl = lp.set_temporary_scope(knl, "t_local", "local")
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "i", 8, outer_tag="g.0", inner_tag="l.0")
+
+    # schedule
+    from loopy.preprocess import preprocess_kernel
+    knl = preprocess_kernel(knl)
+
+    from loopy.schedule import get_one_scheduled_kernel
+    knl = get_one_scheduled_kernel(knl)
+
+    # map schedule onto host or device
+    print(knl)
+
+    cgr = lp.generate_code_v2(knl)
+
+    assert len(cgr.device_programs) == 2
+
+    print(cgr.device_code())
+    print(cgr.host_code())
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=8))
 
 
 def test_global_temporary(ctx_factory):
@@ -1269,7 +1312,7 @@ def test_call_with_no_returned_value(ctx_factory):
 
     knl = lp.make_kernel(
         "{:}",
-        [lp.CallInstruction([], p.Call(p.Variable("f"), ()))]
+        [lp.CallInstruction((), p.Call(p.Variable("f"), ()))]
         )
 
     knl = lp.register_function_manglers(knl, [_f_mangler])
@@ -1308,6 +1351,16 @@ def test_unschedulable_kernel_detection():
 
     assert not lp.has_schedulable_iname_nesting(knl)
     assert len(list(lp.get_iname_duplication_options(knl))) == 10
+
+
+def test_regression_no_ret_call_removal(ctx_factory):
+    # https://github.com/inducer/loopy/issues/32
+    knl = lp.make_kernel(
+            "{[i] : 0<=i<n}",
+            "f(sum(i, x[i]))")
+    knl = lp.add_and_infer_dtypes(knl, {"x": np.float32})
+    knl = lp.preprocess_kernel(knl)
+    assert len(knl.instructions) == 3
 
 
 if __name__ == "__main__":

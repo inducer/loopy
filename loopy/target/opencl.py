@@ -311,7 +311,7 @@ class OpenCLTarget(CTarget):
     """A target for the OpenCL C heterogeneous compute programming language.
     """
 
-    def __init__(self, atomics_flavor="cl1"):
+    def __init__(self, atomics_flavor=None):
         """
         :arg atomics_flavor: one of ``"cl1"`` (C11-style atomics from OpenCL 2.0),
             ``"cl1"`` (OpenCL 1.1 atomics, using bit-for-bit compare-and-swap
@@ -319,6 +319,9 @@ class OpenCLTarget(CTarget):
             double-exchange for floating point--not yet supported).
         """
         super(OpenCLTarget, self).__init__()
+
+        if atomics_flavor is None:
+            atomics_flavor = "cl1"
 
         if atomics_flavor not in ["cl1", "cl2"]:
             raise ValueError("unsupported atomics flavor: %s" % atomics_flavor)
@@ -495,7 +498,7 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     # {{{ code generation for atomic update
 
-    def generate_atomic_update(self, kernel, codegen_state, lhs_atomicity, lhs_var,
+    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
             lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
         from pymbolic.mapper.stringifier import PREC_NONE
 

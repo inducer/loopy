@@ -25,7 +25,8 @@ THE SOFTWARE.
 """
 
 
-from pymbolic.maxima import MaximaStringifyMapper as MaximaStringifyMapperBase
+from pymbolic.interop.maxima import \
+        MaximaStringifyMapper as MaximaStringifyMapperBase
 
 
 class MaximaStringifyMapper(MaximaStringifyMapperBase):

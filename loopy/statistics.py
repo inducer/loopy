@@ -308,7 +308,8 @@ class GlobalSubscriptCounter(CombineMapper):
         from pymbolic.primitives import Variable
         for idx, axis_tag in zip(index, array.dim_tags):
 
-            coeffs = CoefficientCollector()(idx)
+            from loopy.symbolic import simplify_using_aff
+            coeffs = CoefficientCollector()(simplify_using_aff(self.knl, idx))
             # check if he contains the lid 0 guy
             try:
                 coeff_id0 = coeffs[Variable(local_id0)]
@@ -890,7 +891,10 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
-    kernel = preprocess_kernel(kernel)
+
+    from loopy.kernel import kernel_state
+    if kernel.state < kernel_state.PREPROCESSED:
+        kernel = preprocess_kernel(kernel)
 
     write_footprints = []
     read_footprints = []
@@ -937,6 +941,13 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
         accesses on which the footprint cannot be determined (e.g.
         data-dependent or nonlinear indices)
     """
+
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    kernel = infer_unknown_types(kernel, expect_completion=True)
+
+    from loopy.kernel import kernel_state
+    if kernel.state < kernel_state.PREPROCESSED:
+        kernel = preprocess_kernel(kernel)
 
     result = {}
     fp = gather_access_footprints(kernel, ignore_uncountable=ignore_uncountable)

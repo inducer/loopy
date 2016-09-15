@@ -275,11 +275,13 @@ class PyOpenCLTarget(OpenCLTarget):
     host_program_name_prefix = "_lpy_host_"
     host_program_name_suffix = ""
 
-    def __init__(self, device=None, pyopencl_module_name="_lpy_cl"):
+    def __init__(self, device=None, pyopencl_module_name="_lpy_cl",
+            atomics_flavor=None):
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
 
-        super(PyOpenCLTarget, self).__init__()
+        super(PyOpenCLTarget, self).__init__(
+                atomics_flavor=atomics_flavor)
 
         self.device = device
         self.pyopencl_module_name = pyopencl_module_name
@@ -374,6 +376,13 @@ class PyOpenCLTarget(OpenCLTarget):
         return struct.calcsize(fmt)
 
     # }}}
+
+    def get_kernel_executor_cache_key(self, queue, **kwargs):
+        return queue.context
+
+    def get_kernel_executor(self, kernel, queue, **kwargs):
+        from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
+        return PyOpenCLKernelExecutor(queue.context, kernel)
 
 # }}}
 
@@ -615,7 +624,9 @@ class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
         from genpy import Assign, Comment, Line
 
         def alloc_nbytes(tv):
-            return tv.dtype.numpy_dtype.itemsize
+            from six.moves import reduce
+            from operator import mul
+            return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
 
         from loopy.kernel.data import temp_var_scope
 

@@ -303,6 +303,8 @@ class LoopKernel(RecordWithoutPickling):
                 state=state,
                 target=target)
 
+        self._kernel_executor_cache = {}
+
     # }}}
 
     # {{{ function mangling
@@ -671,7 +673,7 @@ class LoopKernel(RecordWithoutPickling):
         """
         result = {}
         for insn in self.instructions:
-            result[insn.id] = insn.forced_iname_deps
+            result[insn.id] = insn.within_inames
 
         return result
 
@@ -685,7 +687,7 @@ class LoopKernel(RecordWithoutPickling):
     def insn_inames(self, insn):
         if isinstance(insn, str):
             insn = self.id_to_insn[insn]
-        return insn.forced_iname_deps
+        return insn.within_inames
 
     @memoize_method
     def iname_to_insns(self):
@@ -1262,14 +1264,15 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ direct execution
 
-    @memoize_method
-    def get_compiled_kernel(self, ctx):
-        from loopy.compiled import CompiledKernel
-        return CompiledKernel(ctx, self)
+    def __call__(self, *args, **kwargs):
+        key = self.target.get_kernel_executor_cache_key(*args, **kwargs)
+        try:
+            kex = self._kernel_executor_cache[key]
+        except KeyError:
+            kex = self.target.get_kernel_executor(self, *args, **kwargs)
+            self._kernel_executor_cache[key] = kex
 
-    def __call__(self, queue, **kwargs):
-        cknl = self.get_compiled_kernel(queue.context)
-        return cknl(queue, **kwargs)
+        return kex(*args, **kwargs)
 
     # }}}
 
@@ -1363,7 +1366,7 @@ class LoopKernel(RecordWithoutPickling):
                     return False
 
                 for set_a, set_b in zip(self.domains, other.domains):
-                    if not set_a.plain_is_equal(set_b):
+                    if not (set_a.plain_is_equal(set_b) or set_a.is_equal(set_b)):
                         return False
 
             elif field_name == "assumptions":

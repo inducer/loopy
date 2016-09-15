@@ -97,7 +97,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
     ecm = codegen_state.expression_to_code_mapper
 
-    from loopy.expression import dtype_to_type_context, VectorizabilityChecker
+    from loopy.expression import VectorizabilityChecker
 
     # {{{ vectorization handling
 
@@ -141,51 +141,18 @@ def generate_assignment_instruction_code(codegen_state, insn):
     else:
         raise RuntimeError("invalid lvalue '%s'" % lhs)
 
-    lhs_var = kernel.get_var_descriptor(assignee_var_name)
-    lhs_dtype = lhs_var.dtype
-
-    if insn.atomicity is not None:
-        lhs_atomicity = [
-                a for a in insn.atomicity if a.var_name == assignee_var_name]
-        assert len(lhs_atomicity) <= 1
-        if lhs_atomicity:
-            lhs_atomicity, = lhs_atomicity
-        else:
-            lhs_atomicity = None
-    else:
-        lhs_atomicity = None
-
-    from loopy.kernel.data import AtomicInit, AtomicUpdate
-
-    lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
-    rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
-    if lhs_atomicity is None:
-        result = codegen_state.ast_builder.emit_assignment(
-                codegen_state,
-                lhs_code,
-                ecm(insn.expression, prec=PREC_NONE,
-                    type_context=rhs_type_context,
-                    needed_dtype=lhs_dtype))
-
-    elif isinstance(lhs_atomicity, AtomicInit):
-        raise NotImplementedError("atomic init")
-
-    elif isinstance(lhs_atomicity, AtomicUpdate):
-        codegen_state.seen_atomic_dtypes.add(lhs_dtype)
-        result = codegen_state.ast_builder.generate_atomic_update(
-                kernel, codegen_state, lhs_atomicity, lhs_var,
-                insn.assignee, insn.expression,
-                lhs_dtype, rhs_type_context)
-
-    else:
-        raise ValueError("unexpected lhs atomicity type: %s"
-                % type(lhs_atomicity).__name__)
+    result = codegen_state.ast_builder.emit_assignment(codegen_state, insn)
 
     # {{{ tracing
+
+    lhs_dtype = codegen_state.kernel.get_var_descriptor(assignee_var_name).dtype
 
     if kernel.options.trace_assignments or kernel.options.trace_assignment_values:
         if codegen_state.vectorization_info and is_vector:
             raise Unvectorizable("tracing does not support vectorization")
+
+        from pymbolic.mapper.stringifier import PREC_NONE
+        lhs_code = codegen_state.expression_to_code_mapper(insn.assignee, PREC_NONE)
 
         from cgen import Statement as S  # noqa
 

@@ -495,9 +495,57 @@ class CASTBuilder(ASTBuilderBase):
 
         return arg_decl
 
-    def emit_assignment(self, codegen_state, lhs, rhs):
-        from cgen import Assign
-        return Assign(lhs, rhs)
+    def emit_assignment(self, codegen_state, insn):
+        kernel = codegen_state.kernel
+        ecm = codegen_state.expression_to_code_mapper
+
+        assignee_var_name, = insn.assignee_var_names()
+
+        lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
+        lhs_dtype = lhs_var.dtype
+
+        if insn.atomicity is not None:
+            lhs_atomicity = [
+                    a for a in insn.atomicity if a.var_name == assignee_var_name]
+            assert len(lhs_atomicity) <= 1
+            if lhs_atomicity:
+                lhs_atomicity, = lhs_atomicity
+            else:
+                lhs_atomicity = None
+        else:
+            lhs_atomicity = None
+
+        from loopy.kernel.data import AtomicInit, AtomicUpdate
+        from loopy.expression import dtype_to_type_context
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
+        rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
+        if lhs_atomicity is None:
+            from cgen import Assign
+            return Assign(
+                    lhs_code,
+                    ecm(insn.expression, prec=PREC_NONE,
+                        type_context=rhs_type_context,
+                        needed_dtype=lhs_dtype))
+
+        elif isinstance(lhs_atomicity, AtomicInit):
+            raise NotImplementedError("atomic init")
+
+        elif isinstance(lhs_atomicity, AtomicUpdate):
+            codegen_state.seen_atomic_dtypes.add(lhs_dtype)
+            return codegen_state.ast_builder.emit_atomic_update(
+                    codegen_state, lhs_atomicity, lhs_var,
+                    insn.assignee, insn.expression,
+                    lhs_dtype, rhs_type_context)
+
+        else:
+            raise ValueError("unexpected lhs atomicity type: %s"
+                    % type(lhs_atomicity).__name__)
+
+    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
+            lhs_expr, rhs_expr, lhs_dtype):
+        raise NotImplementedError("atomic updates in %s" % type(self).__name__)
 
     def emit_multiple_assignment(self, codegen_state, insn):
         ecm = codegen_state.expression_to_code_mapper

@@ -95,11 +95,22 @@ def get_common_hw_inames(kernel, insn_ids):
     # Get the list of hardware inames in which the temporary is defined.
     if len(insn_ids) == 0:
         return set()
-    id_to_insn = kernel.id_to_insn
-    from six.moves import reduce
-    return reduce(
-        set.intersection,
-        (get_hw_inames(kernel, id_to_insn[id]) for id in insn_ids))
+    return set.intersection(
+        *(get_hw_inames(kernel, kernel.id_to_insn[id]) for id in insn_ids))
+
+
+def remove_illegal_loops_for_hw_tagged_inames_in_schedule(kernel):
+    from loopy.kernel.data import HardwareParallelTag
+    new_schedule = []
+
+    for item in kernel.schedule:
+        if isinstance(item, (EnterLoop, LeaveLoop)):
+            tag = kernel.iname_to_tag.get(item.iname)
+            if isinstance(tag, HardwareParallelTag):
+                continue
+        new_schedule.append(item)
+
+    return kernel.copy(schedule=new_schedule)
 
 # }}}
 
@@ -268,7 +279,7 @@ def compute_live_temporaries(kernel, schedule):
                 live_in[idx] = live_out[idx] = live_in[idx + 1]
                 idx -= 1
             else:
-                raise LoopyError("unexepcted type of schedule item: %s"
+                raise LoopyError("unexpected type of schedule item: %s"
                         % type(sched_item).__name__)
 
     # }}}
@@ -333,6 +344,10 @@ class PromotedTemporary(Record):
 
 def determine_temporaries_to_promote(kernel, temporaries, name_gen):
     """
+    For each temporary in the passed list of temporaries, construct a
+    :class:`PromotedTemporary` which describes how the temporary should
+    get promoted into global storage.
+
     :returns: A :class:`dict` mapping temporary names from `temporaries` to
               :class:`PromotedTemporary` objects
     """
@@ -351,6 +366,18 @@ def determine_temporaries_to_promote(kernel, temporaries, name_gen):
         assert temporary.base_storage is None, \
             "Cannot promote temporaries with base_storage to global"
 
+        # `hw_inames`: The set of hw-parallel tagged inames that this temporary
+        # is associated with. This is used for determining the shape of the
+        # global storage needed for saving and restoring the temporary across
+        # kernel calls.
+        #
+        # TODO: Make a policy decision about which dimensions to use. Currently,
+        # the code looks at each instruction that defines or uses the temporary,
+        # and takes the common set of hw-parallel tagged inames associated with
+        # these instructions.
+        #
+        # Furthermore, in the case of local temporaries, inames that are tagged
+        # hw-local do not contribute to the global storage shape.
         hw_inames = get_common_hw_inames(kernel,
             def_lists[temporary.name] + use_lists[temporary.name])
 
@@ -358,6 +385,8 @@ def determine_temporaries_to_promote(kernel, temporaries, name_gen):
         hw_inames = sorted(hw_inames,
             key=lambda iname: str(kernel.iname_to_tag[iname]))
 
+        # Calculate the sizes of the dimensions that get added in front for
+        # the global storage of the temporary.
         shape_prefix = []
 
         backing_hw_inames = []
@@ -411,11 +440,15 @@ def augment_domain_for_temporary_promotion(
         new_iname = name_gen("{name}_{mode}_dim_{dim}".
             format(name=orig_temporary.name,
                    mode=mode,
-                   dim=orig_dim + t_idx))
+                   dim=t_idx))
         domain = domain.set_dim_name(
             isl.dim_type.set, orig_dim + t_idx, new_iname)
-        #from loopy.kernel.data import auto
-        #iname_to_tag[new_iname] = auto
+        if orig_temporary.is_local:
+            # If the temporary is has local scope, then loads / stores can be
+            # done in parallel.
+            from loopy.kernel.data import AutoFitLocalIndexTag
+            iname_to_tag[new_iname] = AutoFitLocalIndexTag()
+
         dim_inames.append(new_iname)
 
         # Add size information.
@@ -423,7 +456,7 @@ def augment_domain_for_temporary_promotion(
         domain &= aff[0].le_set(aff[new_iname])
         size = orig_temporary.shape[t_idx]
         from loopy.symbolic import aff_from_expr
-        domain &= aff[new_iname].le_set(aff_from_expr(domain.space, size))
+        domain &= aff[new_iname].lt_set(aff_from_expr(domain.space, size))
 
     hw_inames = []
 
@@ -538,7 +571,7 @@ def restore_and_save_temporaries(kernel):
             for tval in tvals:
                 from loopy.kernel.tools import DomainChanger
                 tval_hw_inames = new_temporaries[tval].hw_inames
-                dchg = DomainChanger(kernel,
+                dchg = DomainChanger(new_kernel,
                     frozenset(sched_item.extra_inames + tval_hw_inames))
                 domain = dchg.domain
 
@@ -572,7 +605,9 @@ def restore_and_save_temporaries(kernel):
                     args = reversed(args)
 
                 from loopy.kernel.data import Assignment
-                new_insn = Assignment(*args, id=insn_id)
+                new_insn = Assignment(*args, id=insn_id,
+                    within_inames=frozenset(hw_inames + dim_inames),
+                    within_inames_is_final=True)
 
                 new_instructions.append(new_insn)
 
@@ -620,16 +655,24 @@ def restore_and_save_temporaries(kernel):
     # }}}
 
     new_iname_to_tag.update(kernel.iname_to_tag)
-    new_temporary_variables = dict(
+    updated_temporary_variables = dict(
         (t.name, t.as_variable()) for t in new_temporaries.values())
-    new_temporary_variables.update(kernel.temporary_variables)
+    updated_temporary_variables.update(kernel.temporary_variables)
 
     kernel = kernel.copy(
         iname_to_tag=new_iname_to_tag,
-        temporary_variables=new_temporary_variables,
+        temporary_variables=updated_temporary_variables,
         instructions=kernel.instructions + new_instructions,
         schedule=new_schedule
         )
+
+    from loopy.kernel.tools import assign_automatic_axes
+    kernel = assign_automatic_axes(kernel)
+
+    # Once assign_automatic_axes() does its job, loops in the schedule
+    # for newly hardware-tagged inames are no longer necessary (and in
+    # fact illegal), so remove them.
+    kernel = remove_illegal_loops_for_hw_tagged_inames_in_schedule(kernel)
 
     return kernel
 
@@ -722,7 +765,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
                     current_chunk.append(sched_item)
                 i += 1
             else:
-                raise LoopyError("unexepcted type of schedule item: %s"
+                raise LoopyError("unexpected type of schedule item: %s"
                         % type(sched_item).__name__)
 
         if current_chunk and schedule_required_splitting:
