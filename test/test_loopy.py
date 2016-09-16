@@ -1282,28 +1282,6 @@ def test_finite_difference_expr_subst(ctx_factory):
 
 # {{{ call without returned values
 
-def _f_mangler(kernel, name, arg_dtypes):
-    if not isinstance(name, str):
-        return None
-
-    if (name == "f" and len(arg_dtypes) == 0):
-        from loopy.kernel.data import CallMangleInfo
-        return CallMangleInfo(
-                target_name="f",
-                result_dtypes=arg_dtypes,
-                arg_dtypes=arg_dtypes)
-
-
-def _f_preamble_gen(preamble_info):
-    yield ("10_define_f",
-            r"""
-            void f()
-            {
-                printf("Hi!\n");
-            }
-            """)
-
-
 def test_call_with_no_returned_value(ctx_factory):
     import pymbolic.primitives as p
 
@@ -1315,8 +1293,9 @@ def test_call_with_no_returned_value(ctx_factory):
         [lp.CallInstruction((), p.Call(p.Variable("f"), ()))]
         )
 
-    knl = lp.register_function_manglers(knl, [_f_mangler])
-    knl = lp.register_preamble_generators(knl, [_f_preamble_gen])
+    from library_for_test import no_ret_f_mangler, no_ret_f_preamble_gen
+    knl = lp.register_function_manglers(knl, [no_ret_f_mangler])
+    knl = lp.register_preamble_generators(knl, [no_ret_f_preamble_gen])
 
     evt, _ = knl(queue)
 
