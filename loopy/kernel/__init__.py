@@ -1285,6 +1285,7 @@ class LoopKernel(RecordWithoutPickling):
                 if hasattr(self, key))
 
         result.pop("cache_manager", None)
+        self._kernel_executor_cache = {}
 
         return result
 
