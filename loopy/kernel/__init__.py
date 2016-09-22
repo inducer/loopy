@@ -1285,7 +1285,6 @@ class LoopKernel(RecordWithoutPickling):
                 if hasattr(self, key))
 
         result.pop("cache_manager", None)
-        self._kernel_executor_cache = {}
 
         return result
 
@@ -1300,6 +1299,7 @@ class LoopKernel(RecordWithoutPickling):
 
         from loopy.kernel.tools import SetOperationCacheManager
         self.cache_manager = SetOperationCacheManager()
+        self._kernel_executor_cache = {}
 
     # }}}
 
