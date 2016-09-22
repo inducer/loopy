@@ -45,10 +45,10 @@ def test_tim2d(ctx_factory):
 
     # K - run-time symbolic
     knl = lp.make_kernel(
-            "[K] -> {[i,j,e,m,o,gi]: 0<=i,j,m,o<%d and 0<=e<K and 0<=gi<3}" % n,
+            "{[i,j,e,m,o,o2,gi]: 0<=i,j,m,o,o2<n and 0<=e<K and 0<=gi<3}",
             [
                 "ur(a,b) := simul_reduce(sum, o, D[a,o]*u[e,o,b])",
-                "us(a,b) := simul_reduce(sum, o, D[b,o]*u[e,a,o])",
+                "us(a,b) := simul_reduce(sum, o2, D[b,o2]*u[e,a,o2])",
 
                 #"Gu(mat_entry,a,b) := G[mat_entry,e,m,j]*ur(m,j)",
 
@@ -70,6 +70,7 @@ def test_tim2d(ctx_factory):
                 ],
             name="semlap2D", assumptions="K>=1")
 
+    knl = lp.fix_parameters(knl, n=n)
     knl = lp.duplicate_inames(knl, "o", within="id:ur")
     knl = lp.duplicate_inames(knl, "o", within="id:us")
 
