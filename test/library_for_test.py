@@ -1,3 +1,5 @@
+# This exists because function handles can't be pickled.
+
 def no_ret_f_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
@@ -15,5 +17,6 @@ def no_ret_f_preamble_gen(preamble_info):
             r"""
             void f()
             {
+                printf("Hi!\n");
             }
             """)
