@@ -226,3 +226,7 @@ def make_options(options_arg):
         return Options(**ioptions_args)
     elif not isinstance(options_arg, Options):
         return Options(**options_arg)
+    elif isinstance(options_arg, Options):
+        return options_arg
+    else:
+        raise TypeError("invalid argument to make_options")
