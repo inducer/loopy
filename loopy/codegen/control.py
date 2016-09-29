@@ -182,6 +182,9 @@ def get_required_predicates(kernel, sched_index):
         else:
             result = result & my_preds
 
+    if result is None:
+        result = frozenset()
+
     return result
 
 
