@@ -1059,7 +1059,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             return var
 
 
-def expand_cses(instructions, cse_prefix="cse_expr"):
+def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
     def add_assignment(base_name, expr, dtype):
         if base_name is None:
             base_name = "var"
@@ -1090,12 +1090,14 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
                 )
         newly_created_insn_ids.add(new_insn.id)
         new_insns.append(new_insn)
+        new_inames_to_dup.append(insn_inames_to_dup)
 
         return new_var_name
 
     cseam = CSEToAssignmentMapper(add_assignment=add_assignment)
 
     new_insns = []
+    new_inames_to_dup = []
 
     from pytools import UniqueNameGenerator
     var_name_gen = UniqueNameGenerator(forced_prefix=cse_prefix)
@@ -1103,13 +1105,15 @@ def expand_cses(instructions, cse_prefix="cse_expr"):
     newly_created_insn_ids = set()
     new_temp_vars = []
 
-    for insn in instructions:
+    for insn, insn_inames_to_dup in zip(instructions, inames_to_dup):
         if isinstance(insn, MultiAssignmentBase):
             new_insns.append(insn.copy(expression=cseam(insn.expression)))
+            new_inames_to_dup.append(insn_inames_to_dup)
         else:
             new_insns.append(insn)
+            new_inames_to_dup.append(insn_inames_to_dup)
 
-    return (new_insns, new_temp_vars)
+    return new_insns, new_inames_to_dup, new_temp_vars
 
 # }}}
 
@@ -1593,7 +1597,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # }}}
 
-    instructions, cse_temp_vars = expand_cses(instructions)
+    instructions, inames_to_dup, cse_temp_vars = expand_cses(
+            instructions, inames_to_dup)
     for tv in cse_temp_vars:
         temporary_variables[tv.name] = tv
     del cse_temp_vars
@@ -1616,6 +1621,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             options=options,
             target=target,
             **kwargs)
+
+    assert len(knl.instructions) == len(inames_to_dup)
 
     from loopy import duplicate_inames
     from loopy.match import Id
