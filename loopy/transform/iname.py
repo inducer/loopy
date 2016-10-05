@@ -956,7 +956,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
 
         # If we find a duplication option and fo not use boostable_into
         # information, we restart this generator with use_boostable_into=True
-        if not use_boostable_into:
+        if not use_boostable_into and not knl.options.ignore_boostable_into_field:
             for option in get_iname_duplication_options(knl, True):
                 yield option
 
