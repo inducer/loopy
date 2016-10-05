@@ -1256,8 +1256,10 @@ class Assignment(MultiAssignmentBase):
     # }}}
 
     def __str__(self):
-        result = "%s: %s <- %s" % (self.id,
-                self.assignee, self.expression)
+        result = "%s <- %s" % (self.assignee, self.expression)
+
+        if self.id is not None:
+            result = "%s: " % self.id + result
 
         options = self.get_str_options()
         if options:
