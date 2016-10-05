@@ -920,7 +920,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         elif name == "if":
             if len(expr.parameters) == 3:
                 from pymbolic.primitives import If
-                return If(*expr.parameters)
+                return If(*tuple(self.rec(p) for p in expr.parameters))
             else:
                 raise TypeError("if takes three arguments")
 
