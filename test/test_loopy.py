@@ -1342,6 +1342,20 @@ def test_regression_no_ret_call_removal(ctx_factory):
     assert len(knl.instructions) == 3
 
 
+def test_regression_persistent_hash():
+    knl1 = lp.make_kernel(
+            "{[i] : 0<=i<n}",
+            "cse_exprvar = d[2]*d[2]")
+
+    knl2 = lp.make_kernel(
+            "{[i] : 0<=i<n}",
+            "cse_exprvar = d[0]*d[0]")
+    from loopy.tools import LoopyKeyBuilder
+    lkb = LoopyKeyBuilder()
+    assert lkb(knl1.instructions[0]) != lkb(knl2.instructions[0])
+    assert lkb(knl1) != lkb(knl2)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
