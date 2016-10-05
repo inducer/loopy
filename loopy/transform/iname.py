@@ -223,7 +223,7 @@ def _split_iname_backend(kernel, split_iname,
     subst_map = {var(split_iname): new_loop_index}
     applied_iname_rewrites.append(subst_map)
 
-    # {{{ update forced_iname deps
+    # {{{ update within_inames
 
     new_insns = []
     for insn in kernel.instructions:
@@ -934,7 +934,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     # First we extract the minimal necessary information from the kernel
     if use_boostable_into:
         insn_deps = (
-            frozenset(insn.forced_iname_deps.union(
+            frozenset(insn.within_inames.union(
                 insn.boostable_into if insn.boostable_into is not None
                 else frozenset([]))
                 for insn in knl.instructions)
@@ -942,7 +942,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             frozenset([frozenset([])]))
     else:
         insn_deps = (
-            frozenset(insn.forced_iname_deps for insn in knl.instructions)
+            frozenset(insn.within_inames for insn in knl.instructions)
             -
             frozenset([frozenset([])]))
 
@@ -975,10 +975,11 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
         from loopy.match import Id, Or
         within = Or(tuple(
             Id(insn.id) for insn in knl.instructions
-            if insn.forced_iname_deps in insns))
+            if insn.within_inames in insns))
 
-        # Only yield the result if an instruction matched. With use_boostable_into=True
-        # this is not always true.
+        # Only yield the result if an instruction matched. With
+        # use_boostable_into=True this is not always true.
+
         if within.children:
             yield iname, within
 
