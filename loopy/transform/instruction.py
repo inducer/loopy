@@ -27,16 +27,21 @@ import six  # noqa
 from loopy.diagnostic import LoopyError
 
 
-# {{{ instruction processing
+# {{{ find_instructions
 
 def find_instructions(kernel, insn_match):
-    from loopy.context_matching import parse_match
+    from loopy.match import parse_match
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
 
 
+# }}}
+
+
+# {{{ map_instructions
+
 def map_instructions(kernel, insn_match, f):
-    from loopy.context_matching import parse_match
+    from loopy.match import parse_match
     match = parse_match(insn_match)
 
     new_insns = []
@@ -49,12 +54,16 @@ def map_instructions(kernel, insn_match, f):
 
     return kernel.copy(instructions=new_insns)
 
+# }}}
+
+
+# {{{ set_instruction_priority
 
 def set_instruction_priority(kernel, insn_match, priority):
     """Set the priority of instructions matching *insn_match* to *priority*.
 
     *insn_match* may be any instruction id match understood by
-    :func:`loopy.context_matching.parse_match`.
+    :func:`loopy.match.parse_match`.
     """
 
     def set_prio(insn):
@@ -62,13 +71,17 @@ def set_instruction_priority(kernel, insn_match, priority):
 
     return map_instructions(kernel, insn_match, set_prio)
 
+# }}}
+
+
+# {{{ add_dependency
 
 def add_dependency(kernel, insn_match, dependency):
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
 
     *insn_match* may be any instruction id match understood by
-    :func:`loopy.context_matching.parse_match`.
+    :func:`loopy.match.parse_match`.
     """
 
     if dependency not in kernel.id_to_insn:
@@ -87,6 +100,10 @@ def add_dependency(kernel, insn_match, dependency):
 
     return map_instructions(kernel, insn_match, add_dep)
 
+# }}}
+
+
+# {{{ remove_instructions
 
 def remove_instructions(kernel, insn_ids):
     """Return a new kernel with instructions in *insn_ids* removed.
@@ -127,17 +144,42 @@ def remove_instructions(kernel, insn_ids):
 # }}}
 
 
+# {{{ replace_instruction_ids
+
+def replace_instruction_ids(kernel, replacements):
+    new_insns = []
+
+    for insn in kernel.instructions:
+        changed = False
+        new_depends_on = []
+
+        for dep in insn.depends_on:
+            if dep in replacements:
+                new_depends_on.extend(replacements[dep])
+                changed = True
+            else:
+                new_depends_on.append(dep)
+
+        new_insns.append(
+                insn.copy(depends_on=frozenset(new_depends_on))
+                if changed else insn)
+
+    return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ tag_instructions
 
 def tag_instructions(kernel, new_tag, within=None):
-    from loopy.context_matching import parse_match
+    from loopy.match import parse_match
     within = parse_match(within)
 
     new_insns = []
     for insn in kernel.instructions:
         if within(kernel, insn):
             new_insns.append(
-                    insn.copy(tags=insn.tags + (new_tag,)))
+                    insn.copy(tags=insn.tags | frozenset([new_tag])))
         else:
             new_insns.append(insn)
 

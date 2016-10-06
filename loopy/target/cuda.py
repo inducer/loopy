@@ -26,10 +26,13 @@ THE SOFTWARE.
 
 import numpy as np
 
-from loopy.target.c import CTarget
-from loopy.target.c.codegen.expression import LoopyCCodeMapper
 from pytools import memoize_method
+
+from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c.codegen.expression import ExpressionToCMapper
 from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
+from loopy.kernel.data import temp_var_scope
 
 
 # {{{ vector types
@@ -136,15 +139,17 @@ def cuda_function_mangler(kernel, name, arg_dtypes):
 
 # {{{ expression mapper
 
-class LoopyCudaCCodeMapper(LoopyCCodeMapper):
+class ExpressionToCudaCMapper(ExpressionToCMapper):
     _GRID_AXES = "xyz"
 
     @staticmethod
     def _get_index_ctype(kernel):
-        if kernel.index_dtype == np.int32:
+        if kernel.index_dtype.numpy_dtype == np.int32:
             return "int32_t"
-        else:
+        elif kernel.index_dtype.numpy_dtype == np.int32:
             return "int64_t"
+        else:
+            raise LoopyError("unexpected index type")
 
     def map_group_hw_index(self, expr, enclosing_prec, type_context):
         return "((%s) blockIdx.%s)" % (
@@ -173,15 +178,10 @@ class CudaTarget(CTarget):
 
         super(CudaTarget, self).__init__()
 
-    # {{{ library
+    def get_device_ast_builder(self):
+        return CUDACASTBuilder(self)
 
-    def function_manglers(self):
-        return (
-                super(CudaTarget, self).function_manglers() + [
-                    cuda_function_mangler
-                    ])
-
-    # }}}
+    # {{{ types
 
     @memoize_method
     def get_dtype_registry(self):
@@ -198,24 +198,51 @@ class CudaTarget(CTarget):
         return result
 
     def is_vector_dtype(self, dtype):
-        return list(vec.types.values())
+        return (isinstance(dtype, NumpyType)
+                and dtype.numpy_dtype in list(vec.types.values()))
 
     def vector_dtype(self, base, count):
-        return vec.types[base, count]
+        return NumpyType(
+                vec.types[base.numpy_dtype, count],
+                target=self)
+
+    # }}}
+
+# }}}
+
+
+# {{{ ast builder
+
+class CUDACASTBuilder(CASTBuilder):
+    # {{{ library
+
+    def function_manglers(self):
+        return (
+                super(CUDACASTBuilder, self).function_manglers() + [
+                    cuda_function_mangler
+                    ])
 
     # }}}
 
     # {{{ top-level codegen
 
-    def wrap_function_declaration(self, kernel, fdecl):
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        fdecl = super(CUDACASTBuilder, self).get_function_declaration(
+                codegen_state, codegen_result, schedule_index)
+
         from cgen.cuda import CudaGlobal, CudaLaunchBounds
         fdecl = CudaGlobal(fdecl)
 
-        if self.extern_c:
+        if self.target.extern_c:
             from cgen import Extern
             fdecl = Extern("C", fdecl)
 
-        _, local_grid_size = kernel.get_grid_sizes_as_exprs()
+        from loopy.schedule import get_insn_ids_for_block_at
+        _, local_grid_size = \
+                codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
+                        get_insn_ids_for_block_at(
+                            codegen_state.kernel.schedule, schedule_index))
 
         from loopy.symbolic import get_dependencies
         if not get_dependencies(local_grid_size):
@@ -251,7 +278,7 @@ class CudaTarget(CTarget):
     # {{{ code generation guts
 
     def get_expression_to_code_mapper(self, codegen_state):
-        return LoopyCudaCCodeMapper(codegen_state)
+        return ExpressionToCudaCMapper(codegen_state)
 
     _VEC_AXES = "xyzw"
 
@@ -267,25 +294,29 @@ class CudaTarget(CTarget):
             if comment:
                 comment = " /* %s */" % comment
 
-            from loopy.codegen import GeneratedInstruction
             from cgen import Statement
-            return GeneratedInstruction(
-                    ast=Statement("__syncthreads()%s" % comment),
-                    implemented_domain=None)
+            return Statement("__syncthreads()%s" % comment)
         elif kind == "global":
             raise LoopyError("CUDA does not have global barriers")
         else:
             raise LoopyError("unknown barrier kind")
 
-    def wrap_temporary_decl(self, decl, is_local):
-        if is_local:
+    def wrap_temporary_decl(self, decl, scope):
+        if scope == temp_var_scope.LOCAL:
             from cgen.cuda import CudaShared
             return CudaShared(decl)
-        else:
+        elif scope == temp_var_scope.PRIVATE:
             return decl
+        else:
+            raise ValueError("unexpected temporary variable scope: %s"
+                    % scope)
+
+    def wrap_global_constant(self, decl):
+        from cgen.opencl import CudaConstant
+        return CudaConstant(decl)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.codegen import POD  # uses the correct complex type
+        from loopy.target.c import POD  # uses the correct complex type
         from cgen import Const
         from cgen.cuda import CudaRestrictPointer
 
@@ -296,11 +327,11 @@ class CudaTarget(CTarget):
 
         return arg_decl
 
-    def get_image_arg_decl(self, name, shape, dtype, is_written):
+    def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError("not yet: texture arguments in CUDA")
 
     def get_constant_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.codegen import POD  # uses the correct complex type
+        from loopy.target.c import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
         from cgen.cuda import CudaConstant
 

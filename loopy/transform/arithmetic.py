@@ -136,9 +136,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
             raise ValueError("unexpected type of access_expr")
 
     def is_assignee(insn):
-        return any(
-                lhs == var_name
-                for lhs, sbscript in insn.assignees_and_indices())
+        return var_name in insn.assignee_var_names()
 
     def iterate_as(cls, expr):
         if isinstance(expr, cls):
@@ -158,7 +156,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
             continue
 
         if not isinstance(insn, Assignment):
-            raise LoopyError("'%s' modified by non-expression instruction"
+            raise LoopyError("'%s' modified by non-single-assignment"
                     % var_name)
 
         lhs = insn.assignee
@@ -228,6 +226,13 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
 
     # }}}
 
+    common_factors = [
+            (ik, cf) for ik, cf in common_factors
+            if cf]
+
+    if not common_factors:
+        raise LoopyError("no common factors found")
+
     # {{{ remove common factors
 
     new_insns = []
@@ -237,7 +242,7 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
             new_insns.append(insn)
             continue
 
-        (_, index_key), = insn.assignees_and_indices()
+        index_key = extract_index_key(insn.assignee)
 
         lhs = insn.assignee
         rhs = insn.expression

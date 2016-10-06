@@ -294,7 +294,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     rule.
 
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
     :arg force_retain_argument: If True and if *lhs_name* is an argument, it is
         kept even if it is no longer referenced.
 
@@ -372,7 +372,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         raise LoopyError("no assignments to variable '%s' found"
                 % lhs_name)
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     rule_mapping_context = SubstitutionRuleMappingContext(
@@ -391,11 +391,21 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     for def_id, subst_name in six.iteritems(tts.definition_insn_id_to_subst_name):
         def_insn = kernel.id_to_insn[def_id]
 
-        (_, indices), = def_insn.assignees_and_indices()
+        from loopy.kernel.data import Assignment
+        assert isinstance(def_insn, Assignment)
+
+        from pymbolic.primitives import Variable, Subscript
+        if isinstance(def_insn.assignee, Subscript):
+            indices = def_insn.assignee.index_tuple
+        elif isinstance(def_insn.assignee, Variable):
+            indices = ()
+        else:
+            raise LoopyError(
+                    "Unrecognized LHS type: %s"
+                    % type(def_insn.assignee).__name__)
 
         arguments = []
 
-        from pymbolic.primitives import Variable
         for i in indices:
             if not isinstance(i, Variable):
                 raise LoopyError("In defining instruction '%s': "
@@ -460,10 +470,13 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 # {{{ expand_subst
 
 def expand_subst(kernel, within=None):
+    if not kernel.substitutions:
+        return kernel
+
     logger.debug("%s: expand subst" % kernel.name)
 
     from loopy.symbolic import RuleAwareSubstitutionRuleExpander
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
     submap = RuleAwareSubstitutionRuleExpander(
@@ -483,7 +496,7 @@ def find_rules_matching(knl, pattern):
     :pattern: A shell-style glob pattern.
     """
 
-    from loopy.context_matching import re_from_glob
+    from loopy.match import re_from_glob
     pattern = re_from_glob(pattern)
 
     return [r for r in knl.substitutions if pattern.match(r)]

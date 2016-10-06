@@ -72,8 +72,9 @@ def test_dg_volume(ctx_factory):
                     order=order),
                 lp.ValueArg("K", np.int32, approximately=1000),
                 ],
-            name="dg_volume", assumptions="K>=1",
-            defines=dict(Np=Np))
+            name="dg_volume", assumptions="K>=1")
+
+    knl = lp.fix_parameters(knl, Np=Np)
 
     seq_knl = knl
 
@@ -218,9 +219,10 @@ def no_test_dg_surface(ctx_factory):
                 lp.GlobalArg("LIFT", dtype, shape="Np, NfpNfaces", order="C"),
                 lp.ValueArg("K", np.int32, approximately=1000),
                 ],
-            name="dg_surface", assumptions="K>=1",
-            defines=dict(Np=Np, Nfp=Nfp, NfpNfaces=Nfaces*Nfp, nsurf_dofs=K*Nfp),
-            )
+            name="dg_surface", assumptions="K>=1")
+
+    knl = lp.fix_parameters(knl,
+            Np=Np, Nfp=Nfp, NfpNfaces=Nfaces*Nfp, nsurf_dofs=K*Nfp)
 
     seq_knl = knl
 

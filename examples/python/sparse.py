@@ -1,14 +1,17 @@
 import loopy as lp
+import numpy as np
 
 k = lp.make_kernel([
-    "[m] -> { [i] : 0 <= i < m }",
-    "[length] -> { [j] : 0 <= j < length }"],
+    "{ [i] : 0 <= i < m }",
+    "{ [j] : 0 <= j < length }"],
     """
-    rowstart = rowstarts[i]
-    rowend = rowstarts[1 + i]
-    length = rowend + (-1)*rowstart
-    rowsum = 0 {id=zerosum}
-    rowsum = rowsum + x[-1 + colindices[-1 + rowstart + j]]*values[-1 + rowstart + j] {dep=zerosum}
-    y[i] = rowsum
+    <> rowstart = rowstarts[i]
+    <> rowend = rowstarts[i]
+    <> length = rowend - rowstart
+    y[i] = sum(j, values[rowstart+j] * x[colindices[rowstart + j]])
     """)
-print(k)
+
+k = lp.add_and_infer_dtypes(k, {
+    "values,x": np.float64, "rowstarts,colindices": k.index_dtype
+    })
+print(lp.generate_code(k)[0])

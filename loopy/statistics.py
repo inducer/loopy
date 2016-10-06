@@ -31,8 +31,8 @@ import islpy as isl
 from pytools import memoize_in
 from pymbolic.mapper import CombineMapper
 from functools import reduce
-from loopy.kernel.data import Assignment
-from loopy.diagnostic import warn
+from loopy.kernel.data import MultiAssignmentBase
+from loopy.diagnostic import warn, LoopyError
 
 
 __doc__ = """
@@ -45,7 +45,10 @@ __doc__ = """
 
 .. autofunction:: sum_mem_access_to_bytes
 
-.. autofunction:: get_barrier_poly
+.. autofunction:: get_synchronization_poly
+
+.. autofunction:: gather_access_footprints
+.. autofunction:: gather_access_footprint_bytes
 
 """
 
@@ -69,7 +72,7 @@ class ToCountMap:
     def __radd__(self, other):
         if other != 0:
             raise ValueError("ToCountMap: Attempted to add ToCountMap "
-                                "to {} {}. ToCountMap may only be added to "
+                                "to {0} {1}. ToCountMap may only be added to "
                                 "0 and other ToCountMap objects."
                                 .format(type(other), other))
         return self
@@ -81,7 +84,7 @@ class ToCountMap:
                 for index in self.dict.keys()))
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
-                                "ToCountMap by {} {}."
+                                "ToCountMap by {0} {1}."
                                 .format(type(other), other))
 
     __rmul__ = __mul__
@@ -484,8 +487,10 @@ class GlobalSubscriptCounter(CombineMapper):
         from loopy.kernel.array import FixedStrideArrayDimTag
         from pymbolic.primitives import Variable
         for idx, axis_tag in zip(index, array.dim_tags):
-            coeffs = CoefficientCollector()(idx)
-            # check if he contains the min lid guy
+
+            from loopy.symbolic import simplify_using_aff
+            coeffs = CoefficientCollector()(simplify_using_aff(self.knl, idx))
+            # check if he contains the lid 0 guy
             try:
                 coeff_min_lid = coeffs[Variable(min_lid)]
             except KeyError:
@@ -586,9 +591,10 @@ class GlobalSubscriptCounter(CombineMapper):
 # {{{ AccessFootprintGatherer
 
 class AccessFootprintGatherer(CombineMapper):
-    def __init__(self, kernel, domain):
+    def __init__(self, kernel, domain, ignore_uncountable=False):
         self.kernel = kernel
         self.domain = domain
+        self.ignore_uncountable = ignore_uncountable
 
     @staticmethod
     def combine(values):
@@ -627,10 +633,17 @@ class AccessFootprintGatherer(CombineMapper):
                     self.kernel.assumptions)
         except isl.Error:
             # Likely: index was non-linear, nothing we can do.
-            return
+            if self.ignore_uncountable:
+                return {}
+            else:
+                raise LoopyError("failed to gather footprint: %s" % expr)
+
         except TypeError:
             # Likely: index was non-linear, nothing we can do.
-            return
+            if self.ignore_uncountable:
+                return {}
+            else:
+                raise LoopyError("failed to gather footprint: %s" % expr)
 
         from pymbolic.primitives import Variable
         assert isinstance(expr.aggregate, Variable)
@@ -650,7 +663,10 @@ def count(kernel, set):
     except AttributeError:
         pass
 
-    count = 0
+    count = isl.PwQPolynomial.zero(
+            set.space
+            .drop_dims(dim_type.set, 0, set.dim(dim_type.set))
+            .add_dims(dim_type.set, 1))
 
     set = set.make_disjoint()
 
@@ -739,17 +755,19 @@ def count(kernel, set):
 
 # {{{ get_op_poly
 
-def get_op_poly(knl):
+def get_op_poly(knl, numpy_types=True):
 
     """Count the number of operations in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
-    :return: A mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **)**
+    :return: A mapping of **{(** *type* **,** :class:`string` **)**
              **:** :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`numpy.dtype` specifies the type of the data being
-               operated on.
+             - The *type* specifies the type of the data being
+               accessed. This can be a :class:`numpy.dtype` if
+               *numpy_types* is True, otherwise the internal
+               loopy type.
 
              - The string specifies the operation type as
                *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
@@ -785,8 +803,14 @@ def get_op_poly(knl):
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
         ops = op_counter(insn.assignee) + op_counter(insn.expression)
         op_poly = op_poly + ops*count(knl, domain)
-    return op_poly.dict
+    result = op_poly.dict
 
+    if numpy_types:
+        result = dict(
+                (TypedOp(op.dtype.numpy_dtype, op.name), count)
+                for op, count in six.iteritems(result))
+
+    return result
 # }}}
 
 
@@ -802,7 +826,7 @@ def sum_ops_to_dtypes(op_poly_dict):
     return result
 
 
-def get_lmem_access_poly(knl):
+def get_lmem_access_poly(knl, numpy_types=True):
 
     """Count the number of local memory accesses in a loopy kernel.
     """
@@ -859,22 +883,32 @@ def get_lmem_access_poly(knl):
             subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
         '''
 
-    return subs_poly.dict
+    #return subs_poly.dict
+    result = subs_poly.dict
+
+    if numpy_types:
+        result = dict(
+                (LmemAccess(mem_access.dtype.numpy_dtype, mem_access.direction), count)
+                for mem_access, count in six.iteritems(result))
+
+    return result
 
 
 # {{{ get_gmem_access_poly
-def get_gmem_access_poly(knl):  # for now just counting subscripts
+def get_gmem_access_poly(knl, numpy_types=True):  # for now just counting subscripts
 
     """Count the number of global memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
                     counted.
 
-    :return: A mapping of **{(** :class:`numpy.dtype` **,** :class:`string` **,**
+    :return: A mapping of **{(** *type* **,** :class:`string` **,**
              :class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`numpy.dtype` specifies the type of the data being
-               accessed.
+             - The *type* specifies the type of the data being
+               accessed. This can be a :class:`numpy.dtype` if
+               *numpy_types* is True, otherwise the internal
+               loopy type.
 
              - The first string in the map key specifies the global memory
                access type as
@@ -961,7 +995,15 @@ def get_gmem_access_poly(knl):  # for now just counting subscripts
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
 
-    return subs_poly.dict
+    result = subs_poly.dict
+
+    if numpy_types:
+        result = dict(
+                (StridedGmemAccess(mem_access.dtype.numpy_dtype, mem_access.stride,
+                                   mem_access.direction, mem_access.variable), count)
+                for mem_access, count in six.iteritems(result))
+
+    return result
 
 
 def get_DRAM_access_poly(knl):
@@ -998,22 +1040,27 @@ def sum_mem_access_to_bytes(m):
 # }}}
 
 
-# {{{ get_barrier_poly
+# {{{ get_synchronization_poly
 
-def get_barrier_poly(knl):
+def get_synchronization_poly(knl):
 
-    """Count the number of barriers each thread encounters in a loopy kernel.
+    """Count the number of synchronization events each thread encounters in a
+    loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
-    :return: An :class:`islpy.PwQPolynomial` holding the number of barrier calls
-             made (in terms of the :class:`loopy.LoopKernel` *inames*).
+    :return: A dictionary mapping each type of synchronization event to a
+            :class:`islpy.PwQPolynomial` holding the number of such events
+            per thread.
+
+            Possible keys include ``barrier_local``, ``barrier_global``
+            (if supported by the target) and ``kernel_launch``.
 
     Example usage::
 
         # (first create loopy kernel and specify array data types)
 
-        barrier_poly = get_barrier_poly(knl)
+        barrier_poly = get_synchronization_poly(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
         barrier_count = barrier_poly.eval_with_dict(params)
 
@@ -1022,13 +1069,27 @@ def get_barrier_poly(knl):
     """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
-    from loopy.schedule import EnterLoop, LeaveLoop, Barrier
+    from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
+            CallKernel, ReturnFromKernel, RunInstruction)
     from operator import mul
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
     iname_list = []
-    barrier_poly = isl.PwQPolynomial('{ 0 }')
+
+    result = ToCountMap()
+
+    one = isl.PwQPolynomial('{ 1 }')
+
+    def get_count_poly(iname_list):
+        if iname_list:  # (if iname_list is not empty)
+            ct = (count(knl, (
+                            knl.get_inames_domain(iname_list).
+                            project_out_except(iname_list, [dim_type.set])
+                            )), )
+            return reduce(mul, ct)
+        else:
+            return one
 
     for sched_item in knl.schedule:
         if isinstance(sched_item, EnterLoop):
@@ -1037,35 +1098,52 @@ def get_barrier_poly(knl):
         elif isinstance(sched_item, LeaveLoop):
             if sched_item.iname:  # (if not empty)
                 iname_list.pop()
-        elif isinstance(sched_item, Barrier):
-            if iname_list:  # (if iname_list is not empty)
-                ct = (count(knl, (
-                                knl.get_inames_domain(iname_list).
-                                project_out_except(iname_list, [dim_type.set])
-                                )), )
-                barrier_poly += reduce(mul, ct)
-            else:
-                barrier_poly += isl.PwQPolynomial('{ 1 }')
 
-    return barrier_poly
+        elif isinstance(sched_item, Barrier):
+            result = result + ToCountMap(
+                    {"barrier_%s" % sched_item.kind: get_count_poly(iname_list)})
+
+        elif isinstance(sched_item, CallKernel):
+            result = result + ToCountMap(
+                    {"kernel_launch": get_count_poly(iname_list)})
+
+        elif isinstance(sched_item, (ReturnFromKernel, RunInstruction)):
+            pass
+
+        else:
+            raise LoopyError("unexpected schedule item: %s"
+                    % type(sched_item).__name__)
+
+    return result.dict
 
 # }}}
 
 
 # {{{ gather_access_footprints
 
-def gather_access_footprints(kernel):
-    # TODO: Docs
+def gather_access_footprints(kernel, ignore_uncountable=False):
+    """Return a dictionary mapping ``(var_name, direction)``
+    to :class:`islpy.Set` instances capturing which indices
+    of each the array *var_name* are read/written (where
+    *direction* is either ``read`` or ``write``.
+
+    :arg ignore_uncountable: If *True*, an error will be raised for
+        accesses on which the footprint cannot be determined (e.g.
+        data-dependent or nonlinear indices)
+    """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
-    kernel = preprocess_kernel(kernel)
+
+    from loopy.kernel import kernel_state
+    if kernel.state < kernel_state.PREPROCESSED:
+        kernel = preprocess_kernel(kernel)
 
     write_footprints = []
     read_footprints = []
 
     for insn in kernel.instructions:
-        if not isinstance(insn, Assignment):
+        if not isinstance(insn, MultiAssignmentBase):
             warn(kernel, "count_non_assignment",
                     "Non-assignment instruction encountered in "
                     "gather_access_footprints, not counted")
@@ -1075,9 +1153,11 @@ def gather_access_footprints(kernel):
         inames_domain = kernel.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
 
-        afg = AccessFootprintGatherer(kernel, domain)
+        afg = AccessFootprintGatherer(kernel, domain,
+                ignore_uncountable=ignore_uncountable)
 
-        write_footprints.append(afg(insn.assignee))
+        for assignee in insn.assignees:
+            write_footprints.append(afg(insn.assignees))
         read_footprints.append(afg(insn.expression))
 
     write_footprints = AccessFootprintGatherer.combine(write_footprints)
@@ -1090,6 +1170,42 @@ def gather_access_footprints(kernel):
 
     for vname, footprint in six.iteritems(read_footprints):
         result[(vname, "read")] = footprint
+
+    return result
+
+
+def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
+    """Return a dictionary mapping ``(var_name, direction)`` to
+    :class:`islpy.PwQPolynomial` instances capturing the number of bytes  are
+    read/written (where *direction* is either ``read`` or ``write`` on array
+    *var_name*
+
+    :arg ignore_uncountable: If *True*, an error will be raised for
+        accesses on which the footprint cannot be determined (e.g.
+        data-dependent or nonlinear indices)
+    """
+
+    from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    kernel = infer_unknown_types(kernel, expect_completion=True)
+
+    from loopy.kernel import kernel_state
+    if kernel.state < kernel_state.PREPROCESSED:
+        kernel = preprocess_kernel(kernel)
+
+    result = {}
+    fp = gather_access_footprints(kernel, ignore_uncountable=ignore_uncountable)
+
+    for key, var_fp in fp.items():
+        vname, direction = key
+
+        var_descr = kernel.get_var_descriptor(vname)
+        bytes_transferred = (
+                int(var_descr.dtype.numpy_dtype.itemsize)
+                * count(kernel, var_fp))
+        if key in result:
+            result[key] += bytes_transferred
+        else:
+            result[key] = bytes_transferred
 
     return result
 

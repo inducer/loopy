@@ -40,9 +40,13 @@ from loopy.kernel.data import (
         auto,
         KernelArgument,
         ValueArg, GlobalArg, ConstantArg, ImageArg,
-        InstructionBase, Assignment, ExpressionInstruction, CInstruction,
-        TemporaryVariable,
-        SubstitutionRule)
+        memory_ordering, memory_scope, VarAtomicity, AtomicInit, AtomicUpdate,
+        InstructionBase,
+        MultiAssignmentBase, Assignment, ExpressionInstruction,
+        CallInstruction, CInstruction,
+        temp_var_scope, TemporaryVariable,
+        SubstitutionRule,
+        CallMangleInfo)
 
 from loopy.kernel import LoopKernel, kernel_state
 from loopy.kernel.tools import (
@@ -58,21 +62,27 @@ from loopy.library.reduction import register_reduction_parser
 from loopy.transform.iname import (
         set_loop_priority,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
-        rename_iname, link_inames, remove_unused_inames,
+        rename_iname, remove_unused_inames,
         split_reduction_inward, split_reduction_outward,
         affine_map_inames, find_unused_axis_tag,
-        make_reduction_inames_unique)
+        make_reduction_inames_unique,
+        add_inames_to_insn)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
         set_instruction_priority, add_dependency,
-        remove_instructions, tag_instructions)
+        remove_instructions,
+        replace_instruction_ids,
+        tag_instructions)
 
 from loopy.transform.data import (
-        add_prefetch, change_arg_to_image, tag_data_axes,
-        set_array_dim_names, remove_unused_arguments,
+        add_prefetch, change_arg_to_image,
+        tag_array_axes, tag_data_axes,
+        set_array_axis_names, set_array_dim_names,
+        remove_unused_arguments,
         alias_temporaries, set_argument_order,
-        rename_argument)
+        rename_argument,
+        set_temporary_scope)
 
 from loopy.transform.subst import (extract_subst,
         assignment_to_subst, expand_subst, find_rules_matching,
@@ -87,7 +97,8 @@ from loopy.transform.arithmetic import (
         collect_common_factors_on_increment)
 
 from loopy.transform.padding import (
-        split_array_dim, split_arg_axis, find_padding_multiple,
+        split_array_axis, split_array_dim, split_arg_axis,
+        find_padding_multiple,
         add_padding)
 
 from loopy.transform.ilp import realize_ilp
@@ -101,21 +112,29 @@ from loopy.preprocess import (preprocess_kernel, realize_reduction,
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
 from loopy.statistics import (get_op_poly, sum_ops_to_dtypes,
         get_gmem_access_poly,
-        get_DRAM_access_poly, get_barrier_poly, stringify_stats_mapping,
-        sum_mem_access_to_bytes)
-from loopy.codegen import generate_code, generate_body
+        get_DRAM_access_poly, get_synchronization_poly, stringify_stats_mapping,
+        sum_mem_access_to_bytes,
+        gather_access_footprints, gather_access_footprint_bytes)
+from loopy.codegen import (
+        PreambleInfo,
+        generate_code, generate_code_v2, generate_body)
+from loopy.codegen.result import (
+        GeneratedProgram,
+        CodeGenerationResult)
 from loopy.compiled import CompiledKernel
 from loopy.options import Options
 from loopy.auto_test import auto_test_vs_ref
 from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
-from loopy.target import TargetBase
+from loopy.target import TargetBase, ASTBuilderBase
 from loopy.target.c import CTarget
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
 from loopy.target.ispc import ISPCTarget
+from loopy.target.numba import NumbaTarget, NumbaCudaTarget
+
 
 __all__ = [
         "TaggedVariable", "Reduction", "LinearSubscript",
@@ -125,11 +144,16 @@ __all__ = [
         "LoopKernel", "kernel_state",
 
         "KernelArgument",
-        "ValueArg", "ScalarArg", "GlobalArg", "ArrayArg", "ConstantArg", "ImageArg",
-        "TemporaryVariable",
+        "memory_ordering", "memory_scope", "VarAtomicity",
+        "AtomicInit", "AtomicUpdate",
+        "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
+        "temp_var_scope", "TemporaryVariable",
         "SubstitutionRule",
+        "CallMangleInfo",
 
-        "InstructionBase", "Assignment", "ExpressionInstruction", "CInstruction",
+        "InstructionBase",
+        "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
+        "CallInstruction", "CInstruction",
 
         "default_function_mangler", "single_arg_function_mangler",
 
@@ -142,19 +166,24 @@ __all__ = [
         "set_loop_priority",
         "split_iname", "chunk_iname", "join_inames", "tag_inames",
         "duplicate_inames",
-        "rename_iname", "link_inames", "remove_unused_inames",
+        "rename_iname", "remove_unused_inames",
         "split_reduction_inward", "split_reduction_outward",
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
+        "add_inames_to_insn",
 
-        "add_prefetch", "change_arg_to_image", "tag_data_axes",
-        "set_array_dim_names", "remove_unused_arguments",
+        "add_prefetch", "change_arg_to_image",
+        "tag_array_axes", "tag_data_axes",
+        "set_array_axis_names", "set_array_dim_names",
+        "remove_unused_arguments",
         "alias_temporaries", "set_argument_order",
-        "rename_argument",
+        "rename_argument", "set_temporary_scope",
 
         "find_instructions", "map_instructions",
         "set_instruction_priority", "add_dependency",
-        "remove_instructions", "tag_instructions",
+        "remove_instructions",
+        "replace_instruction_ids",
+        "tag_instructions",
 
         "extract_subst", "expand_subst", "assignment_to_subst",
         "find_rules_matching", "find_one_rule_matching",
@@ -164,8 +193,8 @@ __all__ = [
 
         "fold_constants", "collect_common_factors_on_increment",
 
-        "split_array_dim", "split_arg_axis", "find_padding_multiple",
-        "add_padding",
+        "split_array_axis", "split_array_dim", "split_arg_axis",
+        "find_padding_multiple", "add_padding",
 
         "realize_ilp",
 
@@ -178,15 +207,19 @@ __all__ = [
         "get_dot_dependency_graph",
         "show_dependency_graph",
         "add_dtypes",
-        "infer_argument_dtypes", "add_and_infer_dtypes",
+        "add_and_infer_dtypes",
 
         "preprocess_kernel", "realize_reduction", "infer_unknown_types",
         "generate_loop_schedules", "get_one_scheduled_kernel",
-        "generate_code", "generate_body",
+        "GeneratedProgram", "CodeGenerationResult",
+        "PreambleInfo",
+        "generate_code", "generate_code_v2", "generate_body",
 
         "get_op_poly", "sum_ops_to_dtypes", "get_gmem_access_poly",
         "get_DRAM_access_poly",
-        "get_barrier_poly", "stringify_stats_mapping", "sum_mem_access_to_bytes",
+        "get_synchronization_poly", "stringify_stats_mapping",
+        "sum_mem_access_to_bytes",
+        "gather_access_footprints", "gather_access_footprint_bytes",
 
         "CompiledKernel",
 
@@ -201,6 +234,8 @@ __all__ = [
 
         "TargetBase", "CTarget", "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
+        "NumbaTarget", "NumbaCudaTarget",
+        "ASTBuilderBase",
 
         # {{{ from this file
 
@@ -257,6 +292,13 @@ def set_options(kernel, *args, **kwargs):
 # {{{ library registration
 
 def register_preamble_generators(kernel, preamble_generators):
+    """
+    :arg manglers: list of functions of signature ``(preamble_info)``
+        generating tuples ``(sortable_str_identifier, code)``,
+        where *preamble_info* is a :class:`PreambleInfo`.
+
+    :returns: *kernel* with *manglers* registered
+    """
     new_pgens = kernel.preamble_generators[:]
     for pgen in preamble_generators:
         if pgen not in new_pgens:
@@ -275,6 +317,11 @@ def register_symbol_manglers(kernel, manglers):
 
 
 def register_function_manglers(kernel, manglers):
+    """
+    :arg manglers: list of functions of signature ``(target, name, arg_dtypes)``
+        returning a :class:`loopy.CallMangleInfo`.
+    :returns: *kernel* with *manglers* registered
+    """
     new_manglers = kernel.function_manglers[:]
     for m in manglers:
         if m not in new_manglers:
@@ -360,8 +407,8 @@ def make_copy_kernel(new_dim_tags, old_dim_tags=None):
             "output[%s] = input[%s]"
             % (commad_indices, commad_indices))
 
-    result = tag_data_axes(result, "input", old_dim_tags)
-    result = tag_data_axes(result, "output", new_dim_tags)
+    result = tag_array_axes(result, "input", old_dim_tags)
+    result = tag_array_axes(result, "output", new_dim_tags)
 
     unrolled_tags = (SeparateArrayArrayDimTag, VectorArrayDimTag)
     for i in range(rank):

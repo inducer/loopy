@@ -39,7 +39,7 @@ from loopy.library.function import (
         default_function_mangler,
         single_arg_function_mangler)
 
-from loopy.diagnostic import CannotBranchDomainTree
+from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 
 
 # {{{ unique var names
@@ -109,6 +109,9 @@ class LoopKernel(RecordWithoutPickling):
     .. attribute:: preambles
     .. attribute:: preamble_generators
     .. attribute:: assumptions
+
+        A :class:`islpy.BasicSet` parameter domain.
+
     .. attribute:: local_sizes
     .. attribute:: temporary_variables
 
@@ -195,7 +198,7 @@ class LoopKernel(RecordWithoutPickling):
             # When kernels get intersected in slab decomposition,
             # their grid sizes shouldn't change. This provides
             # a way to forward sub-kernel grid size requests.
-            get_grid_sizes=None):
+            get_grid_sizes_for_insn_ids=None):
 
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
@@ -254,15 +257,16 @@ class LoopKernel(RecordWithoutPickling):
 
         # }}}
 
-        index_dtype = np.dtype(index_dtype)
-        if index_dtype.kind != 'i':
+        from loopy.types import to_loopy_type
+        index_dtype = to_loopy_type(index_dtype).with_target(target)
+        if not index_dtype.is_integral():
             raise TypeError("index_dtype must be an integer")
-        if np.iinfo(index_dtype).min >= 0:
+        if np.iinfo(index_dtype.numpy_dtype).min >= 0:
             raise TypeError("index_dtype must be signed")
 
-        if get_grid_sizes is not None:
+        if get_grid_sizes_for_insn_ids is not None:
             # overwrites method down below
-            self.get_grid_sizes = get_grid_sizes
+            self.get_grid_sizes_for_insn_ids = get_grid_sizes_for_insn_ids
 
         if state not in [
                 kernel_state.INITIAL,
@@ -303,13 +307,44 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ function mangling
 
-    def mangle_function(self, identifier, arg_dtypes):
-        manglers = self.target.function_manglers() + self.function_manglers
+    def mangle_function(self, identifier, arg_dtypes, ast_builder=None):
+        if ast_builder is None:
+            ast_builder = self.target.get_device_ast_builder()
+
+        manglers = ast_builder.function_manglers() + self.function_manglers
 
         for mangler in manglers:
             mangle_result = mangler(self, identifier, arg_dtypes)
             if mangle_result is not None:
-                return mangle_result
+                from loopy.kernel.data import CallMangleInfo
+                if isinstance(mangle_result, CallMangleInfo):
+                    assert len(mangle_result.arg_dtypes) == len(arg_dtypes)
+                    return mangle_result
+
+                assert isinstance(mangle_result, tuple)
+
+                from warnings import warn
+                warn("'%s' returned a tuple instead of a CallMangleInfo instance. "
+                        "This is deprecated." % mangler.__name__,
+                        DeprecationWarning)
+
+                if len(mangle_result) == 2:
+                    result_dtype, target_name = mangle_result
+                    return CallMangleInfo(
+                            target_name=target_name,
+                            result_dtypes=(result_dtype,),
+                            arg_dtypes=None)
+
+                elif len(mangle_result) == 3:
+                    result_dtype, target_name, actual_arg_dtypes = mangle_result
+                    return CallMangleInfo(
+                            target_name=target_name,
+                            result_dtypes=(result_dtype,),
+                            arg_dtypes=actual_arg_dtypes)
+
+                else:
+                    raise ValueError("unexpected size of tuple returned by '%s'"
+                            % mangler.__name__)
 
         return None
 
@@ -317,8 +352,8 @@ class LoopKernel(RecordWithoutPickling):
 
     # {{{ symbol mangling
 
-    def mangle_symbol(self, identifier):
-        manglers = self.target.symbol_manglers() + self.symbol_manglers
+    def mangle_symbol(self, ast_builder, identifier):
+        manglers = ast_builder.symbol_manglers() + self.symbol_manglers
 
         for mangler in manglers:
             result = mangler(self, identifier)
@@ -634,9 +669,11 @@ class LoopKernel(RecordWithoutPickling):
         """Return a mapping from instruction ids to inames inside which
         they should be run.
         """
+        result = {}
+        for insn in self.instructions:
+            result[insn.id] = insn.within_inames
 
-        from loopy.kernel.tools import find_all_insn_inames
-        return find_all_insn_inames(self)
+        return result
 
     @memoize_method
     def all_referenced_inames(self):
@@ -646,11 +683,9 @@ class LoopKernel(RecordWithoutPickling):
         return result
 
     def insn_inames(self, insn):
-        from loopy.kernel.data import InstructionBase
-        if isinstance(insn, InstructionBase):
-            return self.all_insn_inames()[insn.id]
-        else:
-            return self.all_insn_inames()[insn]
+        if isinstance(insn, str):
+            insn = self.id_to_insn[insn]
+        return insn.within_inames
 
     @memoize_method
     def iname_to_insns(self):
@@ -755,7 +790,7 @@ class LoopKernel(RecordWithoutPickling):
         result = {}
 
         for insn in self.instructions:
-            for var_name, _ in insn.assignees_and_indices():
+            for var_name in insn.assignee_var_names():
                 result.setdefault(var_name, set()).add(insn.id)
 
         return result
@@ -772,7 +807,7 @@ class LoopKernel(RecordWithoutPickling):
         return frozenset(
                 var_name
                 for insn in self.instructions
-                for var_name, _ in insn.assignees_and_indices())
+                for var_name in insn.assignee_var_names())
 
     @memoize_method
     def get_temporary_to_base_storage_map(self):
@@ -808,9 +843,17 @@ class LoopKernel(RecordWithoutPickling):
 
     @memoize_method
     def global_var_names(self):
+        from loopy.kernel.data import temp_var_scope
+
         from loopy.kernel.data import GlobalArg
-        return set(arg.name for arg in self.args
-            if isinstance(arg, GlobalArg))
+        return (
+                set(
+                    arg.name for arg in self.args
+                    if isinstance(arg, GlobalArg))
+                | set(
+                    tv.name
+                    for tv in six.itervalues(self.temporary_variables)
+                    if tv.scope == temp_var_scope.GLOBAL))
 
     # }}}
 
@@ -863,10 +906,19 @@ class LoopKernel(RecordWithoutPickling):
                 constants_only=True)))
 
     @memoize_method
-    def get_grid_sizes(self, ignore_auto=False):
+    def get_grid_sizes_for_insn_ids(self, insn_ids, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of all instructions whose IDs are given
+        in *insn_ids*.
+
+        :arg insn_ids: a :class:`frozenset` of instruction IDs
+
+        *global_size* and *local_size* are :class:`islpy.PwAff` objects.
+        """
+
         all_inames_by_insns = set()
-        for insn in self.instructions:
-            all_inames_by_insns |= self.insn_inames(insn)
+        for insn_id in insn_ids:
+            all_inames_by_insns |= self.insn_inames(insn_id)
 
         if not all_inames_by_insns <= self.all_inames():
             raise RuntimeError("some inames collected from instructions (%s) "
@@ -881,7 +933,7 @@ class LoopKernel(RecordWithoutPickling):
                 GroupIndexTag, LocalIndexTag,
                 AutoLocalIndexTagBase)
 
-        for iname in self.all_inames():
+        for iname in all_inames_by_insns:
             tag = self.iname_to_tag.get(iname)
 
             if isinstance(tag, GroupIndexTag):
@@ -941,8 +993,18 @@ class LoopKernel(RecordWithoutPickling):
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
-    def get_grid_sizes_as_exprs(self, ignore_auto=False):
-        grid_size, group_size = self.get_grid_sizes(ignore_auto)
+    def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of all instructions whose IDs are given
+        in *insn_ids*.
+
+        :arg insn_ids: a :class:`frozenset` of instruction IDs
+
+        *global_size* and *local_size* are :mod:`pymbolic` expressions
+        """
+
+        grid_size, group_size = self.get_grid_sizes_for_insn_ids(
+                insn_ids, ignore_auto)
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
@@ -950,143 +1012,216 @@ class LoopKernel(RecordWithoutPickling):
 
         return tup_to_exprs(grid_size), tup_to_exprs(group_size)
 
+    def get_grid_size_upper_bounds(self, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of *all* instructions in the kernel.
+
+        *global_size* and *local_size* are :class:`islpy.PwAff` objects.
+        """
+        return self.get_grid_sizes_for_insn_ids(
+                frozenset(insn.id for insn in self.instructions),
+                ignore_auto=ignore_auto)
+
+    def get_grid_size_upper_bounds_as_exprs(self, ignore_auto=False):
+        """Return a tuple (global_size, local_size) containing a grid that
+        could accommodate execution of *all* instructions in the kernel.
+
+        *global_size* and *local_size* are :mod:`pymbolic` expressions
+        """
+
+        return self.get_grid_sizes_for_insn_ids_as_exprs(
+                frozenset(insn.id for insn in self.instructions),
+                ignore_auto=ignore_auto)
+
     # }}}
 
     # {{{ local memory
 
     @memoize_method
     def local_var_names(self):
+        from loopy.kernel.data import temp_var_scope
         return set(
             tv.name
             for tv in six.itervalues(self.temporary_variables)
-            if tv.is_local)
+            if tv.scope == temp_var_scope.LOCAL)
 
     def local_mem_use(self):
-        return sum(lv.nbytes for lv in six.itervalues(self.temporary_variables)
-                if lv.is_local)
+        from loopy.kernel.data import temp_var_scope
+        return sum(
+                tv.nbytes for tv in six.itervalues(self.temporary_variables)
+                if tv.scope == temp_var_scope.LOCAL)
 
     # }}}
 
     # {{{ pretty-printing
 
-    def stringify(self, with_dependencies=False):
+    def stringify(self, what=None, with_dependencies=False):
+        all_what = set([
+            "name",
+            "arguments",
+            "domains",
+            "tags",
+            "variables",
+            "rules",
+            "instructions",
+            "Dependencies",
+            "schedule",
+            ])
+
+        first_letter_to_what = dict(
+                (w[0], w) for w in all_what)
+        assert len(first_letter_to_what) == len(all_what)
+
+        if what is None:
+            what = all_what.copy()
+            if not with_dependencies:
+                what.remove("Dependencies")
+
+        if isinstance(what, str):
+            if "," in what:
+                what = what.split(",")
+                what = set(s.strip() for s in what)
+            else:
+                what = set(
+                        first_letter_to_what[w]
+                        for w in what)
+
+        if not (what <= all_what):
+            raise LoopyError("invalid 'what' passed: %s"
+                    % ", ".join(what-all_what))
+
         lines = []
 
         from loopy.preprocess import add_default_dependencies
         kernel = add_default_dependencies(self)
 
         sep = 75*"-"
-        lines.append(sep)
-        lines.append("KERNEL: " + kernel.name)
-        lines.append(sep)
-        lines.append("ARGUMENTS:")
-        for arg_name in sorted(kernel.arg_dict):
-            lines.append(str(kernel.arg_dict[arg_name]))
-        lines.append(sep)
-        lines.append("DOMAINS:")
-        for dom, parents in zip(kernel.domains, kernel.all_parents_per_domain()):
-            lines.append(len(parents)*"  " + str(dom))
 
-        lines.append(sep)
-        lines.append("INAME IMPLEMENTATION TAGS:")
-        for iname in sorted(kernel.all_inames()):
-            line = "%s: %s" % (iname, kernel.iname_to_tag.get(iname))
-            lines.append(line)
+        if "name" in what:
+            lines.append(sep)
+            lines.append("KERNEL: " + kernel.name)
 
-        if kernel.temporary_variables:
+        if "arguments" in what:
+            lines.append(sep)
+            lines.append("ARGUMENTS:")
+            for arg_name in sorted(kernel.arg_dict):
+                lines.append(str(kernel.arg_dict[arg_name]))
+
+        if "domains" in what:
+            lines.append(sep)
+            lines.append("DOMAINS:")
+            for dom, parents in zip(kernel.domains, kernel.all_parents_per_domain()):
+                lines.append(len(parents)*"  " + str(dom))
+
+        if "tags" in what:
+            lines.append(sep)
+            lines.append("INAME IMPLEMENTATION TAGS:")
+            for iname in sorted(kernel.all_inames()):
+                line = "%s: %s" % (iname, kernel.iname_to_tag.get(iname))
+                lines.append(line)
+
+        if "variables" in what and kernel.temporary_variables:
             lines.append(sep)
             lines.append("TEMPORARIES:")
             for tv in sorted(six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
                 lines.append(str(tv))
 
-        if kernel.substitutions:
+        if "rules" in what and kernel.substitutions:
             lines.append(sep)
             lines.append("SUBSTIUTION RULES:")
             for rule_name in sorted(six.iterkeys(kernel.substitutions)):
                 lines.append(str(kernel.substitutions[rule_name]))
 
-        lines.append(sep)
-        lines.append("INSTRUCTIONS:")
-        loop_list_width = 35
+        if "instructions" in what:
+            lines.append(sep)
+            lines.append("INSTRUCTIONS:")
+            loop_list_width = 35
 
-        printed_insn_ids = set()
+            printed_insn_ids = set()
 
-        Fore = self.options._fore
-        Style = self.options._style
+            Fore = self.options._fore
+            Style = self.options._style
 
-        def print_insn(insn):
-            if insn.id in printed_insn_ids:
-                return
-            printed_insn_ids.add(insn.id)
+            def print_insn(insn):
+                if insn.id in printed_insn_ids:
+                    return
+                printed_insn_ids.add(insn.id)
 
-            for dep_id in sorted(insn.depends_on):
-                print_insn(kernel.id_to_insn[dep_id])
+                for dep_id in sorted(insn.depends_on):
+                    print_insn(kernel.id_to_insn[dep_id])
 
-            if isinstance(insn, lp.Assignment):
-                lhs = str(insn.assignee)
-                rhs = str(insn.expression)
-                trailing = []
-            elif isinstance(insn, lp.CInstruction):
-                lhs = ", ".join(str(a) for a in insn.assignees)
-                rhs = "CODE(%s|%s)" % (
-                        ", ".join(str(x) for x in insn.read_variables),
-                        ", ".join("%s=%s" % (name, expr)
-                            for name, expr in insn.iname_exprs))
+                if isinstance(insn, lp.MultiAssignmentBase):
+                    lhs = ", ".join(str(a) for a in insn.assignees)
+                    rhs = str(insn.expression)
+                    trailing = []
+                elif isinstance(insn, lp.CInstruction):
+                    lhs = ", ".join(str(a) for a in insn.assignees)
+                    rhs = "CODE(%s|%s)" % (
+                            ", ".join(str(x) for x in insn.read_variables),
+                            ", ".join("%s=%s" % (name, expr)
+                                for name, expr in insn.iname_exprs))
 
-                trailing = ["    "+l for l in insn.code.split("\n")]
+                    trailing = ["    "+l for l in insn.code.split("\n")]
 
-            loop_list = ",".join(sorted(kernel.insn_inames(insn)))
+                loop_list = ",".join(sorted(kernel.insn_inames(insn)))
 
-            options = [Fore.GREEN+insn.id+Style.RESET_ALL]
-            if insn.priority:
-                options.append("priority=%d" % insn.priority)
-            if insn.tags:
-                options.append("tags=%s" % ":".join(insn.tags))
-            if insn.groups:
-                options.append("groups=%s" % ":".join(insn.groups))
-            if insn.conflicts_with_groups:
-                options.append("conflicts=%s" % ":".join(insn.conflicts_with_groups))
+                options = [Fore.GREEN+insn.id+Style.RESET_ALL]
+                if insn.priority:
+                    options.append("priority=%d" % insn.priority)
+                if insn.tags:
+                    options.append("tags=%s" % ":".join(insn.tags))
+                if isinstance(insn, lp.Assignment) and insn.atomicity:
+                    options.append("atomic=%s" % ":".join(
+                        str(a) for a in insn.atomicity))
+                if insn.groups:
+                    options.append("groups=%s" % ":".join(insn.groups))
+                if insn.conflicts_with_groups:
+                    options.append(
+                            "conflicts=%s" % ":".join(insn.conflicts_with_groups))
+                if insn.no_sync_with:
+                    options.append("no_sync_with=%s" % ":".join(insn.no_sync_with))
 
-            if len(loop_list) > loop_list_width:
-                lines.append("[%s]" % loop_list)
-                lines.append("%s%s <- %s   # %s" % (
-                    (loop_list_width+2)*" ", Fore.BLUE+lhs+Style.RESET_ALL,
-                    Fore.MAGENTA+rhs+Style.RESET_ALL,
-                    ", ".join(options)))
-            else:
-                lines.append("[%s]%s%s <- %s   # %s" % (
-                    loop_list, " "*(loop_list_width-len(loop_list)),
-                    Fore.BLUE + lhs + Style.RESET_ALL,
-                    Fore.MAGENTA+rhs+Style.RESET_ALL,
-                    ",".join(options)))
+                if len(loop_list) > loop_list_width:
+                    lines.append("[%s]" % loop_list)
+                    lines.append("%s%s <- %s   # %s" % (
+                        (loop_list_width+2)*" ", Fore.BLUE+lhs+Style.RESET_ALL,
+                        Fore.MAGENTA+rhs+Style.RESET_ALL,
+                        ", ".join(options)))
+                else:
+                    lines.append("[%s]%s%s <- %s   # %s" % (
+                        loop_list, " "*(loop_list_width-len(loop_list)),
+                        Fore.BLUE + lhs + Style.RESET_ALL,
+                        Fore.MAGENTA+rhs+Style.RESET_ALL,
+                        ",".join(options)))
 
-            lines.extend(trailing)
+                lines.extend(trailing)
 
-            if insn.predicates:
-                lines.append(10*" " + "if (%s)" % " && ".join(insn.predicates))
+                if insn.predicates:
+                    lines.append(10*" " + "if (%s)" % " && ".join(insn.predicates))
 
-        import loopy as lp
-        for insn in kernel.instructions:
-            print_insn(insn)
+            import loopy as lp
+            for insn in kernel.instructions:
+                print_insn(insn)
 
         dep_lines = []
         for insn in kernel.instructions:
             if insn.depends_on:
                 dep_lines.append("%s : %s" % (insn.id, ",".join(insn.depends_on)))
-        if dep_lines and with_dependencies:
+
+        if "Dependencies" in what and dep_lines:
             lines.append(sep)
             lines.append("DEPENDENCIES: "
                     "(use loopy.show_dependency_graph to visualize)")
             lines.extend(dep_lines)
 
-        lines.append(sep)
-
-        if kernel.schedule is not None:
+        if "schedule" in what and kernel.schedule is not None:
+            lines.append(sep)
             lines.append("SCHEDULE:")
             from loopy.schedule import dump_schedule
             lines.append(dump_schedule(kernel, kernel.schedule))
-            lines.append(sep)
+
+        lines.append(sep)
 
         return "\n".join(lines)
 
@@ -1133,8 +1268,8 @@ class LoopKernel(RecordWithoutPickling):
         return CompiledKernel(ctx, self)
 
     def __call__(self, queue, **kwargs):
-        return self.get_compiled_kernel(queue.context)(
-                queue, **kwargs)
+        cknl = self.get_compiled_kernel(queue.context)
+        return cknl(queue, **kwargs)
 
     # }}}
 
@@ -1228,7 +1363,7 @@ class LoopKernel(RecordWithoutPickling):
                     return False
 
                 for set_a, set_b in zip(self.domains, other.domains):
-                    if not set_a.plain_is_equal(set_b):
+                    if not (set_a.plain_is_equal(set_b) or set_a.is_equal(set_b)):
                         return False
 
             elif field_name == "assumptions":

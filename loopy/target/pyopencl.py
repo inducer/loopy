@@ -2,6 +2,8 @@
 
 from __future__ import division, absolute_import
 
+import sys
+
 __copyright__ = "Copyright (C) 2015 Andreas Kloeckner"
 
 __license__ = """
@@ -29,7 +31,12 @@ from six.moves import range
 
 import numpy as np
 
-from loopy.target.opencl import OpenCLTarget
+from loopy.kernel.data import CallMangleInfo
+from loopy.target.opencl import OpenCLTarget, OpenCLCASTBuilder
+from loopy.target.python import PythonASTBuilderBase
+from loopy.types import NumpyType
+from loopy.diagnostic import LoopyError
+from warnings import warn
 
 import logging
 logger = logging.getLogger(__name__)
@@ -45,9 +52,11 @@ def adjust_local_temp_var_storage(kernel, device):
 
     new_temp_vars = {}
 
+    from loopy.kernel.data import temp_var_scope
+
     lmem_size = cl_char.usable_local_mem_size(device)
     for temp_var in six.itervalues(kernel.temporary_variables):
-        if not temp_var.is_local:
+        if temp_var.scope != temp_var_scope.LOCAL:
             new_temp_vars[temp_var.name] = \
                     temp_var.copy(storage_shape=temp_var.shape)
             continue
@@ -55,7 +64,8 @@ def adjust_local_temp_var_storage(kernel, device):
         other_loctemp_nbytes = [
                 tv.nbytes
                 for tv in six.itervalues(kernel.temporary_variables)
-                if tv.is_local and tv.name != temp_var.name]
+                if tv.scope == temp_var_scope.LOCAL
+                and tv.name != temp_var.name]
 
         storage_shape = temp_var.storage_shape
 
@@ -137,7 +147,7 @@ def check_sizes(kernel, device):
         if isinstance(arg, lp.ValueArg) and arg.approximately is not None:
             parameters[arg.name] = arg.approximately
 
-    glens, llens = kernel.get_grid_sizes_as_exprs()
+    glens, llens = kernel.get_grid_size_upper_bounds_as_exprs()
 
     if (max(len(glens), len(llens))
             > device.max_work_item_dimensions):
@@ -181,10 +191,10 @@ def pyopencl_function_mangler(target, name, arg_dtypes):
     if len(arg_dtypes) == 1 and isinstance(name, str):
         arg_dtype, = arg_dtypes
 
-        if arg_dtype.kind == "c":
-            if arg_dtype == np.complex64:
+        if arg_dtype.is_complex():
+            if arg_dtype.numpy_dtype == np.complex64:
                 tpname = "cfloat"
-            elif arg_dtype == np.complex128:
+            elif arg_dtype.numpy_dtype == np.complex128:
                 tpname = "cdouble"
             else:
                 raise RuntimeError("unexpected complex type '%s'" % arg_dtype)
@@ -193,24 +203,34 @@ def pyopencl_function_mangler(target, name, arg_dtypes):
                     "sin", "cos", "tan",
                     "sinh", "cosh", "tanh",
                     "conj"]:
-                return arg_dtype, "%s_%s" % (tpname, name)
+                return CallMangleInfo(
+                        target_name="%s_%s" % (tpname, name),
+                        result_dtypes=(arg_dtype,),
+                        arg_dtypes=(arg_dtype,))
 
             if name in ["real", "imag", "abs"]:
-                return np.dtype(arg_dtype.type(0).real), "%s_%s" % (tpname, name)
+                return CallMangleInfo(
+                        target_name="%s_%s" % (tpname, name),
+                        result_dtypes=(NumpyType(
+                            np.dtype(arg_dtype.numpy_dtype.type(0).real)),
+                            ),
+                        arg_dtypes=(arg_dtype,))
 
     return None
 
 
 # {{{ preamble generator
 
-def pyopencl_preamble_generator(target, seen_dtypes, seen_functions):
+def pyopencl_preamble_generator(preamble_info):
     has_double = False
     has_complex = False
 
-    for dtype in seen_dtypes:
-        if dtype in [np.float64, np.complex128]:
+    from loopy.types import NumpyType
+    for dtype in preamble_info.seen_dtypes:
+        if (isinstance(dtype, NumpyType)
+                and dtype.dtype in [np.float64, np.complex128]):
             has_double = True
-        if dtype.kind == "c":
+        if dtype.involves_complex():
             has_complex = True
 
     if has_complex:
@@ -252,27 +272,60 @@ class PyOpenCLTarget(OpenCLTarget):
     warnings) and support for complex numbers.
     """
 
-    def __init__(self, device=None):
+    host_program_name_prefix = "_lpy_host_"
+    host_program_name_suffix = ""
+
+    def __init__(self, device=None, pyopencl_module_name="_lpy_cl",
+            atomics_flavor=None):
         # This ensures the dtype registry is populated.
         import pyopencl.tools  # noqa
 
-        super(PyOpenCLTarget, self).__init__()
+        super(PyOpenCLTarget, self).__init__(
+                atomics_flavor=atomics_flavor)
 
         self.device = device
+        self.pyopencl_module_name = pyopencl_module_name
 
-    hash_fields = ["device"]
     comparison_fields = ["device"]
 
-    def function_manglers(self):
-        return (
-                super(PyOpenCLTarget, self).function_manglers() + [
-                    pyopencl_function_mangler
-                    ])
+    def update_persistent_hash(self, key_hash, key_builder):
+        super(PyOpenCLTarget, self).update_persistent_hash(key_hash, key_builder)
+        key_builder.rec(key_hash, getattr(self.device, "persistent_unique_id", None))
 
-    def preamble_generators(self):
-        return ([
-            pyopencl_preamble_generator
-            ] + super(PyOpenCLTarget, self).preamble_generators())
+    def __getstate__(self):
+        dev_id = None
+        if self.device is not None:
+            dev_id = self.device.persistent_unique_id
+
+        return {
+                "device_id": dev_id,
+                "atomics_flavor": self.atomics_flavor,
+                "fortran_abi": self.fortran_abi,
+                "pyopencl_module_name": self.pyopencl_module_name,
+                }
+
+    def __setstate__(self, state):
+        self.atomics_flavor = state["atomics_flavor"]
+        self.fortran_abi = state["fortran_abi"]
+        self.pyopencl_module_name = state["pyopencl_module_name"]
+
+        dev_id = state["device_id"]
+        if dev_id is None:
+            self.device = None
+        else:
+            import pyopencl as cl
+            matches = [
+                dev
+                for plat in cl.get_platforms()
+                for dev in plat.get_devices()
+                if dev.persistent_unique_id == dev_id]
+
+            if matches:
+                self.device = matches[0]
+            else:
+                raise LoopyError(
+                        "cannot unpickle device '%s': not found"
+                        % dev_id)
 
     def preprocess(self, kernel):
         return kernel
@@ -280,21 +333,38 @@ class PyOpenCLTarget(OpenCLTarget):
     def pre_codegen_check(self, kernel):
         check_sizes(kernel, self.device)
 
+    def get_host_ast_builder(self):
+        return PyOpenCLPythonASTBuilder(self)
+
+    def get_device_ast_builder(self):
+        return PyOpenCLCASTBuilder(self)
+
+    # {{{ types
+
     def get_dtype_registry(self):
         try:
             from pyopencl.compyte.dtypes import TYPE_REGISTRY
         except ImportError:
-            return _LegacyTypeRegistryStub()
+            result = _LegacyTypeRegistryStub()
         else:
-            return TYPE_REGISTRY
+            result = TYPE_REGISTRY
+
+        from loopy.target.opencl import DTypeRegistryWrapperWithCL1Atomics
+        if self.atomics_flavor == "cl1":
+            return DTypeRegistryWrapperWithCL1Atomics(result)
+        else:
+            raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
 
     def is_vector_dtype(self, dtype):
         from pyopencl.array import vec
-        return dtype in list(vec.types.values())
+        return (isinstance(dtype, NumpyType)
+                and dtype.numpy_dtype in list(vec.types.values()))
 
     def vector_dtype(self, base, count):
         from pyopencl.array import vec
-        return vec.types[base, count]
+        return NumpyType(
+                vec.types[base.numpy_dtype, count],
+                target=self)
 
     def alignment_requirement(self, type_decl):
         import struct
@@ -304,6 +374,352 @@ class PyOpenCLTarget(OpenCLTarget):
                 .replace("D", "dd"))
 
         return struct.calcsize(fmt)
+
+    # }}}
+
+# }}}
+
+
+# {{{ host code: value arg setup
+
+def generate_value_arg_setup(kernel, devices, implemented_data_info):
+    options = kernel.options
+
+    import loopy as lp
+    from loopy.kernel.array import ArrayBase
+
+    # {{{ arg counting bug handling
+
+    # For example:
+    # https://github.com/pocl/pocl/issues/197
+    # (but Apple CPU has a similar bug)
+
+    work_around_arg_count_bug = False
+    warn_about_arg_count_bug = False
+
+    try:
+        from pyopencl.characterize import has_struct_arg_count_bug
+
+    except ImportError:
+        count_bug_per_dev = [False]*len(devices)
+
+    else:
+        count_bug_per_dev = [
+                has_struct_arg_count_bug(dev)
+                if dev is not None else False
+                for dev in devices]
+
+    if any(dev is None for dev in devices):
+        warn("{knl_name}: device not supplied to PyOpenCLTarget--"
+                "workarounds for broken OpenCL implementations "
+                "(such as those relating to complex numbers) "
+                "may not be enabled when needed"
+                .format(knl_name=kernel.name))
+
+    if any(count_bug_per_dev):
+        if all(count_bug_per_dev):
+            work_around_arg_count_bug = True
+        else:
+            warn_about_arg_count_bug = True
+
+    # }}}
+
+    cl_arg_idx = 0
+    arg_idx_to_cl_arg_idx = {}
+
+    fp_arg_count = 0
+
+    from genpy import (
+            Comment, Line, If, Raise, Assign, Statement as S, Suite)
+
+    result = []
+    gen = result.append
+
+    for arg_idx, idi in enumerate(implemented_data_info):
+        arg_idx_to_cl_arg_idx[arg_idx] = cl_arg_idx
+
+        if not issubclass(idi.arg_class, lp.ValueArg):
+            assert issubclass(idi.arg_class, ArrayBase)
+
+            # assume each of those generates exactly one...
+            cl_arg_idx += 1
+
+            continue
+
+        gen(Comment("{{{ process %s" % idi.name))
+        gen(Line())
+
+        if not options.skip_arg_checks:
+            gen(If("%s is None" % idi.name,
+                Raise('RuntimeError("input argument \'{name}\' '
+                        'must be supplied")'.format(name=idi.name))))
+
+        if idi.dtype.is_integral():
+            gen(Comment("cast to Python int to avoid trouble "
+                "with struct packing or Boost.Python"))
+            if sys.version_info < (3,):
+                py_type = "long"
+            else:
+                py_type = "int"
+
+            gen(Assign(idi.name, "%s(%s)" % (py_type, idi.name)))
+            gen(Line())
+
+        if idi.dtype.is_composite():
+            gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, idi.name)))
+            cl_arg_idx += 1
+
+        elif idi.dtype.is_complex():
+            assert isinstance(idi.dtype, NumpyType)
+
+            dtype = idi.dtype
+
+            if warn_about_arg_count_bug:
+                warn("{knl_name}: arguments include complex numbers, and "
+                        "some (but not all) of the target devices mishandle "
+                        "struct kernel arguments (hence the workaround is "
+                        "disabled".format(
+                            knl_name=kernel.name))
+
+            if dtype.numpy_dtype == np.complex64:
+                arg_char = "f"
+            elif dtype.numpy_dtype == np.complex128:
+                arg_char = "d"
+            else:
+                raise TypeError("unexpected complex type: %s" % dtype)
+
+            if (work_around_arg_count_bug
+                    and dtype.numpy_dtype == np.complex128
+                    and fp_arg_count + 2 <= 8):
+                gen(Assign(
+                    "_lpy_buf",
+                    "_lpy_pack('{arg_char}', {arg_var}.real)"
+                    .format(arg_char=arg_char, arg_var=idi.name)))
+                gen(S(
+                    "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
+                    .format(cl_arg_idx=cl_arg_idx)))
+                cl_arg_idx += 1
+
+                gen(Assign(
+                    "_lpy_buf",
+                    "_lpy_pack('{arg_char}', {arg_var}.imag)"
+                    .format(arg_char=arg_char, arg_var=idi.name)))
+                gen(S(
+                        "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
+                        .format(cl_arg_idx=cl_arg_idx)))
+                cl_arg_idx += 1
+            else:
+                gen(Assign(
+                    "_lpy_buf",
+                    "_lpy_pack('{arg_char}{arg_char}', "
+                    "{arg_var}.real, {arg_var}.imag)"
+                    .format(arg_char=arg_char, arg_var=idi.name)))
+                gen(S(
+                    "_lpy_knl.set_arg({cl_arg_idx}, _lpy_buf)"
+                    .format(cl_arg_idx=cl_arg_idx)))
+                cl_arg_idx += 1
+
+            fp_arg_count += 2
+
+        elif isinstance(idi.dtype, NumpyType):
+            if idi.dtype.dtype.kind == "f":
+                fp_arg_count += 1
+
+            gen(S(
+                "_lpy_knl.set_arg(%d, _lpy_pack('%s', %s))"
+                % (cl_arg_idx, idi.dtype.dtype.char, idi.name)))
+
+            cl_arg_idx += 1
+
+        else:
+            raise LoopyError("do not know how to pass argument of type '%s'"
+                    % idi.dtype)
+
+        gen(Line())
+
+        gen(Comment("}}}"))
+        gen(Line())
+
+    return Suite(result), arg_idx_to_cl_arg_idx, cl_arg_idx
+
+# }}}
+
+
+def generate_array_arg_setup(kernel, implemented_data_info, arg_idx_to_cl_arg_idx):
+    from loopy.kernel.array import ArrayBase
+    from genpy import Statement as S, Suite
+
+    result = []
+    gen = result.append
+
+    for arg_idx, arg in enumerate(implemented_data_info):
+        if not issubclass(arg.arg_class, ArrayBase):
+            continue
+
+        cl_arg_idx = arg_idx_to_cl_arg_idx[arg_idx]
+
+        gen(S("_lpy_knl.set_arg(%d, %s)" % (cl_arg_idx, arg.name)))
+
+    return Suite(result)
+
+
+# {{{ host ast builder
+
+class PyOpenCLPythonASTBuilder(PythonASTBuilderBase):
+    """A Python host AST builder for integration with PyOpenCL.
+    """
+
+    # {{{ code generation guts
+
+    def get_function_definition(self, codegen_state, codegen_result,
+            schedule_index, function_decl, function_body):
+        from loopy.kernel.data import TemporaryVariable
+        args = (
+                ["_lpy_cl_kernels", "queue"]
+                + [idi.name for idi in codegen_state.implemented_data_info
+                    if not issubclass(idi.arg_class, TemporaryVariable)]
+                + ["wait_for=None", "allocator=None"])
+
+        from genpy import (For, Function, Suite, Import, ImportAs, Return,
+                FromImport, If, Assign, Line, Statement as S)
+        return Function(
+                codegen_result.current_program(codegen_state).name,
+                args,
+                Suite([
+                    FromImport("struct", ["pack as _lpy_pack"]),
+                    ImportAs("pyopencl", "_lpy_cl"),
+                    Import("pyopencl.tools"),
+                    Line(),
+                    If("allocator is None",
+                        Assign(
+                            "allocator",
+                            "_lpy_cl_tools.DeferredAllocator(queue.context)")),
+                    Line(),
+                    ] + [
+                    Line(),
+                    function_body,
+                    Line(),
+                    ] + [
+                    For("_tv", "_global_temporaries",
+                        # free global temporaries
+                        S("_tv.release()"))
+                    ] + [
+                    Line(),
+                    Return("_lpy_evt"),
+                    ]))
+
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        # no such thing in Python
+        return None
+
+    def get_temporary_decls(self, codegen_state, schedule_state):
+        from genpy import Assign, Comment, Line
+
+        def alloc_nbytes(tv):
+            from six.moves import reduce
+            from operator import mul
+            return tv.dtype.numpy_dtype.itemsize * reduce(mul, tv.shape, 1)
+
+        from loopy.kernel.data import temp_var_scope
+
+        global_temporaries = sorted(
+            (tv for tv in six.itervalues(codegen_state.kernel.temporary_variables)
+            if tv.scope == temp_var_scope.GLOBAL),
+            key=lambda tv: tv.name)
+
+        from pymbolic.mapper.stringifier import PREC_NONE
+        ecm = self.get_expression_to_code_mapper(codegen_state)
+
+        if not global_temporaries:
+            return [Assign("_global_temporaries", "[]"), Line()]
+
+        return [
+            Comment("{{{ allocate global temporaries"),
+            Line()] + [
+            Assign(tv.name, "allocator(%s)" %
+                ecm(alloc_nbytes(tv), PREC_NONE, "i"))
+                for tv in global_temporaries] + [
+            Assign("_global_temporaries", "[{tvs}]".format(tvs=", ".join(
+                tv.name for tv in global_temporaries)))] + [
+            Line(),
+            Comment("}}}"),
+            Line()]
+
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        ecm = self.get_expression_to_code_mapper(codegen_state)
+
+        if not gsize:
+            gsize = (1,)
+        if not lsize:
+            lsize = (1,)
+
+        all_args = codegen_state.implemented_data_info + extra_args
+
+        value_arg_code, arg_idx_to_cl_arg_idx, cl_arg_count = \
+            generate_value_arg_setup(
+                    codegen_state.kernel,
+                    [self.target.device],
+                    all_args)
+        arry_arg_code = generate_array_arg_setup(
+            codegen_state.kernel,
+            all_args,
+            arg_idx_to_cl_arg_idx)
+
+        from genpy import Suite, Assign, Assert, Line, Comment
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        # TODO: Generate finer-grained dependency structure
+        return Suite([
+            Comment("{{{ enqueue %s" % name),
+            Line(),
+            Assign("_lpy_knl", "_lpy_cl_kernels."+name),
+            Assert("_lpy_knl.num_args == %d" % cl_arg_count),
+            Line(),
+            value_arg_code,
+            arry_arg_code,
+            Assign("_lpy_evt", "%(pyopencl_module_name)s.enqueue_nd_range_kernel("
+                "queue, _lpy_knl, "
+                "%(gsize)s, %(lsize)s,  wait_for=wait_for, g_times_l=True)"
+                % dict(
+                    pyopencl_module_name=self.target.pyopencl_module_name,
+                    gsize=ecm(gsize, prec=PREC_NONE, type_context="i"),
+                    lsize=ecm(lsize, prec=PREC_NONE, type_context="i"))),
+            Assign("wait_for", "[_lpy_evt]"),
+            Line(),
+            Comment("}}}"),
+            Line(),
+            ])
+
+    # }}}
+
+# }}}
+
+
+# {{{ device ast builder
+
+class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
+    """A C device AST builder for integration with PyOpenCL.
+    """
+
+    # {{{ library
+
+    def function_manglers(self):
+        from loopy.library.random123 import random123_function_mangler
+        return (
+                super(PyOpenCLCASTBuilder, self).function_manglers() + [
+                    pyopencl_function_mangler,
+                    random123_function_mangler
+                    ])
+
+    def preamble_generators(self):
+        from loopy.library.random123 import random123_preamble_generator
+        return ([
+            pyopencl_preamble_generator,
+            random123_preamble_generator,
+            ] + super(PyOpenCLCASTBuilder, self).preamble_generators())
+
+    # }}}
 
 # }}}
 

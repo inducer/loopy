@@ -1,8 +1,9 @@
-git+git://github.com/inducer/pytools
-git+git://github.com/inducer/islpy
-git+git://github.com/inducer/cgen
-git+git://github.com/pyopencl/pyopencl
-git+git://github.com/inducer/pymbolic
+git+https://github.com/inducer/pytools.git
+git+https://github.com/inducer/islpy.git
+git+https://github.com/inducer/cgen.git
+git+https://github.com/pyopencl/pyopencl.git
+git+https://github.com/inducer/pymbolic.git
+git+https://github.com/inducer/genpy.git
 
 hg+https://bitbucket.org/inducer/f2py
 

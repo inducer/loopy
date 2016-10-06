@@ -178,7 +178,6 @@ by passing :attr:`loopy.Options.write_cl`.
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
-    <BLANKLINE>
       for (int i = 0; i <= -1 + n; ++i)
         out[i] = 2.0f * a[i];
     }
@@ -220,7 +219,7 @@ inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
     >>> evt, (out,) = knl(queue, a=x_vec_host)
     from __future__ import division
     ...
-    def invoke_loopy_kernel_loopy_kernel(cl_kernel, queue, allocator=None, wait_for=None, out_host=None, a=None, n=None, out=None):
+    def invoke_loopy_kernel_loopy_kernel(_lpy_cl_kernels, queue, allocator=None, wait_for=None, out_host=None, a=None, n=None, out=None):
         if allocator is None:
             allocator = _lpy_cl_tools.DeferredAllocator(queue.context)
     <BLANKLINE>
@@ -253,7 +252,6 @@ call :func:`loopy.generate_code`:
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
-    <BLANKLINE>
       for (int i = 0; i <= -1 + n; ++i)
         out[i] = 2.0f * a[i];
     }
@@ -369,7 +367,6 @@ Let us take a look at the generated code for the above kernel:
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
-    <BLANKLINE>
       for (int i = 0; i <= -1 + n; ++i)
         for (int j = 0; j <= -1 + n; ++j)
         {
@@ -419,7 +416,6 @@ Now the intended code is generated and our test passes.
     <BLANKLINE>
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
     {
-    <BLANKLINE>
       for (int i = 0; i <= -1 + n; ++i)
         for (int j = 0; j <= -1 + n; ++j)
           out[n * j + i] = a[n * i + j];
@@ -538,7 +534,7 @@ Consider this example:
       for (int i_outer = 0; i_outer <= -1 + ((15 + n) / 16); ++i_outer)
         for (int i_inner = 0; i_inner <= 15; ++i_inner)
           if (-1 + -1 * i_inner + -16 * i_outer + n >= 0)
-            a[i_inner + i_outer * 16] = 0.0f;
+            a[16 * i_outer + i_inner] = 0.0f;
     ...
 
 By default, the new, split inames are named *OLD_outer* and *OLD_inner*,
@@ -563,8 +559,9 @@ relation to loop nesting. For example, it's perfectly possible to request
     #define lid(N) ((int) get_local_id(N))
     ...
       for (int i_inner = 0; i_inner <= 15; ++i_inner)
-        for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
-          a[i_inner + i_outer * 16] = 0.0f;
+        if (-1 + -1 * i_inner + n >= 0)
+          for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
+            a[16 * i_outer + i_inner] = 0.0f;
     ...
 
 Notice how loopy has automatically generated guard conditionals to make
@@ -591,7 +588,7 @@ commonly called 'loop tiling':
         for (int j_outer = 0; j_outer <= ((-16 + n) / 16); ++j_outer)
           for (int i_inner = 0; i_inner <= 15; ++i_inner)
             for (int j_inner = 0; j_inner <= 15; ++j_inner)
-              out[n * (i_inner + i_outer * 16) + j_inner + j_outer * 16] = a[n * (j_inner + j_outer * 16) + i_inner + i_outer * 16];
+              out[n * (16 * i_outer + i_inner) + 16 * j_outer + j_inner] = a[n * (16 * j_outer + j_inner) + 16 * i_outer + i_inner];
     ...
 
 .. }}}
@@ -604,7 +601,7 @@ Implementing Loop Axes ("Inames")
 .. {{{
 
 So far, all the loops we have seen loopy implement were ``for`` loops. Each
-iname in loopy carries a so-called 'implementation tag'.  :ref:`tags` shows
+iname in loopy carries a so-called 'implementation tag'.  :ref:`iname-tags` shows
 all possible choices for iname implementation tags. The important ones are
 explained below.
 
@@ -627,15 +624,16 @@ loop's tag to ``"unr"``:
     >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
-    #define int_floor_div_pos_b(a,b) (                 ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b)                 )
     #define lid(N) ((int) get_local_id(N))
+    #define gid(N) ((int) get_group_id(N))
+    #define int_floor_div_pos_b(a,b) (                 ( (a) - ( ((a)<0) ? ((b)-1) : 0 )  ) / (b)                 )
     ...
       for (int i_outer = 0; i_outer <= int_floor_div_pos_b(-4 + n, 4); ++i_outer)
       {
-        a[0 + i_outer * 4] = 0.0f;
-        a[1 + i_outer * 4] = 0.0f;
-        a[2 + i_outer * 4] = 0.0f;
-        a[3 + i_outer * 4] = 0.0f;
+        a[4 * i_outer + 0] = 0.0f;
+        a[4 * i_outer + 1] = 0.0f;
+        a[4 * i_outer + 2] = 0.0f;
+        a[4 * i_outer + 3] = 0.0f;
       }
     ...
 
@@ -706,9 +704,8 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     ...
     __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *restrict a, int const n)
     {
-    <BLANKLINE>
       if (-1 + -128 * gid(0) + -1 * lid(0) + n >= 0)
-        a[lid(0) + gid(0) * 128] = 0.0f;
+        a[128 * gid(0) + lid(0)] = 0.0f;
     }
 
 Loopy requires that workgroup sizes are fixed and constant at compile time.
@@ -720,7 +717,7 @@ those for us:
 
 .. doctest::
 
-    >>> glob, loc = knl.get_grid_sizes()
+    >>> glob, loc = knl.get_grid_size_upper_bounds()
     >>> print(glob)
     (Aff("[n] -> { [(floor((127 + n)/128))] }"),)
     >>> print(loc)
@@ -753,13 +750,13 @@ assumption:
     ...
       for (int i_outer = 0; i_outer <= -1 + ((3 + n) / 4); ++i_outer)
       {
-        a[0 + i_outer * 4] = 0.0f;
+        a[4 * i_outer + 0] = 0.0f;
         if (-2 + -4 * i_outer + n >= 0)
-          a[1 + i_outer * 4] = 0.0f;
+          a[4 * i_outer + 1] = 0.0f;
         if (-3 + -4 * i_outer + n >= 0)
-          a[2 + i_outer * 4] = 0.0f;
+          a[4 * i_outer + 2] = 0.0f;
         if (-4 + -4 * i_outer + n >= 0)
-          a[3 + i_outer * 4] = 0.0f;
+          a[4 * i_outer + 3] = 0.0f;
       }
     ...
 
@@ -783,22 +780,22 @@ enabling some cost savings:
       /* bulk slab for 'i_outer' */
       for (int i_outer = 0; i_outer <= -2 + ((3 + n) / 4); ++i_outer)
       {
-        a[0 + i_outer * 4] = 0.0f;
-        a[1 + i_outer * 4] = 0.0f;
-        a[2 + i_outer * 4] = 0.0f;
-        a[3 + i_outer * 4] = 0.0f;
+        a[4 * i_outer + 0] = 0.0f;
+        a[4 * i_outer + 1] = 0.0f;
+        a[4 * i_outer + 2] = 0.0f;
+        a[4 * i_outer + 3] = 0.0f;
       }
       /* final slab for 'i_outer' */
       for (int i_outer = -1 + n + -1 * (3 * n / 4); i_outer <= -1 + ((3 + n) / 4); ++i_outer)
         if (-1 + n >= 0)
         {
-          a[0 + i_outer * 4] = 0.0f;
+          a[4 * i_outer + 0] = 0.0f;
           if (-2 + -4 * i_outer + n >= 0)
-            a[1 + i_outer * 4] = 0.0f;
+            a[4 * i_outer + 1] = 0.0f;
           if (-3 + -4 * i_outer + n >= 0)
-            a[2 + i_outer * 4] = 0.0f;
+            a[4 * i_outer + 2] = 0.0f;
           if (4 + 4 * i_outer + -1 * n == 0)
-            a[3 + i_outer * 4] = 0.0f;
+            a[4 * i_outer + 3] = 0.0f;
         }
     ...
 
@@ -1023,7 +1020,7 @@ earlier:
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
         acc_k = 0.0f;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
-        a_fetch[lid(0)] = a[lid(0) + 16 * gid(0)];
+        a_fetch[lid(0)] = a[16 * gid(0) + lid(0)];
       barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch (insn_k_update depends on a_fetch_rule) */;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
@@ -1063,6 +1060,24 @@ Conditionals
 Snippets of C
 ~~~~~~~~~~~~~
 
+Atomic operations
+~~~~~~~~~~~~~~~~~
+
+Loopy supports atomic operations. To use them, both the data on which the
+atomic operations work as well as the operations themselves must be
+suitably tagged, as in the following example::
+
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i%20] = out[i%20] + 2*a[i] {atomic}",
+            [
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.auto),
+                "..."
+                ],
+            assumptions="n>0")
+
 .. }}}
 
 Common Problems
@@ -1087,7 +1102,7 @@ Attempting to create this kernel results in an error:
     ... # While trying to find shape axis 0 of argument 'out', the following exception occurred:
     Traceback (most recent call last):
     ...
-    StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [(1)] : n = 1; [(n)] : n >= 2; [(1)] : n <= 0 }'
+    StaticValueFindingError: a static maximum was not found for PwAff '[n] -> { [(1)] : n <= 1; [(n)] : n >= 2 }'
 
 The problem is that loopy cannot find a simple, universally valid expression
 for the length of *out* in this case. Notice how the kernel accesses both the
@@ -1153,7 +1168,7 @@ sign that something is amiss:
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     Traceback (most recent call last):
     ...
-    WriteRaceConditionWarning: instruction 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch_rule)' to silenced_warnings kernel argument to disable)
+    WriteRaceConditionWarning: in kernel transpose: instruction 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch_rule)' to silenced_warnings kernel argument to disable)
 
 When we ask to see the code, the issue becomes apparent:
 
@@ -1172,9 +1187,9 @@ When we ask to see the code, the issue becomes apparent:
       float a_fetch[16];
     <BLANKLINE>
       ...
-          a_fetch[lid(0)] = a[n * (lid(0) + 16 * gid(1)) + lid(1) + 16 * gid(0)];
+          a_fetch[lid(0)] = a[n * (16 * gid(1) + lid(0)) + 16 * gid(0) + lid(1)];
       ...
-          out[n * (lid(1) + gid(0) * 16) + lid(0) + gid(1) * 16] = a_fetch[lid(0)];
+          out[n * (16 * gid(0) + lid(1)) + 16 * gid(1) + lid(0)] = a_fetch[lid(0)];
       ...
     }
 
@@ -1425,26 +1440,28 @@ elements in memory. The total number of array accesses has not changed:
     f64 load: 131072
     f64 store: 65536
 
-Counting barriers
-~~~~~~~~~~~~~~~~~
+Counting synchronization events
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-:func:`loopy.get_barrier_poly` counts the number of barriers per **thread** in a
-kernel. First, we'll call this function on the kernel from the previous example:
+:func:`loopy.get_synchronization_poly` counts the number of synchronization
+events per **thread** in a kernel. First, we'll call this function on the
+kernel from the previous example:
 
 .. doctest::
 
-    >>> from loopy.statistics import get_barrier_poly
-    >>> barrier_poly = get_barrier_poly(knl)
-    >>> print("Barrier polynomial: %s" % barrier_poly)
-    Barrier polynomial: { 0 }
+    >>> from loopy.statistics import get_synchronization_poly
+    >>> barrier_poly = get_synchronization_poly(knl)
+    >>> print(lp.stringify_stats_mapping(barrier_poly))
+    kernel_launch : { 1 }
+    <BLANKLINE>
 
 We can evaluate this polynomial using :func:`islpy.eval_with_dict`:
 
 .. doctest::
 
-    >>> barrier_count = barrier_poly.eval_with_dict(param_dict)
-    >>> print("Barrier count: %s" % barrier_count)
-    Barrier count: 0
+    >>> launch_count = barrier_poly["kernel_launch"].eval_with_dict(param_dict)
+    >>> print("Kernel launch count: %s" % launch_count)
+    Kernel launch count: 1
 
 Now to make things more interesting, we'll create a kernel with barriers:
 
@@ -1476,9 +1493,9 @@ Now to make things more interesting, we'll create a kernel with barriers:
         for (int i = 0; i <= 49; ++i)
         {
           barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
-          c[990 * i + 99 * j + lid(0) + 1 + gid(0) * 128] = 2 * a[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128];
+          c[990 * i + 99 * j + lid(0) + 1] = 2 * a[980 * i + 98 * j + lid(0) + 1];
           barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
-          e[980 * i + 98 * j + lid(0) + 1 + gid(0) * 128] = c[990 * i + 99 * j + 1 + lid(0) + 1 + gid(0) * 128] + c[990 * i + 99 * j + -1 + lid(0) + 1 + gid(0) * 128];
+          e[980 * i + 98 * j + lid(0) + 1] = c[990 * i + 99 * j + 1 + lid(0) + 1] + c[990 * i + 99 * j + -1 + lid(0) + 1];
         }
     }
 
@@ -1490,12 +1507,11 @@ using :func:`loopy.get_barrier_poly`:
 
 .. doctest::
 
-    >>> barrier_poly = get_barrier_poly(knl)
-    >>> barrier_count = barrier_poly.eval_with_dict({})
-    >>> print("Barrier polynomial: %s\nBarrier count: %i" %
-    ...     (barrier_poly, barrier_count))
-    Barrier polynomial: { 1000 }
-    Barrier count: 1000
+    >>> sync_map = lp.get_synchronization_poly(knl)
+    >>> print(lp.stringify_stats_mapping(sync_map))
+    barrier_local : { 1000 }
+    kernel_launch : { 1 }
+    <BLANKLINE>
 
 Based on the kernel code printed above, we would expect each thread to encounter
 50x10x2 barriers, which matches the result from :func:`loopy.get_barrier_poly`. In

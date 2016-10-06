@@ -26,7 +26,7 @@ in strides) are also allowed. In the absence of divisibility
 constraints, the loop domain is convex.
 
 Note that *n* in the example is not an iname. It is a
-:ref:`domain-parameter` that is passed to the kernel by the user.
+:ref:`domain-parameters` that is passed to the kernel by the user.
 
 To accommodate some data-dependent control flow, there is not actually
 a single loop domain, but rather a *tree of loop domains*,
@@ -183,7 +183,7 @@ These are usually key-value pairs. The following attributes are recognized:
 * ``id=value`` sets the instruction's identifier to ``value``. ``value``
   must be unique within the kernel. This identifier is used to refer to the
   instruction after it has been created, such as from ``dep`` attributes
-  (see below) or from :mod:`context matches <loopy.context_matching>`.
+  (see below) or from :mod:`context matches <loopy.match>`.
 
 * ``id_prefix=value`` also sets the instruction's identifier, however
   uniqueness is ensured by loopy itself, by appending further components
@@ -217,9 +217,9 @@ These are usually key-value pairs. The following attributes are recognized:
   dependency is that the code generated for this instruction is required to
   appear textually after all of these dependees' generated code.
 
-  Identifiers here are allowed to be wildcards as defined by
-  the Python module :mod:`fnmatchcase`. This is helpful in conjunction
-  with ``id_prefix``.
+  Identifiers here are allowed to be wildcards as defined by the Python
+  function :func:`fnmatch.fnmatchcase`. This is helpful in conjunction with
+  ``id_prefix``.
 
   .. note::
 
@@ -242,6 +242,15 @@ These are usually key-value pairs. The following attributes are recognized:
       heuristic and indicate that the specified list of dependencies is
       exhaustive.
 
+* ``nosync=id1:id2`` prescribes that no barrier synchronization is necessary
+  the instructions with identifiers ``id1`` and ``id2`` to the, even if
+  a dependency chain exists and variables are accessed in an apparently
+  racy way.
+
+  Identifiers here are allowed to be wildcards as defined by the Python
+  function :func:`fnmatch.fnmatchcase`. This is helpful in conjunction with
+  ``id_prefix``.
+
 * ``priority=integer`` sets the instructions priority to the value
   ``integer``. Instructions with higher priority will be scheduled sooner,
   if possible. Note that the scheduler may still schedule a lower-priority
@@ -262,6 +271,9 @@ These are usually key-value pairs. The following attributes are recognized:
   given instruction groups. See
   :class:`InstructionBase.conflicts_with_groups`.
 
+* ``atomic`` The update embodied by the assignment is carried out
+  atomically. See :attr:`Assignment.atomicity` for precise semantics.
+
 .. _expression-syntax:
 
 Expressions
@@ -281,10 +293,28 @@ Loopy's expressions are a slight superset of the expressions supported by
 TODO: Functions
 TODO: Reductions
 
+Function Call Instructions
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: CallInstruction
+
 C Block Instructions
 ^^^^^^^^^^^^^^^^^^^^
 
 .. autoclass:: CInstruction
+
+Atomic Operations
+^^^^^^^^^^^^^^^^^
+
+.. autoclass:: memory_ordering
+
+.. autoclass:: memory_scope
+
+.. autoclass:: VarAtomicity
+
+.. autoclass:: AtomicInit
+
+.. autoclass:: AtomicUpdate
 
 .. }}}
 
@@ -328,6 +358,8 @@ Temporary Variables
 
 Temporary variables model OpenCL's ``private`` and ``local`` address spaces. Both
 have the lifetime of a kernel invocation.
+
+.. autoclass:: temp_var_scope
 
 .. autoclass:: TemporaryVariable
     :members:
@@ -436,10 +468,14 @@ Kernel Options
 
 .. autoclass:: Options
 
+.. _targets:
+
 Targets
 -------
 
 .. automodule:: loopy.target
+
+.. currentmodule:: loopy
 
 Helper values
 -------------
@@ -451,6 +487,29 @@ Helper values
 .. autoclass:: UniqueName
 
 .. }}}
+
+Libraries: Extending and Interfacing with External Functionality
+----------------------------------------------------------------
+
+.. _symbols:
+
+Symbols
+^^^^^^^
+
+.. _functions:
+
+Functions
+^^^^^^^^^
+
+.. autoclass:: PreambleInfo
+
+.. autoclass:: CallMangleInfo
+
+.. _reductions:
+
+Reductions
+^^^^^^^^^^
+
 
 The Kernel Object
 -----------------

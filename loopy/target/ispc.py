@@ -26,20 +26,21 @@ THE SOFTWARE.
 
 
 import numpy as np  # noqa
-from loopy.target.c import CTarget
-from loopy.target.c.codegen.expression import LoopyCCodeMapper
+from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c.codegen.expression import ExpressionToCMapper
 from loopy.diagnostic import LoopyError
+from pymbolic.mapper.stringifier import (PREC_SUM, PREC_CALL)
 
 from pytools import memoize_method
 
 
 # {{{ expression mapper
 
-class LoopyISPCCodeMapper(LoopyCCodeMapper):
+class ExprToISPCMapper(ExpressionToCMapper):
     def _get_index_ctype(self):
-        if self.kernel.index_dtype == np.int32:
+        if self.kernel.index_dtype.numpy_dtype == np.int32:
             return "int32"
-        elif self.kernel.index_dtype == np.int64:
+        elif self.kernel.index_dtype.numpy_dtype == np.int64:
             return "int64"
         else:
             raise ValueError("unexpected index_type")
@@ -52,6 +53,75 @@ class LoopyISPCCodeMapper(LoopyCCodeMapper):
             return "(varying %s) programIndex" % self._get_index_ctype()
         else:
             raise LoopyError("ISPC only supports one local axis")
+
+    def map_constant(self, expr, enclosing_prec, type_context):
+        if isinstance(expr, (complex, np.complexfloating)):
+            raise NotImplementedError("complex numbers in ispc")
+        else:
+            if type_context == "f":
+                return repr(float(expr))
+            elif type_context == "d":
+                # Keepin' the good ideas flowin' since '66.
+                return repr(float(expr))+"d"
+            elif type_context == "i":
+                return str(int(expr))
+            else:
+                from loopy.tools import is_integer
+                if is_integer(expr):
+                    return str(expr)
+
+                raise RuntimeError("don't know how to generated code "
+                        "for constant '%s'" % expr)
+
+    def map_variable(self, expr, enclosing_prec, type_context):
+        tv = self.kernel.temporary_variables.get(expr.name)
+
+        from loopy.kernel.data import temp_var_scope
+        if tv is not None and tv.scope == temp_var_scope.PRIVATE:
+            # FIXME: This is a pretty coarse way of deciding what
+            # private temporaries get duplicated. Refine? (See also
+            # below in decl generation)
+            gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
+            if lsize:
+                return "%s[programIndex]" % expr.name
+            else:
+                return expr.name
+
+        else:
+            return super(ExprToISPCMapper, self).map_variable(
+                    expr, enclosing_prec, type_context)
+
+    def map_subscript(self, expr, enclosing_prec, type_context):
+        from loopy.kernel.data import TemporaryVariable
+
+        ary = self.find_array(expr)
+
+        if isinstance(ary, TemporaryVariable):
+            gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
+            if lsize:
+                lsize, = lsize
+                from loopy.kernel.array import get_access_info
+                from pymbolic import evaluate
+
+                access_info = get_access_info(self.kernel.target, ary, expr.index,
+                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
+                    self.codegen_state.vectorization_info)
+
+                subscript, = access_info.subscripts
+                result = self.parenthesize_if_needed(
+                        "%s[programIndex + %s]" % (
+                            access_info.array_name,
+                            self.rec(lsize*subscript, PREC_SUM, 'i')),
+                        enclosing_prec, PREC_CALL)
+
+                if access_info.vector_index is not None:
+                    return self.kernel.target.add_vector_access(
+                        result, access_info.vector_index)
+                else:
+                    return result
+
+        return super(ExprToISPCMapper, self).map_subscript(
+                expr, enclosing_prec, type_context)
 
 # }}}
 
@@ -94,6 +164,24 @@ class ISPCTarget(CTarget):
 
         super(ISPCTarget, self).__init__()
 
+    host_program_name_suffix = ""
+    device_program_name_suffix = "_inner"
+
+    def pre_codegen_check(self, kernel):
+        gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs()
+        if len(lsize) > 1:
+            for i, ls_i in enumerate(lsize[1:]):
+                if ls_i != 1:
+                    raise LoopyError("local axis %d (0-based) "
+                            "has length > 1, which is unsupported "
+                            "by ISPC" % ls_i)
+
+    def get_host_ast_builder(self):
+        return ISPCASTBuilder(self)
+
+    def get_device_ast_builder(self):
+        return ISPCASTBuilder(self)
+
     # {{{ types
 
     @memoize_method
@@ -106,23 +194,20 @@ class ISPCTarget(CTarget):
 
     # }}}
 
-    # {{{ top-level codegen
 
-    def generate_code(self, kernel, codegen_state, impl_arg_info):
-        from cgen import (FunctionBody, FunctionDeclaration, Value, Module,
-                Block, Line, Statement as S)
-        from cgen.ispc import ISPCExport, ISPCTask
+class ISPCASTBuilder(CASTBuilder):
+    def _arg_names_and_decls(self, codegen_state):
+        implemented_data_info = codegen_state.implemented_data_info
+        arg_names = [iai.name for iai in implemented_data_info]
 
-        knl_body, implemented_domains = kernel.target.generate_body(
-                kernel, codegen_state)
-
-        inner_name = "lp_ispc_inner_"+kernel.name
-        arg_decls = [iai.cgen_declarator for iai in impl_arg_info]
-        arg_names = [iai.name for iai in impl_arg_info]
+        arg_decls = [
+                self.idi_to_cgen_declarator(codegen_state.kernel, idi)
+                for idi in implemented_data_info]
 
         # {{{ occa compatibility hackery
 
-        if self.occa_mode:
+        from cgen import Value
+        if self.target.occa_mode:
             from cgen import ArrayOf, Const
             from cgen.ispc import ISPCUniform
 
@@ -136,101 +221,110 @@ class ISPCTarget(CTarget):
 
         # }}}
 
-        knl_fbody = FunctionBody(
-                ISPCTask(
+        return arg_names, arg_decls
+
+    # {{{ top-level codegen
+
+    def get_function_declaration(self, codegen_state, codegen_result,
+            schedule_index):
+        name = codegen_result.current_program(codegen_state).name
+
+        from cgen import (FunctionDeclaration, Value)
+        from cgen.ispc import ISPCExport, ISPCTask
+
+        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+
+        if codegen_state.is_generating_device_code:
+            return ISPCTask(
+                        FunctionDeclaration(
+                            Value("void", name),
+                            arg_decls))
+        else:
+            return ISPCExport(
                     FunctionDeclaration(
-                        Value("void", inner_name),
-                        arg_decls)),
-                knl_body)
+                        Value("void", name),
+                        arg_decls))
 
-        # {{{ generate wrapper
+    # }}}
 
-        wrapper_body = Block()
-
-        gsize, lsize = kernel.get_grid_sizes_as_exprs()
-        if len(lsize) > 1:
-            for i, ls_i in enumerate(lsize[1:]):
-                if ls_i != 1:
-                    raise LoopyError("local axis %d (0-based) "
-                            "has length > 1, which is unsupported "
-                            "by ISPC" % ls_i)
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        ecm = self.get_expression_to_code_mapper(codegen_state)
 
         from pymbolic.mapper.stringifier import PREC_COMPARISON, PREC_NONE
-        ccm = self.get_expression_to_code_mapper(codegen_state)
-
+        result = []
+        from cgen import Statement as S, Block
         if lsize:
-            wrapper_body.append(
+            result.append(
                     S("assert(programCount == %s)"
-                        % ccm(lsize[0], PREC_COMPARISON)))
+                        % ecm(lsize[0], PREC_COMPARISON)))
 
         if gsize:
             launch_spec = "[%s]" % ", ".join(
-                                ccm(gs_i, PREC_NONE)
-                                for gs_i in gsize),
+                                ecm(gs_i, PREC_NONE)
+                                for gs_i in gsize)
         else:
             launch_spec = ""
 
-        wrapper_body.append(
-                S("launch%s %s(%s)"
-                    % (
-                        launch_spec,
-                        inner_name,
-                        ", ".join(arg_names)
-                        ))
-                )
+        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
 
-        wrapper_fbody = FunctionBody(
-                ISPCExport(
-                    FunctionDeclaration(
-                        Value("void", kernel.name),
-                        arg_decls)),
-                wrapper_body)
+        result.append(S(
+            "launch%s %s(%s)" % (
+                launch_spec,
+                name,
+                ", ".join(arg_names)
+                )))
 
-        # }}}
-
-        mod = Module([
-            knl_fbody,
-            Line(),
-            wrapper_fbody,
-            ])
-
-        return str(mod), implemented_domains
-
-    # }}}
+        return Block(result)
 
     # {{{ code generation guts
 
     def get_expression_to_code_mapper(self, codegen_state):
-        return LoopyISPCCodeMapper(codegen_state)
+        return ExprToISPCMapper(codegen_state)
 
     def add_vector_access(self, access_str, index):
         return "(%s)[%d]" % (access_str, index)
 
     def emit_barrier(self, kind, comment):
-        from loopy.codegen import GeneratedInstruction
         from cgen import Comment, Statement
 
         assert comment
 
         if kind == "local":
-            return GeneratedInstruction(
-                    ast=Comment("local barrier: %s" % comment),
-                    implemented_domain=None)
+            return Comment("local barrier: %s" % comment)
 
         elif kind == "global":
-            return GeneratedInstruction(
-                    ast=Statement("sync; /* %s */" % comment),
-                    implemented_domain=None)
+            return Statement("sync; /* %s */" % comment)
 
         else:
             raise LoopyError("unknown barrier kind")
 
-    def wrap_temporary_decl(self, decl, is_local):
+    def get_temporary_decl(self, knl, sched_index, temp_var, decl_info):
+        from loopy.target.c import POD  # uses the correct complex type
+        temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
+
+        shape = decl_info.shape
+
+        from loopy.kernel.data import temp_var_scope
+        if temp_var.scope == temp_var_scope.PRIVATE:
+            # FIXME: This is a pretty coarse way of deciding what
+            # private temporaries get duplicated. Refine? (See also
+            # above in expr to code mapper)
+            _, lsize = knl.get_grid_size_upper_bounds_as_exprs()
+            shape = lsize + shape
+
+        if shape:
+            from cgen import ArrayOf
+            temp_var_decl = ArrayOf(temp_var_decl,
+                    " * ".join(str(s) for s in shape))
+
+        return temp_var_decl
+
+    def wrap_temporary_decl(self, decl, scope):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(decl)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.codegen import POD  # uses the correct complex type
+        from loopy.target.c import POD  # uses the correct complex type
         from cgen import Const
         from cgen.ispc import ISPCUniformPointer, ISPCUniform
 
@@ -244,7 +338,7 @@ class ISPCTarget(CTarget):
         return arg_decl
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):
-        result = super(ISPCTarget, self).get_value_arg_decl(
+        result = super(ISPCASTBuilder, self).get_value_arg_decl(
                 name, shape, dtype, is_written)
 
         from cgen import Reference, Const
@@ -253,7 +347,7 @@ class ISPCTarget(CTarget):
         if was_const:
             result = result.subdecl
 
-        if self.occa_mode:
+        if self.target.occa_mode:
             result = Reference(result)
 
         if was_const:
@@ -262,25 +356,136 @@ class ISPCTarget(CTarget):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(result)
 
+    def emit_assignment(self, codegen_state, insn):
+        kernel = codegen_state.kernel
+        ecm = codegen_state.expression_to_code_mapper
+
+        assignee_var_name, = insn.assignee_var_names()
+
+        lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
+        lhs_dtype = lhs_var.dtype
+
+        if insn.atomicity:
+            raise NotImplementedError("atomic ops in ISPC")
+
+        from loopy.expression import dtype_to_type_context
+        from pymbolic.mapper.stringifier import PREC_NONE
+
+        rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
+        rhs_code = ecm(insn.expression, prec=PREC_NONE,
+                    type_context=rhs_type_context,
+                    needed_dtype=lhs_dtype)
+
+        lhs = insn.assignee
+
+        # {{{ handle streaming stores
+
+        if "!streaming_store" in insn.tags:
+            ary = ecm.find_array(lhs)
+
+            from loopy.kernel.array import get_access_info
+            from pymbolic import evaluate
+
+            from loopy.symbolic import simplify_using_aff
+            index_tuple = tuple(
+                    simplify_using_aff(kernel, idx) for idx in lhs.index_tuple)
+
+            access_info = get_access_info(kernel.target, ary, index_tuple,
+                    lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
+                    codegen_state.vectorization_info)
+
+            from loopy.kernel.data import GlobalArg, TemporaryVariable
+
+            if not isinstance(ary, (GlobalArg, TemporaryVariable)):
+                raise LoopyError("array type not supported in ISPC: %s"
+                        % type(ary).__name)
+
+            if len(access_info.subscripts) != 1:
+                raise LoopyError("streaming stores must have a subscript")
+            subscript, = access_info.subscripts
+
+            from pymbolic.primitives import Sum, flattened_sum, Variable
+            if isinstance(subscript, Sum):
+                terms = subscript.children
+            else:
+                terms = (subscript.children,)
+
+            new_terms = []
+
+            from loopy.kernel.data import LocalIndexTag
+            from loopy.symbolic import get_dependencies
+
+            saw_l0 = False
+            for term in terms:
+                if (isinstance(term, Variable)
+                        and isinstance(
+                            kernel.iname_to_tag.get(term.name), LocalIndexTag)
+                        and kernel.iname_to_tag.get(term.name).axis == 0):
+                    if saw_l0:
+                        raise LoopyError("streaming store must have stride 1 "
+                                "in local index, got: %s" % subscript)
+                    saw_l0 = True
+                    continue
+                else:
+                    for dep in get_dependencies(term):
+                        if (
+                                isinstance(
+                                    kernel.iname_to_tag.get(dep), LocalIndexTag)
+                                and kernel.iname_to_tag.get(dep).axis == 0):
+                            raise LoopyError("streaming store must have stride 1 "
+                                    "in local index, got: %s" % subscript)
+
+                    new_terms.append(term)
+
+            if not saw_l0:
+                raise LoopyError("streaming store must have stride 1 in "
+                        "local index, got: %s" % subscript)
+
+            if access_info.vector_index is not None:
+                raise LoopyError("streaming store may not use a short-vector "
+                        "data type")
+
+            rhs_has_programindex = any(
+                    isinstance(
+                        kernel.iname_to_tag.get(dep), LocalIndexTag)
+                    and kernel.iname_to_tag.get(dep).axis == 0
+                    for dep in get_dependencies(insn.expression))
+
+            if not rhs_has_programindex:
+                rhs_code = "broadcast(%s, 0)" % rhs_code
+
+            from cgen import Statement
+            return Statement(
+                    "streaming_store(%s + %s, %s)"
+                    % (
+                        access_info.array_name,
+                        ecm(flattened_sum(new_terms), PREC_NONE, 'i'),
+                        rhs_code))
+
+        # }}}
+
+        from cgen import Assign
+        return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
+
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             static_lbound, static_ubound, inner):
         ecm = codegen_state.expression_to_code_mapper
 
         from loopy.symbolic import aff_to_expr
 
-        from loopy.codegen import wrap_in
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import For
 
-        return wrap_in(For,
+        return For(
                 "uniform %s %s = %s"
-                % (self.dtype_to_typename(iname_dtype),
+                % (self.target.dtype_to_typename(iname_dtype),
                     iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                 "%s <= %s" % (
                     iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
                 "++%s" % iname,
                 inner)
     # }}}
+
 
 # TODO: Generate launch code
 # TODO: Vector types (element access: done)

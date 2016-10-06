@@ -44,16 +44,16 @@ Influencing data access
 
 .. autofunction:: change_arg_to_image
 
-.. autofunction:: tag_data_axes
+.. autofunction:: tag_array_axes
 
 .. autofunction:: remove_unused_arguments
 
-.. autofunction:: set_array_dim_names
+.. autofunction:: set_array_axis_names
 
 Padding Data
 ------------
 
-.. autofunction:: split_array_dim
+.. autofunction:: split_array_axis
 
 .. autofunction:: find_padding_multiple
 
@@ -67,6 +67,8 @@ Manipulating Instructions
 .. autofunction:: add_dependency
 
 .. autofunction:: remove_instructions
+
+.. autofunction:: replace_instruction_ids
 
 .. autofunction:: tag_instructions
 
@@ -94,6 +96,8 @@ Modifying Arguments
 
 .. autofunction:: rename_argument
 
+.. autofunction:: set_temporary_scope
+
 Creating Batches of Operations
 ------------------------------
 
@@ -110,7 +114,10 @@ Finishing up
 
 .. autofunction:: get_one_scheduled_kernel
 
-.. autofunction:: generate_code
+.. autoclass:: GeneratedProgram
+.. autoclass:: CodeGenerationResult
+
+.. autofunction:: generate_code_v2
 
 Setting options
 ---------------
@@ -124,12 +131,7 @@ Matching contexts
 
 TODO: Matching instruction tags
 
-.. automodule:: loopy.context_matching
-
-.. autofunction:: parse_match
-
-.. autofunction:: parse_stack_match
-
+.. automodule:: loopy.match
 
 .. vim: tw=75:spell
 

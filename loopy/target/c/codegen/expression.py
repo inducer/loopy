@@ -1,7 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-from six.moves import range
-from six.moves import zip
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -26,35 +23,48 @@ THE SOFTWARE.
 """
 
 
+from six.moves import range, zip
+
 import numpy as np
 
 from pymbolic.mapper import RecursiveMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
-        PREC_POWER)
+        PREC_POWER,
+        PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND)
 import islpy as isl
 
 from loopy.expression import dtype_to_type_context, TypeInferenceMapper
 
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.tools import is_integer
+from loopy.types import LoopyType
 
 
 # {{{ C code mapper
 
-class LoopyCCodeMapper(RecursiveMapper):
-    def __init__(self, codegen_state, fortran_abi=False):
+class ExpressionToCMapper(RecursiveMapper):
+    def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
         self.kernel = codegen_state.kernel
         self.codegen_state = codegen_state
 
-        self.type_inf_mapper = TypeInferenceMapper(self.kernel)
+        if type_inf_mapper is None:
+            type_inf_mapper = TypeInferenceMapper(self.kernel)
+        self.type_inf_mapper = type_inf_mapper
+
         self.allow_complex = codegen_state.allow_complex
 
         self.fortran_abi = fortran_abi
 
     # {{{ helpers
 
+    def with_assignments(self, names_to_vars):
+        type_inf_mapper = self.type_inf_mapper.with_assignments(names_to_vars)
+        return type(self)(self.codegen_state, self.fortran_abi, type_inf_mapper)
+
     def infer_type(self, expr):
         result = self.type_inf_mapper(expr)
+        assert isinstance(result, LoopyType)
+
         self.codegen_state.seen_dtypes.add(result)
         return result
 
@@ -85,21 +95,22 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         return ary
 
+    def wrap_in_typecast(self, actual_type, needed_dtype, s):
+        if (actual_type.is_complex() and needed_dtype.is_complex()
+                and actual_type != needed_dtype):
+            return "%s_cast(%s)" % (self.complex_type_name(needed_dtype), s)
+        elif not actual_type.is_complex() and needed_dtype.is_complex():
+            return "%s_fromreal(%s)" % (self.complex_type_name(needed_dtype), s)
+        else:
+            return s
+
     def rec(self, expr, prec, type_context=None, needed_dtype=None):
         if needed_dtype is None:
             return RecursiveMapper.rec(self, expr, prec, type_context)
 
-        actual_type = self.infer_type(expr)
-
-        if (actual_type.kind == "c" and needed_dtype.kind == "c"
-                and actual_type != needed_dtype):
-            result = RecursiveMapper.rec(self, expr, PREC_NONE, type_context)
-            return "%s_cast(%s)" % (self.complex_type_name(needed_dtype), result)
-        elif actual_type.kind != "c" and needed_dtype.kind == "c":
-            result = RecursiveMapper.rec(self, expr, PREC_NONE, type_context)
-            return "%s_fromreal(%s)" % (self.complex_type_name(needed_dtype), result)
-        else:
-            return RecursiveMapper.rec(self, expr, prec, type_context)
+        return self.wrap_in_typecast(
+                self.infer_type(expr), needed_dtype,
+                RecursiveMapper.rec(self, expr, PREC_NONE, type_context))
 
     __call__ = rec
 
@@ -139,7 +150,7 @@ class LoopyCCodeMapper(RecursiveMapper):
             if isinstance(arg, ValueArg) and self.fortran_abi:
                 prefix = "*"
 
-        result = self.kernel.mangle_symbol(expr.name)
+        result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
         if result is not None:
             _, c_name = result
             return prefix + c_name
@@ -172,23 +183,43 @@ class LoopyCCodeMapper(RecursiveMapper):
         from loopy.kernel.array import get_access_info
         from pymbolic import evaluate
 
-        access_info = get_access_info(self.kernel.target, ary, expr.index,
+        from loopy.symbolic import simplify_using_aff
+        index_tuple = tuple(
+                simplify_using_aff(self.kernel, idx) for idx in expr.index_tuple)
+
+        access_info = get_access_info(self.kernel.target, ary, index_tuple,
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 
         from loopy.kernel.data import ImageArg, GlobalArg, TemporaryVariable
 
         if isinstance(ary, ImageArg):
-            base_access = ("read_imagef(%s, loopy_sampler, (float%d)(%s))"
-                    % (ary.name, ary.dimensions,
-                        ", ".join(self.rec(idx, PREC_NONE, 'i')
-                            for idx in expr.index[::-1])))
+            extra_axes = 0
 
-            if ary.dtype == np.float32:
+            num_target_axes = ary.num_target_axes()
+            if num_target_axes in [1, 2]:
+                idx_vec_type = "float2"
+                extra_axes = 2-num_target_axes
+            elif num_target_axes == 3:
+                idx_vec_type = "float4"
+                extra_axes = 4-num_target_axes
+            else:
+                raise LoopyError("unsupported number (%d) of target axes in image"
+                        % num_target_axes)
+
+            idx_tuple = expr.index_tuple[::-1] + (0,) * extra_axes
+
+            idx_str = ", ".join(self.rec(idx, PREC_NONE, 'i')
+                    for idx in idx_tuple)
+
+            base_access = ("read_imagef(%s, loopy_sampler, (%s) (%s))"
+                    % (ary.name, idx_vec_type, idx_str))
+
+            if ary.dtype.numpy_dtype == np.float32:
                 return base_access+".x"
             if self.kernel.target.is_vector_dtype(ary.dtype):
                 return base_access
-            elif ary.dtype == np.float64:
+            elif ary.dtype.numpy_dtype == np.float64:
                 return "as_double(%s.xy)" % base_access
             else:
                 raise NotImplementedError(
@@ -213,7 +244,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                         enclosing_prec, PREC_CALL)
 
             if access_info.vector_index is not None:
-                return self.kernel.target.add_vector_access(
+                return self.codegen_state.ast_builder.add_vector_access(
                     result, access_info.vector_index)
             else:
                 return result
@@ -320,11 +351,15 @@ class LoopyCCodeMapper(RecursiveMapper):
     def map_comparison(self, expr, enclosing_prec, type_context):
         from pymbolic.mapper.stringifier import PREC_COMPARISON
 
+        inner_type_context = dtype_to_type_context(
+                self.kernel.target,
+                self.infer_type(expr.left - expr.right))
+
         return self.parenthesize_if_needed(
                 "%s %s %s" % (
-                    self.rec(expr.left, PREC_COMPARISON, None),
+                    self.rec(expr.left, PREC_COMPARISON, inner_type_context),
                     expr.operator,
-                    self.rec(expr.right, PREC_COMPARISON, None)),
+                    self.rec(expr.right, PREC_COMPARISON, inner_type_context)),
                 enclosing_prec, PREC_COMPARISON)
 
     def map_constant(self, expr, enclosing_prec, type_context):
@@ -358,7 +393,7 @@ class LoopyCCodeMapper(RecursiveMapper):
                 if is_integer(expr):
                     return str(expr)
 
-                raise RuntimeError("don't know how to generated code "
+                raise RuntimeError("don't know how to generate code "
                         "for constant '%s'" % expr)
 
     def map_call(self, expr, enclosing_prec, type_context):
@@ -410,37 +445,35 @@ class LoopyCCodeMapper(RecursiveMapper):
 
         # }}}
 
-        c_name = None
         if isinstance(identifier, Variable):
             identifier = identifier.name
-            c_name = identifier
 
         par_dtypes = tuple(self.infer_type(par) for par in expr.parameters)
 
         str_parameters = None
 
-        mangle_result = self.kernel.mangle_function(identifier, par_dtypes)
-        if mangle_result is not None:
-            if len(mangle_result) == 2:
-                result_dtype, c_name = mangle_result
-            elif len(mangle_result) == 3:
-                result_dtype, c_name, arg_tgt_dtypes = mangle_result
+        mangle_result = self.kernel.mangle_function(
+                identifier, par_dtypes,
+                ast_builder=self.codegen_state.ast_builder)
 
-                str_parameters = [
-                        self.rec(par, PREC_NONE,
-                            dtype_to_type_context(self.kernel.target, tgt_dtype),
-                            tgt_dtype)
-                        for par, par_dtype, tgt_dtype in zip(
-                            expr.parameters, par_dtypes, arg_tgt_dtypes)]
-            else:
-                raise RuntimeError("result of function mangler "
-                        "for function '%s' not understood"
-                        % identifier)
+        if mangle_result is None:
+            raise RuntimeError("function '%s' unknown--"
+                    "maybe you need to register a function mangler?"
+                    % identifier)
 
-        from loopy.codegen import SeenFunction
-        self.codegen_state.seen_functions.add(
-                SeenFunction(identifier, c_name, par_dtypes))
-        if str_parameters is None:
+        if len(mangle_result.result_dtypes) != 1:
+            raise LoopyError("functions with more or fewer than one return value "
+                    "may not be used in an expression")
+
+        if mangle_result.arg_dtypes is not None:
+            str_parameters = [
+                    self.rec(par, PREC_NONE,
+                        dtype_to_type_context(self.kernel.target, tgt_dtype),
+                        tgt_dtype)
+                    for par, par_dtype, tgt_dtype in zip(
+                        expr.parameters, par_dtypes, mangle_result.arg_dtypes)]
+
+        else:
             # /!\ FIXME For some functions (e.g. 'sin'), it makes sense to
             # propagate the type context here. But for many others, it does
             # not. Using the inferred type as a stopgap for now.
@@ -450,18 +483,44 @@ class LoopyCCodeMapper(RecursiveMapper):
                             self.kernel.target, par_dtype))
                     for par, par_dtype in zip(expr.parameters, par_dtypes)]
 
-        if c_name is None:
-            raise RuntimeError("unable to find C name for function identifier '%s'"
-                    % identifier)
+            from warnings import warn
+            warn("Calling function '%s' with unknown C signature--"
+                    "return CallMangleInfo.arg_dtypes"
+                    % identifier, LoopyWarning)
 
-        return "%s(%s)" % (c_name, ", ".join(str_parameters))
+        from loopy.codegen import SeenFunction
+        self.codegen_state.seen_functions.add(
+                SeenFunction(identifier,
+                    mangle_result.target_name,
+                    mangle_result.arg_dtypes or par_dtypes))
+
+        return "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
+
+    def map_logical_not(self, expr, enclosing_prec, type_context):
+        return self.parenthesize_if_needed(
+                "!" + self.rec(expr.child, PREC_UNARY, type_context),
+                enclosing_prec, PREC_UNARY)
+
+    def map_logical_and(self, expr, enclosing_prec, type_context):
+        return self.parenthesize_if_needed(
+                self.join_rec(" && ", expr.children, PREC_LOGICAL_AND, type_context),
+                enclosing_prec, PREC_LOGICAL_AND)
+
+    def map_logical_or(self, expr, enclosing_prec, type_context):
+        return self.parenthesize_if_needed(
+                self.join_rec(" || ", expr.children, PREC_LOGICAL_OR, type_context),
+                enclosing_prec, PREC_LOGICAL_OR)
 
     # {{{ deal with complex-valued variables
 
     def complex_type_name(self, dtype):
-        if dtype == np.complex64:
+        from loopy.types import NumpyType
+        if not isinstance(dtype, NumpyType):
+            raise LoopyError("'%s' is not a complex type" % dtype)
+
+        if dtype.dtype == np.complex64:
             return "cfloat"
-        if dtype == np.complex128:
+        if dtype.dtype == np.complex128:
             return "cdouble"
         else:
             raise RuntimeError
@@ -484,17 +543,20 @@ class LoopyCCodeMapper(RecursiveMapper):
             return base_impl(expr, enclosing_prec, type_context)
 
         tgt_dtype = self.infer_type(expr)
-        is_complex = tgt_dtype.kind == 'c'
+        is_complex = tgt_dtype.is_complex()
 
         if not is_complex:
             return base_impl(expr, enclosing_prec, type_context)
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
-            reals = [child for child in expr.children
-                    if 'c' != self.infer_type(child).kind]
-            complexes = [child for child in expr.children
-                    if 'c' == self.infer_type(child).kind]
+            reals = []
+            complexes = []
+            for child in expr.children:
+                if self.infer_type(child).is_complex():
+                    complexes.append(child)
+                else:
+                    reals.append(child)
 
             real_sum = self.join_rec(" + ", reals, PREC_SUM, type_context)
 
@@ -534,17 +596,20 @@ class LoopyCCodeMapper(RecursiveMapper):
             return base_impl(expr, enclosing_prec, type_context)
 
         tgt_dtype = self.infer_type(expr)
-        is_complex = 'c' == tgt_dtype.kind
+        is_complex = tgt_dtype.is_complex()
 
         if not is_complex:
             return base_impl(expr, enclosing_prec, type_context)
         else:
             tgt_name = self.complex_type_name(tgt_dtype)
 
-            reals = [child for child in expr.children
-                    if 'c' != self.infer_type(child).kind]
-            complexes = [child for child in expr.children
-                    if 'c' == self.infer_type(child).kind]
+            reals = []
+            complexes = []
+            for child in expr.children:
+                if self.infer_type(child).is_complex():
+                    complexes.append(child)
+                else:
+                    reals.append(child)
 
             real_prd = self.join_rec(" * ", reals, PREC_PRODUCT,
                     type_context)
@@ -574,7 +639,8 @@ class LoopyCCodeMapper(RecursiveMapper):
             # analogous to ^{-1}
             denom = self.rec(expr.denominator, PREC_POWER, type_context)
 
-            if n_dtype.kind not in "fc" and d_dtype.kind not in "fc":
+            if (n_dtype.kind not in "fc"
+                    and d_dtype.kind not in "fc"):
                 # must both be integers
                 if type_context == "f":
                     num = "((float) (%s))" % num
@@ -592,8 +658,8 @@ class LoopyCCodeMapper(RecursiveMapper):
                         denom),
                     enclosing_prec, PREC_PRODUCT)
 
-        n_dtype = self.infer_type(expr.numerator)
-        d_dtype = self.infer_type(expr.denominator)
+        n_dtype = self.infer_type(expr.numerator).numpy_dtype
+        d_dtype = self.infer_type(expr.denominator).numpy_dtype
 
         if not self.allow_complex:
             return base_impl(expr, enclosing_prec, type_context)
@@ -623,7 +689,7 @@ class LoopyCCodeMapper(RecursiveMapper):
 
     def map_remainder(self, expr, enclosing_prec, type_context):
         tgt_dtype = self.infer_type(expr)
-        if 'c' == tgt_dtype.kind:
+        if tgt_dtype.is_complex():
             raise RuntimeError("complex remainder not defined")
 
         return "(%s %% %s)" % (
@@ -652,24 +718,24 @@ class LoopyCCodeMapper(RecursiveMapper):
             return base_impl(expr, enclosing_prec, type_context)
 
         tgt_dtype = self.infer_type(expr)
-        if 'c' == tgt_dtype.kind:
+        if tgt_dtype.is_complex():
             if expr.exponent in [2, 3, 4]:
                 value = expr.base
                 for i in range(expr.exponent-1):
                     value = value * expr.base
                 return self.rec(value, enclosing_prec, type_context)
             else:
-                b_complex = 'c' == self.infer_type(expr.base).kind
-                e_complex = 'c' == self.infer_type(expr.exponent).kind
+                b_complex = self.infer_type(expr.base).is_complex()
+                e_complex = self.infer_type(expr.exponent).is_complex()
 
                 if b_complex and not e_complex:
                     return "%s_powr(%s, %s)" % (
-                            self.complex_type_name(tgt_dtype),
+                            self.complex_type_name(tgt_dtype.numpy_dtype),
                             self.rec(expr.base, PREC_NONE, type_context, tgt_dtype),
                             self.rec(expr.exponent, PREC_NONE, type_context))
                 else:
                     return "%s_pow(%s, %s)" % (
-                            self.complex_type_name(tgt_dtype),
+                            self.complex_type_name(tgt_dtype.numpy_dtype),
                             self.rec(expr.base, PREC_NONE, type_context, tgt_dtype),
                             self.rec(expr.exponent, PREC_NONE,
                                 type_context, tgt_dtype))
@@ -682,7 +748,7 @@ class LoopyCCodeMapper(RecursiveMapper):
         raise LoopyError("plain C does not have group hw axes")
 
     def map_local_hw_index(self, expr, enclosing_prec, type_context):
-        raise LoopyError("plain C does not have group hw axes")
+        raise LoopyError("plain C does not have local hw axes")
 
 # }}}
 

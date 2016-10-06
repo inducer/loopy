@@ -29,6 +29,8 @@ from islpy import dim_type
 
 from loopy.kernel.data import ImageArg
 
+from pytools import MovedFunctionDeprecationWrapper
+
 
 # {{{ convenience: add_prefetch
 
@@ -136,9 +138,11 @@ def _process_footprint_subscripts(kernel, rule_name, sweep_inames,
 
 def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         default_tag="l.auto", rule_name=None,
-        temporary_name=None, temporary_is_local=None,
+        temporary_name=None,
+        temporary_scope=None, temporary_is_local=None,
         footprint_subscripts=None,
-        fetch_bounding_box=False):
+        fetch_bounding_box=False,
+        fetch_outer_inames=None):
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
@@ -151,6 +155,9 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         directly by putting an index expression into *var_name*. Substitutions
         such as those occurring in dimension splits are recorded and also
         applied to these indices.
+
+    :arg fetch_outer_inames: The inames within which the fetch
+        instruction is nested. If *None*, make an educated guess.
 
     This function combines :func:`extract_subst` and :func:`precompute`.
     """
@@ -245,7 +252,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
             default_tag=default_tag, dtype=arg.dtype,
             fetch_bounding_box=fetch_bounding_box,
             temporary_name=temporary_name,
-            temporary_is_local=temporary_is_local)
+            temporary_scope=temporary_scope, temporary_is_local=temporary_is_local,
+            precompute_outer_inames=fetch_outer_inames)
 
     # {{{ remove inames that were temporarily added by slice sweeps
 
@@ -292,13 +300,19 @@ def change_arg_to_image(knl, name):
 # }}}
 
 
-# {{{ tag data axes
+# {{{ tag array axes
 
-def tag_data_axes(knl, ary_names, dim_tags):
+def tag_array_axes(knl, ary_names, dim_tags):
+    """
+    .. versionchanged:: 2016.2
+
+        This function was called :func:`tag_data_axes` before version 2016.2.
+    """
+
     from loopy.kernel.tools import ArrayChanger
 
     if isinstance(ary_names, str):
-        ary_names = ary_names.split(",")
+        ary_names = [ary_name.strip() for ary_name in ary_names.split(",")]
 
     for ary_name in ary_names:
         achng = ArrayChanger(knl, ary_name)
@@ -307,7 +321,8 @@ def tag_data_axes(knl, ary_names, dim_tags):
         from loopy.kernel.array import parse_array_dim_tags
         new_dim_tags = parse_array_dim_tags(dim_tags,
                 n_axes=ary.num_user_axes(),
-                use_increasing_target_axes=ary.max_target_axes > 1)
+                use_increasing_target_axes=ary.max_target_axes > 1,
+                dim_names=ary.dim_names)
 
         ary = ary.copy(dim_tags=tuple(new_dim_tags))
 
@@ -315,12 +330,20 @@ def tag_data_axes(knl, ary_names, dim_tags):
 
     return knl
 
+
+tag_data_axes = MovedFunctionDeprecationWrapper(tag_array_axes)
+
 # }}}
 
 
-# {{{ set_array_dim_names
+# {{{ set_array_axis_names
 
-def set_array_dim_names(kernel, ary_names, dim_names):
+def set_array_axis_names(kernel, ary_names, dim_names):
+    """
+    .. versionchanged:: 2016.2
+
+        This function was called :func:`set_array_dim_names` before version 2016.2.
+    """
     from loopy.kernel.tools import ArrayChanger
     if isinstance(ary_names, str):
         ary_names = ary_names.split(",")
@@ -337,6 +360,8 @@ def set_array_dim_names(kernel, ary_names, dim_names):
         kernel = achng.with_changed_array(ary)
 
     return kernel
+
+set_array_dim_names = MovedFunctionDeprecationWrapper(set_array_axis_names)
 
 # }}}
 
@@ -527,5 +552,111 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
     return kernel.copy(args=new_args)
 
 # }}}
+
+
+# {{{ set temporary scope
+
+def set_temporary_scope(kernel, temp_var_names, scope):
+    """
+    :arg temp_var_names: a container with membership checking,
+        or a comma-separated string of variables for which the
+        scope is to be set.
+    :arg scope: One of the values from :class:`temp_var_scope`, or one
+        of the strings ``"private"``, ``"local"``, or ``"global"``.
+    """
+
+    if isinstance(temp_var_names, str):
+        temp_var_names = [s.strip() for s in temp_var_names.split(",")]
+
+    from loopy.kernel.data import temp_var_scope
+    if isinstance(scope, str):
+        try:
+            scope = getattr(temp_var_scope, scope.upper())
+        except AttributeError:
+            raise LoopyError("scope '%s' unknown" % scope)
+
+    if not isinstance(scope, int) or scope not in [
+            temp_var_scope.PRIVATE,
+            temp_var_scope.LOCAL,
+            temp_var_scope.GLOBAL]:
+        raise LoopyError("invalid scope '%s'" % scope)
+
+    new_temp_vars = kernel.temporary_variables.copy()
+    for tv_name in temp_var_names:
+        try:
+            tv = new_temp_vars[tv_name]
+        except KeyError:
+            raise LoopyError("temporary '%s' not found" % tv_name)
+
+        new_temp_vars[tv_name] = tv.copy(scope=scope)
+
+    return kernel.copy(temporary_variables=new_temp_vars)
+
+# }}}
+
+
+# {{{ reduction_arg_to_subst_rule
+
+def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=None):
+    if isinstance(inames, str):
+        inames = [s.strip() for s in inames.split(",")]
+
+    inames_set = frozenset(inames)
+
+    substs = knl.substitutions.copy()
+
+    var_name_gen = knl.get_var_name_generator()
+
+    def map_reduction(expr, rec, nresults=1):
+        if frozenset(expr.inames) != inames_set:
+            return type(expr)(
+                    operation=expr.operation,
+                    inames=expr.inames,
+                    expr=rec(expr.expr),
+                    allow_simultaneous=expr.allow_simultaneous)
+
+        if subst_rule_name is None:
+            subst_rule_prefix = "red_%s_arg" % "_".join(inames)
+            my_subst_rule_name = var_name_gen(subst_rule_prefix)
+        else:
+            my_subst_rule_name = subst_rule_name
+
+        if my_subst_rule_name in substs:
+            raise LoopyError("substitution rule '%s' already exists"
+                    % my_subst_rule_name)
+
+        from loopy.kernel.data import SubstitutionRule
+        substs[my_subst_rule_name] = SubstitutionRule(
+                name=my_subst_rule_name,
+                arguments=tuple(inames),
+                expression=expr.expr)
+
+        from pymbolic import var
+        iname_vars = [var(iname) for iname in inames]
+
+        return type(expr)(
+                operation=expr.operation,
+                inames=expr.inames,
+                expr=var(my_subst_rule_name)(*iname_vars),
+                allow_simultaneous=expr.allow_simultaneous)
+
+    from loopy.symbolic import ReductionCallbackMapper
+    cb_mapper = ReductionCallbackMapper(map_reduction)
+
+    from loopy.kernel.data import MultiAssignmentBase
+
+    new_insns = []
+    for insn in knl.instructions:
+        if not isinstance(insn, MultiAssignmentBase):
+            new_insns.append(insn)
+        else:
+            new_insns.append(insn.copy(expression=cb_mapper(insn.expression)))
+
+    return knl.copy(
+            instructions=new_insns,
+            substitutions=substs)
+
+# }}}
+
 
 # vim: foldmethod=marker

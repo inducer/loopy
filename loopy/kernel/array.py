@@ -26,6 +26,7 @@ THE SOFTWARE.
 
 import re
 
+import six
 from six.moves import range, zip
 from six import iteritems
 
@@ -289,9 +290,32 @@ def _parse_array_dim_tag(tag, default_target_axis, nesting_levels):
                     nesting_level, pad_to=pad_to, target_axis=target_axis))
 
 
-def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False):
+def parse_array_dim_tags(dim_tags, n_axes=None, use_increasing_target_axes=False,
+        dim_names=None):
     if isinstance(dim_tags, str):
         dim_tags = dim_tags.split(",")
+    if isinstance(dim_tags, dict):
+        dim_tags_dict = dim_tags
+
+        if dim_names is None:
+            raise LoopyError("dim_tags may only be given as a dictionary if "
+                    "dim_names is available")
+
+        assert n_axes == len(dim_names)
+
+        dim_tags = [None]*n_axes
+        for dim_name, val in six.iteritems(dim_tags_dict):
+            try:
+                dim_idx = dim_names.index(dim_name)
+            except ValueError:
+                raise LoopyError("'%s' does not name an array axis" % dim_name)
+
+            dim_tags[dim_idx] = val
+
+        for idim, dim_tag in enumerate(dim_tags):
+            if dim_tag is None:
+                raise LoopyError("array axis tag for axis %d (1-based) was not "
+                        "set by passed dictionary" % (idim + 1))
 
     default_target_axis = 0
 
@@ -551,7 +575,8 @@ class ArrayBase(Record):
     allowed_extra_kwargs = []
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
-            dim_names=None, strides=None, order=None, **kwargs):
+            dim_names=None, strides=None, order=None, for_atomic=False,
+            **kwargs):
         """
         All of the following are optional. Specify either strides or shape.
 
@@ -611,6 +636,9 @@ class ArrayBase(Record):
         :arg order: "F" or "C" for C (row major) or Fortran
             (column major). Defaults to the *default_order* argument
             passed to :func:`loopy.make_kernel`.
+        :arg for_atomic:
+            Whether the array is declared for atomic access, and, if necessary,
+            using atomic-capable data types.
         :arg offset: Offset from the beginning of the buffer to the point from
             which the strides are counted. May be one of
 
@@ -629,22 +657,9 @@ class ArrayBase(Record):
 
         import loopy as lp
 
-        if dtype is not None and dtype is not lp.auto:
-            from loopy.tools import PicklableDtype
-            if not isinstance(dtype, PicklableDtype):
-                picklable_dtype = PicklableDtype(dtype)
-            else:
-                picklable_dtype = dtype
-
-            if picklable_dtype.dtype == object:
-                raise TypeError("loopy does not directly support object arrays "
-                        "(object dtype encountered on array '%s') "
-                        "-- you may want to tag the relevant array axis as 'sep'"
-                        % name)
-        else:
-            picklable_dtype = dtype
-
-        del dtype
+        from loopy.types import to_loopy_type
+        dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
+                for_atomic=for_atomic)
 
         strides_known = strides is not None and strides is not lp.auto
         shape_known = shape is not None and shape is not lp.auto
@@ -682,7 +697,8 @@ class ArrayBase(Record):
         if dim_tags is not None:
             dim_tags = parse_array_dim_tags(dim_tags,
                     n_axes=(len(shape) if shape_known else None),
-                    use_increasing_target_axes=self.max_target_axes > 1)
+                    use_increasing_target_axes=self.max_target_axes > 1,
+                    dim_names=dim_names)
 
         # {{{ determine number of user axes
 
@@ -716,7 +732,8 @@ class ArrayBase(Record):
         if dim_tags is None and num_user_axes is not None and order is not None:
             dim_tags = parse_array_dim_tags(num_user_axes*[order],
                     n_axes=num_user_axes,
-                    use_increasing_target_axes=self.max_target_axes > 1)
+                    use_increasing_target_axes=self.max_target_axes > 1,
+                    dim_names=dim_names)
             order = None
 
         # }}}
@@ -764,9 +781,14 @@ class ArrayBase(Record):
 
             kwargs["strides"] = strides
 
+        if dim_names is not None and not isinstance(dim_names, tuple):
+            from warnings import warn
+            warn("dim_names is not a tuple when calling ArrayBase constructor",
+                    DeprecationWarning, stacklevel=2)
+
         Record.__init__(self,
                 name=name,
-                picklable_dtype=picklable_dtype,
+                dtype=dtype,
                 shape=shape,
                 dim_tags=dim_tags,
                 offset=offset,
@@ -781,7 +803,7 @@ class ArrayBase(Record):
         return (
                 type(self) == type(other)
                 and self.name == other.name
-                and self.picklable_dtype == other.picklable_dtype
+                and self.dtype == other.dtype
                 and istoee(self.shape, other.shape)
                 and self.dim_tags == other.dim_tags
                 and isee(self.offset, other.offset)
@@ -791,23 +813,6 @@ class ArrayBase(Record):
 
     def __ne__(self, other):
         return not self.__eq__(other)
-
-    @property
-    def dtype(self):
-        from loopy.tools import PicklableDtype
-        if isinstance(self.picklable_dtype, PicklableDtype):
-            return self.picklable_dtype.dtype
-        else:
-            return self.picklable_dtype
-
-    def get_copy_kwargs(self, **kwargs):
-        result = Record.get_copy_kwargs(self, **kwargs)
-        if "dtype" not in result:
-            result["dtype"] = self.dtype
-
-        del result["picklable_dtype"]
-
-        return result
 
     def stringify(self, include_typename):
         import loopy as lp
@@ -991,7 +996,6 @@ class ArrayBase(Record):
                 # generate stride arguments, yielded later to keep array first
                 for stride_user_axis, stride_impl_axis, stride_unvec_impl_axis \
                         in stride_arg_axes:
-                    from cgen import Const, POD
                     stride_name = full_name+"_stride%d" % stride_user_axis
 
                     from pymbolic import var
@@ -1004,19 +1008,15 @@ class ArrayBase(Record):
                                 target=target,
                                 name=stride_name,
                                 dtype=index_dtype,
-                                cgen_declarator=Const(POD(index_dtype, stride_name)),
                                 arg_class=ValueArg,
                                 stride_for_name_and_axis=(
-                                    full_name, stride_impl_axis)))
+                                    full_name, stride_impl_axis),
+                                is_written=False))
 
                 yield ImplementedDataInfo(
                             target=target,
                             name=full_name,
                             base_name=self.name,
-
-                            # implemented by various argument types
-                            cgen_declarator=self.get_arg_decl(
-                                target, name_suffix, shape, dtype, is_written),
 
                             arg_class=type(self),
                             dtype=dtype,
@@ -1025,18 +1025,18 @@ class ArrayBase(Record):
                             unvec_shape=unvec_shape,
                             unvec_strides=tuple(unvec_strides),
                             allows_offset=bool(self.offset),
-                            )
+
+                            is_written=is_written)
 
                 if self.offset:
-                    from cgen import Const, POD
                     offset_name = full_name+"_offset"
                     yield ImplementedDataInfo(
                                 target=target,
                                 name=offset_name,
                                 dtype=index_dtype,
-                                cgen_declarator=Const(POD(index_dtype, offset_name)),
                                 arg_class=ValueArg,
-                                offset_for_name=full_name)
+                                offset_for_name=full_name,
+                                is_written=False)
 
                 for sa in stride_args:
                     yield sa
@@ -1172,6 +1172,9 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
         or *None*.
     """
 
+    import loopy as lp
+    from pymbolic import var
+
     def eval_expr_assert_integer_constant(i, expr):
         from pymbolic.mapper.evaluator import UnknownVariableError
         try:
@@ -1190,6 +1193,16 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
         return result
 
+    def apply_offset(sub):
+        if ary.offset:
+            offset_name = ary.offset
+            if offset_name is lp.auto:
+                offset_name = array_name+"_offset"
+
+            return var(offset_name) + sub
+        else:
+            return sub
+
     if not isinstance(index, tuple):
         index = (index,)
 
@@ -1203,7 +1216,10 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
                     "'shape=None'?)"
                     % ary.name)
 
-        return AccessInfo(array_name=array_name, subscripts=index, vector_index=None)
+        return AccessInfo(
+                array_name=array_name,
+                subscripts=(apply_offset(index[0]),),
+                vector_index=None)
 
     if len(ary.dim_tags) != len(index):
         raise LoopyError("subscript to '%s[%s]' has the wrong "
@@ -1230,8 +1246,6 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
     for i, (idx, dim_tag) in enumerate(zip(index, ary.dim_tags)):
         if isinstance(dim_tag, FixedStrideArrayDimTag):
-            import loopy as lp
-
             stride = dim_tag.stride
 
             if is_integer(stride):
@@ -1242,7 +1256,6 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
                             % (ary.name, i, dim_tag.stride, vector_size))
 
             elif stride is lp.auto:
-                from pymbolic import var
                 stride = var(array_name + "_stride%d" % i)
 
             subscripts[dim_tag.target_axis] += (stride // vector_size)*idx
@@ -1277,11 +1290,7 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
         if num_target_axes > 1:
             raise NotImplementedError("offsets for multiple image axes")
 
-        offset_name = ary.offset
-        if offset_name is lp.auto:
-            offset_name = array_name+"_offset"
-
-        subscripts[0] = var(offset_name) + subscripts[0]
+        subscripts[0] = apply_offset(subscripts[0])
 
     return AccessInfo(
             array_name=array_name,

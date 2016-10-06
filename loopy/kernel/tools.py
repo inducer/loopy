@@ -30,7 +30,7 @@ from six.moves import intern
 import numpy as np
 import islpy as isl
 from islpy import dim_type
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, warn_with_kernel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -63,10 +63,11 @@ def _add_dtypes(knl, dtype_dict):
     dtype_dict = dtype_dict.copy()
     new_args = []
 
+    from loopy.types import to_loopy_type
     for arg in knl.args:
         new_dtype = dtype_dict.pop(arg.name, None)
         if new_dtype is not None:
-            new_dtype = np.dtype(new_dtype)
+            new_dtype = to_loopy_type(new_dtype)
             if arg.dtype is not None and arg.dtype != new_dtype:
                 raise RuntimeError(
                         "argument '%s' already has a different dtype "
@@ -102,7 +103,15 @@ def get_arguments_with_incomplete_dtype(knl):
 
 
 def add_and_infer_dtypes(knl, dtype_dict):
-    knl = add_dtypes(knl, dtype_dict)
+    processed_dtype_dict = {}
+
+    for k, v in six.iteritems(dtype_dict):
+        for subkey in k.split(","):
+            subkey = subkey.strip()
+            if subkey:
+                processed_dtype_dict[subkey] = v
+
+    knl = add_dtypes(knl, processed_dtype_dict)
 
     from loopy.preprocess import infer_unknown_types
     return infer_unknown_types(knl, expect_completion=True)
@@ -117,7 +126,41 @@ def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
 # }}}
 
 
-# {{{ find_all_insn_inames fixed point iteration
+# {{{ find_all_insn_inames fixed point iteration (deprecated)
+
+def guess_iname_deps_based_on_var_use(kernel, insn, insn_id_to_inames=None):
+    # For all variables that insn depends on, find the intersection
+    # of iname deps of all writers, and add those to insn's
+    # dependencies.
+
+    result = frozenset()
+
+    writer_map = kernel.writer_map()
+
+    for tv_name in (insn.read_dependency_names() & kernel.get_written_variables()):
+        tv_implicit_inames = None
+
+        for writer_id in writer_map[tv_name]:
+            writer_insn = kernel.id_to_insn[writer_id]
+            if insn_id_to_inames is None:
+                writer_inames = writer_insn.within_inames
+            else:
+                writer_inames = insn_id_to_inames[writer_id]
+
+            writer_implicit_inames = (
+                    writer_inames
+                    - (writer_insn.write_dependency_names() & kernel.all_inames()))
+            if tv_implicit_inames is None:
+                tv_implicit_inames = writer_implicit_inames
+            else:
+                tv_implicit_inames = (tv_implicit_inames
+                        & writer_implicit_inames)
+
+        if tv_implicit_inames is not None:
+            result = result | tv_implicit_inames
+
+    return result - insn.reduction_inames()
+
 
 def find_all_insn_inames(kernel):
     logger.debug("%s: find_all_insn_inames: start" % kernel.name)
@@ -138,12 +181,12 @@ def find_all_insn_inames(kernel):
         all_write_deps[insn.id] = write_deps = insn.write_dependency_names()
         deps = read_deps | write_deps
 
-        if insn.forced_iname_deps_is_final:
-            iname_deps = insn.forced_iname_deps
+        if insn.within_inames_is_final:
+            iname_deps = insn.within_inames
         else:
             iname_deps = (
                     deps & kernel.all_inames()
-                    | insn.forced_iname_deps)
+                    | insn.within_inames)
 
         assert isinstance(read_deps, frozenset), type(insn)
         assert isinstance(write_deps, frozenset), type(insn)
@@ -157,8 +200,6 @@ def find_all_insn_inames(kernel):
 
         insn_id_to_inames[insn.id] = iname_deps
         insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
-
-    written_vars = kernel.get_written_variables()
 
     # fixed point iteration until all iname dep sets have converged
 
@@ -177,37 +218,27 @@ def find_all_insn_inames(kernel):
         did_something = False
         for insn in kernel.instructions:
 
-            if insn.forced_iname_deps_is_final:
+            if insn.within_inames_is_final:
                 continue
 
             # {{{ depdency-based propagation
 
-            # For all variables that insn depends on, find the intersection
-            # of iname deps of all writers, and add those to insn's
-            # dependencies.
+            inames_old = insn_id_to_inames[insn.id]
+            inames_new = inames_old | guess_iname_deps_based_on_var_use(
+                    kernel, insn, insn_id_to_inames)
 
-            for tv_name in (all_read_deps[insn.id] & written_vars):
-                implicit_inames = None
+            insn_id_to_inames[insn.id] = inames_new
 
-                for writer_id in writer_map[tv_name]:
-                    writer_implicit_inames = (
-                            insn_id_to_inames[writer_id]
-                            - insn_assignee_inames[writer_id])
-                    if implicit_inames is None:
-                        implicit_inames = writer_implicit_inames
-                    else:
-                        implicit_inames = (implicit_inames
-                                & writer_implicit_inames)
+            if inames_new != inames_old:
+                did_something = True
 
-                inames_old = insn_id_to_inames[insn.id]
-                inames_new = (inames_old | implicit_inames) \
-                            - insn.reduction_inames()
-                insn_id_to_inames[insn.id] = inames_new
-
-                if inames_new != inames_old:
-                    did_something = True
-                    logger.debug("%s: find_all_insn_inames: %s -> %s (dep-based)" % (
-                        kernel.name, insn.id, ", ".join(sorted(inames_new))))
+                warn_with_kernel(kernel, "inferred_iname",
+                        "The iname(s) '%s' on instruction '%s' "
+                        "was/were automatically added. "
+                        "This is deprecated. Please add the iname "
+                        "to the instruction "
+                        "explicitly, e.g. by adding 'for' loops"
+                        % (", ".join(inames_new-inames_old), insn.id))
 
             # }}}
 
@@ -237,8 +268,14 @@ def find_all_insn_inames(kernel):
             if inames_new != inames_old:
                 did_something = True
                 insn_id_to_inames[insn.id] = frozenset(inames_new)
-                logger.debug("%s: find_all_insn_inames: %s -> %s (domain-based)" % (
-                    kernel.name, insn.id, ", ".join(sorted(inames_new))))
+
+                warn_with_kernel(kernel, "inferred_iname",
+                        "The iname(s) '%s' on instruction '%s' was "
+                        "automatically added. "
+                        "This is deprecated. Please add the iname "
+                        "to the instruction "
+                        "explicitly, e.g. by adding 'for' loops"
+                        % (", ".join(inames_new-inames_old), insn.id))
 
             # }}}
 
@@ -385,7 +422,8 @@ class DomainChanger:
 
                 # Changing the domain might look like it wants to change grid
                 # sizes. Not true.
-                get_grid_sizes=self.kernel.get_grid_sizes)
+                # (Relevant for 'slab decomposition')
+                get_grid_sizes_for_insn_ids=self.kernel.get_grid_sizes_for_insn_ids)
 
 # }}}
 
@@ -415,11 +453,11 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
     dep_graph = {}
     lines = []
 
-    from loopy.kernel.data import Assignment, CInstruction
+    from loopy.kernel.data import MultiAssignmentBase, CInstruction
 
     for insn in kernel.instructions:
-        if isinstance(insn, Assignment):
-            op = "%s <- %s" % (insn.assignee, insn.expression)
+        if isinstance(insn, MultiAssignmentBase):
+            op = "%s <- %s" % (insn.assignees, insn.expression)
             if len(op) > 200:
                 op = op[:200] + "..."
 
@@ -649,8 +687,9 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
 
     from pymbolic.primitives import Subscript
 
-    if isinstance(insn.assignee, Subscript):
-        ary_acc_exprs.append(insn.assignee)
+    for assignee in insn.assignees:
+        if isinstance(assignee, Subscript):
+            ary_acc_exprs.append(assignee)
 
     # }}}
 
@@ -758,7 +797,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
     # copies.
 
     if local_size is None:
-        _, local_size = kernel.get_grid_sizes_as_exprs(
+        _, local_size = kernel.get_grid_size_upper_bounds_as_exprs(
                 ignore_auto=True)
 
     # {{{ axis assignment helper function
@@ -847,7 +886,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
     import loopy as lp
 
     for insn in kernel.instructions:
-        if not isinstance(insn, lp.Assignment):
+        if not isinstance(insn, lp.MultiAssignmentBase):
             continue
 
         auto_axis_inames = [

@@ -32,6 +32,7 @@ from pymbolic.mapper.substitutor import make_subst_func
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
+from loopy.diagnostic import LoopyError
 
 from pymbolic import var
 
@@ -130,7 +131,8 @@ buffer_array_cache = PersistentDict("loopy-buffer-array-cache-"+DATA_MODEL_VERSI
 # Adding an argument? also add something to the cache_key below.
 def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         store_expression=None, within=None, default_tag="l.auto",
-        temporary_is_local=None, fetch_bounding_box=False):
+        temporary_scope=None, temporary_is_local=None,
+        fetch_bounding_box=False):
     """
     :arg init_expression: Either *None* (indicating the prior value of the buffered
         array should be read) or an expression optionally involving the
@@ -142,6 +144,27 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         *False* indicates that no storing of the temporary should occur
         at all.)
     """
+
+    # {{{ unify temporary_scope / temporary_is_local
+
+    from loopy.kernel.data import temp_var_scope
+    if temporary_is_local is not None:
+        from warnings import warn
+        warn("temporary_is_local is deprecated. Use temporary_scope instead",
+                DeprecationWarning, stacklevel=2)
+
+        if temporary_scope is not None:
+            raise LoopyError("may not specify both temporary_is_local and "
+                    "temporary_scope")
+
+        if temporary_is_local:
+            temporary_scope = temp_var_scope.LOCAL
+        else:
+            temporary_scope = temp_var_scope.PRIVATE
+
+    del temporary_is_local
+
+    # }}}
 
     # {{{ process arguments
 
@@ -165,7 +188,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     buffer_inames = list(buffer_inames)
     buffer_inames_set = frozenset(buffer_inames)
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     if var_name in kernel.arg_dict:
@@ -181,9 +204,9 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     else:
         var_shape = ()
 
-    if temporary_is_local is None:
+    if temporary_scope is None:
         import loopy as lp
-        temporary_is_local = lp.auto
+        temporary_scope = lp.auto
 
     # }}}
 
@@ -196,7 +219,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     cache_key = (key_kernel, var_name, tuple(buffer_inames),
             PymbolicExpressionHashWrapper(init_expression),
             PymbolicExpressionHashWrapper(store_expression), within,
-            default_tag, temporary_is_local, fetch_bounding_box)
+            default_tag, temporary_scope, fetch_bounding_box)
 
     if CACHING_ENABLED:
         try:
@@ -216,8 +239,27 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         if not within(kernel, insn.id, ()):
             continue
 
-        for assignee, index in insn.assignees_and_indices():
-            if assignee == var_name:
+        from pymbolic.primitives import Variable, Subscript
+        from loopy.symbolic import LinearSubscript
+
+        for assignee in insn.assignees:
+            if isinstance(assignee, Variable):
+                assignee_name = assignee.name
+                index = ()
+
+            elif isinstance(assignee, Subscript):
+                assignee_name = assignee.aggregate.name
+                index = assignee.index_tuple
+
+            elif isinstance(assignee, LinearSubscript):
+                if assignee.aggregate.name == var_name:
+                    raise LoopyError("buffer_array may not be applied in the "
+                            "presence of linear write indexing into '%s'" % var_name)
+
+            else:
+                raise LoopyError("invalid lvalue '%s'" % assignee)
+
+            if assignee_name == var_name:
                 within_inames.update(
                         (get_dependencies(index) & kernel.all_inames())
                         - buffer_inames_set)
@@ -312,7 +354,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
             dtype=var_descr.dtype,
             base_indices=(0,)*len(abm.non1_storage_shape),
             shape=tuple(abm.non1_storage_shape),
-            is_local=temporary_is_local)
+            scope=temporary_scope)
 
     new_temporary_variables[buf_var_name] = temp_var
 
@@ -358,7 +400,9 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     init_instruction = Assignment(id=init_insn_id,
                 assignee=buf_var_init,
                 expression=init_expression,
-                forced_iname_deps=frozenset(within_inames),
+                within_inames=(
+                    frozenset(within_inames)
+                    | frozenset(non1_init_inames)),
                 depends_on=frozenset(),
                 depends_on_is_final=True)
 
@@ -373,8 +417,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     did_write = False
     for insn_id in aar.modified_insn_ids:
         insn = kernel.id_to_insn[insn_id]
-        if any(assignee_name == buf_var_name
-                for assignee_name, _ in insn.assignees_and_indices()):
+        if buf_var_name in insn.assignee_var_names():
             did_write = True
 
     # {{{ add init_insn_id to depends_on
@@ -434,9 +477,12 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         store_instruction = Assignment(
                     id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
                     depends_on=frozenset(aar.modified_insn_ids),
+                    no_sync_with=frozenset([init_insn_id]),
                     assignee=store_target,
                     expression=store_expression,
-                    forced_iname_deps=frozenset(within_inames))
+                    within_inames=(
+                        frozenset(within_inames)
+                        | frozenset(non1_store_inames)))
     else:
         did_write = False
 

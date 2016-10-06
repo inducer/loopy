@@ -27,16 +27,19 @@ THE SOFTWARE.
 """
 
 
-from loopy.codegen import gen_code_block
+from loopy.codegen.result import merge_codegen_results, wrap_in_if
 import islpy as isl
-from loopy.schedule import (EnterLoop, LeaveLoop, RunInstruction, Barrier,
-        gather_schedule_subloop, generate_sub_sched_items)
+from loopy.schedule import (
+        EnterLoop, LeaveLoop, RunInstruction, Barrier, CallKernel,
+        gather_schedule_block, generate_sub_sched_items)
 
 
-def get_admissible_conditional_inames_for(kernel, sched_index):
+def get_admissible_conditional_inames_for(codegen_state, sched_index):
     """This function disallows conditionals on local-idx tagged
     inames if there is a barrier nested somewhere within.
     """
+
+    kernel = codegen_state.kernel
 
     from loopy.kernel.data import LocalIndexTag, HardwareParallelTag
 
@@ -46,17 +49,85 @@ def get_admissible_conditional_inames_for(kernel, sched_index):
     has_barrier = has_barrier_within(kernel, sched_index)
 
     for iname, tag in six.iteritems(kernel.iname_to_tag):
-        if isinstance(tag, HardwareParallelTag):
+        if (isinstance(tag, HardwareParallelTag)
+                and codegen_state.is_generating_device_code):
             if not has_barrier or not isinstance(tag, LocalIndexTag):
                 result.add(iname)
 
     return frozenset(result)
 
 
-def generate_code_for_sched_index(kernel, sched_index, codegen_state):
+def synthesize_idis_for_extra_args(kernel, schedule_index):
+    """
+    :returns: A list of :class:`loopy.codegen.ImplementedDataInfo`
+    """
+    sched_item = kernel.schedule[schedule_index]
+
+    from loopy.codegen import ImplementedDataInfo
+    from loopy.kernel.data import InameArg, temp_var_scope
+
+    assert isinstance(sched_item, CallKernel)
+
+    idis = []
+
+    for arg in sched_item.extra_args:
+        temporary = kernel.temporary_variables[arg]
+        assert temporary.scope == temp_var_scope.GLOBAL
+        idis.extend(
+            temporary.decl_info(
+                kernel.target,
+                index_dtype=kernel.index_dtype))
+
+    for iname in sched_item.extra_inames:
+        idis.append(
+            ImplementedDataInfo(
+                target=kernel.target,
+                name=iname,
+                dtype=kernel.index_dtype,
+                arg_class=InameArg,
+                is_written=False))
+
+    return idis
+
+
+def generate_code_for_sched_index(codegen_state, sched_index):
+    kernel = codegen_state.kernel
     sched_item = kernel.schedule[sched_index]
 
-    if isinstance(sched_item, EnterLoop):
+    if isinstance(sched_item, CallKernel):
+        assert not codegen_state.is_generating_device_code
+
+        from loopy.schedule import (gather_schedule_block, get_insn_ids_for_block_at)
+        _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
+        assert past_end_i <= codegen_state.schedule_index_end
+
+        extra_args = synthesize_idis_for_extra_args(kernel, sched_index)
+
+        new_codegen_state = codegen_state.copy(
+                is_generating_device_code=True,
+                gen_program_name=sched_item.kernel_name,
+                schedule_index_end=past_end_i-1,
+                implemented_data_info=(codegen_state.implemented_data_info
+                    + extra_args))
+
+        from loopy.codegen.result import generate_host_or_device_program
+        codegen_result = generate_host_or_device_program(
+                new_codegen_state, sched_index)
+
+        glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
+                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+
+        return merge_codegen_results(codegen_state, [
+            codegen_result,
+
+            codegen_state.ast_builder.get_kernel_call(
+                codegen_state,
+                sched_item.kernel_name,
+                glob_grid, loc_grid,
+                extra_args),
+            ])
+
+    elif isinstance(sched_item, EnterLoop):
         tag = kernel.iname_to_tag.get(sched_item.iname)
 
         from loopy.codegen.loop import (
@@ -76,10 +147,11 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
             raise RuntimeError("encountered (invalid) EnterLoop "
                     "for '%s', tagged '%s'" % (sched_item.iname, tag))
 
-        return func(kernel, sched_index, codegen_state)
+        return func(codegen_state, sched_index)
 
     elif isinstance(sched_item, Barrier):
-        return kernel.target.emit_barrier(sched_item.kind, sched_item.comment)
+        return codegen_state.ast_builder.emit_barrier(
+                sched_item.kind, sched_item.comment)
 
     elif isinstance(sched_item, RunInstruction):
         insn = kernel.id_to_insn[sched_item.insn_id]
@@ -87,7 +159,7 @@ def generate_code_for_sched_index(kernel, sched_index, codegen_state):
         from loopy.codegen.instruction import generate_instruction_code
         return codegen_state.try_vectorized(
                 "instruction %s" % insn.id,
-                lambda inner_cgs: generate_instruction_code(kernel, insn, inner_cgs))
+                lambda inner_cgs: generate_instruction_code(inner_cgs, insn))
 
     else:
         raise RuntimeError("unexpected schedule item type: %s"
@@ -109,6 +181,9 @@ def get_required_predicates(kernel, sched_index):
             result = my_preds
         else:
             result = result & my_preds
+
+    if result is None:
+        result = frozenset()
 
     return result
 
@@ -132,9 +207,11 @@ def group_by(l, key, merge):
     return result
 
 
-def build_loop_nest(kernel, sched_index, codegen_state):
+def build_loop_nest(codegen_state, schedule_index):
     # Most of the complexity of this function goes towards finding groups of
     # instructions that can be nested inside a shared conditional.
+
+    kernel = codegen_state.kernel
 
     # {{{ pass 1: pre-scan schedule for my schedule item's siblings' indices
 
@@ -142,8 +219,8 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     my_sched_indices = []
 
-    i = sched_index
-    while i < len(kernel.schedule):
+    i = schedule_index
+    while i < codegen_state.schedule_index_end:
         sched_item = kernel.schedule[i]
 
         if isinstance(sched_item, LeaveLoop):
@@ -151,9 +228,11 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
         my_sched_indices.append(i)
 
-        if isinstance(sched_item, EnterLoop):
-            _, i = gather_schedule_subloop(
-                    kernel.schedule, i)
+        if isinstance(sched_item, (EnterLoop, CallKernel)):
+            _, i = gather_schedule_block(kernel.schedule, i)
+            assert i <= codegen_state.schedule_index_end, \
+                    "schedule block extends beyond schedule_index_end"
+
         elif isinstance(sched_item, Barrier):
             i += 1
 
@@ -184,7 +263,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             ScheduleIndexInfo(
                 schedule_indices=[i],
                 admissible_cond_inames=(
-                    get_admissible_conditional_inames_for(kernel, i)),
+                    get_admissible_conditional_inames_for(codegen_state, i)),
                 required_predicates=get_required_predicates(kernel, i),
                 used_inames_within=find_used_inames_within(kernel, i)
                 )
@@ -353,7 +432,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
                     result = []
                     for i in origin_si_entry.schedule_indices:
                         inner = generate_code_for_sched_index(
-                            kernel, i, inner_codegen_state)
+                            inner_codegen_state, i)
 
                         if inner is not None:
                             result.append(inner)
@@ -372,22 +451,23 @@ def build_loop_nest(kernel, sched_index, codegen_state):
             # gen_code returns a list
 
             if bounds_checks or pred_checks:
-                from loopy.codegen import wrap_in_if
-                from loopy.codegen.bounds import constraint_to_code
+                from loopy.symbolic import constraint_to_expr
 
                 prev_gen_code = gen_code
 
                 def gen_code(inner_codegen_state):
-                    conditionals = [
-                            constraint_to_code(
-                                inner_codegen_state.expression_to_code_mapper, cns)
-                            for cns in bounds_checks] + list(pred_checks)
+                    from pymbolic.primitives import Variable
+                    condition_exprs = [
+                            constraint_to_expr(cns)
+                            for cns in bounds_checks] + [
+                                Variable(pred_chk) for pred_chk in pred_checks]
 
                     prev_result = prev_gen_code(inner_codegen_state)
 
                     return [wrap_in_if(
-                             conditionals,
-                             gen_code_block(prev_result))]
+                        inner_codegen_state,
+                        condition_exprs,
+                        merge_codegen_results(codegen_state, prev_result))]
 
                 cannot_vectorize = False
                 if new_codegen_state.vectorization_info is not None:
@@ -404,7 +484,7 @@ def build_loop_nest(kernel, sched_index, codegen_state):
                         # gen_code returns a list, but this needs to return a
                         # GeneratedCode instance.
 
-                        return gen_code_block(gen_code(inner_codegen_state))
+                        return gen_code(inner_codegen_state)
 
                     result = [new_codegen_state.unvectorize(gen_code_wrapper)]
                 else:
@@ -418,8 +498,10 @@ def build_loop_nest(kernel, sched_index, codegen_state):
 
     # }}}
 
-    return gen_code_block(
-            build_insn_group(sched_index_info_entries, codegen_state))
+    insn_group = build_insn_group(sched_index_info_entries, codegen_state)
+    return merge_codegen_results(
+            codegen_state,
+            insn_group)
 
 
 # vim: foldmethod=marker

@@ -11,22 +11,22 @@ Python 2.7 AMD CPU:
   - amd-cl-cpu
   except:
   - tags
-Python 2.6 AMD CPU:
+Python 2.6 POCL:
   script:
   - export PY_EXE=python2.6
-  - export PYOPENCL_TEST=amd:pu
+  - export PYOPENCL_TEST=portable
   - export EXTRA_INSTALL="numpy mako"
   - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python2.6
-  - amd-cl-cpu
+  - pocl
   except:
   - tags
-Python 3.4 AMD CPU:
+Python 3.5 AMD CPU:
   script:
-  - export PY_EXE=python3.4
+  - export PY_EXE=python3.5
   - export PYOPENCL_TEST=amd:pu
   - export EXTRA_INSTALL="numpy mako"
   - export NO_DOCTESTS=1
@@ -34,7 +34,7 @@ Python 3.4 AMD CPU:
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
-  - python3.4
+  - python3.5
   - amd-cl-cpu
   except:
   - tags
@@ -54,7 +54,7 @@ Python 2.7 POCL:
 Python 2.7 with legacy PyOpenCL:
   script:
   - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=amd:pu
+  - export PYOPENCL_TEST=portable
   - export EXTRA_INSTALL="numpy mako"
   - export REQUIREMENTS_TXT="requirements-old-pyopencl.txt"
   - export LOOPY_NO_CACHE=1
@@ -83,7 +83,20 @@ CentOS binary:
   - (cd build-helpers; ./make-linux-build-docker.sh --nodate)
   - (cd ./build-helpers; ./loopy-centos6 ../examples/fortran/sparse.floopy)
   artifacts:
+    expire_in: 4 weeks
     paths:
     - build-helpers/loopy-centos6
   tags:
   - docker
+  only:
+  - master
+
+Documentation:
+  script:
+  - EXTRA_INSTALL="numpy"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-docs.sh
+  - ". ./build-docs.sh"
+  tags:
+  - python3.5
+  only:
+  - master

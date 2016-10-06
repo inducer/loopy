@@ -25,7 +25,8 @@ THE SOFTWARE.
 """
 
 
-from pymbolic.maxima import MaximaStringifyMapper as MaximaStringifyMapperBase
+from pymbolic.interop.maxima import \
+        MaximaStringifyMapper as MaximaStringifyMapperBase
 
 
 class MaximaStringifyMapper(MaximaStringifyMapperBase):
@@ -60,7 +61,7 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
     my_variable_names = (
             avn
             for insn in kernel.instructions
-            for avn, _ in insn.assignees_and_indices()
+            for avn in insn.assignee_var_names()
             )
 
     from pymbolic import var
@@ -82,14 +83,14 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
         if not isinstance(insn, InstructionBase):
             insn = kernel.id_to_insn[insn]
         if not isinstance(insn, Assignment):
-            raise RuntimeError("non-expression instructions not supported "
+            raise RuntimeError("non-single-output assignment not supported "
                     "in maxima export")
 
         for dep in insn.depends_on:
             if dep not in written_insn_ids:
                 write_insn(dep)
 
-        (aname, _), = insn.assignees_and_indices()
+        aname, = insn.assignee_var_names()
         result.append("%s%s : %s;" % (
             prefix, aname,
             mstr(substitute(insn.expression))))

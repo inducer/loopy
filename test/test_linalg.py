@@ -285,7 +285,8 @@ def test_rank_one(ctx_factory):
     def variant_1(knl):
         knl = lp.add_prefetch(knl, "a")
         knl = lp.add_prefetch(knl, "b")
-        knl = knl.set_loop_priority(knl, ["i", "j"])
+        knl = lp.set_loop_priority(knl, ["i", "j"])
+        knl = lp.add_inames_to_insn(knl, "i", "writes:b_fetch")
         return knl
 
     def variant_2(knl):
@@ -294,7 +295,6 @@ def test_rank_one(ctx_factory):
         knl = lp.split_iname(knl, "j", 16,
                 outer_tag="g.1", inner_tag="l.1")
 
-        knl = knl.set_loop_priority(knl, ["i", "j"])
         knl = lp.add_prefetch(knl, "a")
         knl = lp.add_prefetch(knl, "b")
         return knl
@@ -331,8 +331,12 @@ def test_rank_one(ctx_factory):
 
     seq_knl = knl
 
-    #for variant in [variant_1, variant_2, variant_3, variant_4]:
-    for variant in [variant_4]:
+    for variant in [
+            variant_1,
+            variant_2,
+            variant_3,
+            variant_4
+            ]:
         lp.auto_test_vs_ref(seq_knl, ctx, variant(knl),
                 op_count=[np.dtype(dtype).itemsize*n**2/1e9], op_label=["GBytes"],
                 parameters={"n": n})
@@ -515,7 +519,7 @@ def test_image_matrix_mul(ctx_factory):
             parameters={}, print_ref_code=True)
 
 
-def test_image_matrix_mul_ilp(ctx_factory):
+def no_test_image_matrix_mul_ilp(ctx_factory):
     dtype = np.float32
     ctx = ctx_factory()
     order = "C"
@@ -604,7 +608,7 @@ def test_small_batched_matvec(ctx_factory):
     Np = 36  # noqa
 
     knl = lp.make_kernel(
-            "[K] -> {[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,
+            "{[i,j,k]: 0<=k<K and 0<= i,j < %d}" % Np,
             [
                 "result[k, i] = sum(j, d[i, j]*f[k, j])"
                 ],

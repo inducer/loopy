@@ -154,7 +154,8 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
         new_temp_vars[tv.name] = tv.copy(shape=shape + extra_shape,
                 # Forget what you knew about data layout,
                 # create from scratch.
-                dim_tags=dim_tags)
+                dim_tags=dim_tags,
+                dim_names=None)
 
     # }}}
 

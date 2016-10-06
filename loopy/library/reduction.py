@@ -28,6 +28,7 @@ import numpy as np
 
 from loopy.symbolic import FunctionIdentifier
 from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
 
 
 class ReductionOperation(object):
@@ -35,7 +36,7 @@ class ReductionOperation(object):
     equality-comparable.
     """
 
-    def result_dtype(self, target, arg_dtype, inames):
+    def result_dtypes(self, target, arg_dtype, inames):
         raise NotImplementedError
 
     def neutral_element(self, dtype, inames):
@@ -58,13 +59,13 @@ class ReductionOperation(object):
     @staticmethod
     def parse_result_type(target, op_type):
         try:
-            return np.dtype(op_type)
+            return NumpyType(np.dtype(op_type))
         except TypeError:
             pass
 
         if op_type.startswith("vec_"):
             try:
-                return target.get_or_register_dtype(op_type[4:])
+                return NumpyType(target.get_or_register_dtype(op_type[4:]))
             except AttributeError:
                 pass
 
@@ -81,11 +82,12 @@ class ScalarReductionOperation(ReductionOperation):
         """
         self.forced_result_type = forced_result_type
 
-    def result_dtype(self, target, arg_dtype, inames):
+    def result_dtypes(self, kernel, arg_dtype, inames):
         if self.forced_result_type is not None:
-            return self.parse_result_type(target, self.forced_result_type)
+            return (self.parse_result_type(
+                    kernel.target, self.forced_result_type),)
 
-        return arg_dtype
+        return (arg_dtype,)
 
     def __hash__(self):
         return hash((type(self), self.forced_result_type))
@@ -122,7 +124,7 @@ class ProductReductionOperation(ScalarReductionOperation):
 def get_le_neutral(dtype):
     """Return a number y that satisfies (x <= y) for all y."""
 
-    if dtype.kind == "f":
+    if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.1, section 6.11.2
         return var("INFINITY")
     else:
@@ -138,7 +140,6 @@ class MaxReductionOperation(ScalarReductionOperation):
 
 
 class MinReductionOperation(ScalarReductionOperation):
-    @property
     def neutral_element(self, dtype, inames):
         return get_le_neutral(dtype)
 
@@ -148,22 +149,12 @@ class MinReductionOperation(ScalarReductionOperation):
 
 # {{{ argmin/argmax
 
-ARGEXT_STRUCT_DTYPES = {}
-
-
 class _ArgExtremumReductionOperation(ReductionOperation):
     def prefix(self, dtype):
-        return "loopy_arg%s_%s" % (self.which, dtype.type.__name__)
+        return "loopy_arg%s_%s" % (self.which, dtype.numpy_dtype.type.__name__)
 
-    def result_dtype(self, target, dtype, inames):
-        try:
-            return ARGEXT_STRUCT_DTYPES[dtype]
-        except KeyError:
-            struct_dtype = np.dtype([("value", dtype), ("index", np.int32)])
-            ARGEXT_STRUCT_DTYPES[dtype] = struct_dtype
-
-            target.get_or_register_dtype(self.prefix(dtype)+"_result", struct_dtype)
-            return struct_dtype
+    def result_dtypes(self, kernel, dtype, inames):
+        return (dtype, kernel.index_dtype)
 
     def neutral_element(self, dtype, inames):
         return ArgExtFunction(self, dtype, "init", inames)()
@@ -178,7 +169,7 @@ class _ArgExtremumReductionOperation(ReductionOperation):
         iname, = inames
 
         return ArgExtFunction(self, dtype, "update", inames)(
-                operand1, operand2, var(iname))
+                *(operand1 + (operand2, var(iname))))
 
 
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
@@ -206,7 +197,7 @@ class ArgExtFunction(FunctionIdentifier):
         return (self.reduction_op, self.scalar_dtype, self.name, self.inames)
 
 
-def get_argext_preamble(target, func_id):
+def get_argext_preamble(kernel, func_id):
     op = func_id.reduction_op
     prefix = op.prefix(func_id.scalar_dtype)
 
@@ -215,35 +206,32 @@ def get_argext_preamble(target, func_id):
     c_code_mapper = CCodeMapper()
 
     return (prefix, """
-    typedef struct {
-        %(scalar_type)s value;
-        int index;
-    } %(type_name)s;
-
-    inline %(type_name)s %(prefix)s_init()
+    inline %(scalar_t)s %(prefix)s_init(%(index_t)s *index_out)
     {
-        %(type_name)s result;
-        result.value = %(neutral)s;
-        result.index = INT_MIN;
-        return result;
+        *index_out = INT_MIN;
+        return %(neutral)s;
     }
 
-    inline %(type_name)s %(prefix)s_update(
-        %(type_name)s state, %(scalar_type)s op2, int index)
+    inline %(scalar_t)s %(prefix)s_update(
+        %(scalar_t)s op1, %(index_t)s index1,
+        %(scalar_t)s op2, %(index_t)s index2,
+        %(index_t)s *index_out)
     {
-        %(type_name)s result;
-        if (op2 %(comp)s state.value)
+        if (op2 %(comp)s op1)
         {
-            result.value = op2;
-            result.index = index;
-            return result;
+            *index_out = index2;
+            return op2;
         }
-        else return state;
+        else
+        {
+            *index_out = index1;
+            return op1;
+        }
     }
     """ % dict(
-            type_name=prefix+"_result",
-            scalar_type=target.dtype_to_typename(func_id.scalar_dtype),
+            scalar_t=kernel.target.dtype_to_typename(func_id.scalar_dtype),
             prefix=prefix,
+            index_t=kernel.target.dtype_to_typename(kernel.index_dtype),
             neutral=c_code_mapper(
                 op.neutral_sign*get_le_neutral(func_id.scalar_dtype)),
             comp=op.update_comparison,
@@ -301,26 +289,51 @@ def parse_reduction_op(name):
 
 
 def reduction_function_mangler(kernel, func_id, arg_dtypes):
-    if isinstance(func_id, ArgExtFunction):
+    if isinstance(func_id, ArgExtFunction) and func_id.name == "init":
         from loopy.target.opencl import OpenCLTarget
         if not isinstance(kernel.target, OpenCLTarget):
             raise LoopyError("only OpenCL supported for now")
 
         op = func_id.reduction_op
-        return (op.result_dtype(kernel.target, func_id.scalar_dtype, func_id.inames),
-                "%s_%s" % (op.prefix(func_id.scalar_dtype), func_id.name))
+
+        from loopy.kernel.data import CallMangleInfo
+        return CallMangleInfo(
+                target_name="%s_init" % op.prefix(func_id.scalar_dtype),
+                result_dtypes=op.result_dtypes(
+                    kernel, func_id.scalar_dtype, func_id.inames),
+                arg_dtypes=(),
+                )
+
+    elif isinstance(func_id, ArgExtFunction) and func_id.name == "update":
+        from loopy.target.opencl import OpenCLTarget
+        if not isinstance(kernel.target, OpenCLTarget):
+            raise LoopyError("only OpenCL supported for now")
+
+        op = func_id.reduction_op
+
+        from loopy.kernel.data import CallMangleInfo
+        return CallMangleInfo(
+                target_name="%s_update" % op.prefix(func_id.scalar_dtype),
+                result_dtypes=op.result_dtypes(
+                    kernel, func_id.scalar_dtype, func_id.inames),
+                arg_dtypes=(
+                    func_id.scalar_dtype,
+                    kernel.index_dtype,
+                    func_id.scalar_dtype,
+                    kernel.index_dtype),
+                )
 
     return None
 
 
-def reduction_preamble_generator(kernel, seen_dtypes, seen_functions):
+def reduction_preamble_generator(preamble_info):
     from loopy.target.opencl import OpenCLTarget
 
-    for func in seen_functions:
+    for func in preamble_info.seen_functions:
         if isinstance(func.name, ArgExtFunction):
-            if not isinstance(kernel.target, OpenCLTarget):
+            if not isinstance(preamble_info.kernel.target, OpenCLTarget):
                 raise LoopyError("only OpenCL supported for now")
 
-            yield get_argext_preamble(kernel.target, func.name)
+            yield get_argext_preamble(preamble_info.kernel, func.name)
 
 # vim: fdm=marker

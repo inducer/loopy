@@ -234,7 +234,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         from loopy.kernel.data import Assignment
         insn = Assignment(
                 lhs, rhs,
-                forced_iname_deps=frozenset(
+                within_inames=frozenset(
                     scope.active_loopy_inames),
                 depends_on=depends_on,
                 id=new_id,
@@ -300,6 +300,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         raise NotImplementedError("equivalence")
 
     TYPE_MAP = {
+            ("real", ""): np.float32,
             ("real", "4"): np.float32,
             ("real", "8"): np.float64,
             ("doubleprecision", ""): np.float64,

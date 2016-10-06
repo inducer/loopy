@@ -54,10 +54,11 @@ copyright = u'2016, Andreas Klöckner'
 #
 # The short X.Y version.
 ver_dic = {}
-with open("../loopy/version.py") as vpy_file:
+_version_source = "../loopy/version.py"
+with open(_version_source) as vpy_file:
     version_py = vpy_file.read()
 
-exec(compile(version_py, "../loopy/version.py", 'exec'), ver_dic)
+exec(compile(version_py, _version_source, 'exec'), ver_dic)
 version = ".".join(str(x) for x in ver_dic["VERSION"])
 # The full version, including alpha/beta/rc tags.
 release = ver_dic["VERSION_TEXT"]
@@ -99,26 +100,23 @@ pygments_style = 'sphinx'
 
 # -- Options for HTML output ---------------------------------------------------
 
-try:
-    import sphinx_bootstrap_theme
-except:
-    from warnings import warn
-    warn("I would like to use the sphinx bootstrap theme, but can't find it.\n"
-            "'pip install sphinx_bootstrap_theme' to fix.")
-else:
-    # Activate the theme.
-    html_theme = 'bootstrap'
-    html_theme_path = sphinx_bootstrap_theme.get_html_theme_path()
+html_theme = "alabaster"
 
-    # Theme options are theme-specific and customize the look and feel of a theme
-    # further.  For a list of options available for each theme, see the
-    # documentation.
-    html_theme_options = {
-            "navbar_fixed_top": "true",
-            "navbar_site_name": "Contents",
-            'bootstrap_version': '3',
-            'source_link_position': 'footer',
+html_theme_options = {
+        "extra_nav_links": {
+            "🚀 Github": "https://github.com/inducer/loopy",
+            "💾 Download Releases": "https://pypi.python.org/pypi/loo.py",
             }
+        }
+
+html_sidebars = {
+    '**': [
+        'about.html',
+        'navigation.html',
+        'relations.html',
+        'searchbox.html',
+    ]
+}
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -245,11 +243,11 @@ man_pages = [
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
-    'http://docs.python.org/': None,
-    'http://documen.tician.de/islpy': None,
-    'http://documen.tician.de/pyopencl': None,
-    'http://documen.tician.de/cgen': None,
-    'http://docs.scipy.org/doc/numpy/': None,
+    'https://docs.python.org/3': None,
+    'https://documen.tician.de/islpy': None,
+    'https://documen.tician.de/pyopencl': None,
+    'https://documen.tician.de/cgen': None,
+    'https://docs.scipy.org/doc/numpy/': None,
     }
 
 autoclass_content = "class"

@@ -64,9 +64,9 @@ def fill_rand(ary):
         real_dtype = ary.dtype.type(0).real.dtype
         real_ary = ary.view(real_dtype)
 
-        fill_rand(real_ary, luxury=0)
+        fill_rand(real_ary)
     else:
-        fill_rand(ary, luxury=0)
+        fill_rand(ary)
 
 
 class TestArgInfo(Record):
@@ -79,7 +79,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, TemporaryVariable
 
     from pymbolic import evaluate
 
@@ -101,7 +101,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
                 argv_dtype = None
 
             if argv_dtype != arg.dtype:
-                arg_value = arg.dtype.type(arg_value)
+                arg_value = arg.dtype.numpy_dtype.type(arg_value)
 
             ref_args[arg.name] = arg_value
 
@@ -177,6 +177,11 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
                         ref_alloc_size=alloc_size,
                         ref_numpy_strides=numpy_strides,
                         needs_checking=is_output))
+
+        elif arg.arg_class is TemporaryVariable:
+            # global temporary, handled by invocation logic
+            pass
+
         else:
             raise LoopyError("arg type not understood")
 
@@ -191,7 +196,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, TemporaryVariable
 
     from pymbolic import evaluate
 
@@ -208,7 +213,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
                 argv_dtype = None
 
             if argv_dtype != arg.dtype:
-                arg_value = arg.dtype.type(arg_value)
+                arg_value = arg.dtype.numpy_dtype.type(arg_value)
 
             args[arg.name] = arg_value
 
@@ -260,7 +265,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             host_storage_array = np.empty(alloc_size, dtype)
             host_array = as_strided(
                     host_storage_array, shape, numpy_strides)
-            host_array[:] = host_contig_array
+            host_array[...] = host_contig_array
 
             host_contig_array = arg_desc.ref_storage_array.get()
             storage_array = cl_array.to_device(queue, host_storage_array)
@@ -274,6 +279,10 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             arg_desc.test_strides = strides
             arg_desc.test_numpy_strides = numpy_strides
             arg_desc.test_alloc_size = alloc_size
+
+        elif arg.arg_class is TemporaryVariable:
+            # global temporary, handled by invocation logic
+            pass
 
         else:
             raise LoopyError("arg type not understood")
@@ -324,7 +333,6 @@ def _enumerate_cl_devices_for_ref_test(blacklist_ref_vendors):
         for dev in pf.get_devices():
             if any(bl in dev.platform.vendor
                     for bl in blacklist_ref_vendors):
-                print("blacklist", dev, blacklist_ref_vendors)
                 continue
 
             if dev.type & cl.device_type.CPU:
@@ -443,7 +451,8 @@ def auto_test_vs_ref(
 
         try:
             ref_args, ref_arg_data = \
-                    make_ref_args(ref_sched_kernel, ref_cl_kernel_info.impl_arg_info,
+                    make_ref_args(ref_sched_kernel,
+                            ref_cl_kernel_info.implemented_data_info,
                             ref_queue, parameters)
             ref_args["out_host"] = False
         except cl.RuntimeError as e:
@@ -530,7 +539,8 @@ def auto_test_vs_ref(
         if args is None:
             cl_kernel_info = compiled.cl_kernel_info(frozenset())
 
-            args = make_args(kernel, cl_kernel_info.impl_arg_info,
+            args = make_args(kernel,
+                    cl_kernel_info.implemented_data_info,
                     queue, ref_arg_data, parameters)
         args["out_host"] = False
 

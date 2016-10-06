@@ -28,6 +28,7 @@ import numpy as np
 from pymbolic.mapper import CombineMapper, RecursiveMapper
 
 from loopy.tools import is_integer
+from loopy.types import NumpyType
 from loopy.codegen import Unvectorizable
 from loopy.diagnostic import (
         LoopyError,
@@ -41,16 +42,17 @@ from loopy.diagnostic import (
 # or None for 'no known context'.
 
 def dtype_to_type_context(target, dtype):
-    dtype = np.dtype(dtype)
+    from loopy.types import NumpyType
 
-    if dtype.kind == 'i':
+    if dtype.is_integral():
         return 'i'
-    if dtype in [np.float64, np.complex128]:
+    if isinstance(dtype, NumpyType) and dtype.dtype in [np.float64, np.complex128]:
         return 'd'
-    if dtype in [np.float32, np.complex64]:
+    if isinstance(dtype, NumpyType) and dtype.dtype in [np.float32, np.complex64]:
         return 'f'
     if target.is_vector_dtype(dtype):
-        return dtype_to_type_context(target, dtype.fields["x"][0])
+        return dtype_to_type_context(
+                target, NumpyType(dtype.numpy_dtype.fields["x"][0]))
 
     return None
 
@@ -74,9 +76,29 @@ class TypeInferenceMapper(CombineMapper):
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
     # are Python-equal (for many common constants such as integers).
 
+    def with_assignments(self, names_to_vars):
+        new_ass = self.new_assignments.copy()
+        new_ass.update(names_to_vars)
+        return type(self)(self.kernel, new_ass)
+
     @staticmethod
     def combine(dtypes):
+        # dtypes may just be a generator expr
         dtypes = list(dtypes)
+
+        from loopy.types import LoopyType, NumpyType
+        assert all(isinstance(dtype, LoopyType) for dtype in dtypes)
+
+        if not all(isinstance(dtype, NumpyType) for dtype in dtypes):
+            from pytools import is_single_valued, single_valued
+            if not is_single_valued(dtypes):
+                raise TypeInferenceFailure(
+                        "Nothing known about operations between '%s'"
+                        % ", ".join(str(dt) for dt in dtypes))
+
+            return single_valued(dtypes)
+
+        dtypes = [dtype.dtype for dtype in dtypes]
 
         result = dtypes.pop()
         while dtypes:
@@ -107,7 +129,7 @@ class TypeInferenceMapper(CombineMapper):
                             "nothing known about result of operation on "
                             "'%s' and '%s'" % (result, other))
 
-        return result
+        return NumpyType(result)
 
     def map_sum(self, expr):
         dtypes = []
@@ -120,7 +142,7 @@ class TypeInferenceMapper(CombineMapper):
                 dtypes.append(dtype)
 
         from pytools import all
-        if all(dtype.kind == "i" for dtype in dtypes):
+        if all(dtype.is_integral() for dtype in dtypes):
             dtypes.extend(small_integer_dtypes)
 
         return self.combine(dtypes)
@@ -131,9 +153,9 @@ class TypeInferenceMapper(CombineMapper):
         n_dtype = self.rec(expr.numerator)
         d_dtype = self.rec(expr.denominator)
 
-        if n_dtype.kind in "iu" and d_dtype.kind in "iu":
+        if n_dtype.is_integral() and d_dtype.is_integral():
             # both integers
-            return np.dtype(np.float64)
+            return NumpyType(np.dtype(np.float64))
 
         else:
             return self.combine([n_dtype, d_dtype])
@@ -143,26 +165,26 @@ class TypeInferenceMapper(CombineMapper):
             for tp in [np.int32, np.int64]:
                 iinfo = np.iinfo(tp)
                 if iinfo.min <= expr <= iinfo.max:
-                    return np.dtype(tp)
+                    return NumpyType(np.dtype(tp))
 
             else:
                 raise TypeInferenceFailure("integer constant '%s' too large" % expr)
 
         dt = np.asarray(expr).dtype
         if hasattr(expr, "dtype"):
-            return expr.dtype
+            return NumpyType(expr.dtype)
         elif isinstance(expr, np.number):
             # Numpy types are sized
-            return np.dtype(type(expr))
+            return NumpyType(np.dtype(type(expr)))
         elif dt.kind == "f":
             # deduce the smaller type by default
-            return np.dtype(np.float32)
+            return NumpyType(np.dtype(np.float32))
         elif dt.kind == "c":
             if np.complex64(expr) == np.complex128(expr):
                 # (COMPLEX_GUESS_LOGIC)
                 # No precision is lost by 'guessing' single precision, use that.
                 # This at least covers simple cases like '1j'.
-                return np.dtype(np.complex64)
+                return NumpyType(np.dtype(np.complex64))
 
             # Codegen for complex types depends on exactly correct types.
             # Refuse temptation to guess.
@@ -177,7 +199,7 @@ class TypeInferenceMapper(CombineMapper):
     def map_linear_subscript(self, expr):
         return self.rec(expr.aggregate)
 
-    def map_call(self, expr):
+    def map_call(self, expr, multiple_types_ok=False):
         from pymbolic.primitives import Variable
 
         identifier = expr.function
@@ -190,17 +212,29 @@ class TypeInferenceMapper(CombineMapper):
         arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
 
         mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
-        if mangle_result is not None:
-            return mangle_result[0]
+        if multiple_types_ok:
+            if mangle_result is not None:
+                return mangle_result.result_dtypes
+        else:
+            if mangle_result is not None:
+                if len(mangle_result.result_dtypes) != 1 and not multiple_types_ok:
+                    raise LoopyError("functions with more or fewer than one "
+                            "return value may only be used in direct assignments")
 
-        raise RuntimeError("no type inference information on "
-                "function '%s'" % identifier)
+                return mangle_result.result_dtypes[0]
+
+        raise RuntimeError("unable to resolve "
+                "function '%s' with %d given arguments"
+                % (identifier, len(arg_dtypes)))
 
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():
             return self.kernel.index_dtype
 
-        result = self.kernel.mangle_symbol(expr.name)
+        result = self.kernel.mangle_symbol(
+                self.kernel.target.get_device_ast_builder(),
+                expr.name)
+
         if result is not None:
             result_dtype, _ = result
             return result_dtype
@@ -245,13 +279,14 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_lookup(self, expr):
         agg_result = self.rec(expr.aggregate)
-        dtype, offset = agg_result.fields[expr.name]
-        return dtype
+        field = agg_result.numpy_dtype.fields[expr.name]
+        dtype = field[0]
+        return NumpyType(dtype)
 
     def map_comparison(self, expr):
         # "bool" is unusable because OpenCL's bool has indeterminate memory
         # format.
-        return np.dtype(np.int32)
+        return NumpyType(np.dtype(np.int32))
 
     map_logical_not = map_comparison
     map_logical_and = map_comparison
@@ -263,9 +298,19 @@ class TypeInferenceMapper(CombineMapper):
     def map_local_hw_index(self, expr, *args):
         return self.kernel.index_dtype
 
-    def map_reduction(self, expr):
-        return expr.operation.result_dtype(
-                self.kernel.target, self.rec(expr.expr), expr.inames)
+    def map_reduction(self, expr, multiple_types_ok=False):
+        result = expr.operation.result_dtypes(
+                self.kernel, self.rec(expr.expr), expr.inames)
+
+        if multiple_types_ok:
+            return result
+
+        else:
+            if len(result) != 1 and not multiple_types_ok:
+                raise LoopyError("reductions with more or fewer than one "
+                        "return value may only be used in direct assignments")
+
+            return result[0]
 
 # }}}
 

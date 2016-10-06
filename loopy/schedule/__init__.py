@@ -27,7 +27,7 @@ import six
 from pytools import Record
 import sys
 import islpy as isl
-from loopy.diagnostic import LoopyError  # noqa
+from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
@@ -50,16 +50,32 @@ class ScheduleItem(Record):
             key_builder.rec(key_hash, getattr(self, field_name))
 
 
-class EnterLoop(ScheduleItem):
+class BeginBlockItem(ScheduleItem):
+    pass
+
+
+class EndBlockItem(ScheduleItem):
+    pass
+
+
+class EnterLoop(BeginBlockItem):
     hash_fields = __slots__ = ["iname"]
 
 
-class LeaveLoop(ScheduleItem):
+class LeaveLoop(EndBlockItem):
     hash_fields = __slots__ = ["iname"]
 
 
 class RunInstruction(ScheduleItem):
     hash_fields = __slots__ = ["insn_id"]
+
+
+class CallKernel(BeginBlockItem):
+    hash_fields = __slots__ = ["kernel_name", "extra_args", "extra_inames"]
+
+
+class ReturnFromKernel(EndBlockItem):
+    hash_fields = __slots__ = ["kernel_name"]
 
 
 class Barrier(ScheduleItem):
@@ -79,15 +95,15 @@ class Barrier(ScheduleItem):
 
 # {{{ schedule utilities
 
-def gather_schedule_subloop(schedule, start_idx):
-    assert isinstance(schedule[start_idx], EnterLoop)
+def gather_schedule_block(schedule, start_idx):
+    assert isinstance(schedule[start_idx], BeginBlockItem)
     level = 0
 
     i = start_idx
     while i < len(schedule):
-        if isinstance(schedule[i], EnterLoop):
+        if isinstance(schedule[i], BeginBlockItem):
             level += 1
-        if isinstance(schedule[i], LeaveLoop):
+        elif isinstance(schedule[i], EndBlockItem):
             level -= 1
 
             if level == 0:
@@ -99,16 +115,17 @@ def gather_schedule_subloop(schedule, start_idx):
 
 
 def generate_sub_sched_items(schedule, start_idx):
-    if not isinstance(schedule[start_idx], EnterLoop):
+    if not isinstance(schedule[start_idx], BeginBlockItem):
         yield start_idx, schedule[start_idx]
 
     level = 0
     i = start_idx
     while i < len(schedule):
         sched_item = schedule[i]
-        if isinstance(sched_item, EnterLoop):
+        if isinstance(sched_item, BeginBlockItem):
             level += 1
-        elif isinstance(sched_item, LeaveLoop):
+
+        elif isinstance(sched_item, EndBlockItem):
             level -= 1
 
         else:
@@ -120,6 +137,14 @@ def generate_sub_sched_items(schedule, start_idx):
         i += 1
 
     assert False
+
+
+def get_insn_ids_for_block_at(schedule, start_idx):
+    return frozenset(
+            sub_sched_item.insn_id
+            for i, sub_sched_item in generate_sub_sched_items(
+                schedule, start_idx)
+            if isinstance(sub_sched_item, RunInstruction))
 
 
 def find_active_inames_at(kernel, sched_index):
@@ -138,8 +163,8 @@ def find_active_inames_at(kernel, sched_index):
 def has_barrier_within(kernel, sched_index):
     sched_item = kernel.schedule[sched_index]
 
-    if isinstance(sched_item, EnterLoop):
-        loop_contents, _ = gather_schedule_subloop(
+    if isinstance(sched_item, BeginBlockItem):
+        loop_contents, _ = gather_schedule_block(
                 kernel.schedule, sched_index)
         from pytools import any
         return any(isinstance(subsched_item, Barrier)
@@ -153,8 +178,8 @@ def has_barrier_within(kernel, sched_index):
 def find_used_inames_within(kernel, sched_index):
     sched_item = kernel.schedule[sched_index]
 
-    if isinstance(sched_item, EnterLoop):
-        loop_contents, _ = gather_schedule_subloop(
+    if isinstance(sched_item, BeginBlockItem):
+        loop_contents, _ = gather_schedule_block(
                 kernel.schedule, sched_index)
         run_insns = [subsched_item
                 for subsched_item in loop_contents
@@ -347,7 +372,7 @@ def format_insn(kernel, insn_id):
     Style = kernel.options._style
     return "[%s] %s%s%s <- %s%s%s" % (
             format_insn_id(kernel, insn_id),
-            Fore.BLUE, str(insn.assignee), Style.RESET_ALL,
+            Fore.BLUE, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
 
 
@@ -355,23 +380,33 @@ def dump_schedule(kernel, schedule):
     lines = []
     indent = ""
 
-    from loopy.kernel.data import Assignment
+    from loopy.kernel.data import MultiAssignmentBase
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
-            lines.append(indent + "LOOP %s" % sched_item.iname)
+            lines.append(indent + "FOR %s" % sched_item.iname)
             indent += "    "
         elif isinstance(sched_item, LeaveLoop):
             indent = indent[:-4]
-            lines.append(indent + "ENDLOOP %s" % sched_item.iname)
+            lines.append(indent + "END %s" % sched_item.iname)
+        elif isinstance(sched_item, CallKernel):
+            lines.append(indent +
+                         "CALL KERNEL %s(extra_args=%s, extra_inames=%s)" % (
+                             sched_item.kernel_name,
+                             sched_item.extra_args,
+                             sched_item.extra_inames))
+            indent += "    "
+        elif isinstance(sched_item, ReturnFromKernel):
+            indent = indent[:-4]
+            lines.append(indent + "RETURN FROM KERNEL %s" % sched_item.kernel_name)
         elif isinstance(sched_item, RunInstruction):
             insn = kernel.id_to_insn[sched_item.insn_id]
-            if isinstance(insn, Assignment):
+            if isinstance(insn, MultiAssignmentBase):
                 insn_str = format_insn(kernel, sched_item.insn_id)
             else:
                 insn_str = sched_item.insn_id
             lines.append(indent + insn_str)
         elif isinstance(sched_item, Barrier):
-            lines.append(indent + "---BARRIER---")
+            lines.append(indent + "---BARRIER:%s---" % sched_item.kind)
         else:
             assert False
 
@@ -494,6 +529,11 @@ class SchedulerState(Record):
         A mapping from instruction group names to the number of instructions
         in them that are left to schedule. If a group name occurs in this
         mapping, that group is considered active.
+
+    .. attribute:: uses_of_boostability
+
+        Used to produce warnings about deprecated 'boosting' behavior
+        Should be removed along with boostability in 2017.x.
     """
 
     @property
@@ -534,7 +574,7 @@ def generate_loop_schedules_internal(
             print()
         print(75*"=")
         print("KERNEL:")
-        print(kernel)
+        print(kernel.stringify(with_dependencies=True))
         print(75*"=")
         print("CURRENT SCHEDULE:")
         print(dump_schedule(sched_state.kernel, sched_state.schedule))
@@ -589,6 +629,7 @@ def generate_loop_schedules_internal(
         # If insn is boostable, it may be placed inside a more deeply
         # nested loop without harm.
 
+        orig_have = have
         if allow_boost:
             # Note that the inames in 'insn.boostable_into' necessarily won't
             # be contained in 'want'.
@@ -650,12 +691,21 @@ def generate_loop_schedules_internal(
 
             # }}}
 
+            new_uses_of_boostability = []
+            if allow_boost:
+                if orig_have & insn.boostable_into:
+                    new_uses_of_boostability.append(
+                            (insn.id, orig_have & insn.boostable_into))
+
             new_sched_state = sched_state.copy(
                     scheduled_insn_ids=sched_state.scheduled_insn_ids | iid_set,
                     unscheduled_insn_ids=sched_state.unscheduled_insn_ids - iid_set,
                     schedule=(
                         sched_state.schedule + (RunInstruction(insn_id=insn.id),)),
                     active_group_counts=new_active_group_counts,
+                    uses_of_boostability=(
+                        sched_state.uses_of_boostability
+                        + new_uses_of_boostability)
                     )
 
             # Don't be eager about entering/leaving loops--if progress has been
@@ -695,7 +745,7 @@ def generate_loop_schedules_internal(
                         # check if there's a dependency of insn that needs to be
                         # outside of last_entered_loop.
                         for subdep_id in gen_dependencies_except(kernel, insn_id,
-                                sched_state.unscheduled_insn_ids):
+                                sched_state.scheduled_insn_ids):
                             subdep = kernel.id_to_insn[insn_id]
                             want = (kernel.insn_inames(subdep_id)
                                     - sched_state.parallel_inames)
@@ -840,6 +890,10 @@ def generate_loop_schedules_internal(
                 writer_insn, = kernel.writer_map()[domain_par]
                 if writer_insn not in sched_state.scheduled_insn_ids:
                     data_dep_written = False
+                    if debug_mode:
+                        print("iname '%s' not scheduled because domain "
+                                "parameter '%s' is not yet available"
+                                % (iname, domain_par))
                     break
 
             if not data_dep_written:
@@ -965,6 +1019,15 @@ def generate_loop_schedules_internal(
         # if done, yield result
         debug.log_success(sched_state.schedule)
 
+        for boost_insn_id, boost_inames in sched_state.uses_of_boostability:
+            warn_with_kernel(
+                    kernel, "used_boostability",
+                    "instruction '%s' was implicitly nested inside "
+                    "inames '%s' based on an idempotence heuristic. "
+                    "This is deprecated and will stop working in loopy 2017.x."
+                    % (boost_insn_id, ", ".join(boost_inames)),
+                    DeprecationWarning)
+
         yield sched_state.schedule
 
     else:
@@ -1018,7 +1081,7 @@ class DependencyRecord(Record):
 
 
 def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
-    """If there exists a depdency between target and source and the two access
+    """If there exists a dependency between target and source and the two access
     a common variable of *var_kind* in a way that requires a barrier (essentially,
     at least one write), then the function will return a tuple
     ``(target, source, var_name)``. Otherwise, it will return *None*.
@@ -1042,6 +1105,9 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
 
     if reverse:
         source, target = target, source
+
+    if source.id in target.no_sync_with:
+        return None
 
     # {{{ check that a dependency exists
 
@@ -1242,7 +1308,7 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
         if isinstance(sched_item, EnterLoop):
             # {{{ recurse for nested loop
 
-            subloop, new_i = gather_schedule_subloop(schedule, i)
+            subloop, new_i = gather_schedule_block(schedule, i)
             i = new_i
 
             # Run barrier insertion for inner loop
@@ -1399,7 +1465,9 @@ def generate_loop_schedules(kernel, debug_args={}):
             parallel_inames=parallel_inames - ilp_inames - vec_inames,
 
             group_insn_counts=group_insn_counts(kernel),
-            active_group_counts={})
+            active_group_counts={},
+
+            uses_of_boostability=[])
 
     generators = [
             generate_loop_schedules_internal(sched_state,
@@ -1438,28 +1506,33 @@ def generate_loop_schedules(kernel, debug_args={}):
     try:
         for gen in generators:
             for gen_sched in gen:
-                # gen_sched = insert_barriers(kernel, gen_sched,
-                #         reverse=False, kind="global")
-
-                # for sched_item in gen_sched:
-                #     if (
-                #             isinstance(sched_item, Barrier)
-                #             and sched_item.kind == "global"):
-                #         raise LoopyError("kernel requires a global barrier %s"
-                #                 % sched_item.comment)
-
                 debug.stop()
 
-                logger.info("%s: barrier insertion: start" % kernel.name)
+                gsize, lsize = kernel.get_grid_size_upper_bounds()
 
-                gen_sched = insert_barriers(kernel, gen_sched,
-                        reverse=False, kind="local")
+                if gsize or lsize:
+                    if not kernel.options.disable_global_barriers:
+                        logger.info("%s: barrier insertion: global" % kernel.name)
 
-                logger.info("%s: barrier insertion: done" % kernel.name)
+                        gen_sched = insert_barriers(kernel, gen_sched,
+                                reverse=False, kind="global")
 
-                yield kernel.copy(
+                    logger.info("%s: barrier insertion: local" % kernel.name)
+
+                    gen_sched = insert_barriers(kernel, gen_sched,
+                            reverse=False, kind="local")
+
+                    logger.info("%s: barrier insertion: done" % kernel.name)
+
+                new_kernel = kernel.copy(
                         schedule=gen_sched,
                         state=kernel_state.SCHEDULED)
+
+                from loopy.schedule.device_mapping import \
+                        map_schedule_onto_host_or_device
+                new_kernel = map_schedule_onto_host_or_device(new_kernel)
+                yield new_kernel
+
                 debug.start()
 
                 schedule_count += 1
@@ -1503,7 +1576,7 @@ def get_one_scheduled_kernel(kernel):
         try:
             result, ambiguous = schedule_cache[sched_cache_key]
 
-            logger.info("%s: schedule cache hit" % kernel.name)
+            logger.debug("%s: schedule cache hit" % kernel.name)
             from_cache = True
         except KeyError:
             pass
@@ -1535,8 +1608,8 @@ def get_one_scheduled_kernel(kernel):
     if ambiguous:
         from warnings import warn
         from loopy.diagnostic import LoopyWarning
-        warn("kernel scheduling was ambiguous--more than one "
-                "schedule found, ignoring", LoopyWarning,
+        warn("scheduling for kernel '%s' was ambiguous--more than one "
+                "schedule found, ignoring" % kernel.name, LoopyWarning,
                 stacklevel=2)
 
     if CACHING_ENABLED and not from_cache:

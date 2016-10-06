@@ -93,7 +93,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
     # turn the first reads into subst rules
     local_prep_var_names = set()
     for insn in lp.find_instructions(hsv, "tag:local_prep"):
-        (assignee, _), = insn.assignees_and_indices()
+        assignee, = insn.assignee_var_names()
         local_prep_var_names.add(assignee)
         hsv = lp.assignment_to_subst(hsv, assignee)
 
@@ -122,7 +122,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
                   ("rknl", rflux_insn, ("j", "n",), rtmps, ("jj", "ii",)),
                   ("sknl", sflux_insn, ("i", "n",), stmps, ("ii", "jj",)),
                   ]:
-            (flux_var, _), = insn.assignees_and_indices()
+            flux_var, = insn.assignee_var_names()
             print(insn)
 
             reader, = lp.find_instructions(hsv,
@@ -140,9 +140,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
                 precompute_inames=flux_precomp_inames + flux_ilp_inames,
                 default_tag=None)
             if flux_var.endswith("_s"):
-                hsv = lp.tag_data_axes(hsv, flux_store_name, "N0,N1,N2?")
+                hsv = lp.tag_array_axes(hsv, flux_store_name, "N0,N1,N2?")
             else:
-                hsv = lp.tag_data_axes(hsv, flux_store_name, "N1,N0,N2?")
+                hsv = lp.tag_array_axes(hsv, flux_store_name, "N1,N0,N2?")
 
             n_iname = "n_"+flux_var.replace("_r", "").replace("_s", "")
             if n_iname.endswith("_0"):
@@ -190,9 +190,9 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
               Q_dim_field_outer="unr"))
 
     # buffer axes need to be vectorized in order for this to work
-    hsv = lp.tag_data_axes(hsv, "rhsQ_buf", "c?,vec,c")
-    hsv = lp.tag_data_axes(hsv, "Q_fetch", "c?,vec,c")
-    hsv = lp.tag_data_axes(hsv, "D_fetch", "f,f")
+    hsv = lp.tag_array_axes(hsv, "rhsQ_buf", "c?,vec,c")
+    hsv = lp.tag_array_axes(hsv, "Q_fetch", "c?,vec,c")
+    hsv = lp.tag_array_axes(hsv, "D_fetch", "f,f")
     hsv = lp.tag_inames(hsv,
             {"Q_dim_k": "unr", "rhsQ_init_k": "unr", "rhsQ_store_k": "unr"},
             ignore_nonexistent=True)

@@ -32,6 +32,26 @@ NoneType = type(None)
 
 from pytools.lex import RE
 
+__doc__ = """
+.. autofunction:: parse_match
+
+.. autofunction:: parse_stack_match
+
+Match expressions
+^^^^^^^^^^^^^^^^^
+
+.. autoclass:: MatchExpressionBase
+.. autoclass:: All
+.. autoclass:: And
+.. autoclass:: Or
+.. autoclass:: Not
+.. autoclass:: Id
+.. autoclass:: Tagged
+.. autoclass:: Writes
+.. autoclass:: Reads
+.. autoclass:: Iname
+"""
+
 
 def re_from_glob(s):
     import re
@@ -97,8 +117,17 @@ class MatchExpressionBase(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
+    def __and__(self, other):
+        return And((self, other))
 
-class AllMatchExpression(MatchExpressionBase):
+    def __or__(self, other):
+        return Or((self, other))
+
+    def __inv__(self):
+        return Not(self)
+
+
+class All(MatchExpressionBase):
     def __call__(self, kernel, matchable):
         return True
 
@@ -109,7 +138,7 @@ class AllMatchExpression(MatchExpressionBase):
         return (type(self) == type(other))
 
 
-class AndMatchExpression(MatchExpressionBase):
+class And(MatchExpressionBase):
     def __init__(self, children):
         self.children = children
 
@@ -128,7 +157,7 @@ class AndMatchExpression(MatchExpressionBase):
                 and self.children == other.children)
 
 
-class OrMatchExpression(MatchExpressionBase):
+class Or(MatchExpressionBase):
     def __init__(self, children):
         self.children = children
 
@@ -147,7 +176,7 @@ class OrMatchExpression(MatchExpressionBase):
                 and self.children == other.children)
 
 
-class NotMatchExpression(MatchExpressionBase):
+class Not(MatchExpressionBase):
     def __init__(self, child):
         self.child = child
 
@@ -176,7 +205,6 @@ class GlobMatchExpressionBase(MatchExpressionBase):
 
     def __str__(self):
         descr = type(self).__name__
-        descr = descr[:descr.find("Match")]
         return descr.lower() + ":" + self.glob
 
     def update_persistent_hash(self, key_hash, key_builder):
@@ -188,12 +216,12 @@ class GlobMatchExpressionBase(MatchExpressionBase):
                 and self.glob == other.glob)
 
 
-class IdMatchExpression(GlobMatchExpressionBase):
+class Id(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return self.re.match(matchable.id)
 
 
-class TagMatchExpression(GlobMatchExpressionBase):
+class Tagged(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         if matchable.tags:
             return any(self.re.match(tag) for tag in matchable.tags)
@@ -201,19 +229,19 @@ class TagMatchExpression(GlobMatchExpressionBase):
             return False
 
 
-class WritesMatchExpression(GlobMatchExpressionBase):
+class Writes(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
                 for name in matchable.write_dependency_names())
 
 
-class ReadsMatchExpression(GlobMatchExpressionBase):
+class Reads(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
                 for name in matchable.read_dependency_names())
 
 
-class InameMatchExpression(GlobMatchExpressionBase):
+class Iname(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
                 for name in matchable.inames(kernel))
@@ -223,35 +251,35 @@ class InameMatchExpression(GlobMatchExpressionBase):
 
 # {{{ parser
 
-def parse_match(expr_str):
+def parse_match(expr):
     """Syntax examples::
 
     * ``id:yoink and writes:a_temp``
     * ``id:yoink and (not writes:a_temp or tagged:input)``
     """
-    if not expr_str:
-        return AllMatchExpression()
+    if not expr:
+        return All()
 
     def parse_terminal(pstate):
         next_tag = pstate.next_tag()
         if next_tag is _id:
-            result = IdMatchExpression(pstate.next_match_obj().group(1))
+            result = Id(pstate.next_match_obj().group(1))
             pstate.advance()
             return result
         elif next_tag is _tag:
-            result = TagMatchExpression(pstate.next_match_obj().group(1))
+            result = Tagged(pstate.next_match_obj().group(1))
             pstate.advance()
             return result
         elif next_tag is _writes:
-            result = WritesMatchExpression(pstate.next_match_obj().group(1))
+            result = Writes(pstate.next_match_obj().group(1))
             pstate.advance()
             return result
         elif next_tag is _reads:
-            result = ReadsMatchExpression(pstate.next_match_obj().group(1))
+            result = Reads(pstate.next_match_obj().group(1))
             pstate.advance()
             return result
         elif next_tag is _iname:
-            result = InameMatchExpression(pstate.next_match_obj().group(1))
+            result = Iname(pstate.next_match_obj().group(1))
             pstate.advance()
             return result
         else:
@@ -262,7 +290,7 @@ def parse_match(expr_str):
 
         if pstate.is_next(_not):
             pstate.advance()
-            left_query = NotMatchExpression(inner_parse(pstate, _PREC_NOT))
+            left_query = Not(inner_parse(pstate, _PREC_NOT))
         elif pstate.is_next(_openpar):
             pstate.advance()
             left_query = inner_parse(pstate)
@@ -281,30 +309,33 @@ def parse_match(expr_str):
 
             if next_tag is _and and _PREC_AND > min_precedence:
                 pstate.advance()
-                left_query = AndMatchExpression(
+                left_query = And(
                         (left_query, inner_parse(pstate, _PREC_AND)))
                 did_something = True
             elif next_tag is _or and _PREC_OR > min_precedence:
                 pstate.advance()
-                left_query = OrMatchExpression(
+                left_query = Or(
                         (left_query, inner_parse(pstate, _PREC_OR)))
                 did_something = True
 
         return left_query
 
+    if isinstance(expr, MatchExpressionBase):
+        return expr
+
     from pytools.lex import LexIterator, lex, InvalidTokenError
     try:
         pstate = LexIterator(
             [(tag, s, idx, matchobj)
-             for (tag, s, idx, matchobj) in lex(_LEX_TABLE, expr_str,
+             for (tag, s, idx, matchobj) in lex(_LEX_TABLE, expr,
                  match_objects=True)
-             if tag is not _whitespace], expr_str)
+             if tag is not _whitespace], expr)
     except InvalidTokenError as e:
         from loopy.diagnostic import LoopyError
         raise LoopyError(
                 "invalid match expression: '{match_expr}' ({err_type}: {err_str})"
                 .format(
-                    match_expr=expr_str,
+                    match_expr=expr,
                     err_type=type(e).__name__,
                     err_str=str(e)))
 
@@ -454,6 +485,10 @@ def parse_stack_match(smatch):
 
     if isinstance(smatch, StackMatch):
         return smatch
+    if isinstance(smatch, MatchExpressionBase):
+        return StackMatch(
+                StackItemMatchComponent(
+                    smatch, StackAllMatchComponent()))
 
     if smatch is None:
         return StackMatch(StackAllMatchComponent())

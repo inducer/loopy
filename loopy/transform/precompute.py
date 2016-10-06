@@ -239,8 +239,10 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, temporary_name=None, precompute_inames=None,
+        precompute_outer_inames=None,
         storage_axis_to_tag={}, default_tag="l.auto", dtype=None,
-        fetch_bounding_box=False, temporary_is_local=None,
+        fetch_bounding_box=False,
+        temporary_scope=None, temporary_is_local=None,
         compute_insn_id=None):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
@@ -250,25 +252,25 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     :arg subst_use: Describes what to prefetch.
 
-    The following objects may be given for *subst_use*:
+        The following objects may be given for *subst_use*:
 
-    * The name of the substitution rule.
+        * The name of the substitution rule.
 
-    * The tagged name ("name$tag") of the substitution rule.
+        * The tagged name ("name$tag") of the substitution rule.
 
-    * A list of invocations of the substitution rule.
-      This list of invocations, when swept across *sweep_inames*, then serves
-      to define the footprint of the precomputation.
+        * A list of invocations of the substitution rule.
+          This list of invocations, when swept across *sweep_inames*, then serves
+          to define the footprint of the precomputation.
 
-      Invocations may be tagged ("name$tag") to filter out a subset of the
-      usage sites of the substitution rule. (Namely those usage sites that
-      use the same tagged name.)
+          Invocations may be tagged ("name$tag") to filter out a subset of the
+          usage sites of the substitution rule. (Namely those usage sites that
+          use the same tagged name.)
 
-      Invocations may be given as a string or as a
-      :class:`pymbolic.primitives.Expression` object.
+          Invocations may be given as a string or as a
+          :class:`pymbolic.primitives.Expression` object.
 
-      If only one invocation is to be given, then the only entry of the list
-      may be given directly.
+          If only one invocation is to be given, then the only entry of the list
+          may be given directly.
 
     If the list of invocations generating the footprint is not given,
     all (tag-matching, if desired) usage sites of the substitution rule
@@ -284,14 +286,13 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
       within its arguments. A new, dedicated storage axis is allocated for
       such an axis.
 
-    :arg sweep_inames: A :class:`list` of inames and/or rule argument
-        names to be swept.
+    :arg sweep_inames: A :class:`list` of inames to be swept.
         May also equivalently be a comma-separated string.
     :arg storage_axes: A :class:`list` of inames and/or rule argument
         names/indices to be used as storage axes.
         May also equivalently be a comma-separated string.
     :arg within: a stack match as understood by
-        :func:`loopy.context_matching.parse_stack_match`.
+        :func:`loopy.match.parse_stack_match`.
     :arg temporary_name:
         The temporary variable name to use for storing the precomputed data.
         If it does not exist, it will be created. If it does exist, its properties
@@ -306,7 +307,12 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         tuple, in which case names will be automatically created.
         May also equivalently be a comma-separated string.
 
-    :arg compute_insn_id: The ID of the instruction performing the precomputation.
+    :arg precompute_outer_inames: A :class:`frozenset` of inames within which
+        the compute instruction is nested. If *None*, make an educated guess.
+        May also be specified as a comma-separated string.
+
+    :arg compute_insn_id: The ID of the instruction generated to perform the
+        precomputation.
 
     If `storage_axes` is not specified, it defaults to the arrangement
     `<direct sweep axes><arguments>` with the direct sweep axes being the
@@ -315,6 +321,27 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
     """
+
+    # {{{ unify temporary_scope / temporary_is_local
+
+    from loopy.kernel.data import temp_var_scope
+    if temporary_is_local is not None:
+        from warnings import warn
+        warn("temporary_is_local is deprecated. Use temporary_scope instead",
+                DeprecationWarning, stacklevel=2)
+
+        if temporary_scope is not None:
+            raise LoopyError("may not specify both temporary_is_local and "
+                    "temporary_scope")
+
+        if temporary_is_local:
+            temporary_scope = temp_var_scope.LOCAL
+        else:
+            temporary_scope = temp_var_scope.PRIVATE
+
+    del temporary_is_local
+
+    # }}}
 
     # {{{ check, standardize arguments
 
@@ -334,6 +361,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     if isinstance(precompute_inames, str):
         precompute_inames = [iname.strip() for iname in precompute_inames.split(",")]
+
+    if isinstance(precompute_outer_inames, str):
+        precompute_outer_inames = frozenset(
+                iname.strip() for iname in precompute_outer_inames.split(","))
 
     if isinstance(subst_use, str):
         subst_use = [subst_use]
@@ -375,7 +406,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 raise ValueError("not all uses in subst_use agree "
                         "on rule name and tag")
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     within = parse_stack_match(within)
 
     from loopy.kernel.data import parse_tag
@@ -426,8 +457,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         import loopy as lp
         for insn in kernel.instructions:
-            if isinstance(insn, lp.Assignment):
-                invg(insn.assignee, kernel, insn)
+            if isinstance(insn, lp.MultiAssignmentBase):
+                for assignee in insn.assignees:
+                    invg(assignee, kernel, insn)
                 invg(insn.expression, kernel, insn)
 
         access_descriptors = invg.access_descriptors
@@ -457,8 +489,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     from loopy.symbolic import SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
-    value_inames = get_dependencies(
-            submap(subst.expression)
+    value_inames = (
+            get_dependencies(submap(subst.expression))
+            - frozenset(subst.arguments)
             ) & kernel.all_inames()
     if value_inames - expanding_usage_arg_deps < extra_storage_axes:
         raise RuntimeError("unreferenced sweep inames specified: "
@@ -705,8 +738,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     assignee = var(temporary_name)
 
     if non1_storage_axis_names:
-        assignee = assignee.index(
-                tuple(var(iname) for iname in non1_storage_axis_names))
+        assignee = assignee[
+                tuple(var(iname) for iname in non1_storage_axis_names)]
 
     # {{{ process substitutions on compute instruction
 
@@ -724,7 +757,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
 
-    from loopy.context_matching import parse_stack_match
+    from loopy.match import parse_stack_match
     expr_subst_map = RuleAwareSubstitutionMapper(
             rule_mapping_context,
             make_subst_func(storage_axis_subst_dict),
@@ -741,7 +774,9 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     compute_insn = Assignment(
             id=compute_insn_id,
             assignee=assignee,
-            expression=compute_expression)
+            expression=compute_expression,
+            # within_inames determined below
+            )
 
     # }}}
 
@@ -761,6 +796,32 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # }}}
 
+    # {{{ determine inames for compute insn
+
+    if precompute_outer_inames is None:
+        from loopy.kernel.tools import guess_iname_deps_based_on_var_use
+        precompute_outer_inames = (
+                    frozenset(non1_storage_axis_names)
+                    | frozenset(
+                        (expanding_usage_arg_deps | value_inames)
+                        - sweep_inames_set)
+                    | guess_iname_deps_based_on_var_use(kernel, compute_insn))
+    else:
+        if not isinstance(precompute_outer_inames, frozenset):
+            raise TypeError("precompute_outer_inames must be a frozenset")
+
+        precompute_outer_inames = precompute_outer_inames \
+                | frozenset(non1_storage_axis_names)
+
+    kernel = kernel.copy(
+            instructions=[
+                insn.copy(within_inames=precompute_outer_inames)
+                if insn.id == compute_insn_id
+                else insn
+                for insn in kernel.instructions])
+
+    # }}}
+
     # {{{ set up temp variable
 
     import loopy as lp
@@ -771,8 +832,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     import loopy as lp
 
-    if temporary_is_local is None:
-        temporary_is_local = lp.auto
+    if temporary_scope is None:
+        temporary_scope = lp.auto
 
     new_temp_shape = tuple(abm.non1_storage_shape)
 
@@ -783,7 +844,8 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 dtype=dtype,
                 base_indices=(0,)*len(new_temp_shape),
                 shape=tuple(abm.non1_storage_shape),
-                is_local=temporary_is_local)
+                scope=temporary_scope,
+                dim_names=tuple(non1_storage_axis_names))
 
     else:
         temp_var = new_temporary_variables[temporary_name]
@@ -820,19 +882,20 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         temp_var = temp_var.copy(shape=new_temp_shape)
 
-        if temporary_is_local == temp_var.is_local:
+        if temporary_scope == temp_var.scope:
             pass
-        elif temporary_is_local is lp.auto:
-            temporary_is_local = temp_var.is_local
-        elif temp_var.is_local is lp.auto:
+        elif temporary_scope is lp.auto:
+            temporary_scope = temp_var.scope
+        elif temp_var.scope is lp.auto:
             pass
         else:
             raise LoopyError("Existing and new temporary '%s' do not "
-                    "have matching values of 'is_local'"
+                    "have matching scopes (existing: %s, new: %s)"
                     % (temporary_name,
-                        temp_var.is_local, temporary_is_local))
+                        temp_var_scope.stringify(temp_var.scope),
+                        temp_var_scope.stringify(temporary_scope)))
 
-        temp_var = temp_var.copy(is_local=temporary_is_local)
+        temp_var = temp_var.copy(scope=temporary_scope)
 
         # }}}
 

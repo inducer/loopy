@@ -1,5 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
+from __future__ import division, absolute_import
 import six
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
@@ -35,7 +34,7 @@ from six.moves import intern
 
 if six.PY2:
     def is_integer(obj):
-        return isinstance(obj, (int, long, np.integer))
+        return isinstance(obj, (int, long, np.integer))  # noqa
 else:
     def is_integer(obj):
         return isinstance(obj, (int, np.integer))
@@ -110,70 +109,6 @@ class PymbolicExpressionHashWrapper(object):
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.update_for_pymbolic_expression(key_hash, self.expression)
-
-# }}}
-
-
-# {{{ picklable dtype
-
-class PicklableDtype(object):
-    """This object works around several issues with pickling :class:`numpy.dtype`
-    objects. It does so by serving as a picklable wrapper around the original
-    dtype.
-
-    The issues are the following
-
-    - :class:`numpy.dtype` objects for custom types in :mod:`loopy` are usually
-      registered in the target's dtype registry. This registration may
-      have been lost after unpickling. This container restores it implicitly,
-      as part of unpickling.
-
-    - There is a`numpy bug <https://github.com/numpy/numpy/issues/4317>`_
-      that prevents unpickled dtypes from hashing properly. This is solved
-      by retrieving the 'canonical' type from the dtype registry.
-    """
-
-    def __init__(self, dtype, target=None):
-        assert not isinstance(dtype, PicklableDtype)
-
-        if dtype is None:
-            raise TypeError("may not pass None to construct PicklableDtype")
-
-        self.target = target
-        self.dtype = np.dtype(dtype)
-
-    def __hash__(self):
-        return hash(self.dtype)
-
-    def __eq__(self, other):
-        return (
-                type(self) == type(other)
-                and self.dtype == other.dtype)
-
-    def __ne__(self, other):
-        return not self.__eq__(self, other)
-
-    def __getstate__(self):
-        if self.target is None:
-            raise RuntimeError("unable to pickle dtype: target not known")
-
-        c_name = self.target.dtype_to_typename(self.dtype)
-        return (self.target, c_name, self.dtype)
-
-    def __setstate__(self, state):
-        target, name, dtype = state
-        self.target = target
-        self.dtype = self.target.get_or_register_dtype([name], dtype)
-
-    def with_target(self, target):
-        if (self.target is not None
-                and target is not self.target):
-            raise RuntimeError("target already set to different value")
-
-        return PicklableDtype(self.dtype, target)
-
-    def assert_has_target(self):
-        assert self.target is not None
 
 # }}}
 
