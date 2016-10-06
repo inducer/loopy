@@ -377,6 +377,13 @@ class PyOpenCLTarget(OpenCLTarget):
 
     # }}}
 
+    def get_kernel_executor_cache_key(self, queue, **kwargs):
+        return queue.context
+
+    def get_kernel_executor(self, kernel, queue, **kwargs):
+        from loopy.target.pyopencl_execution import PyOpenCLKernelExecutor
+        return PyOpenCLKernelExecutor(queue.context, kernel)
+
 # }}}
 
 

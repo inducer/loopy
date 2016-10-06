@@ -124,6 +124,20 @@ class TargetBase(object):
 
     # }}}
 
+    def get_kernel_executor_cache_key(self, *args, **kwargs):
+        """
+        :returns: an immutable type to be used as the cache key for
+            kernel executor caching.
+        """
+        raise NotImplementedError()
+
+    def get_kernel_executor(self, kernel, *args, **kwargs):
+        """
+        :returns: an immutable type to be used as the cache key for
+            kernel executor caching.
+        """
+        raise NotImplementedError()
+
 
 class ASTBuilderBase(object):
     """An interface for generating (host or device) ASTs.

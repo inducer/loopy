@@ -48,6 +48,10 @@ __doc__ = """
 
 .. autofunction:: duplicate_inames
 
+.. autofunction:: get_iname_duplication_options
+
+.. autofunction:: has_schedulable_iname_nesting
+
 .. autofunction:: rename_iname
 
 .. autofunction:: remove_unused_inames
@@ -219,7 +223,7 @@ def _split_iname_backend(kernel, split_iname,
     subst_map = {var(split_iname): new_loop_index}
     applied_iname_rewrites.append(subst_map)
 
-    # {{{ update forced_iname deps
+    # {{{ update within_inames
 
     new_insns = []
     for insn in kernel.instructions:
@@ -821,6 +825,171 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
     # }}}
 
     return knl
+
+# }}}
+
+
+# {{{ iname duplication for schedulability
+
+def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
+    # Remove common inames of the current insn_deps, as they are not relevant
+    # for splitting.
+    common = frozenset([]).union(*insn_deps).intersection(*insn_deps)
+
+    # If common inames were found, we reduce the problem and go into recursion
+    if common:
+        # Remove the common inames from the instruction dependencies
+        insn_deps = (
+            frozenset(dep - common for dep in insn_deps)
+            -
+            frozenset([frozenset([])]))
+        # Join the common inames with those previously found
+        common = common.union(old_common_inames)
+
+        # Go into recursion
+        for option in _get_iname_duplication_options(insn_deps, common):
+            yield option
+        # Do not yield anything beyond here!
+        return
+
+    # Try finding a partitioning of the remaining inames, such that all instructions
+    # use only inames from one of the disjoint sets from the partitioning.
+    def join_sets_if_not_disjoint(sets):
+        for s1 in sets:
+            for s2 in sets:
+                if s1 != s2 and s1.intersection(s2):
+                    return (
+                        (sets - frozenset([s1, s2]))
+                        | frozenset([s1 | s2])
+                        ), False
+
+        return sets, True
+
+    partitioning = insn_deps
+    stop = False
+    while not stop:
+        partitioning, stop = join_sets_if_not_disjoint(partitioning)
+
+    # If a partitioning was found we recursively apply this algorithm to the
+    # subproblems
+    if len(partitioning) > 1:
+        for part in partitioning:
+            working_set = frozenset(s for s in insn_deps if s.issubset(part))
+            for option in _get_iname_duplication_options(working_set,
+                                                         old_common_inames):
+                yield option
+    # If exactly one set was found, an iname duplication is necessary
+    elif len(partitioning) == 1:
+        inames, = partitioning
+
+        # There are splitting options for all inames
+        for iname in inames:
+            iname_insns = frozenset(
+                    insn for insn in insn_deps if frozenset([iname]).issubset(insn))
+
+            import itertools as it
+            # For a given iname, the set of instructions containing this iname
+            # is inspected.  For each element of the power set without the
+            # empty and the full set, one duplication option is generated.
+            for insns_to_dup in it.chain.from_iterable(
+                    it.combinations(iname_insns, l)
+                    for l in range(1, len(iname_insns))):
+                yield (
+                    iname,
+                    tuple(insn.union(old_common_inames) for insn in insns_to_dup))
+
+    # If partitioning was empty, we have recursed successfully and yield nothing
+
+
+def get_iname_duplication_options(knl, use_boostable_into=False):
+    """List options for duplication of inames, if necessary for schedulability
+
+    :returns: a generator listing all options to duplicate inames, if duplication
+        of an iname is necessary to ensure the schedulability of the kernel.
+        Duplication options are returned as tuples (iname, within) as
+        understood by :func:`duplicate_inames`. There is no guarantee, that the
+        transformed kernel will be schedulable, because multiple duplications
+        of iname may be necessary.
+
+    Some kernels require the duplication of inames in order to be schedulable, as the
+    forced iname dependencies define an over-determined problem to the scheduler.
+    Consider the following minimal example:
+
+        knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
+                             \"\"\"
+                             mat1[i,j] = mat1[i,j] + 1 {inames=i:j, id=i1}
+                             mat2[j] = mat2[j] + 1 {inames=j, id=i2}
+                             mat3[i] = mat3[i] + 1 {inames=i, id=i3}
+                             \"\"\")
+
+    In the example, there are four possibilities to resolve the problem:
+    * duplicating i in instruction i3
+    * duplicating i in instruction i1 and i3
+    * duplicating j in instruction i2
+    * duplicating i in instruction i2 and i3
+
+    Use :func:`has_schedulable_iname_nesting` to decide, whether an iname needs to be
+    duplicated in a given kernel.
+    """
+    # First we extract the minimal necessary information from the kernel
+    if use_boostable_into:
+        insn_deps = (
+            frozenset(insn.within_inames.union(
+                insn.boostable_into if insn.boostable_into is not None
+                else frozenset([]))
+                for insn in knl.instructions)
+            -
+            frozenset([frozenset([])]))
+    else:
+        insn_deps = (
+            frozenset(insn.within_inames for insn in knl.instructions)
+            -
+            frozenset([frozenset([])]))
+
+    # Get the duplication options as a tuple of iname and a set
+    for iname, insns in _get_iname_duplication_options(insn_deps):
+        # Check whether this iname has a parallel tag and discard it if so
+        from loopy.kernel.data import ParallelTag
+        if (iname in knl.iname_to_tag
+                    and isinstance(knl.iname_to_tag[iname], ParallelTag)):
+            continue
+
+        # If we find a duplication option and fo not use boostable_into
+        # information, we restart this generator with use_boostable_into=True
+        if not use_boostable_into:
+            for option in get_iname_duplication_options(knl, True):
+                yield option
+
+            # Emit a warning that we needed boostable_into
+            from warnings import warn
+            from loopy.diagnostic import LoopyWarning
+            warn("Kernel '%s' required the deprecated 'boostable_into"
+                 "field in order to be schedulable!" % knl.name, LoopyWarning)
+
+            # Return to avoid yielding the duplication
+            # options without boostable_into
+            return
+
+        # Reconstruct an object that may be passed to the within parameter of
+        # loopy.duplicate_inames
+        from loopy.match import Id, Or
+        within = Or(tuple(
+            Id(insn.id) for insn in knl.instructions
+            if insn.within_inames in insns))
+
+        # Only yield the result if an instruction matched. With
+        # use_boostable_into=True this is not always true.
+
+        if within.children:
+            yield iname, within
+
+
+def has_schedulable_iname_nesting(knl):
+    """
+    :returns: a :class:`bool` indicating whether this kernel needs
+        an iname duplication in order to be schedulable.
+    """
+    return not bool(next(get_iname_duplication_options(knl), False))
 
 # }}}
 

@@ -1280,6 +1280,8 @@ def test_finite_difference_expr_subst(ctx_factory):
     evt, _ = precomp_knl(queue, u=u, h=h)
 
 
+# {{{ call without returned values
+
 def test_call_with_no_returned_value(ctx_factory):
     import pymbolic.primitives as p
 
@@ -1297,6 +1299,38 @@ def test_call_with_no_returned_value(ctx_factory):
 
     evt, _ = knl(queue)
 
+# }}}
+
+
+def test_unschedulable_kernel_detection():
+    knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
+                         """
+                         mat1[i,j] = mat1[i,j] + 1 {inames=i:j, id=i1}
+                         mat2[j] = mat2[j] + 1 {inames=j, id=i2}
+                         mat3[i] = mat3[i] + 1 {inames=i, id=i3}
+                         """)
+
+    knl = lp.preprocess_kernel(knl)
+
+    # Check that loopy can detect the unschedulability of the kernel
+    assert not lp.has_schedulable_iname_nesting(knl)
+    assert len(list(lp.get_iname_duplication_options(knl))) == 4
+
+    for inames, insns in lp.get_iname_duplication_options(knl):
+        fixed_knl = lp.duplicate_inames(knl, inames, insns)
+        assert lp.has_schedulable_iname_nesting(fixed_knl)
+
+    knl = lp.make_kernel(["{[i,j,k,l,m]:0<=i,j,k,l,m<n}"],
+                         """
+                         mat1[l,m,i,j,k] = mat1[l,m,i,j,k] + 1 {inames=i:j:k:l:m}
+                         mat2[l,m,j,k] = mat2[l,m,j,k] + 1 {inames=j:k:l:m}
+                         mat3[l,m,k] = mat3[l,m,k] + 11 {inames=k:l:m}
+                         mat4[l,m,i] = mat4[l,m,i] + 1 {inames=i:l:m}
+                         """)
+
+    assert not lp.has_schedulable_iname_nesting(knl)
+    assert len(list(lp.get_iname_duplication_options(knl))) == 10
+
 
 def test_regression_no_ret_call_removal(ctx_factory):
     # https://github.com/inducer/loopy/issues/32
@@ -1306,6 +1340,20 @@ def test_regression_no_ret_call_removal(ctx_factory):
     knl = lp.add_and_infer_dtypes(knl, {"x": np.float32})
     knl = lp.preprocess_kernel(knl)
     assert len(knl.instructions) == 3
+
+
+def test_regression_persistent_hash():
+    knl1 = lp.make_kernel(
+            "{[i] : 0<=i<n}",
+            "cse_exprvar = d[2]*d[2]")
+
+    knl2 = lp.make_kernel(
+            "{[i] : 0<=i<n}",
+            "cse_exprvar = d[0]*d[0]")
+    from loopy.tools import LoopyKeyBuilder
+    lkb = LoopyKeyBuilder()
+    assert lkb(knl1.instructions[0]) != lkb(knl2.instructions[0])
+    assert lkb(knl1) != lkb(knl2)
 
 
 if __name__ == "__main__":

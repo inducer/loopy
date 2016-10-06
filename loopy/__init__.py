@@ -66,6 +66,7 @@ from loopy.transform.iname import (
         split_reduction_inward, split_reduction_outward,
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
+        has_schedulable_iname_nesting, get_iname_duplication_options,
         add_inames_to_insn)
 
 from loopy.transform.instruction import (
@@ -170,6 +171,7 @@ __all__ = [
         "split_reduction_inward", "split_reduction_outward",
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
+        "has_schedulable_iname_nesting", "get_iname_duplication_options",
         "add_inames_to_insn",
 
         "add_prefetch", "change_arg_to_image",
