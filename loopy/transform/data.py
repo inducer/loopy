@@ -146,8 +146,38 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     """Prefetch all accesses to the variable *var_name*, with all accesses
     being swept through *sweep_inames*.
 
+    :arg var_name: A string, the name of the variable being prefetched.
+        This may be a 'tagged variable name' (such as ``field$mytag``
+        to restrict the effect of the operation to only variable accesses
+        with a matching tag.
+
+        This may also be a subscripted version of the variable, in which
+        case this access dictates the footprint that is prefetched,
+        e.g. ``A[:,:]`` or ``field[i,j,:,:]``. In this case, accesses
+        in the kernel are disregarded.
+
+    :arg sweep_inames: A list of inames, or a comma-separated string of them.
+        This routine 'sweeps' all accesses to *var_name* through all allowed
+        values of the *sweep_inames* to generate a footprint. All values
+        in this footprint are then stored in a temporary variable, and
+        the original variable accesses replaced with accesses to this
+        temporary.
+
     :arg dim_arg_names: List of names representing each fetch axis.
+        These names show up as inames in the generated fetch code
+
+    :arg default_tag: The :ref:`implementation tag <iname-tags>` to
+        assign to the inames driving the prefetch code. Use *None* to
+        leave them undefined (to assign them later by hand). The
+        default values of ``"l.auto"`` will automatically determine
+        what it deems 'reasonable' inames to map to 'local' axes and
+        map the rest to sequential loops.
+
     :arg rule_name: base name of the generated temporary variable.
+    :arg temporary_name: The name of the temporary to be used.
+    :arg temporary_scope: The :class:`temp_var_scope` to use for the
+        temporary.
+    :arg temporary_is_local: Deprecated, use *temporary_scope* instead.
     :arg footprint_subscripts: A list of tuples indicating the index (i.e.
         subscript) tuples used to generate the footprint.
 
@@ -156,10 +186,50 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
         such as those occurring in dimension splits are recorded and also
         applied to these indices.
 
+    :arg fetch_bounding_box: To fit within :mod:`loopy`'s execution model,
+        the 'footprint' of the fetch currently has to be a convex set.
+        Sometimes this is not the case, e.g. for a high-order stencil::
+
+              o
+              o
+            ooooo
+              o
+              o
+
+        The footprint of the stencil when 'swept' over a base domain
+        would look like this, and because of the 'missing corners',
+        this set is not convex::
+
+              oooooooooo
+              oooooooooo
+            oooooooooooooo
+            oooooooooooooo
+            oooooooooooooo
+            oooooooooooooo
+              oooooooooo
+              oooooooooo
+
+        Passing ``fetch_bounding_box=True` gives :mod:`loopy` permission
+        to instead fetch the 'bounding box' of the footprint, i.e.
+        this set in the stencil example::
+
+            OOooooooooooOO
+            OOooooooooooOO
+            oooooooooooooo
+            oooooooooooooo
+            oooooooooooooo
+            oooooooooooooo
+            OOooooooooooOO
+            OOooooooooooOO
+
+        Note the added corners marked with "``O``". The resulting footprint is
+        guaranteed to be convex.
+
+
     :arg fetch_outer_inames: The inames within which the fetch
         instruction is nested. If *None*, make an educated guess.
 
-    This function combines :func:`extract_subst` and :func:`precompute`.
+    This function internally uses :func:`extract_subst` and :func:`precompute`.
     """
 
     # {{{ fish indexing out of var_name and into footprint_subscripts
