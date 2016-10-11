@@ -435,6 +435,43 @@ def test_sum_factorization():
     print(knl)
 
 
+def test_lbm(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+         "{[ii,jj]:0<=ii<nx-2 and 0<=jj<ny-2}",
+         """  # noqa (silences flake8 line length warning)
+         i := ii + 1
+         j := jj + 1
+         for ii, jj
+             m[i, j, 0] =   +    f[i-1, j, 0] +    f[i, j-1, 1] + f[i+1, j, 2] +  f[i, j+1, 3]
+             m[i, j, 1] =   + 4.*f[i-1, j, 0] - 4.*f[i+1, j, 2]
+             m[i, j, 2] =   + 4.*f[i, j-1, 1] - 4.*f[i, j+1, 3]
+             m[i, j, 3] =   +    f[i-1, j, 0] -    f[i, j-1, 1] + f[i+1, j, 2] -  f[i, j+1, 3]
+             m[i, j, 4] =   +    f[i-1, j, 4] +    f[i, j-1, 5] + f[i+1, j, 6] +  f[i, j+1, 7]
+             m[i, j, 5] =   + 4.*f[i-1, j, 4] - 4.*f[i+1, j, 6]
+             m[i, j, 6] =   + 4.*f[i, j-1, 5] - 4.*f[i, j+1, 7]
+             m[i, j, 7] =   +    f[i-1, j, 4] -    f[i, j-1, 5] + f[i+1, j, 6] -  f[i, j+1, 7]
+             m[i, j, 8] =   +    f[i-1, j, 8] +    f[i, j-1, 9] + f[i+1, j, 10] + f[i, j+1, 11]
+             m[i, j, 9] =   + 4.*f[i-1, j, 8] - 4.*f[i+1, j, 10]
+             m[i, j, 10] =  + 4.*f[i, j-1, 9] - 4.*f[i, j+1, 11]
+             m[i, j, 11] =  +    f[i-1, j, 8] -    f[i, j-1, 9] + f[i+1, j, 10] - f[i, j+1, 11]
+        end
+        """)
+
+    knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, "ii", 16, outer_tag="g.1", inner_tag="l.1")
+    knl = lp.split_iname(knl, "jj", 16, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.expand_subst(knl)
+    knl = lp.add_prefetch(knl, "f", "ii_inner,jj_inner", fetch_bounding_box=True)
+    print(knl)
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nx": 20, "ny": 20})
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
