@@ -1132,6 +1132,27 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
 # }}}
 
 
+# {{{ add_sequential_dependencies
+
+def add_sequential_dependencies(knl):
+    new_insns = []
+    prev_insn = None
+    for insn in knl.instructions:
+        if prev_insn is not None:
+            depon = insn.depends_on
+            if depon is None:
+                depon = frozenset()
+            insn = insn.copy(depends_on=depon | frozenset((prev_insn.id,)))
+
+        new_insns.append(insn)
+
+        prev_insn = insn
+
+    return knl.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ temporary variable creation
 
 def create_temporaries(knl, default_order):
@@ -1527,6 +1548,13 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         string representation
     :arg target: an instance of :class:`loopy.TargetBase`, or *None*,
         to use the default target.
+    :arg seq_dependencies: If *True*, dependencies that sequentially
+        connect the given *instructions* will be added. Defaults to
+        *False*.
+
+    .. versionchanged:: 2016.3
+
+        *seq_dependencies* added.
     """
 
     defines = kwargs.pop("defines", {})
@@ -1536,6 +1564,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     options = kwargs.pop("options", None)
     flags = kwargs.pop("flags", None)
     target = kwargs.pop("target", None)
+    seq_dependencies = kwargs.pop("seq_dependencies", False)
 
     if defines:
         from warnings import warn
@@ -1635,6 +1664,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             options=options,
             target=target,
             **kwargs)
+
+    if seq_dependencies:
+        knl = add_sequential_dependencies(knl)
 
     assert len(knl.instructions) == len(inames_to_dup)
 

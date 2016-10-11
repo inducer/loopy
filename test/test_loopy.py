@@ -1356,6 +1356,26 @@ def test_regression_persistent_hash():
     assert lkb(knl1) != lkb(knl2)
 
 
+def test_sequential_dependencies(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            for i
+                <> aa = 5jf
+                <> bb = 5j
+                a[i] = imag(aa)
+                b[i] = imag(bb)
+                c[i] = 5f
+            end
+            """, seq_dependencies=True)
+
+    print(knl.stringify(with_dependencies=True))
+
+    lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
