@@ -439,27 +439,57 @@ def test_lbm(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-         "{[ii,jj]:0<=ii<nx-2 and 0<=jj<ny-2}",
-         """  # noqa (silences flake8 line length warning)
-         i := ii + 1
-         j := jj + 1
-         for ii, jj
-             m[i, j, 0] =   +    f[i-1, j, 0] +    f[i, j-1, 1] + f[i+1, j, 2] +  f[i, j+1, 3]
-             m[i, j, 1] =   + 4.*f[i-1, j, 0] - 4.*f[i+1, j, 2]
-             m[i, j, 2] =   + 4.*f[i, j-1, 1] - 4.*f[i, j+1, 3]
-             m[i, j, 3] =   +    f[i-1, j, 0] -    f[i, j-1, 1] + f[i+1, j, 2] -  f[i, j+1, 3]
-             m[i, j, 4] =   +    f[i-1, j, 4] +    f[i, j-1, 5] + f[i+1, j, 6] +  f[i, j+1, 7]
-             m[i, j, 5] =   + 4.*f[i-1, j, 4] - 4.*f[i+1, j, 6]
-             m[i, j, 6] =   + 4.*f[i, j-1, 5] - 4.*f[i, j+1, 7]
-             m[i, j, 7] =   +    f[i-1, j, 4] -    f[i, j-1, 5] + f[i+1, j, 6] -  f[i, j+1, 7]
-             m[i, j, 8] =   +    f[i-1, j, 8] +    f[i, j-1, 9] + f[i+1, j, 10] + f[i, j+1, 11]
-             m[i, j, 9] =   + 4.*f[i-1, j, 8] - 4.*f[i+1, j, 10]
-             m[i, j, 10] =  + 4.*f[i, j-1, 9] - 4.*f[i, j+1, 11]
-             m[i, j, 11] =  +    f[i-1, j, 8] -    f[i, j-1, 9] + f[i+1, j, 10] - f[i, j+1, 11]
+        "{[ii,jj]:0<=ii<nx-2 and 0<=jj<ny-2}",
+        """  # noqa (silences flake8 line length warning)
+        i := ii + 1
+        j := jj + 1
+        for ii, jj
+            with {id_prefix=init_m}
+                <> m[0] =   +    f[i-1, j, 0] +    f[i, j-1, 1] + f[i+1, j, 2] +  f[i, j+1, 3]
+                m[1] =   + 4.*f[i-1, j, 0] - 4.*f[i+1, j, 2]
+                m[2] =   + 4.*f[i, j-1, 1] - 4.*f[i, j+1, 3]
+                m[3] =   +    f[i-1, j, 0] -    f[i, j-1, 1] + f[i+1, j, 2] -  f[i, j+1, 3]
+                m[4] =   +    f[i-1, j, 4] +    f[i, j-1, 5] + f[i+1, j, 6] +  f[i, j+1, 7]
+                m[5] =   + 4.*f[i-1, j, 4] - 4.*f[i+1, j, 6]
+                m[6] =   + 4.*f[i, j-1, 5] - 4.*f[i, j+1, 7]
+                m[7] =   +    f[i-1, j, 4] -    f[i, j-1, 5] + f[i+1, j, 6] -  f[i, j+1, 7]
+                m[8] =   +    f[i-1, j, 8] +    f[i, j-1, 9] + f[i+1, j, 10] + f[i, j+1, 11]
+                m[9] =   + 4.*f[i-1, j, 8] - 4.*f[i+1, j, 10]
+                m[10] =  + 4.*f[i, j-1, 9] - 4.*f[i, j+1, 11]
+                m[11] =  +    f[i-1, j, 8] -    f[i, j-1, 9] + f[i+1, j, 10] - f[i, j+1, 11]
+            end
+
+            with {id_prefix=update_m,dep=init_m*}
+                m[1] = m[1] + 2.*(m[4] - m[1])
+                m[2] = m[2] + 2.*(m[8] - m[2])
+                m[3] = m[3]*(1. - 1.5)
+                m[5] = m[5] + 1.5*(0.5*(m[0]*m[0]) + (m[4]*m[4])/m[0] - m[5])
+                m[6] = m[6] + 1.5*(m[4]*m[8]/m[0] - m[6])
+                m[7] = m[7]*(1. - 1.2000000000000000)
+                m[9] = m[9] + 1.5*(m[4]*m[8]/m[0] - m[9])
+                m[10] = m[10] + 1.5*(0.5*(m[0]*m[0]) + (m[8]*m[8])/m[0] - m[10])
+                m[11] = m[11]*(1. - 1.2)
+            end
+
+            with {dep=update_m*}
+                f_new[i, j, 0] =  + 0.25*m[0] + 0.125*m[1] + 0.25*m[3]
+                f_new[i, j, 1] =  + 0.25*m[0] + 0.125*m[2] - 0.25*m[3]
+                f_new[i, j, 2] =  + 0.25*m[0] - 0.125*m[1] + 0.25*m[3]
+                f_new[i, j, 3] =  + 0.25*m[0] - 0.125*m[2] - 0.25*m[3]
+                f_new[i, j, 4] =  + 0.25*m[4] + 0.125*m[5] + 0.25*m[7]
+                f_new[i, j, 5] =  + 0.25*m[4] + 0.125*m[6] - 0.25*m[7]
+                f_new[i, j, 6] =  + 0.25*m[4] - 0.125*m[5] + 0.25*m[7]
+                f_new[i, j, 7] =  + 0.25*m[4] - 0.125*m[6] - 0.25*m[7]
+                f_new[i, j, 8] =  + 0.25*m[8] + 0.125*m[9] + 0.25*m[11]
+                f_new[i, j, 9] =  + 0.25*m[8] + 0.125*m[10] - 0.25*m[11]
+                f_new[i, j, 10] =  + 0.25*m[8] - 0.125*m[9] + 0.25*m[11]
+                f_new[i, j, 11] =  + 0.25*m[8] - 0.125*m[10] - 0.25*m[11]
+           end
         end
         """)
 
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
+    #knl = lp.add_and_infer_dtypes(knl, {"f_new": np.float32})
 
     ref_knl = knl
 
@@ -467,7 +497,6 @@ def test_lbm(ctx_factory):
     knl = lp.split_iname(knl, "jj", 16, outer_tag="g.0", inner_tag="l.0")
     knl = lp.expand_subst(knl)
     knl = lp.add_prefetch(knl, "f", "ii_inner,jj_inner", fetch_bounding_box=True)
-    print(knl)
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nx": 20, "ny": 20})
 
