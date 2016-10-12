@@ -1469,11 +1469,14 @@ def generate_loop_schedules(kernel, debug_args={}):
 
             uses_of_boostability=[])
 
-    generators = [
-            generate_loop_schedules_internal(sched_state,
-                debug=debug, allow_boost=None),
-            generate_loop_schedules_internal(sched_state,
-                debug=debug)]
+    generators = []
+
+    if not kernel.options.ignore_boostable_into:
+       generators.append(generate_loop_schedules_internal(sched_state,
+                             debug=debug, allow_boost=None))
+
+    generators.append(generate_loop_schedules_internal(sched_state,
+                          debug=debug))
 
     def print_longest_dead_end():
         if debug.interactive:
