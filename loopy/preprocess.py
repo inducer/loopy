@@ -1054,9 +1054,8 @@ def preprocess_kernel(kernel, device=None):
                 DeprecationWarning, stacklevel=2)
 
     from loopy.kernel import kernel_state
-    if kernel.state != kernel_state.INITIAL:
-        raise LoopyError("cannot re-preprocess an already preprocessed "
-                "kernel")
+    if kernel.state >= kernel_state.PREPROCESSED:
+        return kernel
 
     # {{{ cache retrieval
 
