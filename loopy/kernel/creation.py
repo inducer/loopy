@@ -628,8 +628,10 @@ def parse_instructions(instructions, defines):
                             # final now.
                             bool(local_w_inames)),
                         depends_on=(
-                            insn.depends_on
-                            | insn_options_stack[-1]["depends_on"]),
+                            (insn.depends_on
+                                | insn_options_stack[-1]["depends_on"])
+                            if insn_options_stack[-1]["depends_on"] is not None
+                            else insn.depends_on),
                         tags=(
                             insn.tags
                             | insn_options_stack[-1]["tags"]),
@@ -642,8 +644,7 @@ def parse_instructions(instructions, defines):
                         conflicts_with_groups=(
                             insn.groups
                             | insn_options_stack[-1]["conflicts_with_groups"]),
-                        **kwargs,
-                        )
+                        **kwargs)
 
             new_instructions.append(insn)
             inames_to_dup.append([])
