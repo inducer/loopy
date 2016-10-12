@@ -1461,7 +1461,7 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
         from loopy.symbolic import Reduction
         if not isinstance(expression, (Call, Reduction)):
             raise LoopyError("right-hand side in multiple assignment must be "
-                    "function call or reduction")
+                    "function call or reduction, got: '%s'" % expression)
 
         return CallInstruction(
                 assignees=assignees,
