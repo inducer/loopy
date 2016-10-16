@@ -108,14 +108,14 @@ def stringify_stats_mapping(m):
     return result
 
 
-class TypedOp:
+class Op:
 
     def __init__(self, dtype, name):
         self.dtype = dtype
         self.name = name
 
     def __eq__(self, other):
-        return isinstance(other, TypedOp) and (
+        return isinstance(other, Op) and (
                 other.dtype == self.dtype and
                 other.name == self.name )
 
@@ -195,7 +195,7 @@ class ExpressionOpCounter(CombineMapper):
 
     def map_call(self, expr):
         return ToCountMap(
-                    {TypedOp(self.type_inf(expr), 'func:'+str(expr.function)): 1}
+                    {Op(self.type_inf(expr), 'func:'+str(expr.function)): 1}
                     ) + self.rec(expr.parameters)
 
     # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
@@ -208,20 +208,20 @@ class ExpressionOpCounter(CombineMapper):
     def map_sum(self, expr):
         assert expr.children
         return ToCountMap(
-                    {TypedOp(self.type_inf(expr), 'add'): len(expr.children)-1}
+                    {Op(self.type_inf(expr), 'add'): len(expr.children)-1}
                     ) + sum(self.rec(child) for child in expr.children)
 
     def map_product(self, expr):
         from pymbolic.primitives import is_zero
         assert expr.children
-        return sum(ToCountMap({TypedOp(self.type_inf(expr), 'mul'): 1})
+        return sum(ToCountMap({Op(self.type_inf(expr), 'mul'): 1})
                    + self.rec(child)
                    for child in expr.children
                    if not is_zero(child + 1)) + \
-                   ToCountMap({TypedOp(self.type_inf(expr), 'mul'): -1})
+                   ToCountMap({Op(self.type_inf(expr), 'mul'): -1})
 
     def map_quotient(self, expr, *args):
-        return ToCountMap({TypedOp(self.type_inf(expr), 'div'): 1}) \
+        return ToCountMap({Op(self.type_inf(expr), 'div'): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
 
@@ -229,24 +229,24 @@ class ExpressionOpCounter(CombineMapper):
     map_remainder = map_quotient
 
     def map_power(self, expr):
-        return ToCountMap({TypedOp(self.type_inf(expr), 'pow'): 1}) \
+        return ToCountMap({Op(self.type_inf(expr), 'pow'): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):
-        return ToCountMap({TypedOp(self.type_inf(expr), 'shift'): 1}) \
+        return ToCountMap({Op(self.type_inf(expr), 'shift'): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
     map_right_shift = map_left_shift
 
     def map_bitwise_not(self, expr):
-        return ToCountMap({TypedOp(self.type_inf(expr), 'bw'): 1}) \
+        return ToCountMap({Op(self.type_inf(expr), 'bw'): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
         return ToCountMap(
-                        {TypedOp(self.type_inf(expr), 'bw'): len(expr.children)-1}
+                        {Op(self.type_inf(expr), 'bw'): len(expr.children)-1}
                         ) + sum(self.rec(child) for child in expr.children)
 
     map_bitwise_xor = map_bitwise_or
@@ -274,7 +274,7 @@ class ExpressionOpCounter(CombineMapper):
         return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
 
     def map_min(self, expr):
-        return ToCountMap({TypedOp(
+        return ToCountMap({Op(
                            self.type_inf(expr), 'maxmin'): len(expr.children)-1}
                          ) + sum(self.rec(child) for child in expr.children)
 
@@ -807,7 +807,7 @@ def get_op_poly(knl, numpy_types=True):
 
     if numpy_types:
         result = dict(
-                (TypedOp(op.dtype.numpy_dtype, op.name), count)
+                (Op(op.dtype.numpy_dtype, op.name), count)
                 for op, count in six.iteritems(result))
 
     return result
