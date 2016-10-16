@@ -33,8 +33,7 @@ from loopy.statistics import (
         get_gmem_access_poly,
         get_lmem_access_poly,
         get_synchronization_poly,
-        StridedGmemAccess,
-        LmemAccess,
+        MemAccess,
         Op)
 import loopy as lp
 import numpy as np
@@ -54,7 +53,8 @@ def test_op_counter_basic():
             name="basic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+                                  dict(a=np.float32, b=np.float32,
+                                       g=np.float64, h=np.float64))
     poly = lp.get_op_poly(knl)
     n = 512
     m = 256
@@ -130,7 +130,8 @@ def test_op_counter_specialops():
             name="specialops", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+                                  dict(a=np.float32, b=np.float32,
+                                       g=np.float64, h=np.float64))
     poly = lp.get_op_poly(knl)
     n = 512
     m = 256
@@ -235,21 +236,27 @@ def test_gmem_access_counter_basic():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='load', variable='a')
+    f32 = poly[MemAccess('global', np.dtype(np.float32),
+                         stride=0, direction='load', variable='a')
+              ].eval_with_dict(params)
+    f32 += poly[MemAccess('global', np.dtype(np.float32),
+                          stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
-    f32 += poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='load', variable='b')
-               ].eval_with_dict(params)
-    f64 = poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='load', variable='g')
-               ].eval_with_dict(params)
-    f64 += poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='load', variable='h')
+    f64 = poly[MemAccess('global', np.dtype(np.float64),
+                         stride=0, direction='load', variable='g')
+              ].eval_with_dict(params)
+    f64 += poly[MemAccess('global', np.dtype(np.float64),
+                          stride=0, direction='load', variable='h')
                ].eval_with_dict(params)
     assert f32 == 3*n*m*l
     assert f64 == 2*n*m
 
-    f32 = poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='store', variable='c')
-               ].eval_with_dict(params)
-    f64 = poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='store', variable='e')
-               ].eval_with_dict(params)
+    f32 = poly[MemAccess('global', np.dtype(np.float32),
+                         stride=0, direction='store', variable='c')
+              ].eval_with_dict(params)
+    f64 = poly[MemAccess('global', np.dtype(np.float64),
+                         stride=0, direction='store', variable='e')
+              ].eval_with_dict(params)
     assert f32 == n*m*l
     assert f64 == n*m
 
@@ -269,14 +276,17 @@ def test_gmem_access_counter_reduction():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='load', variable='a')
-               ].eval_with_dict(params)
-    f32 += poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='load', variable='b')
+    f32 = poly[MemAccess('global', np.dtype(np.float32),
+                         stride=0, direction='load', variable='a')
+              ].eval_with_dict(params)
+    f32 += poly[MemAccess('global', np.dtype(np.float32),
+                          stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
     assert f32 == 2*n*m*l
 
-    f32 = poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='store', variable='c')
-               ].eval_with_dict(params)
+    f32 = poly[MemAccess('global', np.dtype(np.float32),
+                         stride=0, direction='store', variable='c')
+              ].eval_with_dict(params)
     assert f32 == n*l
 
 
@@ -297,15 +307,18 @@ def test_gmem_access_counter_logic():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='load', variable='g')
-               ].eval_with_dict(params)
-    f64 = poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='load', variable='h')
-               ].eval_with_dict(params)
+    f32 = poly[MemAccess('global', np.dtype(np.float32),
+                         stride=0, direction='load', variable='g')
+              ].eval_with_dict(params)
+    f64 = poly[MemAccess('global', np.dtype(np.float64),
+                         stride=0, direction='load', variable='h')
+              ].eval_with_dict(params)
     assert f32 == 2*n*m
     assert f64 == n*m
 
-    f64 = poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='store', variable='e')
-               ].eval_with_dict(params)
+    f64 = poly[MemAccess('global', np.dtype(np.float64),
+                         stride=0, direction='store', variable='e')
+              ].eval_with_dict(params)
     assert f64 == n*m
 
 
@@ -321,28 +334,34 @@ def test_gmem_access_counter_specialops():
             ],
             name="specialops", assumptions="n,m,l >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
+                                            g=np.float64, h=np.float64))
     poly = lp.get_gmem_access_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='load', variable='a')
+    f32 = poly[MemAccess('global', np.dtype(np.float32),
+                         stride=0, direction='load', variable='a')
+              ].eval_with_dict(params)
+    f32 += poly[MemAccess('global', np.dtype(np.float32),
+                          stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
-    f32 += poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='load', variable='b')
-               ].eval_with_dict(params)
-    f64 = poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='load', variable='g')
-               ].eval_with_dict(params)
-    f64 += poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='load', variable='h')
+    f64 = poly[MemAccess('global', np.dtype(np.float64),
+                         stride=0, direction='load', variable='g')
+              ].eval_with_dict(params)
+    f64 += poly[MemAccess('global', np.dtype(np.float64),
+                          stride=0, direction='load', variable='h')
                ].eval_with_dict(params)
     assert f32 == 2*n*m*l
     assert f64 == 2*n*m
 
-    f32 = poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='store', variable='c')
-               ].eval_with_dict(params)
-    f64 = poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='store', variable='e')
-               ].eval_with_dict(params)
+    f32 = poly[MemAccess('global', np.dtype(np.float32),
+                         stride=0, direction='store', variable='c')
+              ].eval_with_dict(params)
+    f64 = poly[MemAccess('global', np.dtype(np.float64),
+                         stride=0, direction='store', variable='e')
+              ].eval_with_dict(params)
     assert f32 == n*m*l
     assert f64 == n*m
 
@@ -369,19 +388,25 @@ def test_gmem_access_counter_bitwise():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    i32 = poly[StridedGmemAccess(np.dtype(np.int32), 0, direction='load', variable='a')
+    i32 = poly[MemAccess('global', np.dtype(np.int32), 
+                         stride=0, direction='load', variable='a')
+              ].eval_with_dict(params)
+    i32 += poly[MemAccess('global', np.dtype(np.int32), 
+                          stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
-    i32 += poly[StridedGmemAccess(np.dtype(np.int32), 0, direction='load', variable='b')
+    i32 += poly[MemAccess('global', np.dtype(np.int32), 
+                          stride=0, direction='load', variable='g')
                ].eval_with_dict(params)
-    i32 += poly[StridedGmemAccess(np.dtype(np.int32), 0, direction='load', variable='g')
-               ].eval_with_dict(params)
-    i32 += poly[StridedGmemAccess(np.dtype(np.int32), 0, direction='load', variable='h')
+    i32 += poly[MemAccess('global', np.dtype(np.int32), 
+                          stride=0, direction='load', variable='h')
                ].eval_with_dict(params)
     assert i32 == 4*n*m+2*n*m*l
 
-    i32 = poly[StridedGmemAccess(np.dtype(np.int32), 0, direction='store', variable='c')
-               ].eval_with_dict(params)
-    i32 += poly[StridedGmemAccess(np.dtype(np.int32), 0, direction='store', variable='e')
+    i32 = poly[MemAccess('global', np.dtype(np.int32), 
+                         stride=0, direction='store', variable='c')
+              ].eval_with_dict(params)
+    i32 += poly[MemAccess('global', np.dtype(np.int32), 
+                          stride=0, direction='store', variable='e')
                ].eval_with_dict(params)
     assert i32 == n*m+n*m*l
 
@@ -409,27 +434,34 @@ def test_gmem_access_counter_mixed():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f64uniform = poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='load', variable='g')
+    f64uniform = poly[MemAccess('global', np.dtype(np.float64), 
+                                stride=0, direction='load', variable='g')
+                     ].eval_with_dict(params)
+    f64uniform += poly[MemAccess('global', np.dtype(np.float64), 
+                                 stride=0, direction='load', variable='h')
                       ].eval_with_dict(params)
-    f64uniform += poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='load', variable='h')
-                      ].eval_with_dict(params)
-    f32uniform = poly[StridedGmemAccess(np.dtype(np.float32), 0, direction='load', variable='x')
-                      ].eval_with_dict(params)
-    f32nonconsec = poly[
-                    StridedGmemAccess(np.dtype(np.float32), Variable('m'), direction='load', variable='a')
-                    ].eval_with_dict(params)
-    f32nonconsec += poly[
-                    StridedGmemAccess(np.dtype(np.float32), Variable('m'), direction='load', variable='b')
-                    ].eval_with_dict(params)
+    f32uniform = poly[MemAccess('global', np.dtype(np.float32), 
+                                stride=0, direction='load', variable='x')
+                     ].eval_with_dict(params)
+    f32nonconsec = poly[MemAccess('global', np.dtype(np.float32), 
+                                  stride=Variable('m'), direction='load',
+                                  variable='a')
+                       ].eval_with_dict(params)
+    f32nonconsec += poly[MemAccess('global', np.dtype(np.float32), 
+                                   stride=Variable('m'), direction='load',
+                                   variable='b')
+                        ].eval_with_dict(params)
     assert f64uniform == 2*n*m
     assert f32uniform == n*m*l/threads
     assert f32nonconsec == 3*n*m*l
 
-    f64uniform = poly[StridedGmemAccess(np.dtype(np.float64), 0, direction='store', variable='e')
-                      ].eval_with_dict(params)
-    f32nonconsec = poly[
-                    StridedGmemAccess(np.dtype(np.float32), Variable('m'), direction='store', variable='c')
-                    ].eval_with_dict(params)
+    f64uniform = poly[MemAccess('global', np.dtype(np.float64), 
+                                stride=0, direction='store', variable='e')
+                     ].eval_with_dict(params)
+    f32nonconsec = poly[MemAccess('global', np.dtype(np.float32), 
+                                  stride=Variable('m'), direction='store',
+                                  variable='c')
+                       ].eval_with_dict(params)
     assert f64uniform == n*m
     assert f32nonconsec == n*m*l
 
@@ -455,27 +487,33 @@ def test_gmem_access_counter_nonconsec():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f64nonconsec = poly[StridedGmemAccess(
-                        np.dtype(np.float64), Variable('m'), direction='load', variable='g')
+    f64nonconsec = poly[MemAccess('global', np.dtype(np.float64), 
+                                  stride=Variable('m'), direction='load',
+                                  variable='g')
+                       ].eval_with_dict(params)
+    f64nonconsec += poly[MemAccess('global', np.dtype(np.float64), 
+                                   stride=Variable('m'), direction='load',
+                                   variable='h')
                         ].eval_with_dict(params)
-    f64nonconsec += poly[StridedGmemAccess(
-                        np.dtype(np.float64), Variable('m'), direction='load', variable='h')
-                        ].eval_with_dict(params)
-    f32nonconsec = poly[StridedGmemAccess(
-                        np.dtype(np.float32), Variable('m')*Variable('l'), direction='load', variable='a')
-                        ].eval_with_dict(params)
-    f32nonconsec += poly[StridedGmemAccess(
-                        np.dtype(np.float32), Variable('m')*Variable('l'), direction='load', variable='b')
+    f32nonconsec = poly[MemAccess('global', np.dtype(np.float32), 
+                                  stride=Variable('m')*Variable('l'),
+                                  direction='load', variable='a')
+                       ].eval_with_dict(params)
+    f32nonconsec += poly[MemAccess('global', np.dtype(np.float32), 
+                                   stride=Variable('m')*Variable('l'),
+                                   direction='load', variable='b')
                         ].eval_with_dict(params)
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
-    f64nonconsec = poly[StridedGmemAccess(
-                        np.dtype(np.float64), Variable('m'), direction='store', variable='e')
-                        ].eval_with_dict(params)
-    f32nonconsec = poly[StridedGmemAccess(
-                        np.dtype(np.float32), Variable('m')*Variable('l'), direction='store', variable='c')
-                        ].eval_with_dict(params)
+    f64nonconsec = poly[MemAccess('global', np.dtype(np.float64), 
+                                  stride=Variable('m'), direction='store',
+                                  variable='e')
+                       ].eval_with_dict(params)
+    f32nonconsec = poly[MemAccess('global', np.dtype(np.float32), 
+                                  stride=Variable('m')*Variable('l'),
+                                  direction='store', variable='c')
+                       ].eval_with_dict(params)
     assert f64nonconsec == n*m
     assert f32nonconsec == n*m*l
 
@@ -501,20 +539,26 @@ def test_gmem_access_counter_consec():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
 
-    f64consec = poly[StridedGmemAccess(np.dtype(np.float64), 1, direction='load', variable='g')
+    f64consec = poly[MemAccess('global', np.dtype(np.float64), 
+                        stride=1, direction='load', variable='g')
                      ].eval_with_dict(params)
-    f64consec += poly[StridedGmemAccess(np.dtype(np.float64), 1, direction='load', variable='h')
+    f64consec += poly[MemAccess('global', np.dtype(np.float64), 
+                        stride=1, direction='load', variable='h')
                      ].eval_with_dict(params)
-    f32consec = poly[StridedGmemAccess(np.dtype(np.float32), 1, direction='load', variable='a')
+    f32consec = poly[MemAccess('global', np.dtype(np.float32), 
+                        stride=1, direction='load', variable='a')
                      ].eval_with_dict(params)
-    f32consec += poly[StridedGmemAccess(np.dtype(np.float32), 1, direction='load', variable='b')
+    f32consec += poly[MemAccess('global', np.dtype(np.float32), 
+                        stride=1, direction='load', variable='b')
                      ].eval_with_dict(params)
     assert f64consec == 2*n*m
     assert f32consec == 3*n*m*l
 
-    f64consec = poly[StridedGmemAccess(np.dtype(np.float64), 1, direction='store', variable='e')
+    f64consec = poly[MemAccess('global', np.dtype(np.float64), 
+                        stride=1, direction='store', variable='e')
                      ].eval_with_dict(params)
-    f32consec = poly[StridedGmemAccess(np.dtype(np.float32), 1, direction='store', variable='c')
+    f32consec = poly[MemAccess('global', np.dtype(np.float32), 
+                        stride=1, direction='store', variable='c')
                      ].eval_with_dict(params)
     assert f64consec == n*m
     assert f32consec == n*m*l
@@ -532,8 +576,8 @@ def test_barrier_counter_nobarriers():
             ],
             name="basic", assumptions="n,m,l >= 1")
 
-    knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
+                                            g=np.float64, h=np.float64))
     sync_poly = lp.get_synchronization_poly(knl)
     n = 512
     m = 256
@@ -616,22 +660,27 @@ def test_all_counters_parallel_matmul():
 
     subscript_map = lp.get_gmem_access_poly(knl)
 
-    f32coal = subscript_map[StridedGmemAccess(np.dtype(np.float32), 1, direction='load', variable='b')
+    f32coal = subscript_map[MemAccess('global', np.dtype(np.float32), 
+                        stride=1, direction='load', variable='b')
                             ].eval_with_dict(params)
-    f32coal += subscript_map[StridedGmemAccess(np.dtype(np.float32), 1, direction='load', variable='a')
+    f32coal += subscript_map[MemAccess('global', np.dtype(np.float32), 
+                        stride=1, direction='load', variable='a')
                             ].eval_with_dict(params)
 
     assert f32coal == n*m+m*l
 
-    f32coal = subscript_map[StridedGmemAccess(np.dtype(np.float32), 1, direction='store', variable='c')
+    f32coal = subscript_map[MemAccess('global', np.dtype(np.float32), 
+                        stride=1, direction='store', variable='c')
                             ].eval_with_dict(params)
 
     assert f32coal == n*l
 
     local_subs_map = get_lmem_access_poly(knl)
 
-    local_subs_l = local_subs_map[LmemAccess(np.dtype(np.float32), direction='load')
-                                  ].eval_with_dict(params)
+    # TODO currently considering all local mem access stride-1
+    local_subs_l = local_subs_map[MemAccess('local', np.dtype(np.float32),
+                                            direction='load')
+                                 ].eval_with_dict(params)
 
     assert local_subs_l == n*m*l*2
 

@@ -122,7 +122,7 @@ class Op:
     def __hash__(self):
         return hash(str(self.dtype)+self.name)
 
-
+'''
 class LmemAccess:
 
     def __init__(self, dtype, direction=None):
@@ -139,20 +139,25 @@ class LmemAccess:
         if direction == None:
             direction = 'None'
         return hash(str(self.dtype)+direction)
+'''
 
 
-class StridedGmemAccess:
+#class StridedGmemAccess:
+class MemAccess:
 
     #TODO "ANY_VAR" does not work yet
-
-    def __init__(self, dtype, stride, direction=None, variable='ANY_VAR'):
+    #TODO currently counting all lmem access as stride-1
+    def __init__(self, mtype, dtype, stride=1, direction=None,
+                 variable='ANY_VAR'):
+        self.mtype = mtype
         self.dtype = dtype
         self.stride = stride
         self.direction = direction
         self.variable = variable
 
     def __eq__(self, other):
-        return isinstance(other, StridedGmemAccess) and (
+        return isinstance(other, MemAccess) and (
+                other.mtype == self.mtype and
                 other.dtype == self.dtype and
                 other.stride == self.stride and
                 other.direction == self.direction and
@@ -166,7 +171,9 @@ class StridedGmemAccess:
             direction = 'None'
         if variable == None:
             variable = 'ANY_VAR'
-        return hash(str(self.dtype)+str(self.stride)+direction+variable)
+        return hash(str(self.mtype)+str(self.dtype)+str(self.stride)
+                    +direction+variable)
+
 
 
 # {{{ ExpressionOpCounter
@@ -266,16 +273,18 @@ class ExpressionOpCounter(CombineMapper):
     def map_if(self, expr):
         warnings.warn("ExpressionOpCounter counting ops as "
                       "sum of if-statement branches.")
-        return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
+        return self.rec(expr.condition) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
         warnings.warn("ExpressionOpCounter counting ops as "
                       "sum of if_pos-statement branches.")
-        return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
+        return self.rec(expr.criterion) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     def map_min(self, expr):
         return ToCountMap({Op(
-                           self.type_inf(expr), 'maxmin'): len(expr.children)-1}
+                          self.type_inf(expr), 'maxmin'): len(expr.children)-1}
                          ) + sum(self.rec(child) for child in expr.children)
 
     map_max = map_min
@@ -286,11 +295,13 @@ class ExpressionOpCounter(CombineMapper):
                                   "map_common_subexpression not implemented.")
 
     def map_substitution(self, expr):
-        raise NotImplementedError("ExpressionOpCounter encountered substitution, "
+        raise NotImplementedError("ExpressionOpCounter encountered "
+                                  "substitution, "
                                   "map_substitution not implemented.")
 
     def map_derivative(self, expr):
-        raise NotImplementedError("ExpressionOpCounter encountered derivative, "
+        raise NotImplementedError("ExpressionOpCounter encountered "
+                                  "derivative, "
                                   "map_derivative not implemented.")
 
     def map_slice(self, expr):
@@ -330,7 +341,7 @@ class LocalSubscriptCounter(CombineMapper):
             #print("is local? ", array.is_local)
             if array.is_local:
                 return ToCountMap(
-                        {LmemAccess(self.type_inf(expr), direction=None): 1}
+                        {MemAccess('local', self.type_inf(expr)): 1}
                         ) + self.rec(expr.index)
 
         return self.rec(expr.index)
@@ -376,12 +387,14 @@ class LocalSubscriptCounter(CombineMapper):
     def map_if(self, expr):
         warnings.warn("LocalSubscriptCounter counting LMEM accesses as "
                       "sum of if-statement branches.")
-        return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
+        return self.rec(expr.condition) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
         warnings.warn("LocalSubscriptCounter counting LMEM accesses as "
                       "sum of if_pos-statement branches.")
-        return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
+        return self.rec(expr.criterion) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     map_min = map_bitwise_or
     map_max = map_min
@@ -465,9 +478,9 @@ class GlobalSubscriptCounter(CombineMapper):
 
         if not local_id_found:
             # count as uniform access
-            return ToCountMap(
-                    {StridedGmemAccess(self.type_inf(expr), 0, direction=None, variable=name): 1}
-                    ) + self.rec(expr.index)
+            return ToCountMap({MemAccess('global', self.type_inf(expr),
+                               stride=0, variable=name): 1}
+                             ) + self.rec(expr.index)
 
         # get local_id associated with minimum tag axis
         min_lid = None
@@ -504,16 +517,19 @@ class GlobalSubscriptCounter(CombineMapper):
                 continue
 
             total_stride = stride*coeff_min_lid*extra_stride
-            #TODO is there a case where this^ does not execute, or executes more than once for two different axes?
+            #TODO is there a case where this^ does not execute,
+            # or executes more than once for two different axes?
 
         #TODO temporary fix that needs changing:
         if min_tag_axis != 0:
-            print("...... min tag axis (%d) is not zero! ......" % (min_tag_axis))
-            return ToCountMap({StridedGmemAccess(self.type_inf(expr),
-                           sys.maxsize, direction=None, variable=name): 1}) + self.rec(expr.index)
+            print("... min tag axis (%d) is not zero! ..." % (min_tag_axis))
+            return ToCountMap({MemAccess('global', self.type_inf(expr),
+                               stride=sys.maxsize, variable=name): 1}
+                             ) + self.rec(expr.index)
 
-        return ToCountMap({StridedGmemAccess(self.type_inf(expr),
-                           total_stride, direction=None, variable=name): 1}) + self.rec(expr.index)
+        return ToCountMap({MemAccess('global', self.type_inf(expr),
+                           stride=total_stride, variable=name): 1}
+                         ) + self.rec(expr.index)
 
     def map_sum(self, expr):
         if expr.children:
@@ -556,12 +572,14 @@ class GlobalSubscriptCounter(CombineMapper):
     def map_if(self, expr):
         warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
                       "sum of if-statement branches.")
-        return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
+        return self.rec(expr.condition) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
         warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
                       "sum of if_pos-statement branches.")
-        return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
+        return self.rec(expr.criterion) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     map_min = map_bitwise_or
     map_max = map_min
@@ -696,7 +714,8 @@ def count(kernel, set):
 
             # {{{ rebuild check domain
 
-            zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(bset.space))
+            zero = isl.Aff.zero_on_domain(
+                        isl.LocalSpace.from_space(bset.space))
             iname = isl.PwAff.from_aff(
                     zero.set_coefficient_val(isl.dim_type.in_, i, 1))
             dmin_matched = dmin.insert_dims(
@@ -800,7 +819,8 @@ def get_op_poly(knl, numpy_types=True):
         # check domain size:
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+        domain = (inames_domain.project_out_except(
+                                        insn_inames, [dim_type.set]))
         ops = op_counter(insn.assignee) + op_counter(insn.expression)
         op_poly = op_poly + ops*count(knl, domain)
     result = op_poly.dict
@@ -854,7 +874,7 @@ def get_lmem_access_poly(knl, numpy_types=True):
         # count subscripts, distinguishing loads and stores
         subs_expr = subscript_counter(insn.expression)
         for key in subs_expr.dict:
-            subs_expr.dict[LmemAccess(
+            subs_expr.dict[MemAccess('local', 
                            key.dtype, direction='load')
                           ] = subs_expr.dict.pop(key)
         subs_assignee = subscript_counter(insn.assignee)
@@ -864,7 +884,7 @@ def get_lmem_access_poly(knl, numpy_types=True):
         # for now, not counting stores in local mem
         '''
         for key in subs_assignee.dict:
-            subs_assignee.dict[LmemAccess(
+            subs_assignee.dict[MemAccess('local', 
                                key.dtype, direction='store')
                               ] = subs_assignee.dict.pop(key)
         '''
@@ -887,15 +907,15 @@ def get_lmem_access_poly(knl, numpy_types=True):
     result = subs_poly.dict
 
     if numpy_types:
-        result = dict(
-                (LmemAccess(mem_access.dtype.numpy_dtype, mem_access.direction), count)
-                for mem_access, count in six.iteritems(result))
+        result = dict((MemAccess('local', mem_access.dtype.numpy_dtype,
+                       direction=mem_access.direction), count)
+                       for mem_access, count in six.iteritems(result))
 
     return result
 
 
 # {{{ get_gmem_access_poly
-def get_gmem_access_poly(knl, numpy_types=True):  # for now just counting subscripts
+def get_gmem_access_poly(knl, numpy_types=True):
 
     """Count the number of global memory accesses in a loopy kernel.
 
@@ -955,7 +975,8 @@ def get_gmem_access_poly(knl, numpy_types=True):  # for now just counting subscr
         if uniform:
             from loopy.kernel.data import LocalIndexTag
             insn_inames = [iname for iname in insn_inames if not
-                           isinstance(knl.iname_to_tag.get(iname), LocalIndexTag)]
+                           isinstance(
+                           knl.iname_to_tag.get(iname), LocalIndexTag)]
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(
                                 insn_inames, [dim_type.set]))
@@ -970,14 +991,15 @@ def get_gmem_access_poly(knl, numpy_types=True):  # for now just counting subscr
         # count subscripts, distinguishing loads and stores
         subs_expr = subscript_counter(insn.expression)
         for key in subs_expr.dict:
-            subs_expr.dict[StridedGmemAccess(
-                           key.dtype, key.stride, direction='load', variable=key.variable)
+            subs_expr.dict[MemAccess('global', key.dtype, stride=key.stride,
+                                     direction='load', variable=key.variable)
                           ] = subs_expr.dict.pop(key)
         subs_assignee = subscript_counter(insn.assignee)
         for key in subs_assignee.dict:
-            subs_assignee.dict[StridedGmemAccess(
-                           key.dtype, key.stride, direction='store', variable=key.variable)
-                          ] = subs_assignee.dict.pop(key)
+            subs_assignee.dict[MemAccess('global', key.dtype,
+                                         stride=key.stride, direction='store',
+                                         variable=key.variable)
+                              ] = subs_assignee.dict.pop(key)
 
         insn_inames = knl.insn_inames(insn)
 
@@ -985,31 +1007,36 @@ def get_gmem_access_poly(knl, numpy_types=True):  # for now just counting subscr
         for key in subs_expr.dict:
             poly = ToCountMap({key: subs_expr.dict[key]})
             if isinstance(key.stride, int) and key.stride == 0:
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames, True)
+                subs_poly = subs_poly \
+                            + poly*get_insn_count(knl, insn_inames, True)
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
         for key in subs_assignee.dict:
             poly = ToCountMap({key: subs_assignee.dict[key]})
             if isinstance(key.stride, int) and key.stride == 0:
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames, True)
+                subs_poly = subs_poly \
+                            + poly*get_insn_count(knl, insn_inames, True)
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
 
     result = subs_poly.dict
 
     if numpy_types:
-        result = dict(
-                (StridedGmemAccess(mem_access.dtype.numpy_dtype, mem_access.stride,
-                                   mem_access.direction, mem_access.variable), count)
-                for mem_access, count in six.iteritems(result))
+        result = dict((MemAccess('global', mem_access.dtype.numpy_dtype,
+                                 stride=mem_access.stride,
+                                 direction=mem_access.direction,
+                                 variable=mem_access.variable)
+                       , count)
+                      for mem_access, count in six.iteritems(result))
 
     return result
 
 
 def get_DRAM_access_poly(knl):
     from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. Use get_gmem_access_poly instead",
-            DeprecationWarning, stacklevel=2)
+    warn("get_DRAM_access_poly is deprecated. "
+         "Use get_gmem_access_poly instead",
+         DeprecationWarning, stacklevel=2)
     return get_gmem_access_poly(knl)
 
 # }}}
@@ -1100,8 +1127,8 @@ def get_synchronization_poly(knl):
                 iname_list.pop()
 
         elif isinstance(sched_item, Barrier):
-            result = result + ToCountMap(
-                    {"barrier_%s" % sched_item.kind: get_count_poly(iname_list)})
+            result = result + ToCountMap({"barrier_%s" % sched_item.kind:
+                                          get_count_poly(iname_list)})
 
         elif isinstance(sched_item, CallKernel):
             result = result + ToCountMap(
@@ -1151,7 +1178,8 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
 
         insn_inames = kernel.insn_inames(insn)
         inames_domain = kernel.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+        domain = (inames_domain.project_out_except(insn_inames,
+                                                   [dim_type.set]))
 
         afg = AccessFootprintGatherer(kernel, domain,
                 ignore_uncountable=ignore_uncountable)
@@ -1193,7 +1221,8 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
         kernel = preprocess_kernel(kernel)
 
     result = {}
-    fp = gather_access_footprints(kernel, ignore_uncountable=ignore_uncountable)
+    fp = gather_access_footprints(kernel,
+                                  ignore_uncountable=ignore_uncountable)
 
     for key, var_fp in fp.items():
         vname, direction = key
