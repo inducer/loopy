@@ -111,8 +111,13 @@ def stringify_stats_mapping(m):
 class Op:
 
     def __init__(self, dtype, name):
-        self.dtype = dtype
         self.name = name
+        import numpy as np
+        if issubclass(type(dtype), type):
+            self.dtype = np.dtype(dtype)
+        else:
+            self.dtype = dtype
+        #TODO should this check be more robust?
 
     def __eq__(self, other):
         return isinstance(other, Op) and (
@@ -122,27 +127,7 @@ class Op:
     def __hash__(self):
         return hash(str(self.dtype)+self.name)
 
-'''
-class LmemAccess:
 
-    def __init__(self, dtype, direction=None):
-        self.dtype = dtype
-        self.direction = direction
-
-    def __eq__(self, other):
-        return isinstance(other, LmemAccess) and (
-                other.dtype == self.dtype and
-                other.direction == self.direction)
-
-    def __hash__(self):
-        direction = self.direction
-        if direction == None:
-            direction = 'None'
-        return hash(str(self.dtype)+direction)
-'''
-
-
-#class StridedGmemAccess:
 class MemAccess:
 
     #TODO "ANY_VAR" does not work yet
@@ -150,10 +135,16 @@ class MemAccess:
     def __init__(self, mtype, dtype, stride=1, direction=None,
                  variable='ANY_VAR'):
         self.mtype = mtype
-        self.dtype = dtype
         self.stride = stride
         self.direction = direction
         self.variable = variable
+
+        import numpy as np
+        if issubclass(type(dtype), type):
+            self.dtype = np.dtype(dtype)
+        else:
+            self.dtype = dtype
+        #TODO should this check be more robust?
 
     def __eq__(self, other):
         return isinstance(other, MemAccess) and (
