@@ -134,6 +134,34 @@ This example is included in the :mod:`loopy` distribution as
 What this does is find nearby "centers" satisfying some criteria
 for an array of points ("targets").
 
+Specifying dependencies for groups of instructions is cumbersome. Help?
+-----------------------------------------------------------------------
+
+You can now specify instruction ID prefixes and dependencies for groups
+of instructions, like this::
+
+    with {id_prefix=init_m}
+        <> m[0] =   ...
+        m[1] =   ...
+        m[2] =   ...
+    end
+
+    with {id_prefix=update_m,dep=init_m*}
+        m[0] = m[0] + ...
+        m[1] = m[1] + ...
+        m[2] = m[2] * ...
+    end
+
+    with {dep=update_m*}
+        output[i, j, 0] =  0.25*m[0]
+        output[i, j, 1] =  0.25*m[1]
+        output[i, j, 2] =  0.25*m[2]
+    end
+
+.. versionadded:: 2016.2.1
+
+    (There was a bug in prior versions that kept this from working.)
+
 What types of transformations can I do?
 ---------------------------------------
 

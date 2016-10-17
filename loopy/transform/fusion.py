@@ -302,6 +302,7 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
         Based on this, the fuser will create dependencies between all
         writers of *var_name* in ``kernels[from_kernel]`` to
         readers of *var_name* in ``kernels[to_kernel]``.
+        *from_kernel* and *to_kernel* are indices into *kernels*.
 
     The components of the kernels are fused as follows:
 

@@ -195,9 +195,6 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             result["insn_id"] = intern(opt_value)
 
         elif opt_key == "id_prefix" and opt_value is not None:
-            if is_with_block:
-                raise LoopyError("'id_prefix' option may not be specified "
-                        "in a 'with' block")
             result["insn_id"] = UniqueName(opt_value)
 
         elif opt_key == "priority" and opt_value is not None:
@@ -221,10 +218,6 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                     result.setdefault("inames_to_dup", []).append((value, None))
 
         elif opt_key == "dep" and opt_value is not None:
-            if is_with_block:
-                raise LoopyError("'dep' option may not be specified "
-                        "in a 'with' block")
-
             if opt_value.startswith("*"):
                 result["depends_on_is_final"] = True
                 opt_value = (opt_value[1:]).strip()
@@ -411,7 +404,7 @@ def parse_insn(groups, insn_options):
     del new_lhs
 
     insn_options = parse_insn_options(
-            insn_options,
+            insn_options.copy(),
             groups["options"],
             assignee_names=assignee_names)
 
@@ -624,12 +617,21 @@ def parse_instructions(instructions, defines):
 
             else:
                 # not final, add inames from current scope
+                kwargs = {}
+                if insn.id is None:
+                    kwargs["id"] = insn_options_stack[-1]["insn_id"]
+
                 insn = insn.copy(
                         within_inames=insn.within_inames | local_w_inames,
                         within_inames_is_final=(
                             # If it's inside a for/with block, then it's
                             # final now.
                             bool(local_w_inames)),
+                        depends_on=(
+                            (insn.depends_on
+                                | insn_options_stack[-1]["depends_on"])
+                            if insn_options_stack[-1]["depends_on"] is not None
+                            else insn.depends_on),
                         tags=(
                             insn.tags
                             | insn_options_stack[-1]["tags"]),
@@ -642,7 +644,7 @@ def parse_instructions(instructions, defines):
                         conflicts_with_groups=(
                             insn.groups
                             | insn_options_stack[-1]["conflicts_with_groups"]),
-                        )
+                        **kwargs)
 
             new_instructions.append(insn)
             inames_to_dup.append([])
@@ -1132,6 +1134,27 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
 # }}}
 
 
+# {{{ add_sequential_dependencies
+
+def add_sequential_dependencies(knl):
+    new_insns = []
+    prev_insn = None
+    for insn in knl.instructions:
+        if prev_insn is not None:
+            depon = insn.depends_on
+            if depon is None:
+                depon = frozenset()
+            insn = insn.copy(depends_on=depon | frozenset((prev_insn.id,)))
+
+        new_insns.append(insn)
+
+        prev_insn = insn
+
+    return knl.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ temporary variable creation
 
 def create_temporaries(knl, default_order):
@@ -1527,6 +1550,13 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         string representation
     :arg target: an instance of :class:`loopy.TargetBase`, or *None*,
         to use the default target.
+    :arg seq_dependencies: If *True*, dependencies that sequentially
+        connect the given *instructions* will be added. Defaults to
+        *False*.
+
+    .. versionchanged:: 2016.3
+
+        *seq_dependencies* added.
     """
 
     defines = kwargs.pop("defines", {})
@@ -1536,6 +1566,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     options = kwargs.pop("options", None)
     flags = kwargs.pop("flags", None)
     target = kwargs.pop("target", None)
+    seq_dependencies = kwargs.pop("seq_dependencies", False)
 
     if defines:
         from warnings import warn
@@ -1635,6 +1666,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             options=options,
             target=target,
             **kwargs)
+
+    if seq_dependencies:
+        knl = add_sequential_dependencies(knl)
 
     assert len(knl.instructions) == len(inames_to_dup)
 
