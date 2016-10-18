@@ -479,13 +479,25 @@ def remove_unused_arguments(knl):
 
 # {{{ alias_temporaries
 
-def alias_temporaries(knl, names, base_name_prefix=None):
+def alias_temporaries(knl, names, base_name_prefix=None,
+        synchronize_for_exclusive_use=True):
     """Sets all temporaries given by *names* to be backed by a single piece of
-    storage. Also introduces ordering structures ("groups") to prevent the
-    usage of each temporary to interfere with another.
+    storage.
 
+    :arg synchronize_for_exclusive_use: A :class:`bool`. If ``True``, this also
+        introduces ordering structures ("groups") to prevent the usage to ensure
+        that the live ranges (i.e. the regions of code where each of the
+        temporaries is used) do not overlap. This will allow two (or more)
+        temporaries to share the same storage space as long as their live
+        ranges do not need to be concurrent.
     :arg base_name_prefix: an identifier to be used for the common storage
         area
+
+    .. versionchanged:: 2016.3
+
+        Added *synchronize_for_exclusive_use* flag.
+        ``synchronize_for_exclusive_use=True`` was the previous default
+        behavior.
     """
     gng = knl.get_group_name_generator()
     group_names = [gng("tmpgrp_"+name) for name in names]
@@ -498,33 +510,36 @@ def alias_temporaries(knl, names, base_name_prefix=None):
 
     names_set = set(names)
 
-    new_insns = []
-    for insn in knl.instructions:
-        temp_deps = insn.dependency_names() & names_set
+    if synchronize_for_exclusive_use:
+        new_insns = []
+        for insn in knl.instructions:
+            temp_deps = insn.dependency_names() & names_set
 
-        if not temp_deps:
-            new_insns.append(insn)
-            continue
+            if not temp_deps:
+                new_insns.append(insn)
+                continue
 
-        if len(temp_deps) > 1:
-            raise LoopyError("Instruction {insn} refers to multiple of the "
-                    "temporaries being aliased, namely '{temps}'. Cannot alias."
-                    .format(
-                        insn=insn.id,
-                        temps=", ".join(temp_deps)))
+            if len(temp_deps) > 1:
+                raise LoopyError("Instruction {insn} refers to multiple of the "
+                        "temporaries being aliased, namely '{temps}'. Cannot alias."
+                        .format(
+                            insn=insn.id,
+                            temps=", ".join(temp_deps)))
 
-        temp_name, = temp_deps
-        temp_idx = names.index(temp_name)
-        group_name = group_names[temp_idx]
-        other_group_names = (
-                frozenset(group_names[:temp_idx])
-                | frozenset(group_names[temp_idx+1:]))
+            temp_name, = temp_deps
+            temp_idx = names.index(temp_name)
+            group_name = group_names[temp_idx]
+            other_group_names = (
+                    frozenset(group_names[:temp_idx])
+                    | frozenset(group_names[temp_idx+1:]))
 
-        new_insns.append(
-                insn.copy(
-                    groups=insn.groups | frozenset([group_name]),
-                    conflicts_with_groups=(
-                        insn.conflicts_with_groups | other_group_names)))
+            new_insns.append(
+                    insn.copy(
+                        groups=insn.groups | frozenset([group_name]),
+                        conflicts_with_groups=(
+                            insn.conflicts_with_groups | other_group_names)))
+    else:
+        new_insns = knl.instructions
 
     new_temporary_variables = {}
     for tv in six.itervalues(knl.temporary_variables):
