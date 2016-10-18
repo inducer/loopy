@@ -1376,6 +1376,21 @@ def test_sequential_dependencies(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
 
 
+def test_special_instructions(ctx_factory):
+    knl = lp.make_kernel(
+            "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
+            """
+            for itrip,i
+                <> z[i] = z[i-1] + z[i]  {id=wr_z}
+                <> v[i] = 11  {id=wr_v}
+                ... gbarrier {dep=wr_z:wr_v}
+                z[i] = z[i] - z[i+1] + v[i-1]
+            end
+            """, seq_dependencies=True)
+
+    print(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
