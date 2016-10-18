@@ -1165,6 +1165,19 @@ class LoopKernel(RecordWithoutPickling):
                                 for name, expr in insn.iname_exprs))
 
                     trailing = ["    "+l for l in insn.code.split("\n")]
+                elif isinstance(insn, lp.BarrierInstruction):
+                    lhs = ""
+                    rhs = "... %sbarrier" % insn.kind[0]
+                    trailing = []
+
+                elif isinstance(insn, lp.NoOpInstruction):
+                    lhs = ""
+                    rhs = "... nop"
+                    trailing = []
+
+                else:
+                    raise LoopyError("unexpected instruction type: %s"
+                            % type(insn).__name__)
 
                 loop_list = ",".join(sorted(kernel.insn_inames(insn)))
 
@@ -1184,17 +1197,24 @@ class LoopKernel(RecordWithoutPickling):
                 if insn.no_sync_with:
                     options.append("no_sync_with=%s" % ":".join(insn.no_sync_with))
 
+                if lhs:
+                    core = "%s <- %s" % (
+                        Fore.BLUE+lhs+Style.RESET_ALL,
+                        Fore.MAGENTA+rhs+Style.RESET_ALL,
+                        )
+                else:
+                    core = Fore.MAGENTA+rhs+Style.RESET_ALL
+
                 if len(loop_list) > loop_list_width:
                     lines.append("[%s]" % loop_list)
-                    lines.append("%s%s <- %s   # %s" % (
-                        (loop_list_width+2)*" ", Fore.BLUE+lhs+Style.RESET_ALL,
-                        Fore.MAGENTA+rhs+Style.RESET_ALL,
+                    lines.append("%s%s   # %s" % (
+                        (loop_list_width+2)*" ",
+                        core,
                         ", ".join(options)))
                 else:
-                    lines.append("[%s]%s%s <- %s   # %s" % (
+                    lines.append("[%s]%s%s   # %s" % (
                         loop_list, " "*(loop_list_width-len(loop_list)),
-                        Fore.BLUE + lhs + Style.RESET_ALL,
-                        Fore.MAGENTA+rhs+Style.RESET_ALL,
+                        core,
                         ",".join(options)))
 
                 lines.extend(trailing)

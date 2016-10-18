@@ -310,12 +310,12 @@ class InstructionBase(Record):
         and indices.
         """
 
-        result = set()
-        for assignee in self.assignees:
-            from loopy.symbolic import get_dependencies
-            result.update(get_dependencies(assignee))
+        result = frozenset(self.assignee_var_names())
+        asd = self.assignee_subscript_deps()
+        if asd:
+            result = result | frozenset.union(*self.assignee_subscript_deps())
 
-        return frozenset(result)
+        return result
 
     def dependency_names(self):
         return self.read_dependency_names() | self.write_dependency_names()
@@ -767,7 +767,7 @@ class Assignment(MultiAssignmentBase):
 
         options = self.get_str_options()
         if options:
-            result += " (%s)" % (": ".join(options))
+            result += " {%s}" % (": ".join(options))
 
         if self.predicates:
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
@@ -930,7 +930,7 @@ class CallInstruction(MultiAssignmentBase):
 
         options = self.get_str_options()
         if options:
-            result += " (%s)" % (": ".join(options))
+            result += " {%s}" % (": ".join(options))
 
         if self.predicates:
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
@@ -1138,7 +1138,7 @@ class CInstruction(InstructionBase):
 
         options = self.get_str_options()
         if options:
-            first_line += " (%s)" % (": ".join(options))
+            first_line += " {%s}" % (": ".join(options))
 
         return first_line + "\n    " + "\n    ".join(
                 self.code.split("\n"))
@@ -1161,6 +1161,134 @@ class CInstruction(InstructionBase):
                     key_builder.update_for_pymbolic_expression(key_hash, val)
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
+
+# }}}
+
+
+class _DataObliviousInstruction(InstructionBase):
+    # {{{ abstract interface
+
+    def read_dependency_names(self):
+        return frozenset()
+
+    def reduction_inames(self):
+        return frozenset()
+
+    def assignee_var_names(self):
+        return frozenset()
+
+    def assignee_subscript_deps(self):
+        return frozenset()
+
+    def with_transformed_expressions(self, f, *args):
+        return frozenset()
+
+    # }}}
+
+    @property
+    def assignees(self):
+        return ()
+
+
+# {{{ barrier instruction
+
+class NoOpInstruction(_DataObliviousInstruction):
+    """An instruction that carries out no operation. It is mainly
+    useful as a way to structure dependencies between other
+    instructions.
+
+    The textual syntax in a :mod:`loopy` kernel is::
+
+        ... nop
+    """
+
+    def __init__(self, id=None, depends_on=None, depends_on_is_final=None,
+            groups=None, conflicts_with_groups=None,
+            no_sync_with=None,
+            within_inames_is_final=None, within_inames=None,
+            priority=None,
+            boostable=None, boostable_into=None,
+            predicates=None, tags=None):
+        super(NoOpInstruction, self).__init__(
+                id=id,
+                depends_on=depends_on,
+                depends_on_is_final=depends_on_is_final,
+                groups=groups,
+                conflicts_with_groups=conflicts_with_groups,
+                no_sync_with=no_sync_with,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
+                priority=priority,
+                boostable=boostable,
+                boostable_into=boostable_into,
+                predicates=predicates,
+                tags=tags)
+
+    def __str__(self):
+        first_line = "%s: ... nop" % self.id
+
+        options = self.get_str_options()
+        if options:
+            first_line += " {%s}" % (": ".join(options))
+
+        return first_line
+
+# }}}
+
+
+# {{{ barrier instruction
+
+class BarrierInstruction(_DataObliviousInstruction):
+    """An instruction that requires synchronization with all
+    concurrent work items of :attr:`kind.
+
+    .. attribute:: kind
+
+        A string, currently only ``"global"``.
+
+    The textual syntax in a :mod:`loopy` kernel is::
+
+        ... gbarrier
+    """
+
+    def __init__(self, id, depends_on=None, depends_on_is_final=None,
+            groups=None, conflicts_with_groups=None,
+            no_sync_with=None,
+            within_inames_is_final=None, within_inames=None,
+            priority=None,
+            boostable=None, boostable_into=None,
+            predicates=None, tags=None, kind="global"):
+        assert kind == "global"
+
+        if predicates:
+            raise LoopyError("conditional barriers are not supported")
+
+        super(BarrierInstruction, self).__init__(
+                id=id,
+                depends_on=depends_on,
+                depends_on_is_final=depends_on_is_final,
+                groups=groups,
+                conflicts_with_groups=conflicts_with_groups,
+                no_sync_with=no_sync_with,
+                within_inames_is_final=within_inames_is_final,
+                within_inames=within_inames,
+                priority=priority,
+                boostable=boostable,
+                boostable_into=boostable_into,
+                predicates=predicates,
+                tags=tags,
+                )
+
+        self.kind = kind
+
+    def __str__(self):
+        first_line = "%s: ... %sbarrier" % (self.id, self.kind[0])
+
+        options = self.get_str_options()
+        if options:
+            first_line += " {%s}" % (": ".join(options))
+
+        return first_line
 
 # }}}
 

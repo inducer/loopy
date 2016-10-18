@@ -316,6 +316,16 @@ Atomic Operations
 
 .. autoclass:: AtomicUpdate
 
+No-Op Instruction
+^^^^^^^^^^^^^^^^^
+
+.. autoclass:: NoOpInstruction
+
+Barrier Instructions
+^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: BarrierInstruction
+
 .. }}}
 
 Data: Arguments and Temporaries

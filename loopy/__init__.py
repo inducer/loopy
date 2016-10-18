@@ -36,14 +36,15 @@ from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.library.function import (
         default_function_mangler, single_arg_function_mangler)
 
+from loopy.kernel.instruction import (
+        memory_ordering, memory_scope, VarAtomicity, AtomicInit, AtomicUpdate,
+        InstructionBase,
+        MultiAssignmentBase, Assignment, ExpressionInstruction,
+        CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
 from loopy.kernel.data import (
         auto,
         KernelArgument,
         ValueArg, GlobalArg, ConstantArg, ImageArg,
-        memory_ordering, memory_scope, VarAtomicity, AtomicInit, AtomicUpdate,
-        InstructionBase,
-        MultiAssignmentBase, Assignment, ExpressionInstruction,
-        CallInstruction, CInstruction,
         temp_var_scope, TemporaryVariable,
         SubstitutionRule,
         CallMangleInfo)
@@ -144,17 +145,18 @@ __all__ = [
 
         "LoopKernel", "kernel_state",
 
-        "KernelArgument",
         "memory_ordering", "memory_scope", "VarAtomicity",
         "AtomicInit", "AtomicUpdate",
+        "InstructionBase",
+        "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
+        "CallInstruction", "CInstruction", "NoOpInstruction",
+        "BarrierInstruction",
+
+        "KernelArgument",
         "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
         "temp_var_scope", "TemporaryVariable",
         "SubstitutionRule",
         "CallMangleInfo",
-
-        "InstructionBase",
-        "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
-        "CallInstruction", "CInstruction",
 
         "default_function_mangler", "single_arg_function_mangler",
 

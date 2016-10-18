@@ -335,6 +335,15 @@ EMPTY_LHS_INSN_RE = re.compile(
         "\s*?"
         "(?:\{(?P<options>.+)\}\s*)?$")
 
+SPECIAL_INSN_RE = re.compile(
+        "^"
+        "\s*"
+        "\.\.\."
+        "\s*"
+        "(?P<kind>[a-z]+?)"
+        "\s*?"
+        "(?:\{(?P<options>.+)\}\s*)?$")
+
 SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
 
@@ -418,7 +427,7 @@ def parse_insn(groups, insn_options):
                     else insn_id),
                 **insn_options)
 
-    from loopy.kernel.data import make_assignment
+    from loopy.kernel.instruction import make_assignment
     return make_assignment(
             lhs, rhs, temp_var_types, **kwargs
             ), inames_to_dup
@@ -467,6 +476,42 @@ def parse_subst_rule(groups):
             name=subst_name,
             arguments=tuple(arg_names),
             expression=rhs)
+
+# }}}
+
+
+# {{{ parse_special_insn
+
+def parse_special_insn(groups, insn_options):
+    insn_options = parse_insn_options(
+            insn_options.copy(),
+            groups["options"])
+
+    del insn_options["atomicity"]
+
+    insn_id = insn_options.pop("insn_id", None)
+    inames_to_dup = insn_options.pop("inames_to_dup", [])
+
+    kwargs = dict(
+                id=(
+                    intern(insn_id)
+                    if isinstance(insn_id, str)
+                    else insn_id),
+                **insn_options)
+
+    from loopy.kernel.instruction import NoOpInstruction, BarrierInstruction
+    special_insn_kind = groups["kind"]
+
+    if special_insn_kind == "gbarrier":
+        cls = BarrierInstruction
+        kwargs["kind"] = "global"
+    elif special_insn_kind == "nop":
+        cls = NoOpInstruction
+    else:
+        raise LoopyError(
+            "invalid kind of special instruction: '%s'" % special_insn_kind)
+
+    return cls(**kwargs), inames_to_dup
 
 # }}}
 
@@ -697,6 +742,14 @@ def parse_instructions(instructions, defines):
 
         if insn == "end":
             insn_options_stack.pop()
+            continue
+
+        insn_match = SPECIAL_INSN_RE.match(insn)
+        if insn_match is not None:
+            insn, insn_inames_to_dup = parse_special_insn(
+                    insn_match.groupdict(), insn_options_stack[-1])
+            new_instructions.append(insn)
+            inames_to_dup.append(insn_inames_to_dup)
             continue
 
         subst_match = SUBST_RE.match(insn)
