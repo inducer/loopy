@@ -837,77 +837,19 @@ def sum_ops_to_dtypes(op_poly_dict):
     return result
 
 
-def get_lmem_access_poly(knl, numpy_types=True):
-
+def get_lmem_access_poly(knl):
     """Count the number of local memory accesses in a loopy kernel.
     """
-
-    from loopy.preprocess import preprocess_kernel, infer_unknown_types
-
-    class CacheHolder(object):
-        pass
-
-    cache_holder = CacheHolder()
-
-    @memoize_in(cache_holder, "insn_count")
-    def get_insn_count(knl, insn_inames):
-        inames_domain = knl.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(
-                                insn_inames, [dim_type.set]))
-        return count(knl, domain)
-
-    knl = infer_unknown_types(knl, expect_completion=True)
-    knl = preprocess_kernel(knl)
-
-    subs_poly = ToCountMap()
-    subscript_counter = LocalSubscriptCounter(knl)
-    for insn in knl.instructions:
-        # count subscripts, distinguishing loads and stores
-        subs_expr = subscript_counter(insn.expression)
-        for key in subs_expr.dict:
-            subs_expr.dict[MemAccess('local', 
-                           key.dtype, direction='load')
-                          ] = subs_expr.dict.pop(key)
-        subs_assignee = subscript_counter(insn.assignee)
-        #for key in subs_assignee.dict:
-        #    print(key.dtype, key.direction, subs_assignee.dict[key])
-
-        # for now, not counting stores in local mem
-        '''
-        for key in subs_assignee.dict:
-            subs_assignee.dict[MemAccess('local', 
-                               key.dtype, direction='store')
-                              ] = subs_assignee.dict.pop(key)
-        '''
-
-        insn_inames = knl.insn_inames(insn)
-
-        # use count excluding local index tags for uniform accesses
-        for key in subs_expr.dict:
-            poly = ToCountMap({key: subs_expr.dict[key]})
-            subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
-
-        # for now, not counting stores in local mem
-        '''
-        for key in subs_assignee.dict:
-            poly = ToCountMap({key: subs_assignee.dict[key]})
-            subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
-        '''
-
-    #return subs_poly.dict
-    result = subs_poly.dict
-
-    if numpy_types:
-        result = dict((MemAccess('local', mem_access.dtype.numpy_dtype,
-                       direction=mem_access.direction), count)
-                       for mem_access, count in six.iteritems(result))
-
-    return result
+    from warnings import warn
+    warn("get_lmem_access_poly is deprecated. "
+         "Use get_mem_access_poly with local option instead",
+         DeprecationWarning, stacklevel=2)
+    return get_mem_access_poly(knl, 'local')
 
 
 # {{{ get_gmem_access_poly
-def get_gmem_access_poly(knl, numpy_types=True):
 
+def get_gmem_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
@@ -953,7 +895,23 @@ def get_gmem_access_poly(knl, numpy_types=True):
         # (now use these counts to predict performance)
 
     """
+    from warnings import warn
+    warn("get_gmem_access_poly is deprecated. "
+         "Use get_mem_access_poly with global option instead",
+         DeprecationWarning, stacklevel=2)
+    return get_mem_access_poly(knl, 'global')
 
+
+def get_DRAM_access_poly(knl):
+    from warnings import warn
+    warn("get_DRAM_access_poly is deprecated. "
+         "Use get_mem_access_poly with global option instead",
+         DeprecationWarning, stacklevel=2)
+    return get_mem_access_poly(knl, 'global')
+
+# }}}
+
+def get_mem_access_poly(knl, mtype, numpy_types=True):
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
 
     class CacheHolder(object):
@@ -977,43 +935,55 @@ def get_gmem_access_poly(knl, numpy_types=True):
     knl = preprocess_kernel(knl)
 
     subs_poly = ToCountMap()
-    subscript_counter = GlobalSubscriptCounter(knl)
+    if mtype == 'global':
+        subscript_counter = GlobalSubscriptCounter(knl)
+    elif mtype == 'local':
+        subscript_counter = LocalSubscriptCounter(knl)
+    else:
+        raise ValueError("get_mem_access_poly: mtype must be "
+                         "'local' or 'global', received {0}"
+                         .format(mtype))
+
     for insn in knl.instructions:
         # count subscripts, distinguishing loads and stores
         subs_expr = subscript_counter(insn.expression)
         for key in subs_expr.dict:
-            subs_expr.dict[MemAccess('global', key.dtype, stride=key.stride,
+            subs_expr.dict[MemAccess(key.mtype, key.dtype, stride=key.stride,
                                      direction='load', variable=key.variable)
                           ] = subs_expr.dict.pop(key)
-        subs_assignee = subscript_counter(insn.assignee)
-        for key in subs_assignee.dict:
-            subs_assignee.dict[MemAccess('global', key.dtype,
-                                         stride=key.stride, direction='store',
-                                         variable=key.variable)
-                              ] = subs_assignee.dict.pop(key)
+
+        if mtype == 'global':  # for now, don't count writes to local mem
+            subs_assignee = subscript_counter(insn.assignee)
+            for key in subs_assignee.dict:
+                subs_assignee.dict[MemAccess(key.mtype, key.dtype,
+                                             stride=key.stride, direction='store',
+                                             variable=key.variable)
+                                  ] = subs_assignee.dict.pop(key)
 
         insn_inames = knl.insn_inames(insn)
 
         # use count excluding local index tags for uniform accesses
         for key in subs_expr.dict:
             poly = ToCountMap({key: subs_expr.dict[key]})
-            if isinstance(key.stride, int) and key.stride == 0:
+            if mtype == 'global' and isinstance(key.stride, int) and key.stride == 0:
                 subs_poly = subs_poly \
                             + poly*get_insn_count(knl, insn_inames, True)
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
-        for key in subs_assignee.dict:
-            poly = ToCountMap({key: subs_assignee.dict[key]})
-            if isinstance(key.stride, int) and key.stride == 0:
-                subs_poly = subs_poly \
-                            + poly*get_insn_count(knl, insn_inames, True)
-            else:
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+
+        if mtype == 'global':  # for now, don't count writes to local mem
+            for key in subs_assignee.dict:
+                poly = ToCountMap({key: subs_assignee.dict[key]})
+                if isinstance(key.stride, int) and key.stride == 0:
+                    subs_poly = subs_poly \
+                                + poly*get_insn_count(knl, insn_inames, True)
+                else:
+                    subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
 
     result = subs_poly.dict
 
     if numpy_types:
-        result = dict((MemAccess('global', mem_access.dtype.numpy_dtype,
+        result = dict((MemAccess(mem_access.mtype, mem_access.dtype.numpy_dtype,
                                  stride=mem_access.stride,
                                  direction=mem_access.direction,
                                  variable=mem_access.variable)
@@ -1021,17 +991,6 @@ def get_gmem_access_poly(knl, numpy_types=True):
                       for mem_access, count in six.iteritems(result))
 
     return result
-
-
-def get_DRAM_access_poly(knl):
-    from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. "
-         "Use get_gmem_access_poly instead",
-         DeprecationWarning, stacklevel=2)
-    return get_gmem_access_poly(knl)
-
-# }}}
-
 
 # {{{ sum_mem_access_to_bytes
 

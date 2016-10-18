@@ -30,8 +30,7 @@ from pyopencl.tools import (  # noqa
 #TODO why is this import required?
 from loopy.statistics import (
         get_op_poly,
-        get_gmem_access_poly,
-        get_lmem_access_poly,
+        get_mem_access_poly,
         get_synchronization_poly,
         MemAccess,
         Op)
@@ -231,7 +230,7 @@ def test_gmem_access_counter_basic():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = lp.get_gmem_access_poly(knl)
+    poly = lp.get_mem_access_poly(knl, 'global')
     n = 512
     m = 256
     l = 128
@@ -271,7 +270,7 @@ def test_gmem_access_counter_reduction():
             name="matmul", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    poly = lp.get_gmem_access_poly(knl)
+    poly = lp.get_mem_access_poly(knl, 'global')
     n = 512
     m = 256
     l = 128
@@ -302,7 +301,7 @@ def test_gmem_access_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = lp.get_gmem_access_poly(knl)
+    poly = lp.get_mem_access_poly(knl, 'global')
     n = 512
     m = 256
     l = 128
@@ -336,7 +335,7 @@ def test_gmem_access_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
                                             g=np.float64, h=np.float64))
-    poly = lp.get_gmem_access_poly(knl)
+    poly = lp.get_mem_access_poly(knl, 'global')
     n = 512
     m = 256
     l = 128
@@ -383,7 +382,7 @@ def test_gmem_access_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int32, h=np.int32))
 
-    poly = lp.get_gmem_access_poly(knl)
+    poly = lp.get_mem_access_poly(knl, 'global')
     n = 512
     m = 256
     l = 128
@@ -429,7 +428,7 @@ def test_gmem_access_counter_mixed():
     knl = lp.split_iname(knl, "j", threads)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
-    poly = lp.get_gmem_access_poly(knl)  # noqa
+    poly = lp.get_mem_access_poly(knl, 'global')  # noqa
     n = 512
     m = 256
     l = 128
@@ -482,7 +481,7 @@ def test_gmem_access_counter_nonconsec():
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
 
-    poly = lp.get_gmem_access_poly(knl)  # noqa
+    poly = lp.get_mem_access_poly(knl, 'global')  # noqa
     n = 512
     m = 256
     l = 128
@@ -533,7 +532,7 @@ def test_gmem_access_counter_consec():
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
-    poly = lp.get_gmem_access_poly(knl)
+    poly = lp.get_mem_access_poly(knl, 'global')
     n = 512
     m = 256
     l = 128
@@ -658,7 +657,7 @@ def test_all_counters_parallel_matmul():
 
     assert f32mul+f32add == n*m*l*2
 
-    subscript_map = lp.get_gmem_access_poly(knl)
+    subscript_map = lp.get_mem_access_poly(knl, 'global')
 
     f32coal = subscript_map[MemAccess('global', np.float32, 
                         stride=1, direction='load', variable='b')
@@ -675,7 +674,7 @@ def test_all_counters_parallel_matmul():
 
     assert f32coal == n*l
 
-    local_subs_map = get_lmem_access_poly(knl)
+    local_subs_map = get_mem_access_poly(knl, 'local')
 
     # TODO currently considering all local mem access stride-1
     local_subs_l = local_subs_map[MemAccess('local', np.dtype(np.float32),
