@@ -56,6 +56,12 @@ class Options(Record):
         Like :attr:`trace_assignments`, but also trace the
         assigned values.
 
+    .. attribute:: ignore_boostable_into
+
+        Ignore the boostable_into field of the kernel, when
+        determining whether an iname duplication is necessary
+        for the kernel to be schedulable.
+
     .. rubric:: Invocation-related options
 
     .. attribute:: skip_arg_checks
@@ -132,6 +138,7 @@ class Options(Record):
             annotate_inames=False,
             trace_assignments=False,
             trace_assignment_values=False,
+            ignore_boostable_into=False,
 
             skip_arg_checks=False, no_numpy=False, return_dict=False,
             write_wrapper=False, highlight_wrapper=False,
@@ -155,6 +162,7 @@ class Options(Record):
                 annotate_inames=annotate_inames,
                 trace_assignments=trace_assignments,
                 trace_assignment_values=trace_assignment_values,
+                ignore_boostable_into=ignore_boostable_into,
 
                 skip_arg_checks=skip_arg_checks, no_numpy=no_numpy,
                 return_dict=return_dict,
