@@ -185,7 +185,7 @@ class ASTBuilderBase(object):
     def get_expression_to_code_mapper(self, codegen_state):
         raise NotImplementedError()
 
-    def add_vector_access(self, access_str, index):
+    def add_vector_access(self, access_expr, index):
         raise NotImplementedError()
 
     def emit_barrier(self, kind, comment):
@@ -223,6 +223,9 @@ class ASTBuilderBase(object):
         raise NotImplementedError()
 
     # }}}
+
+    def process_ast(self, node):
+        return node
 
 
 # {{{ dummy host ast builder

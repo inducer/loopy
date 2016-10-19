@@ -29,10 +29,11 @@ import numpy as np
 from pytools import memoize_method
 
 from loopy.target.c import CTarget, CASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCMapper
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.kernel.data import temp_var_scope
+from pymbolic import var
 
 
 # {{{ vector types
@@ -139,7 +140,7 @@ def cuda_function_mangler(kernel, name, arg_dtypes):
 
 # {{{ expression mapper
 
-class ExpressionToCudaCMapper(ExpressionToCMapper):
+class ExpressionToCudaCExpressionMapper(ExpressionToCExpressionMapper):
     _GRID_AXES = "xyz"
 
     @staticmethod
@@ -151,15 +152,15 @@ class ExpressionToCudaCMapper(ExpressionToCMapper):
         else:
             raise LoopyError("unexpected index type")
 
-    def map_group_hw_index(self, expr, enclosing_prec, type_context):
-        return "((%s) blockIdx.%s)" % (
+    def map_group_hw_index(self, expr, type_context):
+        return var("((%s) blockIdx.%s)" % (
             self._get_index_ctype(self.kernel),
-            self._GRID_AXES[expr.axis])
+            self._GRID_AXES[expr.axis]))
 
-    def map_local_hw_index(self, expr, enclosing_prec, type_context):
-        return "((%s) threadIdx.%s)" % (
+    def map_local_hw_index(self, expr, type_context):
+        return var("((%s) threadIdx.%s)" % (
             self._get_index_ctype(self.kernel),
-            self._GRID_AXES[expr.axis])
+            self._GRID_AXES[expr.axis]))
 
 # }}}
 
@@ -277,13 +278,13 @@ class CUDACASTBuilder(CASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_code_mapper(self, codegen_state):
-        return ExpressionToCudaCMapper(codegen_state)
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        return ExpressionToCudaCExpressionMapper(codegen_state)
 
     _VEC_AXES = "xyzw"
 
-    def add_vector_access(self, access_str, index):
-        return "(%s).%s" % (access_str, self._VEC_AXES[int(index)])
+    def add_vector_access(self, access_expr, index):
+        return access_expr.a(self._VEC_AXES[index])
 
     def emit_barrier(self, kind, comment):
         """
