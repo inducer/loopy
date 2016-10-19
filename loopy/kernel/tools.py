@@ -1,6 +1,6 @@
 """Operations on the kernel object."""
 
-from __future__ import division, absolute_import
+from __future__ import division, absolute_import, print_function
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
