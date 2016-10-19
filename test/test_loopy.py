@@ -1391,6 +1391,22 @@ def test_special_instructions(ctx_factory):
     print(knl)
 
 
+def test_index_cse(ctx_factory):
+    knl = lp.make_kernel(["{[i,j,k,l,m]:0<=i,j,k,l,m<n}"],
+                         """
+                         for i
+                            for j
+                                c[i,j,m] = sum((k,l), a[i,j,l]*b[i,j,k,l])
+                            end
+                         end
+                         """)
+    knl = lp.tag_inames(knl, "l:unr")
+    knl = lp.set_loop_priority(knl, "i,j,k,l")
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+    knl = lp.fix_parameters(knl, n=5)
+    print(lp.generate_code_v2(knl).device_code())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
