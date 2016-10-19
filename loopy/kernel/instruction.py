@@ -1181,7 +1181,7 @@ class _DataObliviousInstruction(InstructionBase):
         return frozenset()
 
     def with_transformed_expressions(self, f, *args):
-        return frozenset()
+        return self
 
     # }}}
 
