@@ -1455,7 +1455,7 @@ def test_unr_and_conditionals(ctx_factory):
     knl = lp.split_iname(knl, 'k', 2, inner_tag='unr')
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
-
+    
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
