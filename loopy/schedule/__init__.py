@@ -1045,6 +1045,20 @@ def generate_loop_schedules_internal(
 # }}}
 
 
+# {{{ filter nops from schedule
+
+def filter_nops_from_schedule(kernel, schedule):
+    from loopy.kernel.instruction import NoOpInstruction
+    return [
+            sched_item
+            for sched_item in schedule
+            if (not isinstance(sched_item, RunInstruction)
+                or not isinstance(kernel.id_to_insn[sched_item.insn_id],
+                    NoOpInstruction))]
+
+# }}}
+
+
 # {{{ barrier insertion
 
 class DependencyRecord(Record):
@@ -1472,7 +1486,7 @@ def generate_loop_schedules(kernel, debug_args={}):
     generators = []
 
     if not kernel.options.ignore_boostable_into:
-       generators.append(generate_loop_schedules_internal(sched_state,
+        generators.append(generate_loop_schedules_internal(sched_state,
                              debug=debug, allow_boost=None))
 
     generators.append(generate_loop_schedules_internal(sched_state,
@@ -1510,6 +1524,8 @@ def generate_loop_schedules(kernel, debug_args={}):
         for gen in generators:
             for gen_sched in gen:
                 debug.stop()
+
+                gen_sched = filter_nops_from_schedule(kernel, gen_sched)
 
                 gsize, lsize = kernel.get_grid_size_upper_bounds()
 

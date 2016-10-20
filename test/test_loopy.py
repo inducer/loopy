@@ -1377,18 +1377,25 @@ def test_sequential_dependencies(ctx_factory):
 
 
 def test_special_instructions(ctx_factory):
+    ctx = ctx_factory()
+
     knl = lp.make_kernel(
             "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
             """
             for itrip,i
-                <> z[i] = z[i-1] + z[i]  {id=wr_z}
+                <> z[i] = z[i+1] + z[i]  {id=wr_z}
                 <> v[i] = 11  {id=wr_v}
-                ... gbarrier {dep=wr_z:wr_v}
-                z[i] = z[i] - z[i+1] + v[i-1]
+                ... nop {dep=wr_z:wr_v}
+                z[i] = z[i] - z[i+1] + v[i]
             end
-            """, seq_dependencies=True)
+            """)
 
     print(knl)
+
+    knl = lp.fix_parameters(knl, n=15)
+    knl = lp.add_and_infer_dtypes(knl, {"z": np.float64})
+
+    lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(ntrips=5))
 
 
 def test_index_cse(ctx_factory):
