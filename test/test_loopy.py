@@ -1390,6 +1390,72 @@ def test_special_instructions(ctx_factory):
 
     print(knl)
 
+    knl = lp.fix_parameters(knl, n=15)
+    knl = lp.add_and_infer_dtypes(knl, {"z": np.float64})
+
+    lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(ntrips=5))
+
+
+def test_index_cse(ctx_factory):
+    knl = lp.make_kernel(["{[i,j,k,l,m]:0<=i,j,k,l,m<n}"],
+                         """
+                         for i
+                            for j
+                                c[i,j,m] = sum((k,l), a[i,j,l]*b[i,j,k,l])
+                            end
+                         end
+                         """)
+    knl = lp.tag_inames(knl, "l:unr")
+    knl = lp.set_loop_priority(knl, "i,j,k,l")
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
+    knl = lp.fix_parameters(knl, n=5)
+    print(lp.generate_code_v2(knl).device_code())
+
+
+def test_ilp_and_conditionals(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             <> Tcond = T[k] < 0.5
+             if Tcond
+                 cp[k] = 2 * T[k] + Tcond
+             end
+         end
+         """)
+
+    knl = lp.fix_parameters(knl, n=200)
+    knl = lp.add_and_infer_dtypes(knl, {"T": np.float32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, 'k', 2, inner_tag='ilp')
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+def test_unr_and_conditionals(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             <> Tcond[k] = T[k] < 0.5
+             if Tcond[k]
+                 cp[k] = 2 * T[k] + Tcond[k]
+             end
+         end
+         """)
+
+    knl = lp.fix_parameters(knl, n=200)
+    knl = lp.add_and_infer_dtypes(knl, {"T": np.float32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, 'k', 2, inner_tag='unr')
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
