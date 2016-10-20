@@ -1129,10 +1129,10 @@ class CInstruction(InstructionBase):
 
         from loopy.symbolic import get_dependencies
         for name, iname_expr in self.iname_exprs:
-            result.update(get_dependencies(iname_expr))
+            result = result | get_dependencies(iname_expr)
 
         for subscript_deps in self.assignee_subscript_deps():
-            result.update(subscript_deps)
+            result = result | subscript_deps
 
         return frozenset(result) | self.predicates
 
