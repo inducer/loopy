@@ -1124,7 +1124,7 @@ class CInstruction(InstructionBase):
 
     def read_dependency_names(self):
         result = (
-                super(MultiAssignmentBase, self).read_dependency_names()
+                super(CInstruction, self).read_dependency_names()
                 | frozenset(self.read_variables))
 
         from loopy.symbolic import get_dependencies
