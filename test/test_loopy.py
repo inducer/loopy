@@ -1407,6 +1407,29 @@ def test_index_cse(ctx_factory):
     print(lp.generate_code_v2(knl).device_code())
 
 
+def test_ilp_and_conditionals(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             <> Tcond = T[k] < 0.5
+             if Tcond
+                 cp[k] = 2 * T[k] + Tcond
+             end
+         end
+         """)
+
+    knl = lp.fix_parameters(knl, n=200)
+    knl = lp.add_and_infer_dtypes(knl, {"T": np.float32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, 'k', 2, inner_tag='ilp')
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
