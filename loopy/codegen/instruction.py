@@ -71,7 +71,7 @@ def to_codegen_result(
 def generate_instruction_code(codegen_state, insn):
     kernel = codegen_state.kernel
 
-    from loopy.kernel.data import Assignment, CallInstruction, CInstruction
+    from loopy.kernel.instruction import Assignment, CallInstruction, CInstruction
 
     if isinstance(insn, Assignment):
         ast = generate_assignment_instruction_code(codegen_state, insn)
