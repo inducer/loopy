@@ -1006,20 +1006,20 @@ def guess_var_shape(kernel, var_name):
 
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
-    from loopy.kernel.instruction import MultiAssignmentBase
+    def run_through_armap(expr):
+        armap(submap(expr), kernel.insn_inames(insn))
+        return expr
 
     try:
         for insn in kernel.instructions:
-            if isinstance(insn, MultiAssignmentBase):
-                armap(submap(insn.assignees), kernel.insn_inames(insn))
-                armap(submap(insn.expression), kernel.insn_inames(insn))
+            insn.with_transformed_expressions(run_through_armap)
     except TypeError as e:
         from traceback import print_exc
         print_exc()
 
         raise LoopyError(
                 "Failed to (automatically, as requested) find "
-                "shape/strides for argument '%s'. "
+                "shape/strides for variable '%s'. "
                 "Specifying the shape manually should get rid of this. "
                 "The following error occurred: %s"
                 % (var_name, str(e)))
@@ -1069,7 +1069,7 @@ def guess_var_shape(kernel, var_name):
                             constants_only=False)))
             except:
                 print("While trying to find shape axis %d of "
-                        "argument '%s', the following "
+                        "variable '%s', the following "
                         "exception occurred:" % (i, var_name),
                         file=sys.stderr)
                 print("*** ADVICE: You may need to manually specify the "
