@@ -563,8 +563,6 @@ def parse_instructions(instructions, defines):
                             intern(grp) for grp in insn.conflicts_with_groups),
                         within_inames=frozenset(
                             intern(iname) for iname in insn.within_inames),
-                        predicates=frozenset(
-                            intern(pred) for pred in insn.predicates),
                         ))
             continue
 
