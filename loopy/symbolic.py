@@ -67,6 +67,9 @@ import numpy as np
 # {{{ mappers with support for loopy-specific primitives
 
 class IdentityMapperMixin(object):
+    def map_literal(self, expr, *args):
+        return expr
+
     def map_group_hw_index(self, expr, *args):
         return expr
 
@@ -114,6 +117,9 @@ class PartialEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
 
 
 class WalkMapper(WalkMapperBase):
+    def map_literal(self, expr, *args):
+        self.visit(expr)
+
     def map_group_hw_index(self, expr, *args):
         self.visit(expr)
 
@@ -157,6 +163,9 @@ class ConstantFoldingMapper(ConstantFoldingMapperBase,
 
 
 class StringifyMapper(StringifyMapperBase):
+    def map_literal(self, expr, *args):
+        return expr.s
+
     def map_group_hw_index(self, expr, enclosing_prec):
         return "grp.%d" % expr.index
 
@@ -280,6 +289,23 @@ class SubstitutionRuleExpander(IdentityMapper):
 
 
 # {{{ loopy-specific primitives
+
+class Literal(Leaf):
+    """A literal to be used during code generation."""
+
+    def __init__(self, s):
+        self.s = s
+
+    def stringifier(self):
+        return StringifyMapper
+
+    def __getinitargs__(self):
+        return (self.s,)
+
+    init_arg_names = ("s",)
+
+    mapper_method = "map_literal"
+
 
 class HardwareAxisIndex(Leaf):
     def __init__(self, axis):

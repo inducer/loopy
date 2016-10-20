@@ -309,8 +309,8 @@ def generate_host_or_device_program(codegen_state, schedule_index):
     codegen_result = codegen_result.with_new_program(
             codegen_state,
             cur_prog.copy(
-                ast=fdef_ast,
-                body_ast=body_ast))
+                ast=ast_builder.process_ast(fdef_ast),
+                body_ast=ast_builder.process_ast(body_ast)))
 
     return codegen_result
 

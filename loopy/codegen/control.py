@@ -456,11 +456,10 @@ def build_loop_nest(codegen_state, schedule_index):
                 prev_gen_code = gen_code
 
                 def gen_code(inner_codegen_state):
-                    from pymbolic.primitives import Variable
                     condition_exprs = [
                             constraint_to_expr(cns)
                             for cns in bounds_checks] + [
-                                Variable(pred_chk) for pred_chk in pred_checks]
+                                pred_chk for pred_chk in pred_checks]
 
                     prev_result = prev_gen_code(inner_codegen_state)
 
