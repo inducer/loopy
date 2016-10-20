@@ -1220,7 +1220,8 @@ class LoopKernel(RecordWithoutPickling):
                 lines.extend(trailing)
 
                 if insn.predicates:
-                    lines.append(10*" " + "if (%s)" % " && ".join(insn.predicates))
+                    lines.append(10*" " + "if (%s)" % " && ".join(
+                        [str(x) for x in insn.predicates]))
 
             import loopy as lp
             for insn in kernel.instructions:
