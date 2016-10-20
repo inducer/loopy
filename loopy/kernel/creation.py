@@ -316,7 +316,7 @@ FOR_RE = re.compile(
 IF_RE = re.compile(
         "^"
         "\s*if\s+"
-        "(?P<predicate>\w+)"
+        "(?P<predicate>\w+(?:\[(\d|\w)+\])?)"
         "\s*$")
 
 INSN_RE = re.compile(
