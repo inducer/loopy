@@ -1259,16 +1259,22 @@ def create_temporaries(knl, default_order):
 def determine_shapes_of_temporaries(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
-    from loopy.symbolic import AccessRangeMapper
+    from loopy.symbolic import AccessRangeMapper, SubstitutionRuleExpander
     import loopy as lp
+
+    submap = SubstitutionRuleExpander(knl.substitutions)
 
     new_temp_vars = {}
     for tv in six.itervalues(knl.temporary_variables):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             armap = AccessRangeMapper(knl, tv.name)
+
+            def run_through_armap(expr):
+                armap(submap(expr), knl.insn_inames(insn))
+                return expr
+
             for insn in knl.instructions:
-                for assignee in insn.assignees:
-                    armap(assignee, knl.insn_inames(insn))
+                insn.with_transformed_expressions(run_through_armap)
 
             if armap.access_range is not None:
                 base_indices, shape = list(zip(*[
