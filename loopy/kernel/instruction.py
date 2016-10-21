@@ -945,7 +945,7 @@ class CallInstruction(MultiAssignmentBase):
                 assignees=f(self.assignees, *args),
                 expression=f(self.expression, *args),
                 predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                    f(pred, *args) for pred in self.predicates))
 
     # }}}
 
