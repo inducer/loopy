@@ -1459,6 +1459,29 @@ def test_unr_and_conditionals(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
+def test_unr_and_conditionals(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             <> Tcond[k] = T[k] < 0.5
+             if Tcond[k]
+                 cp[k] = 2 * T[k] + Tcond[k]
+             end
+         end
+         """)
+
+    knl = lp.fix_parameters(knl, n=200)
+    knl = lp.add_and_infer_dtypes(knl, {"T": np.float32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, 'k', 2, inner_tag='unr')
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

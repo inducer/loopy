@@ -304,13 +304,13 @@ def _get_compute_inames_tagged(kernel, insn, tag_base):
             if isinstance(kernel.iname_to_tag.get(iname), tag_base))
 
 
-def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_name):
+def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
     return set(iname
             for aname, adeps in zip(
                 insn.assignee_var_names(),
                 insn.assignee_subscript_deps())
             for iname in adeps & kernel.all_inames()
-            if aname == tv_name
+            if aname in tv_names
             if isinstance(kernel.iname_to_tag.get(iname), tag_base))
 
 
@@ -326,10 +326,15 @@ def find_temporary_scope(kernel):
 
     base_storage_to_aliases = {}
 
+    kernel_var_names = kernel.all_variable_names(include_temp_storage=False)
+
     for temp_var in six.itervalues(kernel.temporary_variables):
         if temp_var.base_storage is not None:
             # no nesting allowed
-            assert kernel.temporary_variables[temp_var.base_storage] is None
+            if temp_var.base_storage in kernel_var_names:
+                raise LoopyError("base_storage for temporary '%s' is '%s', "
+                        "which is an existing variable name"
+                        % (temp_var.name, temp_var.base_storage))
 
             base_storage_to_aliases.setdefault(
                     temp_var.base_storage, []).append(temp_var.name)
@@ -342,13 +347,12 @@ def find_temporary_scope(kernel):
             new_temp_vars[temp_var.name] = temp_var
             continue
 
-        my_writers = writers.get(temp_var.name, [])
-        if temp_var.base_storage is None:
-            for alias in base_storage_to_aliases.get(temp_var.name, []):
-                my_writers = my_writers + writers.get(alias.name, [])
-        else:
+        tv_names = (frozenset([temp_var.name])
+                | frozenset(base_storage_to_aliases.get(temp_var.base_storage, [])))
+        my_writers = writers.get(temp_var.name, frozenset())
+        if temp_var.base_storage is not None:
             for alias in base_storage_to_aliases.get(temp_var.base_storage, []):
-                my_writers = my_writers + writers.get(alias.name, [])
+                my_writers = my_writers | writers.get(alias, frozenset())
 
         desired_scope_per_insn = []
         for insn_id in my_writers:
@@ -365,7 +369,7 @@ def find_temporary_scope(kernel):
                     kernel, insn, LocalIndexTagBase)
 
             locparallel_assignee_inames = _get_assignee_inames_tagged(
-                    kernel, insn, LocalIndexTagBase, temp_var.name)
+                    kernel, insn, LocalIndexTagBase, tv_names)
 
             grpparallel_compute_inames = _get_compute_inames_tagged(
                     kernel, insn, GroupIndexTag)

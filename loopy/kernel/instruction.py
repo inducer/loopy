@@ -166,7 +166,6 @@ class InstructionBase(Record):
                 from pymbolic.primitives import LogicalNot
                 from loopy.symbolic import parse
                 if pred.startswith("!"):
-                    from warnings import warn
                     warn("predicates starting with '!' are deprecated. "
                             "Simply use 'not' instead")
                     pred = LogicalNot(parse(pred[1:]))
@@ -405,14 +404,12 @@ class InstructionBase(Record):
 
     def copy(self, **kwargs):
         if "insn_deps" in kwargs:
-            from warnings import warn
             warn("insn_deps is deprecated, use depends_on",
                     DeprecationWarning, stacklevel=2)
 
             kwargs["depends_on"] = kwargs.pop("insn_deps")
 
         if "insn_deps_is_final" in kwargs:
-            from warnings import warn
             warn("insn_deps_is_final is deprecated, use depends_on",
                     DeprecationWarning, stacklevel=2)
 
@@ -808,6 +805,11 @@ class Assignment(MultiAssignmentBase):
             if field_name in ["assignee", "expression"]:
                 key_builder.update_for_pymbolic_expression(
                         key_hash, getattr(self, field_name))
+            elif field_name == "predicates":
+                preds = sorted(self.predicates, key=str)
+                for pred in preds:
+                    key_builder.update_for_pymbolic_expression(
+                            key_hash, pred)
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
 
@@ -826,7 +828,6 @@ class Assignment(MultiAssignmentBase):
 
 class ExpressionInstruction(Assignment):
     def __init__(self, *args, **kwargs):
-        from warnings import warn
         warn("ExpressionInstruction is deprecated. Use Assignment instead",
                 DeprecationWarning, stacklevel=2)
 
