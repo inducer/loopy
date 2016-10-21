@@ -27,12 +27,13 @@ THE SOFTWARE.
 import numpy as np
 
 from loopy.target.c import CTarget, CASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCMapper
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
 from loopy.kernel.data import temp_var_scope, CallMangleInfo
+from pymbolic import var
 
 
 # {{{ dtype registry wrappers
@@ -295,12 +296,12 @@ def opencl_preamble_generator(preamble_info):
 
 # {{{ expression mapper
 
-class ExpressionToOpenCLCMapper(ExpressionToCMapper):
-    def map_group_hw_index(self, expr, enclosing_prec, type_context):
-        return "gid(%d)" % expr.axis
+class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
+    def map_group_hw_index(self, expr, type_context):
+        return var("gid")(expr.axis)
 
-    def map_local_hw_index(self, expr, enclosing_prec, type_context):
-        return "lid(%d)" % expr.axis
+    def map_local_hw_index(self, expr, type_context):
+        return var("lid")(expr.axis)
 
 # }}}
 
@@ -432,12 +433,12 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_code_mapper(self, codegen_state):
-        return ExpressionToOpenCLCMapper(codegen_state)
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        return ExpressionToOpenCLCExpressionMapper(codegen_state)
 
-    def add_vector_access(self, access_str, index):
+    def add_vector_access(self, access_expr, index):
         # The 'int' avoids an 'L' suffix for long ints.
-        return "(%s).s%s" % (access_str, hex(int(index))[2:])
+        return access_expr.attr("s%s" % hex(int(index))[2:])
 
     def emit_barrier(self, kind, comment):
         """

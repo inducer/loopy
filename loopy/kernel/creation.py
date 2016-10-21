@@ -40,7 +40,6 @@ import six
 from six.moves import range, zip, intern
 
 import re
-import sys
 
 import logging
 logger = logging.getLogger(__name__)
@@ -1260,16 +1259,22 @@ def create_temporaries(knl, default_order):
 def determine_shapes_of_temporaries(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
-    from loopy.symbolic import AccessRangeMapper
+    from loopy.symbolic import AccessRangeMapper, SubstitutionRuleExpander
     import loopy as lp
+
+    submap = SubstitutionRuleExpander(knl.substitutions)
 
     new_temp_vars = {}
     for tv in six.itervalues(knl.temporary_variables):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
             armap = AccessRangeMapper(knl, tv.name)
+
+            def run_through_armap(expr):
+                armap(submap(expr), knl.insn_inames(insn))
+                return expr
+
             for insn in knl.instructions:
-                for assignee in insn.assignees:
-                    armap(assignee, knl.insn_inames(insn))
+                insn.with_transformed_expressions(run_through_armap)
 
             if armap.access_range is not None:
                 base_indices, shape = list(zip(*[
@@ -1335,84 +1340,11 @@ def guess_arg_shape_if_requested(kernel, default_order):
 
     import loopy as lp
     from loopy.kernel.array import ArrayBase
-    from loopy.symbolic import SubstitutionRuleExpander, AccessRangeMapper
-
-    submap = SubstitutionRuleExpander(kernel.substitutions)
+    from loopy.kernel.tools import guess_var_shape
 
     for arg in kernel.args:
         if isinstance(arg, ArrayBase) and arg.shape is lp.auto:
-            armap = AccessRangeMapper(kernel, arg.name)
-
-            try:
-                for insn in kernel.instructions:
-                    if isinstance(insn, lp.MultiAssignmentBase):
-                        armap(submap(insn.assignees), kernel.insn_inames(insn))
-                        armap(submap(insn.expression), kernel.insn_inames(insn))
-            except TypeError as e:
-                from traceback import print_exc
-                print_exc()
-
-                raise LoopyError(
-                        "Failed to (automatically, as requested) find "
-                        "shape/strides for argument '%s'. "
-                        "Specifying the shape manually should get rid of this. "
-                        "The following error occurred: %s"
-                        % (arg.name, str(e)))
-
-            if armap.access_range is None:
-                if armap.bad_subscripts:
-                    from loopy.symbolic import LinearSubscript
-                    if any(isinstance(sub, LinearSubscript)
-                            for sub in armap.bad_subscripts):
-                        raise LoopyError("cannot determine access range for '%s': "
-                                "linear subscript(s) in '%s'"
-                                % (arg.name, ", ".join(
-                                        str(i) for i in armap.bad_subscripts)))
-
-                    n_axes_in_subscripts = set(
-                            len(sub.index_tuple) for sub in armap.bad_subscripts)
-
-                    if len(n_axes_in_subscripts) != 1:
-                        raise RuntimeError("subscripts of '%s' with differing "
-                                "numbers of axes were found" % arg.name)
-
-                    n_axes, = n_axes_in_subscripts
-
-                    if n_axes == 1:
-                        # Leave shape undetermined--we can live with that for 1D.
-                        shape = (None,)
-                    else:
-                        raise LoopyError("cannot determine access range for '%s': "
-                                "undetermined index in subscript(s) '%s'"
-                                % (arg.name, ", ".join(
-                                        str(i) for i in armap.bad_subscripts)))
-
-                else:
-                    # no subscripts found, let's call it a scalar
-                    shape = ()
-            else:
-                from loopy.isl_helpers import static_max_of_pw_aff
-                from loopy.symbolic import pw_aff_to_expr
-
-                shape = []
-                for i in range(armap.access_range.dim(dim_type.set)):
-                    try:
-                        shape.append(
-                                pw_aff_to_expr(static_max_of_pw_aff(
-                                    kernel.cache_manager.dim_max(
-                                        armap.access_range, i) + 1,
-                                    constants_only=False)))
-                    except:
-                        print("While trying to find shape axis %d of "
-                                "argument '%s', the following "
-                                "exception occurred:" % (i, arg.name),
-                                file=sys.stderr)
-                        print("*** ADVICE: You may need to manually specify the "
-                                "shape of argument '%s'." % (arg.name),
-                                file=sys.stderr)
-                        raise
-
-                shape = tuple(shape)
+            shape = guess_var_shape(kernel, arg.name)
 
             if arg.shape is lp.auto:
                 arg = arg.copy(shape=shape)

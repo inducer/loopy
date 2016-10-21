@@ -868,7 +868,14 @@ class ArrayBase(Record):
 
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
-        key_builder.update_for_pymbolic_expression(key_hash, self.shape)
+        if isinstance(self.shape, tuple):
+            for shape_i in self.shape:
+                if shape_i is None:
+                    key_builder.rec(key_hash, shape_i)
+                else:
+                    key_builder.update_for_pymbolic_expression(key_hash, shape_i)
+        else:
+            key_builder.rec(key_hash, self.shape)
         key_builder.rec(key_hash, self.dim_tags)
         key_builder.rec(key_hash, self.offset)
         key_builder.rec(key_hash, self.dim_names)

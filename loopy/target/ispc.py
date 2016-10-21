@@ -27,16 +27,18 @@ THE SOFTWARE.
 
 import numpy as np  # noqa
 from loopy.target.c import CTarget, CASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCMapper
+from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
-from pymbolic.mapper.stringifier import (PREC_SUM, PREC_CALL)
+from loopy.symbolic import Literal
+from pymbolic import var
+import pymbolic.primitives as p
 
 from pytools import memoize_method
 
 
 # {{{ expression mapper
 
-class ExprToISPCMapper(ExpressionToCMapper):
+class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
     def _get_index_ctype(self):
         if self.kernel.index_dtype.numpy_dtype == np.int32:
             return "int32"
@@ -45,35 +47,37 @@ class ExprToISPCMapper(ExpressionToCMapper):
         else:
             raise ValueError("unexpected index_type")
 
-    def map_group_hw_index(self, expr, enclosing_prec, type_context):
-        return "((uniform %s) taskIndex%d)" % (self._get_index_ctype(), expr.axis)
+    def map_group_hw_index(self, expr, type_context):
+        return var(
+                "((uniform %s) taskIndex%d)"
+                % (self._get_index_ctype(), expr.axis))
 
-    def map_local_hw_index(self, expr, enclosing_prec, type_context):
+    def map_local_hw_index(self, expr, type_context):
         if expr.axis == 0:
-            return "(varying %s) programIndex" % self._get_index_ctype()
+            return var("(varying %s) programIndex" % self._get_index_ctype())
         else:
             raise LoopyError("ISPC only supports one local axis")
 
-    def map_constant(self, expr, enclosing_prec, type_context):
+    def map_constant(self, expr, type_context):
         if isinstance(expr, (complex, np.complexfloating)):
             raise NotImplementedError("complex numbers in ispc")
         else:
             if type_context == "f":
-                return repr(float(expr))
+                return Literal(repr(float(expr)))
             elif type_context == "d":
                 # Keepin' the good ideas flowin' since '66.
-                return repr(float(expr))+"d"
+                return Literal(repr(float(expr))+"d")
             elif type_context == "i":
-                return str(int(expr))
+                return expr
             else:
                 from loopy.tools import is_integer
                 if is_integer(expr):
-                    return str(expr)
+                    return expr
 
-                raise RuntimeError("don't know how to generated code "
+                raise RuntimeError("don't know how to generate code "
                         "for constant '%s'" % expr)
 
-    def map_variable(self, expr, enclosing_prec, type_context):
+    def map_variable(self, expr, type_context):
         tv = self.kernel.temporary_variables.get(expr.name)
 
         from loopy.kernel.data import temp_var_scope
@@ -83,15 +87,15 @@ class ExprToISPCMapper(ExpressionToCMapper):
             # below in decl generation)
             gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:
-                return "%s[programIndex]" % expr.name
+                return expr[var("programIndex")]
             else:
-                return expr.name
+                return expr
 
         else:
-            return super(ExprToISPCMapper, self).map_variable(
-                    expr, enclosing_prec, type_context)
+            return super(ExprToISPCExprMapper, self).map_variable(
+                    expr, type_context)
 
-    def map_subscript(self, expr, enclosing_prec, type_context):
+    def map_subscript(self, expr, type_context):
         from loopy.kernel.data import TemporaryVariable
 
         ary = self.find_array(expr)
@@ -108,11 +112,8 @@ class ExprToISPCMapper(ExpressionToCMapper):
                     self.codegen_state.vectorization_info)
 
                 subscript, = access_info.subscripts
-                result = self.parenthesize_if_needed(
-                        "%s[programIndex + %s]" % (
-                            access_info.array_name,
-                            self.rec(lsize*subscript, PREC_SUM, 'i')),
-                        enclosing_prec, PREC_CALL)
+                result = var(access_info.array_name)[
+                        var("programIndex") + self.rec(lsize*subscript, 'i')]
 
                 if access_info.vector_index is not None:
                     return self.kernel.target.add_vector_access(
@@ -120,8 +121,8 @@ class ExprToISPCMapper(ExpressionToCMapper):
                 else:
                     return result
 
-        return super(ExprToISPCMapper, self).map_subscript(
-                expr, enclosing_prec, type_context)
+        return super(ExprToISPCExprMapper, self).map_subscript(
+                expr, type_context)
 
 # }}}
 
@@ -250,39 +251,35 @@ class ISPCASTBuilder(CASTBuilder):
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
         ecm = self.get_expression_to_code_mapper(codegen_state)
 
-        from pymbolic.mapper.stringifier import PREC_COMPARISON, PREC_NONE
+        from pymbolic.mapper.stringifier import PREC_NONE
         result = []
         from cgen import Statement as S, Block
         if lsize:
             result.append(
-                    S("assert(programCount == %s)"
-                        % ecm(lsize[0], PREC_COMPARISON)))
-
-        if gsize:
-            launch_spec = "[%s]" % ", ".join(
-                                ecm(gs_i, PREC_NONE)
-                                for gs_i in gsize)
-        else:
-            launch_spec = ""
+                    S(
+                        "assert(programCount == (%s))"
+                        % ecm(lsize[0], PREC_NONE)))
 
         arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
 
-        result.append(S(
-            "launch%s %s(%s)" % (
-                launch_spec,
-                name,
-                ", ".join(arg_names)
-                )))
+        from cgen.ispc import ISPCLaunch
+        result.append(
+                ISPCLaunch(
+                    tuple(ecm(gs_i, PREC_NONE) for gs_i in gsize),
+                    "%s(%s)" % (
+                        name,
+                        ", ".join(arg_names)
+                        )))
 
         return Block(result)
 
     # {{{ code generation guts
 
-    def get_expression_to_code_mapper(self, codegen_state):
-        return ExprToISPCMapper(codegen_state)
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        return ExprToISPCExprMapper(codegen_state)
 
-    def add_vector_access(self, access_str, index):
-        return "(%s)[%d]" % (access_str, index)
+    def add_vector_access(self, access_expr, index):
+        return access_expr[index]
 
     def emit_barrier(self, kind, comment):
         from cgen import Comment, Statement
@@ -472,16 +469,20 @@ class ISPCASTBuilder(CASTBuilder):
         ecm = codegen_state.expression_to_code_mapper
 
         from loopy.symbolic import aff_to_expr
+        from loopy.target.c import POD
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For
+        from cgen import For, Initializer
+
+        from cgen.ispc import ISPCUniform
 
         return For(
-                "uniform %s %s = %s"
-                % (self.target.dtype_to_typename(iname_dtype),
-                    iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
-                "%s <= %s" % (
-                    iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
+                Initializer(
+                    ISPCUniform(POD(self, iname_dtype, iname)),
+                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                ecm(
+                    p.Comparison(var(iname), "<=", aff_to_expr(static_ubound)),
+                    PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
     # }}}

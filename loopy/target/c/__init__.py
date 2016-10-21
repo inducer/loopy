@@ -30,6 +30,9 @@ import numpy as np  # noqa
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError
 from cgen import Pointer
+from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
+from pymbolic.mapper.stringifier import PREC_NONE
+from loopy.symbolic import IdentityMapper
 
 from pytools import memoize_method
 
@@ -126,6 +129,8 @@ class POD(Declarator):
     def default_value(self):
         return 0
 
+    mapper_method = "map_loopy_pod"
+
 # }}}
 
 
@@ -183,6 +188,48 @@ def generate_array_literal(codegen_state, array, value):
     return "{ %s }" % ", ".join(
             ecm(d_i, PREC_NONE, type_context, array.dtype)
             for d_i in data)
+
+# }}}
+
+
+# {{{ subscript CSE
+
+class CASTIdentityMapper(CASTIdentityMapperBase):
+    def map_loopy_pod(self, node, *args, **kwargs):
+        return type(node)(node.ast_builder, node.dtype, node.name)
+
+
+class SubscriptSubsetCounter(IdentityMapper):
+    def __init__(self, subset_counters):
+        self.subset_counters = subset_counters
+
+
+class ASTSubscriptCollector(CASTIdentityMapper):
+    def __init__(self):
+        self.subset_counters = {}
+
+    def map_expression(self, expr):
+        from pymbolic.primitives import is_constant
+        if isinstance(expr, CExpression) or is_constant(expr):
+            return expr
+        elif isinstance(expr, str):
+            return expr
+        else:
+            raise LoopyError(
+                    "Unexpected expression type: %s" % type(expr).__name__)
+
+# }}}
+
+
+# {{{ lazy expression generation
+
+class CExpression(object):
+    def __init__(self, to_code_mapper, expr):
+        self.to_code_mapper = to_code_mapper
+        self.expr = expr
+
+    def __str__(self):
+        return self.to_code_mapper(self.expr, PREC_NONE)
 
 # }}}
 
@@ -447,9 +494,16 @@ class CASTBuilder(ASTBuilderBase):
     # {{{ code generation guts
 
     def get_expression_to_code_mapper(self, codegen_state):
-        from loopy.target.c.codegen.expression import ExpressionToCMapper
-        return ExpressionToCMapper(
+        return self.get_expression_to_c_expression_mapper(codegen_state)
+
+    def get_expression_to_c_expression_mapper(self, codegen_state):
+        from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+        return ExpressionToCExpressionMapper(
                 codegen_state, fortran_abi=self.target.fortran_abi)
+
+    def get_c_expression_to_code_mapper(self):
+        from loopy.target.c.codegen.expression import CExpressionToCodeMapper
+        return CExpressionToCodeMapper()
 
     def get_temporary_decl(self, knl, schedule_index, temp_var, decl_info):
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
@@ -517,7 +571,6 @@ class CASTBuilder(ASTBuilderBase):
 
         from loopy.kernel.data import AtomicInit, AtomicUpdate
         from loopy.expression import dtype_to_type_context
-        from pymbolic.mapper.stringifier import PREC_NONE
 
         lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
         rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
@@ -565,8 +618,6 @@ class CASTBuilder(ASTBuilderBase):
 
         par_dtypes = tuple(ecm.infer_type(par) for par in parameters)
 
-        str_parameters = None
-
         mangle_result = codegen_state.kernel.mangle_function(func_id, par_dtypes)
         if mangle_result is None:
             raise RuntimeError("function '%s' unknown--"
@@ -576,10 +627,10 @@ class CASTBuilder(ASTBuilderBase):
         assert mangle_result.arg_dtypes is not None
 
         from loopy.expression import dtype_to_type_context
-        str_parameters = [
+        c_parameters = [
                 ecm(par, PREC_NONE,
                     dtype_to_type_context(self.target, tgt_dtype),
-                    tgt_dtype)
+                    tgt_dtype).expr
                 for par, par_dtype, tgt_dtype in zip(
                     parameters, par_dtypes, mangle_result.arg_dtypes)]
 
@@ -589,22 +640,27 @@ class CASTBuilder(ASTBuilderBase):
                     mangle_result.target_name,
                     mangle_result.arg_dtypes))
 
+        from pymbolic import var
         for i, (a, tgt_dtype) in enumerate(
                 zip(insn.assignees[1:], mangle_result.result_dtypes[1:])):
             if tgt_dtype != ecm.infer_type(a):
                 raise LoopyError("type mismatch in %d'th (1-based) left-hand "
                         "side of instruction '%s'" % (i+1, insn.id))
-            str_parameters.append(
-                    "&(%s)" % ecm(a, PREC_NONE,
-                        dtype_to_type_context(self.target, tgt_dtype),
-                        tgt_dtype))
+            c_parameters.append(
+                        # TODO Yuck: The "where-at function": &(...)
+                        var("&")(
+                            ecm(a, PREC_NONE,
+                                dtype_to_type_context(self.target, tgt_dtype),
+                                tgt_dtype).expr))
 
-        result = "%s(%s)" % (mangle_result.target_name, ", ".join(str_parameters))
+        from pymbolic import var
+        result = var(mangle_result.target_name)(*c_parameters)
 
         # In case of no assignees, we are done
         if len(mangle_result.result_dtypes) == 0:
-            from cgen import Line
-            return Line(result + ';')
+            from cgen import ExpressionStatement
+            return ExpressionStatement(
+                    CExpression(self.get_c_expression_to_code_mapper(), result))
 
         result = ecm.wrap_in_typecast(
                 mangle_result.result_dtypes[0],
@@ -616,7 +672,7 @@ class CASTBuilder(ASTBuilderBase):
         from cgen import Assign
         return Assign(
                 lhs_code,
-                result)
+                CExpression(self.get_c_expression_to_code_mapper(), result))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             static_lbound, static_ubound, inner):
@@ -624,15 +680,21 @@ class CASTBuilder(ASTBuilderBase):
 
         from loopy.symbolic import aff_to_expr
 
+        from pymbolic import var
+        from pymbolic.primitives import Comparison
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For
+        from cgen import For, InlineInitializer
 
         return For(
-                "%s %s = %s"
-                % (self.target.dtype_to_typename(iname_dtype),
-                    iname, ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
-                "%s <= %s" % (
-                    iname, ecm(aff_to_expr(static_ubound), PREC_NONE, "i")),
+                InlineInitializer(
+                    POD(self, iname_dtype, iname),
+                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                ecm(
+                    Comparison(
+                        var(iname),
+                        "<=",
+                        aff_to_expr(static_ubound)),
+                    PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
 
@@ -659,5 +721,11 @@ class CASTBuilder(ASTBuilderBase):
         return If(condition_str, ast)
 
     # }}}
+
+    def process_ast(self, node):
+        sc = ASTSubscriptCollector()
+        sc(node)
+        return node
+
 
 # vim: foldmethod=marker

@@ -1377,16 +1377,18 @@ def test_sequential_dependencies(ctx_factory):
 
 
 def test_special_instructions(ctx_factory):
+    ctx = ctx_factory()
+
     knl = lp.make_kernel(
             "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
             """
             for itrip,i
-                <> z[i] = z[i-1] + z[i]  {id=wr_z}
+                <> z[i] = z[i+1] + z[i]  {id=wr_z}
                 <> v[i] = 11  {id=wr_v}
-                ... gbarrier {dep=wr_z:wr_v}
-                z[i] = z[i] - z[i+1] + v[i-1]
+                ... nop {dep=wr_z:wr_v}
+                z[i] = z[i] - z[i+1] + v[i]
             end
-            """, seq_dependencies=True)
+            """)
 
     print(knl)
 
@@ -1434,6 +1436,7 @@ def test_ilp_and_conditionals(ctx_factory):
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
+
 def test_unr_and_conditionals(ctx_factory):
     ctx = ctx_factory()
 
@@ -1455,7 +1458,7 @@ def test_unr_and_conditionals(ctx_factory):
     knl = lp.split_iname(knl, 'k', 2, inner_tag='unr')
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
-    
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
