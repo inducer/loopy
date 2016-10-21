@@ -325,7 +325,8 @@ class TemporaryVariable(ArrayBase):
     .. attribute:: base_storage
 
         The name of a storage array that is to be used to actually
-        hold the data in this temporary.
+        hold the data in this temporary. Note that this storage
+        array must not match any existing variable names.
 
     .. attribute:: scope
 
