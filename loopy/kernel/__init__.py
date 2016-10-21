@@ -374,12 +374,12 @@ class LoopKernel(RecordWithoutPickling):
                 | set(six.iterkeys(self.temporary_variables)))
 
     @memoize_method
-    def all_variable_names(self):
+    def all_variable_names(self, include_temp_storage=True):
         return (
                 set(six.iterkeys(self.temporary_variables))
                 | set(tv.base_storage
                     for tv in six.itervalues(self.temporary_variables)
-                    if tv.base_storage is not None)
+                    if tv.base_storage is not None and include_temp_storage)
                 | set(six.iterkeys(self.substitutions))
                 | set(arg.name for arg in self.args)
                 | set(self.all_inames()))
