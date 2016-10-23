@@ -25,6 +25,7 @@ THE SOFTWARE.
 import six
 
 import loopy as lp
+import numpy as np
 import warnings
 from islpy import dim_type
 import islpy as isl
@@ -112,12 +113,8 @@ class Op:
 
     def __init__(self, dtype, name):
         self.name = name
-        import numpy as np
-        if issubclass(type(dtype), type):
-            self.dtype = np.dtype(dtype)
-        else:
-            self.dtype = dtype
-        #TODO should this check be more robust?
+        from loopy.types import to_loopy_type
+        self.dtype = to_loopy_type(dtype)
 
     def __eq__(self, other):
         return isinstance(other, Op) and (
@@ -139,12 +136,8 @@ class MemAccess:
         self.direction = direction
         self.variable = variable
 
-        import numpy as np
-        if issubclass(type(dtype), type):
-            self.dtype = np.dtype(dtype)
-        else:
-            self.dtype = dtype
-        #TODO should this check be more robust?
+        from loopy.types import to_loopy_type
+        self.dtype = to_loopy_type(dtype)
 
     def __eq__(self, other):
         return isinstance(other, MemAccess) and (
@@ -827,6 +820,7 @@ def get_op_poly(knl, numpy_types=True):
 
 def sum_ops_to_dtypes(op_poly_dict):
     result = {}
+    #TODO fix this
     for (dtype, kind), v in op_poly_dict.items():
         new_key = dtype
         if new_key in result:
@@ -1004,6 +998,7 @@ def sum_mem_access_to_bytes(m):
     """
 
     result = {}
+    #TODO fix this and test
     for (dtype, kind, direction), v in m.items():
         new_key = (kind, direction)
         bytes_transferred = int(dtype.itemsize) * v
