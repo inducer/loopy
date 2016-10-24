@@ -160,6 +160,9 @@ class InstructionBase(Record):
             within_inames = forced_iname_deps
             within_inames_is_final = forced_iname_deps_is_final
 
+        if predicates is None:
+            predicates = frozenset()
+
         new_predicates = set()
         for pred in predicates:
             if isinstance(pred, str):
@@ -206,6 +209,9 @@ class InstructionBase(Record):
 
         if tags is None:
             tags = frozenset()
+
+        if priority is None:
+            priority = 0
 
         if not isinstance(tags, frozenset):
             # was previously allowed to be tuple
