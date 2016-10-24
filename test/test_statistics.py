@@ -28,6 +28,7 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl
         as pytest_generate_tests)
 import loopy as lp
+from loopy.types import to_loopy_type
 import numpy as np
 
 from pymbolic.primitives import Variable
@@ -61,6 +62,14 @@ def test_op_counter_basic():
     assert f64mul == n*m
     assert i32add == n*m*2
 
+    poly_dtype = lp.sum_ops_to_dtypes(poly)
+    f32 = poly_dtype[to_loopy_type(np.float32)].eval_with_dict(params)
+    f64 = poly_dtype[to_loopy_type(np.float64)].eval_with_dict(params)
+    i32 = poly_dtype[to_loopy_type(np.int32)].eval_with_dict(params)
+    assert f32 == f32add + f32mul + f32div
+    assert f64 == f64mul
+    assert i32 == i32add
+    
 
 def test_op_counter_reduction():
 
@@ -80,6 +89,10 @@ def test_op_counter_reduction():
     f32add = poly[lp.Op(np.float32, 'add')].eval_with_dict(params)
     f32mul = poly[lp.Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
     assert f32add == f32mul == n*m*l
+
+    poly_dtype = lp.sum_ops_to_dtypes(poly)
+    f32 = poly_dtype[to_loopy_type(np.float32)].eval_with_dict(params)
+    assert f32 == f32add + f32mul
 
 
 def test_op_counter_logic():
@@ -228,29 +241,35 @@ def test_gmem_access_counter_basic():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[lp.MemAccess('global', np.float32,
+    f32l = poly[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='a')
               ].eval_with_dict(params)
-    f32 += poly[lp.MemAccess('global', np.float32,
+    f32l += poly[lp.MemAccess('global', np.float32,
                           stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
-    f64 = poly[lp.MemAccess('global', np.float64,
+    f64l = poly[lp.MemAccess('global', np.float64,
                          stride=0, direction='load', variable='g')
               ].eval_with_dict(params)
-    f64 += poly[lp.MemAccess('global', np.float64,
+    f64l += poly[lp.MemAccess('global', np.float64,
                           stride=0, direction='load', variable='h')
                ].eval_with_dict(params)
-    assert f32 == 3*n*m*l
-    assert f64 == 2*n*m
+    assert f32l == 3*n*m*l
+    assert f64l == 2*n*m
 
-    f32 = poly[lp.MemAccess('global', np.dtype(np.float32),
+    f32s = poly[lp.MemAccess('global', np.dtype(np.float32),
                          stride=0, direction='store', variable='c')
               ].eval_with_dict(params)
-    f64 = poly[lp.MemAccess('global', np.dtype(np.float64),
+    f64s = poly[lp.MemAccess('global', np.dtype(np.float64),
                          stride=0, direction='store', variable='e')
               ].eval_with_dict(params)
-    assert f32 == n*m*l
-    assert f64 == n*m
+    assert f32s == n*m*l
+    assert f64s == n*m
+
+    poly_b = lp.sum_mem_access_to_bytes(poly)
+    s0load = poly_b[(0, 'load')].eval_with_dict(params)
+    s0store = poly_b[(0, 'store')].eval_with_dict(params)
+    assert s0load == 4*f32l + 8*f64l
+    assert s0store == 4*f32s + 8*f64s
 
 
 def test_gmem_access_counter_reduction():
@@ -268,18 +287,24 @@ def test_gmem_access_counter_reduction():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[lp.MemAccess('global', np.float32,
+    f32l = poly[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='a')
               ].eval_with_dict(params)
-    f32 += poly[lp.MemAccess('global', np.float32,
+    f32l += poly[lp.MemAccess('global', np.float32,
                           stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
-    assert f32 == 2*n*m*l
+    assert f32l == 2*n*m*l
 
-    f32 = poly[lp.MemAccess('global', np.dtype(np.float32),
+    f32s = poly[lp.MemAccess('global', np.dtype(np.float32),
                          stride=0, direction='store', variable='c')
               ].eval_with_dict(params)
-    assert f32 == n*l
+    assert f32s == n*l
+
+    poly_b = lp.sum_mem_access_to_bytes(poly)
+    s0load = poly_b[(0, 'load')].eval_with_dict(params)
+    s0store = poly_b[(0, 'store')].eval_with_dict(params)
+    assert s0load == 4*f32l
+    assert s0store == 4*f32s
 
 
 def test_gmem_access_counter_logic():
