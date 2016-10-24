@@ -484,7 +484,8 @@ def parse_subst_rule(groups):
 def parse_special_insn(groups, insn_options):
     insn_options = parse_insn_options(
             insn_options.copy(),
-            groups["options"])
+            groups["options"],
+            assignee_names=())
 
     del insn_options["atomicity"]
 

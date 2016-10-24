@@ -1385,7 +1385,7 @@ def test_special_instructions(ctx_factory):
             for itrip,i
                 <> z[i] = z[i+1] + z[i]  {id=wr_z}
                 <> v[i] = 11  {id=wr_v}
-                ... nop {dep=wr_z:wr_v}
+                ... nop {dep=wr_z:wr_v,id=yoink}
                 z[i] = z[i] - z[i+1] + v[i]
             end
             """)
