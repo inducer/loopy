@@ -266,8 +266,8 @@ def test_gmem_access_counter_basic():
     assert f64s == n*m
 
     poly_b = lp.sum_mem_access_to_bytes(poly)
-    s0load = poly_b[(0, 'load')].eval_with_dict(params)
-    s0store = poly_b[(0, 'store')].eval_with_dict(params)
+    s0load = poly_b[('global', 0, 'load')].eval_with_dict(params)
+    s0store = poly_b[('global', 0, 'store')].eval_with_dict(params)
     assert s0load == 4*f32l + 8*f64l
     assert s0store == 4*f32s + 8*f64s
 
@@ -301,8 +301,8 @@ def test_gmem_access_counter_reduction():
     assert f32s == n*l
 
     poly_b = lp.sum_mem_access_to_bytes(poly)
-    s0load = poly_b[(0, 'load')].eval_with_dict(params)
-    s0store = poly_b[(0, 'store')].eval_with_dict(params)
+    s0load = poly_b[('global', 0, 'load')].eval_with_dict(params)
+    s0store = poly_b[('global', 0, 'store')].eval_with_dict(params)
     assert s0load == 4*f32l
     assert s0store == 4*f32s
 
