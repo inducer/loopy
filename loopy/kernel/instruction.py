@@ -210,6 +210,9 @@ class InstructionBase(Record):
         if tags is None:
             tags = frozenset()
 
+        if priority is None:
+            priority = 0
+
         if not isinstance(tags, frozenset):
             # was previously allowed to be tuple
             tags = frozenset(tags)
