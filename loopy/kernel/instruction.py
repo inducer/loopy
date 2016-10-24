@@ -435,8 +435,6 @@ class InstructionBase(Record):
                 intern_frozenset_of_ids(self.conflicts_with_groups))
         self.within_inames = (
                 intern_frozenset_of_ids(self.within_inames))
-        self.predicates = (
-                intern_frozenset_of_ids(self.predicates))
 
 # }}}
 
