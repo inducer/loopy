@@ -820,9 +820,9 @@ def get_op_poly(knl, numpy_types=True):
 
 def sum_ops_to_dtypes(op_poly_dict):
     result = {}
-    #TODO fix this
-    for (dtype, kind), v in op_poly_dict.items():
-        new_key = dtype
+    #TODO test this
+    for op, v in op_poly_dict.items():
+        new_key = op.dtype
         if new_key in result:
             result[new_key] += v
         else:
@@ -998,10 +998,10 @@ def sum_mem_access_to_bytes(m):
     """
 
     result = {}
-    #TODO fix this and test
-    for (dtype, kind, direction), v in m.items():
-        new_key = (kind, direction)
-        bytes_transferred = int(dtype.itemsize) * v
+    #TODO test this
+    for mem_access, v in m.items():
+        new_key = (mem_access.stride, mem_access.direction)
+        bytes_transferred = int(mem_access.dtype.itemsize) * v
         if new_key in result:
             result[new_key] += bytes_transferred
         else:
