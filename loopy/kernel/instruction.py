@@ -160,6 +160,9 @@ class InstructionBase(Record):
             within_inames = forced_iname_deps
             within_inames_is_final = forced_iname_deps_is_final
 
+        if predicates is None:
+            predicates = frozenset()
+
         new_predicates = set()
         for pred in predicates:
             if isinstance(pred, str):
