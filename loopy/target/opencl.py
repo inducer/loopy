@@ -486,11 +486,11 @@ class OpenCLCASTBuilder(CASTBuilder):
         return CLImage(num_target_axes, mode, name)
 
     def get_constant_arg_decl(self, name, shape, dtype, is_written):
-        from loopy.codegen import POD  # uses the correct complex type
+        from loopy.target.c import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
         from cgen.opencl import CLConstant
 
-        arg_decl = RestrictPointer(POD(dtype, name))
+        arg_decl = RestrictPointer(POD(self, dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
