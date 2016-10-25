@@ -227,7 +227,7 @@ class ASTBuilderBase(object):
 
     # }}}
 
-    def process_ast(self, kernel, node):
+    def process_ast(self, codegen_state, node):
         return node
 
 
