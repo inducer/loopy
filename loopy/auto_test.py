@@ -231,7 +231,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             args[arg.name] = cl.image_from_array(
                     queue.context, arg_desc.ref_pre_run_array.get())
 
-        elif arg.arg_class is GlobalArg:
+        elif arg.arg_class is GlobalArg or arg.arg_class is ConstantArg:
             shape = evaluate(arg.unvec_shape, parameters)
             strides = evaluate(arg.unvec_strides, parameters)
 
