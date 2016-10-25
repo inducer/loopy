@@ -56,7 +56,7 @@ def warn_with_kernel(kernel, id, text, type=LoopyWarning):
         if fnmatchcase(id, sw):
             return
 
-    text += (" (add '%s' to silenced_warnings kernel argument to disable)"
+    text += (" (add '%s' to silenced_warnings kernel attribute to disable)"
             % id)
 
     from warnings import warn

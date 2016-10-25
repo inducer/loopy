@@ -32,7 +32,7 @@ from loopy.kernel.data import (
         InstructionBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule)
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, warn_with_kernel
 import islpy as isl
 from islpy import dim_type
 
@@ -484,7 +484,8 @@ def parse_subst_rule(groups):
 def parse_special_insn(groups, insn_options):
     insn_options = parse_insn_options(
             insn_options.copy(),
-            groups["options"])
+            groups["options"],
+            assignee_names=())
 
     del insn_options["atomicity"]
 
@@ -1256,41 +1257,67 @@ def create_temporaries(knl, default_order):
 
 # {{{ determine shapes of temporaries
 
+def find_var_shape(knl, var_name, feed_expression):
+    from loopy.symbolic import AccessRangeMapper, SubstitutionRuleExpander
+    submap = SubstitutionRuleExpander(knl.substitutions)
+
+    armap = AccessRangeMapper(knl, var_name)
+
+    def run_through_armap(expr, inames):
+        armap(submap(expr), inames)
+        return expr
+
+    feed_expression(run_through_armap)
+
+    if armap.access_range is not None:
+        base_indices, shape = list(zip(*[
+                knl.cache_manager.base_index_and_length(
+                    armap.access_range, i)
+                for i in range(armap.access_range.dim(dim_type.set))]))
+    else:
+        if armap.bad_subscripts:
+            raise RuntimeError("cannot determine access range for '%s': "
+                    "undetermined index in subscript(s) '%s'"
+                    % (var_name, ", ".join(
+                            str(i) for i in armap.bad_subscripts)))
+
+        # no subscripts found, let's call it a scalar
+        base_indices = ()
+        shape = ()
+
+    return base_indices, shape
+
+
 def determine_shapes_of_temporaries(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
-    from loopy.symbolic import AccessRangeMapper, SubstitutionRuleExpander
     import loopy as lp
-
-    submap = SubstitutionRuleExpander(knl.substitutions)
+    from loopy.diagnostic import StaticValueFindingError
 
     new_temp_vars = {}
     for tv in six.itervalues(knl.temporary_variables):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
-            armap = AccessRangeMapper(knl, tv.name)
+            def feed_all_expressions(receiver):
+                for insn in knl.instructions:
+                    insn.with_transformed_expressions(
+                            lambda expr: receiver(expr, knl.insn_inames(insn)))
 
-            def run_through_armap(expr):
-                armap(submap(expr), knl.insn_inames(insn))
-                return expr
+            def feed_assignee_of_instruction(receiver):
+                for insn in knl.instructions:
+                    for assignee in insn.assignees:
+                        receiver(assignee, knl.insn_inames(insn))
 
-            for insn in knl.instructions:
-                insn.with_transformed_expressions(run_through_armap)
+            try:
+                base_indices, shape = find_var_shape(
+                        knl, tv.name, feed_all_expressions)
+            except StaticValueFindingError as e:
+                warn_with_kernel(knl, "temp_shape_fallback",
+                        "Had to fall back to legacy method of determining "
+                        "shape of temporary '%s' because: %s"
+                        % (tv.name, str(e)))
 
-            if armap.access_range is not None:
-                base_indices, shape = list(zip(*[
-                        knl.cache_manager.base_index_and_length(
-                            armap.access_range, i)
-                        for i in range(armap.access_range.dim(dim_type.set))]))
-            else:
-                if armap.bad_subscripts:
-                    raise RuntimeError("cannot determine access range for '%s': "
-                            "undetermined index in subscript(s) '%s'"
-                            % (tv.name, ", ".join(
-                                    str(i) for i in armap.bad_subscripts)))
-
-                # no subscripts found, let's call it a scalar
-                base_indices = ()
-                shape = ()
+                base_indices, shape = find_var_shape(
+                        knl, tv.name, feed_assignee_of_instruction)
 
             if tv.base_indices is lp.auto:
                 tv = tv.copy(base_indices=base_indices)
@@ -1299,8 +1326,7 @@ def determine_shapes_of_temporaries(knl):
 
         new_temp_vars[tv.name] = tv
 
-    return knl.copy(
-            temporary_variables=new_temp_vars)
+    return knl.copy(temporary_variables=new_temp_vars)
 
 # }}}
 
