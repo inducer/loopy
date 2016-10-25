@@ -1459,6 +1459,7 @@ def test_unr_and_conditionals(ctx_factory):
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
+
 def test_constant_array_args(ctx_factory):
     ctx = ctx_factory()
 
@@ -1476,7 +1477,7 @@ def test_constant_array_args(ctx_factory):
 
     knl = lp.fix_parameters(knl, n=200)
 
-    print(lp.generate_code_v2(knl).device_code())
+    lp.auto_test_vs_ref(knl, ctx, knl)
 
 
 if __name__ == "__main__":
