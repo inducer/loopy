@@ -198,7 +198,8 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, TemporaryVariable
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg,\
+            TemporaryVariable, ConstantArg
 
     from pymbolic import evaluate
 
@@ -231,7 +232,8 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             args[arg.name] = cl.image_from_array(
                     queue.context, arg_desc.ref_pre_run_array.get())
 
-        elif arg.arg_class is GlobalArg or arg.arg_class is ConstantArg:
+        elif arg.arg_class is GlobalArg or\
+                arg.arg_class is ConstantArg:
             shape = evaluate(arg.unvec_shape, parameters)
             strides = evaluate(arg.unvec_strides, parameters)
 
