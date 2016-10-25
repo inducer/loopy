@@ -1,4 +1,5 @@
-"""OpenCL target independent of PyOpenCL."""
+"""Target for C-family languages. Usable for outputting C and as a base \
+for other C-family languages."""
 
 from __future__ import division, absolute_import
 
@@ -30,11 +31,22 @@ import numpy as np  # noqa
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError
 from cgen import Pointer
-from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
-from loopy.symbolic import IdentityMapper
+import cgen
 
 from pytools import memoize_method
+
+
+class ScopeASTNode(cgen.Generable):
+    def __init__(self, available_variables, child):
+        self.available_variables = available_variables
+        self.child = child
+
+    def generate(self):
+        for i in self.child.generate():
+            yield i
+
+    mapper_method = "map_loopy_scope"
 
 
 # {{{ dtype registry wrapper
@@ -188,35 +200,6 @@ def generate_array_literal(codegen_state, array, value):
     return "{ %s }" % ", ".join(
             ecm(d_i, PREC_NONE, type_context, array.dtype)
             for d_i in data)
-
-# }}}
-
-
-# {{{ subscript CSE
-
-class CASTIdentityMapper(CASTIdentityMapperBase):
-    def map_loopy_pod(self, node, *args, **kwargs):
-        return type(node)(node.ast_builder, node.dtype, node.name)
-
-
-class SubscriptSubsetCounter(IdentityMapper):
-    def __init__(self, subset_counters):
-        self.subset_counters = subset_counters
-
-
-class ASTSubscriptCollector(CASTIdentityMapper):
-    def __init__(self):
-        self.subset_counters = {}
-
-    def map_expression(self, expr):
-        from pymbolic.primitives import is_constant
-        if isinstance(expr, CExpression) or is_constant(expr):
-            return expr
-        elif isinstance(expr, str):
-            return expr
-        else:
-            raise LoopyError(
-                    "Unexpected expression type: %s" % type(expr).__name__)
 
 # }}}
 
@@ -720,12 +703,14 @@ class CASTBuilder(ASTBuilderBase):
         from cgen import If
         return If(condition_str, ast)
 
+    def emit_scope(self, available_variables, ast):
+        return ScopeASTNode(available_variables, ast)
+
     # }}}
 
-    def process_ast(self, node):
-        sc = ASTSubscriptCollector()
-        sc(node)
-        return node
+    def process_ast(self, codegen_state, node):
+        from loopy.target.c.subscript_cse import eliminate_common_subscripts
+        return eliminate_common_subscripts(codegen_state, node)
 
 
 # vim: foldmethod=marker

@@ -1399,6 +1399,8 @@ def test_special_instructions(ctx_factory):
 
 
 def test_index_cse(ctx_factory):
+    ctx = ctx_factory()
+
     knl = lp.make_kernel(["{[i,j,k,l,m]:0<=i,j,k,l,m<n}"],
                          """
                          for i
@@ -1411,6 +1413,13 @@ def test_index_cse(ctx_factory):
     knl = lp.set_loop_priority(knl, "i,j,k,l")
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
     knl = lp.fix_parameters(knl, n=5)
+
+    ref_knl = knl
+    ref_knl = lp.set_options(ref_knl, eliminate_common_subscripts=False)
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
+
+    knl = knl.copy(target=lp.ISPCTarget())
+
     print(lp.generate_code_v2(knl).device_code())
 
 
@@ -1434,6 +1443,7 @@ def test_ilp_and_conditionals(ctx_factory):
 
     knl = lp.split_iname(knl, 'k', 2, inner_tag='ilp')
 
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 

@@ -213,6 +213,9 @@ class ASTBuilderBase(object):
     def emit_if(self, condition_str, ast):
         raise NotImplementedError()
 
+    def emit_scope(self, available_variables, ast):
+        return ast
+
     def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
         raise NotImplementedError()
 
@@ -224,7 +227,7 @@ class ASTBuilderBase(object):
 
     # }}}
 
-    def process_ast(self, node):
+    def process_ast(self, kernel, node):
         return node
 
 

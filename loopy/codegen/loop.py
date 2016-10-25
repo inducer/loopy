@@ -148,8 +148,13 @@ def generate_unroll_loop(codegen_state, sched_index):
     for i in range(length):
         idx_aff = lower_bound_aff + i
         new_codegen_state = codegen_state.fix(iname, idx_aff)
-        result.append(
-                build_loop_nest(new_codegen_state, sched_index+1))
+        inner = build_loop_nest(new_codegen_state, sched_index+1)
+        inner = inner.with_new_ast(
+                codegen_state,
+                codegen_state.ast_builder.emit_scope(
+                    (iname,),
+                    inner.current_ast(codegen_state)))
+        result.append(inner)
 
     return merge_codegen_results(codegen_state, result)
 
@@ -246,7 +251,15 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
                 if isinstance(kernel.iname_to_tag.get(iname), HardwareParallelTag)]
 
     if not hw_inames_left:
-        return next_func(codegen_state)
+        hw_inames = tuple(iname
+                for iname in all_inames_by_insns
+                if isinstance(kernel.iname_to_tag.get(iname), HardwareParallelTag))
+
+        inner = next_func(codegen_state)
+        return inner.with_new_ast(
+                codegen_state,
+                codegen_state.ast_builder.emit_scope(hw_inames,
+                    inner.current_ast(codegen_state)))
 
     global_size, local_size = kernel.get_grid_sizes_for_insn_ids(
             insn_ids_for_block)
@@ -432,6 +445,11 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                     kernel, slab, iname)))
 
         inner = build_loop_nest(new_codegen_state, sched_index+1)
+        inner = inner.with_new_ast(
+                codegen_state,
+                codegen_state.ast_builder.emit_scope(
+                    (loop_iname,),
+                    inner.current_ast(codegen_state)))
 
         # }}}
 

@@ -135,8 +135,8 @@ def check_sizes(kernel, device):
     from loopy.diagnostic import LoopyAdvisory, LoopyError
 
     if device is None:
-        from loopy.diagnostic import warn
-        warn(kernel, "no_device_in_pre_codegen_checks",
+        from loopy.diagnostic import warn_with_kernel
+        warn_with_kernel(kernel, "no_device_in_pre_codegen_checks",
                 "No device parameter was passed to the PyOpenCLTarget. "
                 "Perhaps you want to pass a device to benefit from "
                 "additional checking.", LoopyAdvisory)

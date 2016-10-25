@@ -37,6 +37,8 @@ class Options(Record):
     Unless otherwise specified, these options are Boolean-valued
     (i.e. on/off).
 
+    .. ------------------------------------------------------------------------
+
     .. rubric:: Code-generation options
 
     .. attribute:: annotate_inames
@@ -61,6 +63,16 @@ class Options(Record):
         Ignore the boostable_into field of the kernel, when
         determining whether an iname duplication is necessary
         for the kernel to be schedulable.
+
+    .. attribute:: eliminate_common_subscripts
+
+        If ``True`` (the default), variable assignments with
+        precomputed subexpressions of array indices will be
+        emitted.
+
+        .. versionadded:: 2016.3
+
+    .. ------------------------------------------------------------------------
 
     .. rubric:: Invocation-related options
 
@@ -121,6 +133,8 @@ class Options(Record):
 
         A :class:`bool`. Whether to allow colors in terminal output
 
+    .. ------------------------------------------------------------------------
+
     .. rubric:: Features
 
     .. attribute:: disable_global_barriers
@@ -139,6 +153,7 @@ class Options(Record):
             trace_assignments=False,
             trace_assignment_values=False,
             ignore_boostable_into=False,
+            eliminate_common_subscripts=True,
 
             skip_arg_checks=False, no_numpy=False, return_dict=False,
             write_wrapper=False, highlight_wrapper=False,
@@ -163,6 +178,7 @@ class Options(Record):
                 trace_assignments=trace_assignments,
                 trace_assignment_values=trace_assignment_values,
                 ignore_boostable_into=ignore_boostable_into,
+                eliminate_common_subscripts=eliminate_common_subscripts,
 
                 skip_arg_checks=skip_arg_checks, no_numpy=no_numpy,
                 return_dict=return_dict,

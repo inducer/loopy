@@ -485,6 +485,20 @@ class ISPCASTBuilder(CASTBuilder):
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
+
+    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+        from cgen.ispc import ISPCUniform
+        from loopy.target.c import POD
+
+        decl = ISPCUniform(POD(self, dtype, name))
+
+        from cgen import Initializer, Const
+
+        if is_const:
+            decl = Const(decl)
+
+        return Initializer(decl, val_str)
+
     # }}}
 
 
