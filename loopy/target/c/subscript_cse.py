@@ -84,12 +84,12 @@ class SubscriptSubsetCounter(ExprIdentityMapper):
     def __init__(self, kernel, term_set_to_count):
         self.kernel = kernel
         self.term_set_to_count = term_set_to_count
+        self.allowable_vars = self.kernel.all_inames() | self.kernel.outer_params()
 
     def map_subscript(self, expr):
-        iname_terms, _ = get_terms(self.kernel.all_inames(), expr.index)
-        iname_terms = frozenset(iname_terms)
-        self.term_set_to_count[iname_terms] = \
-                self.term_set_to_count.get(iname_terms, 0) + 1
+        terms, _ = get_terms(self.allowable_vars, expr.index)
+        terms = frozenset(terms)
+        self.term_set_to_count[terms] = self.term_set_to_count.get(terms, 0) + 1
 
 
 class ASTSubexpressionCollector(CASTIdentityMapper):
@@ -325,7 +325,7 @@ def eliminate_common_subscripts(codegen_state, node):
             codegen_state=codegen_state,
             name_generator=codegen_state.kernel.get_var_name_generator(),
             term_set_to_count=sc.term_set_to_count,
-            available_variables=frozenset(),
+            available_variables=codegen_state.kernel.outer_params(),
             term_set_to_variable=term_set_to_variable,
             term_subset_to_count=compute_term_subset_to_count(
                 sc.term_set_to_count, term_set_to_variable))
