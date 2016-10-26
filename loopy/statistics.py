@@ -42,7 +42,10 @@ __doc__ = """
 
 .. autofunction:: get_op_poly
 
+.. autofunction:: get_lmem_access_poly
+.. autofunction:: get_DRAM_access_poly
 .. autofunction:: get_gmem_access_poly
+.. autofunction:: get_mem_access_poly
 
 .. autofunction:: sum_mem_access_to_bytes
 
@@ -110,6 +113,19 @@ def stringify_stats_mapping(m):
 
 
 class Op:
+    """An arithmetic operation
+
+    .. attribute:: dtype
+
+       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       data type operated on.
+
+    .. attribute:: name
+
+       A :class:`string` that specifies the kind of arithmetic operation as
+       *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
+
+    """
 
     def __init__(self, dtype, name):
         self.name = name
@@ -126,6 +142,34 @@ class Op:
 
 
 class MemAccess:
+    """A memory access
+
+    .. attribute:: mtype
+
+       A :class:`string` that specifies the memory type accessed as **global**
+       or **local**
+
+    .. attribute:: dtype
+
+       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       data type accessed.
+
+    .. attribute:: stride
+
+       A :class:`int` specifies stride of the memory access. A stride of 0
+       indicates a uniform access (i.e. all threads access the same item).
+
+    .. attribute:: direction
+
+       A :class:`string` that specifies the direction of memory access as
+       **load** or **store**.
+
+    .. attribute:: variable
+
+       A :class:`string` that specifies the variable name of the data
+       accessed.
+
+    """
 
     #TODO "ANY_VAR" does not work yet
     #TODO currently counting all lmem access as stride-1
@@ -764,16 +808,14 @@ def get_op_poly(knl, numpy_types=True):
 
     :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
-    :return: A mapping of **{(** *type* **,** :class:`string` **)**
-             **:** :class:`islpy.PwQPolynomial` **}**.
+    :parameter numpy_types: A :class:`boolean` specifying whether the types
+                            in the returned mapping should be numpy types
+                            instead of :class:'loopy.LoopyType`.
 
-             - The *type* specifies the type of the data being
-               accessed. This can be a :class:`numpy.dtype` if
-               *numpy_types* is True, otherwise the internal
-               loopy type.
+    :return: A mapping of **{** :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**.
 
-             - The string specifies the operation type as
-               *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
+             - The :class:`loopy.Op` specifies an arithmetic operation with
+               specific characteristics.
 
              - The :class:`islpy.PwQPolynomial` holds the number of operations of
                the kind specified in the key (in terms of the
@@ -785,8 +827,8 @@ def get_op_poly(knl, numpy_types=True):
 
         poly = get_op_poly(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
-        f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+        f32add = poly[Op(np.dtype(np.float32), 'add')].eval_with_dict(params)
+        f32mul = poly[Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -819,6 +861,34 @@ def get_op_poly(knl, numpy_types=True):
 
 
 def sum_ops_to_dtypes(op_poly_dict):
+    """Sum the mapping returned by :func:`get_op_poly` to a mapping that ignores arithmetic op type
+
+    :parameter op_poly_dict: A mapping of **{** :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**.
+
+    :return: A mapping of **{** :class:`loopy.LoopyType` **:** :class:`islpy.PwQPolynomial` **}**
+
+             - The :class:`loopy.LoopyType` specifies the data type operated on 
+
+             - The :class:`islpy.PwQPolynomial` holds the number of arithmetic
+               operations on the data type specified (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        op_map = get_op_poly(knl)
+        op_map_by_dtype = sum_ops_to_dtypes(op_map)
+        params = {'n': 512, 'm': 256, 'l': 128}
+
+        f32ops = op_map_by_dtype[to_loopy_type(np.float32)].eval_with_dict(params)
+        f64ops = op_map_by_dtype[to_loopy_type(np.float64)].eval_with_dict(params)
+        i32ops = op_map_by_dtype[to_loopy_type(np.int32)].eval_with_dict(params)
+
+        # (now use these counts to predict performance)
+
+    """
+
     result = {}
     for op, v in op_poly_dict.items():
         new_key = op.dtype
@@ -840,53 +910,19 @@ def get_lmem_access_poly(knl):
     return get_mem_access_poly(knl, 'local')
 
 
+def get_DRAM_access_poly(knl):
+    """Count the number of global memory accesses in a loopy kernel.
+    """
+    from warnings import warn
+    warn("get_DRAM_access_poly is deprecated. "
+         "Use get_mem_access_poly with global option instead",
+         DeprecationWarning, stacklevel=2)
+    return get_mem_access_poly(knl, 'global')
+
 # {{{ get_gmem_access_poly
 
 def get_gmem_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
-
-    :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
-                    counted.
-
-    :return: A mapping of **{(** *type* **,** :class:`string` **,**
-             :class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**.
-
-             - The *type* specifies the type of the data being
-               accessed. This can be a :class:`numpy.dtype` if
-               *numpy_types* is True, otherwise the internal
-               loopy type.
-
-             - The first string in the map key specifies the global memory
-               access type as
-               *consecutive*, *nonconsecutive*, or *uniform*.
-
-             - The second string in the map key specifies the global memory
-               access type as a
-               *load*, or a *store*.
-
-             - The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses
-               with the characteristics specified in the key (in terms of the
-               :class:`loopy.LoopKernel` *inames*).
-
-    Example usage::
-
-        # (first create loopy kernel and specify array data types)
-
-        subscript_map = get_gmem_access_poly(knl)
-        params = {'n': 512, 'm': 256, 'l': 128}
-
-        f32_uncoalesced_load = subscript_map.dict[
-                            (np.dtype(np.float32), 'nonconsecutive', 'load')
-                            ].eval_with_dict(params)
-        f32_coalesced_load = subscript_map.dict[
-                            (np.dtype(np.float32), 'consecutive', 'load')
-                            ].eval_with_dict(params)
-        f32_coalesced_store = subscript_map.dict[
-                            (np.dtype(np.float32), 'consecutive', 'store')
-                            ].eval_with_dict(params)
-
-        # (now use these counts to predict performance)
-
     """
     from warnings import warn
     warn("get_gmem_access_poly is deprecated. "
@@ -895,16 +931,65 @@ def get_gmem_access_poly(knl):
     return get_mem_access_poly(knl, 'global')
 
 
-def get_DRAM_access_poly(knl):
-    from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. "
-         "Use get_mem_access_poly with global option instead",
-         DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl, 'global')
-
 # }}}
 
 def get_mem_access_poly(knl, mtype, numpy_types=True):
+    """Count the number of memory accesses in a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
+                    counted.
+
+    :parameter mtype: A :class:`string` specifying the memory accesses as
+                      *global* or *local*.
+
+    :parameter numpy_types: A :class:`boolean` specifying whether the types
+                            in the returned mapping should be numpy types
+                            instead of :class:'loopy.LoopyType`.
+
+    :return: A mapping of **{** :class:`loopy.MemAccess` **:**
+             :class:`islpy.PwQPolynomial` **}**.
+
+             - The :class:`loopy.MemAccess` specifies the type of memory
+               access.
+
+             - The :class:`islpy.PwQPolynomial` holds the number of memory
+               accesses with the characteristics specified in the key (in terms
+               of the :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        params = {'n': 512, 'm': 256, 'l': 128}
+        gmem_access_map = get_mem_access_poly('global', knl)
+
+        f32_stride1_g_loads_a = gmem_access_map[MemAccess('global', np.float32,
+                                                          stride=1,
+                                                          direction='load',
+                                                          variable='a')
+                                               ].eval_with_dict(params)
+        f32_stride1_g_stores_a = gmem_access_map[MemAccess('global', np.float32,
+                                                           stride=1,
+                                                           direction='stores')
+                                                           variable='a'
+                                                ].eval_with_dict(params)
+
+        lmem_access_map = get_mem_access_poly('local', knl)
+
+        f32_stride1_l_loads_x = lmem_access_map[MemAccess('local', np.float32,
+                                                          stride=1,
+                                                          direction='load',
+                                                          variable='x')
+                                               ].eval_with_dict(params)
+        f32_stride1_l_stores_x = lmem_access_map[MemAccess('local', np.float32,
+                                                           stride=1,
+                                                           direction='stores',
+                                                           variable='x')
+                                                ].eval_with_dict(params)
+
+        # (now use these counts to predict performance)
+
+    """
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
 
     class CacheHolder(object):
@@ -988,12 +1073,43 @@ def get_mem_access_poly(knl, mtype, numpy_types=True):
 # {{{ sum_mem_access_to_bytes
 
 def sum_mem_access_to_bytes(m):
-    """Sum the mapping returned by :func:`get_gmem_access_poly` to a mapping
+    """Convert counts returned by :func:`get_mem_access_poly` to bytes and sum across data types and variables
 
-    **{(** :class:`string` **,** :class:`string` **)**
-    **:** :class:`islpy.PwQPolynomial` **}**
+    :parameter m: A mapping of **{** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**.
 
-    i.e., aggregate the transfer numbers for all types into a single byte count.
+    :return: A mapping of **{(** :class:`string`**,** :class:`int` **,** :class:`string` **)**
+             **:** :class:`islpy.PwQPolynomial` **}**
+
+             - The first string in the key specifies the memory type as *global* or *local*
+
+             - The integer in the key specifies the *stride*
+
+             - The second string in the key specifies the direction as *load* or *store*
+
+             - The :class:`islpy.PwQPolynomial` holds the aggregate transfer
+               size in bytes for memory accesses of all data types with the
+               characteristics specified in the key (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        mem_access_map = get_mem_access_poly('global', knl)
+        byte_totals_map = sum_mem_access_to_bytes(mem_access_map)
+        params = {'n': 512, 'm': 256, 'l': 128}
+
+        stride1_global_bytes_loaded = byte_totals_map[('global', 1, 'load')
+                                                     ].eval_with_dict(params)
+        stride2_global_bytes_loaded = byte_totals_map[('global', 2, 'load')
+                                                     ].eval_with_dict(params)
+        stride1_global_bytes_stored = byte_totals_map[('global', 1, 'store')
+                                                     ].eval_with_dict(params)
+        stride2_global_bytes_stored = byte_totals_map[('global', 2, 'store')
+                                                     ].eval_with_dict(params)
+
+        # (now use thess counts to predict performance)
+
     """
 
     result = {}
@@ -1030,9 +1146,9 @@ def get_synchronization_poly(knl):
 
         # (first create loopy kernel and specify array data types)
 
-        barrier_poly = get_synchronization_poly(knl)
+        sync_poly = get_synchronization_poly(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        barrier_count = barrier_poly.eval_with_dict(params)
+        barrier_count = sync_poly['barrier_local'].eval_with_dict(params)
 
         # (now use this count to predict performance)
 
