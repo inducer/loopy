@@ -301,7 +301,9 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
         from pymbolic.primitives import is_constant
         if isinstance(expr, CExpression):
             ssr = SubscriptSubsetReplacer(self, subex_rep_state)
-            return ssr(expr.expr)
+            return CExpression(
+                    expr.to_code_mapper,
+                    ssr(expr.expr))
         elif isinstance(expr, str) or is_constant(expr):
             return expr
         else:
