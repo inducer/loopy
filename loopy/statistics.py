@@ -171,10 +171,8 @@ class MemAccess:
 
     """
 
-    #TODO "ANY_VAR" does not work yet
     #TODO currently counting all lmem access as stride-1
-    def __init__(self, mtype, dtype, stride=1, direction=None,
-                 variable='ANY_VAR'):
+    def __init__(self, mtype, dtype, stride=1, direction=None, variable=None):
         self.mtype = mtype
         self.stride = stride
         self.direction = direction
@@ -189,7 +187,7 @@ class MemAccess:
                 other.dtype == self.dtype and
                 other.stride == self.stride and
                 other.direction == self.direction and
-                ((self.variable == 'ANY_VAR' or other.variable == 'ANY_VAR') or
+                ((self.variable == None or other.variable == None) or
                  self.variable == other.variable))
 
     def __hash__(self):
@@ -198,7 +196,7 @@ class MemAccess:
         if direction == None:
             direction = 'None'
         if variable == None:
-            variable = 'ANY_VAR'
+            variable = 'None'
         return hash(str(self.mtype)+str(self.dtype)+str(self.stride)
                     +direction+variable)
 
@@ -933,7 +931,7 @@ def get_gmem_access_poly(knl):
 
 # }}}
 
-def get_mem_access_poly(knl, mtype, numpy_types=True):
+def get_mem_access_poly(knl, mtype, numpy_types=True, ignore_vars=False):
     """Count the number of memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
@@ -945,6 +943,9 @@ def get_mem_access_poly(knl, mtype, numpy_types=True):
     :parameter numpy_types: A :class:`boolean` specifying whether the types
                             in the returned mapping should be numpy types
                             instead of :class:'loopy.LoopyType`.
+
+    :parameter ignore_vars: A :class:`boolean` specifying whether to separate 
+                            memory accesses by variable name.
 
     :return: A mapping of **{** :class:`loopy.MemAccess` **:**
              :class:`islpy.PwQPolynomial` **}**.
@@ -970,8 +971,8 @@ def get_mem_access_poly(knl, mtype, numpy_types=True):
                                                ].eval_with_dict(params)
         f32_stride1_g_stores_a = gmem_access_map[MemAccess('global', np.float32,
                                                            stride=1,
-                                                           direction='stores')
-                                                           variable='a'
+                                                           direction='store',
+                                                           variable='a')
                                                 ].eval_with_dict(params)
 
         lmem_access_map = get_mem_access_poly('local', knl)
@@ -983,7 +984,7 @@ def get_mem_access_poly(knl, mtype, numpy_types=True):
                                                ].eval_with_dict(params)
         f32_stride1_l_stores_x = lmem_access_map[MemAccess('local', np.float32,
                                                            stride=1,
-                                                           direction='stores',
+                                                           direction='store',
                                                            variable='x')
                                                 ].eval_with_dict(params)
 
@@ -1068,7 +1069,10 @@ def get_mem_access_poly(knl, mtype, numpy_types=True):
                        , count)
                       for mem_access, count in six.iteritems(result))
 
-    return result
+    if ignore_vars:
+        return sum_mem_access_across_vars(result)
+    else:
+        return result
 
 # {{{ sum_mem_access_to_bytes
 
@@ -1134,7 +1138,7 @@ def sum_mem_access_across_vars(m):
 
     :return: A mapping of **{(** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**
 
-             - The **variable** attribute in the keys of the returned mapping is set to 'ANY_VAR' 
+             - The **variable** attribute in the keys of the returned mapping is set to None 
 
              - The :class:`islpy.PwQPolynomial` holds the aggregate transfer
                size in bytes for memory accesses of all data types with the

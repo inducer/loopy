@@ -329,22 +329,22 @@ def test_gmem_access_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = lp.get_mem_access_poly(knl, 'global')
+    poly = lp.get_mem_access_poly(knl, 'global', ignore_vars=True)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
     f32 = poly[lp.MemAccess('global', np.float32,
-                         stride=0, direction='load', variable='g')
+                         stride=0, direction='load')
               ].eval_with_dict(params)
     f64 = poly[lp.MemAccess('global', np.float64,
-                         stride=0, direction='load', variable='h')
+                         stride=0, direction='load')
               ].eval_with_dict(params)
     assert f32 == 2*n*m
     assert f64 == n*m
 
     f64 = poly[lp.MemAccess('global', np.float64,
-                         stride=0, direction='store', variable='e')
+                         stride=0, direction='store')
               ].eval_with_dict(params)
     assert f64 == n*m
 
