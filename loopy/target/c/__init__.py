@@ -549,6 +549,18 @@ class CASTBuilder(ASTBuilderBase):
 
         return arg_decl
 
+    def get_constant_arg_decl(self, name, shape, dtype, is_written):
+        from loopy.target.c import POD  # uses the correct complex type
+        from cgen import RestrictPointer, Const
+        from cgen.opencl import CLConstant
+
+        arg_decl = RestrictPointer(POD(self, dtype, name))
+
+        if not is_written:
+            arg_decl = Const(arg_decl)
+
+        return arg_decl
+
     def emit_assignment(self, codegen_state, insn):
         kernel = codegen_state.kernel
         ecm = codegen_state.expression_to_code_mapper
