@@ -1125,6 +1125,66 @@ def sum_mem_access_to_bytes(m):
 
 # }}}
 
+# {{{ sum_mem_access_across_vars
+
+def sum_mem_access_across_vars(m):
+    """Remove variable name divisions in mapping returned by :func:`get_mem_access_poly`
+
+    :parameter m: A mapping of **{** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**.
+
+    :return: A mapping of **{(** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**
+
+             - The **variable** attribute in the keys of the returned mapping is set to 'ANY_VAR' 
+
+             - The :class:`islpy.PwQPolynomial` holds the aggregate transfer
+               size in bytes for memory accesses of all data types with the
+               characteristics specified in the key (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        params = {'n': 512, 'm': 256, 'l': 128}
+        gmem_access_map = get_mem_access_poly('global', knl)
+        gmem_acrossvars = sum_mem_access_across_vars(gmem_access_map)
+
+        f32_stride1_g_loads = gmem_acrossvars[MemAccess('global', np.float32,
+                                                        stride=1,
+                                                        direction='load') # do not specify variable
+                                             ].eval_with_dict(params)
+        f32_stride1_g_stores = gmem_acrossvars[MemAccess('global', np.float32,
+                                                         stride=1,
+                                                         direction='store') # do not specify variable
+                                              ].eval_with_dict(params)
+
+        lmem_access_map = get_mem_access_poly('local', knl)
+        lmem_acrossvars = sum_mem_access_across_vars(lmem_access_map)
+
+        f32_stride1_l_loads = lmem_acrossvars[MemAccess('local', np.float32,
+                                                        stride=1,
+                                                        direction='load') # do not specify variable
+                                             ].eval_with_dict(params)
+        f32_stride1_l_stores = lmem_acrossvars[MemAccess('local', np.float32,
+                                                         stride=1,
+                                                         direction='store') # do not specify variable
+                                              ].eval_with_dict(params)
+
+        # (now use these counts to predict performance)
+
+    """
+
+    result = {}
+    for mem_access, v in m.items():
+        new_key = MemAccess(mem_access.mtype, mem_access.dtype, mem_access.stride, mem_access.direction)
+        if new_key in result:
+            result[new_key] += m[mem_access]
+        else:
+            result[new_key] = m[mem_access]
+
+    return result
+
+# }}}
 
 # {{{ get_synchronization_poly
 

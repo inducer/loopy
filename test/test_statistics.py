@@ -271,6 +271,16 @@ def test_gmem_access_counter_basic():
     assert s0load == 4*f32l + 8*f64l
     assert s0store == 4*f32s + 8*f64s
 
+    poly_c = lp.sum_mem_access_across_vars(poly)
+    f32lall = poly_c[lp.MemAccess('global', np.float32,
+                                stride=0, direction='load')
+                  ].eval_with_dict(params)
+    f64lall = poly_c[lp.MemAccess('global', np.float64,
+                                stride=0, direction='load')
+                  ].eval_with_dict(params)
+    assert f32lall == 3*n*m*l
+    assert f64lall == 2*n*m
+
 
 def test_gmem_access_counter_reduction():
 
