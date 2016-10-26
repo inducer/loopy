@@ -241,18 +241,20 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     from loopy.schedule import get_insn_ids_for_block_at
     insn_ids_for_block = get_insn_ids_for_block_at(kernel.schedule, schedule_index)
 
-    if hw_inames_left is None:
-        all_inames_by_insns = set()
+    def get_all_inames_by_insns():
+        result = set()
         for insn_id in insn_ids_for_block:
-            all_inames_by_insns |= kernel.insn_inames(insn_id)
+            result |= kernel.insn_inames(insn_id)
+        return result
 
+    if hw_inames_left is None:
         hw_inames_left = [iname
-                for iname in all_inames_by_insns
+                for iname in get_all_inames_by_insns()
                 if isinstance(kernel.iname_to_tag.get(iname), HardwareParallelTag)]
 
     if not hw_inames_left:
         hw_inames = tuple(iname
-                for iname in all_inames_by_insns
+                for iname in get_all_inames_by_insns()
                 if isinstance(kernel.iname_to_tag.get(iname), HardwareParallelTag))
 
         inner = next_func(codegen_state)
