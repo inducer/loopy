@@ -438,6 +438,8 @@ def test_sum_factorization():
 def test_lbm(ctx_factory):
     ctx = ctx_factory()
 
+    # D2Q4Q4Q4 lattice Boltzmann scheme for the shallow water equations
+    # Example by Loic Gouarin <loic.gouarin@math.u-psud.fr>
     knl = lp.make_kernel(
         "{[ii,jj]:0<=ii<nx-2 and 0<=jj<ny-2}",
         """  # noqa (silences flake8 line length warning)
@@ -489,7 +491,6 @@ def test_lbm(ctx_factory):
         """)
 
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
-    #knl = lp.add_and_infer_dtypes(knl, {"f_new": np.float32})
 
     ref_knl = knl
 
