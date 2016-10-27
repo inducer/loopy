@@ -395,6 +395,9 @@ def test_gmem_access_counter_specialops():
     assert f32 == n*m*l
     assert f64 == n*m
 
+    filtered_map = lp.filter_mem_access_poly_fields(poly, directions=['load'], variables=['a','g'])
+    tot = lp.eval_and_sum_polys(filtered_map, params)
+    assert tot == n*m*l + n*m
 
 def test_gmem_access_counter_bitwise():
 

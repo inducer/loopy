@@ -1150,9 +1150,8 @@ def sum_mem_access_across_vars(m):
 
              - The **variable** attribute in the keys of the returned mapping is set to None 
 
-             - The :class:`islpy.PwQPolynomial` holds the aggregate transfer
-               size in bytes for memory accesses of all data types with the
-               characteristics specified in the key (in terms of the
+             - The :class:`islpy.PwQPolynomial` holds the aggregate counts for
+               memory accesses across all variables (in terms of the
                :class:`loopy.LoopKernel` *inames*).
 
     Example usage::
@@ -1227,10 +1226,9 @@ def reduce_mem_access_poly_fields(m, mtype=True, dtype=True, stride=True,
 
     :return: A mapping of **{(** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**
 
-             - The :class:`islpy.PwQPolynomial` holds the aggregate transfer
-               size in bytes for memory accesses of all data types with the
-               characteristics specified in the key (in terms of the
-               :class:`loopy.LoopKernel` *inames*).
+             - The :class:`islpy.PwQPolynomial` holds the counts (in terms of
+               the :class:`loopy.LoopKernel` *inames*) for memory accesses
+               categorized by the fields not set to False.
 
     Example usage::
 
@@ -1280,6 +1278,88 @@ def reduce_mem_access_poly_fields(m, mtype=True, dtype=True, stride=True,
     return result
 
 # }}}
+
+# {{{ filter_mem_access_poly_fields
+
+def filter_mem_access_poly_fields(m, mtypes=None, dtypes=None, strides=None,
+                                  directions=None, variables=None):
+    """Take map returned from :func:`get_mem_access_poly` and remove items without specified MemAccess fields
+
+    :parameter m: A mapping of **{** :class:`loopy.MemAccess` **:**
+                  :class:`islpy.PwQPolynomial` **}**.
+
+    :parameter mtypes: A list of :class:`string` that specifies the memory type
+                      accessed as **global** or **local**
+
+    :parameter dtypes: A list of :class:`loopy.LoopyType` (or
+                      :class:`numpy.dtype`) that specifies the data type
+                      accessed.
+
+    :parameter strides: A list of :class:`int` specifies stride of the memory
+                       access. A stride of 0 indicates a uniform access (i.e.
+                       all threads access the same item).
+
+    :parameter directions: A list of :class:`string` that specifies the
+                          direction of memory access as **load** or **store**.
+
+    :parameter variables: A list of :class:`string` that specifies the variable
+                         name of the data accessed.
+
+
+    :return: A mapping of **{(** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**
+
+             - The :class:`islpy.PwQPolynomial` holds the counts (in terms of
+               the :class:`loopy.LoopKernel` *inames*) for memory accesses
+               matching the fields passed as parameters.
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        params = {'n': 512, 'm': 256, 'l': 128}
+        mem_map = lp.get_mem_access_poly(knl)
+        filtered_map = lp.filter_mem_access_poly_fields(mem_map,
+                                                        directions=['load'],
+                                                        variables=['a','g'])
+        tot = lp.eval_and_sum_polys(filtered_map, params)
+
+        # (now use these counts to predict performance)
+
+    """
+
+    if dtypes is not None:
+        dtypes_lp = [to_loopy_type(d) for d in dtypes]
+
+    result = {}
+
+    for k, v in m.items():
+        if (mtypes is None or k.mtype in mtypes) and \
+           (dtypes is None or k.dtype in dtypes_lp) and \
+           (strides is None or k.stride in strides) and \
+           (directions is None or k.direction in directions) and \
+           (variables is None or k.variable in variables):
+
+            new_key = MemAccess(k.mtype, k.dtype, k.stride, k.direction, k.variable)
+
+            if new_key in result:
+                result[new_key] += m[k]
+            else:
+                result[new_key] = m[k]
+
+    return result
+
+# }}}
+
+def sum_polys(m):
+    total = isl.PwQPolynomial('{ 0 }')
+    for k, v in m.items():
+        total += v
+    return total
+
+
+def eval_and_sum_polys(m, params):
+    return sum_polys(m).eval_with_dict(params)
+
 
 # {{{ get_synchronization_poly
 
