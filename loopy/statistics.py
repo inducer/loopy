@@ -49,6 +49,10 @@ __doc__ = """
 
 .. autofunction:: sum_mem_access_to_bytes
 .. autofunction:: reduce_mem_access_poly_fields
+.. autofunction:: filter_mem_access_poly_fields
+
+.. autofunction:: reduce_op_poly_fields
+.. autofunction:: filter_op_poly_fields
 
 .. autofunction:: get_synchronization_poly
 
@@ -128,18 +132,29 @@ class Op:
 
     """
 
-    def __init__(self, dtype, name):
+    def __init__(self, dtype=None, name=None):
         self.name = name
-        from loopy.types import to_loopy_type
-        self.dtype = to_loopy_type(dtype)
+        if dtype is None:
+            self.dtype = dtype
+        else:
+            from loopy.types import to_loopy_type
+            self.dtype = to_loopy_type(dtype)
 
     def __eq__(self, other):
         return isinstance(other, Op) and (
-                other.dtype == self.dtype and
-                other.name == self.name )
+                (self.dtype is None or other.dtype is None or
+                 self.dtype == other.dtype) and
+                (self.name is None or other.name is None or
+                 self.name == other.name))
 
     def __hash__(self):
-        return hash(str(self.dtype)+self.name)
+        dtype = self.dtype
+        name = self.name
+        if dtype is None:
+            dtype = 'None'
+        if name is None:
+            name = 'None'
+        return hash(str(dtype)+name)
 
 
 class MemAccess:
@@ -172,7 +187,7 @@ class MemAccess:
 
     """
 
-    #TODO currently counting all lmem access as stride-1
+    #TODO currently counting all lmem access as stride None
     def __init__(self, mtype=None, dtype=None, stride=None, direction=None, variable=None):
         self.mtype = mtype
         self.stride = stride
@@ -1135,6 +1150,7 @@ def sum_mem_access_to_bytes(m):
     return result
 
 # }}}
+
 # {{{ reduce_mem_access_poly_fields
 
 def reduce_mem_access_poly_fields(m, mtype=True, dtype=True, stride=True,
@@ -1263,6 +1279,7 @@ def filter_mem_access_poly_fields(m, mtypes=None, dtypes=None, strides=None,
 
     """
 
+    from loopy.types import to_loopy_type
     if dtypes is not None:
         dtypes_lp = [to_loopy_type(d) for d in dtypes]
 
@@ -1276,6 +1293,119 @@ def filter_mem_access_poly_fields(m, mtypes=None, dtypes=None, strides=None,
            (variables is None or k.variable in variables):
 
             new_key = MemAccess(k.mtype, k.dtype, k.stride, k.direction, k.variable)
+
+            if new_key in result:
+                result[new_key] += m[k]
+            else:
+                result[new_key] = m[k]
+
+    return result
+
+# }}}
+
+# {{{ reduce_op_poly_fields
+
+def reduce_op_poly_fields(m, dtype=True, name=True):
+    """Take map returned from :func:`get_op_poly`, remove specified Op fields from keys, and combine counts
+
+    :parameter m: A mapping of **{** :class:`loopy.Op` **:**
+                  :class:`islpy.PwQPolynomial` **}**.
+
+    :parameter dtype: A :class:`boolean` specifying whether keys in returned
+                      map will include the data type.
+
+    :parameter name: A :class:`boolean` specifying whether keys in returned
+                     map will include the name of the operation.
+
+    :return: A mapping of **{(** :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**
+
+             - The :class:`islpy.PwQPolynomial` holds the counts (in terms of
+               the :class:`loopy.LoopKernel` *inames*) for arithmetic ops
+               categorized by the fields not set to False.
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        params = {'n': 512, 'm': 256, 'l': 128}
+        op_map = get_op_poly(knl)
+        reduced_op_map = reduce_op_fields(op_map, name=False)
+
+        all_f32_ops = reduced_op_map[Op(dtype=np.float32)].eval_with_dict(params)
+        all_f64_ops = reduced_op_map[Op(dtype=np.float64)].eval_with_dict(params)
+
+        reduced_op_map = reduce_op_fields(op_map, dtype=False)
+
+        all_add_ops = reduced_op_map[Op(name='add')].eval_with_dict(params)
+        all_mul_ops = reduced_op_map[Op(name='mul')].eval_with_dict(params)
+
+        # (now use these counts to predict performance)
+
+    """
+
+    result = {}
+    for k, v in m.items():
+        new_key = Op()
+        if dtype == True:
+            new_key.dtype = k.dtype
+        if name == True:
+            new_key.name = k.name
+
+        if new_key in result:
+            result[new_key] += m[k]
+        else:
+            result[new_key] = m[k]
+
+    return result
+
+# }}}
+
+# {{{ filter_op_poly_fields
+
+def filter_op_poly_fields(m, dtypes=None, names=None):
+    """Take map returned from :func:`get_op_poly` and remove items without specified Op fields
+
+    :parameter m: A mapping of **{** :class:`loopy.Op` **:**
+                  :class:`islpy.PwQPolynomial` **}**.
+
+    :parameter dtypes: A list of :class:`loopy.LoopyType` (or
+                      :class:`numpy.dtype`) that specifies the data type
+                      operated on.
+
+    :parameter names: A list of :class:`string` that specifies the kind of
+                      arithmetic operation as *add*, *sub*, *mul*, *div*,
+                      *pow*, *shift*, *bw* (bitwise), etc.
+
+    :return: A mapping of **{(** :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**
+
+             - The :class:`islpy.PwQPolynomial` holds the counts (in terms of
+               the :class:`loopy.LoopKernel` *inames*) for arithmetic ops
+               matching the fields passed as parameters.
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        params = {'n': 512, 'm': 256, 'l': 128}
+        op_map = lp.get_op_poly(knl)
+        filtered_map = lp.filter_op_poly_fields(op_map, names=['add', 'sub'])
+        tot_addsub = lp.eval_and_sum_polys(filtered_map, params)
+
+        # (now use these counts to predict performance)
+
+    """
+
+    from loopy.types import to_loopy_type
+    if dtypes is not None:
+        dtypes_lp = [to_loopy_type(d) for d in dtypes]
+
+    result = {}
+
+    for k, v in m.items():
+        if (dtypes is None or k.dtype in dtypes_lp) and \
+           (names is None or k.name in names):
+
+            new_key = Op(k.dtype, k.name)
 
             if new_key in result:
                 result[new_key] += m[k]

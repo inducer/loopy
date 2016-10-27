@@ -61,14 +61,6 @@ def test_op_counter_basic():
     assert f32add == f32mul == f32div == n*m*l
     assert f64mul == n*m
     assert i32add == n*m*2
-
-    poly_dtype = lp.sum_ops_to_dtypes(poly)
-    f32 = poly_dtype[to_loopy_type(np.float32)].eval_with_dict(params)
-    f64 = poly_dtype[to_loopy_type(np.float64)].eval_with_dict(params)
-    i32 = poly_dtype[to_loopy_type(np.int32)].eval_with_dict(params)
-    assert f32 == f32add + f32mul + f32div
-    assert f64 == f64mul
-    assert i32 == i32add
     
 
 def test_op_counter_reduction():
@@ -739,7 +731,7 @@ def test_summations_and_filters():
             [
                 """
                 c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
-                e[i, k] = g[i,k]*h[i,k+1]
+                e[i, k+1] = -g[i,k]*h[i,k+1]
                 """
             ],
             name="basic", assumptions="n,m,l >= 1")
@@ -781,6 +773,32 @@ def test_summations_and_filters():
                          ].eval_with_dict(params)
     assert f32lall == 3*n*m*l
     assert f64lall == 2*n*m
+
+    poly_dtype = lp.sum_ops_to_dtypes(lp.get_op_poly(knl))
+    f32 = poly_dtype[to_loopy_type(np.float32)].eval_with_dict(params)
+    f64 = poly_dtype[to_loopy_type(np.float64)].eval_with_dict(params)
+    i32 = poly_dtype[to_loopy_type(np.int32)].eval_with_dict(params)
+    assert f32 == n*m*l*3
+    assert f64 == n*m
+    assert i32 == n*m*2
+
+    addsub_all = lp.eval_and_sum_polys(
+                        lp.filter_op_poly_fields(
+                            lp.get_op_poly(knl), names=['add', 'sub']),
+                        params)
+    f32ops_all = lp.eval_and_sum_polys(
+                        lp.filter_op_poly_fields(
+                            lp.get_op_poly(knl), dtypes=[np.float32]),
+                        params)
+    assert addsub_all == n*m*l + n*m*2
+    assert f32ops_all == n*m*l*3
+
+    ops_nodtype = lp.reduce_op_poly_fields(lp.get_op_poly(knl), dtype=False)
+    ops_noname = lp.reduce_op_poly_fields(lp.get_op_poly(knl), name=False)
+    mul_all = ops_nodtype[lp.Op(name='mul')].eval_with_dict(params)
+    f64ops_all = ops_noname[lp.Op(dtype=np.float64)].eval_with_dict(params)
+    assert mul_all == n*m*l + n*m
+    assert f64ops_all == n*m
 
 
 if __name__ == "__main__":
