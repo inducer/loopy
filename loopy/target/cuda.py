@@ -336,7 +336,7 @@ class CUDACASTBuilder(CASTBuilder):
         from cgen import RestrictPointer, Const
         from cgen.cuda import CudaConstant
 
-        arg_decl = RestrictPointer(POD(dtype, name))
+        arg_decl = RestrictPointer(POD(self, dtype, name))
 
         if not is_written:
             arg_decl = Const(arg_decl)
