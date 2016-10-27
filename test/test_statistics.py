@@ -329,24 +329,27 @@ def test_gmem_access_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = lp.get_mem_access_poly(knl, 'global', ignore_vars=True)
+    poly = lp.get_mem_access_poly(knl, 'global')
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[lp.MemAccess('global', np.float32,
-                         stride=0, direction='load')
-              ].eval_with_dict(params)
-    f64 = poly[lp.MemAccess('global', np.float64,
-                         stride=0, direction='load')
-              ].eval_with_dict(params)
-    assert f32 == 2*n*m
-    assert f64 == n*m
 
-    f64 = poly[lp.MemAccess('global', np.float64,
-                         stride=0, direction='store')
-              ].eval_with_dict(params)
-    assert f64 == n*m
+    reduced_map = lp.reduce_mem_access_poly_fields(poly, stride=False,
+                                                    variable=False)
+
+    f32_g_l = reduced_map[lp.MemAccess('global', to_loopy_type(np.float32),
+                                       direction='load')
+                         ].eval_with_dict(params)
+    f64_g_l = reduced_map[lp.MemAccess('global', to_loopy_type(np.float64),
+                                       direction='load')
+                         ].eval_with_dict(params)
+    f64_g_s = reduced_map[lp.MemAccess('global', to_loopy_type(np.float64),
+                                       direction='store')
+                         ].eval_with_dict(params)
+    assert f32_g_l == 2*n*m
+    assert f64_g_l == n*m
+    assert f64_g_s == n*m
 
 
 def test_gmem_access_counter_specialops():
@@ -565,6 +568,9 @@ def test_gmem_access_counter_consec():
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
+
+    #for k in poly:
+    #    print(k.mtype, k.dtype, type(k.dtype), k.stride, k.direction, k.variable, " :\n", poly[k])
 
     f64consec = poly[lp.MemAccess('global', np.float64, 
                         stride=1, direction='load', variable='g')

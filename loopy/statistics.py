@@ -48,6 +48,8 @@ __doc__ = """
 .. autofunction:: get_mem_access_poly
 
 .. autofunction:: sum_mem_access_to_bytes
+.. autofunction:: sum_mem_access_across_vars
+.. autofunction:: reduce_mem_access_poly_fields
 
 .. autofunction:: get_synchronization_poly
 
@@ -172,33 +174,47 @@ class MemAccess:
     """
 
     #TODO currently counting all lmem access as stride-1
-    def __init__(self, mtype, dtype, stride=1, direction=None, variable=None):
+    def __init__(self, mtype=None, dtype=None, stride=None, direction=None, variable=None):
         self.mtype = mtype
         self.stride = stride
         self.direction = direction
         self.variable = variable
-
-        from loopy.types import to_loopy_type
-        self.dtype = to_loopy_type(dtype)
+        if dtype is None:
+            self.dtype = dtype
+        else:
+            from loopy.types import to_loopy_type
+            self.dtype = to_loopy_type(dtype)
 
     def __eq__(self, other):
         return isinstance(other, MemAccess) and (
-                other.mtype == self.mtype and
-                other.dtype == self.dtype and
-                other.stride == self.stride and
-                other.direction == self.direction and
-                ((self.variable == None or other.variable == None) or
+                (self.mtype is None or other.mtype is None or
+                 self.mtype == other.mtype) and
+                (self.dtype is None or other.dtype is None or
+                 self.dtype == other.dtype) and
+                (self.stride is None or other.stride is None or
+                 self.stride == other.stride) and
+                (self.direction is None or other.direction is None or
+                 self.direction == other.direction) and
+                (self.variable is None or other.variable is None or
                  self.variable == other.variable))
 
     def __hash__(self):
+        mtype = self.mtype
+        dtype = self.dtype
+        stride = self.stride
         direction = self.direction
         variable = self.variable
-        if direction == None:
+        if mtype is None:
+            mtype = 'None'
+        if dtype is None:
+            dtype = 'None'
+        if stride is None:
+            stride = 'None'
+        if direction is None:
             direction = 'None'
-        if variable == None:
+        if variable is None:
             variable = 'None'
-        return hash(str(self.mtype)+str(self.dtype)+str(self.stride)
-                    +direction+variable)
+        return hash(mtype+str(dtype)+str(stride)+direction+variable)
 
 
 
@@ -931,7 +947,7 @@ def get_gmem_access_poly(knl):
 
 # }}}
 
-def get_mem_access_poly(knl, mtype, numpy_types=True, ignore_vars=False):
+def get_mem_access_poly(knl, mtype, numpy_types=True):
     """Count the number of memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
@@ -943,9 +959,6 @@ def get_mem_access_poly(knl, mtype, numpy_types=True, ignore_vars=False):
     :parameter numpy_types: A :class:`boolean` specifying whether the types
                             in the returned mapping should be numpy types
                             instead of :class:'loopy.LoopyType`.
-
-    :parameter ignore_vars: A :class:`boolean` specifying whether to separate 
-                            memory accesses by variable name.
 
     :return: A mapping of **{** :class:`loopy.MemAccess` **:**
              :class:`islpy.PwQPolynomial` **}**.
@@ -1069,10 +1082,7 @@ def get_mem_access_poly(knl, mtype, numpy_types=True, ignore_vars=False):
                        , count)
                       for mem_access, count in six.iteritems(result))
 
-    if ignore_vars:
-        return sum_mem_access_across_vars(result)
-    else:
-        return result
+    return result
 
 # {{{ sum_mem_access_to_bytes
 
@@ -1185,6 +1195,87 @@ def sum_mem_access_across_vars(m):
             result[new_key] += m[mem_access]
         else:
             result[new_key] = m[mem_access]
+
+    return result
+
+# }}}
+
+# {{{ reduce_mem_access_poly_fields
+
+def reduce_mem_access_poly_fields(m, mtype=True, dtype=True, stride=True,
+                                  direction=True, variable=True):
+    """Take map returned from :func:`get_mem_access_poly`, remove specified MemAccess fields from keys, and combine counts
+
+    :parameter m: A mapping of **{** :class:`loopy.MemAccess` **:**
+                  :class:`islpy.PwQPolynomial` **}**.
+
+    :parameter mtype: A :class:`boolean` specifying whether keys in returned
+                      map will include the memory type.
+
+    :parameter dtype: A :class:`boolean` specifying whether keys in returned
+                      map will include the data type.
+
+    :parameter stride: A :class:`boolean` specifying whether keys in returned
+                       map will include the stride.
+
+    :parameter direction: A :class:`boolean` specifying whether keys in
+                          returned map will include the direction.
+
+    :parameter variable: A :class:`boolean` specifying whether keys in returned
+                         map will include the variable name.
+
+
+    :return: A mapping of **{(** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**
+
+             - The :class:`islpy.PwQPolynomial` holds the aggregate transfer
+               size in bytes for memory accesses of all data types with the
+               characteristics specified in the key (in terms of the
+               :class:`loopy.LoopKernel` *inames*).
+
+    Example usage::
+
+        # (first create loopy kernel and specify array data types)
+
+        params = {'n': 512, 'm': 256, 'l': 128}
+        mem_map = get_mem_access_poly(knl)
+        reduced_mem_map = reduce_mem_access_poly_fields(mem_map, stride=False,
+                                                        variable=False)
+
+        all_f32_global_loads = reduced_mem_map[MemAccess('global', np.float32,
+                                                         direction='load')
+                                              ].eval_with_dict(params)
+        all_f32_global_stores = reduced_mem_map[MemAccess('global', np.float32,
+                                                          direction='store')
+                                               ].eval_with_dict(params)
+        all_f32_local_loads = reduced_mem_map[MemAccess('local', np.float32,
+                                                        direction='load')
+                                             ].eval_with_dict(params)
+        all_f32_local_stores = reduced_mem_map[MemAccess('local', np.float32,
+                                                         direction='store')
+                                              ].eval_with_dict(params)
+
+        # (now use these counts to predict performance)
+
+    """
+
+    result = {}
+    for k, v in m.items():
+        new_key = MemAccess()
+        if mtype == True:
+            new_key.mtype = k.mtype
+        if dtype == True:
+            new_key.dtype = k.dtype
+        if stride == True:
+            new_key.stride = k.stride
+        if direction == True:
+            new_key.direction = k.direction
+        if variable == True:
+            new_key.variable = k.variable
+
+        if new_key in result:
+            result[new_key] += m[k]
+        else:
+            result[new_key] = m[k]
 
     return result
 
