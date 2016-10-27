@@ -115,10 +115,10 @@ from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
 from loopy.statistics import (stringify_stats_mapping, Op, MemAccess,
         get_op_poly, sum_ops_to_dtypes, get_lmem_access_poly,
         get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_poly,
-        sum_mem_access_to_bytes, sum_mem_access_across_vars,
-        reduce_mem_access_poly_fields, filter_mem_access_poly_fields,
-        sum_polys, eval_and_sum_polys, get_synchronization_poly,
-        gather_access_footprints, gather_access_footprint_bytes)
+        sum_mem_access_to_bytes, reduce_mem_access_poly_fields,
+        filter_mem_access_poly_fields, sum_polys, eval_and_sum_polys,
+        get_synchronization_poly, gather_access_footprints,
+        gather_access_footprint_bytes)
 from loopy.codegen import (
         PreambleInfo,
         generate_code, generate_code_v2, generate_body)
@@ -224,10 +224,10 @@ __all__ = [
         "stringify_stats_mapping", "Op", "MemAccess", "get_op_poly",
         "sum_ops_to_dtypes", "get_lmem_access_poly", "get_DRAM_access_poly",
         "get_gmem_access_poly", "get_mem_access_poly",
-        "sum_mem_access_to_bytes", "sum_mem_access_across_vars",
-        "reduce_mem_access_poly_fields", "filter_mem_access_poly_fields",
-        "sum_polys", "eval_and_sum_polys", "get_synchronization_poly",
-        "gather_access_footprints", "gather_access_footprint_bytes",
+        "sum_mem_access_to_bytes", "reduce_mem_access_poly_fields",
+        "filter_mem_access_poly_fields", "sum_polys", "eval_and_sum_polys",
+        "get_synchronization_poly", "gather_access_footprints",
+        "gather_access_footprint_bytes",
 
         "CompiledKernel",
 

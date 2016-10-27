@@ -236,7 +236,7 @@ def test_gmem_access_counter_basic():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = lp.get_mem_access_poly(knl, 'global')
+    poly = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -265,22 +265,6 @@ def test_gmem_access_counter_basic():
     assert f32s == n*m*l
     assert f64s == n*m
 
-    poly_b = lp.sum_mem_access_to_bytes(poly)
-    s0load = poly_b[('global', 0, 'load')].eval_with_dict(params)
-    s0store = poly_b[('global', 0, 'store')].eval_with_dict(params)
-    assert s0load == 4*f32l + 8*f64l
-    assert s0store == 4*f32s + 8*f64s
-
-    poly_c = lp.sum_mem_access_across_vars(poly)
-    f32lall = poly_c[lp.MemAccess('global', np.float32,
-                                stride=0, direction='load')
-                  ].eval_with_dict(params)
-    f64lall = poly_c[lp.MemAccess('global', np.float64,
-                                stride=0, direction='load')
-                  ].eval_with_dict(params)
-    assert f32lall == 3*n*m*l
-    assert f64lall == 2*n*m
-
 
 def test_gmem_access_counter_reduction():
 
@@ -292,7 +276,7 @@ def test_gmem_access_counter_reduction():
             name="matmul", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    poly = lp.get_mem_access_poly(knl, 'global')
+    poly = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -329,7 +313,7 @@ def test_gmem_access_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = lp.get_mem_access_poly(knl, 'global')
+    poly = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -366,7 +350,7 @@ def test_gmem_access_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
                                             g=np.float64, h=np.float64))
-    poly = lp.get_mem_access_poly(knl, 'global')
+    poly = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -416,7 +400,7 @@ def test_gmem_access_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int32, h=np.int32))
 
-    poly = lp.get_mem_access_poly(knl, 'global')
+    poly = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -462,7 +446,7 @@ def test_gmem_access_counter_mixed():
     knl = lp.split_iname(knl, "j", threads)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
-    poly = lp.get_mem_access_poly(knl, 'global')  # noqa
+    poly = lp.get_mem_access_poly(knl)  # noqa
     n = 512
     m = 256
     l = 128
@@ -515,7 +499,7 @@ def test_gmem_access_counter_nonconsec():
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
 
-    poly = lp.get_mem_access_poly(knl, 'global')  # noqa
+    poly = lp.get_mem_access_poly(knl)  # noqa
     n = 512
     m = 256
     l = 128
@@ -566,7 +550,7 @@ def test_gmem_access_counter_consec():
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
-    poly = lp.get_mem_access_poly(knl, 'global')
+    poly = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -670,10 +654,7 @@ def test_all_counters_parallel_matmul():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
 
-    #barrier_count = get_barrier_poly(knl).eval_with_dict(params)
-    #assert barrier_count == 2*m/16
     sync_poly = lp.get_synchronization_poly(knl)
-    #assert len(sync_poly) == 1 #TODO why?
     assert len(sync_poly) == 2
     assert sync_poly["kernel_launch"].eval_with_dict(params) == 1
     assert sync_poly["barrier_local"].eval_with_dict(params) == 2*m/16
@@ -694,7 +675,7 @@ def test_all_counters_parallel_matmul():
 
     assert f32mul+f32add == n*m*l*2
 
-    subscript_map = lp.get_mem_access_poly(knl, 'global')
+    subscript_map = lp.get_mem_access_poly(knl)
 
     f32coal = subscript_map[lp.MemAccess('global', np.float32, 
                         stride=1, direction='load', variable='b')
@@ -711,9 +692,8 @@ def test_all_counters_parallel_matmul():
 
     assert f32coal == n*l
 
-    local_subs_map = lp.get_mem_access_poly(knl, 'local')
+    local_subs_map = lp.get_mem_access_poly(knl)
 
-    # TODO currently considering all local mem access stride-1
     local_subs_l = local_subs_map[lp.MemAccess('local', np.dtype(np.float32),
                                             direction='load')
                                  ].eval_with_dict(params)
@@ -750,6 +730,57 @@ def test_gather_access_footprint_2():
     for key, footprint in six.iteritems(fp):
         assert count(knl, footprint).eval_with_dict(params) == 200
         print(key, count(knl, footprint))
+
+
+def test_summations_and_filters():
+
+    knl = lp.make_kernel(
+            "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            [
+                """
+                c[i, j, k] = a[i,j,k]*b[i,j,k]/3.0+a[i,j,k]
+                e[i, k] = g[i,k]*h[i,k+1]
+                """
+            ],
+            name="basic", assumptions="n,m,l >= 1")
+
+    knl = lp.add_and_infer_dtypes(knl,
+                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+    poly = lp.get_mem_access_poly(knl)
+    n = 512
+    m = 256
+    l = 128
+    params = {'n': n, 'm': m, 'l': l}
+
+    loads_a = lp.eval_and_sum_polys(
+                    lp.filter_mem_access_poly_fields(
+                        lp.get_mem_access_poly(knl),
+                        directions=['load'], variables=['a']),
+                    params)
+    assert loads_a == 2*n*m*l
+
+    global_stores = lp.eval_and_sum_polys(
+                        lp.filter_mem_access_poly_fields(
+                            lp.get_mem_access_poly(knl),
+                            mtypes=['global'], directions=['store']),
+                        params)
+    assert global_stores == n*m*l + n*m
+
+    bytes_map = lp.sum_mem_access_to_bytes(lp.get_mem_access_poly(knl))
+    s0load = bytes_map[('global', 0, 'load')].eval_with_dict(params)
+    s0store = bytes_map[('global', 0, 'store')].eval_with_dict(params)
+    assert s0load == 4*n*m*l*3 + 8*n*m*2
+    assert s0store == 4*n*m*l + 8*n*m
+
+    # ignore stride and variable names in this map
+    reduced_map = lp.reduce_mem_access_poly_fields(lp.get_mem_access_poly(knl),
+                                                  stride=False, variable=False)
+    f32lall = reduced_map[lp.MemAccess('global', np.float32, direction='load')
+                         ].eval_with_dict(params)
+    f64lall = reduced_map[lp.MemAccess('global', np.float64, direction='load')
+                         ].eval_with_dict(params)
+    assert f32lall == 3*n*m*l
+    assert f64lall == 2*n*m
 
 
 if __name__ == "__main__":

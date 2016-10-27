@@ -48,7 +48,6 @@ __doc__ = """
 .. autofunction:: get_mem_access_poly
 
 .. autofunction:: sum_mem_access_to_bytes
-.. autofunction:: sum_mem_access_across_vars
 .. autofunction:: reduce_mem_access_poly_fields
 
 .. autofunction:: get_synchronization_poly
@@ -919,9 +918,11 @@ def get_lmem_access_poly(knl):
     """
     from warnings import warn
     warn("get_lmem_access_poly is deprecated. "
-         "Use get_mem_access_poly with local option instead",
+         "Instead, use get_mem_access_poly and then pass the result to "
+         "filter_mem_access_poly_fields with mtypes=['local'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl, 'local')
+    return filter_mem_access_poly_fields(
+                get_mem_access_poly(knl), mtypes=['local'])
 
 
 def get_DRAM_access_poly(knl):
@@ -929,9 +930,11 @@ def get_DRAM_access_poly(knl):
     """
     from warnings import warn
     warn("get_DRAM_access_poly is deprecated. "
-         "Use get_mem_access_poly with global option instead",
+         "Instead, use get_mem_access_poly and then pass the result to "
+         "filter_mem_access_poly_fields with mtypes=['global'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl, 'global')
+    return filter_mem_access_poly_fields(
+                get_mem_access_poly(knl), mtypes=['global'])
 
 # {{{ get_gmem_access_poly
 
@@ -940,21 +943,20 @@ def get_gmem_access_poly(knl):
     """
     from warnings import warn
     warn("get_gmem_access_poly is deprecated. "
-         "Use get_mem_access_poly with global option instead",
+         "Instead, use get_mem_access_poly and then pass the result to "
+         "filter_mem_access_poly_fields with mtypes=['global'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl, 'global')
+    return filter_mem_access_poly_fields(
+                get_mem_access_poly(knl), mtypes=['global'])
 
 
 # }}}
 
-def get_mem_access_poly(knl, mtype, numpy_types=True):
+def get_mem_access_poly(knl, numpy_types=True):
     """Count the number of memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
                     counted.
-
-    :parameter mtype: A :class:`string` specifying the memory accesses as
-                      *global* or *local*.
 
     :parameter numpy_types: A :class:`boolean` specifying whether the types
                             in the returned mapping should be numpy types
@@ -975,31 +977,28 @@ def get_mem_access_poly(knl, mtype, numpy_types=True):
         # (first create loopy kernel and specify array data types)
 
         params = {'n': 512, 'm': 256, 'l': 128}
-        gmem_access_map = get_mem_access_poly('global', knl)
+        mem_access_map = get_mem_access_poly(knl)
 
-        f32_stride1_g_loads_a = gmem_access_map[MemAccess('global', np.float32,
+        f32_stride1_g_loads_a = mem_access_map[MemAccess('global', np.float32,
+                                                         stride=1,
+                                                         direction='load',
+                                                         variable='a')
+                                              ].eval_with_dict(params)
+        f32_stride1_g_stores_a = mem_access_map[MemAccess('global', np.float32,
                                                           stride=1,
-                                                          direction='load',
+                                                          direction='store',
                                                           variable='a')
                                                ].eval_with_dict(params)
-        f32_stride1_g_stores_a = gmem_access_map[MemAccess('global', np.float32,
-                                                           stride=1,
-                                                           direction='store',
-                                                           variable='a')
-                                                ].eval_with_dict(params)
-
-        lmem_access_map = get_mem_access_poly('local', knl)
-
-        f32_stride1_l_loads_x = lmem_access_map[MemAccess('local', np.float32,
+        f32_stride1_l_loads_x = mem_access_map[MemAccess('local', np.float32,
+                                                         stride=1,
+                                                         direction='load',
+                                                         variable='x')
+                                              ].eval_with_dict(params)
+        f32_stride1_l_stores_x = mem_access_map[MemAccess('local', np.float32,
                                                           stride=1,
-                                                          direction='load',
+                                                          direction='store',
                                                           variable='x')
                                                ].eval_with_dict(params)
-        f32_stride1_l_stores_x = lmem_access_map[MemAccess('local', np.float32,
-                                                           stride=1,
-                                                           direction='store',
-                                                           variable='x')
-                                                ].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -1027,50 +1026,48 @@ def get_mem_access_poly(knl, mtype, numpy_types=True):
     knl = preprocess_kernel(knl)
 
     subs_poly = ToCountMap()
-    if mtype == 'global':
-        subscript_counter = GlobalSubscriptCounter(knl)
-    elif mtype == 'local':
-        subscript_counter = LocalSubscriptCounter(knl)
-    else:
-        raise ValueError("get_mem_access_poly: mtype must be "
-                         "'local' or 'global', received {0}"
-                         .format(mtype))
+    subs_counter_g = GlobalSubscriptCounter(knl)
+    subs_counter_l = LocalSubscriptCounter(knl)
 
     for insn in knl.instructions:
-        # count subscripts, distinguishing loads and stores
-        subs_expr = subscript_counter(insn.expression)
+        # count subscripts
+        subs_expr = subs_counter_g(insn.expression) \
+                    + subs_counter_l(insn.expression)
+
+        # distinguish loads and stores
         for key in subs_expr.dict:
             subs_expr.dict[MemAccess(key.mtype, key.dtype, stride=key.stride,
                                      direction='load', variable=key.variable)
                           ] = subs_expr.dict.pop(key)
 
-        if mtype == 'global':  # for now, don't count writes to local mem
-            subs_assignee = subscript_counter(insn.assignee)
-            for key in subs_assignee.dict:
-                subs_assignee.dict[MemAccess(key.mtype, key.dtype,
-                                             stride=key.stride, direction='store',
-                                             variable=key.variable)
-                                  ] = subs_assignee.dict.pop(key)
+        subs_assignee_g = subs_counter_g(insn.assignee)
+        for key in subs_assignee_g.dict:
+            subs_assignee_g.dict[MemAccess(key.mtype, key.dtype,
+                                           stride=key.stride, direction='store',
+                                           variable=key.variable)
+                                ] = subs_assignee_g.dict.pop(key)
+        # for now, don't count writes to local mem
 
         insn_inames = knl.insn_inames(insn)
 
         # use count excluding local index tags for uniform accesses
         for key in subs_expr.dict:
             poly = ToCountMap({key: subs_expr.dict[key]})
-            if mtype == 'global' and isinstance(key.stride, int) and key.stride == 0:
+            if key.mtype == 'global' and isinstance(key.stride, int) and key.stride == 0:
                 subs_poly = subs_poly \
                             + poly*get_insn_count(knl, insn_inames, True)
             else:
                 subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+                #currently not counting stride of local mem access
 
-        if mtype == 'global':  # for now, don't count writes to local mem
-            for key in subs_assignee.dict:
-                poly = ToCountMap({key: subs_assignee.dict[key]})
-                if isinstance(key.stride, int) and key.stride == 0:
-                    subs_poly = subs_poly \
-                                + poly*get_insn_count(knl, insn_inames, True)
-                else:
-                    subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+        for key in subs_assignee_g.dict:
+            poly = ToCountMap({key: subs_assignee_g.dict[key]})
+            if isinstance(key.stride, int) and key.stride == 0:
+                subs_poly = subs_poly \
+                            + poly*get_insn_count(knl, insn_inames, True)
+            else:
+                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+            # for now, don't count writes to local mem
 
     result = subs_poly.dict
 
@@ -1109,7 +1106,7 @@ def sum_mem_access_to_bytes(m):
 
         # (first create loopy kernel and specify array data types)
 
-        mem_access_map = get_mem_access_poly('global', knl)
+        mem_access_map = get_mem_access_poly(knl)
         byte_totals_map = sum_mem_access_to_bytes(mem_access_map)
         params = {'n': 512, 'm': 256, 'l': 128}
 
@@ -1138,67 +1135,6 @@ def sum_mem_access_to_bytes(m):
     return result
 
 # }}}
-
-# {{{ sum_mem_access_across_vars
-
-def sum_mem_access_across_vars(m):
-    """Remove variable name divisions in mapping returned by :func:`get_mem_access_poly`
-
-    :parameter m: A mapping of **{** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**.
-
-    :return: A mapping of **{(** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**
-
-             - The **variable** attribute in the keys of the returned mapping is set to None 
-
-             - The :class:`islpy.PwQPolynomial` holds the aggregate counts for
-               memory accesses across all variables (in terms of the
-               :class:`loopy.LoopKernel` *inames*).
-
-    Example usage::
-
-        # (first create loopy kernel and specify array data types)
-
-        params = {'n': 512, 'm': 256, 'l': 128}
-        gmem_access_map = get_mem_access_poly('global', knl)
-        gmem_acrossvars = sum_mem_access_across_vars(gmem_access_map)
-
-        f32_stride1_g_loads = gmem_acrossvars[MemAccess('global', np.float32,
-                                                        stride=1,
-                                                        direction='load') # do not specify variable
-                                             ].eval_with_dict(params)
-        f32_stride1_g_stores = gmem_acrossvars[MemAccess('global', np.float32,
-                                                         stride=1,
-                                                         direction='store') # do not specify variable
-                                              ].eval_with_dict(params)
-
-        lmem_access_map = get_mem_access_poly('local', knl)
-        lmem_acrossvars = sum_mem_access_across_vars(lmem_access_map)
-
-        f32_stride1_l_loads = lmem_acrossvars[MemAccess('local', np.float32,
-                                                        stride=1,
-                                                        direction='load') # do not specify variable
-                                             ].eval_with_dict(params)
-        f32_stride1_l_stores = lmem_acrossvars[MemAccess('local', np.float32,
-                                                         stride=1,
-                                                         direction='store') # do not specify variable
-                                              ].eval_with_dict(params)
-
-        # (now use these counts to predict performance)
-
-    """
-
-    result = {}
-    for mem_access, v in m.items():
-        new_key = MemAccess(mem_access.mtype, mem_access.dtype, mem_access.stride, mem_access.direction)
-        if new_key in result:
-            result[new_key] += m[mem_access]
-        else:
-            result[new_key] = m[mem_access]
-
-    return result
-
-# }}}
-
 # {{{ reduce_mem_access_poly_fields
 
 def reduce_mem_access_poly_fields(m, mtype=True, dtype=True, stride=True,
