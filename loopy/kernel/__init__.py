@@ -1094,7 +1094,7 @@ class LoopKernel(RecordWithoutPickling):
 
         lines = []
 
-        from loopy.creation import apply_single_writer_depencency_heuristic
+        from loopy.kernel.creation import apply_single_writer_depencency_heuristic
         kernel = apply_single_writer_depencency_heuristic(
                 self, warn_if_used=False)
 

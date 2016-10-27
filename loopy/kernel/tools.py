@@ -438,7 +438,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
     """
 
     # make sure all automatically added stuff shows up
-    from loopy.creation import apply_single_writer_depencency_heuristic
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     kernel = apply_single_writer_depencency_heuristic(kernel, warn_if_used=False)
 
     if iname_cluster and not kernel.schedule:
