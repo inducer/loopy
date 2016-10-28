@@ -285,7 +285,7 @@ class CTarget(TargetBase):
 class _ConstRestrictPointer(Pointer):
     def get_decl_pair(self):
         sub_tp, sub_decl = self.subdecl.get_decl_pair()
-        return sub_tp, ("*const restrict %s" % sub_decl)
+        return sub_tp, ("*const __restrict__ %s" % sub_decl)
 
 
 class CASTBuilder(ASTBuilderBase):
