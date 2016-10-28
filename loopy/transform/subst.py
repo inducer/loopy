@@ -311,7 +311,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     # {{{ establish the relevant definition of lhs_name for each usage site
 
     dep_kernel = expand_subst(kernel)
-    from loopy.preprocess import apply_single_writer_depencency_heuristic
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     dep_kernel = apply_single_writer_depencency_heuristic(dep_kernel)
 
     id_to_insn = dep_kernel.id_to_insn
