@@ -1781,7 +1781,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
     knl = resolve_wildcard_deps(knl)
-    knl = apply_single_writer_depencency_heuristic(knl)
+    knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=False)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:
