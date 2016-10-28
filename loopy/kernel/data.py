@@ -358,7 +358,7 @@ class TemporaryVariable(ArrayBase):
     def __init__(self, name, dtype=None, shape=(), scope=auto,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
-            base_storage=None, initializer=None, read_only=False):
+            base_storage=None, initializer=None, read_only=False, **kwargs):
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -421,7 +421,8 @@ class TemporaryVariable(ArrayBase):
                 storage_shape=storage_shape,
                 base_storage=base_storage,
                 initializer=initializer,
-                read_only=read_only)
+                read_only=read_only,
+                **kwargs)
 
     @property
     def is_local(self):
