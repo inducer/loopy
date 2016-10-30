@@ -33,7 +33,6 @@ from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.target.c import DTypeRegistryWrapper
 from loopy.kernel.data import temp_var_scope, CallMangleInfo
-from pymbolic import var
 
 
 # {{{ dtype registry wrappers
@@ -297,11 +296,11 @@ def opencl_preamble_generator(preamble_info):
 # {{{ expression mapper
 
 class ExpressionToOpenCLCExpressionMapper(CExpressionToCodeMapper):
-    def map_group_hw_index(self, expr, type_context):
-        return var("gid")(expr.axis)
+    def map_group_hw_index(self, expr, enclosing_prec):
+        return "gid(%d)" % expr.axis
 
-    def map_local_hw_index(self, expr, type_context):
-        return var("lid")(expr.axis)
+    def map_local_hw_index(self, expr, enclosing_prec):
+        return "lid(%d)" % expr.axi
 
 # }}}
 

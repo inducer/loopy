@@ -34,7 +34,6 @@ from loopy.target.c.codegen.expression import (
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.kernel.data import temp_var_scope
-from pymbolic import var
 
 
 # {{{ vector types
@@ -153,15 +152,15 @@ class CUDACExpressionToCodeMapper(CExpressionToCodeMapper):
         else:
             raise LoopyError("unexpected index type")
 
-    def map_group_hw_index(self, expr, type_context):
-        return var("((%s) blockIdx.%s)" % (
+    def map_group_hw_index(self, expr, enclosing_prec):
+        return "((%s) blockIdx.%s)" % (
             self._get_index_ctype(self.kernel),
-            self._GRID_AXES[expr.axis]))
+            self._GRID_AXES[expr.axis])
 
-    def map_local_hw_index(self, expr, type_context):
-        return var("((%s) threadIdx.%s)" % (
+    def map_local_hw_index(self, expr, enclosing_prec):
+        return "((%s) threadIdx.%s)" % (
             self._get_index_ctype(self.kernel),
-            self._GRID_AXES[expr.axis]))
+            self._GRID_AXES[expr.axis])
 
 # }}}
 
