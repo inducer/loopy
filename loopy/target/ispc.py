@@ -27,37 +27,19 @@ THE SOFTWARE.
 
 import numpy as np  # noqa
 from loopy.target.c import CTarget, CASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.target.c.codegen.expression import (
+        ExpressionToCExpressionMapper, CExpressionToCodeMapper)
 from loopy.diagnostic import LoopyError
-from loopy.symbolic import Literal
+from loopy.symbolic import Literal, VectorPrivateSubscript, LocalHardwareAxisIndex
 from pymbolic import var
 import pymbolic.primitives as p
 
 from pytools import memoize_method
 
 
-# {{{ expression mapper
+# {{{ expression -> C Expression mapper
 
 class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
-    def _get_index_ctype(self):
-        if self.kernel.index_dtype.numpy_dtype == np.int32:
-            return "int32"
-        elif self.kernel.index_dtype.numpy_dtype == np.int64:
-            return "int64"
-        else:
-            raise ValueError("unexpected index_type")
-
-    def map_group_hw_index(self, expr, type_context):
-        return var(
-                "((uniform %s) taskIndex%d)"
-                % (self._get_index_ctype(), expr.axis))
-
-    def map_local_hw_index(self, expr, type_context):
-        if expr.axis == 0:
-            return var("(varying %s) programIndex" % self._get_index_ctype())
-        else:
-            raise LoopyError("ISPC only supports one local axis")
-
     def map_constant(self, expr, type_context):
         if isinstance(expr, (complex, np.complexfloating)):
             raise NotImplementedError("complex numbers in ispc")
@@ -87,7 +69,8 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             # below in decl generation)
             gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:
-                return expr[var("programIndex")]
+                lsize, = lsize
+                return VectorPrivateSubscript(expr, 0, lsize)
             else:
                 return expr
 
@@ -112,8 +95,10 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                     self.codegen_state.vectorization_info)
 
                 subscript, = access_info.subscripts
-                result = var(access_info.array_name)[
-                        var("programIndex") + self.rec(lsize*subscript, 'i')]
+                result = VectorPrivateSubscript(
+                        var(access_info.array_name),
+                        self.rec(subscript, 'i'),
+                        lsize)
 
                 if access_info.vector_index is not None:
                     return self.kernel.target.add_vector_access(
@@ -125,6 +110,32 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
                 expr, type_context)
 
 # }}}
+
+
+class ISPCExprToCodeMapper(CExpressionToCodeMapper):
+    def _get_index_ctype(self):
+        if self.codegen_state.kernel.index_dtype.numpy_dtype == np.int32:
+            return "int32"
+        elif self.codegen_state.kernel.index_dtype.numpy_dtype == np.int64:
+            return "int64"
+        else:
+            raise ValueError("unexpected index_type")
+
+    def map_group_hw_index(self, expr, enclosing_prec):
+        return var(
+                "((uniform %s) taskIndex%d)"
+                % (self._get_index_ctype(), expr.axis))
+
+    def map_local_hw_index(self, expr, enclosing_prec):
+        if expr.axis == 0:
+            return var("(varying %s) programIndex" % self._get_index_ctype())
+        else:
+            raise LoopyError("ISPC only supports one local axis")
+
+    def map_vector_private_subscript(self, expr, enclosing_prec):
+        return self.rec(expr.aggregate[
+            expr.vector_width * expr.index + LocalHardwareAxisIndex(0)],
+            enclosing_prec)
 
 
 # {{{ type registry
@@ -277,6 +288,9 @@ class ISPCASTBuilder(CASTBuilder):
 
     def get_expression_to_c_expression_mapper(self, codegen_state):
         return ExprToISPCExprMapper(codegen_state)
+
+    def get_c_expression_to_code_mapper(self, codegen_state):
+        return ISPCExprToCodeMapper(codegen_state)
 
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
@@ -469,15 +483,14 @@ class ISPCASTBuilder(CASTBuilder):
         ecm = codegen_state.expression_to_code_mapper
 
         from loopy.symbolic import aff_to_expr
-        from loopy.target.c import POD
+        from loopy.target.c import POD, For
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For, Initializer
-
+        from cgen import InlineInitializer
         from cgen.ispc import ISPCUniform
 
         return For(
-                Initializer(
+                InlineInitializer(
                     ISPCUniform(POD(self, iname_dtype, iname)),
                     ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                 ecm(
@@ -500,6 +513,20 @@ class ISPCASTBuilder(CASTBuilder):
         return Initializer(decl, val_str)
 
     # }}}
+
+    def process_ast(self, codegen_state, node):
+        knl = codegen_state.kernel
+
+        from loopy.kernel.data import LocalIndexTagBase
+
+        def is_term_allowed(term, dependencies):
+            return all(
+                    not isinstance(
+                        knl.iname_to_tag.get(dep), LocalIndexTagBase)
+                    for dep in dependencies)
+
+        from loopy.target.c.subscript_cse import eliminate_common_subscripts
+        return eliminate_common_subscripts(codegen_state, is_term_allowed, node)
 
 
 # TODO: Generate launch code

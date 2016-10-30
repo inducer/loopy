@@ -29,7 +29,8 @@ import numpy as np
 from pytools import memoize_method
 
 from loopy.target.c import CTarget, CASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.target.c.codegen.expression import (
+        CExpressionToCodeMapper)
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
 from loopy.kernel.data import temp_var_scope
@@ -140,7 +141,7 @@ def cuda_function_mangler(kernel, name, arg_dtypes):
 
 # {{{ expression mapper
 
-class ExpressionToCudaCExpressionMapper(ExpressionToCExpressionMapper):
+class CUDACExpressionToCodeMapper(CExpressionToCodeMapper):
     _GRID_AXES = "xyz"
 
     @staticmethod
@@ -278,8 +279,8 @@ class CUDACASTBuilder(CASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
-        return ExpressionToCudaCExpressionMapper(codegen_state)
+    def get_c_expression_to_code_mapper(self, codegen_state):
+        return CUDACExpressionToCodeMapper(codegen_state)
 
     _VEC_AXES = "xyzw"
 

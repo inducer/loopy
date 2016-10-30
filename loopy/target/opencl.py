@@ -27,7 +27,7 @@ THE SOFTWARE.
 import numpy as np
 
 from loopy.target.c import CTarget, CASTBuilder
-from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
+from loopy.target.c.codegen.expression import CExpressionToCodeMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
@@ -296,7 +296,7 @@ def opencl_preamble_generator(preamble_info):
 
 # {{{ expression mapper
 
-class ExpressionToOpenCLCExpressionMapper(ExpressionToCExpressionMapper):
+class ExpressionToOpenCLCExpressionMapper(CExpressionToCodeMapper):
     def map_group_hw_index(self, expr, type_context):
         return var("gid")(expr.axis)
 
@@ -362,8 +362,6 @@ class OpenCLTarget(CTarget):
                 target=self)
 
     # }}}
-
-# }}}
 
 
 # {{{ ast builder

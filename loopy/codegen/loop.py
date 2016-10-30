@@ -152,6 +152,7 @@ def generate_unroll_loop(codegen_state, sched_index):
         inner = inner.with_new_ast(
                 codegen_state,
                 codegen_state.ast_builder.emit_scope(
+                    codegen_state,
                     (iname,),
                     inner.current_ast(codegen_state)))
         result.append(inner)
@@ -260,7 +261,9 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
         inner = next_func(codegen_state)
         return inner.with_new_ast(
                 codegen_state,
-                codegen_state.ast_builder.emit_scope(hw_inames,
+                codegen_state.ast_builder.emit_scope(
+                    codegen_state,
+                    hw_inames,
                     inner.current_ast(codegen_state)))
 
     global_size, local_size = kernel.get_grid_sizes_for_insn_ids(
@@ -450,6 +453,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
         inner = inner.with_new_ast(
                 codegen_state,
                 codegen_state.ast_builder.emit_scope(
+                    codegen_state,
                     (loop_iname,),
                     inner.current_ast(codegen_state)))
 

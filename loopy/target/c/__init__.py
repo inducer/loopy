@@ -37,18 +37,6 @@ import cgen
 from pytools import memoize_method
 
 
-class ScopeASTNode(cgen.Generable):
-    def __init__(self, available_variables, child):
-        self.available_variables = available_variables
-        self.child = child
-
-    def generate(self):
-        for i in self.child.generate():
-            yield i
-
-    mapper_method = "map_loopy_scope"
-
-
 # {{{ dtype registry wrapper
 
 class DTypeRegistryWrapper(object):
@@ -107,7 +95,7 @@ def _preamble_generator(preamble_info):
 # }}}
 
 
-# {{{ cgen overrides
+# {{{ cgen syntax tree
 
 from cgen import Declarator
 
@@ -142,6 +130,44 @@ class POD(Declarator):
         return 0
 
     mapper_method = "map_loopy_pod"
+
+
+class ScopeASTNode(cgen.Generable):
+    def __init__(self, codegen_state, available_variables, child):
+        self.codegen_state = codegen_state
+        self.available_variables = available_variables
+        self.child = child
+
+    def generate(self):
+        for i in self.child.generate():
+            yield i
+
+    mapper_method = "map_loopy_scope"
+
+
+class CgenLoopyLoopMixin(object):
+    def generate(self):
+        if self.intro_line() is not None:
+            yield self.intro_line()
+
+        body = self.body
+        if isinstance(body, ScopeASTNode):
+            body = body.child
+
+        from cgen import Block
+        if isinstance(body, Block):
+            for line in body.generate():
+                yield line
+        else:
+            for line in body.generate():
+                yield "  "+line
+
+        if self.outro_line() is not None:
+            yield self.outro_line()
+
+
+class For(CgenLoopyLoopMixin, cgen.For):
+    pass
 
 # }}}
 
@@ -207,12 +233,17 @@ def generate_array_literal(codegen_state, array, value):
 # {{{ lazy expression generation
 
 class CExpression(object):
-    def __init__(self, to_code_mapper, expr):
-        self.to_code_mapper = to_code_mapper
+    def __init__(self, codegen_state, expr):
+        self.codegen_state = codegen_state
         self.expr = expr
 
     def __str__(self):
-        return self.to_code_mapper(self.expr, PREC_NONE)
+        to_code_mapper = \
+                self.codegen_state.ast_builder.get_c_expression_to_code_mapper(
+                        self.codegen_state)
+        return to_code_mapper(
+                self.expr,
+                PREC_NONE)
 
 # }}}
 
@@ -484,9 +515,9 @@ class CASTBuilder(ASTBuilderBase):
         return ExpressionToCExpressionMapper(
                 codegen_state, fortran_abi=self.target.fortran_abi)
 
-    def get_c_expression_to_code_mapper(self):
+    def get_c_expression_to_code_mapper(self, codegen_state):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
-        return CExpressionToCodeMapper()
+        return CExpressionToCodeMapper(codegen_state)
 
     def get_temporary_decl(self, knl, schedule_index, temp_var, decl_info):
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
@@ -643,7 +674,9 @@ class CASTBuilder(ASTBuilderBase):
         if len(mangle_result.result_dtypes) == 0:
             from cgen import ExpressionStatement
             return ExpressionStatement(
-                    CExpression(self.get_c_expression_to_code_mapper(), result))
+                    CExpression(
+                        codegen_state.var_subst_map,
+                        result))
 
         result = ecm.wrap_in_typecast(
                 mangle_result.result_dtypes[0],
@@ -655,7 +688,9 @@ class CASTBuilder(ASTBuilderBase):
         from cgen import Assign
         return Assign(
                 lhs_code,
-                CExpression(self.get_c_expression_to_code_mapper(), result))
+                CExpression(
+                    codegen_state.var_subst_map,
+                    result))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             static_lbound, static_ubound, inner):
@@ -666,7 +701,7 @@ class CASTBuilder(ASTBuilderBase):
         from pymbolic import var
         from pymbolic.primitives import Comparison
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For, InlineInitializer
+        from cgen import InlineInitializer
 
         return For(
                 InlineInitializer(
@@ -703,14 +738,15 @@ class CASTBuilder(ASTBuilderBase):
         from cgen import If
         return If(condition_str, ast)
 
-    def emit_scope(self, available_variables, ast):
-        return ScopeASTNode(available_variables, ast)
+    def emit_scope(self, codegen_state, available_variables, ast):
+        return ScopeASTNode(codegen_state, available_variables, ast)
 
     # }}}
 
     def process_ast(self, codegen_state, node):
         from loopy.target.c.subscript_cse import eliminate_common_subscripts
-        return eliminate_common_subscripts(codegen_state, node)
+        return eliminate_common_subscripts(codegen_state,
+                node=node)
 
 
 # vim: foldmethod=marker

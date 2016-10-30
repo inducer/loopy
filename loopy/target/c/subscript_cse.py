@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 class CASTIdentityMapper(CASTIdentityMapperBase):
     def map_loopy_scope(self, node, *args, **kwargs):
         return type(node)(
+                node.codegen_state,
                 node.available_variables,
                 self.rec(node.child, *args, **kwargs))
 
@@ -56,7 +57,7 @@ def generate_all_subsets(l, min_length):
             yield frozenset(entry for i, entry in enumerate(l) if (1 << i) & bits)
 
 
-def get_terms(allowable_vars, expr):
+def get_terms(allowable_vars, is_term_allowed, expr):
     if isinstance(expr, p.Sum):
         terms = expr.children
     else:
@@ -68,7 +69,10 @@ def get_terms(allowable_vars, expr):
     result = []
     remainder = []
     for term in terms:
-        if get_dependencies(term) <= allowable_vars and not is_constant(term):
+        deps = get_dependencies(term)
+        if (deps <= allowable_vars
+                and not is_constant(term)
+                and is_term_allowed(term, deps)):
             result.append(term)
         elif remainder is not None:
             remainder.append(term)
@@ -81,22 +85,26 @@ def get_terms(allowable_vars, expr):
 # {{{ counting
 
 class SubscriptSubsetCounter(ExprIdentityMapper):
-    def __init__(self, kernel, term_set_to_count):
-        self.kernel = kernel
+    def __init__(self, codegen_state, term_set_to_count, is_term_allowed):
+        self.codegen_state = codegen_state
         self.term_set_to_count = term_set_to_count
-        self.allowable_vars = self.kernel.all_inames() | self.kernel.outer_params()
+        kernel = codegen_state.kernel
+        self.allowable_vars = kernel.all_inames() | kernel.outer_params()
+        self.is_term_allowed = is_term_allowed
 
     def map_subscript(self, expr):
-        terms, _ = get_terms(self.allowable_vars, expr.index)
+        terms, _ = get_terms(self.allowable_vars, self.is_term_allowed, expr.index)
         terms = frozenset(terms)
         self.term_set_to_count[terms] = self.term_set_to_count.get(terms, 0) + 1
 
+    map_vector_private_subscript = map_subscript
+
 
 class ASTSubexpressionCollector(CASTIdentityMapper):
-    def __init__(self, kernel):
+    def __init__(self, codegen_state, is_term_allowed):
         self.term_set_to_count = {}
         self.subset_count_mapper = SubscriptSubsetCounter(
-                kernel, self.term_set_to_count)
+                codegen_state, self.term_set_to_count, is_term_allowed)
 
     def map_expression(self, expr):
         from pymbolic.primitives import is_constant
@@ -154,7 +162,10 @@ def compute_term_subset_to_count(term_set_to_count, term_set_to_variable):
                 if var_term_set <= code_term_set]
 
         logger.debug("INTERACTS:", interacts_with_var_term_sets)
-        for subset in generate_all_subsets(code_term_set, 2):
+        for subset in generate_all_subsets(code_term_set, 1):
+            if len(subset) == 1 and isinstance(six.next(iter(subset)), p.Variable):
+                continue
+
             will_contribute = True
 
             for var_term_set in interacts_with_var_term_sets:
@@ -204,15 +215,19 @@ class SubscriptSubsetReplacer(ExprIdentityMapper):
         self.node_replacer = node_replacer
         self.subex_rep_state = subex_rep_state
 
-    def map_subscript(self, expr):
+    def _process_subscript(self, expr):
         subex_rep_state = self.subex_rep_state
 
         iname_terms, remainder = get_terms(
             subex_rep_state.codegen_state.kernel.all_inames(),
-            expr.index)
-        iname_terms = simplify_terms(
+            is_term_allowed=lambda term, deps: True,
+            expr=expr.index)
+        return simplify_terms(
                 frozenset(iname_terms),
-                subex_rep_state.term_set_to_variable)
+                subex_rep_state.term_set_to_variable), remainder
+
+    def map_subscript(self, expr):
+        iname_terms, remainder = self._process_subscript(expr)
 
         expr = type(expr)(
                 expr.aggregate,
@@ -220,10 +235,21 @@ class SubscriptSubsetReplacer(ExprIdentityMapper):
 
         return super(SubscriptSubsetReplacer, self).map_subscript(expr)
 
+    def map_vector_private_subscript(self, expr):
+        iname_terms, remainder = self._process_subscript(expr)
+
+        expr = type(expr)(
+                expr.aggregate,
+                p.Sum(tuple(iname_terms) + tuple(remainder)),
+                expr.vector_width)
+
+        return super(SubscriptSubsetReplacer, self)\
+                .map_vector_private_subscript(expr)
+
 
 class ASTSubexpressionReplacer(CASTIdentityMapper):
     def map_loopy_scope(self, node, subex_rep_state):
-        codegen_state = subex_rep_state.codegen_state
+        codegen_state = node.codegen_state
 
         available_variables = (
                 subex_rep_state.available_variables
@@ -268,12 +294,11 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
 
             initializers.append(
                     codegen_state.ast_builder.emit_initializer(
-                        codegen_state,
+                        node.codegen_state,
                         codegen_state.kernel.index_dtype,
                         var_name,
                         CExpression(
-                            subex_rep_state.codegen_state.ast_builder
-                            .get_c_expression_to_code_mapper(),
+                            node.codegen_state,
                             new_var_expr),
                         is_const=True))
 
@@ -288,7 +313,8 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
                 subnode = Block(initializers + subnode.contents)
             else:
                 subnode = Block(initializers+[subnode])
-            node = ScopeASTNode(node.available_variables, subnode)
+            node = ScopeASTNode(
+                    node.codegen_state, node.available_variables, subnode)
 
         subex_rep_state = subex_rep_state.copy(
                 term_set_to_variable=term_set_to_variable,
@@ -302,7 +328,7 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
         if isinstance(expr, CExpression):
             ssr = SubscriptSubsetReplacer(self, subex_rep_state)
             return CExpression(
-                    expr.to_code_mapper,
+                    expr.codegen_state,
                     ssr(expr.expr))
         elif isinstance(expr, str) or is_constant(expr):
             return expr
@@ -313,11 +339,11 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
 # }}}
 
 
-def eliminate_common_subscripts(codegen_state, node):
+def eliminate_common_subscripts(codegen_state, is_term_allowed, node):
     if not codegen_state.kernel.options.eliminate_common_subscripts:
         return node
 
-    sc = ASTSubexpressionCollector(codegen_state.kernel)
+    sc = ASTSubexpressionCollector(codegen_state, is_term_allowed)
     sc(node)
 
     sr = ASTSubexpressionReplacer()

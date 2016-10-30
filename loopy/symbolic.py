@@ -79,6 +79,12 @@ class IdentityMapperMixin(object):
     def map_loopy_function_identifier(self, expr, *args):
         return expr
 
+    def map_vector_private_subscript(self, expr, *args):
+        return type(expr)(
+                self.rec(expr.aggregate, *args),
+                self.rec(expr.index, *args),
+                self.rec(expr.vector_width, *args))
+
     def map_reduction(self, expr, *args):
         mapped_inames = [self.rec(Variable(iname), *args) for iname in expr.inames]
 
@@ -167,10 +173,13 @@ class StringifyMapper(StringifyMapperBase):
         return expr.s
 
     def map_group_hw_index(self, expr, enclosing_prec):
-        return "grp.%d" % expr.index
+        return "grp.%d" % expr.axis
 
     def map_local_hw_index(self, expr, enclosing_prec):
-        return "loc.%d" % expr.index
+        return "loc.%d" % expr.axis
+
+    def map_vector_private_subscript(self, expr, *args):
+        return self.rec(expr.aggregate[expr.index][LocalHardwareAxisIndex(0)])
 
     def map_reduction(self, expr, prec):
         return "%sreduce(%s, [%s], %s)" % (
@@ -237,6 +246,12 @@ class DependencyMapper(DependencyMapperBase):
         # into 'function' attribute of Call.
         return self.combine(
                 self.rec(child, *args) for child in expr.parameters)
+
+    def map_vector_private_subscript(self, expr, *args):
+        return self.combine((
+            self.rec(expr.aggregate),
+            self.rec(expr.index),
+            self.rec(expr.vector_width)))
 
     def map_reduction(self, expr):
         return (self.rec(expr.expr)
@@ -337,6 +352,27 @@ class FunctionIdentifier(Leaf):
         return StringifyMapper
 
     mapper_method = intern("map_loopy_function_identifier")
+
+
+class VectorPrivateSubscript(Leaf):
+    """Realize a subscript into a private temporary that needs to be implicitly
+    indexed by ``local_id(0)``.
+    """
+
+    def __init__(self, aggregate, index, vector_width):
+        self.aggregate = aggregate
+        self.index = index
+        self.vector_width = vector_width
+
+    def stringifier(self):
+        return StringifyMapper
+
+    def __getinitargs__(self):
+        return (self.aggregate, self.index, self.vector_width)
+
+    init_arg_names = ("aggregate", "index", "vector_width")
+
+    mapper_method = "map_vector_private_subscript"
 
 
 class TypedCSE(CommonSubexpression):

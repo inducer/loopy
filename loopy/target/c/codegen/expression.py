@@ -108,7 +108,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         assert prec == PREC_NONE
         from loopy.target.c import CExpression
         return CExpression(
-                self.codegen_state.ast_builder.get_c_expression_to_code_mapper(),
+                self.codegen_state,
                 self.rec(expr, type_context, needed_dtype))
 
     # }}}
@@ -118,15 +118,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             return x
 
         if expr.name in self.codegen_state.var_subst_map:
-            if self.kernel.options.annotate_inames:
-                return var(
-                        "/* %s */ %s" % (
-                            expr.name,
-                            self.rec(self.codegen_state.var_subst_map[expr.name],
-                                type_context)))
-            else:
-                return self.rec(self.codegen_state.var_subst_map[expr.name],
-                    type_context)
+            return expr
+
         elif expr.name in self.kernel.arg_dict:
             arg = self.kernel.arg_dict[expr.name]
             from loopy.kernel.array import ArrayBase
@@ -650,10 +643,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
     # }}}
 
     def map_group_hw_index(self, expr, type_context):
-        raise LoopyError("plain C does not have group hw axes")
+        return expr
 
     def map_local_hw_index(self, expr, type_context):
-        raise LoopyError("plain C does not have local hw axes")
+        return expr
 
 # }}}
 
@@ -661,6 +654,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 # {{{ C expression to code mapper
 
 class CExpressionToCodeMapper(RecursiveMapper):
+    def __init__(self, codegen_state):
+        self.codegen_state = codegen_state
+
     # {{{ helpers
 
     def parenthesize_if_needed(self, s, enclosing_prec, my_prec):
@@ -698,6 +694,19 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 "entry to loopy")
 
     def map_variable(self, expr, enclosing_prec):
+        if expr.name in self.codegen_state.var_subst_map:
+            if self.codegen_state.kernel.options.annotate_inames:
+                return var(
+                        "/* %s */ %s" % (
+                            expr.name,
+                            self.rec(
+                                self.codegen_state.var_subst_map[expr.name],
+                                enclosing_prec)))
+            else:
+                return self.rec(
+                        self.codegen_state.var_subst_map[expr.name],
+                        enclosing_prec)
+
         return expr.name
 
     def map_lookup(self, expr, enclosing_prec):
@@ -812,8 +821,11 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 self.rec(expr.base, PREC_NONE),
                 self.rec(expr.exponent, PREC_NONE))
 
-    # map_group_hw_index: eliminated at the loopy -> C level
-    # map_local_hw_index: eliminated at the loopy -> C level
+    def map_group_hw_index(self, expr, enclosing_prec):
+        raise LoopyError("plain C does not have group hw axes")
+
+    def map_local_hw_index(self, expr, enclosing_prec):
+        raise LoopyError("plain C does not have local hw axes")
 
 # }}}
 
