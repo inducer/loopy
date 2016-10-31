@@ -1191,11 +1191,16 @@ def add_sequential_dependencies(knl):
     new_insns = []
     prev_insn = None
     for insn in knl.instructions:
+        depon = insn.depends_on
+        if depon is None:
+            depon = frozenset()
+
         if prev_insn is not None:
-            depon = insn.depends_on
-            if depon is None:
-                depon = frozenset()
-            insn = insn.copy(depends_on=depon | frozenset((prev_insn.id,)))
+            depon = depon | frozenset((prev_insn.id,))
+
+        insn = insn.copy(
+                depends_on=depon,
+                depends_on_is_final=True)
 
         new_insns.append(insn)
 
@@ -1484,6 +1489,76 @@ def add_inferred_inames(knl):
 # }}}
 
 
+# {{{ apply single-writer heuristic
+
+def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
+    logger.debug("%s: default deps" % kernel.name)
+
+    from loopy.transform.subst import expand_subst
+    expanded_kernel = expand_subst(kernel)
+
+    writer_map = kernel.writer_map()
+
+    arg_names = set(arg.name for arg in kernel.args)
+
+    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
+
+    dep_map = dict(
+            (insn.id, insn.read_dependency_names() & var_names)
+            for insn in expanded_kernel.instructions)
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if not insn.depends_on_is_final:
+            auto_deps = set()
+
+            # {{{ add automatic dependencies
+
+            all_my_var_writers = set()
+            for var in dep_map[insn.id]:
+                var_writers = writer_map.get(var, set())
+                all_my_var_writers |= var_writers
+
+                if not var_writers and var not in arg_names:
+                    tv = kernel.temporary_variables[var]
+                    if tv.initializer is None:
+                        warn_with_kernel(kernel, "read_no_write(%s)" % var,
+                                "temporary variable '%s' is read, but never written."
+                                % var)
+
+                if len(var_writers) == 1:
+                    auto_deps.update(
+                            var_writers
+                            - set([insn.id]))
+
+            # }}}
+
+            depends_on = insn.depends_on
+            if depends_on is None:
+                depends_on = frozenset()
+
+            new_deps = frozenset(auto_deps) | depends_on
+
+            if warn_if_used and new_deps != depends_on:
+                warn_with_kernel(kernel, "single_writer_after_creation",
+                        "The single-writer dependency heuristic added dependencies "
+                        "on instruction ID(s) '%s' to instruction ID '%s' after "
+                        "kernel creation is complete. This is deprecated and "
+                        "may stop working in the future. "
+                        "To fix this, ensure that instruction dependencies "
+                        "are added/resolved as soon as possible, ideally at kernel "
+                        "creation time."
+                        % (", ".join(new_deps - depends_on), insn.id))
+
+            insn = insn.copy(depends_on=new_deps)
+
+        new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ kernel creation top-level
 
 def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
@@ -1711,6 +1786,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
     knl = resolve_wildcard_deps(knl)
+    knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=False)
 
     # -------------------------------------------------------------------------
     # Ordering dependency:
