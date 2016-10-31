@@ -295,12 +295,12 @@ def opencl_preamble_generator(preamble_info):
 
 # {{{ expression mapper
 
-class ExpressionToOpenCLCExpressionMapper(CExpressionToCodeMapper):
+class CLExpressionToCodeMapper(CExpressionToCodeMapper):
     def map_group_hw_index(self, expr, enclosing_prec):
         return "gid(%d)" % expr.axis
 
     def map_local_hw_index(self, expr, enclosing_prec):
-        return "lid(%d)" % expr.axi
+        return "lid(%d)" % expr.axis
 
 # }}}
 
@@ -431,7 +431,7 @@ class OpenCLCASTBuilder(CASTBuilder):
     # {{{ code generation guts
 
     def get_c_expression_to_code_mapper(self, codegen_state):
-        return ExpressionToOpenCLCExpressionMapper(codegen_state)
+        return CLExpressionToCodeMapper(codegen_state)
 
     def add_vector_access(self, access_expr, index):
         # The 'int' avoids an 'L' suffix for long ints.
