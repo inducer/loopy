@@ -393,6 +393,9 @@ class TemporaryVariable(ArrayBase):
                     "initializer must be None or a numpy array"
                     % name)
 
+        if order is None:
+            order = "C"
+
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
