@@ -52,6 +52,8 @@ __doc__ = """
 
 .. autofunction:: has_schedulable_iname_nesting
 
+.. autofunction:: prioritize_loops
+
 .. autofunction:: rename_iname
 
 .. autofunction:: remove_unused_inames
@@ -86,11 +88,33 @@ def set_loop_priority(kernel, loop_priority):
     :arg: an iterable of inames, or, for brevity, a comma-seaprated string of
         inames
     """
+    from warnings import warn
+    warn("set_loop_priority is deprecated. Use prioritize_loops instead."
+         "Attention: A call to set_loop_priority will overwrite any previously"
+         "set priorities!")
 
     if isinstance(loop_priority, str):
-        loop_priority = [s.strip() for s in loop_priority.split(",") if s.strip()]
+        loop_priority = tuple(s.strip()
+                              for s in loop_priority.split(",") if s.strip())
 
-    return kernel.copy(loop_priority=loop_priority)
+    return kernel.copy(loop_priority=frozenset([loop_priority]))
+
+
+def prioritize_loops(kernel, loop_priority):
+    """Indicates the textual order in which loops should be entered in the
+    kernel code. Note that this priority has an advisory role only. If the
+    kernel logically requires a different nesting, priority is ignored.
+    Priority is only considered if loop nesting is ambiguous.
+    prioritize_loops can be used multiple times.
+
+    :arg: an iterable of inames, or, for brevity, a comma-separated string of
+        inames
+    """
+    if isinstance(loop_priority, str):
+        loop_priority = tuple(s.strip()
+                              for s in loop_priority.split(",") if s.strip())
+
+    return kernel.copy(loop_priority=kernel.loop_priority.union([loop_priority]))
 
 # }}}
 
@@ -245,20 +269,22 @@ def _split_iname_backend(kernel, split_iname,
     iname_slab_increments = kernel.iname_slab_increments.copy()
     iname_slab_increments[outer_iname] = slabs
 
-    new_loop_priority = []
-    for prio_iname in kernel.loop_priority:
-        if prio_iname == split_iname:
-            new_loop_priority.append(outer_iname)
-            new_loop_priority.append(inner_iname)
-        else:
-            new_loop_priority.append(prio_iname)
+    new_priorities = []
+    for prio in kernel.loop_priority:
+        new_prio = ()
+        for prio_iname in prio:
+            if prio_iname == split_iname:
+                new_prio = new_prio + (outer_iname, inner_iname)
+            else:
+                new_prio = new_prio + (prio_iname,)
+        new_priorities.append(new_prio)
 
     kernel = kernel.copy(
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
             instructions=new_insns,
             applied_iname_rewrites=applied_iname_rewrites,
-            loop_priority=new_loop_priority)
+            loop_priority=frozenset(new_priorities))
 
     from loopy.match import parse_stack_match
     within = parse_stack_match(within)

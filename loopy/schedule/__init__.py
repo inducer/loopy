@@ -355,6 +355,46 @@ def gen_dependencies_except(kernel, insn_id, except_insn_ids):
         for sub_dep_id in gen_dependencies_except(kernel, dep_id, except_insn_ids):
             yield sub_dep_id
 
+
+def get_priority_tiers(wanted, priorities):
+    # Get highest priority tier candidates: These are the first inames
+    # of all the given priority constraints
+    candidates = set(next(iter(p for p in prio if p in wanted))
+                     for prio in priorities
+                     )
+
+    # Now shrink this set by removing those inames that are prohibited
+    # by other constraints
+    bad_candidates = []
+    for c1 in candidates:
+        for c2 in candidates:
+            for prio in priorities:
+                try:
+                    if prio.index(c1) < prio.index(c2):
+                        bad_candidates.append(c2)
+                except ValueError:
+                    # A ValueError in tuple.index just states that one of
+                    # the candidates is not present in the priority constraint
+                    pass
+    candidates = candidates - set(bad_candidates)
+
+    if candidates:
+        # We found a valid priority tier!
+        yield candidates
+    else:
+        # If we did not, we stop the generator!
+        return
+
+    # Now reduce the input data for recursion!
+    priorities = frozenset([tuple(i for i in prio if i not in candidates)
+                            for prio in priorities
+                            ]) - frozenset([()])
+    wanted = wanted - candidates
+
+    # Yield recursively!
+    for tier in get_priority_tiers(wanted, priorities):
+        yield tier
+
 # }}}
 
 
@@ -930,19 +970,23 @@ def generate_loop_schedules_internal(
 
         # Build priority tiers. If a schedule is found in the first tier, then
         # loops in the second are not even tried (and so on).
-
-        loop_priority_set = set(sched_state.kernel.loop_priority)
+        loop_priority_set = set().union(*[set(prio)
+                                          for prio in
+                                          sched_state.kernel.loop_priority])
         useful_loops_set = set(six.iterkeys(iname_to_usefulness))
         useful_and_desired = useful_loops_set & loop_priority_set
 
         if useful_and_desired:
-            priority_tiers = [
-                    [iname]
-                    for iname in sched_state.kernel.loop_priority
-                    if iname in useful_and_desired
-                    and iname not in sched_state.ilp_inames
-                    and iname not in sched_state.vec_inames
-                    ]
+            wanted = (
+                useful_and_desired
+                - sched_state.ilp_inames
+                - sched_state.vec_inames
+                )
+            priority_tiers = [t for t in
+                              get_priority_tiers(wanted,
+                                                 sched_state.kernel.loop_priority
+                                                 )
+                              ]
 
             priority_tiers.append(
                     useful_loops_set

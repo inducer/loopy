@@ -78,9 +78,10 @@ def check_insn_attributes(kernel):
 
 
 def check_loop_priority_inames_known(kernel):
-    for iname in kernel.loop_priority:
-        if iname not in kernel.all_inames():
-            raise LoopyError("unknown iname '%s' in loop priorities" % iname)
+    for prio in kernel.loop_priority:
+        for iname in prio:
+            if iname not in kernel.all_inames():
+                raise LoopyError("unknown iname '%s' in loop priorities" % iname)
 
 
 def check_for_double_use_of_hw_axes(kernel):

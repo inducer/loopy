@@ -184,7 +184,7 @@ class LoopKernel(RecordWithoutPickling):
             symbol_manglers=[],
 
             iname_slab_increments={},
-            loop_priority=[],
+            loop_priority=frozenset(),
             silenced_warnings=[],
 
             applied_iname_rewrites=[],
