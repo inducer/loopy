@@ -96,6 +96,7 @@ def set_loop_priority(kernel, loop_priority):
     if isinstance(loop_priority, str):
         loop_priority = tuple(s.strip()
                               for s in loop_priority.split(",") if s.strip())
+    loop_priority = tuple(loop_priority)
 
     return kernel.copy(loop_priority=frozenset([loop_priority]))
 
@@ -113,6 +114,7 @@ def prioritize_loops(kernel, loop_priority):
     if isinstance(loop_priority, str):
         loop_priority = tuple(s.strip()
                               for s in loop_priority.split(",") if s.strip())
+    loop_priority = tuple(loop_priority)
 
     return kernel.copy(loop_priority=kernel.loop_priority.union([loop_priority]))
 
