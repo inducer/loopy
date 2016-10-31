@@ -116,8 +116,8 @@ from loopy.statistics import (stringify_stats_mapping, Op, MemAccess,
         get_op_poly, sum_ops_to_dtypes, get_lmem_access_poly,
         get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_poly,
         sum_mem_access_to_bytes, reduce_mem_access_poly_fields,
-        filter_mem_access_poly_fields, reduce_op_poly_fields,
-        filter_op_poly_fields, sum_polys, eval_and_sum_polys,
+        reduce_op_poly_fields,
+        sum_polys, eval_and_sum_polys,
         get_synchronization_poly, gather_access_footprints,
         gather_access_footprint_bytes)
 from loopy.codegen import (
@@ -226,8 +226,8 @@ __all__ = [
         "sum_ops_to_dtypes", "get_lmem_access_poly", "get_DRAM_access_poly",
         "get_gmem_access_poly", "get_mem_access_poly",
         "sum_mem_access_to_bytes", "reduce_mem_access_poly_fields",
-        "filter_mem_access_poly_fields", "reduce_op_poly_fields",
-        "filter_op_poly_fields", "sum_polys", "eval_and_sum_polys",
+        "reduce_op_poly_fields",
+        "sum_polys", "eval_and_sum_polys",
         "get_synchronization_poly", "gather_access_footprints",
         "gather_access_footprint_bytes",
 

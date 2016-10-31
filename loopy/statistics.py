@@ -36,9 +36,12 @@ from loopy.kernel.data import MultiAssignmentBase
 from loopy.diagnostic import warn, LoopyError
 
 
+#TODO does this work for class functions?
 __doc__ = """
 
 .. currentmodule:: loopy
+
+.. autofunction:: filter
 
 .. autofunction:: get_op_poly
 
@@ -49,10 +52,8 @@ __doc__ = """
 
 .. autofunction:: sum_mem_access_to_bytes
 .. autofunction:: reduce_mem_access_poly_fields
-.. autofunction:: filter_mem_access_poly_fields
 
 .. autofunction:: reduce_op_poly_fields
-.. autofunction:: filter_op_poly_fields
 
 .. autofunction:: get_synchronization_poly
 
@@ -106,6 +107,59 @@ class ToCountMap:
 
     def __repr__(self):
         return repr(self.dict)
+
+    def items(self):
+        return self.dict.items()
+
+    def filter(self, **kwargs):
+        """Remove items without specified key fields
+
+        :parameter **kwargs: Keyword arguments matching fields in the keys of
+                             the :class:`ToCountMap`, each given a list of
+                             allowable values for that key field.
+
+        :return: A :class:`ToCountMap` containing the subset of the items in
+                 the oriinal :class:`ToCountMap` that match the field values
+                 passed
+
+        Example usage::
+
+            # (first create loopy kernel and specify array data types)
+
+            params = {'n': 512, 'm': 256, 'l': 128}
+            mem_map = lp.get_mem_access_poly(knl)
+            filtered_map = mem_map.filter(directions=['load'],
+                                          variables=['a','g'])
+            tot_loads_a_g = lp.eval_and_sum_polys(filtered_map, params)
+
+            # (now use these counts to predict performance)
+
+        """
+
+        new_map = ToCountMap()
+
+        from loopy.types import to_loopy_type
+        if 'dtype' in kwargs.keys():
+            kwargs['dtype'] = [to_loopy_type(d) for d in kwargs['dtype']]
+
+        # for each item in self.dict
+        for self_key, self_val in self.dict.items():
+            try:
+                # check to see if key attribute values match all filters
+                for arg_field, allowable_vals in kwargs.items():
+                    attr_val = getattr(self_key, arg_field)
+                    # see if the value is in the filter list
+                    if attr_val not in allowable_vals:
+                        print("DEBUG: "+str(attr_val)+" not in ", allowable_vals, ", removing.")
+                        break
+                else:  # loop terminated without break or error
+                    new_map.dict[self_key] = self_val
+            except(AttributeError):
+                # the field passed is not a field of this key
+                print("DEBUG: "+arg_field+" not in ", self_key, ", removing.") 
+                continue
+
+        return new_map
 
 # }}}
 
@@ -884,7 +938,7 @@ def get_op_poly(knl, numpy_types=True):
                 (Op(op.dtype.numpy_dtype, op.name), count)
                 for op, count in six.iteritems(result))
 
-    return result
+    return ToCountMap(result)
 # }}}
 
 
@@ -927,29 +981,25 @@ def sum_ops_to_dtypes(op_poly_dict):
 
     return result
 
-
+#TODO test depricated functions?
 def get_lmem_access_poly(knl):
     """Count the number of local memory accesses in a loopy kernel.
     """
     from warnings import warn
-    warn("get_lmem_access_poly is deprecated. "
-         "Instead, use get_mem_access_poly and then pass the result to "
-         "filter_mem_access_poly_fields with mtypes=['local'] option.",
+    warn("get_lmem_access_poly is deprecated. Use get_mem_access_poly and "
+         "filter the result with the mtype=['local'] option.",
          DeprecationWarning, stacklevel=2)
-    return filter_mem_access_poly_fields(
-                get_mem_access_poly(knl), mtypes=['local'])
+    return get_mem_access_poly(knl).filter(mtypes=['local'])
 
 
 def get_DRAM_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
     """
     from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. "
-         "Instead, use get_mem_access_poly and then pass the result to "
-         "filter_mem_access_poly_fields with mtypes=['global'] option.",
+    warn("get_DRAM_access_poly is deprecated. Use get_mem_access_poly and "
+         "filter the result with the mtype=['global'] option.",
          DeprecationWarning, stacklevel=2)
-    return filter_mem_access_poly_fields(
-                get_mem_access_poly(knl), mtypes=['global'])
+    return get_mem_access_poly(knl).filter(mtypes=['global'])
 
 # {{{ get_gmem_access_poly
 
@@ -957,13 +1007,10 @@ def get_gmem_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
     """
     from warnings import warn
-    warn("get_gmem_access_poly is deprecated. "
-         "Instead, use get_mem_access_poly and then pass the result to "
-         "filter_mem_access_poly_fields with mtypes=['global'] option.",
+    warn("get_DRAM_access_poly is deprecated. Use get_mem_access_poly and "
+         "filter the result with the mtype=['global'] option.",
          DeprecationWarning, stacklevel=2)
-    return filter_mem_access_poly_fields(
-                get_mem_access_poly(knl), mtypes=['global'])
-
+    return get_mem_access_poly(knl).filter(mtypes=['global'])
 
 # }}}
 
@@ -1091,10 +1138,10 @@ def get_mem_access_poly(knl, numpy_types=True):
                                  stride=mem_access.stride,
                                  direction=mem_access.direction,
                                  variable=mem_access.variable)
-                       , count)
+                                 , count)
                       for mem_access, count in six.iteritems(result))
 
-    return result
+    return ToCountMap(result)
 
 # {{{ sum_mem_access_to_bytes
 
@@ -1231,78 +1278,6 @@ def reduce_mem_access_poly_fields(m, mtype=True, dtype=True, stride=True,
 
 # }}}
 
-# {{{ filter_mem_access_poly_fields
-
-def filter_mem_access_poly_fields(m, mtypes=None, dtypes=None, strides=None,
-                                  directions=None, variables=None):
-    """Take map returned from :func:`get_mem_access_poly` and remove items without specified MemAccess fields
-
-    :parameter m: A mapping of **{** :class:`loopy.MemAccess` **:**
-                  :class:`islpy.PwQPolynomial` **}**.
-
-    :parameter mtypes: A list of :class:`string` that specifies the memory type
-                      accessed as **global** or **local**
-
-    :parameter dtypes: A list of :class:`loopy.LoopyType` (or
-                      :class:`numpy.dtype`) that specifies the data type
-                      accessed.
-
-    :parameter strides: A list of :class:`int` specifies stride of the memory
-                       access. A stride of 0 indicates a uniform access (i.e.
-                       all threads access the same item).
-
-    :parameter directions: A list of :class:`string` that specifies the
-                          direction of memory access as **load** or **store**.
-
-    :parameter variables: A list of :class:`string` that specifies the variable
-                         name of the data accessed.
-
-
-    :return: A mapping of **{(** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**
-
-             - The :class:`islpy.PwQPolynomial` holds the counts (in terms of
-               the :class:`loopy.LoopKernel` *inames*) for memory accesses
-               matching the fields passed as parameters.
-
-    Example usage::
-
-        # (first create loopy kernel and specify array data types)
-
-        params = {'n': 512, 'm': 256, 'l': 128}
-        mem_map = lp.get_mem_access_poly(knl)
-        filtered_map = lp.filter_mem_access_poly_fields(mem_map,
-                                                        directions=['load'],
-                                                        variables=['a','g'])
-        tot = lp.eval_and_sum_polys(filtered_map, params)
-
-        # (now use these counts to predict performance)
-
-    """
-
-    from loopy.types import to_loopy_type
-    if dtypes is not None:
-        dtypes_lp = [to_loopy_type(d) for d in dtypes]
-
-    result = {}
-
-    for k, v in m.items():
-        if (mtypes is None or k.mtype in mtypes) and \
-           (dtypes is None or k.dtype in dtypes_lp) and \
-           (strides is None or k.stride in strides) and \
-           (directions is None or k.direction in directions) and \
-           (variables is None or k.variable in variables):
-
-            new_key = MemAccess(k.mtype, k.dtype, k.stride, k.direction, k.variable)
-
-            if new_key in result:
-                result[new_key] += m[k]
-            else:
-                result[new_key] = m[k]
-
-    return result
-
-# }}}
-
 # {{{ reduce_op_poly_fields
 
 def reduce_op_poly_fields(m, dtype=True, name=True):
@@ -1355,62 +1330,6 @@ def reduce_op_poly_fields(m, dtype=True, name=True):
             result[new_key] += m[k]
         else:
             result[new_key] = m[k]
-
-    return result
-
-# }}}
-
-# {{{ filter_op_poly_fields
-
-def filter_op_poly_fields(m, dtypes=None, names=None):
-    """Take map returned from :func:`get_op_poly` and remove items without specified Op fields
-
-    :parameter m: A mapping of **{** :class:`loopy.Op` **:**
-                  :class:`islpy.PwQPolynomial` **}**.
-
-    :parameter dtypes: A list of :class:`loopy.LoopyType` (or
-                      :class:`numpy.dtype`) that specifies the data type
-                      operated on.
-
-    :parameter names: A list of :class:`string` that specifies the kind of
-                      arithmetic operation as *add*, *sub*, *mul*, *div*,
-                      *pow*, *shift*, *bw* (bitwise), etc.
-
-    :return: A mapping of **{(** :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**
-
-             - The :class:`islpy.PwQPolynomial` holds the counts (in terms of
-               the :class:`loopy.LoopKernel` *inames*) for arithmetic ops
-               matching the fields passed as parameters.
-
-    Example usage::
-
-        # (first create loopy kernel and specify array data types)
-
-        params = {'n': 512, 'm': 256, 'l': 128}
-        op_map = lp.get_op_poly(knl)
-        filtered_map = lp.filter_op_poly_fields(op_map, names=['add', 'sub'])
-        tot_addsub = lp.eval_and_sum_polys(filtered_map, params)
-
-        # (now use these counts to predict performance)
-
-    """
-
-    from loopy.types import to_loopy_type
-    if dtypes is not None:
-        dtypes_lp = [to_loopy_type(d) for d in dtypes]
-
-    result = {}
-
-    for k, v in m.items():
-        if (dtypes is None or k.dtype in dtypes_lp) and \
-           (names is None or k.name in names):
-
-            new_key = Op(k.dtype, k.name)
-
-            if new_key in result:
-                result[new_key] += m[k]
-            else:
-                result[new_key] = m[k]
 
     return result
 

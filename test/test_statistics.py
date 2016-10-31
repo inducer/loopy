@@ -371,7 +371,7 @@ def test_gmem_access_counter_specialops():
     assert f32 == n*m*l
     assert f64 == n*m
 
-    filtered_map = lp.filter_mem_access_poly_fields(poly, directions=['load'], variables=['a','g'])
+    filtered_map = poly.filter(direction=['load'], variable=['a','g'])
     tot = lp.eval_and_sum_polys(filtered_map, params)
     assert tot == n*m*l + n*m
 
@@ -744,29 +744,27 @@ def test_summations_and_filters():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
 
+    mem_map = lp.get_mem_access_poly(knl)
+
     loads_a = lp.eval_and_sum_polys(
-                    lp.filter_mem_access_poly_fields(
-                        lp.get_mem_access_poly(knl),
-                        directions=['load'], variables=['a']),
+                    mem_map.filter(direction=['load'], variable=['a']),
                     params)
     assert loads_a == 2*n*m*l
 
     global_stores = lp.eval_and_sum_polys(
-                        lp.filter_mem_access_poly_fields(
-                            lp.get_mem_access_poly(knl),
-                            mtypes=['global'], directions=['store']),
+                        mem_map.filter(mtype=['global'], direction=['store']),
                         params)
     assert global_stores == n*m*l + n*m
 
-    bytes_map = lp.sum_mem_access_to_bytes(lp.get_mem_access_poly(knl))
+    bytes_map = lp.sum_mem_access_to_bytes(mem_map)
     s0load = bytes_map[('global', 0, 'load')].eval_with_dict(params)
     s0store = bytes_map[('global', 0, 'store')].eval_with_dict(params)
     assert s0load == 4*n*m*l*3 + 8*n*m*2
     assert s0store == 4*n*m*l + 8*n*m
 
     # ignore stride and variable names in this map
-    reduced_map = lp.reduce_mem_access_poly_fields(lp.get_mem_access_poly(knl),
-                                                  stride=False, variable=False)
+    reduced_map = lp.reduce_mem_access_poly_fields(mem_map, stride=False,
+                                                   variable=False)
     f32lall = reduced_map[lp.MemAccess('global', np.float32, direction='load')
                          ].eval_with_dict(params)
     f64lall = reduced_map[lp.MemAccess('global', np.float64, direction='load')
@@ -774,7 +772,9 @@ def test_summations_and_filters():
     assert f32lall == 3*n*m*l
     assert f64lall == 2*n*m
 
-    poly_dtype = lp.sum_ops_to_dtypes(lp.get_op_poly(knl))
+    op_map = lp.get_op_poly(knl)
+
+    poly_dtype = lp.sum_ops_to_dtypes(op_map)
     f32 = poly_dtype[to_loopy_type(np.float32)].eval_with_dict(params)
     f64 = poly_dtype[to_loopy_type(np.float64)].eval_with_dict(params)
     i32 = poly_dtype[to_loopy_type(np.int32)].eval_with_dict(params)
@@ -782,23 +782,23 @@ def test_summations_and_filters():
     assert f64 == n*m
     assert i32 == n*m*2
 
-    addsub_all = lp.eval_and_sum_polys(
-                        lp.filter_op_poly_fields(
-                            lp.get_op_poly(knl), names=['add', 'sub']),
-                        params)
-    f32ops_all = lp.eval_and_sum_polys(
-                        lp.filter_op_poly_fields(
-                            lp.get_op_poly(knl), dtypes=[np.float32]),
-                        params)
+    addsub_all = lp.eval_and_sum_polys(op_map.filter(name=['add', 'sub']),
+                                       params)
+    f32ops_all = lp.eval_and_sum_polys(op_map.filter(dtype=[np.float32]),
+                                       params)
     assert addsub_all == n*m*l + n*m*2
     assert f32ops_all == n*m*l*3
 
-    ops_nodtype = lp.reduce_op_poly_fields(lp.get_op_poly(knl), dtype=False)
-    ops_noname = lp.reduce_op_poly_fields(lp.get_op_poly(knl), name=False)
+    non_field = lp.eval_and_sum_polys(op_map.filter(xxx=[np.float32]), params)
+    assert non_field == 0
+
+    ops_nodtype = lp.reduce_op_poly_fields(op_map, dtype=False)
+    ops_noname = lp.reduce_op_poly_fields(op_map, name=False)
     mul_all = ops_nodtype[lp.Op(name='mul')].eval_with_dict(params)
     f64ops_all = ops_noname[lp.Op(dtype=np.float64)].eval_with_dict(params)
     assert mul_all == n*m*l + n*m
     assert f64ops_all == n*m
+
 
 
 if __name__ == "__main__":
