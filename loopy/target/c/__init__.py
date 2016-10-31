@@ -133,8 +133,8 @@ class POD(Declarator):
 
 
 class ScopeASTNode(cgen.Generable):
-    def __init__(self, codegen_state, available_variables, child):
-        self.codegen_state = codegen_state
+    def __init__(self, var_subst_map, available_variables, child):
+        self.var_subst_map = var_subst_map
         self.available_variables = available_variables
         self.child = child
 
@@ -739,13 +739,14 @@ class CASTBuilder(ASTBuilderBase):
         return If(condition_str, ast)
 
     def emit_scope(self, codegen_state, available_variables, ast):
-        return ScopeASTNode(codegen_state, available_variables, ast)
+        return ScopeASTNode(codegen_state.var_subst_map, available_variables, ast)
 
     # }}}
 
     def process_ast(self, codegen_state, node):
         from loopy.target.c.subscript_cse import eliminate_common_subscripts
         return eliminate_common_subscripts(codegen_state,
+                is_term_allowed=lambda term, deps: True,
                 node=node)
 
 

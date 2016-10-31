@@ -430,7 +430,7 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     # {{{ code generation guts
 
-    def get_expression_to_c_expression_mapper(self, codegen_state):
+    def get_c_expression_to_code_mapper(self, codegen_state):
         return ExpressionToOpenCLCExpressionMapper(codegen_state)
 
     def add_vector_access(self, access_expr, index):

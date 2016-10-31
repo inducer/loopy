@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 class CASTIdentityMapper(CASTIdentityMapperBase):
     def map_loopy_scope(self, node, *args, **kwargs):
         return type(node)(
-                node.codegen_state,
+                node.var_subst_map,
                 node.available_variables,
                 self.rec(node.child, *args, **kwargs))
 
@@ -249,7 +249,8 @@ class SubscriptSubsetReplacer(ExprIdentityMapper):
 
 class ASTSubexpressionReplacer(CASTIdentityMapper):
     def map_loopy_scope(self, node, subex_rep_state):
-        codegen_state = node.codegen_state
+        codegen_state = subex_rep_state.codegen_state.copy(
+                var_subst_map=node.var_subst_map)
 
         available_variables = (
                 subex_rep_state.available_variables
@@ -294,11 +295,11 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
 
             initializers.append(
                     codegen_state.ast_builder.emit_initializer(
-                        node.codegen_state,
+                        codegen_state,
                         codegen_state.kernel.index_dtype,
                         var_name,
                         CExpression(
-                            node.codegen_state,
+                            codegen_state,
                             new_var_expr),
                         is_const=True))
 
@@ -314,7 +315,7 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
             else:
                 subnode = Block(initializers+[subnode])
             node = ScopeASTNode(
-                    node.codegen_state, node.available_variables, subnode)
+                    codegen_state, node.available_variables, subnode)
 
         subex_rep_state = subex_rep_state.copy(
                 term_set_to_variable=term_set_to_variable,
