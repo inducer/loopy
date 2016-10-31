@@ -154,12 +154,12 @@ class CUDACExpressionToCodeMapper(CExpressionToCodeMapper):
 
     def map_group_hw_index(self, expr, enclosing_prec):
         return "((%s) blockIdx.%s)" % (
-            self._get_index_ctype(self.kernel),
+            self._get_index_ctype(self.codegen_state.kernel),
             self._GRID_AXES[expr.axis])
 
     def map_local_hw_index(self, expr, enclosing_prec):
         return "((%s) threadIdx.%s)" % (
-            self._get_index_ctype(self.kernel),
+            self._get_index_ctype(self.codegen_state.kernel),
             self._GRID_AXES[expr.axis])
 
 # }}}
