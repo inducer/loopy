@@ -106,7 +106,11 @@ def prioritize_loops(kernel, loop_priority):
     kernel code. Note that this priority has an advisory role only. If the
     kernel logically requires a different nesting, priority is ignored.
     Priority is only considered if loop nesting is ambiguous.
-    prioritize_loops can be used multiple times.
+
+    prioritize_loops can be used multiple times. If you do so, each given
+    *loop_priority* specifies a scheduling constraint. The constraints from
+    all calls to prioritize_loops together establish a partial order on the
+    inames (see https://en.wikipedia.org/wiki/Partially_ordered_set).
 
     :arg: an iterable of inames, or, for brevity, a comma-separated string of
         inames
