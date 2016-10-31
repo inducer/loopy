@@ -133,7 +133,7 @@ def test_generate_c_snippet():
         knl = lp.add_prefetch(knl, "q_v", "k,I", default_tag=None)
 
     knl = lp.split_iname(knl, "k", 4, inner_tag="unr", slabs=(0, 1))
-    knl = lp.set_loop_priority(knl, "I,k_outer,k_inner")
+    knl = lp.prioritize_loops(knl, "I,k_outer,k_inner")
 
     knl = lp.preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
@@ -215,7 +215,7 @@ def test_numba_cuda_target():
     knl = lp.split_iname(knl, "j", 128, inner_tag='l.0', slabs=(0, 1))
     knl = lp.add_prefetch(knl, "X[i,:]")
     knl = lp.fix_parameters(knl, N=3)
-    knl = lp.set_loop_priority(knl, "i_inner,j_outer")
+    knl = lp.prioritize_loops(knl, "i_inner,j_outer")
     knl = lp.tag_inames(knl, "k:unr")
     knl = lp.tag_array_axes(knl, "X", "N0,N1")
 
