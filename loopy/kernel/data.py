@@ -416,7 +416,7 @@ class TemporaryVariable(ArrayBase):
         ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
-                order="C",
+                order=order,
                 base_indices=base_indices, scope=scope,
                 storage_shape=storage_shape,
                 base_storage=base_storage,
