@@ -150,8 +150,9 @@ def _split_iname_backend(kernel, split_iname,
         slabs=(0, 0), do_tagged_check=True,
         within=None):
     """
-    :arg within: a stack match as understood by
-        :func:`loopy.match.parse_stack_match`.
+    :arg within: If not None, limit the action of the transformation to
+        matching contexts.  See :func:`loopy.match.parse_stack_match`
+        for syntax.
     """
 
     existing_tag = kernel.iname_to_tag.get(split_iname)
