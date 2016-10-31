@@ -237,10 +237,23 @@ def parse_transformed_fortran(source, free_form=True, strict=True,
 
 
 def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
-        auto_dependencies=True, target=None):
+        seq_dependencies=None, auto_dependencies=None, target=None):
     """
     :returns: a list of :class:`loopy.LoopKernel` objects
     """
+
+    if seq_dependencies is not None and auto_dependencies is not None:
+        raise TypeError(
+                "may not specify both seq_dependencies and auto_dependencies")
+    if auto_dependencies is not None:
+        from warnings import warn
+        warn("auto_dependencies is deprecated, use seq_dependencies instead",
+                DeprecationWarning, stacklevel=2)
+        seq_dependencies = auto_dependencies
+
+    if seq_dependencies is None:
+        seq_dependencies = True
+
     import logging
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
@@ -257,11 +270,10 @@ def parse_fortran(source, filename="<floopy code>", free_form=True, strict=True,
                 "and returned invalid data (Sorry!)")
 
     from loopy.frontend.fortran.translator import F2LoopyTranslator
-    f2loopy = F2LoopyTranslator(filename, auto_dependencies=auto_dependencies,
-            target=target)
+    f2loopy = F2LoopyTranslator(filename, target=target)
     f2loopy(tree)
 
-    return f2loopy.make_kernels()
+    return f2loopy.make_kernels(seq_dependencies=seq_dependencies)
 
 
 # vim: foldmethod=marker
