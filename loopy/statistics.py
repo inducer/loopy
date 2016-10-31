@@ -41,7 +41,8 @@ __doc__ = """
 
 .. currentmodule:: loopy
 
-.. autofunction:: filter
+.. autofunction:: filter_by
+.. autofunction:: group_by
 
 .. autofunction:: get_op_poly
 
@@ -91,7 +92,7 @@ class ToCountMap:
         if isinstance(other, isl.PwQPolynomial):
             return ToCountMap(dict(
                 (index, self.dict[index]*other)
-                for index in self.dict.keys()))
+                for index in self.keys()))
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
                                 "ToCountMap by {0} {1}."
@@ -105,13 +106,19 @@ class ToCountMap:
         except KeyError:
             return isl.PwQPolynomial('{ 0 }')
 
+    def __setitem__(self, index, value):
+        self.dict[index] = value
+
     def __repr__(self):
         return repr(self.dict)
 
     def items(self):
         return self.dict.items()
 
-    def filter(self, **kwargs):
+    def keys(self):
+        return self.dict.keys()
+
+    def filter_by(self, **kwargs):
         """Remove items without specified key fields
 
         :parameter **kwargs: Keyword arguments matching fields in the keys of
@@ -128,7 +135,7 @@ class ToCountMap:
 
             params = {'n': 512, 'm': 256, 'l': 128}
             mem_map = lp.get_mem_access_poly(knl)
-            filtered_map = mem_map.filter(directions=['load'],
+            filtered_map = mem_map.filter_by(directions=['load'],
                                           variables=['a','g'])
             tot_loads_a_g = lp.eval_and_sum_polys(filtered_map, params)
 
@@ -136,30 +143,92 @@ class ToCountMap:
 
         """
 
-        new_map = ToCountMap()
+        result_map = ToCountMap()
 
         from loopy.types import to_loopy_type
         if 'dtype' in kwargs.keys():
             kwargs['dtype'] = [to_loopy_type(d) for d in kwargs['dtype']]
 
         # for each item in self.dict
-        for self_key, self_val in self.dict.items():
+        for self_key, self_val in self.items():
             try:
                 # check to see if key attribute values match all filters
                 for arg_field, allowable_vals in kwargs.items():
                     attr_val = getattr(self_key, arg_field)
                     # see if the value is in the filter list
                     if attr_val not in allowable_vals:
-                        print("DEBUG: "+str(attr_val)+" not in ", allowable_vals, ", removing.")
                         break
                 else:  # loop terminated without break or error
-                    new_map.dict[self_key] = self_val
+                    result_map.dict[self_key] = self_val
             except(AttributeError):
                 # the field passed is not a field of this key
-                print("DEBUG: "+arg_field+" not in ", self_key, ", removing.") 
                 continue
 
-        return new_map
+        return result_map
+
+    def group_by(self, *args):
+        """Group map items together, distinguishing by only the key fields passed in args
+
+        :parameter args: Zero or more :class:`string` fields of map keys
+
+        :return: A :class:`ToCountMap` containing the same total counts
+                 grouped together by new keys that only contain the fields
+                 specified in the arguments passed.
+
+        Example usage::
+
+            # (first create loopy kernel and specify array data types)
+
+            params = {'n': 512, 'm': 256, 'l': 128}
+            mem_map = get_mem_access_poly(knl)
+            grouped_mem_map = mem_map.group_by('mtype', 'dtype', 'direction')
+
+            all_f32_global_loads = grouped_mem_map[MemAccess(mtype='global',
+                                                             dtype=np.float32,
+                                                             direction='load')
+                                                  ].eval_with_dict(params)
+            all_f32_global_stores = grouped_mem_map[MemAccess(mtype='global',
+                                                              dtype=np.float32,
+                                                              direction='store')
+                                                   ].eval_with_dict(params)
+            all_f32_local_loads = grouped_mem_map[MemAccess(mtype='local',
+                                                            dtype=np.float32,
+                                                            direction='load')
+                                                 ].eval_with_dict(params)
+            all_f32_local_stores = grouped_mem_map[MemAccess(mtype='local',
+                                                             dtype=np.float32,
+                                                             direction='store')
+                                                  ].eval_with_dict(params)
+
+            # (now use these counts to predict performance)
+
+        """
+
+        result_map = ToCountMap()
+
+        # make sure all item keys have same type
+        if self.dict:
+            key_type = type(list(self.keys())[0])
+            if not all(isinstance(x, key_type) for x in self.keys()):
+                raise ValueError("ToCountMap: group_by() function may only "
+                                 "be used on ToCountMaps with uniform keys")
+        else:
+            return result_map
+
+        # for each item in self.dict
+        for self_key, self_val in self.items():
+            new_key = key_type()
+
+            # set all specified fields
+            for field in args:
+                setattr(new_key, field, getattr(self_key, field))
+
+            if new_key in result_map.keys():
+                result_map[new_key] += self_val
+            else:
+                result_map[new_key] = self_val
+
+        return result_map
 
 # }}}
 
@@ -241,7 +310,6 @@ class MemAccess:
 
     """
 
-    #TODO currently counting all lmem access as stride None
     def __init__(self, mtype=None, dtype=None, stride=None, direction=None, variable=None):
         self.mtype = mtype
         self.stride = stride
@@ -252,6 +320,11 @@ class MemAccess:
         else:
             from loopy.types import to_loopy_type
             self.dtype = to_loopy_type(dtype)
+
+        #TODO currently counting all lmem access as stride None
+        if (mtype == 'local') and (stride is not None):
+            raise NotImplementedError("MemAccess: stride must be None when "
+                                      "mtype is 'local'")
 
     def __eq__(self, other):
         return isinstance(other, MemAccess) and (
@@ -989,7 +1062,7 @@ def get_lmem_access_poly(knl):
     warn("get_lmem_access_poly is deprecated. Use get_mem_access_poly and "
          "filter the result with the mtype=['local'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl).filter(mtypes=['local'])
+    return get_mem_access_poly(knl).filter_by(mtypes=['local'])
 
 
 def get_DRAM_access_poly(knl):
@@ -999,7 +1072,7 @@ def get_DRAM_access_poly(knl):
     warn("get_DRAM_access_poly is deprecated. Use get_mem_access_poly and "
          "filter the result with the mtype=['global'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl).filter(mtypes=['global'])
+    return get_mem_access_poly(knl).filter_by(mtypes=['global'])
 
 # {{{ get_gmem_access_poly
 
@@ -1010,7 +1083,7 @@ def get_gmem_access_poly(knl):
     warn("get_DRAM_access_poly is deprecated. Use get_mem_access_poly and "
          "filter the result with the mtype=['global'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl).filter(mtypes=['global'])
+    return get_mem_access_poly(knl).filter_by(mtypes=['global'])
 
 # }}}
 
@@ -1193,143 +1266,6 @@ def sum_mem_access_to_bytes(m):
             result[new_key] += bytes_transferred
         else:
             result[new_key] = bytes_transferred
-
-    return result
-
-# }}}
-
-# {{{ reduce_mem_access_poly_fields
-
-def reduce_mem_access_poly_fields(m, mtype=True, dtype=True, stride=True,
-                                  direction=True, variable=True):
-    """Take map returned from :func:`get_mem_access_poly`, remove specified MemAccess fields from keys, and combine counts
-
-    :parameter m: A mapping of **{** :class:`loopy.MemAccess` **:**
-                  :class:`islpy.PwQPolynomial` **}**.
-
-    :parameter mtype: A :class:`boolean` specifying whether keys in returned
-                      map will include the memory type.
-
-    :parameter dtype: A :class:`boolean` specifying whether keys in returned
-                      map will include the data type.
-
-    :parameter stride: A :class:`boolean` specifying whether keys in returned
-                       map will include the stride.
-
-    :parameter direction: A :class:`boolean` specifying whether keys in
-                          returned map will include the direction.
-
-    :parameter variable: A :class:`boolean` specifying whether keys in returned
-                         map will include the variable name.
-
-
-    :return: A mapping of **{(** :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**
-
-             - The :class:`islpy.PwQPolynomial` holds the counts (in terms of
-               the :class:`loopy.LoopKernel` *inames*) for memory accesses
-               categorized by the fields not set to False.
-
-    Example usage::
-
-        # (first create loopy kernel and specify array data types)
-
-        params = {'n': 512, 'm': 256, 'l': 128}
-        mem_map = get_mem_access_poly(knl)
-        reduced_mem_map = reduce_mem_access_poly_fields(mem_map, stride=False,
-                                                        variable=False)
-
-        all_f32_global_loads = reduced_mem_map[MemAccess('global', np.float32,
-                                                         direction='load')
-                                              ].eval_with_dict(params)
-        all_f32_global_stores = reduced_mem_map[MemAccess('global', np.float32,
-                                                          direction='store')
-                                               ].eval_with_dict(params)
-        all_f32_local_loads = reduced_mem_map[MemAccess('local', np.float32,
-                                                        direction='load')
-                                             ].eval_with_dict(params)
-        all_f32_local_stores = reduced_mem_map[MemAccess('local', np.float32,
-                                                         direction='store')
-                                              ].eval_with_dict(params)
-
-        # (now use these counts to predict performance)
-
-    """
-
-    result = {}
-    for k, v in m.items():
-        new_key = MemAccess()
-        if mtype == True:
-            new_key.mtype = k.mtype
-        if dtype == True:
-            new_key.dtype = k.dtype
-        if stride == True:
-            new_key.stride = k.stride
-        if direction == True:
-            new_key.direction = k.direction
-        if variable == True:
-            new_key.variable = k.variable
-
-        if new_key in result:
-            result[new_key] += m[k]
-        else:
-            result[new_key] = m[k]
-
-    return result
-
-# }}}
-
-# {{{ reduce_op_poly_fields
-
-def reduce_op_poly_fields(m, dtype=True, name=True):
-    """Take map returned from :func:`get_op_poly`, remove specified Op fields from keys, and combine counts
-
-    :parameter m: A mapping of **{** :class:`loopy.Op` **:**
-                  :class:`islpy.PwQPolynomial` **}**.
-
-    :parameter dtype: A :class:`boolean` specifying whether keys in returned
-                      map will include the data type.
-
-    :parameter name: A :class:`boolean` specifying whether keys in returned
-                     map will include the name of the operation.
-
-    :return: A mapping of **{(** :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**
-
-             - The :class:`islpy.PwQPolynomial` holds the counts (in terms of
-               the :class:`loopy.LoopKernel` *inames*) for arithmetic ops
-               categorized by the fields not set to False.
-
-    Example usage::
-
-        # (first create loopy kernel and specify array data types)
-
-        params = {'n': 512, 'm': 256, 'l': 128}
-        op_map = get_op_poly(knl)
-        reduced_op_map = reduce_op_fields(op_map, name=False)
-
-        all_f32_ops = reduced_op_map[Op(dtype=np.float32)].eval_with_dict(params)
-        all_f64_ops = reduced_op_map[Op(dtype=np.float64)].eval_with_dict(params)
-
-        reduced_op_map = reduce_op_fields(op_map, dtype=False)
-
-        all_add_ops = reduced_op_map[Op(name='add')].eval_with_dict(params)
-        all_mul_ops = reduced_op_map[Op(name='mul')].eval_with_dict(params)
-
-        # (now use these counts to predict performance)
-
-    """
-
-    result = {}
-    for k, v in m.items():
-        new_key = Op()
-        if dtype == True:
-            new_key.dtype = k.dtype
-        if name == True:
-            new_key.name = k.name
-
-        if new_key in result:
-            result[new_key] += m[k]
-        else:
-            result[new_key] = m[k]
 
     return result
 
