@@ -1412,43 +1412,38 @@ def apply_default_order_to_args(kernel, default_order):
 # }}}
 
 
-# {{{ resolve wildcard insn dependencies
+# {{{ resolve instruction dependencies
 
-def find_matching_insn_ids(knl, dep):
-    from fnmatch import fnmatchcase
+def _resolve_dependencies(knl, insn, deps):
+    from loopy import find_instructions
+    from loopy.match import Id
 
-    return [
-        other_insn.id
-        for other_insn in knl.instructions
-        if fnmatchcase(other_insn.id, dep)]
-
-
-def resove_wildcard_insn_ids(knl, deps):
     new_deps = []
-    for dep in deps:
-        matches = find_matching_insn_ids(knl, dep)
 
-        if matches:
-            new_deps.extend(matches)
-        else:
-            # Uh, best we can do
-            new_deps.append(dep)
+    for dep in deps:
+        # Try to match the given dependency as an instruction ID
+        new_dep = find_instructions(knl, Id(dep))
+        # if not successful, treat the dependency as a match pattern
+        if not new_dep:
+            new_dep = find_instructions(knl, dep)
+
+        for ndep in new_dep:
+            # Avoid having instructions depend on themselves
+            if ndep.id != insn.id:
+                new_deps.append(ndep.id)
 
     return frozenset(new_deps)
 
 
-def resolve_wildcard_deps(knl):
+def resolve_dependencies(knl):
     new_insns = []
 
     for insn in knl.instructions:
-        if insn.depends_on is not None:
-            insn = insn.copy(
-                    depends_on=resove_wildcard_insn_ids(knl, insn.depends_on),
-                    no_sync_with=resove_wildcard_insn_ids(
-                        knl, insn.no_sync_with),
-                    )
-
-        new_insns.append(insn)
+        new_insns.append(insn.copy(
+                    depends_on=_resolve_dependencies(knl, insn, insn.depends_on),
+                    no_sync_with=_resolve_dependencies(
+                        knl, insn, insn.no_sync_with),
+                    ))
 
     return knl.copy(instructions=new_insns)
 
@@ -1785,7 +1780,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
-    knl = resolve_wildcard_deps(knl)
+    knl = resolve_dependencies(knl)
     knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=False)
 
     # -------------------------------------------------------------------------
