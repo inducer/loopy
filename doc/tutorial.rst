@@ -176,7 +176,7 @@ by passing :attr:`loopy.Options.write_cl`.
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
+    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *__restrict__ a, int const n, __global float *__restrict__ out)
     {
       for (int i = 0; i <= -1 + n; ++i)
         out[i] = 2.0f * a[i];
@@ -250,7 +250,7 @@ call :func:`loopy.generate_code`:
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
+    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *__restrict__ a, int const n, __global float *__restrict__ out)
     {
       for (int i = 0; i <= -1 + n; ++i)
         out[i] = 2.0f * a[i];
@@ -365,7 +365,7 @@ Let us take a look at the generated code for the above kernel:
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
+    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *__restrict__ a, int const n, __global float *__restrict__ out)
     {
       for (int i = 0; i <= -1 + n; ++i)
         for (int j = 0; j <= -1 + n; ++j)
@@ -414,7 +414,7 @@ Now the intended code is generated and our test passes.
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *restrict a, int const n, __global float *restrict out)
+    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *__restrict__ a, int const n, __global float *__restrict__ out)
     {
       for (int i = 0; i <= -1 + n; ++i)
         for (int j = 0; j <= -1 + n; ++j)
@@ -702,7 +702,7 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
-    __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *restrict a, int const n)
+    __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *__restrict__ a, int const n)
     {
       if (-1 + -128 * gid(0) + -1 * lid(0) + n >= 0)
         a[128 * gid(0) + lid(0)] = 0.0f;
@@ -1182,7 +1182,7 @@ When we ask to see the code, the issue becomes apparent:
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(16, 16, 1))) transpose(__global float const *restrict a, int const n, __global float *restrict out)
+    __kernel void __attribute__ ((reqd_work_group_size(16, 16, 1))) transpose(__global float const *__restrict__ a, int const n, __global float *__restrict__ out)
     {
       float a_fetch[16];
     <BLANKLINE>
@@ -1485,7 +1485,7 @@ Now to make things more interesting, we'll create a kernel with barriers:
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
     <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(97, 1, 1))) loopy_kernel(__global int const *restrict a, __global int *restrict e)
+    __kernel void __attribute__ ((reqd_work_group_size(97, 1, 1))) loopy_kernel(__global int const *__restrict__ a, __global int *__restrict__ e)
     {
       __local int c[50 * 10 * 99];
     <BLANKLINE>
