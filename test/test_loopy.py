@@ -1480,6 +1480,34 @@ def test_constant_array_args(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl)
 
 
+@pytest.mark.parametrize("src_order", ["C"])
+@pytest.mark.parametrize("tmp_order", ["C", "F"])
+def test_temp_initializer(ctx_factory, src_order, tmp_order):
+    a = np.random.randn(3, 3).copy(order=src_order)
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i,j<n}",
+            "out[i,j] = tmp[i,j]",
+            [
+                lp.TemporaryVariable("tmp",
+                    initializer=a,
+                    shape=lp.auto,
+                    scope=lp.temp_var_scope.PRIVATE,
+                    order=tmp_order),
+                "..."
+                ])
+
+    knl = lp.set_options(knl, write_cl=True, highlight_cl=True)
+    knl = lp.fix_parameters(knl, n=a.shape[0])
+
+    evt, (a2,) = knl(queue, out_host=True)
+
+    assert np.array_equal(a, a2)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -176,7 +176,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 
-        from loopy.kernel.data import ImageArg, GlobalArg, TemporaryVariable, ConstantArg
+        from loopy.kernel.data import (
+                ImageArg, GlobalArg, TemporaryVariable, ConstantArg)
 
         if isinstance(ary, ImageArg):
             extra_axes = 0
@@ -211,8 +212,7 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif isinstance(ary, (GlobalArg, TemporaryVariable, ConstantArg)):
             if len(access_info.subscripts) == 0:
-                if isinstance(ary, GlobalArg) or\
-                    isinstance(ary, ConstantArg):
+                if isinstance(ary, GlobalArg) or isinstance(ary, ConstantArg):
                     # unsubscripted global args are pointers
                     result = var(access_info.array_name)[0]
 
@@ -813,8 +813,8 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 self.rec(expr.base, PREC_NONE),
                 self.rec(expr.exponent, PREC_NONE))
 
-    # map_group_hw_index: eliminated at the loopy -> C level
-    # map_local_hw_index: eliminated at the loopy -> C level
+    def map_array_literal(self, expr, enclosing_prec):
+        return "{ %s }" % self.join_rec(", ", expr.children, PREC_NONE)
 
 # }}}
 

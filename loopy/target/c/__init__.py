@@ -183,11 +183,15 @@ def generate_array_literal(codegen_state, array, value):
 
     from pymbolic.mapper.stringifier import PREC_NONE
     from loopy.expression import dtype_to_type_context
+    from loopy.symbolic import ArrayLiteral
 
     type_context = dtype_to_type_context(codegen_state.kernel.target, array.dtype)
-    return "{ %s }" % ", ".join(
-            ecm(d_i, PREC_NONE, type_context, array.dtype)
-            for d_i in data)
+    return CExpression(
+            codegen_state.ast_builder.get_c_expression_to_code_mapper(),
+            ArrayLiteral(
+                tuple(
+                    ecm(d_i, PREC_NONE, type_context, array.dtype).expr
+                    for d_i in data)))
 
 # }}}
 

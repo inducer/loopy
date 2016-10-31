@@ -436,63 +436,6 @@ def find_temporary_scope(kernel):
 # }}}
 
 
-# {{{ default dependencies
-
-def add_default_dependencies(kernel):
-    logger.debug("%s: default deps" % kernel.name)
-
-    from loopy.transform.subst import expand_subst
-    expanded_kernel = expand_subst(kernel)
-
-    writer_map = kernel.writer_map()
-
-    arg_names = set(arg.name for arg in kernel.args)
-
-    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
-
-    dep_map = dict(
-            (insn.id, insn.read_dependency_names() & var_names)
-            for insn in expanded_kernel.instructions)
-
-    new_insns = []
-    for insn in kernel.instructions:
-        if not insn.depends_on_is_final:
-            auto_deps = set()
-
-            # {{{ add automatic dependencies
-
-            all_my_var_writers = set()
-            for var in dep_map[insn.id]:
-                var_writers = writer_map.get(var, set())
-                all_my_var_writers |= var_writers
-
-                if not var_writers and var not in arg_names:
-                    tv = kernel.temporary_variables[var]
-                    if tv.initializer is None:
-                        warn_with_kernel(kernel, "read_no_write(%s)" % var,
-                                "temporary variable '%s' is read, but never written."
-                                % var)
-
-                if len(var_writers) == 1:
-                    auto_deps.update(
-                            var_writers
-                            - set([insn.id]))
-
-            # }}}
-
-            depends_on = insn.depends_on
-            if depends_on is None:
-                depends_on = frozenset()
-
-            insn = insn.copy(depends_on=frozenset(auto_deps) | depends_on)
-
-        new_insns.append(insn)
-
-    return kernel.copy(instructions=new_insns)
-
-# }}}
-
-
 # {{{ rewrite reduction to imperative form
 
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
@@ -1119,7 +1062,8 @@ def preprocess_kernel(kernel, device=None):
 
     check_reduction_iname_uniqueness(kernel)
 
-    kernel = add_default_dependencies(kernel)
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
+    kernel = apply_single_writer_depencency_heuristic(kernel)
 
     # Ordering restrictions:
     #
