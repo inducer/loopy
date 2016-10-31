@@ -1191,11 +1191,16 @@ def add_sequential_dependencies(knl):
     new_insns = []
     prev_insn = None
     for insn in knl.instructions:
+        depon = insn.depends_on
+        if depon is None:
+            depon = frozenset()
+
         if prev_insn is not None:
-            depon = insn.depends_on
-            if depon is None:
-                depon = frozenset()
-            insn = insn.copy(depends_on=depon | frozenset((prev_insn.id,)))
+            depon = depon | frozenset((prev_insn.id,))
+
+        insn = insn.copy(
+                depends_on=depon,
+                depends_on_is_final=True)
 
         new_insns.append(insn)
 
