@@ -150,11 +150,11 @@ def generate_unroll_loop(codegen_state, sched_index):
         new_codegen_state = codegen_state.fix(iname, idx_aff)
         inner = build_loop_nest(new_codegen_state, sched_index+1)
         inner = inner.with_new_ast(
-                codegen_state,
+                new_codegen_state,
                 codegen_state.ast_builder.emit_scope(
-                    codegen_state,
+                    new_codegen_state,
                     (iname,),
-                    inner.current_ast(codegen_state)))
+                    inner.current_ast(new_codegen_state)))
         result.append(inner)
 
     return merge_codegen_results(codegen_state, result)
@@ -451,11 +451,11 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         inner = build_loop_nest(new_codegen_state, sched_index+1)
         inner = inner.with_new_ast(
-                codegen_state,
+                new_codegen_state,
                 codegen_state.ast_builder.emit_scope(
-                    codegen_state,
+                    new_codegen_state,
                     (loop_iname,),
-                    inner.current_ast(codegen_state)))
+                    inner.current_ast(new_codegen_state)))
 
         # }}}
 
