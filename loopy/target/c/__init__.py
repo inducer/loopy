@@ -675,7 +675,7 @@ class CASTBuilder(ASTBuilderBase):
             from cgen import ExpressionStatement
             return ExpressionStatement(
                     CExpression(
-                        codegen_state.var_subst_map,
+                        codegen_state,
                         result))
 
         result = ecm.wrap_in_typecast(
@@ -689,7 +689,7 @@ class CASTBuilder(ASTBuilderBase):
         return Assign(
                 lhs_code,
                 CExpression(
-                    codegen_state.var_subst_map,
+                    codegen_state,
                     result))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
