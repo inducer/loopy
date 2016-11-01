@@ -82,8 +82,8 @@ def test_op_counter_reduction():
     f32mul = poly[lp.Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
     assert f32add == f32mul == n*m*l
 
-    poly_dtype = lp.sum_ops_to_dtypes(poly)
-    f32 = poly_dtype[to_loopy_type(np.float32)].eval_with_dict(params)
+    poly_dtype = poly.group_by('dtype')
+    f32 = poly_dtype[lp.Op(dtype=np.float32)].eval_with_dict(params)
     assert f32 == f32add + f32mul
 
 
@@ -286,11 +286,12 @@ def test_gmem_access_counter_reduction():
               ].eval_with_dict(params)
     assert f32s == n*l
 
-    poly_b = lp.sum_mem_access_to_bytes(poly)
-    s0load = poly_b[('global', 0, 'load')].eval_with_dict(params)
-    s0store = poly_b[('global', 0, 'store')].eval_with_dict(params)
-    assert s0load == 4*f32l
-    assert s0store == 4*f32s
+    ld_bytes = poly.filter_by(mtype=['global'], direction=['load']
+                             ).to_bytes().eval_and_sum(params)
+    st_bytes = poly.filter_by(mtype=['global'], direction=['store']
+                             ).to_bytes().eval_and_sum(params)
+    assert ld_bytes == 4*f32l
+    assert st_bytes == 4*f32s
 
 
 def test_gmem_access_counter_logic():
@@ -371,7 +372,8 @@ def test_gmem_access_counter_specialops():
     assert f64 == n*m
 
     filtered_map = poly.filter_by(direction=['load'], variable=['a','g'])
-    tot = lp.eval_and_sum_polys(filtered_map, params)
+    #tot = lp.eval_and_sum_polys(filtered_map, params)
+    tot = filtered_map.eval_and_sum(params)
     assert tot == n*m*l + n*m
 
 def test_gmem_access_counter_bitwise():
@@ -745,21 +747,18 @@ def test_summations_and_filters():
 
     mem_map = lp.get_mem_access_poly(knl)
 
-    loads_a = lp.eval_and_sum_polys(
-                    mem_map.filter_by(direction=['load'], variable=['a']),
-                    params)
+    loads_a = mem_map.filter_by(direction=['load'], variable=['a']).eval_and_sum(params)
     assert loads_a == 2*n*m*l
 
-    global_stores = lp.eval_and_sum_polys(
-                        mem_map.filter_by(mtype=['global'], direction=['store']),
-                        params)
+    global_stores = mem_map.filter_by(mtype=['global'], direction=['store']).eval_and_sum(params)
     assert global_stores == n*m*l + n*m
 
-    bytes_map = lp.sum_mem_access_to_bytes(mem_map)
-    s0load = bytes_map[('global', 0, 'load')].eval_with_dict(params)
-    s0store = bytes_map[('global', 0, 'store')].eval_with_dict(params)
-    assert s0load == 4*n*m*l*3 + 8*n*m*2
-    assert s0store == 4*n*m*l + 8*n*m
+    ld_bytes = poly.filter_by(mtype=['global'], direction=['load']
+                             ).to_bytes().eval_and_sum(params)
+    st_bytes = poly.filter_by(mtype=['global'], direction=['store']
+                             ).to_bytes().eval_and_sum(params)
+    assert ld_bytes == 4*n*m*l*3 + 8*n*m*2
+    assert st_bytes == 4*n*m*l + 8*n*m
 
     # ignore stride and variable names in this map
     reduced_map = mem_map.group_by('mtype', 'dtype', 'direction')
@@ -771,23 +770,23 @@ def test_summations_and_filters():
     assert f64lall == 2*n*m
 
     op_map = lp.get_op_poly(knl)
+    #for k, v in op_map.items():
+    #    print(type(k), "\n", k.name, k.dtype, type(k.dtype), " :\n", v)
 
-    poly_dtype = lp.sum_ops_to_dtypes(op_map)
-    f32 = poly_dtype[to_loopy_type(np.float32)].eval_with_dict(params)
-    f64 = poly_dtype[to_loopy_type(np.float64)].eval_with_dict(params)
-    i32 = poly_dtype[to_loopy_type(np.int32)].eval_with_dict(params)
+    poly_dtype = op_map.group_by('dtype')
+    f32 = poly_dtype[lp.Op(dtype=np.float32)].eval_with_dict(params)
+    f64 = poly_dtype[lp.Op(dtype=np.float64)].eval_with_dict(params)
+    i32 = poly_dtype[lp.Op(dtype=np.int32)].eval_with_dict(params)
     assert f32 == n*m*l*3
     assert f64 == n*m
     assert i32 == n*m*2
 
-    addsub_all = lp.eval_and_sum_polys(op_map.filter_by(name=['add', 'sub']),
-                                       params)
-    f32ops_all = lp.eval_and_sum_polys(op_map.filter_by(dtype=[np.float32]),
-                                       params)
+    addsub_all = op_map.filter_by(name=['add', 'sub']).eval_and_sum(params)
+    f32ops_all = op_map.filter_by(dtype=[np.float32]).eval_and_sum(params)
     assert addsub_all == n*m*l + n*m*2
     assert f32ops_all == n*m*l*3
 
-    non_field = lp.eval_and_sum_polys(op_map.filter_by(xxx=[np.float32]), params)
+    non_field = op_map.filter_by(xxx=[np.float32]).eval_and_sum(params)
     assert non_field == 0
 
     ops_nodtype = op_map.group_by('name')
