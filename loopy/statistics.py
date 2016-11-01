@@ -48,13 +48,15 @@ __doc__ = """
 .. autofunction:: eval_and_sum
 
 .. autofunction:: get_op_poly
+.. autofunction:: get_op_map
 
 .. autofunction:: get_lmem_access_poly
 .. autofunction:: get_DRAM_access_poly
 .. autofunction:: get_gmem_access_poly
-.. autofunction:: get_mem_access_poly
+.. autofunction:: get_mem_access_map
 
 .. autofunction:: get_synchronization_poly
+.. autofunction:: get_synchronization_map
 
 .. autofunction:: gather_access_footprints
 .. autofunction:: gather_access_footprint_bytes
@@ -138,7 +140,7 @@ class ToCountMap:
             # (first create loopy kernel and specify array data types)
 
             params = {'n': 512, 'm': 256, 'l': 128}
-            mem_map = lp.get_mem_access_poly(knl)
+            mem_map = lp.get_mem_access_map(knl)
             filtered_map = mem_map.filter_by(direction=['load'],
                                              variable=['a','g'])
             tot_loads_a_g = filtered_map.eval_and_sum(params)
@@ -184,7 +186,7 @@ class ToCountMap:
             # (first create loopy kernel and specify array data types)
 
             params = {'n': 512, 'm': 256, 'l': 128}
-            mem_map = get_mem_access_poly(knl)
+            mem_map = get_mem_access_map(knl)
             grouped_mem_map = mem_map.group_by('mtype', 'dtype', 'direction')
 
             all_f32_global_loads = grouped_mem_map[MemAccess(mtype='global',
@@ -204,7 +206,7 @@ class ToCountMap:
                                                              direction='store')
                                                   ].eval_with_dict(params)
 
-            op_map = get_op_poly(knl)
+            op_map = get_op_map(knl)
             ops_by_dtype = op_map.group_by('dtype')
 
             f32ops = ops_by_dtype[Op(dtype=np.float32)].eval_with_dict(params)
@@ -252,7 +254,7 @@ class ToCountMap:
 
             # (first create loopy kernel and specify array data types)
 
-            bytes_map = get_mem_access_poly(knl).to_bytes()
+            bytes_map = get_mem_access_map(knl).to_bytes()
             params = {'n': 512, 'm': 256, 'l': 128}
 
             s1_global_ld_byt = bytes_map.filter_by(
@@ -308,7 +310,7 @@ class ToCountMap:
             # (first create loopy kernel and specify array data types)
 
             params = {'n': 512, 'm': 256, 'l': 128}
-            mem_map = lp.get_mem_access_poly(knl)
+            mem_map = lp.get_mem_access_map(knl)
             filtered_map = mem_map.filter_by(direction=['load'],
                                              variable=['a','g'])
             tot_loads_a_g = filtered_map.eval_and_sum(params)
@@ -1057,6 +1059,18 @@ def count(kernel, set):
 def get_op_poly(knl, numpy_types=True):
 
     """Count the number of operations in a loopy kernel.
+    """
+    from warnings import warn
+    warn("get_op_poly is deprecated. Use get_op_map instead.",
+         DeprecationWarning, stacklevel=2)
+    return get_op_map(knl, numpy_types)
+
+# }}}
+
+
+def get_op_map(knl, numpy_types=True):
+
+    """Count the number of operations in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
@@ -1077,10 +1091,10 @@ def get_op_poly(knl, numpy_types=True):
 
         # (first create loopy kernel and specify array data types)
 
-        poly = get_op_poly(knl)
+        map = get_op_map(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        f32add = poly[Op(np.dtype(np.float32), 'add')].eval_with_dict(params)
-        f32mul = poly[Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+        f32add = map[Op(np.dtype(np.float32), 'add')].eval_with_dict(params)
+        f32mul = map[Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -1090,7 +1104,7 @@ def get_op_poly(knl, numpy_types=True):
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
-    op_poly = ToCountMap()
+    op_map = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
         # how many times is this instruction executed?
@@ -1100,16 +1114,14 @@ def get_op_poly(knl, numpy_types=True):
         domain = (inames_domain.project_out_except(
                                         insn_inames, [dim_type.set]))
         ops = op_counter(insn.assignee) + op_counter(insn.expression)
-        op_poly = op_poly + ops*count(knl, domain)
+        op_map = op_map + ops*count(knl, domain)
 
     if numpy_types:
-        op_poly.dict = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
+        op_map.dict = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
                              count)
-                for op, count in six.iteritems(op_poly.dict))
+                for op, count in six.iteritems(op_map.dict))
 
-    return op_poly
-
-# }}}
+    return op_map
 
 
 #TODO test depricated functions?
@@ -1117,20 +1129,20 @@ def get_lmem_access_poly(knl):
     """Count the number of local memory accesses in a loopy kernel.
     """
     from warnings import warn
-    warn("get_lmem_access_poly is deprecated. Use get_mem_access_poly and "
+    warn("get_lmem_access_poly is deprecated. Use get_mem_access_map and "
          "filter the result with the mtype=['local'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl).filter_by(mtype=['local'])
+    return get_mem_access_map(knl).filter_by(mtype=['local'])
 
 
 def get_DRAM_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
     """
     from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. Use get_mem_access_poly and "
+    warn("get_DRAM_access_poly is deprecated. Use get_mem_access_map and "
          "filter the result with the mtype=['global'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl).filter_by(mtype=['global'])
+    return get_mem_access_map(knl).filter_by(mtype=['global'])
 
 
 # {{{ get_gmem_access_poly
@@ -1139,15 +1151,15 @@ def get_gmem_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
     """
     from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. Use get_mem_access_poly and "
+    warn("get_DRAM_access_poly is deprecated. Use get_mem_access_map and "
          "filter the result with the mtype=['global'] option.",
          DeprecationWarning, stacklevel=2)
-    return get_mem_access_poly(knl).filter_by(mtype=['global'])
+    return get_mem_access_map(knl).filter_by(mtype=['global'])
 
 # }}}
 
 
-def get_mem_access_poly(knl, numpy_types=True):
+def get_mem_access_map(knl, numpy_types=True):
     """Count the number of memory accesses in a loopy kernel.
 
     :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
@@ -1172,7 +1184,7 @@ def get_mem_access_poly(knl, numpy_types=True):
         # (first create loopy kernel and specify array data types)
 
         params = {'n': 512, 'm': 256, 'l': 128}
-        mem_access_map = get_mem_access_poly(knl)
+        mem_access_map = get_mem_access_map(knl)
 
         f32_stride1_g_loads_a = mem_access_map[MemAccess(mtype='global',
                                                          dtype=np.float32,
@@ -1224,7 +1236,7 @@ def get_mem_access_poly(knl, numpy_types=True):
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
-    subs_poly = ToCountMap()
+    subs_map = ToCountMap()
     subs_counter_g = GlobalSubscriptCounter(knl)
     subs_counter_l = LocalSubscriptCounter(knl)
 
@@ -1253,40 +1265,50 @@ def get_mem_access_poly(knl, numpy_types=True):
 
         # use count excluding local index tags for uniform accesses
         for key in subs_expr.dict:
-            poly = ToCountMap({key: subs_expr.dict[key]})
+            map = ToCountMap({key: subs_expr.dict[key]})
             if key.mtype == 'global' and isinstance(key.stride, int) and key.stride == 0:
-                subs_poly = subs_poly \
-                            + poly*get_insn_count(knl, insn_inames, True)
+                subs_map = subs_map \
+                            + map*get_insn_count(knl, insn_inames, True)
             else:
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+                subs_map = subs_map + map*get_insn_count(knl, insn_inames)
                 #currently not counting stride of local mem access
 
         for key in subs_assignee_g.dict:
-            poly = ToCountMap({key: subs_assignee_g.dict[key]})
+            map = ToCountMap({key: subs_assignee_g.dict[key]})
             if isinstance(key.stride, int) and key.stride == 0:
-                subs_poly = subs_poly \
-                            + poly*get_insn_count(knl, insn_inames, True)
+                subs_map = subs_map \
+                            + map*get_insn_count(knl, insn_inames, True)
             else:
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+                subs_map = subs_map + map*get_insn_count(knl, insn_inames)
             # for now, don't count writes to local mem
 
-    #result = subs_poly.dict
-
     if numpy_types:
-        subs_poly.dict = dict((MemAccess(mtype=mem_access.mtype,
+        subs_map.dict = dict((MemAccess(mtype=mem_access.mtype,
                                          dtype=mem_access.dtype.numpy_dtype,
                                          stride=mem_access.stride,
                                          direction=mem_access.direction,
                                          variable=mem_access.variable)
                                , count)
-                      for mem_access, count in six.iteritems(subs_poly.dict))
+                      for mem_access, count in six.iteritems(subs_map.dict))
 
-    return subs_poly
+    return subs_map
 
 
 # {{{ get_synchronization_poly
 
 def get_synchronization_poly(knl):
+    """Count the number of synchronization events each thread encounters in a
+    loopy kernel.
+    """
+    from warnings import warn
+    warn("get_synchronization_poly is deprecated. Use get_synchronization_map instead.",
+         DeprecationWarning, stacklevel=2)
+    return get_synchronization_map(knl)
+
+# }}}
+
+
+def get_synchronization_map(knl):
 
     """Count the number of synchronization events each thread encounters in a
     loopy kernel.
@@ -1304,9 +1326,9 @@ def get_synchronization_poly(knl):
 
         # (first create loopy kernel and specify array data types)
 
-        sync_poly = get_synchronization_poly(knl)
+        sync_map = get_synchronization_map(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        barrier_count = sync_poly['barrier_local'].eval_with_dict(params)
+        barrier_count = sync_map['barrier_local'].eval_with_dict(params)
 
         # (now use this count to predict performance)
 
@@ -1360,8 +1382,6 @@ def get_synchronization_poly(knl):
 
     #return result.dict #TODO is this okay?
     return result
-
-# }}}
 
 
 # {{{ gather_access_footprints
