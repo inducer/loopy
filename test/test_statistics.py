@@ -48,16 +48,16 @@ def test_op_counter_basic():
     knl = lp.add_and_infer_dtypes(knl,
                                   dict(a=np.float32, b=np.float32,
                                        g=np.float64, h=np.float64))
-    poly = lp.get_op_poly(knl)
+    op_map = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32add = poly[lp.Op(np.float32, 'add')].eval_with_dict(params)
-    f32mul = poly[lp.Op(np.float32, 'mul')].eval_with_dict(params)
-    f32div = poly[lp.Op(np.float32, 'div')].eval_with_dict(params)
-    f64mul = poly[lp.Op(np.dtype(np.float64), 'mul')].eval_with_dict(params)
-    i32add = poly[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    f32add = op_map[lp.Op(np.float32, 'add')].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.float32, 'mul')].eval_with_dict(params)
+    f32div = op_map[lp.Op(np.float32, 'div')].eval_with_dict(params)
+    f64mul = op_map[lp.Op(np.dtype(np.float64), 'mul')].eval_with_dict(params)
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
     assert f32add == f32mul == f32div == n*m*l
     assert f64mul == n*m
     assert i32add == n*m*2
@@ -73,17 +73,17 @@ def test_op_counter_reduction():
             name="matmul_serial", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    poly = lp.get_op_poly(knl)
+    op_map = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32add = poly[lp.Op(np.float32, 'add')].eval_with_dict(params)
-    f32mul = poly[lp.Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    f32add = op_map[lp.Op(np.float32, 'add')].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
     assert f32add == f32mul == n*m*l
 
-    poly_dtype = poly.group_by('dtype')
-    f32 = poly_dtype[lp.Op(dtype=np.float32)].eval_with_dict(params)
+    op_map_dtype = op_map.group_by('dtype')
+    f32 = op_map_dtype[lp.Op(dtype=np.float32)].eval_with_dict(params)
     assert f32 == f32add + f32mul
 
 
@@ -99,15 +99,15 @@ def test_op_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = lp.get_op_poly(knl)
+    op_map = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32mul = poly[lp.Op(np.float32, 'mul')].eval_with_dict(params)
-    f64add = poly[lp.Op(np.float64, 'add')].eval_with_dict(params)
-    f64div = poly[lp.Op(np.dtype(np.float64), 'div')].eval_with_dict(params)
-    i32add = poly[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.float32, 'mul')].eval_with_dict(params)
+    f64add = op_map[lp.Op(np.float64, 'add')].eval_with_dict(params)
+    f64div = op_map[lp.Op(np.dtype(np.float64), 'div')].eval_with_dict(params)
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
     assert f32mul == n*m
     assert f64div == 2*n*m  # TODO why?
     assert f64add == n*m
@@ -129,19 +129,19 @@ def test_op_counter_specialops():
     knl = lp.add_and_infer_dtypes(knl,
                                   dict(a=np.float32, b=np.float32,
                                        g=np.float64, h=np.float64))
-    poly = lp.get_op_poly(knl)
+    op_map = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32mul = poly[lp.Op(np.float32, 'mul')].eval_with_dict(params)
-    f32div = poly[lp.Op(np.float32, 'div')].eval_with_dict(params)
-    f32add = poly[lp.Op(np.float32, 'add')].eval_with_dict(params)
-    f64pow = poly[lp.Op(np.float64, 'pow')].eval_with_dict(params)
-    f64add = poly[lp.Op(np.dtype(np.float64), 'add')].eval_with_dict(params)
-    i32add = poly[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
-    f64rsq = poly[lp.Op(np.dtype(np.float64), 'func:rsqrt')].eval_with_dict(params)
-    f64sin = poly[lp.Op(np.dtype(np.float64), 'func:sin')].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.float32, 'mul')].eval_with_dict(params)
+    f32div = op_map[lp.Op(np.float32, 'div')].eval_with_dict(params)
+    f32add = op_map[lp.Op(np.float32, 'add')].eval_with_dict(params)
+    f64pow = op_map[lp.Op(np.float64, 'pow')].eval_with_dict(params)
+    f64add = op_map[lp.Op(np.dtype(np.float64), 'add')].eval_with_dict(params)
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    f64rsq = op_map[lp.Op(np.dtype(np.float64), 'func:rsqrt')].eval_with_dict(params)
+    f64sin = op_map[lp.Op(np.dtype(np.float64), 'func:sin')].eval_with_dict(params)
     assert f32div == 2*n*m*l
     assert f32mul == f32add == n*m*l
     assert f64add == 3*n*m
@@ -165,17 +165,17 @@ def test_op_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int64, h=np.int64))
 
-    poly = lp.get_op_poly(knl)
+    op_map = lp.get_op_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    i32add = poly[lp.Op(np.int32, 'add')].eval_with_dict(params)
-    i32bw = poly[lp.Op(np.int32, 'bw')].eval_with_dict(params)
-    i64bw = poly[lp.Op(np.dtype(np.int64), 'bw')].eval_with_dict(params)
-    i64mul = poly[lp.Op(np.dtype(np.int64), 'mul')].eval_with_dict(params)
-    i64add = poly[lp.Op(np.dtype(np.int64), 'add')].eval_with_dict(params)
-    i64shift = poly[lp.Op(np.dtype(np.int64), 'shift')].eval_with_dict(params)
+    i32add = op_map[lp.Op(np.int32, 'add')].eval_with_dict(params)
+    i32bw = op_map[lp.Op(np.int32, 'bw')].eval_with_dict(params)
+    i64bw = op_map[lp.Op(np.dtype(np.int64), 'bw')].eval_with_dict(params)
+    i64mul = op_map[lp.Op(np.dtype(np.int64), 'mul')].eval_with_dict(params)
+    i64add = op_map[lp.Op(np.dtype(np.int64), 'add')].eval_with_dict(params)
+    i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift')].eval_with_dict(params)
     assert i32add == n*m+n*m*l
     assert i32bw == 2*n*m*l
     assert i64bw == 2*n*m
@@ -204,9 +204,9 @@ def test_op_counter_triangular_domain():
     else:
         expect_fallback = False
 
-    poly = lp.get_op_poly(knl)[lp.Op(np.float64, 'mul')]
+    op_map = lp.get_op_poly(knl)[lp.Op(np.float64, 'mul')]
     value_dict = dict(m=13, n=200)
-    flops = poly.eval_with_dict(value_dict)
+    flops = op_map.eval_with_dict(value_dict)
 
     if expect_fallback:
         assert flops == 144
@@ -228,30 +228,30 @@ def test_gmem_access_counter_basic():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = lp.get_mem_access_poly(knl)
+    mem_map = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32l = poly[lp.MemAccess('global', np.float32,
+    f32l = mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='a')
               ].eval_with_dict(params)
-    f32l += poly[lp.MemAccess('global', np.float32,
+    f32l += mem_map[lp.MemAccess('global', np.float32,
                           stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
-    f64l = poly[lp.MemAccess('global', np.float64,
+    f64l = mem_map[lp.MemAccess('global', np.float64,
                          stride=0, direction='load', variable='g')
               ].eval_with_dict(params)
-    f64l += poly[lp.MemAccess('global', np.float64,
+    f64l += mem_map[lp.MemAccess('global', np.float64,
                           stride=0, direction='load', variable='h')
                ].eval_with_dict(params)
     assert f32l == 3*n*m*l
     assert f64l == 2*n*m
 
-    f32s = poly[lp.MemAccess('global', np.dtype(np.float32),
+    f32s = mem_map[lp.MemAccess('global', np.dtype(np.float32),
                          stride=0, direction='store', variable='c')
               ].eval_with_dict(params)
-    f64s = poly[lp.MemAccess('global', np.dtype(np.float64),
+    f64s = mem_map[lp.MemAccess('global', np.dtype(np.float64),
                          stride=0, direction='store', variable='e')
               ].eval_with_dict(params)
     assert f32s == n*m*l
@@ -268,27 +268,27 @@ def test_gmem_access_counter_reduction():
             name="matmul", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    poly = lp.get_mem_access_poly(knl)
+    mem_map = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32l = poly[lp.MemAccess('global', np.float32,
+    f32l = mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='a')
               ].eval_with_dict(params)
-    f32l += poly[lp.MemAccess('global', np.float32,
+    f32l += mem_map[lp.MemAccess('global', np.float32,
                           stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
     assert f32l == 2*n*m*l
 
-    f32s = poly[lp.MemAccess('global', np.dtype(np.float32),
+    f32s = mem_map[lp.MemAccess('global', np.dtype(np.float32),
                          stride=0, direction='store', variable='c')
               ].eval_with_dict(params)
     assert f32s == n*l
 
-    ld_bytes = poly.filter_by(mtype=['global'], direction=['load']
+    ld_bytes = mem_map.filter_by(mtype=['global'], direction=['load']
                              ).to_bytes().eval_and_sum(params)
-    st_bytes = poly.filter_by(mtype=['global'], direction=['store']
+    st_bytes = mem_map.filter_by(mtype=['global'], direction=['store']
                              ).to_bytes().eval_and_sum(params)
     assert ld_bytes == 4*f32l
     assert st_bytes == 4*f32s
@@ -306,13 +306,13 @@ def test_gmem_access_counter_logic():
             name="logic", assumptions="n,m,l >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    poly = lp.get_mem_access_poly(knl)
+    mem_map = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
 
-    reduced_map = poly.group_by('mtype', 'dtype', 'direction')
+    reduced_map = mem_map.group_by('mtype', 'dtype', 'direction')
 
     f32_g_l = reduced_map[lp.MemAccess('global', to_loopy_type(np.float32),
                                        direction='load')
@@ -342,36 +342,36 @@ def test_gmem_access_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
                                             g=np.float64, h=np.float64))
-    poly = lp.get_mem_access_poly(knl)
+    mem_map = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f32 = poly[lp.MemAccess('global', np.float32,
+    f32 = mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='a')
               ].eval_with_dict(params)
-    f32 += poly[lp.MemAccess('global', np.float32,
+    f32 += mem_map[lp.MemAccess('global', np.float32,
                           stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
-    f64 = poly[lp.MemAccess('global', np.dtype(np.float64),
+    f64 = mem_map[lp.MemAccess('global', np.dtype(np.float64),
                          stride=0, direction='load', variable='g')
               ].eval_with_dict(params)
-    f64 += poly[lp.MemAccess('global', np.dtype(np.float64),
+    f64 += mem_map[lp.MemAccess('global', np.dtype(np.float64),
                           stride=0, direction='load', variable='h')
                ].eval_with_dict(params)
     assert f32 == 2*n*m*l
     assert f64 == 2*n*m
 
-    f32 = poly[lp.MemAccess('global', np.float32,
+    f32 = mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='store', variable='c')
               ].eval_with_dict(params)
-    f64 = poly[lp.MemAccess('global', np.float64,
+    f64 = mem_map[lp.MemAccess('global', np.float64,
                          stride=0, direction='store', variable='e')
               ].eval_with_dict(params)
     assert f32 == n*m*l
     assert f64 == n*m
 
-    filtered_map = poly.filter_by(direction=['load'], variable=['a','g'])
+    filtered_map = mem_map.filter_by(direction=['load'], variable=['a','g'])
     #tot = lp.eval_and_sum_polys(filtered_map, params)
     tot = filtered_map.eval_and_sum(params)
     assert tot == n*m*l + n*m
@@ -393,29 +393,29 @@ def test_gmem_access_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int32, h=np.int32))
 
-    poly = lp.get_mem_access_poly(knl)
+    mem_map = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    i32 = poly[lp.MemAccess('global', np.int32, 
+    i32 = mem_map[lp.MemAccess('global', np.int32, 
                          stride=0, direction='load', variable='a')
               ].eval_with_dict(params)
-    i32 += poly[lp.MemAccess('global', np.int32, 
+    i32 += mem_map[lp.MemAccess('global', np.int32, 
                           stride=0, direction='load', variable='b')
                ].eval_with_dict(params)
-    i32 += poly[lp.MemAccess('global', np.int32, 
+    i32 += mem_map[lp.MemAccess('global', np.int32, 
                           stride=0, direction='load', variable='g')
                ].eval_with_dict(params)
-    i32 += poly[lp.MemAccess('global', np.dtype(np.int32), 
+    i32 += mem_map[lp.MemAccess('global', np.dtype(np.int32), 
                           stride=0, direction='load', variable='h')
                ].eval_with_dict(params)
     assert i32 == 4*n*m+2*n*m*l
 
-    i32 = poly[lp.MemAccess('global', np.int32, 
+    i32 = mem_map[lp.MemAccess('global', np.int32, 
                          stride=0, direction='store', variable='c')
               ].eval_with_dict(params)
-    i32 += poly[lp.MemAccess('global', np.int32, 
+    i32 += mem_map[lp.MemAccess('global', np.int32, 
                           stride=0, direction='store', variable='e')
                ].eval_with_dict(params)
     assert i32 == n*m+n*m*l
@@ -439,25 +439,25 @@ def test_gmem_access_counter_mixed():
     knl = lp.split_iname(knl, "j", threads)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
-    poly = lp.get_mem_access_poly(knl)  # noqa
+    mem_map = lp.get_mem_access_poly(knl)  # noqa
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f64uniform = poly[lp.MemAccess('global', np.float64, 
+    f64uniform = mem_map[lp.MemAccess('global', np.float64, 
                                 stride=0, direction='load', variable='g')
                      ].eval_with_dict(params)
-    f64uniform += poly[lp.MemAccess('global', np.float64, 
+    f64uniform += mem_map[lp.MemAccess('global', np.float64, 
                                  stride=0, direction='load', variable='h')
                       ].eval_with_dict(params)
-    f32uniform = poly[lp.MemAccess('global', np.float32, 
+    f32uniform = mem_map[lp.MemAccess('global', np.float32, 
                                 stride=0, direction='load', variable='x')
                      ].eval_with_dict(params)
-    f32nonconsec = poly[lp.MemAccess('global', np.dtype(np.float32), 
+    f32nonconsec = mem_map[lp.MemAccess('global', np.dtype(np.float32), 
                                   stride=Variable('m'), direction='load',
                                   variable='a')
                        ].eval_with_dict(params)
-    f32nonconsec += poly[lp.MemAccess('global', np.dtype(np.float32), 
+    f32nonconsec += mem_map[lp.MemAccess('global', np.dtype(np.float32), 
                                    stride=Variable('m'), direction='load',
                                    variable='b')
                         ].eval_with_dict(params)
@@ -465,10 +465,10 @@ def test_gmem_access_counter_mixed():
     assert f32uniform == n*m*l/threads
     assert f32nonconsec == 3*n*m*l
 
-    f64uniform = poly[lp.MemAccess('global', np.float64, 
+    f64uniform = mem_map[lp.MemAccess('global', np.float64, 
                                 stride=0, direction='store', variable='e')
                      ].eval_with_dict(params)
-    f32nonconsec = poly[lp.MemAccess('global', np.float32, 
+    f32nonconsec = mem_map[lp.MemAccess('global', np.float32, 
                                   stride=Variable('m'), direction='store',
                                   variable='c')
                        ].eval_with_dict(params)
@@ -492,35 +492,35 @@ def test_gmem_access_counter_nonconsec():
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
 
-    poly = lp.get_mem_access_poly(knl)  # noqa
+    mem_map = lp.get_mem_access_poly(knl)  # noqa
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    f64nonconsec = poly[lp.MemAccess('global', np.float64, 
+    f64nonconsec = mem_map[lp.MemAccess('global', np.float64, 
                                   stride=Variable('m'), direction='load',
                                   variable='g')
                        ].eval_with_dict(params)
-    f64nonconsec += poly[lp.MemAccess('global', np.float64, 
+    f64nonconsec += mem_map[lp.MemAccess('global', np.float64, 
                                    stride=Variable('m'), direction='load',
                                    variable='h')
                         ].eval_with_dict(params)
-    f32nonconsec = poly[lp.MemAccess('global', np.dtype(np.float32), 
+    f32nonconsec = mem_map[lp.MemAccess('global', np.dtype(np.float32), 
                                   stride=Variable('m')*Variable('l'),
                                   direction='load', variable='a')
                        ].eval_with_dict(params)
-    f32nonconsec += poly[lp.MemAccess('global', np.dtype(np.float32), 
+    f32nonconsec += mem_map[lp.MemAccess('global', np.dtype(np.float32), 
                                    stride=Variable('m')*Variable('l'),
                                    direction='load', variable='b')
                         ].eval_with_dict(params)
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*l
 
-    f64nonconsec = poly[lp.MemAccess('global', np.float64, 
+    f64nonconsec = mem_map[lp.MemAccess('global', np.float64, 
                                   stride=Variable('m'), direction='store',
                                   variable='e')
                        ].eval_with_dict(params)
-    f32nonconsec = poly[lp.MemAccess('global', np.float32, 
+    f32nonconsec = mem_map[lp.MemAccess('global', np.float32, 
                                   stride=Variable('m')*Variable('l'),
                                   direction='store', variable='c')
                        ].eval_with_dict(params)
@@ -543,34 +543,34 @@ def test_gmem_access_counter_consec():
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
-    poly = lp.get_mem_access_poly(knl)
+    mem_map = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
 
-    #for k in poly:
-    #    print(k.mtype, k.dtype, type(k.dtype), k.stride, k.direction, k.variable, " :\n", poly[k])
+    #for k in mem_map:
+    #    print(k.mtype, k.dtype, type(k.dtype), k.stride, k.direction, k.variable, " :\n", mem_map[k])
 
-    f64consec = poly[lp.MemAccess('global', np.float64, 
+    f64consec = mem_map[lp.MemAccess('global', np.float64, 
                         stride=1, direction='load', variable='g')
                      ].eval_with_dict(params)
-    f64consec += poly[lp.MemAccess('global', np.float64, 
+    f64consec += mem_map[lp.MemAccess('global', np.float64, 
                         stride=1, direction='load', variable='h')
                      ].eval_with_dict(params)
-    f32consec = poly[lp.MemAccess('global', np.float32, 
+    f32consec = mem_map[lp.MemAccess('global', np.float32, 
                         stride=1, direction='load', variable='a')
                      ].eval_with_dict(params)
-    f32consec += poly[lp.MemAccess('global', np.dtype(np.float32), 
+    f32consec += mem_map[lp.MemAccess('global', np.dtype(np.float32), 
                         stride=1, direction='load', variable='b')
                      ].eval_with_dict(params)
     assert f64consec == 2*n*m
     assert f32consec == 3*n*m*l
 
-    f64consec = poly[lp.MemAccess('global', np.float64, 
+    f64consec = mem_map[lp.MemAccess('global', np.float64, 
                         stride=1, direction='store', variable='e')
                      ].eval_with_dict(params)
-    f32consec = poly[lp.MemAccess('global', np.float32, 
+    f32consec = mem_map[lp.MemAccess('global', np.float32, 
                         stride=1, direction='store', variable='c')
                      ].eval_with_dict(params)
     assert f64consec == n*m
@@ -591,13 +591,13 @@ def test_barrier_counter_nobarriers():
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
                                             g=np.float64, h=np.float64))
-    sync_poly = lp.get_synchronization_poly(knl)
+    sync_map = lp.get_synchronization_poly(knl)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    assert len(sync_poly) == 1
-    assert sync_poly["kernel_launch"].eval_with_dict(params) == 1
+    assert len(sync_map) == 1
+    assert sync_map["kernel_launch"].eval_with_dict(params) == 1
 
 
 def test_barrier_counter_barriers():
@@ -617,13 +617,13 @@ def test_barrier_counter_barriers():
             )
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
     knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
-    poly = lp.get_synchronization_poly(knl)
-    print(poly)
+    map = lp.get_synchronization_poly(knl)
+    print(map)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    barrier_count = poly["barrier_local"].eval_with_dict(params)
+    barrier_count = map["barrier_local"].eval_with_dict(params)
     assert barrier_count == 50*10*2
 
 
@@ -647,10 +647,10 @@ def test_all_counters_parallel_matmul():
     l = 128
     params = {'n': n, 'm': m, 'l': l}
 
-    sync_poly = lp.get_synchronization_poly(knl)
-    assert len(sync_poly) == 2
-    assert sync_poly["kernel_launch"].eval_with_dict(params) == 1
-    assert sync_poly["barrier_local"].eval_with_dict(params) == 2*m/16
+    sync_map = lp.get_synchronization_poly(knl)
+    assert len(sync_map) == 2
+    assert sync_map["kernel_launch"].eval_with_dict(params) == 1
+    assert sync_map["barrier_local"].eval_with_dict(params) == 2*m/16
 
     op_map = lp.get_op_poly(knl)
     f32mul = op_map[
@@ -668,30 +668,28 @@ def test_all_counters_parallel_matmul():
 
     assert f32mul+f32add == n*m*l*2
 
-    subscript_map = lp.get_mem_access_poly(knl)
+    op_map = lp.get_mem_access_poly(knl)
 
-    f32coal = subscript_map[lp.MemAccess('global', np.float32, 
+    f32coal = op_map[lp.MemAccess('global', np.float32, 
                         stride=1, direction='load', variable='b')
                             ].eval_with_dict(params)
-    f32coal += subscript_map[lp.MemAccess('global', np.float32, 
+    f32coal += op_map[lp.MemAccess('global', np.float32, 
                         stride=1, direction='load', variable='a')
                             ].eval_with_dict(params)
 
     assert f32coal == n*m+m*l
 
-    f32coal = subscript_map[lp.MemAccess('global', np.float32, 
+    f32coal = op_map[lp.MemAccess('global', np.float32, 
                         stride=1, direction='store', variable='c')
                             ].eval_with_dict(params)
 
     assert f32coal == n*l
 
-    local_subs_map = lp.get_mem_access_poly(knl)
-
-    local_subs_l = local_subs_map[lp.MemAccess('local', np.dtype(np.float32),
+    local_mem_map = lp.get_mem_access_poly(knl).filter_by(mtype=['local'])
+    local_mem_l = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
                                             direction='load')
                                  ].eval_with_dict(params)
-
-    assert local_subs_l == n*m*l*2
+    assert local_mem_l == n*m*l*2
 
 def test_gather_access_footprint():
     knl = lp.make_kernel(
@@ -739,7 +737,6 @@ def test_summations_and_filters():
 
     knl = lp.add_and_infer_dtypes(knl,
                         dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    poly = lp.get_mem_access_poly(knl)
     n = 512
     m = 256
     l = 128
@@ -753,9 +750,9 @@ def test_summations_and_filters():
     global_stores = mem_map.filter_by(mtype=['global'], direction=['store']).eval_and_sum(params)
     assert global_stores == n*m*l + n*m
 
-    ld_bytes = poly.filter_by(mtype=['global'], direction=['load']
+    ld_bytes = mem_map.filter_by(mtype=['global'], direction=['load']
                              ).to_bytes().eval_and_sum(params)
-    st_bytes = poly.filter_by(mtype=['global'], direction=['store']
+    st_bytes = mem_map.filter_by(mtype=['global'], direction=['store']
                              ).to_bytes().eval_and_sum(params)
     assert ld_bytes == 4*n*m*l*3 + 8*n*m*2
     assert st_bytes == 4*n*m*l + 8*n*m
@@ -773,10 +770,10 @@ def test_summations_and_filters():
     #for k, v in op_map.items():
     #    print(type(k), "\n", k.name, k.dtype, type(k.dtype), " :\n", v)
 
-    poly_dtype = op_map.group_by('dtype')
-    f32 = poly_dtype[lp.Op(dtype=np.float32)].eval_with_dict(params)
-    f64 = poly_dtype[lp.Op(dtype=np.float64)].eval_with_dict(params)
-    i32 = poly_dtype[lp.Op(dtype=np.int32)].eval_with_dict(params)
+    op_map_dtype = op_map.group_by('dtype')
+    f32 = op_map_dtype[lp.Op(dtype=np.float32)].eval_with_dict(params)
+    f64 = op_map_dtype[lp.Op(dtype=np.float64)].eval_with_dict(params)
+    i32 = op_map_dtype[lp.Op(dtype=np.int32)].eval_with_dict(params)
     assert f32 == n*m*l*3
     assert f64 == n*m
     assert i32 == n*m*2

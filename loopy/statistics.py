@@ -409,9 +409,14 @@ class MemAccess:
             from loopy.types import to_loopy_type
             self.dtype = to_loopy_type(dtype)
 
-        #TODO currently counting all lmem access as stride None
+        #TODO currently giving all lmem access stride=None
         if (mtype == 'local') and (stride is not None):
             raise NotImplementedError("MemAccess: stride must be None when "
+                                      "mtype is 'local'")
+
+        #TODO currently giving all lmem access variable=None
+        if (mtype == 'local') and (variable is not None):
+            raise NotImplementedError("MemAccess: variable must be None when "
                                       "mtype is 'local'")
 
     def __eq__(self, other):
