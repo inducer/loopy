@@ -217,22 +217,14 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                     result.setdefault("inames_to_dup", []).append((value, None))
 
         elif opt_key == "dep" and opt_value is not None:
-            if opt_value.startswith("*"):
-                result["depends_on_is_final"] = True
-                opt_value = (opt_value[1:]).strip()
-
-            result["depends_on"] = frozenset(
-                    intern(dep.strip()) for dep in opt_value.split(":")
-                    if dep.strip())
+            result['depends_on'] = frozenset([opt_value])
 
         elif opt_key == "nosync" and opt_value is not None:
             if is_with_block:
                 raise LoopyError("'nosync' option may not be specified "
                         "in a 'with' block")
 
-            result["no_sync_with"] = frozenset(
-                    intern(dep.strip()) for dep in opt_value.split(":")
-                    if dep.strip())
+            result['no_sync_with'] = frozenset([opt_value])
 
         elif opt_key == "groups" and opt_value is not None:
             result["groups"] = frozenset(
@@ -1416,16 +1408,21 @@ def apply_default_order_to_args(kernel, default_order):
 
 def _resolve_dependencies(knl, insn, deps):
     from loopy import find_instructions
-    from loopy.match import Id
+    from loopy.match import Or, Id
 
     new_deps = []
 
     for dep in deps:
-        # Try to match the given dependency as an instruction ID
-        new_dep = find_instructions(knl, Id(dep))
-        # if not successful, treat the dependency as a match pattern
-        if not new_dep:
+        try:
+            # Try to treat the given dependency a kernel query language
             new_dep = find_instructions(knl, dep)
+        except LoopyError:
+            # If not successful, try to match with a colon-separated list
+            # of instruction ID (this was the previous behaviour.
+            new_dep = find_instructions(knl,
+                                        Or(tuple(Id(d.strip())
+                                                 for d in dep.split(':'))
+                                           ))
 
         for ndep in new_dep:
             # Avoid having instructions depend on themselves
