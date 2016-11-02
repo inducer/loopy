@@ -554,7 +554,12 @@ relation to loop nesting. For example, it's perfectly possible to request
 
 .. doctest::
 
+	>>> knl = lp.make_kernel(
+    ...     "{ [i]: 0<=i<n }",
+    ...     "a[i] = 0", assumptions="n>=1")
+    >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.prioritize_loops(knl, "i_inner,i_outer")
+    >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
