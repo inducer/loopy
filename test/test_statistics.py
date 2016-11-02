@@ -538,7 +538,7 @@ def test_barrier_counter_barriers():
             name="weird2",
             )
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
-    knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "k", 128, inner_tag="l.0")
     poly = lp.get_synchronization_poly(knl)
     print(poly)
     n = 512
