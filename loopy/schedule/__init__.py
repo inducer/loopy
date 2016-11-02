@@ -988,6 +988,10 @@ def generate_loop_schedules_internal(
                                                  )
                               ]
 
+            # Update the loop priority set, because some constraints may have
+            # have been contradictary.
+            loop_priority_set = set().union(*[set(t) for t in priority_tiers])
+
             priority_tiers.append(
                     useful_loops_set
                     - loop_priority_set
