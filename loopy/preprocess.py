@@ -405,7 +405,6 @@ def find_temporary_scope(kernel):
                         # parallel inames of that kind:
                         and bool(cpin)):
                     desired_scope = max(desired_scope, scope)
-                    break
 
             desired_scope_per_insn.append(desired_scope)
 
