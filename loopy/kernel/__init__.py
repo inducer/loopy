@@ -1200,7 +1200,7 @@ class LoopKernel(RecordWithoutPickling):
 
                 if lhs:
                     core = "%s <- %s" % (
-                        Fore.BLUE+lhs+Style.RESET_ALL,
+                        Fore.CYAN+lhs+Style.RESET_ALL,
                         Fore.MAGENTA+rhs+Style.RESET_ALL,
                         )
                 else:
