@@ -315,7 +315,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
 
 
 def find_temporary_scope(kernel):
-    logger.debug("%s: mark local temporaries" % kernel.name)
+    logger.debug("%s: find temporary scope" % kernel.name)
 
     new_temp_vars = {}
     from loopy.kernel.data import (LocalIndexTagBase, GroupIndexTag,
@@ -388,8 +388,10 @@ def find_temporary_scope(kernel):
                         grpparallel_compute_inames, temp_var_scope.GLOBAL),
                     ]:
 
-                if (apin != cpin and bool(locparallel_assignee_inames)):
-                    warn_with_kernel(kernel, "write_race_local(%s)" % insn_id,
+                if (apin != cpin and bool(apin)):
+                    warn_with_kernel(
+                            kernel,
+                            "write_race_%s(%s)" % (scope_descr, insn_id),
                             "instruction '%s' looks invalid: "
                             "it assigns to indices based on %s IDs, but "
                             "its temporary '%s' cannot be made %s because "
