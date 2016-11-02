@@ -377,6 +377,9 @@ class Op:
             name = 'None'
         return hash(str(dtype)+name)
 
+    def __str__(self):
+        return "Op("+str(self.dtype)+", "+self.name+")"
+
 
 class MemAccess:
     """A memory access.
@@ -459,6 +462,10 @@ class MemAccess:
         if variable is None:
             variable = 'None'
         return hash(mtype+str(dtype)+str(stride)+direction+variable)
+
+    def __str__(self):
+        return "MemAccess("+self.mtype+", "+str(self.dtype)+", "+ \
+               str(self.stride)+", "+self.direction+", "+self.variable+")"
 
 
 # {{{ ExpressionOpCounter
@@ -1089,7 +1096,8 @@ def get_op_map(knl, numpy_types=True):
                             in the returned mapping should be numpy types
                             instead of :class:`loopy.LoopyType`.
 
-    :return: A mapping of **{** :class:`Op` **:** :class:`islpy.PwQPolynomial` **}**.
+    :return: A :class:`ToCountMap` of **{** :class:`Op` **:**
+             :class:`islpy.PwQPolynomial` **}**.
 
              - The :class:`Op` specifies the characteristics of the arithmetic
                operation.
@@ -1192,7 +1200,7 @@ def get_mem_access_map(knl, numpy_types=True):
                             in the returned mapping should be numpy types
                             instead of :class:`loopy.LoopyType`.
 
-    :return: A mapping of **{** :class:`MemAccess` **:**
+    :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
              :class:`islpy.PwQPolynomial` **}**.
 
              - The :class:`MemAccess` specifies the characteristics of the
