@@ -87,8 +87,12 @@ class Barrier(ScheduleItem):
     .. attribute:: kind
 
         ``"local"`` or ``"global"``
+
+    .. attribute:: originating_insn_id
     """
-    hash_fields = __slots__ = ["comment", "kind"]
+
+    hash_fields = ["comment", "kind"]
+    __slots__ = hash_fields + ["originating_insn_id"]
 
 # }}}
 
@@ -1059,7 +1063,29 @@ def filter_nops_from_schedule(kernel, schedule):
 # }}}
 
 
-# {{{ barrier insertion
+# {{{ convert barrier instructions to proper barriers
+
+def convert_barrier_instructions_to_barriers(kernel, schedule):
+    from loopy.kernel.instruction import BarrierInstruction
+
+    result = []
+    for sched_item in schedule:
+        if isinstance(sched_item, RunInstruction):
+            insn = kernel.id_to_insn[sched_item.insn_id]
+            if isinstance(insn, BarrierInstruction):
+                result.append(Barrier(
+                    kind=insn.kind,
+                    originating_insn_id=insn.id))
+                continue
+
+        result.append(sched_item)
+
+    return result
+
+# }}}
+
+
+# {{{ barrier insertion/verification
 
 class DependencyRecord(Record):
     """
@@ -1243,7 +1269,7 @@ def insn_ids_from_schedule(schedule):
     return result
 
 
-def insert_barriers(kernel, schedule, reverse, kind, level=0):
+def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
     """
     :arg reverse: a :class:`bool`. For ``level > 0``, this function should be
         called twice, first with ``reverse=False`` to insert barriers for
@@ -1259,6 +1285,8 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
     :arg kind: "local" or "global". The :attr:`Barrier.kind` to be inserted.
         Generally, this function will be called once for each kind of barrier
         at the top level, where more global barriers should be inserted first.
+    :arg verify_only: do not insert barriers, only complain if they are
+        missing.
     :arg level: the current level of loop nesting, 0 for outermost.
     """
     result = []
@@ -1331,6 +1359,7 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
                 subresult = insert_barriers(
                         kernel, subresult,
                         reverse=sub_reverse, kind=kind,
+                        verify_only=verify_only,
                         level=level+1)
 
             # {{{ find barriers in loop body
@@ -1402,8 +1431,23 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
                         source=dep_src_insn_id,
                         reverse=reverse, var_kind=kind)
                 if dep:
-                    issue_barrier(dep=dep)
-                    break
+                    if verify_only:
+                        from loopy.diagnostic import MissingBarrierError
+                        raise MissingBarrierError(
+                                "Dependency '%s' (for variable '%s') "
+                                "requires synchronization "
+                                "by a %s barrier (add a 'no_sync_with' "
+                                "instruction option to state that no"
+                                "synchronization is needed)"
+                                % (
+                                    dep.dep_descr.format(
+                                        tgt=dep.target.id, src=dep.source.id),
+                                    dep.variable,
+                                    kind))
+
+                    else:
+                        issue_barrier(dep=dep)
+                        break
 
             result.append(sched_item)
             candidates.add(sched_item.insn_id)
@@ -1526,6 +1570,8 @@ def generate_loop_schedules(kernel, debug_args={}):
                 debug.stop()
 
                 gen_sched = filter_nops_from_schedule(kernel, gen_sched)
+                gen_sched = convert_barrier_instructions_to_barriers(
+                        kernel, gen_sched)
 
                 gsize, lsize = kernel.get_grid_size_upper_bounds()
 
@@ -1534,12 +1580,12 @@ def generate_loop_schedules(kernel, debug_args={}):
                         logger.info("%s: barrier insertion: global" % kernel.name)
 
                         gen_sched = insert_barriers(kernel, gen_sched,
-                                reverse=False, kind="global")
+                                reverse=False, kind="global", verify_only=True)
 
                     logger.info("%s: barrier insertion: local" % kernel.name)
 
                     gen_sched = insert_barriers(kernel, gen_sched,
-                            reverse=False, kind="local")
+                            reverse=False, kind="local", verify_only=False)
 
                     logger.info("%s: barrier insertion: done" % kernel.name)
 

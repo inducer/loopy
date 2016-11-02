@@ -1376,7 +1376,7 @@ def test_sequential_dependencies(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
 
 
-def test_special_instructions(ctx_factory):
+def test_nop(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1396,6 +1396,67 @@ def test_special_instructions(ctx_factory):
     knl = lp.add_and_infer_dtypes(knl, {"z": np.float64})
 
     lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(ntrips=5))
+
+
+def test_global_barrier(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
+            """
+            for i
+                for itrip
+                    ... gbarrier {id=top}
+                    <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
+                    <> v[i] = 11  {id=wr_v,dep=top}
+                    ... gbarrier {dep=wr_z:wr_v,id=yoink}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd}
+                end
+                ... gbarrier {dep=iupd,id=postloop}
+                z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
+            end
+            """)
+
+    knl = lp.fix_parameters(knl, ntrips=3)
+    knl = lp.add_and_infer_dtypes(knl, {"z": np.float64})
+
+    ref_knl = knl
+    ref_knl = lp.set_temporary_scope(ref_knl, "z", "global")
+    ref_knl = lp.set_temporary_scope(ref_knl, "v", "global")
+
+    knl = lp.split_iname(knl, "i", 256, outer_tag="g.0", inner_tag="l.0")
+    print(knl)
+
+    knl = lp.preprocess_kernel(knl)
+    assert knl.temporary_variables["z"].scope == lp.temp_var_scope.GLOBAL
+    assert knl.temporary_variables["v"].scope == lp.temp_var_scope.GLOBAL
+
+    print(knl)
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(ntrips=5, n=10))
+
+
+def test_missing_global_barrier():
+    knl = lp.make_kernel(
+            "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
+            """
+            for i
+                for itrip
+                    ... gbarrier {id=yoink}
+                    <> z[i] = z[i] - z[i+1]  {id=iupd,dep=yoink}
+                end
+                # This is where the barrier should be
+                z[i] = z[i] - z[i+1] + v[i]  {dep=iupd}
+            end
+            """)
+
+    knl = lp.set_temporary_scope(knl, "z", "global")
+    knl = lp.split_iname(knl, "i", 256, outer_tag="g.0")
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import MissingBarrierError
+    with pytest.raises(MissingBarrierError):
+        lp.get_one_scheduled_kernel(knl)
 
 
 def test_index_cse(ctx_factory):
