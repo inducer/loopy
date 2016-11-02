@@ -554,7 +554,7 @@ relation to loop nesting. For example, it's perfectly possible to request
 
 .. doctest::
 
-	>>> knl = lp.make_kernel(
+    >>> knl = lp.make_kernel(
     ...     "{ [i]: 0<=i<n }",
     ...     "a[i] = 0", assumptions="n>=1")
     >>> knl = lp.split_iname(knl, "i", 16)
