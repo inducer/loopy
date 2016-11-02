@@ -140,9 +140,10 @@ class LoopKernel(RecordWithoutPickling):
 
     .. attribute:: loop_priority
 
-        A list of inames. The earlier in the list the iname occurs, the earlier
-        it will be scheduled. (This applies to inames with non-parallel
-        implementation tags.)
+        A frozenset of priority constraints to the kernel. Each such constraint
+        is a tuple of inames. Inames occuring in such a tuple will be scheduled
+        earlier than any iname following in the tuple. This applies only to inames
+        with non-parallel implementation tags.
 
     .. attribute:: silenced_warnings
 

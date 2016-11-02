@@ -58,8 +58,6 @@ __doc__ = """
 
 .. autofunction:: remove_unused_inames
 
-.. autofunction:: set_loop_priority
-
 .. autofunction:: split_reduction_inward
 
 .. autofunction:: split_reduction_outward
@@ -80,14 +78,6 @@ __doc__ = """
 # {{{ set loop priority
 
 def set_loop_priority(kernel, loop_priority):
-    """Indicates the textual order in which loops should be entered in the
-    kernel code. Note that this priority has an advisory role only. If the
-    kernel logically requires a different nesting, priority is ignored.
-    Priority is only considered if loop nesting is ambiguous.
-
-    :arg: an iterable of inames, or, for brevity, a comma-seaprated string of
-        inames
-    """
     from warnings import warn
     warn("set_loop_priority is deprecated. Use prioritize_loops instead."
          "Attention: A call to set_loop_priority will overwrite any previously"
