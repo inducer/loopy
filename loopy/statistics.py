@@ -41,11 +41,9 @@ __doc__ = """
 
 .. currentmodule:: loopy
 
-.. autofunction:: filter_by
-.. autofunction:: group_by
-.. autofunction:: to_bytes
-.. autofunciton:: sum
-.. autofunction:: eval_and_sum
+.. autoclass:: ToCountMap
+.. autoclass:: Op
+.. autoclass:: MemAccess
 
 .. autofunction:: get_op_poly
 .. autofunction:: get_op_map
@@ -67,7 +65,15 @@ __doc__ = """
 # {{{ ToCountMap
 
 class ToCountMap:
-    """Maps any type of key to an arithmetic type."""
+    """Maps any type of key to an arithmetic type.
+
+    .. automethod:: filter_by
+    .. automethod:: group_by
+    .. automethod:: to_bytes
+    .. automethod:: sum
+    .. automethod:: eval_and_sum
+
+    """
 
     def __init__(self, init_dict=None):
         if init_dict is None:
@@ -125,15 +131,15 @@ class ToCountMap:
         return ToCountMap(dict(self.dict))
 
     def filter_by(self, **kwargs):
-        """Remove items without specified key fields
+        """Remove items without specified key fields.
 
-        :parameter **kwargs: Keyword arguments matching fields in the keys of
+        :parameter \*\*kwargs: Keyword arguments matching fields in the keys of
                              the :class:`ToCountMap`, each given a list of
                              allowable values for that key field.
 
         :return: A :class:`ToCountMap` containing the subset of the items in
-                 the oriinal :class:`ToCountMap` that match the field values
-                 passed
+                 the original :class:`ToCountMap` that match the field values
+                 passed.
 
         Example usage::
 
@@ -173,9 +179,10 @@ class ToCountMap:
         return result_map
 
     def group_by(self, *args):
-        """Group map items together, distinguishing by only the key fields passed in args
+        """Group map items together, distinguishing by only the key fields
+           passed in args.
 
-        :parameter args: Zero or more :class:`string` fields of map keys
+        :parameter \*args: Zero or more :class:`str` fields of map keys.
 
         :return: A :class:`ToCountMap` containing the same total counts
                  grouped together by new keys that only contain the fields
@@ -187,31 +194,31 @@ class ToCountMap:
 
             params = {'n': 512, 'm': 256, 'l': 128}
             mem_map = get_mem_access_map(knl)
-            grouped_mem_map = mem_map.group_by('mtype', 'dtype', 'direction')
+            grouped_map = mem_map.group_by('mtype', 'dtype', 'direction')
 
-            all_f32_global_loads = grouped_mem_map[MemAccess(mtype='global',
-                                                             dtype=np.float32,
-                                                             direction='load')
-                                                  ].eval_with_dict(params)
-            all_f32_global_stores = grouped_mem_map[MemAccess(mtype='global',
-                                                              dtype=np.float32,
-                                                              direction='store')
-                                                   ].eval_with_dict(params)
-            all_f32_local_loads = grouped_mem_map[MemAccess(mtype='local',
-                                                            dtype=np.float32,
-                                                            direction='load')
-                                                 ].eval_with_dict(params)
-            all_f32_local_stores = grouped_mem_map[MemAccess(mtype='local',
-                                                             dtype=np.float32,
-                                                             direction='store')
-                                                  ].eval_with_dict(params)
+            f32_global_ld = grouped_map[MemAccess(mtype='global',
+                                                  dtype=np.float32,
+                                                  direction='load')
+                                       ].eval_with_dict(params)
+            f32_global_st = grouped_map[MemAccess(mtype='global',
+                                                  dtype=np.float32,
+                                                  direction='store')
+                                       ].eval_with_dict(params)
+            f32_local_ld = grouped_map[MemAccess(mtype='local',
+                                                 dtype=np.float32,
+                                                 direction='load')
+                                      ].eval_with_dict(params)
+            f32_local_st = grouped_map[MemAccess(mtype='local',
+                                                 dtype=np.float32,
+                                                 direction='store')
+                                      ].eval_with_dict(params)
 
             op_map = get_op_map(knl)
-            ops_by_dtype = op_map.group_by('dtype')
+            ops_dtype = op_map.group_by('dtype')
 
-            f32ops = ops_by_dtype[Op(dtype=np.float32)].eval_with_dict(params)
-            f64ops = ops_by_dtype[Op(dtype=np.float64)].eval_with_dict(params)
-            i32ops = ops_by_dtype[Op(dtype=np.int32)].eval_with_dict(params)
+            f32ops = ops_dtype[Op(dtype=np.float32)].eval_with_dict(params)
+            f64ops = ops_dtype[Op(dtype=np.float64)].eval_with_dict(params)
+            i32ops = ops_dtype[Op(dtype=np.int32)].eval_with_dict(params)
 
             # (now use these counts to predict performance)
 
@@ -244,7 +251,7 @@ class ToCountMap:
         return result_map
 
     def to_bytes(self):
-        """Convert counts to bytes using data type in map key
+        """Convert counts to bytes using data type in map key.
 
         :return: A :class:`ToCountMap` mapping each original key to a
                  :class:`islpy.PwQPolynomial` with counts in bytes rather than
@@ -257,18 +264,18 @@ class ToCountMap:
             bytes_map = get_mem_access_map(knl).to_bytes()
             params = {'n': 512, 'm': 256, 'l': 128}
 
-            s1_global_ld_byt = bytes_map.filter_by(
-                                    mtype=['global'], stride=[1],
-                                    direction=['load']).eval_and_sum(params)
-            s2_global_ld_byt = bytes_map.filter_by(
-                                    mtype=['global'], stride=[2],
-                                    direction=['load']).eval_and_sum(params)
-            s1_global_st_byt = bytes_map.filter_by(
-                                    mtype=['global'], stride=[1],
-                                    direction=['store']).eval_and_sum(params)
-            s2_global_st_byt = bytes_map.filter_by(
-                                    mtype=['global'], stride=[2],
-                                    direction=['store']).eval_and_sum(params)
+            s1_g_ld_byt = bytes_map.filter_by(
+                                mtype=['global'], stride=[1],
+                                direction=['load']).eval_and_sum(params)
+            s2_g_ld_byt = bytes_map.filter_by(
+                                mtype=['global'], stride=[2],
+                                direction=['load']).eval_and_sum(params)
+            s1_g_st_byt = bytes_map.filter_by(
+                                mtype=['global'], stride=[1],
+                                direction=['store']).eval_and_sum(params)
+            s2_g_st_byt = bytes_map.filter_by(
+                                mtype=['global'], stride=[2],
+                                direction=['store']).eval_and_sum(params)
 
             # (now use these counts to predict performance)
 
@@ -284,9 +291,9 @@ class ToCountMap:
 
 
     def sum(self):
-        """Add all counts in ToCountMap
+        """Add all counts in ToCountMap.
 
-        :return: A :class:`islpy.PwQPolynomial` containing the sum of counts
+        :return: A :class:`islpy.PwQPolynomial` containing the sum of counts.
 
         """
         total = isl.PwQPolynomial('{ 0 }')
@@ -300,10 +307,11 @@ class ToCountMap:
 
 
     def eval_and_sum(self, params):
-        """Add all counts in ToCountMap and evaluate with provided parameters
+        """Add all counts in :class:`ToCountMap` and evaluate with provided
+        parameter dict.
 
-        :return: An :class:`integer` containing the sum of all counts in the
-                 :class:`ToCountMap` evaluated with the parameters provided
+        :return: An :class:`int` containing the sum of all counts in the
+                 :class:`ToCountMap` evaluated with the parameters provided.
 
         Example usage::
 
@@ -331,7 +339,7 @@ def stringify_stats_mapping(m):
 
 
 class Op:
-    """An arithmetic operation
+    """An arithmetic operation.
 
     .. attribute:: dtype
 
@@ -340,7 +348,7 @@ class Op:
 
     .. attribute:: name
 
-       A :class:`string` that specifies the kind of arithmetic operation as
+       A :class:`str` that specifies the kind of arithmetic operation as
        *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
 
     """
@@ -371,11 +379,11 @@ class Op:
 
 
 class MemAccess:
-    """A memory access
+    """A memory access.
 
     .. attribute:: mtype
 
-       A :class:`string` that specifies the memory type accessed as **global**
+       A :class:`str` that specifies the memory type accessed as **global**
        or **local**
 
     .. attribute:: dtype
@@ -385,17 +393,17 @@ class MemAccess:
 
     .. attribute:: stride
 
-       A :class:`int` specifies stride of the memory access. A stride of 0
+       An :class:`int` that specifies stride of the memory access. A stride of 0
        indicates a uniform access (i.e. all threads access the same item).
 
     .. attribute:: direction
 
-       A :class:`string` that specifies the direction of memory access as
+       A :class:`str` that specifies the direction of memory access as
        **load** or **store**.
 
     .. attribute:: variable
 
-       A :class:`string` that specifies the variable name of the data
+       A :class:`str` that specifies the variable name of the data
        accessed.
 
     """
@@ -1059,6 +1067,9 @@ def count(kernel, set):
 def get_op_poly(knl, numpy_types=True):
 
     """Count the number of operations in a loopy kernel.
+
+    get_op_poly is deprecated. Use get_op_map instead.
+
     """
     from warnings import warn
     warn("get_op_poly is deprecated. Use get_op_map instead.",
@@ -1074,27 +1085,27 @@ def get_op_map(knl, numpy_types=True):
 
     :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
-    :parameter numpy_types: A :class:`boolean` specifying whether the types
+    :parameter numpy_types: A :class:`bool` specifying whether the types
                             in the returned mapping should be numpy types
-                            instead of :class:'loopy.LoopyType`.
+                            instead of :class:`loopy.LoopyType`.
 
-    :return: A mapping of **{** :class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**.
+    :return: A mapping of **{** :class:`Op` **:** :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`loopy.Op` specifies an arithmetic operation with
-               specific characteristics.
+             - The :class:`Op` specifies the characteristics of the arithmetic
+               operation.
 
              - The :class:`islpy.PwQPolynomial` holds the number of operations of
                the kind specified in the key (in terms of the
-               :class:`loopy.LoopKernel` *parameter inames*).
+               :class:`loopy.LoopKernel` parameter *inames*).
 
     Example usage::
 
         # (first create loopy kernel and specify array data types)
 
-        map = get_op_map(knl)
+        op_map = get_op_map(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        f32add = map[Op(np.dtype(np.float32), 'add')].eval_with_dict(params)
-        f32mul = map[Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+        f32add = op_map[Op(np.float32, 'add')].eval_with_dict(params)
+        f32mul = op_map[Op(np.float32, 'mul')].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -1124,9 +1135,13 @@ def get_op_map(knl, numpy_types=True):
     return op_map
 
 
-#TODO test depricated functions?
+#TODO test deprecated functions?
 def get_lmem_access_poly(knl):
     """Count the number of local memory accesses in a loopy kernel.
+
+    get_lmem_access_poly is deprecated. Use get_mem_access_map and filter the
+    result with the mtype=['local'] option.
+
     """
     from warnings import warn
     warn("get_lmem_access_poly is deprecated. Use get_mem_access_map and "
@@ -1137,6 +1152,10 @@ def get_lmem_access_poly(knl):
 
 def get_DRAM_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
+
+    get_DRAM_access_poly is deprecated. Use get_mem_access_map and filter the
+    result with the mtype=['global'] option.
+
     """
     from warnings import warn
     warn("get_DRAM_access_poly is deprecated. Use get_mem_access_map and "
@@ -1149,6 +1168,10 @@ def get_DRAM_access_poly(knl):
 
 def get_gmem_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
+
+    get_DRAM_access_poly is deprecated. Use get_mem_access_map and filter the
+    result with the mtype=['global'] option.
+
     """
     from warnings import warn
     warn("get_DRAM_access_poly is deprecated. Use get_mem_access_map and "
@@ -1162,18 +1185,18 @@ def get_gmem_access_poly(knl):
 def get_mem_access_map(knl, numpy_types=True):
     """Count the number of memory accesses in a loopy kernel.
 
-    :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
+    :parameter knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
                     counted.
 
-    :parameter numpy_types: A :class:`boolean` specifying whether the types
+    :parameter numpy_types: A :class:`bool` specifying whether the types
                             in the returned mapping should be numpy types
-                            instead of :class:'loopy.LoopyType`.
+                            instead of :class:`loopy.LoopyType`.
 
-    :return: A mapping of **{** :class:`loopy.MemAccess` **:**
+    :return: A mapping of **{** :class:`MemAccess` **:**
              :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`loopy.MemAccess` specifies the type of memory
-               access.
+             - The :class:`MemAccess` specifies the characteristics of the
+               memory access.
 
              - The :class:`islpy.PwQPolynomial` holds the number of memory
                accesses with the characteristics specified in the key (in terms
@@ -1184,32 +1207,32 @@ def get_mem_access_map(knl, numpy_types=True):
         # (first create loopy kernel and specify array data types)
 
         params = {'n': 512, 'm': 256, 'l': 128}
-        mem_access_map = get_mem_access_map(knl)
+        mem_map = get_mem_access_map(knl)
 
-        f32_stride1_g_loads_a = mem_access_map[MemAccess(mtype='global',
-                                                         dtype=np.float32,
-                                                         stride=1,
-                                                         direction='load',
-                                                         variable='a')
-                                              ].eval_with_dict(params)
-        f32_stride1_g_stores_a = mem_access_map[MemAccess(mtype='global',
-                                                          dtype=np.float32,
-                                                          stride=1,
-                                                          direction='store',
-                                                          variable='a')
-                                               ].eval_with_dict(params)
-        f32_stride1_l_loads_x = mem_access_map[MemAccess(mtype='local',
-                                                         dtype=np.float32,
-                                                         stride=1,
-                                                         direction='load',
-                                                         variable='x')
-                                              ].eval_with_dict(params)
-        f32_stride1_l_stores_x = mem_access_map[MemAccess(mtype='local',
-                                                          dtype=np.float32,
-                                                          stride=1,
-                                                          direction='store',
-                                                          variable='x')
-                                               ].eval_with_dict(params)
+        f32_s1_g_ld_a = mem_map[MemAccess(mtype='global',
+                                          dtype=np.float32,
+                                          stride=1,
+                                          direction='load',
+                                          variable='a')
+                               ].eval_with_dict(params)
+        f32_s1_g_st_a = mem_map[MemAccess(mtype='global',
+                                          dtype=np.float32,
+                                          stride=1,
+                                          direction='store',
+                                          variable='a')
+                               ].eval_with_dict(params)
+        f32_s1_l_ld_x = mem_map[MemAccess(mtype='local',
+                                          dtype=np.float32,
+                                          stride=1,
+                                          direction='load',
+                                          variable='x')
+                               ].eval_with_dict(params)
+        f32_s1_l_st_x = mem_map[MemAccess(mtype='local',
+                                          dtype=np.float32,
+                                          stride=1,
+                                          direction='store',
+                                          variable='x')
+                               ].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -1299,6 +1322,9 @@ def get_mem_access_map(knl, numpy_types=True):
 def get_synchronization_poly(knl):
     """Count the number of synchronization events each thread encounters in a
     loopy kernel.
+
+    get_synchronization_poly is deprecated. Use get_synchronization_map instead.
+
     """
     from warnings import warn
     warn("get_synchronization_poly is deprecated. Use get_synchronization_map instead.",
@@ -1316,8 +1342,8 @@ def get_synchronization_map(knl):
     :parameter knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
     :return: A dictionary mapping each type of synchronization event to a
-            :class:`islpy.PwQPolynomial` holding the number of such events
-            per thread.
+            :class:`islpy.PwQPolynomial` holding the number of events per
+            thread.
 
             Possible keys include ``barrier_local``, ``barrier_global``
             (if supported by the target) and ``kernel_launch``.
@@ -1328,7 +1354,7 @@ def get_synchronization_map(knl):
 
         sync_map = get_synchronization_map(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        barrier_count = sync_map['barrier_local'].eval_with_dict(params)
+        barrier_ct = sync_map['barrier_local'].eval_with_dict(params)
 
         # (now use this count to predict performance)
 
@@ -1380,7 +1406,7 @@ def get_synchronization_map(knl):
             raise LoopyError("unexpected schedule item: %s"
                     % type(sched_item).__name__)
 
-    #return result.dict #TODO is this okay?
+    #return result.dict #TODO is this change okay?
     return result
 
 
@@ -1392,7 +1418,7 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
     of each the array *var_name* are read/written (where
     *direction* is either ``read`` or ``write``.
 
-    :arg ignore_uncountable: If *True*, an error will be raised for
+    :arg ignore_uncountable: If *False*, an error will be raised for
         accesses on which the footprint cannot be determined (e.g.
         data-dependent or nonlinear indices)
     """

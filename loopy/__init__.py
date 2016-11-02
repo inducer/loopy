@@ -112,9 +112,9 @@ from loopy.transform.parameter import assume, fix_parameters
 from loopy.preprocess import (preprocess_kernel, realize_reduction,
         infer_unknown_types)
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (stringify_stats_mapping, Op, MemAccess,
-        get_op_poly, get_op_map, get_lmem_access_poly, get_DRAM_access_poly,
-        get_gmem_access_poly, get_mem_access_map,
+from loopy.statistics import (ToCountMap, stringify_stats_mapping, Op,
+        MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
+        get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_map,
         get_synchronization_poly, get_synchronization_map,
         gather_access_footprints, gather_access_footprint_bytes)
 from loopy.codegen import (
@@ -219,9 +219,9 @@ __all__ = [
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
-        "stringify_stats_mapping", "Op", "MemAccess", "get_op_poly",
-        "get_op_map", "get_lmem_access_poly", "get_DRAM_access_poly",
-        "get_gmem_access_poly", "get_mem_access_map",
+        "ToCountMap", "stringify_stats_mapping", "Op", "MemAccess",
+        "get_op_poly", "get_op_map", "get_lmem_access_poly",
+        "get_DRAM_access_poly", "get_gmem_access_poly", "get_mem_access_map",
         "get_synchronization_poly", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
 
