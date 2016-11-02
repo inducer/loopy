@@ -1414,7 +1414,7 @@ def _resolve_dependencies(knl, insn, deps):
 
     for dep in deps:
         try:
-            # Try to treat the given dependency a kernel query language
+            # Try to treat the given dependency as kernel query language
             new_dep = find_instructions(knl, dep)
         except LoopyError:
             # If not successful, try to match with a colon-separated list
