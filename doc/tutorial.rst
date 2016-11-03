@@ -1231,10 +1231,10 @@ be counted, which may facilitate performance prediction and optimization of a
 Counting operations
 ~~~~~~~~~~~~~~~~~~~
 
-:func:`loopy.get_op_map` provides information on the number and type of
-arithmetic operations being performed in a kernel. To demonstrate this, we'll
-create an example kernel that performs several operations on arrays containing
-different types of data:
+:func:`loopy.get_op_map` provides information on the characteristics and
+quantity of arithmetic operations being performed in a kernel. To demonstrate
+this, we'll create an example kernel that performs several operations on arrays
+containing different types of data:
 
 .. doctest::
 
@@ -1253,15 +1253,6 @@ information provided. Now we will count the operations:
 .. doctest::
 
     >>> op_map = lp.get_op_map(knl)
-
-:func:`loopy.get_op_map` returns a :class:`loopy.ToCountMap` of **{**
-:class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**. The
-:class:`islpy.PwQPolynomial` holds the number of operations for the kind of
-operation specified in the key(in terms of the :class:`loopy.LoopKernel`
-*inames*). We'll print this map now:
-
-.. doctest::
-
     >>> print(lp.stringify_stats_mapping(op_map))
     Op(np:dtype('float32'), add) : [n, m, l] -> { n * m * l : n > 0 and m > 0 and l > 0 }
     Op(np:dtype('float32'), div) : [n, m, l] -> { n * m * l : n > 0 and m > 0 and l > 0 }
@@ -1270,6 +1261,20 @@ operation specified in the key(in terms of the :class:`loopy.LoopKernel`
     Op(np:dtype('float64'), mul) : [n, m, l] -> { n * m : n > 0 and m > 0 and l > 0 }
     Op(np:dtype('int32'), add) : [n, m, l] -> { n * m : n > 0 and m > 0 and l > 0 }
     <BLANKLINE>
+
+:func:`loopy.get_op_map` returns a :class:`loopy.ToCountMap` of **{**
+:class:`loopy.Op` **:** :class:`islpy.PwQPolynomial` **}**. A
+:class:`loopy.ToCountMap` holds a dictionary mapping any type of key to an
+arithmetic type. In this case, the :class:`islpy.PwQPolynomial` holds the
+number of operations matching the characteristics of the :class:`loopy.Op`
+specified in the key (in terms of the :class:`loopy.LoopKernel`
+*inames*). :class:`loopy.Op` attributes include:
+
+- dtype: A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+  data type operated on.
+
+- name: A :class:`str` that specifies the kind of arithmetic operation as
+  *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
 
 One way to evaluate these polynomials is with :func:`islpy.eval_with_dict`:
 
@@ -1290,6 +1295,39 @@ One way to evaluate these polynomials is with :func:`islpy.eval_with_dict`:
     65536
     65536
     65536
+
+:class:`loopy.ToCountMap` provides member functions that facilitate filtering,
+grouping, and evaluating subsets of the counts. Suppose we want to know the
+total number of 32-bit operations of any kind. We can easily count these
+using functions :func:`loopy.ToCountMap.filter_by` and
+:func:`loopy.ToCountMap.eval_and_sum`:
+
+.. doctest::
+
+    >>> filtered_op_map = op_map.filter_by(dtype=[np.float32])
+    >>> f32op_count = filtered_op_map.eval_and_sum(param_dict)
+    >>> print(f32op_count)
+    1572864
+
+We could accomplish the same goal using :func:`loopy.ToCountMap.group_by`,
+which produces a :class:`loopy.ToCountMap` that contains the same counts grouped
+together into keys containing only the specified fields:
+
+.. doctest::
+
+    >>> op_map_dtype = op_map.group_by('dtype')
+    >>> print(lp.stringify_stats_mapping(op_map_dtype))
+    Op(np:dtype('float32'), None) : [n, m, l] -> { 3 * n * m * l : n > 0 and m > 0 and l > 0 }
+    Op(np:dtype('float64'), None) : [n, m, l] -> { 2 * n * m : n > 0 and m > 0 and l > 0 }
+    Op(np:dtype('int32'), None) : [n, m, l] -> { n * m : n > 0 and m > 0 and l > 0 }
+    <BLANKLINE>
+    >>> f32op_count = op_map_dtype[lp.Op(dtype=np.float32)
+    ...                           ].eval_with_dict(param_dict)
+    >>> print(f32op_count)
+    1572864
+
+See the reference page for :class:`loopy.ToCountMap` and :class:`loopy.Op` for
+more information on these functions.
 
 Counting memory accesses
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1334,19 +1372,52 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 .. doctest::
 
     >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 0, 'load', 'g')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 0, 'store', 'e')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 0, 'load', 'a')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 0, 'store', 'c')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
-    ...     (f32ld_a, f32st_c, f64ld_g, f64st_e))
+    ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
     f32 ld a: 1048576
     f32 st c: 524288
     f64 ld g: 65536
     f64 st e: 65536
+
+:class:`loopy.ToCountMap` also makes it easy to determine the total amount
+of data moved in bytes. Suppose we want to know the total abount of global
+memory data loaded and stored. We can produce a map with just this information
+using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
+
+.. doctest::
+
+    >>> bytes_map = mem_map.to_bytes()
+    >>> print(lp.stringify_stats_mapping(bytes_map))
+    MemAccess(global, np:dtype('float32'), 0, load, a) : [n, m, l] -> { 8 * n * m * l : n > 0 and m > 0 and l > 0 }
+    MemAccess(global, np:dtype('float32'), 0, load, b) : [n, m, l] -> { 4 * n * m * l : n > 0 and m > 0 and l > 0 }
+    MemAccess(global, np:dtype('float32'), 0, store, c) : [n, m, l] -> { 4 * n * m * l : n > 0 and m > 0 and l > 0 }
+    MemAccess(global, np:dtype('float64'), 0, load, g) : [n, m, l] -> { 8 * n * m : n > 0 and m > 0 and l > 0 }
+    MemAccess(global, np:dtype('float64'), 0, load, h) : [n, m, l] -> { 8 * n * m : n > 0 and m > 0 and l > 0 }
+    MemAccess(global, np:dtype('float64'), 0, store, e) : [n, m, l] -> { 8 * n * m : n > 0 and m > 0 and l > 0 }
+    <BLANKLINE>
+    >>> global_ld_st_bytes = bytes_map.filter_by(mtype=['global']
+    ...                                         ).group_by('direction')
+    >>> print(lp.stringify_stats_mapping(global_ld_st_bytes))
+    MemAccess(None, None, None, load, None) : [n, m, l] -> { (16 * n * m + 12 * n * m * l) : n > 0 and m > 0 and l > 0 }
+    MemAccess(None, None, None, store, None) : [n, m, l] -> { (8 * n * m + 4 * n * m * l) : n > 0 and m > 0 and l > 0 }
+    <BLANKLINE>
+    >>> loaded = global_ld_st_bytes[lp.MemAccess(direction='load')
+    ...                            ].eval_with_dict(param_dict)
+    >>> stored = global_ld_st_bytes[lp.MemAccess(direction='store')
+    ...                            ].eval_with_dict(param_dict)
+    >>> print("bytes loaded: %s\nbytes stored: %s" % (loaded, stored))
+    bytes loaded: 7340032 
+    bytes stored: 2621440
+
+One can see how these functions might be useful in computing, for example,
+achieved memory bandwidth in byte/sec or performance in FLOP/sec.
 
 ~~~~~~~~~~~
 
@@ -1358,7 +1429,8 @@ resulting :class:`islpy.PwQPolynomial` will be more complicated this time.
 
 .. doctest::
 
-    >>> knl_consec = lp.split_iname(knl, "k", 128, outer_tag="l.1", inner_tag="l.0")
+    >>> knl_consec = lp.split_iname(knl, "k", 128,
+    ...                             outer_tag="l.1", inner_tag="l.0")
     >>> mem_map = lp.get_mem_access_map(knl_consec)
     >>> print(lp.stringify_stats_mapping(mem_map))
     MemAccess(global, np:dtype('float32'), 1, load, a) : [n, m, l] -> { (2 * n * m * l * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (256 * n * l * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
@@ -1377,15 +1449,15 @@ array accesses has not changed:
 .. doctest::
 
     >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 1, 'load', 'g')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 1, 'store', 'e')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 1, 'load', 'a')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 1, 'store', 'c')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
-    ...     (f32ld_a, f32st_c, f64ld_g, f64st_e))
+    ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
     f32 ld a: 1048576
     f32 st c: 524288
     f64 ld g: 65536
@@ -1398,7 +1470,8 @@ switch the inner and outer tags in our parallelization of the kernel:
 
 .. doctest::
 
-    >>> knl_nonconsec = lp.split_iname(knl, "k", 128, outer_tag="l.0", inner_tag="l.1")
+    >>> knl_nonconsec = lp.split_iname(knl, "k", 128,
+    ...                                outer_tag="l.0", inner_tag="l.1")
     >>> mem_map = lp.get_mem_access_map(knl_nonconsec)
     >>> print(lp.stringify_stats_mapping(mem_map))
     MemAccess(global, np:dtype('float32'), 128, load, a) : [n, m, l] -> { (2 * n * m * l * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (256 * n * l * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
@@ -1416,15 +1489,15 @@ changed:
 .. doctest::
 
     >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 128, 'load', 'g')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 128, 'store', 'e')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 128, 'load', 'a')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 128, 'store', 'c')
-    ...     ].eval_with_dict(param_dict)
+    ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
-    ...     (f32ld_a, f32st_c, f64ld_g, f64st_e))
+    ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
     f32 ld a: 1048576
     f32 st c: 524288
     f64 ld g: 65536
