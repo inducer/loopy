@@ -374,10 +374,25 @@ def format_insn(kernel, insn_id):
     insn = kernel.id_to_insn[insn_id]
     Fore = kernel.options._fore
     Style = kernel.options._style
-    return "[%s] %s%s%s <- %s%s%s" % (
+    from loopy.kernel.instruction import (
+            MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
+    if isinstance(insn, MultiAssignmentBase):
+        return "[%s] %s%s%s <- %s%s%s" % (
             format_insn_id(kernel, insn_id),
             Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
+    elif isinstance(insn, BarrierInstruction):
+        return "[%s] %s... %sbarrier%s" % (
+                format_insn_id(kernel, insn_id),
+                Fore.MAGENTA, insn.kind[0], Style.RESET_ALL)
+    elif isinstance(insn, NoOpInstruction):
+        return "[%s] %s... nop%s" % (
+                format_insn_id(kernel, insn_id),
+                Fore.MAGENTA, Style.RESET_ALL)
+    else:
+        return "[%s] %s%s%s" % (
+                format_insn_id(kernel, insn_id),
+                Fore.CYAN, str(insn), Style.RESET_ALL)
 
 
 def dump_schedule(kernel, schedule):
