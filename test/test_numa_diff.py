@@ -228,7 +228,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
         print(lp.stringify_stats_mapping(op_poly))
 
         print("MEM")
-        gmem_poly = lp.sum_mem_access_to_bytes(lp.get_gmem_access_poly(hsv))
+        gmem_poly = lp.get_mem_access_poly(hsv).to_bytes()
         print(lp.stringify_stats_mapping(gmem_poly))
 
     hsv = lp.set_options(hsv, cl_build_options=[

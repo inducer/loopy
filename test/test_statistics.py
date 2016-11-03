@@ -214,7 +214,7 @@ def test_op_counter_triangular_domain():
         assert flops == 78
 
 
-def test_gmem_access_counter_basic():
+def test_mem_access_counter_basic():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -258,7 +258,7 @@ def test_gmem_access_counter_basic():
     assert f64s == n*m
 
 
-def test_gmem_access_counter_reduction():
+def test_mem_access_counter_reduction():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -294,7 +294,7 @@ def test_gmem_access_counter_reduction():
     assert st_bytes == 4*f32s
 
 
-def test_gmem_access_counter_logic():
+def test_mem_access_counter_logic():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -328,7 +328,7 @@ def test_gmem_access_counter_logic():
     assert f64_g_s == n*m
 
 
-def test_gmem_access_counter_specialops():
+def test_mem_access_counter_specialops():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -376,7 +376,7 @@ def test_gmem_access_counter_specialops():
     tot = filtered_map.eval_and_sum(params)
     assert tot == n*m*l + n*m
 
-def test_gmem_access_counter_bitwise():
+def test_mem_access_counter_bitwise():
 
     knl = lp.make_kernel(
             "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -421,7 +421,7 @@ def test_gmem_access_counter_bitwise():
     assert i32 == n*m+n*m*l
 
 
-def test_gmem_access_counter_mixed():
+def test_mem_access_counter_mixed():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -476,7 +476,7 @@ def test_gmem_access_counter_mixed():
     assert f32nonconsec == n*m*l
 
 
-def test_gmem_access_counter_nonconsec():
+def test_mem_access_counter_nonconsec():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
@@ -528,7 +528,7 @@ def test_gmem_access_counter_nonconsec():
     assert f32nonconsec == n*m*l
 
 
-def test_gmem_access_counter_consec():
+def test_mem_access_counter_consec():
 
     knl = lp.make_kernel(
             "[n,m,l] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
