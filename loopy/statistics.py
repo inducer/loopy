@@ -1043,22 +1043,22 @@ def count(kernel, set):
 
         if not (is_subset and is_superset):
             if is_subset:
-                from loopy.diagnostic import warn
-                warn(kernel, "count_overestimate",
+                from loopy.diagnostic import warn_with_kernel
+                warn_with_kernel(kernel, "count_overestimate",
                         "Barvinok wrappers are not installed. "
                         "Counting routines have overestimated the "
                         "number of integer points in your loop "
                         "domain.")
             elif is_superset:
-                from loopy.diagnostic import warn
-                warn(kernel, "count_underestimate",
+                from loopy.diagnostic import warn_with_kernel
+                warn_with_kernel(kernel, "count_underestimate",
                         "Barvinok wrappers are not installed. "
                         "Counting routines have underestimated the "
                         "number of integer points in your loop "
                         "domain.")
             else:
-                from loopy.diagnostic import warn
-                warn(kernel, "count_misestimate",
+                from loopy.diagnostic import warn_with_kernel
+                warn_with_kernel(kernel, "count_misestimate",
                         "Barvinok wrappers are not installed. "
                         "Counting routines have misestimated the "
                         "number of integer points in your loop "
