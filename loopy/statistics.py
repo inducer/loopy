@@ -369,16 +369,18 @@ class Op:
                  self.name == other.name))
 
     def __hash__(self):
-        dtype = self.dtype
-        name = self.name
-        if dtype is None:
-            dtype = 'None'
-        if name is None:
-            name = 'None'
-        return hash(str(dtype)+name)
+        return hash(str(self))
 
     def __str__(self):
-        return "Op("+str(self.dtype)+", "+self.name+")"
+        if self.dtype is None:
+            dtype = 'None'
+        else:
+            dtype = str(self.dtype)
+        if self.name is None:
+            name = 'None'
+        else:
+            name = self.name
+        return "Op("+dtype+", "+name+")"
 
 
 class MemAccess:
@@ -446,26 +448,31 @@ class MemAccess:
                  self.variable == other.variable))
 
     def __hash__(self):
-        mtype = self.mtype
-        dtype = self.dtype
-        stride = self.stride
-        direction = self.direction
-        variable = self.variable
-        if mtype is None:
-            mtype = 'None'
-        if dtype is None:
-            dtype = 'None'
-        if stride is None:
-            stride = 'None'
-        if direction is None:
-            direction = 'None'
-        if variable is None:
-            variable = 'None'
-        return hash(mtype+str(dtype)+str(stride)+direction+variable)
+        return hash(str(self))
 
     def __str__(self):
-        return "MemAccess("+self.mtype+", "+str(self.dtype)+", "+ \
-               str(self.stride)+", "+self.direction+", "+self.variable+")"
+        if self.mtype is None:
+            mtype = 'None'
+        else:
+            mtype = self.mtype
+        if self.dtype is None:
+            dtype = 'None'
+        else:
+            dtype = str(self.dtype)
+        if self.stride is None:
+            stride = 'None'
+        else:
+            stride = str(self.stride)
+        if self.direction is None:
+            direction = 'None'
+        else:
+            direction = self.direction
+        if self.variable is None:
+            variable = 'None'
+        else:
+            variable = self.variable
+        return "MemAccess("+mtype+", "+dtype+", "+stride+", "+direction+", " \
+               +variable+")"
 
 
 # {{{ ExpressionOpCounter
