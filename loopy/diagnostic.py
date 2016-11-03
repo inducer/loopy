@@ -93,6 +93,10 @@ class DependencyTypeInferenceFailure(TypeInferenceFailure):
         TypeInferenceFailure.__init__(self, message)
         self.symbol = symbol
 
+
+class MissingBarrierError(LoopyError):
+    pass
+
 # }}}
 
 
