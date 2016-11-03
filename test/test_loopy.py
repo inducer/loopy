@@ -1030,9 +1030,12 @@ def test_kernel_splitting(ctx_factory):
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
             """
-            c[i] = a[i + 1]
-            out[i] = c[i]
-            """)
+            for i
+                c[i] = a[i + 1]
+                ... gbarrier
+                out[i] = c[i]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1067,9 +1070,13 @@ def test_kernel_splitting_with_loop(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            c[k,i] = a[k, i + 1]
-            out[k,i] = c[k,i]
-            """)
+            for i, k
+                ... gbarrier
+                c[k,i] = a[k, i + 1]
+                ... gbarrier
+                out[k,i] = c[k,i]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1106,11 +1113,15 @@ def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            <> t_private_scalar = a[k,i+1]
-            <> t_private_array[i % 2] = a[k,i+1]
-            c[k,i] = a[k,i+1]
-            out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
-            """)
+            for i, k
+                ... gbarrier
+                <> t_private_scalar = a[k,i+1]
+                <> t_private_array[i % 2] = a[k,i+1]
+                c[k,i] = a[k,i+1]
+                ... gbarrier
+                out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1147,10 +1158,14 @@ def test_kernel_splitting_with_loop_and_local_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            <> t_local[i % 8,k] = i % 8
-            c[k,i] = a[k,i+1]
-            out[k,i] = c[k,i] + t_local[i % 8,k]
-            """)
+            for i, k
+                ... gbarrier
+                <> t_local[i % 8,k] = i % 8
+                c[k,i] = a[k,i+1]
+                ... gbarrier
+                out[k,i] = c[k,i] + t_local[i % 8,k]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1187,9 +1202,12 @@ def test_global_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n}",
             """
-            <> c[i] = a[i + 1]
-            out[i] = c[i]
-            """)
+            for i
+                <> c[i] = a[i + 1]
+                ... gbarrier
+                out[i] = c[i]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
