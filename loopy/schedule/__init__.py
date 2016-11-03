@@ -372,7 +372,7 @@ def format_insn(kernel, insn_id):
     Style = kernel.options._style
     return "[%s] %s%s%s <- %s%s%s" % (
             format_insn_id(kernel, insn_id),
-            Fore.BLUE, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
+            Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
 
 

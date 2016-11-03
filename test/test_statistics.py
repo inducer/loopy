@@ -616,14 +616,14 @@ def test_barrier_counter_barriers():
             name="weird2",
             )
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
-    knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
-    map = lp.get_synchronization_map(knl)
-    print(map)
+    knl = lp.split_iname(knl, "k", 128, inner_tag="l.0")
+    sync_map = lp.get_synchronization_map(knl)
+    print(sync_map)
     n = 512
     m = 256
     l = 128
     params = {'n': n, 'm': m, 'l': l}
-    barrier_count = map["barrier_local"].eval_with_dict(params)
+    barrier_count = sync_map["barrier_local"].eval_with_dict(params)
     assert barrier_count == 50*10*2
 
 

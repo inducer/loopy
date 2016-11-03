@@ -35,7 +35,7 @@ from loopy.kernel.data import CallMangleInfo
 from loopy.target.opencl import OpenCLTarget, OpenCLCASTBuilder
 from loopy.target.python import PythonASTBuilderBase
 from loopy.types import NumpyType
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, warn_with_kernel
 from warnings import warn
 
 import logging
@@ -172,9 +172,17 @@ def check_sizes(kernel, device):
         if product(llens) > device.max_work_group_size:
             raise LoopyError("work group too big")
 
+    local_mem_use = kernel.local_mem_use()
+
     from pyopencl.characterize import usable_local_mem_size
-    if kernel.local_mem_use() > usable_local_mem_size(device):
-        raise LoopyError("using too much local memory")
+    import numbers
+    if isinstance(local_mem_use, numbers.Integral):
+        if local_mem_use > usable_local_mem_size(device):
+            raise LoopyError("using too much local memory")
+    else:
+        warn_with_kernel(kernel, "non_constant_local_mem",
+                "The amount of local memory used by the kernel "
+                "is not a constant. This will likely cause problems.")
 
     from loopy.kernel.data import ConstantArg
     const_arg_count = sum(

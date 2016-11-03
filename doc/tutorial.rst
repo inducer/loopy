@@ -926,6 +926,7 @@ Consider the following example:
     ...     out[16*i_outer + i_inner] = sum(k, a_temp[k])
     ...     """)
     >>> knl = lp.tag_inames(knl, dict(i_outer="g.0", i_inner="l.0"))
+    >>> knl = lp.set_temporary_scope(knl, "a_temp", "local")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -1467,7 +1468,7 @@ Now to make things more interesting, we'll create a kernel with barriers:
     ...     "..."
     ...     ])
     >>> knl = lp.add_and_infer_dtypes(knl, dict(a=np.int32))
-    >>> knl = lp.split_iname(knl, "k", 128, outer_tag="g.0", inner_tag="l.0")
+    >>> knl = lp.split_iname(knl, "k", 128, inner_tag="l.0")
     >>> code, _ = lp.generate_code(lp.preprocess_kernel(knl))
     >>> print(code)
     #define lid(N) ((int) get_local_id(N))
@@ -1476,6 +1477,8 @@ Now to make things more interesting, we'll create a kernel with barriers:
     __kernel void __attribute__ ((reqd_work_group_size(97, 1, 1))) loopy_kernel(__global int const *restrict a, __global int *restrict e)
     {
       __local int c[50 * 10 * 99];
+    <BLANKLINE>
+      int const k_outer = 0;
     <BLANKLINE>
       for (int j = 0; j <= 9; ++j)
         for (int i = 0; i <= 49; ++i)
