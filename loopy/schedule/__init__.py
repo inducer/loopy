@@ -519,6 +519,23 @@ class SchedulerState(Record):
 
     .. attribute:: unscheduled_insn_ids
 
+    .. attribute:: preschedule
+
+        A sequence of schedule items that must be inserted into the
+        schedule, maintaining the same ordering
+
+    .. attribute:: prescheduled_insn_ids
+
+        A :class:`frozenset` of any instruction that started prescheduled
+
+    .. attribute:: prescheduled_inames
+
+        A :class:`frozenset` of any iname that started prescheduled
+
+    .. attribute:: can_schedule_insns
+
+        Whether an instruction can be the next item scheduled
+
     .. attribute:: group_insn_counts
 
         A mapping from instruction group names to the number of instructions
@@ -560,6 +577,11 @@ def generate_loop_schedules_internal(
 
     active_inames_set = frozenset(sched_state.active_inames)
 
+    next_preschedule_item = (
+        sched_state.preschedule[0]
+            if len(sched_state.preschedule) > 0
+            else None)
+
     # {{{ decide about debug mode
 
     debug_mode = False
@@ -578,6 +600,10 @@ def generate_loop_schedules_internal(
         print(75*"=")
         print("CURRENT SCHEDULE:")
         print(dump_schedule(sched_state.kernel, sched_state.schedule))
+        if sched_state.preschedule:
+            print(75*"=")
+            print("PRESCHEDULED ITEMS AWAITING SCHEDULING:")
+            print(dump_schedule(sched_state.kernel, sched_state.preschedule))
         #print("boost allowed:", allow_boost)
         print(75*"=")
         print("LOOP NEST MAP (inner: outer):")
@@ -590,6 +616,32 @@ def generate_loop_schedules_internal(
 
     #if len(schedule) == 2:
         #from pudb import set_trace; set_trace()
+
+    # }}}
+
+    # {{{ see if we have reached the start/end of kernel in the preschedule
+
+    if isinstance(next_preschedule_item, CallKernel):
+        assert sched_state.can_schedule_insns == False
+        for result in generate_loop_schedules_internal(
+                sched_state.copy(
+                    schedule=sched_state.schedule + (next_preschedule_item,),
+                    preschedule=sched_state.preschedule[1:],
+                    can_schedule_insns=True),
+                allow_boost=rec_allow_boost,
+                debug=debug):
+            yield result
+
+    if isinstance(next_preschedule_item, ReturnFromKernel):
+        assert sched_state.can_schedule_insns == True
+        for result in generate_loop_schedules_internal(
+                sched_state.copy(
+                    schedule=sched_state.schedule + (next_preschedule_item,),
+                    preschedule=sched_state.preschedule[1:],
+                    can_schedule_insns=False),
+                allow_boost=rec_allow_boost,
+                debug=debug):
+            yield result
 
     # }}}
 
@@ -608,8 +660,15 @@ def generate_loop_schedules_internal(
         # schedule generation order.
         return (insn.priority, len(active_groups & insn.groups), insn.id)
 
-    insn_ids_to_try = sorted(sched_state.unscheduled_insn_ids,
+    insn_ids_to_try = sorted(
+            # Non-prescheduled instructions go first.
+            sched_state.unscheduled_insn_ids - sched_state.prescheduled_insn_ids,
             key=insn_sort_key, reverse=True)
+
+    insn_ids_to_try.extend(
+        item.insn_id
+        for item in sched_state.preschedule
+        if isinstance(item, RunInstruction))
 
     for insn_id in insn_ids_to_try:
         insn = kernel.id_to_insn[insn_id]
@@ -645,6 +704,18 @@ def generate_loop_schedules_internal(
                 if have-want:
                     print("instruction '%s' won't work under inames '%s'"
                             % (format_insn(kernel, insn.id), ",".join(have-want)))
+
+        if not sched_state.can_schedule_insns:
+            if debug_mode:
+                print("can't schedule '%s' because not inside subkernel" % format_insn(kernel, insn.id))
+            is_ready = False
+
+        if insn_id in sched_state.prescheduled_insn_ids and not (
+                isinstance(next_preschedule_item, RunInstruction)
+                and next_preschedule_item.insn_id == insn_id):
+            if debug_mode:
+                print("can't schedule '%s' because another preschedule instruction precedes it" % format_insn(kernel, insn.id))
+            is_ready = False
 
         # {{{ determine group-based readiness
 
@@ -702,6 +773,9 @@ def generate_loop_schedules_internal(
                     unscheduled_insn_ids=sched_state.unscheduled_insn_ids - iid_set,
                     schedule=(
                         sched_state.schedule + (RunInstruction(insn_id=insn.id),)),
+                    preschedule=(
+                        sched_state.preschedule if insn_id not in sched_state.prescheduled_insn_ids
+                        else sched_state.preschedule[1:]),
                     active_group_counts=new_active_group_counts,
                     uses_of_boostability=(
                         sched_state.uses_of_boostability
@@ -731,7 +805,17 @@ def generate_loop_schedules_internal(
     if last_entered_loop is not None:
         can_leave = True
 
-        if last_entered_loop not in sched_state.breakable_inames:
+        if (
+                last_entered_loop in sched_state.prescheduled_inames
+                and not (
+                    isinstance(next_preschedule_item, LeaveLoop)
+                    and next_preschedule_item.iname == last_entered_loop)):
+            # A prescheduled loop can only be left if the preschedule agrees.
+            if debug_mode:
+                print("cannot leave '%s' because of preschedule constraints"
+                      % last_entered_loop)
+            can_leave = False
+        elif last_entered_loop not in sched_state.breakable_inames:
             # If the iname is not breakable, then check that we've
             # scheduled all the instructions that require it.
 
@@ -798,12 +882,18 @@ def generate_loop_schedules_internal(
                         break
 
             if can_leave and not debug_mode:
+
                 for sub_sched in generate_loop_schedules_internal(
                         sched_state.copy(
                             schedule=(
                                 sched_state.schedule
                                 + (LeaveLoop(iname=last_entered_loop),)),
-                            active_inames=sched_state.active_inames[:-1]),
+                            active_inames=sched_state.active_inames[:-1],
+                            preschedule=(
+                                sched_state.preschedule
+                                if last_entered_loop not in sched_state.prescheduled_inames
+                                else sched_state.preschedule[1:]),
+                        ),
                         allow_boost=rec_allow_boost, debug=debug):
                     yield sub_sched
 
@@ -842,6 +932,15 @@ def generate_loop_schedules_internal(
         for iname in needed_inames:
 
             # {{{ check if scheduling this iname now is allowed/plausible
+
+            if (
+                    iname in sched_state.prescheduled_inames
+                    and not (
+                        isinstance(next_preschedule_item, EnterLoop)
+                        and next_preschedule_item.iname == iname)):
+                if debug_mode:
+                    print("scheduling %s prohibited by preschedule constraints" % iname)
+                continue
 
             currently_accessible_inames = (
                     active_inames_set | sched_state.parallel_inames)
@@ -996,6 +1095,10 @@ def generate_loop_schedules_internal(
                                 entered_inames=(
                                     sched_state.entered_inames
                                     | frozenset((iname,))),
+                                preschedule=(
+                                    sched_state.preschedule
+                                    if iname not in sched_state.prescheduled_inames
+                                    else sched_state.preschedule[1:]),
                                 ),
                             allow_boost=rec_allow_boost,
                             debug=debug):
@@ -1015,7 +1118,7 @@ def generate_loop_schedules_internal(
         if inp:
             raise ScheduleDebugInput(inp)
 
-    if not sched_state.active_inames and not sched_state.unscheduled_insn_ids:
+    if not sched_state.active_inames and not sched_state.unscheduled_insn_ids and not sched_state.preschedule:
         # if done, yield result
         debug.log_success(sched_state.schedule)
 
@@ -1408,6 +1511,9 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
             result.append(sched_item)
             candidates.add(sched_item.insn_id)
 
+        elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
+            pass
+
         else:
             raise ValueError("unexpected schedule item type '%s'"
                     % type(sched_item).__name__)
@@ -1429,7 +1535,7 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
 
 def generate_loop_schedules(kernel, debug_args={}):
     from loopy.kernel import kernel_state
-    if kernel.state != kernel_state.PREPROCESSED:
+    if kernel.state not in (kernel_state.PREPROCESSED, kernel_state.SCHEDULED):
         raise LoopyError("cannot schedule a kernel that has not been "
                 "preprocessed")
 
@@ -1439,6 +1545,17 @@ def generate_loop_schedules(kernel, debug_args={}):
     schedule_count = 0
 
     debug = ScheduleDebugger(**debug_args)
+
+    preschedule = kernel.schedule if kernel.state == kernel_state.SCHEDULED else ()
+
+    prescheduled_inames = set(
+            insn.iname
+            for insn in preschedule
+            if isinstance(insn, EnterLoop))
+    prescheduled_insn_ids = set(
+            insn.insn_id
+            for insn in preschedule
+            if isinstance(insn, RunInstruction))
 
     from loopy.kernel.data import IlpBaseTag, ParallelTag, VectorizeTag
     ilp_inames = set(
@@ -1466,6 +1583,9 @@ def generate_loop_schedules(kernel, debug_args={}):
             ilp_inames=ilp_inames,
             vec_inames=vec_inames,
 
+            prescheduled_inames=prescheduled_inames,
+            prescheduled_insn_ids=prescheduled_insn_ids,
+
             # time-varying part
             active_inames=(),
             entered_inames=frozenset(),
@@ -1474,6 +1594,9 @@ def generate_loop_schedules(kernel, debug_args={}):
 
             unscheduled_insn_ids=set(insn.id for insn in kernel.instructions),
             scheduled_insn_ids=frozenset(),
+            can_schedule_insns=kernel.state != kernel_state.SCHEDULED,
+
+            preschedule=preschedule,
 
             # ilp and vec are not parallel for the purposes of the scheduler
             parallel_inames=parallel_inames - ilp_inames - vec_inames,
@@ -1529,7 +1652,7 @@ def generate_loop_schedules(kernel, debug_args={}):
 
                 gsize, lsize = kernel.get_grid_size_upper_bounds()
 
-                if gsize or lsize:
+                if (gsize or lsize):
                     if not kernel.options.disable_global_barriers:
                         logger.info("%s: barrier insertion: global" % kernel.name)
 
@@ -1549,7 +1672,9 @@ def generate_loop_schedules(kernel, debug_args={}):
 
                 from loopy.schedule.device_mapping import \
                         map_schedule_onto_host_or_device
-                new_kernel = map_schedule_onto_host_or_device(new_kernel)
+                if kernel.state != kernel_state.SCHEDULED:
+                    # Device mapper only gets run once.
+                    new_kernel = map_schedule_onto_host_or_device(new_kernel)
                 yield new_kernel
 
                 debug.start()

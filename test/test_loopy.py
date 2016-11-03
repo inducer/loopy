@@ -1101,8 +1101,6 @@ def test_kernel_splitting_with_loop(ctx_factory):
 def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     ctx = ctx_factory()
 
-    pytest.xfail("spilling doesn't yet use local axes")
-
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
@@ -1128,7 +1126,9 @@ def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     from loopy.schedule import get_one_scheduled_kernel
     knl = get_one_scheduled_kernel(knl)
 
-    # map schedule onto host or device
+    from loop.transform import spill_and_reload
+    knl = spill_and_reload(knl)
+
     print(knl)
 
     cgr = lp.generate_code_v2(knl)
