@@ -557,14 +557,12 @@ relation to loop nesting. For example, it's perfectly possible to request
     >>> knl = lp.set_loop_priority(knl, "i_inner,i_outer")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
-    #define gid(N) ((int) get_group_id(N))
-    <BLANKLINE>
-    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float *__restrict__ a, int const n)
-    {
-      for (int i_inner = 0; i_inner <= 15; ++i_inner)
-        for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
-          a[16 * i_outer + i_inner] = 0.0f;
-    }
+    ...
+       for (int i_inner = 0; i_inner <= 15; ++i_inner)
+         if (-1 + -1 * i_inner + n >= 0)
+           for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
+             a[16 * i_outer + i_inner] = 0.0f;
+    ...
 
 Notice how loopy has automatically generated guard conditionals to make
 sure the bounds on the old iname are obeyed.
@@ -703,8 +701,7 @@ Let's try this out on our vector fill kernel by creating workgroups of size
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
-    #define gid(N) ((int) get_group_id(N))
-    <BLANKLINE>
+    ...
     __kernel void __attribute__ ((reqd_work_group_size(128, 1, 1))) loopy_kernel(__global float *__restrict__ a, int const n)
     {
       if (-1 + -128 * gid(0) + -1 * lid(0) + n >= 0)
