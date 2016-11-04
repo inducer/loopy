@@ -1286,6 +1286,8 @@ class BarrierInstruction(_DataObliviousInstruction):
         ... gbarrier
     """
 
+    fields = _DataObliviousInstruction.fields | set(["kind"])
+
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,

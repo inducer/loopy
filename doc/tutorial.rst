@@ -360,7 +360,7 @@ Let us take a look at the generated code for the above kernel:
 .. doctest::
 
     >>> knl = lp.set_options(knl, "write_cl")
-    >>> knl = lp.set_loop_priority(knl, "i,j")
+    >>> knl = lp.prioritize_loops(knl, "i,j")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
     #define gid(N) ((int) get_group_id(N))
@@ -402,7 +402,7 @@ with identical bounds, for the use of the transpose:
     ...     out[j,i] = a[i,j] {id=transpose}
     ...     out[ii,jj] = 2*out[ii,jj]  {dep=transpose}
     ...     """)
-    >>> knl = lp.set_loop_priority(knl, "i,j,ii,jj")
+    >>> knl = lp.prioritize_loops(knl, "i,j,ii,jj")
 
 :func:`loopy.duplicate_inames` can be used to achieve the same goal.
 Now the intended code is generated and our test passes.
@@ -459,9 +459,9 @@ The warning (and the nondeterminism it warns about) is easily resolved:
 
 .. doctest::
 
-    >>> knl = lp.set_loop_priority(knl, "j,i")
+    >>> knl = lp.prioritize_loops(knl, "j,i")
 
-:func:`loopy.set_loop_priority` indicates the textual order in which loops
+:func:`loopy.prioritize_loops` indicates the textual order in which loops
 should be entered in the kernel code.  Note that this priority has an
 advisory role only. If the kernel logically requires a different nesting,
 loop priority is ignored.  Priority is only considered if loop nesting is
@@ -507,7 +507,7 @@ is overwritten with the new kernel::
     knl = lp.do_something(knl, arguments...)
 
 We've already seen an example of a transformation above:
-For instance, :func:`set_loop_priority` fit the pattern.
+For instance, :func:`prioritize_loops` fit the pattern.
 
 :func:`loopy.split_iname` is another fundamental (and useful) transformation. It
 turns one existing iname (recall that this is loopy's word for a 'loop
@@ -526,7 +526,7 @@ Consider this example:
     ...     "{ [i]: 0<=i<n }",
     ...     "a[i] = 0", assumptions="n>=1")
     >>> knl = lp.split_iname(knl, "i", 16)
-    >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
+    >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -554,7 +554,12 @@ relation to loop nesting. For example, it's perfectly possible to request
 
 .. doctest::
 
-    >>> knl = lp.set_loop_priority(knl, "i_inner,i_outer")
+    >>> knl = lp.make_kernel(
+    ...     "{ [i]: 0<=i<n }",
+    ...     "a[i] = 0", assumptions="n>=1")
+    >>> knl = lp.split_iname(knl, "i", 16)
+    >>> knl = lp.prioritize_loops(knl, "i_inner,i_outer")
+    >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
@@ -568,7 +573,7 @@ Notice how loopy has automatically generated guard conditionals to make
 sure the bounds on the old iname are obeyed.
 
 The combination of :func:`loopy.split_iname` and
-:func:`loopy.set_loop_priority` is already good enough to implement what is
+:func:`loopy.prioritize_loops` is already good enough to implement what is
 commonly called 'loop tiling':
 
 .. doctest::
@@ -579,7 +584,7 @@ commonly called 'loop tiling':
     ...     assumptions="n mod 16 = 0 and n >= 1")
     >>> knl = lp.split_iname(knl, "i", 16)
     >>> knl = lp.split_iname(knl, "j", 16)
-    >>> knl = lp.set_loop_priority(knl, "i_outer,j_outer,i_inner")
+    >>> knl = lp.prioritize_loops(knl, "i_outer,j_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -621,7 +626,7 @@ loop's tag to ``"unr"``:
     >>> orig_knl = knl
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
-    >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
+    >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -743,7 +748,7 @@ assumption:
     >>> orig_knl = knl
     >>> knl = lp.split_iname(knl, "i", 4)
     >>> knl = lp.tag_inames(knl, dict(i_inner="unr"))
-    >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
+    >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
@@ -773,7 +778,7 @@ enabling some cost savings:
     >>> knl = orig_knl
     >>> knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr")
     >>> knl = lp.set_options(knl, "write_cl")
-    >>> knl = lp.set_loop_priority(knl, "i_outer,i_inner")
+    >>> knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
     ...
