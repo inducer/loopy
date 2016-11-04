@@ -68,6 +68,7 @@ class ToCountMap(object):
     """Maps any type of key to an arithmetic type.
 
     .. automethod:: filter_by
+    .. automethod:: filter_by_func
     .. automethod:: group_by
     .. automethod:: to_bytes
     .. automethod:: sum
@@ -178,6 +179,40 @@ class ToCountMap(object):
             except(AttributeError):
                 # the field passed is not a field of this key
                 continue
+
+        return result_map
+
+    def filter_by_func(self, func):
+        """Keep items that pass a test.
+
+        :parameter func: A function that takes a map key a parameter and
+                         returns a :class:`bool`.
+
+        :return: A :class:`ToCountMap` containing the subset of the items in
+                 the original :class:`ToCountMap` for which func(key) is true.
+
+        Example usage::
+
+            # (first create loopy kernel and specify array data types)
+
+            params = {'n': 512, 'm': 256, 'l': 128}
+            mem_map = lp.get_mem_access_map(knl)
+            def filter_func(key):
+                return key.stride > 1 and key.stride <= 4:
+
+            filtered_map = mem_map.filter_by_func(filter_func)
+            tot = filtered_map.eval_and_sum(params)
+
+            # (now use these counts to predict performance)
+
+        """
+
+        result_map = ToCountMap()
+
+        # for each item in self.count_map, call func on the key
+        for self_key, self_val in self.items():
+            if func(self_key):
+                result_map[self_key] = self_val
 
         return result_map
 
