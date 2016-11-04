@@ -38,7 +38,7 @@ def set_D_storage_format(kernel):
 
 def set_up_volume_loop(kernel, Nq):
     kernel = lp.fix_parameters(kernel, Nq=Nq)
-    kernel = lp.set_loop_priority(kernel, "e,k,j,i")
+    kernel = lp.prioritize_loops(kernel, "e,k,j,i")
     kernel = lp.tag_inames(kernel, dict(e="g.0", j="l.1", i="l.0"))
     kernel = lp.assume(kernel, "elements >= 1")
     return kernel

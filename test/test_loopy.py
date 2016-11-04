@@ -751,7 +751,7 @@ def test_ilp_loop_bound(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.set_loop_priority(knl, "j,i,k")
+    knl = lp.prioritize_loops(knl, "j,i,k")
     knl = lp.split_iname(knl,  "k", 4, inner_tag="ilp")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
@@ -788,7 +788,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         knl = ref_knl
         knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr",
                 outer_tag=outer_tag)
-        knl = lp.set_loop_priority(knl, "i_outer")
+        knl = lp.prioritize_loops(knl, "i_outer")
 
         a = cl.array.empty(queue, 20, np.float32)
         a.fill(17)
@@ -1487,7 +1487,7 @@ def test_index_cse(ctx_factory):
                          end
                          """)
     knl = lp.tag_inames(knl, "l:unr")
-    knl = lp.set_loop_priority(knl, "i,j,k,l")
+    knl = lp.prioritize_loops(knl, "i,j,k,l")
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
     knl = lp.fix_parameters(knl, n=5)
     print(lp.generate_code_v2(knl).device_code())

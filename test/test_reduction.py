@@ -463,16 +463,16 @@ def test_poisson_fem(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.set_loop_priority(knl, ["c", "j", "i", "k"])
+    knl = lp.prioritize_loops(knl, ["c", "j", "i", "k"])
 
     def variant_1(knl):
         knl = lp.precompute(knl, "dpsi", "i,k,ell", default_tag='for')
-        knl = lp.set_loop_priority(knl, "c,i,j")
+        knl = lp.prioritize_loops(knl, "c,i,j")
         return knl
 
     def variant_2(knl):
         knl = lp.precompute(knl, "dpsi", "i,ell", default_tag='for')
-        knl = lp.set_loop_priority(knl, "c,i,j")
+        knl = lp.prioritize_loops(knl, "c,i,j")
         return knl
 
     def add_types(knl):
