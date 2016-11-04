@@ -1095,9 +1095,7 @@ class LoopKernel(RecordWithoutPickling):
 
         lines = []
 
-        from loopy.kernel.creation import apply_single_writer_depencency_heuristic
-        kernel = apply_single_writer_depencency_heuristic(
-                self, warn_if_used=False)
+        kernel = self
 
         sep = 75*"-"
 
