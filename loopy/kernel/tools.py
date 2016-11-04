@@ -1083,4 +1083,43 @@ def guess_var_shape(kernel, var_name):
 
 # }}}
 
+
+# {{{ find_recursive_dependencies
+
+def find_recursive_dependencies(kernel, insn_ids):
+    queue = list(insn_ids)
+
+    result = set(insn_ids)
+
+    while queue:
+        new_queue = []
+
+        for insn_id in queue:
+            insn = kernel.id_to_insn[insn_id]
+            additionals = insn.depends_on - result
+            result.update(additionals)
+            new_queue.extend(additionals)
+
+        queue = new_queue
+
+    return result
+
+# }}}
+
+
+# {{{ find_reverse_dependencies
+
+def find_reverse_dependencies(kernel, insn_ids):
+    """Finds a set of IDs of instructions that depend on one of the insn_ids.
+
+    :arg insn_ids: a set of instruction IDs
+    """
+    return frozenset(
+            insn.id
+            for insn in kernel.instructions
+            if insn.depends_on & insn_ids)
+
+# }}}
+
+
 # vim: foldmethod=marker

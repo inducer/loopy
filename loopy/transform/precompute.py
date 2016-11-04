@@ -154,7 +154,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         self.compute_insn_id = compute_insn_id
 
         self.compute_read_variables = compute_read_variables
-        self.compute_insn_deps = set()
+        self.compute_insn_depends_on = set()
 
     def map_substitution(self, name, tag, arguments, expn_state):
         if not (
@@ -240,7 +240,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                     dep_insn = kernel.id_to_insn[dep]
                     if (frozenset(dep_insn.assignee_var_names())
                             & self.compute_read_variables):
-                        self.compute_insn_deps.update(
+                        self.compute_insn_depends_on.update(
                                 insn.depends_on - set([self.compute_insn_id]))
 
             new_insns.append(insn)
@@ -817,10 +817,40 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     kernel = kernel.copy(
             instructions=[
-                insn.copy(depends_on=frozenset(invr.compute_insn_deps))
+                insn.copy(depends_on=frozenset(invr.compute_insn_depends_on))
                 if insn.id == compute_insn_id
                 else insn
                 for insn in kernel.instructions])
+
+    # }}}
+
+    # {{{ propagate storage iname subst to dependencies of compute instructions
+
+    from loopy.kernel.tools import find_recursive_dependencies
+    compute_deps = find_recursive_dependencies(
+            kernel, frozenset([compute_insn_id]))
+
+    # FIXME: Need to verify that there are no outside dependencies
+    # on compute_deps
+
+    prior_storage_axis_names = frozenset(storage_axis_subst_dict)
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if (insn.id in compute_deps
+                and insn.within_inames & prior_storage_axis_names):
+            insn = (insn
+                    .with_transformed_expressions(
+                        lambda expr: expr_subst_map(expr, kernel, insn))
+                    .copy(within_inames=frozenset(
+                        storage_axis_subst_dict.get(iname, var(iname)).name
+                        for iname in insn.within_inames)))
+
+            new_insns.append(insn)
+        else:
+            new_insns.append(insn)
+
+    kernel = kernel.copy(instructions=new_insns)
 
     # }}}
 
