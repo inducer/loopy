@@ -64,7 +64,7 @@ __doc__ = """
 
 # {{{ ToCountMap
 
-class ToCountMap:
+class ToCountMap(object):
     """Maps any type of key to an arithmetic type.
 
     .. automethod:: filter_by
@@ -339,7 +339,7 @@ def stringify_stats_mapping(m):
     return result
 
 
-class Op:
+class Op(object):
     """An arithmetic operation.
 
     .. attribute:: dtype
@@ -384,7 +384,7 @@ class Op:
         return "Op("+dtype+", "+name+")"
 
 
-class MemAccess:
+class MemAccess(object):
     """A memory access.
 
     .. attribute:: mtype
