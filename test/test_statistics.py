@@ -794,8 +794,8 @@ def test_summations_and_filters():
     assert f64ops_all == n*m
 
     def func_filter(key):
-        return (key.stride < 1) and (to_loopy_type(key.dtype) == to_loopy_type(np.float64)) and \
-               (key.direction == 'load')
+        return key.stride < 1 and key.dtype == to_loopy_type(np.float64) and \
+               key.direction == 'load'
     s1f64l = mem_map.filter_by_func(func_filter).eval_and_sum(params)
     assert s1f64l == 2*n*m
 
