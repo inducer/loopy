@@ -136,7 +136,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
             access_descriptors, array_base_map,
             storage_axis_names, storage_axis_sources,
             non1_storage_axis_names,
-            temporary_name, compute_insn_id):
+            temporary_name, compute_insn_id, compute_read_variables):
         super(RuleInvocationReplacer, self).__init__(rule_mapping_context)
 
         self.subst_name = subst_name
@@ -152,6 +152,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
         self.temporary_name = temporary_name
         self.compute_insn_id = compute_insn_id
+
+        self.compute_read_variables = compute_read_variables
+        self.compute_insn_deps = set()
 
     def map_substitution(self, name, tag, arguments, expn_state):
         if not (
@@ -229,6 +232,9 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                         depends_on=(
                             insn.depends_on
                             | frozenset([self.compute_insn_id])))
+
+                self.compute_insn_deps.update(
+                        insn.depends_on - set([self.compute_insn_id]))
 
             new_insns.append(insn)
 
@@ -787,12 +793,24 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             access_descriptors, abm,
             storage_axis_names, storage_axis_sources,
             non1_storage_axis_names,
-            temporary_name, compute_insn_id)
+            temporary_name, compute_insn_id,
+            compute_read_variables=get_dependencies(compute_expression))
 
     kernel = invr.map_kernel(kernel)
     kernel = kernel.copy(
             instructions=[compute_insn] + kernel.instructions)
     kernel = rule_mapping_context.finish_kernel(kernel)
+
+    # }}}
+
+    # {{{ add dependencies to compute insn
+
+    kernel = kernel.copy(
+            instructions=[
+                insn.copy(depends_on=frozenset(invr.compute_insn_deps))
+                if insn.id == compute_insn_id
+                else insn
+                for insn in kernel.instructions])
 
     # }}}
 
