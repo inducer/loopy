@@ -78,12 +78,12 @@ class ToCountMap(object):
     def __init__(self, init_dict=None):
         if init_dict is None:
             init_dict = {}
-        self.dict = init_dict
+        self.count_map = init_dict
 
     def __add__(self, other):
-        result = self.dict.copy()
-        for k, v in six.iteritems(other.dict):
-            result[k] = self.dict.get(k, 0) + v
+        result = self.count_map.copy()
+        for k, v in six.iteritems(other.count_map):
+            result[k] = self.count_map.get(k, 0) + v
         return ToCountMap(result)
 
     def __radd__(self, other):
@@ -97,7 +97,7 @@ class ToCountMap(object):
     def __mul__(self, other):
         if isinstance(other, isl.PwQPolynomial):
             return ToCountMap(dict(
-                (index, self.dict[index]*other)
+                (index, self.count_map[index]*other)
                 for index in self.keys()))
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
@@ -108,27 +108,30 @@ class ToCountMap(object):
 
     def __getitem__(self, index):
         try:
-            return self.dict[index]
+            return self.count_map[index]
         except KeyError:
             return isl.PwQPolynomial('{ 0 }')
 
     def __setitem__(self, index, value):
-        self.dict[index] = value
+        self.count_map[index] = value
 
     def __repr__(self):
-        return repr(self.dict)
+        return repr(self.count_map)
 
     def __len__(self):
-        return len(self.dict)
+        return len(self.count_map)
 
     def items(self):
-        return self.dict.items()
+        return self.count_map.items()
 
     def keys(self):
-        return self.dict.keys()
+        return self.count_map.keys()
+
+    def pop(self, item):
+        return self.count_map.pop(item)
 
     def copy(self):
-        return ToCountMap(dict(self.dict))
+        return ToCountMap(dict(self.count_map))
 
     def filter_by(self, **kwargs):
         """Remove items without specified key fields.
@@ -161,7 +164,7 @@ class ToCountMap(object):
         if 'dtype' in kwargs.keys():
             kwargs['dtype'] = [to_loopy_type(d) for d in kwargs['dtype']]
 
-        # for each item in self.dict
+        # for each item in self.count_map
         for self_key, self_val in self.items():
             try:
                 # check to see if key attribute values match all filters
@@ -171,7 +174,7 @@ class ToCountMap(object):
                     if attr_val not in allowable_vals:
                         break
                 else:  # loop terminated without break or error
-                    result_map.dict[self_key] = self_val
+                    result_map[self_key] = self_val
             except(AttributeError):
                 # the field passed is not a field of this key
                 continue
@@ -227,7 +230,7 @@ class ToCountMap(object):
         result_map = ToCountMap()
 
         # make sure all item keys have same type
-        if self.dict:
+        if self.count_map:
             key_type = type(list(self.keys())[0])
             if not all(isinstance(x, key_type) for x in self.keys()):
                 raise ValueError("ToCountMap: group_by() function may only "
@@ -235,7 +238,7 @@ class ToCountMap(object):
         else:
             return result_map
 
-        # for each item in self.dict
+        # for each item in self.count_map
         for self_key, self_val in self.items():
             new_key = key_type()
 
@@ -1143,9 +1146,9 @@ def get_op_map(knl, numpy_types=True):
         op_map = op_map + ops*count(knl, domain)
 
     if numpy_types:
-        op_map.dict = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
-                             count)
-                for op, count in six.iteritems(op_map.dict))
+        op_map.count_map = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
+                                 count)
+                for op, count in six.iteritems(op_map.count_map))
 
     return op_map
 
@@ -1284,26 +1287,26 @@ def get_mem_access_map(knl, numpy_types=True):
                     + subs_counter_l(insn.expression)
 
         # distinguish loads and stores
-        for key in subs_expr.dict:
-            subs_expr.dict[MemAccess(mtype=key.mtype, dtype=key.dtype,
-                                     stride=key.stride, direction='load',
-                                     variable=key.variable)
-                          ] = subs_expr.dict.pop(key)
+        for key in subs_expr.count_map:
+            subs_expr[MemAccess(mtype=key.mtype, dtype=key.dtype,
+                                stride=key.stride, direction='load',
+                                variable=key.variable)
+                     ] = subs_expr.pop(key)
 
         subs_assignee_g = subs_counter_g(insn.assignee)
-        for key in subs_assignee_g.dict:
-            subs_assignee_g.dict[MemAccess(mtype=key.mtype, dtype=key.dtype,
-                                           stride=key.stride,
-                                           direction='store',
-                                           variable=key.variable)
-                                ] = subs_assignee_g.dict.pop(key)
+        for key in subs_assignee_g.count_map:
+            subs_assignee_g[MemAccess(mtype=key.mtype, dtype=key.dtype,
+                                      stride=key.stride,
+                                      direction='store',
+                                      variable=key.variable)
+                           ] = subs_assignee_g.pop(key)
         # for now, don't count writes to local mem
 
         insn_inames = knl.insn_inames(insn)
 
         # use count excluding local index tags for uniform accesses
-        for key in subs_expr.dict:
-            map = ToCountMap({key: subs_expr.dict[key]})
+        for key in subs_expr.count_map:
+            map = ToCountMap({key: subs_expr[key]})
             if key.mtype == 'global' and isinstance(key.stride, int) and key.stride == 0:
                 subs_map = subs_map \
                             + map*get_insn_count(knl, insn_inames, True)
@@ -1311,8 +1314,8 @@ def get_mem_access_map(knl, numpy_types=True):
                 subs_map = subs_map + map*get_insn_count(knl, insn_inames)
                 #currently not counting stride of local mem access
 
-        for key in subs_assignee_g.dict:
-            map = ToCountMap({key: subs_assignee_g.dict[key]})
+        for key in subs_assignee_g.count_map:
+            map = ToCountMap({key: subs_assignee_g[key]})
             if isinstance(key.stride, int) and key.stride == 0:
                 subs_map = subs_map \
                             + map*get_insn_count(knl, insn_inames, True)
@@ -1321,13 +1324,13 @@ def get_mem_access_map(knl, numpy_types=True):
             # for now, don't count writes to local mem
 
     if numpy_types:
-        subs_map.dict = dict((MemAccess(mtype=mem_access.mtype,
-                                         dtype=mem_access.dtype.numpy_dtype,
-                                         stride=mem_access.stride,
-                                         direction=mem_access.direction,
-                                         variable=mem_access.variable)
-                               , count)
-                      for mem_access, count in six.iteritems(subs_map.dict))
+        subs_map.count_map = dict((MemAccess(mtype=mem_access.mtype,
+                                             dtype=mem_access.dtype.numpy_dtype,
+                                             stride=mem_access.stride,
+                                             direction=mem_access.direction,
+                                             variable=mem_access.variable)
+                                   , count)
+                      for mem_access, count in six.iteritems(subs_map.count_map))
 
     return subs_map
 
@@ -1421,7 +1424,7 @@ def get_synchronization_map(knl):
             raise LoopyError("unexpected schedule item: %s"
                     % type(sched_item).__name__)
 
-    #return result.dict #TODO is this change okay?
+    #return result.count_map #TODO is this change okay?
     return result
 
 
