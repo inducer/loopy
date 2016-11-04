@@ -198,10 +198,9 @@ class Scope(object):
 # {{{ translator
 
 class F2LoopyTranslator(FTreeWalkerBase):
-    def __init__(self, filename, auto_dependencies, target=None):
+    def __init__(self, filename, target=None):
         FTreeWalkerBase.__init__(self)
 
-        self.auto_dependencies = auto_dependencies
         self.target = target
 
         self.scope_stack = []
@@ -226,17 +225,11 @@ class F2LoopyTranslator(FTreeWalkerBase):
         new_id = intern("insn%d" % self.insn_id_counter)
         self.insn_id_counter += 1
 
-        if self.auto_dependencies and scope.previous_instruction_id:
-            depends_on = frozenset([scope.previous_instruction_id])
-        else:
-            depends_on = frozenset()
-
         from loopy.kernel.data import Assignment
         insn = Assignment(
                 lhs, rhs,
                 within_inames=frozenset(
                     scope.active_loopy_inames),
-                depends_on=depends_on,
                 id=new_id,
                 predicates=frozenset(self.conditions),
                 tags=tuple(self.instruction_tags))
@@ -632,7 +625,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
     # }}}
 
-    def make_kernels(self):
+    def make_kernels(self, seq_dependencies):
         result = []
 
         for sub in self.kernels:
@@ -682,6 +675,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     default_order="F",
                     index_dtype=self.index_dtype,
                     target=self.target,
+                    seq_dependencies=seq_dependencies,
                     )
 
             from loopy.loop import fuse_loop_domains

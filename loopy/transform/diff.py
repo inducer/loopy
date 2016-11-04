@@ -370,8 +370,8 @@ def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
         *diff_context.by_name*, or *None* if no dependency exists.
     """
 
-    from loopy.preprocess import add_default_dependencies
-    knl = add_default_dependencies(knl)
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
+    knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=True)
 
     if isinstance(diff_outputs, str):
         diff_outputs = [

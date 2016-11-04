@@ -87,8 +87,12 @@ class Barrier(ScheduleItem):
     .. attribute:: kind
 
         ``"local"`` or ``"global"``
+
+    .. attribute:: originating_insn_id
     """
-    hash_fields = __slots__ = ["comment", "kind"]
+
+    hash_fields = ["comment", "kind"]
+    __slots__ = hash_fields + ["originating_insn_id"]
 
 # }}}
 
@@ -355,6 +359,46 @@ def gen_dependencies_except(kernel, insn_id, except_insn_ids):
         for sub_dep_id in gen_dependencies_except(kernel, dep_id, except_insn_ids):
             yield sub_dep_id
 
+
+def get_priority_tiers(wanted, priorities):
+    # Get highest priority tier candidates: These are the first inames
+    # of all the given priority constraints
+    candidates = set(next(iter(p for p in prio if p in wanted))
+                     for prio in priorities
+                     )
+
+    # Now shrink this set by removing those inames that are prohibited
+    # by other constraints
+    bad_candidates = []
+    for c1 in candidates:
+        for c2 in candidates:
+            for prio in priorities:
+                try:
+                    if prio.index(c1) < prio.index(c2):
+                        bad_candidates.append(c2)
+                except ValueError:
+                    # A ValueError in tuple.index just states that one of
+                    # the candidates is not present in the priority constraint
+                    pass
+    candidates = candidates - set(bad_candidates)
+
+    if candidates:
+        # We found a valid priority tier!
+        yield candidates
+    else:
+        # If we did not, we stop the generator!
+        return
+
+    # Now reduce the input data for recursion!
+    priorities = frozenset([tuple(i for i in prio if i not in candidates)
+                            for prio in priorities
+                            ]) - frozenset([()])
+    wanted = wanted - candidates
+
+    # Yield recursively!
+    for tier in get_priority_tiers(wanted, priorities):
+        yield tier
+
 # }}}
 
 
@@ -370,10 +414,25 @@ def format_insn(kernel, insn_id):
     insn = kernel.id_to_insn[insn_id]
     Fore = kernel.options._fore
     Style = kernel.options._style
-    return "[%s] %s%s%s <- %s%s%s" % (
+    from loopy.kernel.instruction import (
+            MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
+    if isinstance(insn, MultiAssignmentBase):
+        return "[%s] %s%s%s <- %s%s%s" % (
             format_insn_id(kernel, insn_id),
-            Fore.BLUE, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
+            Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
+    elif isinstance(insn, BarrierInstruction):
+        return "[%s] %s... %sbarrier%s" % (
+                format_insn_id(kernel, insn_id),
+                Fore.MAGENTA, insn.kind[0], Style.RESET_ALL)
+    elif isinstance(insn, NoOpInstruction):
+        return "[%s] %s... nop%s" % (
+                format_insn_id(kernel, insn_id),
+                Fore.MAGENTA, Style.RESET_ALL)
+    else:
+        return "[%s] %s%s%s" % (
+                format_insn_id(kernel, insn_id),
+                Fore.CYAN, str(insn), Style.RESET_ALL)
 
 
 def dump_schedule(kernel, schedule):
@@ -930,19 +989,27 @@ def generate_loop_schedules_internal(
 
         # Build priority tiers. If a schedule is found in the first tier, then
         # loops in the second are not even tried (and so on).
-
-        loop_priority_set = set(sched_state.kernel.loop_priority)
+        loop_priority_set = set().union(*[set(prio)
+                                          for prio in
+                                          sched_state.kernel.loop_priority])
         useful_loops_set = set(six.iterkeys(iname_to_usefulness))
         useful_and_desired = useful_loops_set & loop_priority_set
 
         if useful_and_desired:
-            priority_tiers = [
-                    [iname]
-                    for iname in sched_state.kernel.loop_priority
-                    if iname in useful_and_desired
-                    and iname not in sched_state.ilp_inames
-                    and iname not in sched_state.vec_inames
-                    ]
+            wanted = (
+                useful_and_desired
+                - sched_state.ilp_inames
+                - sched_state.vec_inames
+                )
+            priority_tiers = [t for t in
+                              get_priority_tiers(wanted,
+                                                 sched_state.kernel.loop_priority
+                                                 )
+                              ]
+
+            # Update the loop priority set, because some constraints may have
+            # have been contradictary.
+            loop_priority_set = set().union(*[set(t) for t in priority_tiers])
 
             priority_tiers.append(
                     useful_loops_set
@@ -1059,7 +1126,29 @@ def filter_nops_from_schedule(kernel, schedule):
 # }}}
 
 
-# {{{ barrier insertion
+# {{{ convert barrier instructions to proper barriers
+
+def convert_barrier_instructions_to_barriers(kernel, schedule):
+    from loopy.kernel.instruction import BarrierInstruction
+
+    result = []
+    for sched_item in schedule:
+        if isinstance(sched_item, RunInstruction):
+            insn = kernel.id_to_insn[sched_item.insn_id]
+            if isinstance(insn, BarrierInstruction):
+                result.append(Barrier(
+                    kind=insn.kind,
+                    originating_insn_id=insn.id))
+                continue
+
+        result.append(sched_item)
+
+    return result
+
+# }}}
+
+
+# {{{ barrier insertion/verification
 
 class DependencyRecord(Record):
     """
@@ -1243,7 +1332,7 @@ def insn_ids_from_schedule(schedule):
     return result
 
 
-def insert_barriers(kernel, schedule, reverse, kind, level=0):
+def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
     """
     :arg reverse: a :class:`bool`. For ``level > 0``, this function should be
         called twice, first with ``reverse=False`` to insert barriers for
@@ -1259,6 +1348,8 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
     :arg kind: "local" or "global". The :attr:`Barrier.kind` to be inserted.
         Generally, this function will be called once for each kind of barrier
         at the top level, where more global barriers should be inserted first.
+    :arg verify_only: do not insert barriers, only complain if they are
+        missing.
     :arg level: the current level of loop nesting, 0 for outermost.
     """
     result = []
@@ -1331,6 +1422,7 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
                 subresult = insert_barriers(
                         kernel, subresult,
                         reverse=sub_reverse, kind=kind,
+                        verify_only=verify_only,
                         level=level+1)
 
             # {{{ find barriers in loop body
@@ -1402,8 +1494,23 @@ def insert_barriers(kernel, schedule, reverse, kind, level=0):
                         source=dep_src_insn_id,
                         reverse=reverse, var_kind=kind)
                 if dep:
-                    issue_barrier(dep=dep)
-                    break
+                    if verify_only:
+                        from loopy.diagnostic import MissingBarrierError
+                        raise MissingBarrierError(
+                                "Dependency '%s' (for variable '%s') "
+                                "requires synchronization "
+                                "by a %s barrier (add a 'no_sync_with' "
+                                "instruction option to state that no"
+                                "synchronization is needed)"
+                                % (
+                                    dep.dep_descr.format(
+                                        tgt=dep.target.id, src=dep.source.id),
+                                    dep.variable,
+                                    kind))
+
+                    else:
+                        issue_barrier(dep=dep)
+                        break
 
             result.append(sched_item)
             candidates.add(sched_item.insn_id)
@@ -1526,6 +1633,8 @@ def generate_loop_schedules(kernel, debug_args={}):
                 debug.stop()
 
                 gen_sched = filter_nops_from_schedule(kernel, gen_sched)
+                gen_sched = convert_barrier_instructions_to_barriers(
+                        kernel, gen_sched)
 
                 gsize, lsize = kernel.get_grid_size_upper_bounds()
 
@@ -1534,12 +1643,12 @@ def generate_loop_schedules(kernel, debug_args={}):
                         logger.info("%s: barrier insertion: global" % kernel.name)
 
                         gen_sched = insert_barriers(kernel, gen_sched,
-                                reverse=False, kind="global")
+                                reverse=False, kind="global", verify_only=True)
 
                     logger.info("%s: barrier insertion: local" % kernel.name)
 
                     gen_sched = insert_barriers(kernel, gen_sched,
-                            reverse=False, kind="local")
+                            reverse=False, kind="local", verify_only=False)
 
                     logger.info("%s: barrier insertion: done" % kernel.name)
 

@@ -184,7 +184,7 @@ This list is always growing, but here are a few pointers:
 
 * Reorder loops
 
-  Use :func:`loopy.set_loop_priority`.
+  Use :func:`loopy.prioritize_loops`.
 
 * Precompute subexpressions:
 
@@ -196,7 +196,7 @@ This list is always growing, but here are a few pointers:
 * Tile:
 
   Use :func:`loopy.split_iname` to produce enough loops, then use
-  :func:`loopy.set_loop_priority` to set the ordering.
+  :func:`loopy.prioritize_loops` to set the ordering.
 
 * Fix constants
 
