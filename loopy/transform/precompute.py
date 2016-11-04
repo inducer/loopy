@@ -233,8 +233,15 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                             insn.depends_on
                             | frozenset([self.compute_insn_id])))
 
-                self.compute_insn_deps.update(
-                        insn.depends_on - set([self.compute_insn_id]))
+                for dep in insn.depends_on:
+                    if dep == self.compute_insn_id:
+                        continue
+
+                    dep_insn = kernel.id_to_insn[dep]
+                    if (frozenset(dep_insn.assignee_var_names())
+                            & self.compute_read_variables):
+                        self.compute_insn_deps.update(
+                                insn.depends_on - set([self.compute_insn_id]))
 
             new_insns.append(insn)
 
@@ -788,13 +795,16 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     # {{{ substitute rule into expressions in kernel (if within footprint)
 
+    from loopy.symbolic import SubstitutionRuleExpander
+    expander = SubstitutionRuleExpander(kernel.substitutions)
+
     invr = RuleInvocationReplacer(rule_mapping_context,
             subst_name, subst_tag, within,
             access_descriptors, abm,
             storage_axis_names, storage_axis_sources,
             non1_storage_axis_names,
             temporary_name, compute_insn_id,
-            compute_read_variables=get_dependencies(compute_expression))
+            compute_read_variables=get_dependencies(expander(compute_expression)))
 
     kernel = invr.map_kernel(kernel)
     kernel = kernel.copy(
