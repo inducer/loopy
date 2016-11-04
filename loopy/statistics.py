@@ -228,8 +228,7 @@ class ToCountMap(object):
 
         # make sure all item keys have same type
         if self.dict:
-            first_key = list(self.keys())[0]
-            key_type = type(first_key)
+            key_type = type(list(self.keys())[0])
             if not all(isinstance(x, key_type) for x in self.keys()):
                 raise ValueError("ToCountMap: group_by() function may only "
                                  "be used on ToCountMaps with uniform keys")
@@ -238,7 +237,7 @@ class ToCountMap(object):
 
         # for each item in self.dict
         for self_key, self_val in self.items():
-            new_key = first_key.__class__()
+            new_key = key_type()
 
             # set all specified fields
             for field in args:
