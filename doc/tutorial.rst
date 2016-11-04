@@ -1410,7 +1410,7 @@ using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
     >>> stored = global_ld_st_bytes[lp.MemAccess(direction='store')
     ...                            ].eval_with_dict(param_dict)
     >>> print("bytes loaded: %s\nbytes stored: %s" % (loaded, stored))
-    bytes loaded: 7340032 
+    bytes loaded: 7340032
     bytes stored: 2621440
 
 One can see how these functions might be useful in computing, for example,
@@ -1499,6 +1499,20 @@ changed:
     f32 st c: 524288
     f64 ld g: 65536
     f64 st e: 65536
+
+We can also filter using an arbitrary test function using
+:func:`loopy.ToCountMap.filter_by_func`. This is useful when the filter
+criteria are more complicated than a simple list of allowable values:
+
+.. doctest::
+
+    >>> def f(key):
+    ...     from loopy.types import to_loopy_type
+    ...     return key.dtype == to_loopy_type(np.float32) and \
+    ...            key.stride > 1
+    >>> count = mem_map.filter_by_func(f).eval_and_sum(param_dict)
+    >>> print(count)
+    2097152
 
 Counting synchronization events
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
