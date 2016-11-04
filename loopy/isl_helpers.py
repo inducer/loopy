@@ -60,6 +60,8 @@ def dump_space(ls):
             for dt in dim_type.names)
 
 
+# {{{ make_slab
+
 def make_slab(space, iname, start, stop):
     zero = isl.Aff.zero_on_domain(space)
 
@@ -114,6 +116,8 @@ def make_slab_from_bound_pwaffs(space, iname, lbound, ubound):
             &
             iname_pwaff.le_set(ubound))
 
+# }}}
+
 
 def iname_rel_aff(space, iname, rel, aff):
     """*aff*'s domain space is allowed to not match *space*."""
@@ -137,6 +141,8 @@ def iname_rel_aff(space, iname, rel, aff):
     else:
         raise ValueError("unknown value of 'rel': %s" % rel)
 
+
+# {{{ static_*_of_pw_aff
 
 def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):
     if context is not None:
@@ -214,6 +220,10 @@ def static_value_of_pw_aff(pw_aff, constants_only, context=None):
     return static_extremum_of_pw_aff(pw_aff, constants_only, isl.PwAff.eq_set,
             "value", context)
 
+# }}}
+
+
+# {{{ duplicate_axes
 
 def duplicate_axes(isl_obj, duplicate_inames, new_inames):
     if isinstance(isl_obj, list):
@@ -262,6 +272,8 @@ def duplicate_axes(isl_obj, duplicate_inames, new_inames):
 
     return moved_dims.intersect(more_dims)
 
+# }}}
+
 
 def is_nonnegative(expr, over_set):
     space = over_set.get_space()
@@ -275,6 +287,8 @@ def is_nonnegative(expr, over_set):
 
     return over_set.intersect(expr_neg_set).is_empty()
 
+
+# {{{ convexify
 
 def convexify(domain):
     """Try a few ways to get *domain* to be a BasicSet, i.e.
@@ -312,6 +326,10 @@ def convexify(domain):
         print("  %s" % (isl.Set.from_basic_set(dbs).gist(domain)))
     raise NotImplementedError("Could not find convex representation of set")
 
+# }}}
+
+
+# {{{ boxify
 
 def boxify(cache_manager, domain, box_inames, context):
     var_dict = domain.get_var_dict(dim_type.set)
@@ -356,6 +374,8 @@ def boxify(cache_manager, domain, box_inames, context):
             dim_type.set, 0, dim_type.param, n_old_parameters, n_nonbox_inames)
 
     return convexify(result)
+
+# }}}
 
 
 def simplify_via_aff(expr):
@@ -512,6 +532,8 @@ def dim_max_with_elimination(obj, idx):
 # }}}
 
 
+# {{{ get_simple_strides
+
 def get_simple_strides(bset, key_by="name"):
     """Return a dictionary from inames to strides in bset. Each stride is
     returned as a :class:`islpy.Val`. If no stride can be determined, the
@@ -569,5 +591,30 @@ def get_simple_strides(bset, key_by="name"):
         result[key] = denom
 
     return result
+
+# }}}
+
+
+# {{{{ find_max_of_pwaff_with_params
+
+def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
+    if n_allowed_params is None:
+        return pw_aff
+
+    extra_dim_idx = pw_aff.dim(dim_type.param,)
+    pw_aff = pw_aff.add_dims(dim_type.param, 1)
+
+    zero = isl.Aff.zero_on_domain(pw_aff.domain().space)
+    extra_dim = zero.set_coefficient_val(dim_type.param, extra_dim_idx, 1)
+
+    pw_aff_set = pw_aff.eq_set(extra_dim)
+
+    pw_aff_set = pw_aff_set.move_dims(
+            dim_type.set, 0, dim_type.param, n_allowed_params,
+            pw_aff_set.dim(dim_type.param) - n_allowed_params)
+
+    return pw_aff_set.dim_max(pw_aff_set.dim(dim_type.set)-1)
+
+# }}}
 
 # vim: foldmethod=marker
