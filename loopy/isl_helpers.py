@@ -592,4 +592,29 @@ def get_simple_strides(bset, key_by="name"):
 
     return result
 
+# }}}
+
+
+# {{{{ find_max_of_pwaff_with_params
+
+def find_max_of_pwaff_with_params(pw_aff, n_allowed_params):
+    if n_allowed_params is None:
+        return pw_aff
+
+    extra_dim_idx = pw_aff.dim(dim_type.param,)
+    pw_aff = pw_aff.add_dims(dim_type.param, 1)
+
+    zero = isl.Aff.zero_on_domain(pw_aff.domain().space)
+    extra_dim = zero.set_coefficient_val(dim_type.param, extra_dim_idx, 1)
+
+    pw_aff_set = pw_aff.eq_set(extra_dim)
+
+    pw_aff_set = pw_aff_set.move_dims(
+            dim_type.set, 0, dim_type.param, n_allowed_params,
+            pw_aff_set.dim(dim_type.param) - n_allowed_params)
+
+    return pw_aff_set.dim_max(pw_aff_set.dim(dim_type.set)-1)
+
+# }}}
+
 # vim: foldmethod=marker
