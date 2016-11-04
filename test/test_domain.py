@@ -61,7 +61,7 @@ def test_assume(ctx_factory):
             [lp.GlobalArg("a", np.float32, shape="n"), "..."])
 
     knl = lp.split_iname(knl, "i", 16)
-    knl = lp.set_loop_priority(knl, "i_outer,i_inner")
+    knl = lp.prioritize_loops(knl, "i_outer,i_inner")
     knl = lp.assume(knl, "n mod 16 = 0")
     knl = lp.assume(knl, "n > 10")
     knl = lp.preprocess_kernel(knl, ctx.devices[0])

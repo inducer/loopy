@@ -267,9 +267,7 @@ def _fuse_two_kernels(knla, knlb):
                 "iname slab increment",
                 knla.iname_slab_increments,
                 knlb.iname_slab_increments),
-            loop_priority=_ordered_merge_lists(
-                knla.loop_priority,
-                knlb.loop_priority),
+            loop_priority=knla.loop_priority.union(knlb.loop_priority),
             silenced_warnings=_ordered_merge_lists(
                 knla.silenced_warnings,
                 knlb.silenced_warnings),

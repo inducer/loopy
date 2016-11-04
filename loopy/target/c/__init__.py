@@ -183,11 +183,15 @@ def generate_array_literal(codegen_state, array, value):
 
     from pymbolic.mapper.stringifier import PREC_NONE
     from loopy.expression import dtype_to_type_context
+    from loopy.symbolic import ArrayLiteral
 
     type_context = dtype_to_type_context(codegen_state.kernel.target, array.dtype)
-    return "{ %s }" % ", ".join(
-            ecm(d_i, PREC_NONE, type_context, array.dtype)
-            for d_i in data)
+    return CExpression(
+            codegen_state.ast_builder.get_c_expression_to_code_mapper(),
+            ArrayLiteral(
+                tuple(
+                    ecm(d_i, PREC_NONE, type_context, array.dtype).expr
+                    for d_i in data)))
 
 # }}}
 
@@ -285,7 +289,7 @@ class CTarget(TargetBase):
 class _ConstRestrictPointer(Pointer):
     def get_decl_pair(self):
         sub_tp, sub_decl = self.subdecl.get_decl_pair()
-        return sub_tp, ("*const restrict %s" % sub_decl)
+        return sub_tp, ("*const __restrict__ %s" % sub_decl)
 
 
 class CASTBuilder(ASTBuilderBase):

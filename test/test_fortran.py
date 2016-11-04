@@ -406,7 +406,7 @@ def test_fuse_kernels(ctx_factory):
                 inner=(xd_line + "\n" + yd_line), name="xyderiv"))
 
     knl = lp.fuse_kernels((xderiv, yderiv))
-    knl = lp.set_loop_priority(knl, "e,i,j,k")
+    knl = lp.prioritize_loops(knl, "e,i,j,k")
 
     assert len(knl.temporary_variables) == 2
 

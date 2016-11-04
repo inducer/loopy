@@ -32,7 +32,7 @@ from pytools import memoize_in
 from pymbolic.mapper import CombineMapper
 from functools import reduce
 from loopy.kernel.data import MultiAssignmentBase
-from loopy.diagnostic import warn, LoopyError
+from loopy.diagnostic import warn_with_kernel, LoopyError
 
 
 __doc__ = """
@@ -555,22 +555,19 @@ def count(kernel, set):
 
         if not (is_subset and is_superset):
             if is_subset:
-                from loopy.diagnostic import warn
-                warn(kernel, "count_overestimate",
+                warn_with_kernel(kernel, "count_overestimate",
                         "Barvinok wrappers are not installed. "
                         "Counting routines have overestimated the "
                         "number of integer points in your loop "
                         "domain.")
             elif is_superset:
-                from loopy.diagnostic import warn
-                warn(kernel, "count_underestimate",
+                warn_with_kernel(kernel, "count_underestimate",
                         "Barvinok wrappers are not installed. "
                         "Counting routines have underestimated the "
                         "number of integer points in your loop "
                         "domain.")
             else:
-                from loopy.diagnostic import warn
-                warn(kernel, "count_misestimate",
+                warn_with_kernel(kernel, "count_misestimate",
                         "Barvinok wrappers are not installed. "
                         "Counting routines have misestimated the "
                         "number of integer points in your loop "
@@ -901,7 +898,7 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
 
     for insn in kernel.instructions:
         if not isinstance(insn, MultiAssignmentBase):
-            warn(kernel, "count_non_assignment",
+            warn_with_kernel(kernel, "count_non_assignment",
                     "Non-assignment instruction encountered in "
                     "gather_access_footprints, not counted")
             continue

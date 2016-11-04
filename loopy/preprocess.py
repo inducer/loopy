@@ -315,7 +315,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
 
 
 def find_temporary_scope(kernel):
-    logger.debug("%s: mark local temporaries" % kernel.name)
+    logger.debug("%s: find temporary scope" % kernel.name)
 
     new_temp_vars = {}
     from loopy.kernel.data import (LocalIndexTagBase, GroupIndexTag,
@@ -388,8 +388,10 @@ def find_temporary_scope(kernel):
                         grpparallel_compute_inames, temp_var_scope.GLOBAL),
                     ]:
 
-                if (apin != cpin and bool(locparallel_assignee_inames)):
-                    warn_with_kernel(kernel, "write_race_local(%s)" % insn_id,
+                if (apin != cpin and bool(apin)):
+                    warn_with_kernel(
+                            kernel,
+                            "write_race_%s(%s)" % (scope_descr, insn_id),
                             "instruction '%s' looks invalid: "
                             "it assigns to indices based on %s IDs, but "
                             "its temporary '%s' cannot be made %s because "
@@ -405,7 +407,6 @@ def find_temporary_scope(kernel):
                         # parallel inames of that kind:
                         and bool(cpin)):
                     desired_scope = max(desired_scope, scope)
-                    break
 
             desired_scope_per_insn.append(desired_scope)
 
@@ -432,63 +433,6 @@ def find_temporary_scope(kernel):
         new_temp_vars[temp_var.name] = temp_var.copy(scope=overall_scope)
 
     return kernel.copy(temporary_variables=new_temp_vars)
-
-# }}}
-
-
-# {{{ default dependencies
-
-def add_default_dependencies(kernel):
-    logger.debug("%s: default deps" % kernel.name)
-
-    from loopy.transform.subst import expand_subst
-    expanded_kernel = expand_subst(kernel)
-
-    writer_map = kernel.writer_map()
-
-    arg_names = set(arg.name for arg in kernel.args)
-
-    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
-
-    dep_map = dict(
-            (insn.id, insn.read_dependency_names() & var_names)
-            for insn in expanded_kernel.instructions)
-
-    new_insns = []
-    for insn in kernel.instructions:
-        if not insn.depends_on_is_final:
-            auto_deps = set()
-
-            # {{{ add automatic dependencies
-
-            all_my_var_writers = set()
-            for var in dep_map[insn.id]:
-                var_writers = writer_map.get(var, set())
-                all_my_var_writers |= var_writers
-
-                if not var_writers and var not in arg_names:
-                    tv = kernel.temporary_variables[var]
-                    if tv.initializer is None:
-                        warn_with_kernel(kernel, "read_no_write(%s)" % var,
-                                "temporary variable '%s' is read, but never written."
-                                % var)
-
-                if len(var_writers) == 1:
-                    auto_deps.update(
-                            var_writers
-                            - set([insn.id]))
-
-            # }}}
-
-            depends_on = insn.depends_on
-            if depends_on is None:
-                depends_on = frozenset()
-
-            insn = insn.copy(depends_on=frozenset(auto_deps) | depends_on)
-
-        new_insns.append(insn)
-
-    return kernel.copy(instructions=new_insns)
 
 # }}}
 
@@ -1119,7 +1063,8 @@ def preprocess_kernel(kernel, device=None):
 
     check_reduction_iname_uniqueness(kernel)
 
-    kernel = add_default_dependencies(kernel)
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
+    kernel = apply_single_writer_depencency_heuristic(kernel)
 
     # Ordering restrictions:
     #

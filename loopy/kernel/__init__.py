@@ -140,9 +140,10 @@ class LoopKernel(RecordWithoutPickling):
 
     .. attribute:: loop_priority
 
-        A list of inames. The earlier in the list the iname occurs, the earlier
-        it will be scheduled. (This applies to inames with non-parallel
-        implementation tags.)
+        A frozenset of priority constraints to the kernel. Each such constraint
+        is a tuple of inames. Inames occuring in such a tuple will be scheduled
+        earlier than any iname following in the tuple. This applies only to inames
+        with non-parallel implementation tags.
 
     .. attribute:: silenced_warnings
 
@@ -184,7 +185,7 @@ class LoopKernel(RecordWithoutPickling):
             symbol_manglers=[],
 
             iname_slab_increments={},
-            loop_priority=[],
+            loop_priority=frozenset(),
             silenced_warnings=[],
 
             applied_iname_rewrites=[],
@@ -1094,8 +1095,7 @@ class LoopKernel(RecordWithoutPickling):
 
         lines = []
 
-        from loopy.preprocess import add_default_dependencies
-        kernel = add_default_dependencies(self)
+        kernel = self
 
         sep = 75*"-"
 
@@ -1199,7 +1199,7 @@ class LoopKernel(RecordWithoutPickling):
 
                 if lhs:
                     core = "%s <- %s" % (
-                        Fore.BLUE+lhs+Style.RESET_ALL,
+                        Fore.CYAN+lhs+Style.RESET_ALL,
                         Fore.MAGENTA+rhs+Style.RESET_ALL,
                         )
                 else:
