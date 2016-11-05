@@ -1687,7 +1687,6 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
                                     kind))
 
                     else:
-                        print("HIIII")
                         issue_barrier(dep=dep)
                         break
 
