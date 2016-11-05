@@ -150,8 +150,15 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         return func(codegen_state, sched_index)
 
     elif isinstance(sched_item, Barrier):
-        return codegen_state.ast_builder.emit_barrier(
-                sched_item.kind, sched_item.comment)
+        if codegen_state.is_generating_device_code:
+            return codegen_state.ast_builder.emit_barrier(
+                    sched_item.kind, sched_item.comment)
+        from loopy.codegen.result import CodeGenerationResult
+        return CodeGenerationResult(
+                host_program=None,
+                device_programs=[],
+                implemented_domains={},
+                implemented_data_info=codegen_state.implemented_data_info)
 
     elif isinstance(sched_item, RunInstruction):
         insn = kernel.id_to_insn[sched_item.insn_id]

@@ -399,6 +399,17 @@ def get_priority_tiers(wanted, priorities):
     for tier in get_priority_tiers(wanted, priorities):
         yield tier
 
+
+def sched_item_to_insn_id(sched_item):
+    # Helper for use in generator expressions, i.e.
+    # (... for insn_id in sched_item_to_insn_id(item) ...)
+    if isinstance(sched_item, RunInstruction):
+        yield sched_item.insn_id
+    elif isinstance(sched_item, Barrier):
+        if (hasattr(sched_item, "originating_insn_id")
+                and sched_item.originating_insn_id is not None):
+            yield sched_item.originating_insn_id
+
 # }}}
 
 
@@ -572,6 +583,10 @@ class SchedulerState(Record):
 
         A :class:`frozenset` of all inames ever entered.
 
+    .. attribute:: enclosing_subkernel_inames
+
+        The inames of the last entered subkernel
+
     .. attribute:: schedule
 
     .. attribute:: scheduled_insn_ids
@@ -591,9 +606,13 @@ class SchedulerState(Record):
 
         A :class:`frozenset` of any iname that started prescheduled
 
-    .. attribute:: can_schedule_insns
+    .. attribute:: may_schedule_global_barriers
 
-        Whether an instruction can be the next item scheduled
+        Whether global barrier scheduling is allowed
+
+    .. attribute:: within_subkernel
+
+        Whether the scheduler is inside a subkernel
 
     .. attribute:: group_insn_counts
 
@@ -638,8 +657,8 @@ def generate_loop_schedules_internal(
 
     next_preschedule_item = (
         sched_state.preschedule[0]
-            if len(sched_state.preschedule) > 0
-            else None)
+        if len(sched_state.preschedule) > 0
+        else None)
 
     # {{{ decide about debug mode
 
@@ -681,26 +700,31 @@ def generate_loop_schedules_internal(
     # {{{ see if we have reached the start/end of kernel in the preschedule
 
     if isinstance(next_preschedule_item, CallKernel):
-        assert sched_state.can_schedule_insns == False
+        assert sched_state.within_subkernel is False
         for result in generate_loop_schedules_internal(
                 sched_state.copy(
                     schedule=sched_state.schedule + (next_preschedule_item,),
                     preschedule=sched_state.preschedule[1:],
-                    can_schedule_insns=True),
+                    within_subkernel=True,
+                    may_schedule_global_barriers=False,
+                    enclosing_subkernel_inames=sched_state.active_inames),
                 allow_boost=rec_allow_boost,
                 debug=debug):
             yield result
 
     if isinstance(next_preschedule_item, ReturnFromKernel):
-        assert sched_state.can_schedule_insns == True
-        for result in generate_loop_schedules_internal(
-                sched_state.copy(
-                    schedule=sched_state.schedule + (next_preschedule_item,),
-                    preschedule=sched_state.preschedule[1:],
-                    can_schedule_insns=False),
-                allow_boost=rec_allow_boost,
-                debug=debug):
-            yield result
+        assert sched_state.within_subkernel is True
+        # Make sure all subkernel inames have finished.
+        if sched_state.active_inames == sched_state.enclosing_subkernel_inames:
+            for result in generate_loop_schedules_internal(
+                    sched_state.copy(
+                        schedule=sched_state.schedule + (next_preschedule_item,),
+                        preschedule=sched_state.preschedule[1:],
+                        within_subkernel=False,
+                        may_schedule_global_barriers=True),
+                    allow_boost=rec_allow_boost,
+                    debug=debug):
+                yield result
 
     # }}}
 
@@ -725,9 +749,9 @@ def generate_loop_schedules_internal(
             key=insn_sort_key, reverse=True)
 
     insn_ids_to_try.extend(
-        item.insn_id
+        insn_id
         for item in sched_state.preschedule
-        if isinstance(item, RunInstruction))
+        for insn_id in sched_item_to_insn_id(item))
 
     for insn_id in insn_ids_to_try:
         insn = kernel.id_to_insn[insn_id]
@@ -764,17 +788,40 @@ def generate_loop_schedules_internal(
                     print("instruction '%s' won't work under inames '%s'"
                             % (format_insn(kernel, insn.id), ",".join(have-want)))
 
-        if not sched_state.can_schedule_insns:
-            if debug_mode:
-                print("can't schedule '%s' because not inside subkernel" % format_insn(kernel, insn.id))
-            is_ready = False
+        # {{{ check if scheduling this insn is compatible with preschedule
 
-        if insn_id in sched_state.prescheduled_insn_ids and not (
-                isinstance(next_preschedule_item, RunInstruction)
-                and next_preschedule_item.insn_id == insn_id):
-            if debug_mode:
-                print("can't schedule '%s' because another preschedule instruction precedes it" % format_insn(kernel, insn.id))
-            is_ready = False
+        if insn_id in sched_state.prescheduled_insn_ids:
+            try:
+                next_preschedule_insn_id = next(
+                    sched_item_to_insn_id(next_preschedule_item))
+            except StopIteration:
+                next_preschedule_insn_id = None
+
+            if next_preschedule_insn_id != insn_id:
+                if debug_mode:
+                    print("can't schedule '%s' because another preschedule "
+                          "instruction precedes it" % format_insn(kernel, insn.id))
+                is_ready = False
+
+        # }}}
+
+        # {{{ check if scheduler state allows insn scheduling
+
+        from loopy.kernel.instruction import BarrierInstruction
+        if isinstance(insn, BarrierInstruction) and insn.kind == "global":
+            if not sched_state.may_schedule_global_barriers:
+                if debug_mode:
+                    print("can't schedule '%s' because global barriers are "
+                          "not currently allowed" % format_insn(kernel, insn.id))
+                is_ready = False
+        else:
+            if not sched_state.within_subkernel:
+                if debug_mode:
+                    print("can't schedule '%s' because not within subkernel"
+                          % format_insn(kernel, insn.id))
+                is_ready = False
+
+        # }}}
 
         # {{{ determine group-based readiness
 
@@ -833,7 +880,8 @@ def generate_loop_schedules_internal(
                     schedule=(
                         sched_state.schedule + (RunInstruction(insn_id=insn.id),)),
                     preschedule=(
-                        sched_state.preschedule if insn_id not in sched_state.prescheduled_insn_ids
+                        sched_state.preschedule
+                        if insn_id not in sched_state.prescheduled_insn_ids
                         else sched_state.preschedule[1:]),
                     active_group_counts=new_active_group_counts,
                     uses_of_boostability=(
@@ -950,7 +998,8 @@ def generate_loop_schedules_internal(
                             active_inames=sched_state.active_inames[:-1],
                             preschedule=(
                                 sched_state.preschedule
-                                if last_entered_loop not in sched_state.prescheduled_inames
+                                if last_entered_loop
+                                not in sched_state.prescheduled_inames
                                 else sched_state.preschedule[1:]),
                         ),
                         allow_boost=rec_allow_boost, debug=debug):
@@ -998,7 +1047,8 @@ def generate_loop_schedules_internal(
                         isinstance(next_preschedule_item, EnterLoop)
                         and next_preschedule_item.iname == iname)):
                 if debug_mode:
-                    print("scheduling %s prohibited by preschedule constraints" % iname)
+                    print("scheduling %s prohibited by preschedule constraints"
+                          % iname)
                 continue
 
             currently_accessible_inames = (
@@ -1185,7 +1235,10 @@ def generate_loop_schedules_internal(
         if inp:
             raise ScheduleDebugInput(inp)
 
-    if not sched_state.active_inames and not sched_state.unscheduled_insn_ids and not sched_state.preschedule:
+    if (
+            not sched_state.active_inames
+            and not sched_state.unscheduled_insn_ids
+            and not sched_state.preschedule):
         # if done, yield result
         debug.log_success(sched_state.schedule)
 
@@ -1240,6 +1293,7 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
             insn = kernel.id_to_insn[sched_item.insn_id]
             if isinstance(insn, BarrierInstruction):
                 result.append(Barrier(
+                    comment="from instruction '{0}'".format(insn.id),
                     kind=insn.kind,
                     originating_insn_id=insn.id))
                 continue
@@ -1313,6 +1367,9 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
         source, target = target, source
 
     if source.id in target.no_sync_with:
+        return None
+
+    if var_kind == "global" and source.id in target.no_global_sync_with:
         return None
 
     # {{{ check that a dependency exists
@@ -1412,6 +1469,9 @@ def get_tail_starting_at_last_barrier(schedule, kind):
         elif isinstance(sched_item, (EnterLoop, LeaveLoop)):
             pass
 
+        elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
+            pass
+
         else:
             raise ValueError("unexpected schedule item type '%s'"
                     % type(sched_item).__name__)
@@ -1425,7 +1485,8 @@ def insn_ids_from_schedule(schedule):
         if isinstance(sched_item, RunInstruction):
             result.append(sched_item.insn_id)
 
-        elif isinstance(sched_item, (EnterLoop, LeaveLoop, Barrier)):
+        elif isinstance(sched_item, (EnterLoop, LeaveLoop, Barrier, CallKernel,
+                                     ReturnFromKernel)):
             pass
 
         else:
@@ -1499,6 +1560,7 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
         candidates.clear()
 
     def issue_barrier(dep):
+        print("issuing barrier")
         seen_barrier()
 
         comment = None
@@ -1558,8 +1620,22 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
                             source=dep_src_insn_id,
                             reverse=reverse, var_kind=kind)
                     if dep:
-                        issue_barrier(dep=dep)
-                        break
+                        if verify_only:
+                            from loopy.diagnostic import MissingBarrierError
+                            raise MissingBarrierError(
+                                    "Dependency '%s' (for variable '%s') "
+                                    "requires synchronization "
+                                    "by a %s barrier (add a 'no_sync_with' "
+                                    "instruction option to state that no"
+                                    "synchronization is needed)"
+                                    % (
+                                        dep.dep_descr.format(
+                                            tgt=dep.target.id, src=dep.source.id),
+                                        dep.variable,
+                                        kind))
+                        else:
+                            issue_barrier(dep=dep)
+                            break
 
             # }}}
 
@@ -1612,6 +1688,7 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
                                     kind))
 
                     else:
+                        print("HIIII")
                         issue_barrier(dep=dep)
                         break
 
@@ -1619,7 +1696,8 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
             candidates.add(sched_item.insn_id)
 
         elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
-            pass
+            result.append(sched_item)
+            i += 1
 
         else:
             raise ValueError("unexpected schedule item type '%s'"
@@ -1659,10 +1737,11 @@ def generate_loop_schedules(kernel, debug_args={}):
             insn.iname
             for insn in preschedule
             if isinstance(insn, EnterLoop))
+
     prescheduled_insn_ids = set(
-            insn.insn_id
-            for insn in preschedule
-            if isinstance(insn, RunInstruction))
+        insn_id
+        for item in preschedule
+        for insn_id in sched_item_to_insn_id(item))
 
     from loopy.kernel.data import IlpBaseTag, ParallelTag, VectorizeTag
     ilp_inames = set(
@@ -1696,12 +1775,14 @@ def generate_loop_schedules(kernel, debug_args={}):
             # time-varying part
             active_inames=(),
             entered_inames=frozenset(),
+            enclosing_subkernel_inames=(),
 
             schedule=(),
 
             unscheduled_insn_ids=set(insn.id for insn in kernel.instructions),
             scheduled_insn_ids=frozenset(),
-            can_schedule_insns=kernel.state != kernel_state.SCHEDULED,
+            within_subkernel=kernel.state != kernel_state.SCHEDULED,
+            may_schedule_global_barriers=True,
 
             preschedule=preschedule,
 
@@ -1764,15 +1845,12 @@ def generate_loop_schedules(kernel, debug_args={}):
                 if (gsize or lsize):
                     if not kernel.options.disable_global_barriers:
                         logger.info("%s: barrier insertion: global" % kernel.name)
-
                         gen_sched = insert_barriers(kernel, gen_sched,
                                 reverse=False, kind="global", verify_only=True)
 
                     logger.info("%s: barrier insertion: local" % kernel.name)
-
                     gen_sched = insert_barriers(kernel, gen_sched,
                             reverse=False, kind="local", verify_only=False)
-
                     logger.info("%s: barrier insertion: done" % kernel.name)
 
                 new_kernel = kernel.copy(
@@ -1784,6 +1862,9 @@ def generate_loop_schedules(kernel, debug_args={}):
                 if kernel.state != kernel_state.SCHEDULED:
                     # Device mapper only gets run once.
                     new_kernel = map_schedule_onto_host_or_device(new_kernel)
+
+                from loopy.schedule.tools import add_extra_args_to_schedule
+                new_kernel = add_extra_args_to_schedule(new_kernel)
                 yield new_kernel
 
                 debug.start()

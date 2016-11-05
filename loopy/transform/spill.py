@@ -23,99 +23,20 @@ THE SOFTWARE.
 """
 
 
-import six
-
 from loopy.diagnostic import LoopyError
 import loopy as lp
 
 from loopy.kernel.data import auto
-from loopy.kernel.instruction import BarrierInstruction
 from pytools import memoize_method, Record
 from loopy.schedule import (
             EnterLoop, LeaveLoop, RunInstruction,
             CallKernel, ReturnFromKernel, Barrier)
 
+from loopy.schedule.tools import (get_block_boundaries, InstructionQuery)
+
 
 import logging
 logger = logging.getLogger(__name__)
-
-
-# {{{ instruction query utility
-
-class InstructionQuery(object):
-
-    def __init__(self, kernel):
-        self.kernel = kernel
-        block_bounds = get_block_boundaries(kernel.schedule)
-        subkernel_slices = {}
-        from six import iteritems
-        for start, end in iteritems(block_bounds):
-            sched_item = kernel.schedule[start]
-            if isinstance(sched_item, CallKernel):
-                subkernel_slices[sched_item.kernel_name] = slice(start, end + 1)
-        self.subkernel_slices = subkernel_slices
-
-    @memoize_method
-    def subkernel_order(self):
-        pass
-
-    @memoize_method
-    def insns_reading_or_writing(self, var):
-        return frozenset(insn.id for insn in self.kernel.instructions
-            if var in insn.read_dependency_names()
-                or var in insn.assignee_var_names())
-
-    @memoize_method
-    def insns_in_subkernel(self, subkernel):
-        return frozenset(sched_item.insn_id for sched_item
-            in self.kernel.schedule[self.subkernel_slices[subkernel]]
-            if isinstance(sched_item, RunInstruction))
-
-    @memoize_method
-    def inames_in_subkernel(self, subkernel):
-        return frozenset(self.kernel.schedule[self.subkernel_slices[subkernel].start].extra_inames)
-
-    @memoize_method
-    def hw_inames(self, insn_id):
-        """
-        Return the inames that insn runs in and that are tagged as hardware
-        parallel.
-        """
-        from loopy.kernel.data import HardwareParallelTag
-        return set(iname for iname in self.kernel.insn_inames(insn_id)
-                   if isinstance(self.kernel.iname_to_tag.get(iname), HardwareParallelTag))
-
-    @memoize_method
-    def common_hw_inames(self, insn_ids):
-        """
-        Return the common set of hardware parallel tagged inames among
-        the list of instructions.
-        """
-        # Get the list of hardware inames in which the temporary is defined.
-        if len(insn_ids) == 0:
-            return set()
-        return set.intersection(*(self.hw_inames(id) for id in insn_ids))
-
-# }}}
-
-
-def get_block_boundaries(schedule):
-    """
-    Return a dictionary mapping indices of
-    :class:`loopy.schedule.BlockBeginItem`s to
-    :class:`loopy.schedule.BlockEndItem`s and vice versa.
-    """
-    from loopy.schedule import (BeginBlockItem, EndBlockItem)
-    block_bounds = {}
-    active_blocks = []
-    for idx, sched_item in enumerate(schedule):
-        if isinstance(sched_item, BeginBlockItem):
-            active_blocks.append(idx)
-        elif isinstance(sched_item, EndBlockItem):
-            start = active_blocks.pop()
-            block_bounds[start] = idx
-            block_bounds[idx] = start
-    return block_bounds
 
 
 # {{{ liveness analysis
@@ -273,10 +194,17 @@ class Spiller(object):
 
             The common list of hw axes that define the original object.
 
-        .. attribute:: shape_prefix
+        .. attribute:: hw_dims
 
             A list of expressions, to be added in front of the shape
-            of the promoted temporary value
+            of the promoted temporary value, corresponding to
+            hardware dimensions
+
+        .. attribute:: non_hw_dims
+
+            A list of expressions, to be added in front of the shape
+            of the promoted temporary value, corresponding to
+            non-hardware dimensions
         """
 
         @memoize_method
@@ -291,7 +219,7 @@ class Spiller(object):
 
         @property
         def new_shape(self):
-            return self.shape_prefix + self.orig_temporary.shape
+            return self.hw_dims + self.non_hw_dims
 
     def __init__(self, kernel):
         self.kernel = kernel
@@ -304,8 +232,7 @@ class Spiller(object):
         self.extra_args_to_add = {}
         self.updated_iname_to_tag = {}
         self.updated_temporary_variables = {}
-        # i.e. the "extra_args" field of CallKernel
-        self.updated_extra_args = {}
+        self.spills_or_reloads_added = {}
 
     @memoize_method
     def auto_promote_temporary(self, temporary_name):
@@ -343,9 +270,10 @@ class Spiller(object):
 
         # Calculate the sizes of the dimensions that get added in front for
         # the global storage of the temporary.
-        shape_prefix = []
+        hw_dims = []
 
         backing_hw_inames = []
+
         for iname in hw_inames:
             tag = self.kernel.iname_to_tag[iname]
             from loopy.kernel.data import LocalIndexTag
@@ -356,15 +284,22 @@ class Spiller(object):
             backing_hw_inames.append(iname)
             from loopy.isl_helpers import static_max_of_pw_aff
             from loopy.symbolic import aff_to_expr
-            shape_prefix.append(
+            hw_dims.append(
                 aff_to_expr(
                     static_max_of_pw_aff(
                         self.kernel.get_iname_bounds(iname).size, False)))
 
+        non_hw_dims = temporary.shape
+
+        if len(non_hw_dims) == 0 and len(hw_dims) == 0:
+            # Scalar not in hardware: ensure at least one dimension.
+            non_hw_dims = (1,)
+
         backing_temporary = self.PromotedTemporary(
-            name=self.var_name_gen(temporary.name + ".spill_slot"),
+            name=self.var_name_gen(temporary.name + "_spill_slot"),
             orig_temporary=temporary,
-            shape_prefix=tuple(shape_prefix),
+            hw_dims=tuple(hw_dims),
+            non_hw_dims=non_hw_dims,
             hw_inames=backing_hw_inames)
 
         return backing_temporary
@@ -404,16 +339,13 @@ class Spiller(object):
                     Variable(agg),
                     tuple(map(Variable, subscript)))
 
+        dim_inames_trunc = dim_inames[:len(promoted_temporary.orig_temporary.shape)]
+
         args = (
             subscript_or_var(
-                temporary, dim_inames),
+                temporary, dim_inames_trunc),
             subscript_or_var(
                 promoted_temporary.name, hw_inames + dim_inames))
-
-        if subkernel in self.updated_extra_args:
-            self.updated_extra_args[subkernel].append(promoted_temporary.name)
-        else:
-            self.updated_extra_args[subkernel] = [promoted_temporary.name]
 
         if mode == "spill":
             args = reversed(args)
@@ -429,17 +361,30 @@ class Spiller(object):
             depends_on = frozenset()
             update_deps = accessing_insns_in_subkernel
 
+        pre_barrier, post_barrier = self.insn_query.pre_and_post_barriers(subkernel)
+
+        if pre_barrier is not None:
+            depends_on |= set([pre_barrier])
+
+        if post_barrier is not None:
+            update_deps |= set([post_barrier])
+
         # Create the load / store instruction.
         from loopy.kernel.data import Assignment
         spill_or_load_insn = Assignment(
             *args,
             id=spill_or_load_insn_id,
-            within_inames=self.insn_query.inames_in_subkernel(subkernel) |
-                frozenset(hw_inames + dim_inames),
+            within_inames=(
+                self.insn_query.inames_in_subkernel(subkernel) |
+                frozenset(hw_inames + dim_inames)),
             within_inames_is_final=True,
             depends_on=depends_on,
             boostable=False,
             boostable_into=frozenset())
+
+        if temporary not in self.spills_or_reloads_added:
+            self.spills_or_reloads_added[temporary] = set()
+        self.spills_or_reloads_added[temporary].add(spill_or_load_insn_id)
 
         self.insns_to_insert.append(spill_or_load_insn)
 
@@ -457,32 +402,34 @@ class Spiller(object):
     def finish(self):
         new_instructions = []
 
+        insns_to_insert = dict((insn.id, insn) for insn in self.insns_to_insert)
+
+        # Add no_global_sync_with between any added reloads and spills
+        from six import iteritems
+        for temporary, added_insns in iteritems(self.spills_or_reloads_added):
+            for insn_id in added_insns:
+                insn = insns_to_insert[insn_id]
+                insns_to_insert[insn_id] = insn.copy(
+                    no_global_sync_with=added_insns)
+
         for orig_insn in self.kernel.instructions:
             if orig_insn.id in self.insns_to_update:
                 new_instructions.append(self.insns_to_update[orig_insn.id])
             else:
                 new_instructions.append(orig_insn)
-        new_instructions.extend(self.insns_to_insert)
-
-        new_schedule = []
-        for sched_item in self.kernel.schedule:
-            if (isinstance(sched_item, CallKernel) and
-                    sched_item.kernel_name in self.updated_extra_args):
-                new_schedule.append(
-                    sched_item.copy(extra_args=(
-                        sched_item.extra_args
-                        + self.updated_extra_args[sched_item.kernel_name])))
-            else:
-                new_schedule.append(sched_item)
+        new_instructions.extend(
+            sorted(insns_to_insert.values(), key=lambda insn: insn.id))
 
         self.updated_iname_to_tag.update(self.kernel.iname_to_tag)
         self.updated_temporary_variables.update(self.kernel.temporary_variables)
 
-        return self.kernel.copy(
-            schedule=new_schedule,
+        kernel = self.kernel.copy(
             instructions=new_instructions,
             iname_to_tag=self.updated_iname_to_tag,
             temporary_variables=self.updated_temporary_variables)
+
+        from loopy.kernel.tools import assign_automatic_axes
+        return assign_automatic_axes(kernel)
 
     def spill(self, temporary, subkernel):
         self.spill_or_reload_impl(temporary, subkernel, "spill")
@@ -506,37 +453,39 @@ class Spiller(object):
 
         orig_temporary = promoted_temporary.orig_temporary
         orig_dim = domain.dim(isl.dim_type.set)
-        dims_to_insert = len(orig_temporary.shape)
 
         # Tags for newly added inames
         iname_to_tag = {}
 
+        # FIXME: Restrict size of new inames to access footprint.
+
         # Add dimension-dependent inames.
         dim_inames = []
-        domain = domain.add(isl.dim_type.set, dims_to_insert)
-        for t_idx in range(len(orig_temporary.shape)):
+        domain = domain.add(isl.dim_type.set, len(promoted_temporary.non_hw_dims))
+
+        for dim_idx, dim_size in enumerate(promoted_temporary.non_hw_dims):
             new_iname = self.insn_name_gen("{name}_{mode}_axis_{dim}".
                 format(name=orig_temporary.name,
                        mode=mode,
-                       dim=t_idx))
+                       dim=dim_idx))
             domain = domain.set_dim_name(
-                isl.dim_type.set, orig_dim + t_idx, new_iname)
+                isl.dim_type.set, orig_dim + dim_idx, new_iname)
+
             if orig_temporary.is_local:
                 # If the temporary has local scope, then loads / stores can
                 # be done in parallel.
-                #from loopy.kernel.data import AutoFitLocalIndexTag
-                #iname_to_tag[new_iname] = AutoFitLocalIndexTag()
-                pass
+                from loopy.kernel.data import AutoFitLocalIndexTag
+                iname_to_tag[new_iname] = AutoFitLocalIndexTag()
 
             dim_inames.append(new_iname)
 
             # Add size information.
             aff = isl.affs_from_space(domain.space)
             domain &= aff[0].le_set(aff[new_iname])
-            size = orig_temporary.shape[t_idx]
             from loopy.symbolic import aff_from_expr
-            domain &= aff[new_iname].lt_set(aff_from_expr(domain.space, size))
+            domain &= aff[new_iname].lt_set(aff_from_expr(domain.space, dim_size))
 
+        # FIXME: Use promoted_temporary.hw_inames
         hw_inames = []
 
         # Add hardware inames duplicates.
@@ -564,15 +513,6 @@ class Spiller(object):
 
 # {{{ auto spill and reload across kernel calls
 
-"""
-TODO:
-- flake8ify
-- add TODO comments
-- document
-- assert kernel is scheduled etc
-- write a bunch of tests
-"""
-
 def spill_and_reload(knl, **kwargs):
     """
     Add instructions to spill and reload temporary variables that are live
@@ -587,12 +527,12 @@ def spill_and_reload(knl, **kwargs):
     into this code:
 
         t = <...>
-        t.spill_slot = t
+        t_spill_slot = t
         <return followed by call>
-        t = t.spill_slot
+        t = t_spill_slot
         <...> = t
 
-    where `t.spill_slot` is a newly-created global temporary variable.
+    where `t_spill_slot` is a newly-created global temporary variable.
 
     :arg knl:
     :arg barriers:
@@ -601,55 +541,36 @@ def spill_and_reload(knl, **kwargs):
     liveness = LivenessAnalysis(knl)
     spiller = Spiller(knl)
 
-    liveness.print_liveness()
+    #liveness.print_liveness()
+
+    insn_query = InstructionQuery(knl)
 
     for sched_idx, sched_item in enumerate(knl.schedule):
-        # TODO: Rematerialization
-        if isinstance(sched_item, ReturnFromKernel):
-            for temporary in liveness[sched_idx].live_in:
-                logger.info("spilling {0} before return of {1}"
-                        .format(temporary, sched_item.kernel_name))
-                spiller.spill(temporary, sched_item.kernel_name)
 
-        elif isinstance(sched_item, CallKernel):
-            for temporary in liveness[sched_idx].live_out:
+        if isinstance(sched_item, CallKernel):
+            # Any written temporary that is live-out needs to be read into
+            # memory because of the potential for partial writes.
+            interesting_temporaries = (
+                insn_query.temporaries_read_or_written_in_subkernel(
+                    sched_item.kernel_name))
+
+            for temporary in liveness[sched_idx].live_out & interesting_temporaries:
                 logger.info("reloading {0} at entry of {1}"
                         .format(temporary, sched_item.kernel_name))
                 spiller.reload(temporary, sched_item.kernel_name)
+
+        elif isinstance(sched_item, ReturnFromKernel):
+            interesting_temporaries = (
+                insn_query.temporaries_written_in_subkernel(
+                    sched_item.kernel_name))
+            for temporary in liveness[sched_idx].live_in & interesting_temporaries:
+                logger.info("spilling {0} before return of {1}"
+                        .format(temporary, sched_item.kernel_name))
+                spiller.spill(temporary, sched_item.kernel_name)
 
     return spiller.finish()
 
 # }}}
 
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    import loopy as lp
-    knl = lp.make_kernel(
-            "{ [i,j]: 0<=i,j<10 }",
-            """
-            for i
-                <> t_private[i] = 1 {id=define_t_private}
-                <> j_ = 1 {id=definej}
-                for j
-                    ... gbarrier {id=bar}
-                    out[j] = j_ {id=setout,dep=bar}
-                    ... gbarrier {id=barx,dep=define_t_private,dep=setout}
-                    j_ = 10 {id=j1,dep=barx}
-                end
-                ... gbarrier {id=meow,dep=barx}
-                out[i] = t_private[i] {dep=meow}
-            end
-            """)
-
-    #knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
-
-    print("SCHEDULED INITIALLY", knl)
-
-    knl = spill_and_reload(knl)
-
-    knl = lp.get_one_scheduled_kernel(knl)
-    print(knl)
 
 # vim: foldmethod=marker

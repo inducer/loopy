@@ -1056,7 +1056,7 @@ def test_kernel_splitting(ctx_factory):
 
     cgr = lp.generate_code_v2(knl)
 
-    assert len(cgr.device_programs) == 2
+    assert len(cgr.device_programs) == 3
 
     print(cgr.device_code())
     print(cgr.host_code())
@@ -1105,95 +1105,135 @@ def test_kernel_splitting_with_loop(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
+def test_spill_and_reload_of_private_temporary(ctx_factory):
     ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-            "{ [i,k]: 0<=i<n and 0<=k<3 }",
+            "{ [i,j,k]: 0<=i,j,k<10 }",
             """
-            for i, k
-                ... gbarrier
-                <> t_private_scalar = a[k,i+1]
-                <> t_private_array[i % 2] = a[k,i+1]
-                c[k,i] = a[k,i+1]
-                ... gbarrier
-                out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
+            for i
+                for k
+                    <> t_arr[k] = k
+                end
+                <> t_scalar = 1
+                for j
+                    ... gbarrier {id=bar}
+                    out[j] = t_scalar {dep=bar}
+                    ... gbarrier {id=bar2,dep=bar}
+                    t_scalar = 10 {dep=bar2}
+                end
+                ... gbarrier {id=bar3,dep=bar2}
+                <> flag = i == 9
+                out[i] = t_arr[i] {dep=bar3,if=flag}
             end
-            """, seq_dependencies=True)
+            """)
 
-    knl = lp.add_and_infer_dtypes(knl,
-            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
-    knl = lp.set_temporary_scope(knl, "t_private_scalar", "private")
-    knl = lp.set_temporary_scope(knl, "t_private_array", "private")
+    knl = lp.set_temporary_scope(knl, "t_arr", "private")
+    knl = lp.add_and_infer_dtypes(knl, {"out": np.float32})
+    knl = lp.tag_inames(knl, dict(i="g.0"))
 
-    ref_knl = knl
-
-    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
-
-    # schedule
     from loopy.preprocess import preprocess_kernel
-    knl = preprocess_kernel(knl)
-
     from loopy.schedule import get_one_scheduled_kernel
+
+    knl = preprocess_kernel(knl)
     knl = get_one_scheduled_kernel(knl)
 
-    from loop.transform import spill_and_reload
+    from loopy.transform.spill import spill_and_reload
     knl = spill_and_reload(knl)
-
-    print(knl)
+    knl = get_one_scheduled_kernel(knl)
 
     cgr = lp.generate_code_v2(knl)
 
-    assert len(cgr.device_programs) == 2
+    assert len(cgr.device_programs) == 4
 
-    print(cgr.device_code())
-    print(cgr.host_code())
+    _, (out,) = knl(queue)
+    assert (out.get()
+            == np.array([1, 10, 10, 10, 10, 10, 10, 10, 10, 9],
+                        dtype=np.float32)).all()
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
-
-def test_kernel_splitting_with_loop_and_local_temporary(ctx_factory):
+def test_spill_and_reload_of_private_temporary_no_hw_loop(ctx_factory):
     ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-            "{ [i,k]: 0<=i<n and 0<=k<3 }",
+            "{ [i,j,k]: 0<=i,j,k<10 }",
             """
-            for i, k
+            for i
+                for k
+                    <> t_arr[k] = k
+                end
+                <> t_scalar = 1
+                for j
+                    ... gbarrier {id=bar}
+                    out[j] = t_scalar {dep=bar}
+                    ... gbarrier {id=bar2,dep=bar}
+                    t_scalar = 10 {dep=bar2}
+                end
+                ... gbarrier {id=bar3,dep=bar2}
+                out[i] = t_arr[i] {dep=bar3}
+            end
+            """)
+
+    knl = lp.set_temporary_scope(knl, "t_arr", "private")
+    knl = lp.add_and_infer_dtypes(knl, {"out": np.float32})
+
+    from loopy.preprocess import preprocess_kernel
+    from loopy.schedule import get_one_scheduled_kernel
+
+    knl = preprocess_kernel(knl)
+    knl = get_one_scheduled_kernel(knl)
+
+    from loopy.transform.spill import spill_and_reload
+    knl = spill_and_reload(knl)
+    knl = get_one_scheduled_kernel(knl)
+
+    cgr = lp.generate_code_v2(knl)
+
+    assert len(cgr.device_programs) == 4
+
+    _, (out,) = knl(queue)
+    assert (out.get()
+            == np.array([1, 10, 10, 10, 10, 10, 10, 10, 10, 9],
+                        dtype=np.float32)).all()
+
+
+def test_spill_and_reload_of_local_temporary(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{ [i,j,k]: 0<=i<2 and 0<=k<3 and 0<=j<2}",
+            """
+            for i, j, k
                 ... gbarrier
-                <> t_local[i % 8,k] = i % 8
-                c[k,i] = a[k,i+1]
+                <> t_local[k,j] = 1
                 ... gbarrier
-                out[k,i] = c[k,i] + t_local[i % 8,k]
+                out[k,i*2+j] = t_local[k,j]
             end
             """, seq_dependencies=True)
 
-    knl = lp.add_and_infer_dtypes(knl,
-            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
-
+    knl = lp.add_and_infer_dtypes(knl, {"out": np.int})
     knl = lp.set_temporary_scope(knl, "t_local", "local")
+    knl = lp.tag_inames(knl, dict(j="l.0", i="g.0"))
 
-    ref_knl = knl
-
-    knl = lp.split_iname(knl, "i", 8, outer_tag="g.0", inner_tag="l.0")
-
-    # schedule
     from loopy.preprocess import preprocess_kernel
-    knl = preprocess_kernel(knl)
-
     from loopy.schedule import get_one_scheduled_kernel
+
+    knl = preprocess_kernel(knl)
     knl = get_one_scheduled_kernel(knl)
 
-    # map schedule onto host or device
-    print(knl)
+    from loopy.transform.spill import spill_and_reload
+    knl = spill_and_reload(knl)
+    knl = get_one_scheduled_kernel(knl)
 
     cgr = lp.generate_code_v2(knl)
-
     assert len(cgr.device_programs) == 2
 
-    print(cgr.device_code())
-    print(cgr.host_code())
+    _, (out,) = knl(queue)
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=8))
+    assert (out.get() == 1).all()
 
 
 def test_global_temporary(ctx_factory):

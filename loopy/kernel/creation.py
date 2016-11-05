@@ -152,6 +152,7 @@ def get_default_insn_options_dict():
         "depends_on": None,
         "depends_on_is_final": False,
         "no_sync_with": None,
+        "no_global_sync_with": None,
         "groups": frozenset(),
         "conflicts_with_groups": frozenset(),
         "insn_id": None,

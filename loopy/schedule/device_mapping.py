@@ -23,13 +23,13 @@ THE SOFTWARE.
 """
 
 from loopy.diagnostic import LoopyError
-from loopy.kernel.data import temp_var_scope
-from loopy.schedule import (Barrier, BeginBlockItem, CallKernel, EndBlockItem,
-                            EnterLoop, LeaveLoop, ReturnFromKernel,
-                            RunInstruction)
+from loopy.schedule import (Barrier, CallKernel, EnterLoop, LeaveLoop,
+                            ReturnFromKernel, RunInstruction)
+from loopy.schedule.tools import get_block_boundaries
 
 
 def map_schedule_onto_host_or_device(kernel):
+    # FIXME: Should be idempotent.
     from loopy.kernel import kernel_state
     assert kernel.state == kernel_state.SCHEDULED
 
@@ -52,139 +52,14 @@ def map_schedule_onto_host_or_device(kernel):
         kernel = map_schedule_onto_host_or_device_impl(
                 kernel, device_prog_name_gen)
 
-    return add_extra_args_to_schedule(kernel)
-
-
-# {{{ Schedule / instruction utilities
-
-def get_block_boundaries(schedule):
-    """
-    Return a dictionary mapping indices of
-    :class:`loopy.schedule.BlockBeginItem`s to
-    :class:`loopy.schedule.BlockEndItem`s and vice versa.
-    """
-    block_bounds = {}
-    active_blocks = []
-    for idx, sched_item in enumerate(schedule):
-        if isinstance(sched_item, BeginBlockItem):
-            active_blocks.append(idx)
-        elif isinstance(sched_item, EndBlockItem):
-            start = active_blocks.pop()
-            block_bounds[start] = idx
-            block_bounds[idx] = start
-    return block_bounds
-
-# }}}
-
-
-# {{{ Use / def utilities
-
-def filter_out_subscripts(exprs):
-    """
-    Remove subscripts from expressions in `exprs`.
-    """
-    result = set()
-    from pymbolic.primitives import Subscript
-    for expr in exprs:
-        if isinstance(expr, Subscript):
-            expr = expr.aggregate
-        result.add(expr)
-    return result
-
-
-def filter_items_by_varname(pred, kernel, items):
-    """
-    Keep only the values in `items` whose variable names satisfy `pred`.
-    """
-    from pymbolic.primitives import Subscript, Variable
-    result = set()
-    for item in items:
-        base = item
-        if isinstance(base, Subscript):
-            base = base.aggregate
-        if isinstance(base, Variable):
-            base = base.name
-        if pred(kernel, base):
-            result.add(item)
-    return result
-
-
-from functools import partial
-
-filter_temporaries = partial(filter_items_by_varname,
-    lambda kernel, name: name in kernel.temporary_variables)
-
-
-def get_use_set(insn, include_subscripts=True):
-    """
-    Return the use-set of the instruction, for liveness analysis.
-    """
-    result = insn.read_dependency_names()
-    if not include_subscripts:
-        result = filter_out_subscripts(result)
-    return result
-
-
-def get_def_set(insn, include_subscripts=True):
-    """
-    Return the def-set of the instruction, for liveness analysis.
-    """
-    result = insn.write_dependency_names()
-    if not include_subscripts:
-        result = filter_out_subscripts(result)
-    return result
-
-
-def get_temporaries_defined_and_used_in_subrange(
-        kernel, schedule, start_idx, end_idx):
-    defs = set()
-    uses = set()
-
-    for idx in range(start_idx, end_idx + 1):
-        sched_item = schedule[idx]
-        if isinstance(sched_item, RunInstruction):
-            insn = kernel.id_to_insn[sched_item.insn_id]
-            defs.update(
-                filter_temporaries(
-                    kernel, get_def_set(insn)))
-            uses.update(
-                filter_temporaries(
-                    kernel, get_use_set(insn)))
-
-    return defs, uses
-
-# }}}
-
-
-def add_extra_args_to_schedule(kernel):
-    """
-    Fill the `extra_args` fields in all the :class:`loopy.schedule.CallKernel`
-    instructions in the schedule with global temporaries.
-    """
-    new_schedule = []
-
-    block_bounds = get_block_boundaries(kernel.schedule)
-    for idx, sched_item in enumerate(kernel.schedule):
-        if isinstance(sched_item, CallKernel):
-            defs, uses = get_temporaries_defined_and_used_in_subrange(
-                   kernel, kernel.schedule, idx + 1, block_bounds[idx] - 1)
-            # Filter out temporaries that are global.
-            extra_args = (tv for tv in defs | uses if
-                kernel.temporary_variables[tv].scope == temp_var_scope.GLOBAL
-                and
-                kernel.temporary_variables[tv].initializer is None)
-            new_schedule.append(sched_item.copy(extra_args=sorted(extra_args)))
-        else:
-            new_schedule.append(sched_item)
-
-    return kernel.copy(schedule=new_schedule)
+    return kernel
 
 
 def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
     schedule = kernel.schedule
     loop_bounds = get_block_boundaries(schedule)
 
-    # {{{ Inner mapper function
+    # {{{ inner mapper function
 
     dummy_call = CallKernel(kernel_name="", extra_args=[], extra_inames=[])
     dummy_return = ReturnFromKernel(kernel_name="")
@@ -239,6 +114,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
                             [dummy_call.copy()] +
                             current_chunk +
                             [dummy_return.copy()])
+                    new_schedule.append(sched_item)
                     current_chunk = []
                 else:
                     current_chunk.append(sched_item)
