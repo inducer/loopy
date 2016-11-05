@@ -323,7 +323,13 @@ class SetOperationCacheManager:
         from loopy.isl_helpers import dim_max_with_elimination
         return self.op(set, "dim_max", dim_max_with_elimination, args)
 
-    def base_index_and_length(self, set, iname, context=None):
+    def base_index_and_length(self, set, iname, context=None,
+            n_allowed_params_in_length=None):
+        """
+        :arg n_allowed_params_in_length: Simplifies the 'length'
+            argument so that only the first that many params
+            (in the domain of *set*) occur.
+        """
         if not isinstance(iname, int):
             iname_to_dim = set.space.get_var_dict()
             idx = iname_to_dim[iname][1]
@@ -337,7 +343,8 @@ class SetOperationCacheManager:
         from loopy.isl_helpers import (
                 static_max_of_pw_aff,
                 static_min_of_pw_aff,
-                static_value_of_pw_aff)
+                static_value_of_pw_aff,
+                find_max_of_pwaff_with_params)
         from loopy.symbolic import pw_aff_to_expr
 
         # {{{ first: try to find static lower bound value
@@ -352,11 +359,14 @@ class SetOperationCacheManager:
         if base_index_aff is not None:
             base_index = pw_aff_to_expr(base_index_aff)
 
-            size = pw_aff_to_expr(static_max_of_pw_aff(
-                    upper_bound_pw_aff - base_index_aff + 1, constants_only=False,
+            length = find_max_of_pwaff_with_params(
+                    upper_bound_pw_aff - base_index_aff + 1,
+                    n_allowed_params_in_length)
+            length = pw_aff_to_expr(static_max_of_pw_aff(
+                    length, constants_only=False,
                     context=context))
 
-            return base_index, size
+            return base_index, length
 
         # }}}
 
@@ -368,11 +378,14 @@ class SetOperationCacheManager:
 
         base_index = pw_aff_to_expr(base_index_aff)
 
-        size = pw_aff_to_expr(static_max_of_pw_aff(
-                upper_bound_pw_aff - base_index_aff + 1, constants_only=False,
+        length = find_max_of_pwaff_with_params(
+                upper_bound_pw_aff - base_index_aff + 1,
+                n_allowed_params_in_length)
+        length = pw_aff_to_expr(static_max_of_pw_aff(
+                length, constants_only=False,
                 context=context))
 
-        return base_index, size
+        return base_index, length
 
         # }}}
 
@@ -1218,6 +1231,5 @@ def draw_dependencies_as_unicode_arrows(
             for row, extender in rows]
 
 # }}}
-
 
 # vim: foldmethod=marker
