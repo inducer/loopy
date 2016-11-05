@@ -1,4 +1,5 @@
 """Operations on the kernel object."""
+# coding=utf-8
 
 from __future__ import division, absolute_import, print_function
 
@@ -1082,5 +1083,141 @@ def guess_var_shape(kernel, var_name):
     return shape
 
 # }}}
+
+
+# {{{ find_recursive_dependencies
+
+def find_recursive_dependencies(kernel, insn_ids):
+    queue = list(insn_ids)
+
+    result = set(insn_ids)
+
+    while queue:
+        new_queue = []
+
+        for insn_id in queue:
+            insn = kernel.id_to_insn[insn_id]
+            additionals = insn.depends_on - result
+            result.update(additionals)
+            new_queue.extend(additionals)
+
+        queue = new_queue
+
+    return result
+
+# }}}
+
+
+# {{{ find_reverse_dependencies
+
+def find_reverse_dependencies(kernel, insn_ids):
+    """Finds a set of IDs of instructions that depend on one of the insn_ids.
+
+    :arg insn_ids: a set of instruction IDs
+    """
+    return frozenset(
+            insn.id
+            for insn in kernel.instructions
+            if insn.depends_on & insn_ids)
+
+# }}}
+
+
+# {{{ draw_dependencies_as_unicode_arrows
+
+def draw_dependencies_as_unicode_arrows(
+        instructions, fore, style, flag_downward=True):
+    """
+    :arg instructions: an ordered iterable of :class:`loopy.InstructionBase`
+        instances
+    :arg fore: if given, will be used like a :mod:`colorama` ``Fore`` object
+        to color-code dependencies. (E.g. red for downward edges)
+    :returns: A list of tuples (arrows, extender) with Unicode-drawn dependency
+        arrows, one per entry of *instructions*. *extender* can be used to
+        extend arrows below the line of an instruction.
+    """
+    reverse_deps = {}
+
+    for insn in instructions:
+        for dep in insn.depends_on:
+            reverse_deps.setdefault(dep, []).append(insn.id)
+
+    # mapping of (from_id, to_id) tuples to column_index
+    dep_to_column = {}
+
+    # {{{ find column assignments
+
+    # mapping from column indices to (end_insn_id, updown)
+    columns_in_use = {}
+
+    n_columns = [0]
+
+    def find_free_column():
+        i = 0
+        while i in columns_in_use:
+            i += 1
+        if i+1 > n_columns[0]:
+            n_columns[0] = i+1
+            row.append(" ")
+        return i
+
+    def do_flag_downward(s, updown):
+        if flag_downward and updown == "down":
+            return fore.RED+s+style.RESET_ALL
+        else:
+            return s
+
+    def make_extender():
+        result = n_columns[0] * [" "]
+        for col, (_, updown) in six.iteritems(columns_in_use):
+            result[col] = do_flag_downward("│", updown)
+
+        return result
+
+    rows = []
+    for insn in instructions:
+        row = make_extender()
+
+        for rdep in reverse_deps.get(insn.id, []):
+            assert rdep != insn.id
+
+            dep_key = (rdep, insn.id)
+            if dep_key not in dep_to_column:
+                col = dep_to_column[dep_key] = find_free_column()
+                columns_in_use[col] = (rdep, "up")
+                row[col] = "↱"
+
+        for dep in insn.depends_on:
+            assert dep != insn.id
+            dep_key = (insn.id, dep)
+            if dep_key not in dep_to_column:
+                col = dep_to_column[dep_key] = find_free_column()
+                columns_in_use[col] = (dep, "down")
+                row[col] = do_flag_downward("┌", "down")
+
+        for col, (end, updown) in list(six.iteritems(columns_in_use)):
+            if insn.id == end:
+                del columns_in_use[col]
+                if updown == "up":
+                    row[col] = "└"
+                else:
+                    row[col] = do_flag_downward("↳", updown)
+
+        extender = make_extender()
+
+        rows.append(("".join(row), "".join(extender)))
+
+    # }}}
+
+    def extend_to_uniform_length(s):
+        return s + " "*(n_columns[0]-len(s))
+
+    return [
+            (extend_to_uniform_length(row),
+                extend_to_uniform_length(extender))
+            for row, extender in rows]
+
+# }}}
+
 
 # vim: foldmethod=marker
