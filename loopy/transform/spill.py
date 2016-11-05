@@ -550,9 +550,13 @@ def spill_and_reload(knl, **kwargs):
         if isinstance(sched_item, CallKernel):
             # Any written temporary that is live-out needs to be read into
             # memory because of the potential for partial writes.
-            interesting_temporaries = (
-                insn_query.temporaries_read_or_written_in_subkernel(
-                    sched_item.kernel_name))
+            if sched_idx == 0:
+                # Kernel entry: nothing live
+                interesting_temporaries = set()
+            else:
+                interesting_temporaries = (
+                    insn_query.temporaries_read_or_written_in_subkernel(
+                        sched_item.kernel_name))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
                 logger.info("reloading {0} at entry of {1}"
@@ -560,9 +564,14 @@ def spill_and_reload(knl, **kwargs):
                 spiller.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
-            interesting_temporaries = (
-                insn_query.temporaries_written_in_subkernel(
-                    sched_item.kernel_name))
+            if sched_idx == len(knl.schedule) - 1:
+                # Kernel exit: nothing live
+                interesting_temporaries = set()
+            else:
+                interesting_temporaries = (
+                    insn_query.temporaries_written_in_subkernel(
+                        sched_item.kernel_name))
+
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
                 logger.info("spilling {0} before return of {1}"
                         .format(temporary, sched_item.kernel_name))
