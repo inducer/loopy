@@ -1140,18 +1140,36 @@ class LoopKernel(RecordWithoutPickling):
             lines.append("INSTRUCTIONS:")
             loop_list_width = 35
 
+            # {{{ topological sort
+
             printed_insn_ids = set()
+            printed_insn_order = []
 
-            Fore = self.options._fore
-            Style = self.options._style
-
-            def print_insn(insn):
+            def insert_insn_into_order(insn):
                 if insn.id in printed_insn_ids:
                     return
                 printed_insn_ids.add(insn.id)
 
                 for dep_id in sorted(insn.depends_on):
-                    print_insn(kernel.id_to_insn[dep_id])
+                    insert_insn_into_order(kernel.id_to_insn[dep_id])
+
+                printed_insn_order.append(insn)
+
+            for insn in kernel.instructions:
+                insert_insn_into_order(insn)
+
+            # }}}
+
+            import loopy as lp
+
+            Fore = self.options._fore
+            Style = self.options._style
+
+            from loopy.kernel.tools import draw_dependencies_as_unicode_arrows
+            for insn, (arrows, extender) in zip(
+                    printed_insn_order,
+                    draw_dependencies_as_unicode_arrows(
+                        printed_insn_order, fore=Fore, style=Style)):
 
                 if isinstance(insn, lp.MultiAssignmentBase):
                     lhs = ", ".join(str(a) for a in insn.assignees)
@@ -1206,13 +1224,15 @@ class LoopKernel(RecordWithoutPickling):
                     core = Fore.MAGENTA+rhs+Style.RESET_ALL
 
                 if len(loop_list) > loop_list_width:
-                    lines.append("[%s]" % loop_list)
-                    lines.append("%s%s   # %s" % (
+                    lines.append("%s[%s]" % (arrows, loop_list))
+                    lines.append("%s%s%s   # %s" % (
+                        extender,
                         (loop_list_width+2)*" ",
                         core,
                         ", ".join(options)))
                 else:
-                    lines.append("[%s]%s%s   # %s" % (
+                    lines.append("%s[%s]%s%s   # %s" % (
+                        arrows,
                         loop_list, " "*(loop_list_width-len(loop_list)),
                         core,
                         ",".join(options)))
@@ -1222,10 +1242,6 @@ class LoopKernel(RecordWithoutPickling):
                 if insn.predicates:
                     lines.append(10*" " + "if (%s)" % " && ".join(
                         [str(x) for x in insn.predicates]))
-
-            import loopy as lp
-            for insn in kernel.instructions:
-                print_insn(insn)
 
         dep_lines = []
         for insn in kernel.instructions:

@@ -136,7 +136,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
             access_descriptors, array_base_map,
             storage_axis_names, storage_axis_sources,
             non1_storage_axis_names,
-            temporary_name, compute_insn_id):
+            temporary_name, compute_insn_id, compute_dep_id,
+            compute_read_variables):
         super(RuleInvocationReplacer, self).__init__(rule_mapping_context)
 
         self.subst_name = subst_name
@@ -152,6 +153,10 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 
         self.temporary_name = temporary_name
         self.compute_insn_id = compute_insn_id
+        self.compute_dep_id = compute_dep_id
+
+        self.compute_read_variables = compute_read_variables
+        self.compute_insn_depends_on = set()
 
     def map_substitution(self, name, tag, arguments, expn_state):
         if not (
@@ -219,6 +224,8 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
     def map_kernel(self, kernel):
         new_insns = []
 
+        excluded_insn_ids = set([self.compute_insn_id, self.compute_dep_id])
+
         for insn in kernel.instructions:
             self.replaced_something = False
 
@@ -228,7 +235,17 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
                 insn = insn.copy(
                         depends_on=(
                             insn.depends_on
-                            | frozenset([self.compute_insn_id])))
+                            | frozenset([self.compute_dep_id])))
+
+                for dep in insn.depends_on:
+                    if dep in excluded_insn_ids:
+                        continue
+
+                    dep_insn = kernel.id_to_insn[dep]
+                    if (frozenset(dep_insn.assignee_var_names())
+                            & self.compute_read_variables):
+                        self.compute_insn_depends_on.update(
+                                insn.depends_on - excluded_insn_ids)
 
             new_insns.append(insn)
 
@@ -777,22 +794,81 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             expression=compute_expression,
             # within_inames determined below
             )
+    compute_dep_id = compute_insn_id
+    added_compute_insns = [compute_insn]
+
+    if temporary_scope == temp_var_scope.GLOBAL:
+        barrier_insn_id = kernel.make_unique_instruction_id(
+                based_on=c_subst_name+"_b")
+        from loopy.kernel.instruction import BarrierInstruction
+        barrier_insn = BarrierInstruction(
+                id=barrier_insn_id,
+                depends_on=frozenset([compute_insn_id]),
+                kind="global")
+        compute_dep_id = barrier_insn_id
+
+        added_compute_insns.append(barrier_insn)
 
     # }}}
 
     # {{{ substitute rule into expressions in kernel (if within footprint)
+
+    from loopy.symbolic import SubstitutionRuleExpander
+    expander = SubstitutionRuleExpander(kernel.substitutions)
 
     invr = RuleInvocationReplacer(rule_mapping_context,
             subst_name, subst_tag, within,
             access_descriptors, abm,
             storage_axis_names, storage_axis_sources,
             non1_storage_axis_names,
-            temporary_name, compute_insn_id)
+            temporary_name, compute_insn_id, compute_dep_id,
+            compute_read_variables=get_dependencies(expander(compute_expression)))
 
     kernel = invr.map_kernel(kernel)
     kernel = kernel.copy(
-            instructions=[compute_insn] + kernel.instructions)
+            instructions=added_compute_insns + kernel.instructions)
     kernel = rule_mapping_context.finish_kernel(kernel)
+
+    # }}}
+
+    # {{{ add dependencies to compute insn
+
+    kernel = kernel.copy(
+            instructions=[
+                insn.copy(depends_on=frozenset(invr.compute_insn_depends_on))
+                if insn.id == compute_insn_id
+                else insn
+                for insn in kernel.instructions])
+
+    # }}}
+
+    # {{{ propagate storage iname subst to dependencies of compute instructions
+
+    from loopy.kernel.tools import find_recursive_dependencies
+    compute_deps = find_recursive_dependencies(
+            kernel, frozenset([compute_insn_id]))
+
+    # FIXME: Need to verify that there are no outside dependencies
+    # on compute_deps
+
+    prior_storage_axis_names = frozenset(storage_axis_subst_dict)
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if (insn.id in compute_deps
+                and insn.within_inames & prior_storage_axis_names):
+            insn = (insn
+                    .with_transformed_expressions(
+                        lambda expr: expr_subst_map(expr, kernel, insn))
+                    .copy(within_inames=frozenset(
+                        storage_axis_subst_dict.get(iname, var(iname)).name
+                        for iname in insn.within_inames)))
+
+            new_insns.append(insn)
+        else:
+            new_insns.append(insn)
+
+    kernel = kernel.copy(instructions=new_insns)
 
     # }}}
 
