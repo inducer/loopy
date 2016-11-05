@@ -728,6 +728,23 @@ def generate_loop_schedules_internal(
 
     # }}}
 
+    # {{{ see if there are pending local barriers in the preschedule
+
+    # Local barriers do not have associated instructions, so they need to
+    # be handled separately from instructions.
+    if (
+            isinstance(next_preschedule_item, Barrier)
+            and next_preschedule_item.kind == "local"):
+        for result in generate_loop_schedules_internal(
+                    sched_state.copy(
+                        schedule=sched_state.schedule + (next_preschedule_item,),
+                        preschedule=sched_state.preschedule[1:]),
+                    allow_boost=rec_allow_boost,
+                    debug=debug):
+                yield result
+
+    # }}}
+
     # {{{ see if any insns are ready to be scheduled now
 
     # Also take note of insns that have a chance of being schedulable inside
@@ -791,10 +808,15 @@ def generate_loop_schedules_internal(
         # {{{ check if scheduling this insn is compatible with preschedule
 
         if insn_id in sched_state.prescheduled_insn_ids:
-            try:
-                next_preschedule_insn_id = next(
-                    sched_item_to_insn_id(next_preschedule_item))
-            except StopIteration:
+            if isinstance(next_preschedule_item, RunInstruction):
+                next_preschedule_insn_id = next_preschedule_item.insn_id
+            elif (
+                    isinstance(next_preschedule_item, Barrier)
+                    and next_preschedule_item.kind == "global"):
+                assert hasattr(next_preschedule_item, "originating_insn_id")
+                assert next_preschedule_item.originating_insn_id is not None
+                next_preschedule_insn_id = next_preschedule_item.originating_insn_id
+            else:
                 next_preschedule_insn_id = None
 
             if next_preschedule_insn_id != insn_id:
