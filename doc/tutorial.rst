@@ -1435,12 +1435,12 @@ resulting :class:`islpy.PwQPolynomial` will be more complicated this time.
     ...                             outer_tag="l.1", inner_tag="l.0")
     >>> mem_map = lp.get_mem_access_map(knl_consec)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 1, load, a) : [n, m, l] -> { (2 * n * m * l * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (256 * n * l * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float32'), 1, load, b) : [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * l * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float32'), 1, store, c) : [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * l * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float64'), 1, load, g) : [n, m, l] -> { (n * m * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float64'), 1, load, h) : [n, m, l] -> { (n * m * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float64'), 1, store, e) : [n, m, l] -> { (n * m * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
+    MemAccess(global, np:dtype('float32'), 1, load, a) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float32'), 1, load, b) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float32'), 1, store, c) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float64'), 1, load, g) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float64'), 1, load, h) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float64'), 1, store, e) : [n, m, l] -> { ... }
     <BLANKLINE>
 
 With this parallelization, consecutive threads will access consecutive array
@@ -1476,12 +1476,12 @@ switch the inner and outer tags in our parallelization of the kernel:
     ...                                outer_tag="l.0", inner_tag="l.1")
     >>> mem_map = lp.get_mem_access_map(knl_nonconsec)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 128, load, a) : [n, m, l] -> { (2 * n * m * l * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (256 * n * l * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float32'), 128, load, b) : [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * l * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float32'), 128, store, c) : [n, m, l] -> { (n * m * l * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * l * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float64'), 128, load, g) : [n, m, l] -> { (n * m * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float64'), 128, load, h) : [n, m, l] -> { (n * m * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
-    MemAccess(global, np:dtype('float64'), 128, store, e) : [n, m, l] -> { (n * m * floor((127 + m)/128)) : n > 0 and 0 < m <= 127 and l > 0; (128 * n * floor((127 + m)/128)) : n > 0 and m >= 128 and l > 0 }
+    MemAccess(global, np:dtype('float32'), 128, load, a) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float32'), 128, load, b) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float32'), 128, store, c) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float64'), 128, load, g) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float64'), 128, load, h) : [n, m, l] -> { ... }
+    MemAccess(global, np:dtype('float64'), 128, store, e) : [n, m, l] -> { ... }
     <BLANKLINE>
 
 With this parallelization, consecutive threads will access *nonconsecutive*
