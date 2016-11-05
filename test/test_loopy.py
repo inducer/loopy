@@ -1056,7 +1056,7 @@ def test_kernel_splitting(ctx_factory):
 
     cgr = lp.generate_code_v2(knl)
 
-    assert len(cgr.device_programs) == 3
+    assert len(cgr.device_programs) == 2
 
     print(cgr.device_code())
     print(cgr.host_code())
