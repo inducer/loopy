@@ -1560,7 +1560,6 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
         candidates.clear()
 
     def issue_barrier(dep):
-        print("issuing barrier")
         seen_barrier()
 
         comment = None
