@@ -152,7 +152,6 @@ def get_default_insn_options_dict():
         "depends_on": None,
         "depends_on_is_final": False,
         "no_sync_with": None,
-        "no_global_sync_with": None,
         "groups": frozenset(),
         "conflicts_with_groups": frozenset(),
         "insn_id": None,
@@ -231,9 +230,11 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 raise LoopyError("'nosync' option may not be specified "
                         "in a 'with' block")
 
+            # TODO: Come up with a syntax that allows the user to express
+            # different synchronization scopes.
             result["no_sync_with"] = frozenset(
-                    intern(dep.strip()) for dep in opt_value.split(":")
-                    if dep.strip())
+                    (intern(dep.strip()), "any")
+                    for dep in opt_value.split(":") if dep.strip())
 
         elif opt_key == "groups" and opt_value is not None:
             result["groups"] = frozenset(

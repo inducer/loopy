@@ -404,13 +404,14 @@ class Spiller(object):
 
         insns_to_insert = dict((insn.id, insn) for insn in self.insns_to_insert)
 
-        # Add no_global_sync_with between any added reloads and spills
+        # Add global no_sync_with between any added reloads and spills
         from six import iteritems
         for temporary, added_insns in iteritems(self.spills_or_reloads_added):
             for insn_id in added_insns:
                 insn = insns_to_insert[insn_id]
                 insns_to_insert[insn_id] = insn.copy(
-                    no_global_sync_with=added_insns)
+                    no_sync_with=frozenset(
+                        (added_insn, "global") for added_insn in added_insns))
 
         for orig_insn in self.kernel.instructions:
             if orig_insn.id in self.insns_to_update:

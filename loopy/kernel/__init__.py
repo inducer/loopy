@@ -1056,6 +1056,19 @@ class LoopKernel(RecordWithoutPickling):
 
     # }}}
 
+    # {{{ nosync sets
+
+    @memoize_method
+    def get_nosync_set(self, insn_id, scope):
+        assert scope in ("local", "global")
+
+        return frozenset(
+            insn_id
+            for insn_id, nosync_scope in self.id_to_insn[insn_id].no_sync_with
+            if nosync_scope == scope or nosync_scope == "any")
+
+    # }}}
+
     # {{{ pretty-printing
 
     def stringify(self, what=None, with_dependencies=False):

@@ -80,11 +80,17 @@ class InstructionBase(Record):
 
     .. attribute:: no_sync_with
 
-        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
-        with which no barrier synchronization is necessary, even given the existence
-        of a dependency chain and apparently conflicting access
+        a :class:`frozenset` of tuples of the form `(insn_id, scope)`, where
+        `insn_id` refers to :attr:`id` of :class:`Instruction` instances
+        and `scope` is one of the following strings:
 
-    .. attribute:: no_global_sync_with
+           - `"local"`
+           - `"global"`
+           - `"any"`.
+
+        This indicates no barrier synchronization is necessary with the given
+        instruction using barriers of type `scope`, even given the existence of
+        a dependency chain and apparently conflicting access.
 
     .. rubric:: Conditionals
 
@@ -128,7 +134,6 @@ class InstructionBase(Record):
     fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "
             "no_sync_with "
-            "no_global_sync_with "
             "predicates "
             "within_inames_is_final within_inames "
             "priority boostable boostable_into".split())
@@ -136,7 +141,6 @@ class InstructionBase(Record):
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             no_sync_with,
-            no_global_sync_with,
             within_inames_is_final, within_inames,
             priority,
             boostable, boostable_into, predicates, tags,
@@ -198,9 +202,6 @@ class InstructionBase(Record):
         if no_sync_with is None:
             no_sync_with = frozenset()
 
-        if no_global_sync_with is None:
-            no_global_sync_with = frozenset()
-
         if within_inames is None:
             within_inames = frozenset()
 
@@ -245,7 +246,6 @@ class InstructionBase(Record):
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
                 no_sync_with=no_sync_with,
-                no_global_sync_with=no_global_sync_with,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
@@ -374,7 +374,10 @@ class InstructionBase(Record):
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
         if self.no_sync_with:
-            result.append("nosync="+":".join(self.no_sync_with))
+            # TODO: Come up with a syntax to express different kinds of
+            # synchronization scopes.
+            result.append("nosync="+":".join(
+                    insn_id for insn_id, _ in self.no_sync_with))
         if self.groups:
             result.append("groups=%s" % ":".join(self.groups))
         if self.conflicts_with_groups:
@@ -730,7 +733,6 @@ class Assignment(MultiAssignmentBase):
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
-            no_global_sync_with=None,
             within_inames_is_final=None,
             within_inames=None,
             boostable=None, boostable_into=None, tags=None,
@@ -746,7 +748,6 @@ class Assignment(MultiAssignmentBase):
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                no_global_sync_with=no_global_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 boostable=boostable,
@@ -884,7 +885,6 @@ class CallInstruction(MultiAssignmentBase):
             groups=None,
             conflicts_with_groups=None,
             no_sync_with=None,
-            no_global_sync_with=None,
             within_inames_is_final=None,
             within_inames=None,
             boostable=None, boostable_into=None, tags=None,
@@ -901,7 +901,6 @@ class CallInstruction(MultiAssignmentBase):
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                no_global_sync_with=no_global_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 boostable=boostable,
@@ -1072,7 +1071,6 @@ class CInstruction(InstructionBase):
             id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
-            no_global_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset(), tags=None,
@@ -1093,7 +1091,6 @@ class CInstruction(InstructionBase):
                 depends_on_is_final=depends_on_is_final,
                 groups=groups, conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                no_global_sync_with=no_global_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 boostable=boostable,
@@ -1254,7 +1251,6 @@ class NoOpInstruction(_DataObliviousInstruction):
     def __init__(self, id=None, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
-            no_global_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
             boostable=None, boostable_into=None,
@@ -1266,7 +1262,6 @@ class NoOpInstruction(_DataObliviousInstruction):
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                no_global_sync_with=no_global_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
@@ -1307,7 +1302,6 @@ class BarrierInstruction(_DataObliviousInstruction):
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
-            no_global_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
             boostable=None, boostable_into=None,
@@ -1324,7 +1318,6 @@ class BarrierInstruction(_DataObliviousInstruction):
                 groups=groups,
                 conflicts_with_groups=conflicts_with_groups,
                 no_sync_with=no_sync_with,
-                no_global_sync_with=no_global_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,

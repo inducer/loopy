@@ -1410,11 +1410,8 @@ def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
     if reverse:
         source, target = target, source
 
-    if source.id in target.no_sync_with:
-        return None
-
-    if var_kind == "global" and source.id in target.no_global_sync_with:
-        return None
+    if source.id in kernel.get_nosync_set(target.id, var_kind):
+        return
 
     # {{{ check that a dependency exists
 
