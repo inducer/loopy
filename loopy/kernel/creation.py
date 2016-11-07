@@ -1446,8 +1446,11 @@ def resolve_wildcard_deps(knl):
         if insn.depends_on is not None:
             insn = insn.copy(
                     depends_on=resove_wildcard_insn_ids(knl, insn.depends_on),
-                    no_sync_with=resove_wildcard_insn_ids(
-                        knl, insn.no_sync_with),
+                    no_sync_with=frozenset(
+                        (resolved_insn_id, nosync_scope)
+                        for insn_id, nosync_scope in insn.no_sync_with
+                        for resolved_insn_id in
+                        resove_wildcard_insn_ids(knl, [insn_id])),
                     )
 
         new_insns.append(insn)
