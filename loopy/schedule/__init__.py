@@ -1138,7 +1138,8 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
             if isinstance(insn, BarrierInstruction):
                 result.append(Barrier(
                     kind=insn.kind,
-                    originating_insn_id=insn.id))
+                    originating_insn_id=insn.id,
+                    comment="Barrier inserted due to %s" % insn.id))
                 continue
 
         result.append(sched_item)
