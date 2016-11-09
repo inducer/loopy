@@ -36,7 +36,6 @@ from loopy.kernel.data import MultiAssignmentBase
 from loopy.diagnostic import warn_with_kernel, LoopyError
 
 
-#TODO does this work for class functions?
 __doc__ = """
 
 .. currentmodule:: loopy
