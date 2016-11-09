@@ -576,6 +576,7 @@ class ArrayBase(Record):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
+            target=None,
             **kwargs):
         """
         All of the following are optional. Specify either strides or shape.
@@ -659,7 +660,7 @@ class ArrayBase(Record):
 
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
-                for_atomic=for_atomic)
+                for_atomic=for_atomic, target=target)
 
         strides_known = strides is not None and strides is not lp.auto
         shape_known = shape is not None and shape is not lp.auto
