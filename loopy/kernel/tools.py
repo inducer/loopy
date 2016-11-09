@@ -116,14 +116,14 @@ def add_and_infer_dtypes(knl, dtype_dict):
 
     knl = add_dtypes(knl, processed_dtype_dict)
 
-    from loopy.preprocess import infer_unknown_types
+    from loopy.type_inference import infer_unknown_types
     return infer_unknown_types(knl, expect_completion=True)
 
 
 def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
     knl = _add_dtypes_overdetermined(knl, dtype_dict)
 
-    from loopy.preprocess import infer_unknown_types
+    from loopy.type_inference import infer_unknown_types
     return infer_unknown_types(knl, expect_completion=True)
 
 # }}}

@@ -29,7 +29,7 @@ import numpy as np
 
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
-from loopy.expression import TypeInferenceMapper
+from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
