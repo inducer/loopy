@@ -187,14 +187,14 @@ def to_loopy_type(dtype, allow_none=False, allow_auto=False, for_atomic=False,
 
     numpy_dtype = None
 
-    if target is not None and isinstance(dtype, str):
-        numpy_dtype = target.get_dtype_registry().get_or_register_dtype(dtype)
-
     if dtype is not None:
         try:
             numpy_dtype = np.dtype(dtype)
         except Exception:
             pass
+
+    if numpy_dtype is None and target is not None and isinstance(dtype, str):
+        numpy_dtype = target.get_dtype_registry().get_or_register_dtype(dtype)
 
     if isinstance(dtype, LoopyType):
         if for_atomic:
