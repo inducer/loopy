@@ -76,21 +76,29 @@ def set_instruction_priority(kernel, insn_match, priority):
 
 # {{{ add_dependency
 
-def add_dependency(kernel, insn_match, dependency):
+def add_dependency(kernel, insn_match, depends_on):
     """Add the instruction dependency *dependency* to the instructions matched
     by *insn_match*.
 
-    *insn_match* may be any instruction id match understood by
+    *insn_match* and *depends_on* may be any instruction id match understood by
     :func:`loopy.match.parse_match`.
+
+    .. versionchanged:: 2016.3
+
+        Third argument renamed to *depends_on* for clarity, allowed to
+        be not just ID but also match expression.
     """
 
-    if dependency not in kernel.id_to_insn:
-        raise LoopyError("cannot add dependency on non-existent instruction ID '%s'"
-                % dependency)
+    if isinstance(depends_on, str) and depends_on in kernel.id_to_insn:
+        added_deps = frozenset([depends_on])
+    else:
+        added_deps = find_instructions(depends_on)
+
+    if not added_deps:
+        raise LoopyError("no instructions found matching '%s'" % depends_on)
 
     def add_dep(insn):
         new_deps = insn.depends_on
-        added_deps = frozenset([dependency])
         if new_deps is None:
             new_deps = added_deps
         else:
