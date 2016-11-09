@@ -1,5 +1,5 @@
-"""Operations on the kernel object."""
 # coding=utf-8
+"""Operations on the kernel object."""
 
 from __future__ import division, absolute_import, print_function
 
