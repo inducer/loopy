@@ -38,7 +38,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# {{{ type inference
+# {{{ type inference mapper
 
 class TypeInferenceMapper(CombineMapper):
     def __init__(self, kernel, new_assignments=None):
