@@ -70,7 +70,7 @@ def _add_dtypes(knl, dtype_dict):
     for arg in knl.args:
         new_dtype = dtype_dict.pop(arg.name, None)
         if new_dtype is not None:
-            new_dtype = to_loopy_type(new_dtype)
+            new_dtype = to_loopy_type(new_dtype, target=knl.target)
             if arg.dtype is not None and arg.dtype != new_dtype:
                 raise RuntimeError(
                         "argument '%s' already has a different dtype "
