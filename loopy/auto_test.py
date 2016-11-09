@@ -109,7 +109,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
             ref_arg_data.append(None)
 
         elif arg.arg_class is GlobalArg or arg.arg_class is ImageArg \
-            or arg.arg_class is ConstantArg:
+                or arg.arg_class is ConstantArg:
             if arg.shape is None or any(saxis is None for saxis in arg.shape):
                 raise LoopyError("array '%s' needs known shape to use automatic "
                         "testing" % arg.name)
