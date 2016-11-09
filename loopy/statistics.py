@@ -114,7 +114,7 @@ class ExpressionOpCounter(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
-        from loopy.expression import TypeInferenceMapper
+        from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
     def combine(self, values):
@@ -245,7 +245,7 @@ class GlobalSubscriptCounter(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
-        from loopy.expression import TypeInferenceMapper
+        from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
     def combine(self, values):
