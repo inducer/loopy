@@ -36,7 +36,8 @@ import pymbolic.primitives as p
 from pymbolic import var
 
 
-from loopy.expression import dtype_to_type_context, TypeInferenceMapper
+from loopy.expression import dtype_to_type_context
+from loopy.type_inference import TypeInferenceMapper
 
 from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.tools import is_integer
