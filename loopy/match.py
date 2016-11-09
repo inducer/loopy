@@ -107,6 +107,8 @@ _PREC_NOT = 30
 
 # }}}
 
+# }}}
+
 
 # {{{ match expression
 
@@ -347,8 +349,6 @@ def parse_match(expr):
         pstate.raise_parse_error("leftover input after completed parse")
 
     return result
-
-# }}}
 
 # }}}
 
