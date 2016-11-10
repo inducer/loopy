@@ -364,7 +364,7 @@ class InstructionBase(Record):
             raise RuntimeError("unexpected value for Instruction.boostable")
 
         if self.depends_on:
-            result.append("deps="+":".join(self.depends_on))
+            result.append("dep="+":".join(self.depends_on))
         if self.no_sync_with:
             result.append("nosync="+":".join(self.no_sync_with))
         if self.groups:
@@ -1285,6 +1285,8 @@ class BarrierInstruction(_DataObliviousInstruction):
 
         ... gbarrier
     """
+
+    fields = _DataObliviousInstruction.fields | set(["kind"])
 
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,

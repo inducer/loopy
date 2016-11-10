@@ -162,9 +162,12 @@ def build_global_storage_to_sweep_map(kernel, access_descriptors,
 # {{{ compute storage bounds
 
 def find_var_base_indices_and_shape_from_inames(
-        domain, inames, cache_manager, context=None):
+        domain, inames, cache_manager, context=None,
+        n_allowed_params_in_shape=None):
     base_indices_and_sizes = [
-            cache_manager.base_index_and_length(domain, iname, context)
+            cache_manager.base_index_and_length(
+                domain, iname, context,
+                n_allowed_params_in_length=n_allowed_params_in_shape)
             for iname in inames]
     return list(zip(*base_indices_and_sizes))
 
@@ -183,7 +186,8 @@ def compute_bounds(kernel, domain, stor2sweep,
 
     return find_var_base_indices_and_shape_from_inames(
             storage_domain, [saxis+"'" for saxis in storage_axis_names],
-            kernel.cache_manager, context=kernel.assumptions)
+            kernel.cache_manager, context=kernel.assumptions,
+            n_allowed_params_in_shape=stor2sweep.dim(isl.dim_type.param))
 
 # }}}
 

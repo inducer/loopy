@@ -160,7 +160,7 @@ class KernelExecutorBase(object):
 
             kernel = add_dtypes(kernel, var_to_dtype)
 
-            from loopy.preprocess import infer_unknown_types
+            from loopy.type_inference import infer_unknown_types
             kernel = infer_unknown_types(kernel, expect_completion=True)
 
         if kernel.schedule is None:

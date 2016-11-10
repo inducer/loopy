@@ -63,7 +63,7 @@ def test_chunk_iname(ctx_factory):
 
     ref_knl = knl
     knl = lp.chunk_iname(knl, "i", 3, inner_tag="l.0")
-    knl = lp.set_loop_priority(knl, "i_outer, i_inner")
+    knl = lp.prioritize_loops(knl, "i_outer, i_inner")
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=130))
 
 
@@ -369,7 +369,7 @@ def test_precompute_with_preexisting_inames(ctx_factory):
     knl = lp.precompute(knl, "D2_subst", "i,k", default_tag="for",
             precompute_inames="ii,jj")
 
-    knl = lp.set_loop_priority(knl, "ii,jj,e,j,k")
+    knl = lp.prioritize_loops(knl, "ii,jj,e,j,k")
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl,

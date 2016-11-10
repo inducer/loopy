@@ -69,7 +69,7 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
           set_q_storage_format, set_D_storage_format)
 
     hsv = lp.fix_parameters(hsv, Nq=Nq)
-    hsv = lp.set_loop_priority(hsv, "e,k,j,i")
+    hsv = lp.prioritize_loops(hsv, "e,k,j,i")
     hsv = lp.tag_inames(hsv, dict(e="g.0", j="l.1", i="l.0"))
     hsv = lp.assume(hsv, "elements >= 1")
 
