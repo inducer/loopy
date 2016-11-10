@@ -151,7 +151,7 @@ def get_default_insn_options_dict():
     return {
         "depends_on": frozenset(),
         "depends_on_is_final": False,
-        "no_sync_with": None,
+        "no_sync_with": frozenset(),
         "groups": frozenset(),
         "conflicts_with_groups": frozenset(),
         "insn_id": None,
@@ -235,9 +235,19 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 raise LoopyError("'nosync' option may not be specified "
                         "in a 'with' block")
 
-            result["no_sync_with"] = frozenset(
+            result["no_sync_with"] = result["no_sync_with"].union(frozenset(
                     intern(dep.strip()) for dep in opt_value.split(":")
-                    if dep.strip())
+                    if dep.strip()))
+
+        elif opt_key == "nosync_query" and opt_value is not None:
+            if is_with_block:
+                raise LoopyError("'nosync' option may not be specified "
+                        "in a 'with' block")
+
+            from loopy.match import parse_match
+            match = parse_match(opt_value)
+            result["no_sync_with"] = result["no_sync_with"].union(
+                    frozenset([match]))
 
         elif opt_key == "groups" and opt_value is not None:
             result["groups"] = frozenset(
