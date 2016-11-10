@@ -1586,6 +1586,25 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
 
     assert np.array_equal(a, a2)
 
+def test_header_extract(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             T[k] = k**2
+         end
+         """,
+         [lp.ConstantArg('T', shape=(200,), dtype=np.float32),
+         '...'])
+
+    knl = lp.fix_parameters(knl, n=200)
+
+    #test C
+    cknl = knl
+    cknl.target = lp.CTarget()
+    assert lp.generate_header(cknl) == 'void loopy_kernel(float* T)'
+
 
 def test_base_storage_decl():
     knl = lp.make_kernel(

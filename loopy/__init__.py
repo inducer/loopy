@@ -119,7 +119,7 @@ from loopy.statistics import (get_op_poly, sum_ops_to_dtypes,
         gather_access_footprints, gather_access_footprint_bytes)
 from loopy.codegen import (
         PreambleInfo,
-        generate_code, generate_code_v2, generate_body)
+        generate_code, generate_code_v2, generate_body, generate_header)
 from loopy.codegen.result import (
         GeneratedProgram,
         CodeGenerationResult)
