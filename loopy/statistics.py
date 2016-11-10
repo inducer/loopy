@@ -44,15 +44,8 @@ __doc__ = """
 .. autoclass:: Op
 .. autoclass:: MemAccess
 
-.. autofunction:: get_op_poly
 .. autofunction:: get_op_map
-
-.. autofunction:: get_lmem_access_poly
-.. autofunction:: get_DRAM_access_poly
-.. autofunction:: get_gmem_access_poly
 .. autofunction:: get_mem_access_map
-
-.. autofunction:: get_synchronization_poly
 .. autofunction:: get_synchronization_map
 
 .. autofunction:: gather_access_footprints
