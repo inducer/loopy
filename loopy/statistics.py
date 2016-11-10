@@ -530,24 +530,14 @@ class ExpressionOpCounter(CombineMapper):
     map_tagged_variable = map_constant
     map_variable = map_constant
 
-    #def map_wildcard(self, expr):
-    #    return 0,0
-
-    #def map_function_symbol(self, expr):
-    #    return 0,0
-
     def map_call(self, expr):
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
                         name='func:'+str(expr.function)): 1}
                     ) + self.rec(expr.parameters)
 
-    # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
-
-    def map_subscript(self, expr):  # implemented in CombineMapper
+    def map_subscript(self, expr):
         return self.rec(expr.index)
-
-    # def map_lookup(self, expr):  # implemented in CombineMapper
 
     def map_sum(self, expr):
         assert expr.children
@@ -675,8 +665,6 @@ class LocalSubscriptCounter(CombineMapper):
 
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
-            #print("array: ", array)
-            #print("is local? ", array.is_local)
             if array.is_local:
                 return ToCountMap(
                         {MemAccess(mtype='local',
@@ -736,7 +724,6 @@ class LocalSubscriptCounter(CombineMapper):
                + self.rec(expr.else_)
 
     map_min = map_bitwise_or
-    map_max = map_min
 
     def map_common_subexpression(self, expr):
         raise NotImplementedError("LocalSubscriptCounter encountered "
@@ -758,8 +745,6 @@ class LocalSubscriptCounter(CombineMapper):
                                   "map_slice not implemented.")
 
 # }}}
-
-
 
 
 # {{{ GlobalSubscriptCounter
@@ -923,7 +908,6 @@ class GlobalSubscriptCounter(CombineMapper):
                + self.rec(expr.else_)
 
     map_min = map_bitwise_or
-    map_max = map_min
 
     def map_common_subexpression(self, expr):
         raise NotImplementedError("GlobalSubscriptCounter encountered "
