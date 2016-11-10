@@ -149,7 +149,7 @@ def expand_defines_in_expr(expr, defines):
 
 def get_default_insn_options_dict():
     return {
-        "depends_on": None,
+        "depends_on": frozenset(),
         "depends_on_is_final": False,
         "no_sync_with": None,
         "groups": frozenset(),
@@ -221,9 +221,14 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 result["depends_on_is_final"] = True
                 opt_value = (opt_value[1:]).strip()
 
-            result["depends_on"] = frozenset(
+            result["depends_on"] = result["depends_on"].union(frozenset(
                     intern(dep.strip()) for dep in opt_value.split(":")
-                    if dep.strip())
+                    if dep.strip()))
+
+        elif opt_key == "dep_query" and opt_value is not None:
+            from loopy.match import parse_match
+            match = parse_match(opt_value)
+            result["depends_on"] = result["depends_on"].union(frozenset([match]))
 
         elif opt_key == "nosync" and opt_value is not None:
             if is_with_block:
@@ -555,10 +560,16 @@ def parse_instructions(instructions, defines):
             continue
 
         elif isinstance(insn, InstructionBase):
+            def intern_if_str(s):
+                if isinstance(s, str):
+                    return intern(s)
+                else:
+                    return s
+
             new_instructions.append(
                     insn.copy(
                         id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
-                        depends_on=frozenset(intern(dep) for dep in insn.depends_on),
+                        depends_on=frozenset(intern_if_str(dep) for dep in insn.depends_on),
                         groups=frozenset(intern(grp) for grp in insn.groups),
                         conflicts_with_groups=frozenset(
                             intern(grp) for grp in insn.conflicts_with_groups),
@@ -1416,21 +1427,17 @@ def apply_default_order_to_args(kernel, default_order):
 
 def _resolve_dependencies(knl, insn, deps):
     from loopy import find_instructions
-    from loopy.match import Id
+    from loopy.match import MatchExpressionBase
 
     new_deps = []
 
     for dep in deps:
-        # Try to match the given dependency as an instruction ID
-        new_dep = find_instructions(knl, Id(dep))
-        # if not successful, treat the dependency as a match pattern
-        if not new_dep:
-            new_dep = find_instructions(knl, dep)
-
-        for ndep in new_dep:
-            # Avoid having instructions depend on themselves
-            if ndep.id != insn.id:
-                new_deps.append(ndep.id)
+        if isinstance(dep, MatchExpressionBase):
+            for new_dep in find_instructions(knl, dep):
+                if new_dep.id != insn.id:
+                    new_deps.append(new_dep.id)
+        else:
+            new_deps.append(dep)
 
     return frozenset(new_deps)
 
