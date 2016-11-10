@@ -72,7 +72,7 @@ _id = intern("_id")
 _tag = intern("_tag")
 _writes = intern("_writes")
 _reads = intern("_reads")
-_iname = intern("_reads")
+_iname = intern("_iname")
 
 _whitespace = intern("_whitespace")
 
@@ -246,7 +246,7 @@ class Reads(GlobMatchExpressionBase):
 class Iname(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
-                for name in matchable.inames(kernel))
+                for name in matchable.within_inames)
 
 # }}}
 
