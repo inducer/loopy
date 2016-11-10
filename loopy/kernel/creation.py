@@ -1437,7 +1437,10 @@ def _resolve_dependencies(knl, insn, deps):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
         else:
-            new_deps.append(dep)
+            from fnmatch import fnmatchcase
+            for other_insn in knl.instructions:
+                if fnmatchcase(other_insn.id, dep):
+                    new_deps.append(other_insn.id)
 
     return frozenset(new_deps)
 
