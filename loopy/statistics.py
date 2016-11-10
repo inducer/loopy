@@ -654,17 +654,13 @@ class LocalSubscriptCounter(CombineMapper):
         return self.rec(expr.parameters)
 
     def map_subscript(self, expr):
+        sub_map = ToCountMap()
         name = expr.aggregate.name  # name of array
-
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
             if array.is_local:
-                return ToCountMap(
-                        {MemAccess(mtype='local',
-                                   dtype=self.type_inf(expr)): 1}
-                        ) + self.rec(expr.index)
-
-        return self.rec(expr.index)
+                sub_map[MemAccess(mtype='local', dtype=self.type_inf(expr))] = 1
+        return sub_map + self.rec(expr.index)
             
     def map_sum(self, expr):
         if expr.children:
