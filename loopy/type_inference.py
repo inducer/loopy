@@ -53,9 +53,41 @@ class TypeInferenceMapper(CombineMapper):
         if new_assignments is None:
             new_assignments = {}
         self.new_assignments = new_assignments
+        self.symbols_with_unknown_types = set()
+
+    def __call__(self, expr, return_tuple=False, return_dtype_set=False):
+        kwargs = {}
+        if return_tuple:
+            kwargs["return_tuple"] = True
+
+        result = super(TypeInferenceMapper, self).__call__(
+                expr, **kwargs)
+
+        assert isinstance(result, list)
+
+        if return_tuple:
+            for result_i in result:
+                assert isinstance(result_i, tuple)
+
+            assert return_dtype_set
+            return result
+
+        else:
+            if return_dtype_set:
+                return result
+            else:
+                if not result:
+                    raise DependencyTypeInferenceFailure(
+                            ", ".join(sorted(self.symbols_with_unknown_types)))
+
+                result, = result
+                return result
 
     # /!\ Introduce caches with care--numpy.float32(x) and numpy.float64(x)
     # are Python-equal (for many common constants such as integers).
+
+    def copy(self):
+        return type(self)(self.kernel, self.new_assignments)
 
     def with_assignments(self, names_to_vars):
         new_ass = self.new_assignments.copy()
@@ -63,27 +95,52 @@ class TypeInferenceMapper(CombineMapper):
         return type(self)(self.kernel, new_ass)
 
     @staticmethod
-    def combine(dtypes):
-        # dtypes may just be a generator expr
-        dtypes = list(dtypes)
+    def combine(dtype_sets):
+        """
+        :arg dtype_sets: A list of lists, where each of the inner lists
+            consists of either zero or one type. An empty list is
+            consistent with any type. A list with a type requires
+            that an operation be valid in conjunction with that type.
+        """
+        assert isinstance(dtype_sets, (list, tuple))
 
         from loopy.types import LoopyType, NumpyType
-        assert all(isinstance(dtype, LoopyType) for dtype in dtypes)
+        assert all(
+                all(isinstance(dtype, LoopyType) for dtype in dtype_set)
+                for dtype_set in dtype_sets)
+        assert all(
+                0 <= len(dtype_set) <= 1
+                for dtype_set in dtype_sets)
 
-        if not all(isinstance(dtype, NumpyType) for dtype in dtypes):
+        if not all(
+                isinstance(dtype, NumpyType)
+                for dtype_set in dtype_sets
+                for dtype in dtype_set):
             from pytools import is_single_valued, single_valued
-            if not is_single_valued(dtypes):
+            if not is_single_valued(
+                    dtype
+                    for dtype_set in dtype_sets
+                    for dtype in dtype_set):
                 raise TypeInferenceFailure(
                         "Nothing known about operations between '%s'"
-                        % ", ".join(str(dt) for dt in dtypes))
+                        % ", ".join(str(dtype)
+                            for dtype_set in dtype_sets
+                            for dtype in dtype_set))
 
-            return single_valued(dtypes)
+            return single_valued(dtype
+                            for dtype_set in dtype_sets
+                            for dtype in dtype_set)
 
-        dtypes = [dtype.dtype for dtype in dtypes]
+        numpy_dtypes = [dtype.dtype
+                for dtype_set in dtype_sets
+                for dtype in dtype_set]
 
-        result = dtypes.pop()
-        while dtypes:
-            other = dtypes.pop()
+        if not numpy_dtypes:
+            return []
+
+        result = numpy_dtypes.pop()
+        while numpy_dtypes:
+            other = numpy_dtypes.pop()
 
             if result.fields is None and other.fields is None:
                 if (result, other) in [
@@ -110,62 +167,66 @@ class TypeInferenceMapper(CombineMapper):
                             "nothing known about result of operation on "
                             "'%s' and '%s'" % (result, other))
 
-        return NumpyType(result)
+        return [NumpyType(result)]
 
     def map_sum(self, expr):
-        dtypes = []
-        small_integer_dtypes = []
+        dtype_sets = []
+        small_integer_dtype_sets = []
         for child in expr.children:
-            dtype = self.rec(child)
+            dtype_set = self.rec(child)
             if is_integer(child) and abs(child) < 1024:
-                small_integer_dtypes.append(dtype)
+                small_integer_dtype_sets.append(dtype_set)
             else:
-                dtypes.append(dtype)
+                dtype_sets.append(dtype_set)
 
         from pytools import all
-        if all(dtype.is_integral() for dtype in dtypes):
-            dtypes.extend(small_integer_dtypes)
+        if all(dtype.is_integral()
+                for dtype_set in dtype_sets
+                for dtype in dtype_set):
+            dtype_sets.extend(small_integer_dtype_sets)
 
-        return self.combine(dtypes)
+        return self.combine(dtype_sets)
 
     map_product = map_sum
 
     def map_quotient(self, expr):
-        n_dtype = self.rec(expr.numerator)
-        d_dtype = self.rec(expr.denominator)
+        n_dtype_set = self.rec(expr.numerator)
+        d_dtype_set = self.rec(expr.denominator)
 
-        if n_dtype.is_integral() and d_dtype.is_integral():
+        dtypes = n_dtype_set + d_dtype_set
+
+        if any(dtype.is_integral() for dtype in dtypes):
             # both integers
             return NumpyType(np.dtype(np.float64))
 
         else:
-            return self.combine([n_dtype, d_dtype])
+            return self.combine([n_dtype_set, d_dtype_set])
 
     def map_constant(self, expr):
         if is_integer(expr):
             for tp in [np.int32, np.int64]:
                 iinfo = np.iinfo(tp)
                 if iinfo.min <= expr <= iinfo.max:
-                    return NumpyType(np.dtype(tp))
+                    return [NumpyType(np.dtype(tp))]
 
             else:
                 raise TypeInferenceFailure("integer constant '%s' too large" % expr)
 
         dt = np.asarray(expr).dtype
         if hasattr(expr, "dtype"):
-            return NumpyType(expr.dtype)
+            return [NumpyType(expr.dtype)]
         elif isinstance(expr, np.number):
             # Numpy types are sized
-            return NumpyType(np.dtype(type(expr)))
+            return [NumpyType(np.dtype(type(expr)))]
         elif dt.kind == "f":
             # deduce the smaller type by default
-            return NumpyType(np.dtype(np.float32))
+            return [NumpyType(np.dtype(np.float32))]
         elif dt.kind == "c":
             if np.complex64(expr) == np.complex128(expr):
                 # (COMPLEX_GUESS_LOGIC)
                 # No precision is lost by 'guessing' single precision, use that.
                 # This at least covers simple cases like '1j'.
-                return NumpyType(np.dtype(np.complex64))
+                return [NumpyType(np.dtype(np.complex64))]
 
             # Codegen for complex types depends on exactly correct types.
             # Refuse temptation to guess.
@@ -180,7 +241,7 @@ class TypeInferenceMapper(CombineMapper):
     def map_linear_subscript(self, expr):
         return self.rec(expr.aggregate)
 
-    def map_call(self, expr, multiple_types_ok=False):
+    def map_call(self, expr, return_tuple=False):
         from pymbolic.primitives import Variable
 
         identifier = expr.function
@@ -190,19 +251,28 @@ class TypeInferenceMapper(CombineMapper):
         if identifier in ["indexof", "indexof_vec"]:
             return self.kernel.index_dtype
 
-        arg_dtypes = tuple(self.rec(par) for par in expr.parameters)
+        def none_if_empty(d):
+            if d:
+                d, = d
+                return d
+            else:
+                return None
+
+        arg_dtypes = tuple(none_if_empty(self.rec(par)) for par in expr.parameters)
+        if None in arg_dtypes:
+            return []
 
         mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
-        if multiple_types_ok:
+        if return_tuple:
             if mangle_result is not None:
-                return mangle_result.result_dtypes
+                return [mangle_result.result_dtypes]
         else:
             if mangle_result is not None:
-                if len(mangle_result.result_dtypes) != 1 and not multiple_types_ok:
+                if len(mangle_result.result_dtypes) != 1 and not return_tuple:
                     raise LoopyError("functions with more or fewer than one "
                             "return value may only be used in direct assignments")
 
-                return mangle_result.result_dtypes[0]
+                return [mangle_result.result_dtypes[0]]
 
         raise RuntimeError("unable to resolve "
                 "function '%s' with %d given arguments"
@@ -210,7 +280,7 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():
-            return self.kernel.index_dtype
+            return [self.kernel.index_dtype]
 
         result = self.kernel.mangle_symbol(
                 self.kernel.target.get_device_ast_builder(),
@@ -218,7 +288,7 @@ class TypeInferenceMapper(CombineMapper):
 
         if result is not None:
             result_dtype, _ = result
-            return result_dtype
+            return [result_dtype]
 
         obj = self.new_assignments.get(expr.name)
 
@@ -235,20 +305,18 @@ class TypeInferenceMapper(CombineMapper):
         from loopy.kernel.data import TemporaryVariable, KernelArgument
         import loopy as lp
         if isinstance(obj, TemporaryVariable):
-            result = obj.dtype
-            if result is lp.auto:
-                raise DependencyTypeInferenceFailure(
-                        "temporary variable '%s'" % expr.name,
-                        expr.name)
+            result = [obj.dtype]
+            if result[0] is lp.auto:
+                self.symbols_with_unknown_types.add(expr.name)
+                return []
             else:
                 return result
 
         elif isinstance(obj, KernelArgument):
-            result = obj.dtype
+            result = [obj.dtype]
             if result is None:
-                raise DependencyTypeInferenceFailure(
-                        "argument '%s'" % expr.name,
-                        expr.name)
+                self.symbols_with_unknown_types.add(expr.name)
+                return []
             else:
                 return result
 
@@ -260,58 +328,70 @@ class TypeInferenceMapper(CombineMapper):
 
     def map_lookup(self, expr):
         agg_result = self.rec(expr.aggregate)
-        field = agg_result.numpy_dtype.fields[expr.name]
+        if not agg_result:
+            return agg_result
+
+        field = agg_result[0].numpy_dtype.fields[expr.name]
         dtype = field[0]
-        return NumpyType(dtype)
+        return [NumpyType(dtype)]
 
     def map_comparison(self, expr):
         # "bool" is unusable because OpenCL's bool has indeterminate memory
         # format.
-        return NumpyType(np.dtype(np.int32))
+        return [NumpyType(np.dtype(np.int32))]
 
     map_logical_not = map_comparison
     map_logical_and = map_comparison
     map_logical_or = map_comparison
 
     def map_group_hw_index(self, expr, *args):
-        return self.kernel.index_dtype
+        return [self.kernel.index_dtype]
 
     def map_local_hw_index(self, expr, *args):
-        return self.kernel.index_dtype
+        return [self.kernel.index_dtype]
 
-    def map_reduction(self, expr, multiple_types_ok=False):
-        result = expr.operation.result_dtypes(
-                self.kernel, self.rec(expr.expr), expr.inames)
+    def map_reduction(self, expr, return_tuple=False):
+        rec_result = self.rec(expr.expr)
 
-        if multiple_types_ok:
-            return result
+        if rec_result:
+            rec_result, = rec_result
+            result = expr.operation.result_dtypes(
+                    self.kernel, rec_result, expr.inames)
+        else:
+            result = expr.operation.result_dtypes(
+                    self.kernel, None, expr.inames)
+
+        if result is None:
+            return []
+
+        if return_tuple:
+            return [result]
 
         else:
-            if len(result) != 1 and not multiple_types_ok:
+            if len(result) != 1 and not return_tuple:
                 raise LoopyError("reductions with more or fewer than one "
                         "return value may only be used in direct assignments")
 
-            return result[0]
+            return [result[0]]
 
 # }}}
 
 
-# {{{ infer types
+# {{{ infer single variable
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if var_name in kernel.all_params():
-        return kernel.index_dtype, []
+        return [kernel.index_dtype], []
 
     def debug(s):
         logger.debug("%s: %s" % (kernel.name, s))
 
-    dtypes = []
+    dtype_sets = []
 
     import loopy as lp
 
-    symbols_with_unavailable_types = []
+    type_inf_mapper = type_inf_mapper.copy()
 
-    from loopy.diagnostic import DependencyTypeInferenceFailure
     for writer_insn_id in kernel.writer_map().get(var_name, []):
         writer_insn = kernel.id_to_insn[writer_insn_id]
         if not isinstance(writer_insn, lp.MultiAssignmentBase):
@@ -319,38 +399,37 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
         expr = subst_expander(writer_insn.expression)
 
-        try:
-            debug("             via expr %s" % expr)
-            if isinstance(writer_insn, lp.Assignment):
-                result = type_inf_mapper(expr)
-            elif isinstance(writer_insn, lp.CallInstruction):
-                result_dtypes = type_inf_mapper(expr, multiple_types_ok=True)
+        debug("             via expr %s" % expr)
+        if isinstance(writer_insn, lp.Assignment):
+            result = type_inf_mapper(expr, return_dtype_set=True)
+        elif isinstance(writer_insn, lp.CallInstruction):
+            return_dtype_set = type_inf_mapper(expr, return_tuple=True,
+                    return_dtype_set=True)
 
-                result = None
-                for assignee, comp_dtype in zip(
-                        writer_insn.assignee_var_names(), result_dtypes):
+            result = []
+            for return_dtype_set in return_dtype_set:
+                result_i = None
+                for assignee, comp_dtype_set in zip(
+                        writer_insn.assignee_var_names(), return_dtype_set):
                     if assignee == var_name:
-                        result = comp_dtype
+                        result_i = comp_dtype_set
                         break
 
                 assert result is not None
+                result.append(result_i)
 
-            debug("             result: %s" % result)
+        debug("             result: %s" % result)
 
-            dtypes.append(result)
+        dtype_sets.append(result)
 
-        except DependencyTypeInferenceFailure as e:
-            debug("             failed: %s" % e)
-            symbols_with_unavailable_types.append(e.symbol)
-            #dtypes = None
-            #break
+    if not dtype_sets:
+        return None, type_inf_mapper.unknown_variables
 
-    if not dtypes:
-        return None, symbols_with_unavailable_types
+    result = type_inf_mapper.combine(dtype_sets)
 
-    result = type_inf_mapper.combine(dtypes)
+    return result, type_inf_mapper.symbols_with_unknown_types
 
-    return result, []
+# }}}
 
 
 class _DictUnionView:
@@ -372,6 +451,8 @@ class _DictUnionView:
 
         raise KeyError(key)
 
+
+# {{{ infer_unknown_types
 
 def infer_unknown_types(kernel, expect_completion=False):
     """Infer types on temporaries and arguments."""
@@ -427,8 +508,9 @@ def infer_unknown_types(kernel, expect_completion=False):
         result, symbols_with_unavailable_types = \
                 _infer_var_type(kernel, item.name, type_inf_mapper, subst_expander)
 
-        failed = result is None
+        failed = not result
         if not failed:
+            result, = result
             debug("     success: %s" % result)
             if isinstance(item, TemporaryVariable):
                 new_temp_vars[item.name] = item.copy(dtype=result)

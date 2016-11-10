@@ -37,6 +37,11 @@ class ReductionOperation(object):
     """
 
     def result_dtypes(self, target, arg_dtype, inames):
+        """
+        :arg arg_dtype: may be None if not known
+        :returns: None if not known, otherwise the returned type
+        """
+
         raise NotImplementedError
 
     def neutral_element(self, dtype, inames):
@@ -86,6 +91,9 @@ class ScalarReductionOperation(ReductionOperation):
         if self.forced_result_type is not None:
             return (self.parse_result_type(
                     kernel.target, self.forced_result_type),)
+
+        if arg_dtype is None:
+            return None
 
         return (arg_dtype,)
 
