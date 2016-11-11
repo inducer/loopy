@@ -470,27 +470,27 @@ def infer_unknown_types(kernel, expect_completion=False):
     new_temp_vars = kernel.temporary_variables.copy()
     new_arg_dict = kernel.arg_dict.copy()
 
-    # {{{ fill queue
+    # {{{ find names_with_unknown_types
 
-    # queue contains temporary variables
-    queue = []
+    # contains both arguments and temporaries
+    names_for_type_inference = []
 
     import loopy as lp
     for tv in six.itervalues(kernel.temporary_variables):
         if tv.dtype is lp.auto:
-            queue.append(tv)
+            names_for_type_inference.append(tv.name)
 
     for arg in kernel.args:
         if arg.dtype is None:
-            queue.append(arg)
+            names_for_type_inference.append(arg.name)
 
     # }}}
 
-    type_inf_mapper = TypeInferenceMapper(kernel,
-            _DictUnionView([
-                new_temp_vars,
-                new_arg_dict
-                ]))
+    item_lookup = _DictUnionView([
+            new_temp_vars,
+            new_arg_dict
+            ])
+    type_inf_mapper = TypeInferenceMapper(kernel, item_lookup)
 
     from loopy.symbolic import SubstitutionRuleExpander
     subst_expander = SubstitutionRuleExpander(kernel.substitutions)
@@ -499,9 +499,17 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     from loopy.kernel.data import TemporaryVariable, KernelArgument
 
+    changed_during_last_queue_run = False
+    queue = names_for_type_inference[:]
+
     failed_names = set()
-    while queue:
-        item = queue.pop(0)
+    while queue or changed_during_last_queue_run:
+        if not queue and changed_during_last_queue_run:
+            changed_during_last_queue_run = False
+            queue = names_for_type_inference[:]
+
+        name = queue.pop(0)
+        item = item_lookup[name]
 
         debug("inferring type for %s %s" % (type(item).__name__, item.name))
 
@@ -510,14 +518,18 @@ def infer_unknown_types(kernel, expect_completion=False):
 
         failed = not result
         if not failed:
-            result, = result
-            debug("     success: %s" % result)
-            if isinstance(item, TemporaryVariable):
-                new_temp_vars[item.name] = item.copy(dtype=result)
-            elif isinstance(item, KernelArgument):
-                new_arg_dict[item.name] = item.copy(dtype=result)
-            else:
-                raise LoopyError("unexpected item type in type inference")
+            new_dtype, = result
+            debug("     success: %s" % new_dtype)
+            if new_dtype != item.dtype:
+                debug("     changed from: %s" % item.dtype)
+                changed_during_last_queue_run = True
+
+                if isinstance(item, TemporaryVariable):
+                    new_temp_vars[name] = item.copy(dtype=new_dtype)
+                elif isinstance(item, KernelArgument):
+                    new_arg_dict[name] = item.copy(dtype=new_dtype)
+                else:
+                    raise LoopyError("unexpected item type in type inference")
         else:
             debug("     failure")
 
@@ -542,16 +554,14 @@ def infer_unknown_types(kernel, expect_completion=False):
             # remember that this item failed
             failed_names.add(item.name)
 
-            queue_names = set(qi.name for qi in queue)
-
-            if queue_names == failed_names:
+            if set(queue) == failed_names:
                 # We did what we could...
-                print(queue_names, failed_names, item.name)
+                print(queue, failed_names, item.name)
                 assert not expect_completion
                 break
 
             # can't infer type yet, put back into queue
-            queue.append(item)
+            queue.append(name)
         else:
             # we've made progress, reset failure markers
             failed_names = set()

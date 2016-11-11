@@ -253,11 +253,11 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
             "{[i]: 0 <= i < n }",
             """
             for i
-                <uint2> key = make_uint2(i, 324830944)  {inames=i}
-                <uint4> ctr = make_uint4(0, 1, 2, 3)  {inames=i,id=init_ctr}
+                <> key = make_uint2(i, 324830944)  {inames=i}
+                <> ctr = make_uint4(0, 1, 2, 3)  {inames=i,id=init_ctr}
                 <> vals, ctr = philox4x32_f32(ctr, key)  {dep=init_ctr}
             end
-            z = sum_float32(i, vals.s0 + vals.s1 + vals.s2 + vals.s3)
+            z = sum(i, vals.s0 + vals.s1 + vals.s2 + vals.s3)
             """)
 
     ref_knl = knl
