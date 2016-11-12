@@ -195,7 +195,7 @@ class TypeInferenceMapper(CombineMapper):
 
         dtypes = n_dtype_set + d_dtype_set
 
-        if any(dtype.is_integral() for dtype in dtypes):
+        if all(dtype.is_integral() for dtype in dtypes):
             # both integers
             return [NumpyType(np.dtype(np.float64))]
 
