@@ -249,7 +249,7 @@ class TypeInferenceMapper(CombineMapper):
             identifier = identifier.name
 
         if identifier in ["indexof", "indexof_vec"]:
-            return self.kernel.index_dtype
+            return [self.kernel.index_dtype]
 
         def none_if_empty(d):
             if d:
@@ -423,7 +423,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         dtype_sets.append(result)
 
     if not dtype_sets:
-        return None, type_inf_mapper.unknown_variables
+        return None, type_inf_mapper.symbols_with_unknown_types
 
     result = type_inf_mapper.combine(dtype_sets)
 
