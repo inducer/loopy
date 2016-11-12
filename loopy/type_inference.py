@@ -102,7 +102,7 @@ class TypeInferenceMapper(CombineMapper):
             consistent with any type. A list with a type requires
             that an operation be valid in conjunction with that type.
         """
-        assert isinstance(dtype_sets, (list, tuple))
+        dtype_sets = list(dtype_sets)
 
         from loopy.types import LoopyType, NumpyType
         assert all(
@@ -197,7 +197,7 @@ class TypeInferenceMapper(CombineMapper):
 
         if any(dtype.is_integral() for dtype in dtypes):
             # both integers
-            return NumpyType(np.dtype(np.float64))
+            return [NumpyType(np.dtype(np.float64))]
 
         else:
             return self.combine([n_dtype_set, d_dtype_set])
@@ -314,7 +314,7 @@ class TypeInferenceMapper(CombineMapper):
 
         elif isinstance(obj, KernelArgument):
             result = [obj.dtype]
-            if result is None:
+            if result[0] is None:
                 self.symbols_with_unknown_types.add(expr.name)
                 return []
             else:
