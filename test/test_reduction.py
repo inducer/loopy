@@ -249,6 +249,10 @@ def test_global_parallel_reduction(ctx_factory, size):
 def test_global_mc_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
 
+    import pyopencl.version  # noqa
+    if cl.version.VERSION < (2016, 2):
+        pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
+
     knl = lp.make_kernel(
             "{[i]: 0 <= i < n }",
             """
