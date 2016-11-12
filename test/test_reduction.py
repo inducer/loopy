@@ -221,7 +221,8 @@ def test_global_parallel_reduction(ctx_factory, size):
     knl = lp.make_kernel(
             "{[i]: 0 <= i < n }",
             """
-            z = sum(i, i/13)
+            # Using z[0] instead of z works around a bug in ancient PyOpenCL.
+            z[0] = sum(i, i/13)
             """)
 
     ref_knl = knl
