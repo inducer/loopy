@@ -105,7 +105,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 self.infer_type(expr), needed_dtype,
                 RecursiveMapper.rec(self, expr, type_context))
 
-    def __call__(self, expr, prec, type_context=None, needed_dtype=None):
+    def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
+        if prec is None:
+            prec = PREC_NONE
+
         assert prec == PREC_NONE
         from loopy.target.c import CExpression
         return CExpression(
