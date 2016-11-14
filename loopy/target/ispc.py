@@ -32,6 +32,7 @@ from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
 from pymbolic import var
 import pymbolic.primitives as p
+from pymbolic.mapper.stringifier import PREC_NONE
 
 from pytools import memoize_method
 
@@ -295,7 +296,7 @@ class ISPCASTBuilder(CASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def get_temporary_decl(self, knl, sched_index, temp_var, decl_info):
+    def get_temporary_decl(self, codegen_state, sched_index, temp_var, decl_info):
         from loopy.target.c import POD  # uses the correct complex type
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
@@ -306,13 +307,16 @@ class ISPCASTBuilder(CASTBuilder):
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # above in expr to code mapper)
-            _, lsize = knl.get_grid_size_upper_bounds_as_exprs()
+            _, lsize = codegen_state.kernel.get_grid_size_upper_bounds_as_exprs()
             shape = lsize + shape
 
         if shape:
             from cgen import ArrayOf
-            temp_var_decl = ArrayOf(temp_var_decl,
-                    " * ".join(str(s) for s in shape))
+            ecm = self.get_expression_to_code_mapper(codegen_state)
+            temp_var_decl = ArrayOf(
+                    temp_var_decl,
+                    ecm(p.flattened_product(decl_info.shape),
+                        prec=PREC_NONE, type_context="i"))
 
         return temp_var_decl
 
