@@ -1587,6 +1587,19 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
     assert np.array_equal(a, a2)
 
 
+def test_base_storage_decl():
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<n}",
+        "a[i] = 1",
+        [
+            lp.TemporaryVariable(
+                "a", dtype=np.float64, shape=("n",), base_storage="base"),
+            lp.ValueArg("n")],
+        target=lp.CTarget())
+
+    lp.generate_code_v2(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
