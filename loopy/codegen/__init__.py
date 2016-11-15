@@ -550,8 +550,6 @@ def generate_body(kernel):
 
 # }}}
 
-# {{{ extract function header
-
 from loopy.target.c import CASTIdentityMapper
 class FunctionDeclExtractor(CASTIdentityMapper):
     def __init__(self):
@@ -571,8 +569,4 @@ def generate_header(kernel):
     dev_prg, = codegen_result.device_programs
 
     fde = FunctionDeclExtractor()
-    return fde(dev_prg.ast)
-
-# }}}
-
-# vim: foldmethod=marker
+    return str(fde(dev_prg.decl_ast))
