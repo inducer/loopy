@@ -553,13 +553,11 @@ def generate_body(kernel):
 def generate_header(kernel):
     codegen_result = generate_code_v2(kernel)
 
-    if len(codegen_result.device_programs) != 1:
-        raise LoopyError("generate_header cannot be used on programs "
-                "that yield more than one device program")
-
-    dev_prg, = codegen_result.device_programs
-
+    headers = []
     fde = FunctionDeclExtractor()
-    return str(fde(dev_prg.decl_ast))
+    for dev_prg, _ in codegen_result.device_programs:
+        headers.append(str(fde(dev_prg.decl_ast)))
+
+    return '\n'.join(headers)
 
 # vim: foldmethod=marker
