@@ -31,6 +31,7 @@ import islpy as isl
 from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
+from loopy.target.c import CASTIdentityMapper
 
 import logging
 logger = logging.getLogger(__name__)
@@ -550,7 +551,6 @@ def generate_body(kernel):
 
 # }}}
 
-from loopy.target.c import CASTIdentityMapper
 class FunctionDeclExtractor(CASTIdentityMapper):
     def __init__(self):
         self.decls = []
