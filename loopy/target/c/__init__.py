@@ -259,6 +259,9 @@ class CTarget(TargetBase):
     def get_device_ast_builder(self):
         return CASTBuilder(self)
 
+    def get_device_decl_extractor(self):
+        return CFunctionDeclExtractor()
+
     # {{{ types
 
     @memoize_method
@@ -755,7 +758,7 @@ class CASTBuilder(ASTBuilderBase):
         sc(node)
         return node
 
-class FunctionDeclExtractor(CASTIdentityMapper):
+class CFunctionDeclExtractor(CASTIdentityMapper):
     def __init__(self):
         self.decls = []
 

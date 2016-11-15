@@ -138,6 +138,13 @@ class TargetBase(object):
         """
         raise NotImplementedError()
 
+    def get_device_decl_extractor(self):
+        """
+        :returns: a FunctionDeclExtractor (if implemented) that extracts a device function's
+            header definition
+        """
+        raise NotImplementedError()
+
 
 class ASTBuilderBase(object):
     """An interface for generating (host or device) ASTs.

@@ -551,6 +551,14 @@ def generate_body(kernel):
 # }}}
 
 def generate_header(kernel):
+    try:
+        fde = kernel.target.get_device_decl_extractor()
+    except NotImplementedError:
+        from warnings import warn
+        warn('Header generation for non C-based languages are not implemented',
+                RuntimeWarning, stacklevel=2)
+        return None
+
     codegen_result = generate_code_v2(kernel)
 
     headers = []
