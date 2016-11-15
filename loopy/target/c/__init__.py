@@ -755,5 +755,12 @@ class CASTBuilder(ASTBuilderBase):
         sc(node)
         return node
 
+class FunctionDeclExtractor(CASTIdentityMapper):
+    def __init__(self):
+        self.decls = []
+
+    def map_function_declaration(self, node):
+        self.decls.append(node)
+        return super(self.__class__, self).map_function_declaration(node)
 
 # vim: foldmethod=marker
