@@ -562,7 +562,7 @@ def generate_header(kernel):
     codegen_result = generate_code_v2(kernel)
 
     headers = []
-    for dev_prg, _ in codegen_result.device_programs:
+    for dev_prg in codegen_result.device_programs:
         headers.append(str(fde(dev_prg.decl_ast)))
 
     return '\n'.join(headers)
