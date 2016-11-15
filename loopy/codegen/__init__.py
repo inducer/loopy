@@ -570,3 +570,5 @@ def generate_header(kernel):
 
     fde = FunctionDeclExtractor()
     return str(fde(dev_prg.decl_ast))
+
+# vim: foldmethod=marker
