@@ -256,6 +256,14 @@ call :func:`loopy.generate_code`:
         out[i] = 2.0f * a[i];
     }
 
+Additionally, for C-based languages, header definitions can be obtained via
+the :func:`loopy.generate_header`:
+
+.. doctest::
+    >>> header = lp.generate_header(typed_knl)
+    >>> print(header)
+    __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *__restrict__ a, int const n, __global float *__restrict__ out);
+
 .. }}}
 
 .. _ordering:
