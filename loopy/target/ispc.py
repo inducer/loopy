@@ -476,12 +476,12 @@ class ISPCASTBuilder(CASTBuilder):
         from loopy.target.c import POD
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For, Initializer
+        from cgen import For, InlineInitializer
 
         from cgen.ispc import ISPCUniform
 
         return For(
-                Initializer(
+                InlineInitializer(
                     ISPCUniform(POD(self, iname_dtype, iname)),
                     ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
                 ecm(
