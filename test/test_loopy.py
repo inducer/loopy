@@ -1587,17 +1587,18 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
     assert np.array_equal(a, a2)
 
 
-def test_base_storage_decl():
-    knl = lp.make_kernel(
-        "{ [i]: 0<=i<n}",
-        "a[i] = 1",
-        [
-            lp.TemporaryVariable(
-                "a", dtype=np.float64, shape=("n",), base_storage="base"),
-            lp.ValueArg("n")],
-        target=lp.CTarget())
+def test_scalars_with_base_storage(ctx_factory):
+    """ Regression test for !50 """
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
 
-    lp.generate_code_v2(knl)
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<1}",
+            "a = 1",
+            [lp.TemporaryVariable("a", dtype=np.float64,
+                                  shape=(), base_storage="base")])
+
+    knl(queue, out_host=True)
 
 
 if __name__ == "__main__":
