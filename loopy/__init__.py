@@ -276,6 +276,9 @@ def set_options(kernel, *args, **kwargs):
     new_opt = kernel.options.copy()
 
     if kwargs:
+        from loopy.options import _apply_legacy_map, Options
+        kwargs = _apply_legacy_map(Options._legacy_options_map, kwargs)
+
         for key, val in six.iteritems(kwargs):
             if not hasattr(new_opt, key):
                 raise ValueError("unknown option '%s'" % key)

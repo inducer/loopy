@@ -23,6 +23,7 @@ THE SOFTWARE.
 """
 
 
+import six
 from pytools import Record
 import re
 
@@ -30,6 +31,27 @@ import re
 class _ColoramaStub(object):
     def __getattribute__(self, name):
         return ""
+
+
+def _apply_legacy_map(lmap, kwargs):
+    result = {}
+
+    for name, val in six.iteritems(kwargs):
+        try:
+            new_name, translator = lmap[name]
+        except KeyError:
+            new_name = name
+        else:
+            if name in result:
+                raise TypeError("may not pass a value for both '%s' and '%s'"
+                        % (name, new_name))
+
+            if translator is not None:
+                val = translator(val)
+
+        result[new_name] = val
+
+    return result
 
 
 class Options(Record):
@@ -91,7 +113,7 @@ class Options(Record):
         Accepts a file name as a value. Writes to
         ``sys.stdout`` if none is given.
 
-    .. attribute:: highlight_wrapper
+    .. attribute:: disable_wrapper_highlight
 
         Use syntax highlighting in :attr:`write_wrapper`.
 
@@ -125,6 +147,14 @@ class Options(Record):
     .. attribute:: disable_global_barriers
     """
 
+    _legacy_options_map = {
+            "cl_build_options": ("build_options", None),
+            "write_cl": ("write_code", None),
+            "highlight_cl": ("disable_code_highlight", lambda val: not val),
+            "highlight_wrapper": ("disable_wrapper_highlight", lambda val: not val),
+            "edit_cl": ("edit_code", None),
+            }
+
     def __init__(
             # All Boolean flags in here should default to False for the
             # string-based interface of make_options (below) to make sense.
@@ -132,70 +162,38 @@ class Options(Record):
             # All defaults are further required to be False when cast to bool
             # for the update() functionality to work.
 
-            self,
+            self, **kwargs):
 
-            annotate_inames=False,
-            trace_assignments=False,
-            trace_assignment_values=False,
-            ignore_boostable_into=False,
+        kwargs = _apply_legacy_map(self._legacy_options_map, kwargs)
 
-            skip_arg_checks=False, no_numpy=False, return_dict=False,
-            write_wrapper=False, highlight_wrapper=False,
-            write_code=None, disable_code_highlight=None,
-            edit_code=None, build_options=None,
-            allow_terminal_colors=None,
-            disable_global_barriers=False,
-
-            # legacy
-            write_cl=None,
-            highlight_cl=None,
-            cl_build_options=None,
-            edit_cl=None,
-            ):
-
-        if build_options is None:
-            build_options = cl_build_options
-        if build_options is None:
-            build_options = []
-
-        if write_code is None:
-            write_code = write_cl
-        if write_code is None:
-            write_code = False
-
-        if disable_code_highlight is None and highlight_cl is not None:
-            disable_code_highlight = not highlight_cl
-        if disable_code_highlight is None:
-            disable_code_highlight = False
-
-        if edit_code is None:
-            edit_code = edit_cl
-        if edit_code is None:
-            edit_code = False
-
-        if allow_terminal_colors is None:
-            try:
-                import colorama  # noqa
-            except ImportError:
-                allow_terminal_colors = False
-            else:
-                allow_terminal_colors = True
+        try:
+            import colorama  # noqa
+        except ImportError:
+            allow_terminal_colors_def = False
+        else:
+            allow_terminal_colors_def = True
 
         Record.__init__(
                 self,
 
-                annotate_inames=annotate_inames,
-                trace_assignments=trace_assignments,
-                trace_assignment_values=trace_assignment_values,
-                ignore_boostable_into=ignore_boostable_into,
+                annotate_inames=kwargs.get("annotate_inames", False),
+                trace_assignments=kwargs.get("trace_assignments", False),
+                trace_assignment_values=kwargs.get("trace_assignment_values", False),
+                ignore_boostable_into=kwargs.get("ignore_boostable_into", False),
 
-                skip_arg_checks=skip_arg_checks, no_numpy=no_numpy,
-                return_dict=return_dict,
-                write_wrapper=write_wrapper, highlight_wrapper=highlight_wrapper,
-                write_code=write_code, disable_code_highlight=disable_code_highlight,
-                edit_code=edit_code, build_options=build_options,
-                allow_terminal_colors=allow_terminal_colors,
-                disable_global_barriers=disable_global_barriers,
+                skip_arg_checks=kwargs.get("skip_arg_checks", False),
+                no_numpy=kwargs.get("no_numpy", False),
+                return_dict=kwargs.get("return_dict", False),
+                write_wrapper=kwargs.get("write_wrapper", False),
+                highlight_wrapper=kwargs.get("highlight_wrapper", False),
+                write_code=kwargs.get("write_code", False),
+                disable_code_highlight=kwargs.get("disable_code_highlight", False),
+                edit_code=kwargs.get("edit_code", False),
+                build_options=kwargs.get("build_options", []),
+                allow_terminal_colors=kwargs.get("allow_terminal_colors",
+                    allow_terminal_colors_def),
+                disable_global_barriers=kwargs.get("disable_global_barriers",
+                    False),
                 )
 
     # {{{ legacy compatibility
