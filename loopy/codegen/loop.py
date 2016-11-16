@@ -403,10 +403,10 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # {{{ find implemented loop, build inner code
 
-        from loopy.isl_helpers import make_loop_bound_from_pwaffs
+        from loopy.isl_helpers import make_loop_bounds_from_pwaffs
 
         # impl_loop may be overapproximated
-        impl_loop = make_loop_bound_from_pwaffs(
+        impl_loop = make_loop_bounds_from_pwaffs(
                 dom_and_slab.space,
                 loop_iname, lbound, ubound)
 
