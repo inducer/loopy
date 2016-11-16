@@ -401,24 +401,24 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # }}}
 
-        # {{{ find implemented slab, build inner code
+        # {{{ find implemented loop, build inner code
 
-        from loopy.isl_helpers import make_loop_bound_from_pwaffs
+        from loopy.isl_helpers import make_loop_bounds_from_pwaffs
 
-        # impl_slab may be overapproximated
-        impl_slab = make_loop_bound_from_pwaffs(
+        # impl_loop may be overapproximated
+        impl_loop = make_loop_bounds_from_pwaffs(
                 dom_and_slab.space,
                 loop_iname, lbound, ubound)
 
         for iname in moved_inames:
-            dt, idx = impl_slab.get_var_dict()[iname]
-            impl_slab = impl_slab.move_dims(
-                    dim_type.set, impl_slab.dim(dim_type.set),
+            dt, idx = impl_loop.get_var_dict()[iname]
+            impl_loop = impl_loop.move_dims(
+                    dim_type.set, impl_loop.dim(dim_type.set),
                     dt, idx, 1)
 
         new_codegen_state = (
                 codegen_state
-                .intersect(impl_slab)
+                .intersect(impl_loop)
                 .copy(kernel=intersect_kernel_with_slab(
                     kernel, slab, iname)))
 
