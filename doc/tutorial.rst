@@ -561,12 +561,11 @@ relation to loop nesting. For example, it's perfectly possible to request
     >>> knl = lp.set_options(knl, "write_cl")
     >>> evt, (out,) = knl(queue, a=x_vec_dev)
     #define lid(N) ((int) get_local_id(N))
-    ...
-      for (int i_inner = 0; i_inner <= 15; ++i_inner)
-        if (-1 + -1 * i_inner + n >= 0)
-          for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
-            a[16 * i_outer + i_inner] = 0.0f;
-    ...
+   ...
+     for (int i_inner = 0; i_inner <= (-17 + n >= 0 ? 15 : -1 + n); ++i_inner)
+       for (int i_outer = 0; i_outer <= -1 + -1 * i_inner + ((15 + n + 15 * i_inner) / 16); ++i_outer)
+         a[16 * i_outer + i_inner] = 0.0f;
+   ...
 
 Notice how loopy has automatically generated guard conditionals to make
 sure the bounds on the old iname are obeyed.
