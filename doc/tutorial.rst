@@ -532,9 +532,8 @@ Consider this example:
     #define lid(N) ((int) get_local_id(N))
     ...
       for (int i_outer = 0; i_outer <= -1 + ((15 + n) / 16); ++i_outer)
-        for (int i_inner = 0; i_inner <= 15; ++i_inner)
-          if (-1 + -1 * i_inner + -16 * i_outer + n >= 0)
-            a[16 * i_outer + i_inner] = 0.0f;
+        for (int i_inner = 0; i_inner <= (-16 + n + -16 * i_outer >= 0 ? 15 : -1 + n + -16 * i_outer); ++i_inner)
+          a[16 * i_outer + i_inner] = 0.0f;
     ...
 
 By default, the new, split inames are named *OLD_outer* and *OLD_inner*,
