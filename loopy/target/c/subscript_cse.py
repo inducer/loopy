@@ -151,17 +151,17 @@ class SubexpressionReplacementState(Record):
 def compute_term_subset_to_count(term_set_to_count, term_set_to_variable):
     logger.debug("TERM SET TO SUBSET COUNT:")
     for term_set, count in six.iteritems(term_set_to_count):
-        logger.debug(" + ".join(str(i) for i in term_set), count)
+        logger.debug("%s: %d" % (" + ".join(str(i) for i in term_set), count))
 
     result = {}
     for code_term_set, cnt in six.iteritems(term_set_to_count):
-        logger.debug("CTS:", " + ".join(str(i) for i in code_term_set))
+        logger.debug("CTS: " + " + ".join(str(i) for i in code_term_set))
         interacts_with_var_term_sets = [
                 var_term_set
                 for var_term_set in six.iterkeys(term_set_to_variable)
                 if var_term_set <= code_term_set]
 
-        logger.debug("INTERACTS:", interacts_with_var_term_sets)
+        logger.debug("INTERACTS: " + str(interacts_with_var_term_sets))
         for subset in generate_all_subsets(code_term_set, 1):
             if len(subset) == 1 and isinstance(six.next(iter(subset)), p.Variable):
                 continue
@@ -182,13 +182,13 @@ def compute_term_subset_to_count(term_set_to_count, term_set_to_variable):
 
     logger.debug("TERM SUBSET TO COUNT:")
     for term_set, count in six.iteritems(result):
-        logger.debug(" + ".join(str(i) for i in term_set), count)
+        logger.debug("%s: %d" % (" + ".join(str(i) for i in term_set), count))
 
     return result
 
 
 def simplify_terms(terms, term_set_to_variable):
-    logger.debug("BUILDING EXPR FOR:", "+".join(str(s) for s in terms))
+    logger.debug("BUILDING EXPR FOR: " + "+".join(str(s) for s in terms))
     did_something = True
     while did_something:
         did_something = False
@@ -198,15 +198,15 @@ def simplify_terms(terms, term_set_to_variable):
                 # longest first
                 key=lambda entry: len(entry[0]), reverse=True):
             if subset <= terms:
-                logger.debug("SIMPLIFYING", "+".join(str(s) for s in subset),
-                        "->", var_name)
+                logger.debug("SIMPLIFYING " + "+".join(str(s) for s in subset)
+                        + "->" + var_name)
                 terms = (
                         (terms - subset)
                         | frozenset([p.Variable(var_name)]))
                 did_something = True
                 break
 
-    logger.debug("GOT", "+".join(str(s) for s in terms))
+    logger.debug("GOT " + "+".join(str(s) for s in terms))
     return terms
 
 
