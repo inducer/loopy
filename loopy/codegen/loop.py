@@ -433,7 +433,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         zero = isl.PwAff.zero_on_domain(
             isl.LocalSpace.from_space(
-                lbound.get_space()))
+                lbound.get_space()).domain())
 
         from loopy.symbolic import pw_aff_to_expr
 
