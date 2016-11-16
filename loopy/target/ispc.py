@@ -355,7 +355,7 @@ class ISPCASTBuilder(CASTBuilder):
             ecm = self.get_expression_to_code_mapper(codegen_state)
             temp_var_decl = ArrayOf(
                     temp_var_decl,
-                    ecm(p.flattened_product(decl_info.shape),
+                    ecm(p.flattened_product(shape),
                         prec=PREC_NONE, type_context="i"))
 
         return temp_var_decl
