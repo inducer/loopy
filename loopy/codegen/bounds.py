@@ -62,18 +62,11 @@ def get_bounds_checks(domain, check_inames, implemented_domain,
 # {{{ on which inames may a conditional depend?
 
 def get_usable_inames_for_conditional(kernel, sched_index):
-    from loopy.schedule import EnterLoop, LeaveLoop
+    from loopy.schedule import find_active_inames_at, has_barrier_within
     from loopy.kernel.data import ParallelTag, LocalIndexTagBase, IlpBaseTag
 
-    result = set()
-
-    for i, sched_item in enumerate(kernel.schedule):
-        if i >= sched_index:
-            break
-        if isinstance(sched_item, EnterLoop):
-            result.add(sched_item.iname)
-        elif isinstance(sched_item, LeaveLoop):
-            result.remove(sched_item.iname)
+    result = find_active_inames_at(kernel, sched_index)
+    crosses_barrier = has_barrier_within(kernel, sched_index)
 
     for iname in kernel.all_inames():
         tag = kernel.iname_to_tag.get(iname)
@@ -87,7 +80,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
 
         if (
                 isinstance(tag, ParallelTag)
-                and not isinstance(tag, LocalIndexTagBase)
+                and not (isinstance(tag, LocalIndexTagBase) and crosses_barrier)
                 and not isinstance(tag, IlpBaseTag)
                 ):
             result.add(iname)
