@@ -216,7 +216,8 @@ class ASTBuilderBase(object):
     def emit_scope(self, codegen_state, available_variables, ast):
         return ast
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const,
+            short_for_expr=None):
         raise NotImplementedError()
 
     def emit_blank_line(self):
@@ -283,7 +284,8 @@ class DummyHostASTBuilder(ASTBuilderBase):
     def emit_if(self, condition_str, ast):
         return None
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const,
+            short_for_expr=None):
         return None
 
     def emit_blank_line(self):

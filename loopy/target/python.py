@@ -240,7 +240,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
                     ),
                 inner)
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const,
+            short_for_expr=None):
         from genpy import Assign
         return Assign(name, val_str)
 

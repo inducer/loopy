@@ -57,7 +57,7 @@ def generate_all_subsets(l, min_length):
             yield frozenset(entry for i, entry in enumerate(l) if (1 << i) & bits)
 
 
-def get_terms(allowable_vars, is_term_allowed, expr):
+def get_terms(allowable_vars, expr):
     if isinstance(expr, p.Sum):
         terms = expr.children
     else:
@@ -71,8 +71,7 @@ def get_terms(allowable_vars, is_term_allowed, expr):
     for term in terms:
         deps = get_dependencies(term)
         if (deps <= allowable_vars
-                and not is_constant(term)
-                and is_term_allowed(term, deps)):
+                and not is_constant(term)):
             result.append(term)
         elif remainder is not None:
             remainder.append(term)
@@ -85,26 +84,23 @@ def get_terms(allowable_vars, is_term_allowed, expr):
 # {{{ counting
 
 class SubscriptSubsetCounter(ExprIdentityMapper):
-    def __init__(self, codegen_state, term_set_to_count, is_term_allowed):
+    def __init__(self, codegen_state, term_set_to_count):
         self.codegen_state = codegen_state
         self.term_set_to_count = term_set_to_count
         kernel = codegen_state.kernel
         self.allowable_vars = kernel.all_inames() | kernel.outer_params()
-        self.is_term_allowed = is_term_allowed
 
     def map_subscript(self, expr):
-        terms, _ = get_terms(self.allowable_vars, self.is_term_allowed, expr.index)
+        terms, _ = get_terms(self.allowable_vars, expr.index)
         terms = frozenset(terms)
         self.term_set_to_count[terms] = self.term_set_to_count.get(terms, 0) + 1
 
-    map_vector_private_subscript = map_subscript
-
 
 class ASTSubexpressionCollector(CASTIdentityMapper):
-    def __init__(self, codegen_state, is_term_allowed):
+    def __init__(self, codegen_state):
         self.term_set_to_count = {}
         self.subset_count_mapper = SubscriptSubsetCounter(
-                codegen_state, self.term_set_to_count, is_term_allowed)
+                codegen_state, self.term_set_to_count)
 
     def map_expression(self, expr):
         from pymbolic.primitives import is_constant
@@ -220,7 +216,6 @@ class SubscriptSubsetReplacer(ExprIdentityMapper):
 
         iname_terms, remainder = get_terms(
             subex_rep_state.codegen_state.kernel.all_inames(),
-            is_term_allowed=lambda term, deps: True,
             expr=expr.index)
         return simplify_terms(
                 frozenset(iname_terms),
@@ -234,17 +229,6 @@ class SubscriptSubsetReplacer(ExprIdentityMapper):
                 p.Sum(tuple(iname_terms) + tuple(remainder)))
 
         return super(SubscriptSubsetReplacer, self).map_subscript(expr)
-
-    def map_vector_private_subscript(self, expr):
-        iname_terms, remainder = self._process_subscript(expr)
-
-        expr = type(expr)(
-                expr.aggregate,
-                p.Sum(tuple(iname_terms) + tuple(remainder)),
-                expr.vector_width)
-
-        return super(SubscriptSubsetReplacer, self)\
-                .map_vector_private_subscript(expr)
 
 
 class ASTSubexpressionReplacer(CASTIdentityMapper):
@@ -288,6 +272,7 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
 
             var_name = subex_rep_state.name_generator("index_subexp")
 
+            old_var_expr = p.Sum(tuple(new_var_subset))
             new_var_expr = p.Sum(tuple(
                 simplify_terms(new_var_subset, term_set_to_variable)))
 
@@ -301,7 +286,8 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
                         CExpression(
                             codegen_state,
                             new_var_expr),
-                        is_const=True))
+                        is_const=True,
+                        short_for_expr=old_var_expr))
 
             term_subset_to_count = compute_term_subset_to_count(
                     subex_rep_state.term_set_to_count,
@@ -340,11 +326,11 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
 # }}}
 
 
-def eliminate_common_subscripts(codegen_state, is_term_allowed, node):
+def eliminate_common_subscripts(codegen_state, node):
     if not codegen_state.kernel.options.eliminate_common_subscripts:
         return node
 
-    sc = ASTSubexpressionCollector(codegen_state, is_term_allowed)
+    sc = ASTSubexpressionCollector(codegen_state)
     sc(node)
 
     sr = ASTSubexpressionReplacer()

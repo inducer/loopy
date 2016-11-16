@@ -716,7 +716,8 @@ class CASTBuilder(ASTBuilderBase):
                 "++%s" % iname,
                 inner)
 
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
+    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const,
+            short_for_expr=None):
         decl = POD(self, dtype, name)
 
         from cgen import Initializer, Const
@@ -745,9 +746,6 @@ class CASTBuilder(ASTBuilderBase):
 
     def process_ast(self, codegen_state, node):
         from loopy.target.c.subscript_cse import eliminate_common_subscripts
-        return eliminate_common_subscripts(codegen_state,
-                is_term_allowed=lambda term, deps: True,
-                node=node)
-
+        return eliminate_common_subscripts(codegen_state, node=node)
 
 # vim: foldmethod=marker

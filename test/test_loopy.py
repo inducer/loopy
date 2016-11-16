@@ -1403,22 +1403,21 @@ def test_index_cse(ctx_factory):
 
     knl = lp.make_kernel(["{[i,j,k,l,m]:0<=i,j,k,l,m<n}"],
                          """
-                         for i
-                            for j
-                                c[i,j,m] = sum((k,l), a[i,j,l]*b[i,j,k,l])
-                            end
+                         for i,j,m
+                            c[i,j,m] = sum((k,l), a[i,j,m]*l*b[i,j,k,m])
                          end
                          """)
     knl = lp.tag_inames(knl, "l:unr")
     knl = lp.set_loop_priority(knl, "i,j,k,l")
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
-    knl = lp.fix_parameters(knl, n=5)
+    knl = lp.fix_parameters(knl, n=8)
 
     ref_knl = knl
     ref_knl = lp.set_options(ref_knl, eliminate_common_subscripts=False)
     lp.auto_test_vs_ref(ref_knl, ctx, knl, print_ref_code=True)
 
     knl = knl.copy(target=lp.ISPCTarget())
+    knl = lp.tag_inames(knl, "m:l.0")
 
     print(lp.generate_code_v2(knl).device_code())
 
