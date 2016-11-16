@@ -102,7 +102,7 @@ def make_slab(space, iname, start, stop):
     return result
 
 
-def make_loop_bound_from_pwaffs(space, iname, lbound, ubound):
+def make_loop_bounds_from_pwaffs(space, iname, lbound, ubound):
     dt, pos = space.get_var_dict()[iname]
     iname_pwaff = isl.PwAff.var_on_domain(space, dt, pos)
 
