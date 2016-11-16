@@ -1142,12 +1142,35 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
         return pw_aff
 
     pieces = pw_aff.get_pieces()
+    last_expr = aff_to_expr(pieces[-1][1])
 
-    if len(pieces) != 1:
-        raise NotImplementedError("pw_aff_to_expr for multi-piece PwAff instances")
+    # {{{ make exprs from set constraints
 
-    (set, aff), = pieces
-    return aff_to_expr(aff)
+    from pymbolic.primitives import LogicalAnd, LogicalOr
+
+    def set_to_expr(isl_set):
+        constrs = []
+        for isl_basicset in isl_set.get_basic_sets():
+            constrs.append(basic_set_to_expr(isl_basicset))
+        return LogicalOr(tuple(constrs))
+
+    def basic_set_to_expr(isl_basicset):
+        constrs = []
+        for constr in isl_basicset.get_constraints():
+            constrs.append(constraint_to_expr(constr))
+        return LogicalAnd(tuple(constrs))
+
+    # }}}
+
+    pairs = [(set_to_expr(constr_set), aff_to_expr(aff))
+             for constr_set, aff in pieces[:-1]]
+
+    from pymbolic.primitives import If
+    expr = last_expr
+    for condition, then_expr in reversed(pairs):
+        expr = If(condition, then_expr, expr)
+
+    return expr
 
 # }}}
 

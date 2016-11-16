@@ -703,10 +703,8 @@ class CASTBuilder(ASTBuilderBase):
                 CExpression(self.get_c_expression_to_code_mapper(), result))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
+            lbound, ubound, inner):
         ecm = codegen_state.expression_to_code_mapper
-
-        from loopy.symbolic import aff_to_expr
 
         from pymbolic import var
         from pymbolic.primitives import Comparison
@@ -716,12 +714,12 @@ class CASTBuilder(ASTBuilderBase):
         return For(
                 InlineInitializer(
                     POD(self, iname_dtype, iname),
-                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                    ecm(lbound, PREC_NONE, "i")),
                 ecm(
                     Comparison(
                         var(iname),
                         "<=",
-                        aff_to_expr(static_ubound)),
+                        ubound),
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
