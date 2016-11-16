@@ -334,7 +334,7 @@ class CASTBuilder(ASTBuilderBase):
                                 index_dtype=kernel.index_dtype)
                 decl = self.wrap_global_constant(
                         self.get_temporary_decl(
-                            kernel, schedule_index, tv,
+                            codegen_state, schedule_index, tv,
                             decl_info))
 
                 if tv.initializer is not None:
