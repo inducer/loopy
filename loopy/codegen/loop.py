@@ -429,8 +429,6 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
         if cmt is not None:
             result.append(codegen_state.ast_builder.emit_comment(cmt))
 
-        from loopy.symbolic import aff_to_expr
-
         astb = codegen_state.ast_builder
 
         zero = isl.PwAff.zero_on_domain(
