@@ -1601,6 +1601,36 @@ def test_scalars_with_base_storage(ctx_factory):
     knl(queue, out_host=True)
 
 
+def test_if_else(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<50}",
+            """
+            if i % 3 == 0
+                a[i] = 15
+            elif i % 3 == 1
+                a[i] = 11
+            else
+                a[i] = 3
+            end
+            """
+            )
+    print(knl)
+
+    knl = lp.set_options(knl, write_cl=True)
+
+    evt, (out,) = knl(queue, out_host=True)
+
+    out_ref = np.empty(50)
+    out_ref[::3] = 15
+    out_ref[1::3] = 11
+    out_ref[2::3] = 3
+
+    assert np.array_equal(out_ref, out)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
