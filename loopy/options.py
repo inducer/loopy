@@ -95,26 +95,25 @@ class Options(Record):
 
         Use syntax highlighting in :attr:`write_wrapper`.
 
-    .. attribute:: write_cl
+    .. attribute:: write_code
 
-        Print the generated OpenCL kernel.
-        Accepts a file name as a value. Writes to
-        ``sys.stdout`` if none is given.
+        Print the generated code.  Accepts a file name or a boolean as a value.
+        Writes to ``sys.stdout`` if set to *True*.
 
-    .. attribute:: highlight_cl
+    .. attribute:: disable_code_highlight
 
-        Use syntax highlighting in :attr:`write_cl`.
+        Use syntax highlighting in :attr:`write_code`.
 
-    .. attribute:: edit_cl
+    .. attribute:: edit_code
 
         Invoke an editor (given by the environment variable
         :envvar:`EDITOR`) on the generated kernel code,
         allowing for tweaks before the code is passed on to
-        the OpenCL implementation for compilation.
+        the target for compilation.
 
-    .. attribute:: cl_build_options
+    .. attribute:: build_options
 
-        Options to pass to the OpenCL compiler when building the kernel.
+        Options to pass to the target compiler when building the kernel.
         A list of strings.
 
     .. attribute:: allow_terminal_colors
@@ -142,11 +141,37 @@ class Options(Record):
 
             skip_arg_checks=False, no_numpy=False, return_dict=False,
             write_wrapper=False, highlight_wrapper=False,
-            write_cl=False, highlight_cl=False,
-            edit_cl=False, cl_build_options=[],
+            write_code=None, disable_code_highlight=None,
+            edit_code=None, build_options=None,
             allow_terminal_colors=None,
             disable_global_barriers=False,
+
+            # legacy
+            write_cl=None,
+            highlight_cl=None,
+            cl_build_options=None,
+            edit_cl=None,
             ):
+
+        if build_options is None:
+            build_options = cl_build_options
+        if build_options is None:
+            build_options = []
+
+        if write_code is None:
+            write_code = write_cl
+        if write_code is None:
+            write_code = False
+
+        if disable_code_highlight is None and highlight_cl is not None:
+            disable_code_highlight = not highlight_cl
+        if disable_code_highlight is None:
+            disable_code_highlight = False
+
+        if edit_code is None:
+            edit_code = edit_cl
+        if edit_code is None:
+            edit_code = False
 
         if allow_terminal_colors is None:
             try:
@@ -167,11 +192,31 @@ class Options(Record):
                 skip_arg_checks=skip_arg_checks, no_numpy=no_numpy,
                 return_dict=return_dict,
                 write_wrapper=write_wrapper, highlight_wrapper=highlight_wrapper,
-                write_cl=write_cl, highlight_cl=highlight_cl,
-                edit_cl=edit_cl, cl_build_options=cl_build_options,
+                write_code=write_code, disable_code_highlight=disable_code_highlight,
+                edit_code=edit_code, build_options=build_options,
                 allow_terminal_colors=allow_terminal_colors,
                 disable_global_barriers=disable_global_barriers,
                 )
+
+    # {{{ legacy compatibility
+
+    @property
+    def edit_cl(self):
+        return self.edit_code
+
+    @property
+    def cl_build_options(self):
+        return self.build_options
+
+    @property
+    def highlight_cl(self):
+        return not self.disable_code_highlight
+
+    @property
+    def write_cl(self):
+        return self.write_code
+
+    # }}}
 
     def update(self, other):
         for f in self.__class__.fields:
