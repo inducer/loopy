@@ -77,8 +77,11 @@ def prepare_for_caching(kernel):
 def check_for_writes_to_predicates(kernel):
     from loopy.symbolic import get_dependencies
     for insn in kernel.instructions:
-        written_pred_vars = frozenset(insn.assignee_var_names()) & frozenset.union(
-                *(get_dependencies(pred) for pred in insn.predicates))
+        pred_vars = (
+                frozenset.union(
+                    *(get_dependencies(pred) for pred in insn.predicates))
+                if insn.predicates else frozenset())
+        written_pred_vars = frozenset(insn.assignee_var_names()) & pred_vars
         if written_pred_vars:
             raise LoopyError("In instruction '%s': may not write to "
                     "variable(s) '%s' involved in the instruction's predicates"
