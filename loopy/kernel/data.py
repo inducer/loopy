@@ -203,10 +203,12 @@ class KernelArgument(Record):
     def __init__(self, **kwargs):
         kwargs["name"] = intern(kwargs.pop("name"))
 
+        target = kwargs.pop("target", None)
+
         dtype = kwargs.pop("dtype", None)
         from loopy.types import to_loopy_type
         kwargs["dtype"] = to_loopy_type(
-                dtype, allow_auto=True, allow_none=True)
+                dtype, allow_auto=True, allow_none=True, target=target)
 
         Record.__init__(self, **kwargs)
 
@@ -243,11 +245,11 @@ class ImageArg(ArrayBase, KernelArgument):
 
 
 class ValueArg(KernelArgument):
-    def __init__(self, name, dtype=None, approximately=1000):
-        from loopy.types import to_loopy_type
+    def __init__(self, name, dtype=None, approximately=1000, target=None):
         KernelArgument.__init__(self, name=name,
-                dtype=to_loopy_type(dtype, allow_auto=True, allow_none=True),
-                approximately=approximately)
+                dtype=dtype,
+                approximately=approximately,
+                target=target)
 
     def __str__(self):
         import loopy as lp
@@ -358,7 +360,7 @@ class TemporaryVariable(ArrayBase):
     def __init__(self, name, dtype=None, shape=(), scope=auto,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
-            base_storage=None, initializer=None, read_only=False):
+            base_storage=None, initializer=None, read_only=False, **kwargs):
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -393,6 +395,9 @@ class TemporaryVariable(ArrayBase):
                     "initializer must be None or a numpy array"
                     % name)
 
+        if order is None:
+            order = "C"
+
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
@@ -416,12 +421,13 @@ class TemporaryVariable(ArrayBase):
         ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
-                order="C",
+                order=order,
                 base_indices=base_indices, scope=scope,
                 storage_shape=storage_shape,
                 base_storage=base_storage,
                 initializer=initializer,
-                read_only=read_only)
+                read_only=read_only,
+                **kwargs)
 
     @property
     def is_local(self):

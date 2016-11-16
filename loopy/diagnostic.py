@@ -56,7 +56,7 @@ def warn_with_kernel(kernel, id, text, type=LoopyWarning):
         if fnmatchcase(id, sw):
             return
 
-    text += (" (add '%s' to silenced_warnings kernel argument to disable)"
+    text += (" (add '%s' to silenced_warnings kernel attribute to disable)"
             % id)
 
     from warnings import warn
@@ -89,9 +89,11 @@ class StaticValueFindingError(LoopyError):
 
 
 class DependencyTypeInferenceFailure(TypeInferenceFailure):
-    def __init__(self, message, symbol):
-        TypeInferenceFailure.__init__(self, message)
-        self.symbol = symbol
+    pass
+
+
+class MissingBarrierError(LoopyError):
+    pass
 
 # }}}
 

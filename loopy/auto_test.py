@@ -79,7 +79,8 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, TemporaryVariable
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, \
+            TemporaryVariable, ConstantArg
 
     from pymbolic import evaluate
 
@@ -107,7 +108,8 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
 
             ref_arg_data.append(None)
 
-        elif arg.arg_class is GlobalArg or arg.arg_class is ImageArg:
+        elif arg.arg_class is GlobalArg or arg.arg_class is ImageArg \
+                or arg.arg_class is ConstantArg:
             if arg.shape is None or any(saxis is None for saxis in arg.shape):
                 raise LoopyError("array '%s' needs known shape to use automatic "
                         "testing" % arg.name)
@@ -196,7 +198,8 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
     import pyopencl as cl
     import pyopencl.array as cl_array
 
-    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg, TemporaryVariable
+    from loopy.kernel.data import ValueArg, GlobalArg, ImageArg,\
+            TemporaryVariable, ConstantArg
 
     from pymbolic import evaluate
 
@@ -229,7 +232,8 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             args[arg.name] = cl.image_from_array(
                     queue.context, arg_desc.ref_pre_run_array.get())
 
-        elif arg.arg_class is GlobalArg:
+        elif arg.arg_class is GlobalArg or\
+                arg.arg_class is ConstantArg:
             shape = evaluate(arg.unvec_shape, parameters)
             strides = evaluate(arg.unvec_strides, parameters)
 
@@ -418,7 +422,7 @@ def auto_test_vs_ref(
 
     # {{{ compile and run reference code
 
-    from loopy.preprocess import infer_unknown_types
+    from loopy.type_inference import infer_unknown_types
     ref_knl = infer_unknown_types(ref_knl, expect_completion=True)
 
     found_ref_device = False
@@ -526,7 +530,7 @@ def auto_test_vs_ref(
 
     test_kernel_count = 0
 
-    from loopy.preprocess import infer_unknown_types
+    from loopy.type_inference import infer_unknown_types
     for i, kernel in enumerate(test_kernels):
         test_kernel_count += 1
         if test_kernel_count > max_test_kernel_count:

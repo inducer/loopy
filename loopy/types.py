@@ -177,7 +177,8 @@ class AtomicNumpyType(NumpyType, AtomicType):
 # }}}
 
 
-def to_loopy_type(dtype, allow_none=False, allow_auto=False, for_atomic=False):
+def to_loopy_type(dtype, allow_none=False, allow_auto=False, for_atomic=False,
+        target=None):
     from loopy.kernel.data import auto
     if allow_none and dtype is None:
         return dtype
@@ -192,10 +193,13 @@ def to_loopy_type(dtype, allow_none=False, allow_auto=False, for_atomic=False):
         except Exception:
             pass
 
+    if numpy_dtype is None and target is not None and isinstance(dtype, str):
+        numpy_dtype = target.get_dtype_registry().get_or_register_dtype(dtype)
+
     if isinstance(dtype, LoopyType):
         if for_atomic:
             if isinstance(dtype, NumpyType):
-                return AtomicNumpyType(dtype.dtype)
+                return AtomicNumpyType(dtype.dtype, target=target)
             elif not isinstance(dtype, AtomicType):
                 raise LoopyError("do not know how to convert '%s' to an atomic type"
                         % dtype)
@@ -204,9 +208,9 @@ def to_loopy_type(dtype, allow_none=False, allow_auto=False, for_atomic=False):
 
     elif numpy_dtype is not None:
         if for_atomic:
-            return AtomicNumpyType(numpy_dtype)
+            return AtomicNumpyType(numpy_dtype, target=target)
         else:
-            return NumpyType(numpy_dtype)
+            return NumpyType(numpy_dtype, target=target)
 
     else:
         raise TypeError("dtype must be a LoopyType, or convertible to one, "

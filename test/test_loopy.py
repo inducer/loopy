@@ -751,7 +751,7 @@ def test_ilp_loop_bound(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.set_loop_priority(knl, "j,i,k")
+    knl = lp.prioritize_loops(knl, "j,i,k")
     knl = lp.split_iname(knl,  "k", 4, inner_tag="ilp")
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
@@ -788,7 +788,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
         knl = ref_knl
         knl = lp.split_iname(knl, "i", 4, slabs=(0, 1), inner_tag="unr",
                 outer_tag=outer_tag)
-        knl = lp.set_loop_priority(knl, "i_outer")
+        knl = lp.prioritize_loops(knl, "i_outer")
 
         a = cl.array.empty(queue, 20, np.float32)
         a.fill(17)
@@ -1030,9 +1030,12 @@ def test_kernel_splitting(ctx_factory):
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
             """
-            c[i] = a[i + 1]
-            out[i] = c[i]
-            """)
+            for i
+                c[i] = a[i + 1]
+                ... gbarrier
+                out[i] = c[i]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1067,9 +1070,13 @@ def test_kernel_splitting_with_loop(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            c[k,i] = a[k, i + 1]
-            out[k,i] = c[k,i]
-            """)
+            for i, k
+                ... gbarrier
+                c[k,i] = a[k, i + 1]
+                ... gbarrier
+                out[k,i] = c[k,i]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1106,11 +1113,15 @@ def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            <> t_private_scalar = a[k,i+1]
-            <> t_private_array[i % 2] = a[k,i+1]
-            c[k,i] = a[k,i+1]
-            out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
-            """)
+            for i, k
+                ... gbarrier
+                <> t_private_scalar = a[k,i+1]
+                <> t_private_array[i % 2] = a[k,i+1]
+                c[k,i] = a[k,i+1]
+                ... gbarrier
+                out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1147,10 +1158,14 @@ def test_kernel_splitting_with_loop_and_local_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i,k]: 0<=i<n and 0<=k<3 }",
             """
-            <> t_local[i % 8,k] = i % 8
-            c[k,i] = a[k,i+1]
-            out[k,i] = c[k,i] + t_local[i % 8,k]
-            """)
+            for i, k
+                ... gbarrier
+                <> t_local[i % 8,k] = i % 8
+                c[k,i] = a[k,i+1]
+                ... gbarrier
+                out[k,i] = c[k,i] + t_local[i % 8,k]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1187,9 +1202,12 @@ def test_global_temporary(ctx_factory):
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n}",
             """
-            <> c[i] = a[i + 1]
-            out[i] = c[i]
-            """)
+            for i
+                <> c[i] = a[i + 1]
+                ... gbarrier
+                out[i] = c[i]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.add_and_infer_dtypes(knl,
             {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
@@ -1376,7 +1394,7 @@ def test_sequential_dependencies(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(n=5))
 
 
-def test_special_instructions(ctx_factory):
+def test_nop(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
@@ -1385,7 +1403,7 @@ def test_special_instructions(ctx_factory):
             for itrip,i
                 <> z[i] = z[i+1] + z[i]  {id=wr_z}
                 <> v[i] = 11  {id=wr_v}
-                ... nop {dep=wr_z:wr_v}
+                ... nop {dep=wr_z:wr_v,id=yoink}
                 z[i] = z[i] - z[i+1] + v[i]
             end
             """)
@@ -1398,6 +1416,67 @@ def test_special_instructions(ctx_factory):
     lp.auto_test_vs_ref(knl, ctx, knl, parameters=dict(ntrips=5))
 
 
+def test_global_barrier(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
+            """
+            for i
+                for itrip
+                    ... gbarrier {id=top}
+                    <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
+                    <> v[i] = 11  {id=wr_v,dep=top}
+                    ... gbarrier {dep=wr_z:wr_v,id=yoink}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd}
+                end
+                ... gbarrier {dep=iupd,id=postloop}
+                z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
+            end
+            """)
+
+    knl = lp.fix_parameters(knl, ntrips=3)
+    knl = lp.add_and_infer_dtypes(knl, {"z": np.float64})
+
+    ref_knl = knl
+    ref_knl = lp.set_temporary_scope(ref_knl, "z", "global")
+    ref_knl = lp.set_temporary_scope(ref_knl, "v", "global")
+
+    knl = lp.split_iname(knl, "i", 256, outer_tag="g.0", inner_tag="l.0")
+    print(knl)
+
+    knl = lp.preprocess_kernel(knl)
+    assert knl.temporary_variables["z"].scope == lp.temp_var_scope.GLOBAL
+    assert knl.temporary_variables["v"].scope == lp.temp_var_scope.GLOBAL
+
+    print(knl)
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(ntrips=5, n=10))
+
+
+def test_missing_global_barrier():
+    knl = lp.make_kernel(
+            "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
+            """
+            for i
+                for itrip
+                    ... gbarrier {id=yoink}
+                    <> z[i] = z[i] - z[i+1]  {id=iupd,dep=yoink}
+                end
+                # This is where the barrier should be
+                z[i] = z[i] - z[i+1] + v[i]  {dep=iupd}
+            end
+            """)
+
+    knl = lp.set_temporary_scope(knl, "z", "global")
+    knl = lp.split_iname(knl, "i", 256, outer_tag="g.0")
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import MissingBarrierError
+    with pytest.raises(MissingBarrierError):
+        lp.get_one_scheduled_kernel(knl)
+
+
 def test_index_cse(ctx_factory):
     ctx = ctx_factory()
 
@@ -1408,7 +1487,7 @@ def test_index_cse(ctx_factory):
                          end
                          """)
     knl = lp.tag_inames(knl, "l:unr")
-    knl = lp.set_loop_priority(knl, "i,j,k,l")
+    knl = lp.prioritize_loops(knl, "i,j,k,l")
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32, "b": np.float32})
     knl = lp.fix_parameters(knl, n=8)
 
@@ -1467,6 +1546,68 @@ def test_unr_and_conditionals(ctx_factory):
     knl = lp.split_iname(knl, 'k', 2, inner_tag='unr')
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
+
+def test_constant_array_args(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             <> Tcond[k] = T[k] < 0.5
+             if Tcond[k]
+                 cp[k] = 2 * T[k] + Tcond[k]
+             end
+         end
+         """,
+         [lp.ConstantArg('T', shape=(200,), dtype=np.float32),
+         '...'])
+
+    knl = lp.fix_parameters(knl, n=200)
+
+    lp.auto_test_vs_ref(knl, ctx, knl)
+
+
+@pytest.mark.parametrize("src_order", ["C"])
+@pytest.mark.parametrize("tmp_order", ["C", "F"])
+def test_temp_initializer(ctx_factory, src_order, tmp_order):
+    a = np.random.randn(3, 3).copy(order=src_order)
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i,j<n}",
+            "out[i,j] = tmp[i,j]",
+            [
+                lp.TemporaryVariable("tmp",
+                    initializer=a,
+                    shape=lp.auto,
+                    scope=lp.temp_var_scope.PRIVATE,
+                    order=tmp_order),
+                "..."
+                ])
+
+    knl = lp.set_options(knl, write_cl=True, highlight_cl=True)
+    knl = lp.fix_parameters(knl, n=a.shape[0])
+
+    evt, (a2,) = knl(queue, out_host=True)
+
+    assert np.array_equal(a, a2)
+
+
+def test_scalars_with_base_storage(ctx_factory):
+    """ Regression test for !50 """
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<1}",
+            "a = 1",
+            [lp.TemporaryVariable("a", dtype=np.float64,
+                                  shape=(), base_storage="base")])
+
+    knl(queue, out_host=True)
 
 
 if __name__ == "__main__":

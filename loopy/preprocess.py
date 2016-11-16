@@ -35,6 +35,8 @@ from pytools.persistent_dict import PersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment
+# for the benefit of loopy.statistics, for now
+from loopy.type_inference import infer_unknown_types
 
 import logging
 logger = logging.getLogger(__name__)
@@ -66,6 +68,24 @@ def prepare_for_caching(kernel):
             temporary_variables=new_temporary_variables)
 
     return kernel
+
+# }}}
+
+
+# {{{ check for writes to predicates
+
+def check_for_writes_to_predicates(kernel):
+    from loopy.symbolic import get_dependencies
+    for insn in kernel.instructions:
+        pred_vars = (
+                frozenset.union(
+                    *(get_dependencies(pred) for pred in insn.predicates))
+                if insn.predicates else frozenset())
+        written_pred_vars = frozenset(insn.assignee_var_names()) & pred_vars
+        if written_pred_vars:
+            raise LoopyError("In instruction '%s': may not write to "
+                    "variable(s) '%s' involved in the instruction's predicates"
+                    % (insn.id, ", ".join(written_pred_vars)))
 
 # }}}
 
@@ -109,193 +129,6 @@ def check_reduction_iname_uniqueness(kernel):
 # }}}
 
 
-# {{{ infer types
-
-def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
-    if var_name in kernel.all_params():
-        return kernel.index_dtype, []
-
-    def debug(s):
-        logger.debug("%s: %s" % (kernel.name, s))
-
-    dtypes = []
-
-    import loopy as lp
-
-    symbols_with_unavailable_types = []
-
-    from loopy.diagnostic import DependencyTypeInferenceFailure
-    for writer_insn_id in kernel.writer_map().get(var_name, []):
-        writer_insn = kernel.id_to_insn[writer_insn_id]
-        if not isinstance(writer_insn, lp.MultiAssignmentBase):
-            continue
-
-        expr = subst_expander(writer_insn.expression)
-
-        try:
-            debug("             via expr %s" % expr)
-            if isinstance(writer_insn, lp.Assignment):
-                result = type_inf_mapper(expr)
-            elif isinstance(writer_insn, lp.CallInstruction):
-                result_dtypes = type_inf_mapper(expr, multiple_types_ok=True)
-
-                result = None
-                for assignee, comp_dtype in zip(
-                        writer_insn.assignee_var_names(), result_dtypes):
-                    if assignee == var_name:
-                        result = comp_dtype
-                        break
-
-                assert result is not None
-
-            debug("             result: %s" % result)
-
-            dtypes.append(result)
-
-        except DependencyTypeInferenceFailure as e:
-            debug("             failed: %s" % e)
-            symbols_with_unavailable_types.append(e.symbol)
-
-    if not dtypes:
-        return None, symbols_with_unavailable_types
-
-    result = type_inf_mapper.combine(dtypes)
-
-    return result, []
-
-
-class _DictUnionView:
-    def __init__(self, children):
-        self.children = children
-
-    def get(self, key):
-        try:
-            return self[key]
-        except KeyError:
-            return None
-
-    def __getitem__(self, key):
-        for ch in self.children:
-            try:
-                return ch[key]
-            except KeyError:
-                pass
-
-        raise KeyError(key)
-
-
-def infer_unknown_types(kernel, expect_completion=False):
-    """Infer types on temporaries and arguments."""
-
-    logger.debug("%s: infer types" % kernel.name)
-
-    def debug(s):
-        logger.debug("%s: %s" % (kernel.name, s))
-
-    unexpanded_kernel = kernel
-    if kernel.substitutions:
-        from loopy.transform.subst import expand_subst
-        kernel = expand_subst(kernel)
-
-    new_temp_vars = kernel.temporary_variables.copy()
-    new_arg_dict = kernel.arg_dict.copy()
-
-    # {{{ fill queue
-
-    # queue contains temporary variables
-    queue = []
-
-    import loopy as lp
-    for tv in six.itervalues(kernel.temporary_variables):
-        if tv.dtype is lp.auto:
-            queue.append(tv)
-
-    for arg in kernel.args:
-        if arg.dtype is None:
-            queue.append(arg)
-
-    # }}}
-
-    from loopy.expression import TypeInferenceMapper
-    type_inf_mapper = TypeInferenceMapper(kernel,
-            _DictUnionView([
-                new_temp_vars,
-                new_arg_dict
-                ]))
-
-    from loopy.symbolic import SubstitutionRuleExpander
-    subst_expander = SubstitutionRuleExpander(kernel.substitutions)
-
-    # {{{ work on type inference queue
-
-    from loopy.kernel.data import TemporaryVariable, KernelArgument
-
-    failed_names = set()
-    while queue:
-        item = queue.pop(0)
-
-        debug("inferring type for %s %s" % (type(item).__name__, item.name))
-
-        result, symbols_with_unavailable_types = \
-                _infer_var_type(kernel, item.name, type_inf_mapper, subst_expander)
-
-        failed = result is None
-        if not failed:
-            debug("     success: %s" % result)
-            if isinstance(item, TemporaryVariable):
-                new_temp_vars[item.name] = item.copy(dtype=result)
-            elif isinstance(item, KernelArgument):
-                new_arg_dict[item.name] = item.copy(dtype=result)
-            else:
-                raise LoopyError("unexpected item type in type inference")
-        else:
-            debug("     failure")
-
-        if failed:
-            if item.name in failed_names:
-                # this item has failed before, give up.
-                advice = ""
-                if symbols_with_unavailable_types:
-                    advice += (
-                            " (need type of '%s'--check for missing arguments)"
-                            % ", ".join(symbols_with_unavailable_types))
-
-                if expect_completion:
-                    raise LoopyError(
-                            "could not determine type of '%s'%s"
-                            % (item.name, advice))
-
-                else:
-                    # We're done here.
-                    break
-
-            # remember that this item failed
-            failed_names.add(item.name)
-
-            queue_names = set(qi.name for qi in queue)
-
-            if queue_names == failed_names:
-                # We did what we could...
-                print(queue_names, failed_names, item.name)
-                assert not expect_completion
-                break
-
-            # can't infer type yet, put back into queue
-            queue.append(item)
-        else:
-            # we've made progress, reset failure markers
-            failed_names = set()
-
-    # }}}
-
-    return unexpanded_kernel.copy(
-            temporary_variables=new_temp_vars,
-            args=[new_arg_dict[arg.name] for arg in kernel.args],
-            )
-
-# }}}
-
-
 # {{{ decide temporary scope
 
 def _get_compute_inames_tagged(kernel, insn, tag_base):
@@ -315,7 +148,7 @@ def _get_assignee_inames_tagged(kernel, insn, tag_base, tv_names):
 
 
 def find_temporary_scope(kernel):
-    logger.debug("%s: mark local temporaries" % kernel.name)
+    logger.debug("%s: find temporary scope" % kernel.name)
 
     new_temp_vars = {}
     from loopy.kernel.data import (LocalIndexTagBase, GroupIndexTag,
@@ -388,8 +221,10 @@ def find_temporary_scope(kernel):
                         grpparallel_compute_inames, temp_var_scope.GLOBAL),
                     ]:
 
-                if (apin != cpin and bool(locparallel_assignee_inames)):
-                    warn_with_kernel(kernel, "write_race_local(%s)" % insn_id,
+                if (apin != cpin and bool(apin)):
+                    warn_with_kernel(
+                            kernel,
+                            "write_race_%s(%s)" % (scope_descr, insn_id),
                             "instruction '%s' looks invalid: "
                             "it assigns to indices based on %s IDs, but "
                             "its temporary '%s' cannot be made %s because "
@@ -405,7 +240,6 @@ def find_temporary_scope(kernel):
                         # parallel inames of that kind:
                         and bool(cpin)):
                     desired_scope = max(desired_scope, scope)
-                    break
 
             desired_scope_per_insn.append(desired_scope)
 
@@ -436,63 +270,6 @@ def find_temporary_scope(kernel):
 # }}}
 
 
-# {{{ default dependencies
-
-def add_default_dependencies(kernel):
-    logger.debug("%s: default deps" % kernel.name)
-
-    from loopy.transform.subst import expand_subst
-    expanded_kernel = expand_subst(kernel)
-
-    writer_map = kernel.writer_map()
-
-    arg_names = set(arg.name for arg in kernel.args)
-
-    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
-
-    dep_map = dict(
-            (insn.id, insn.read_dependency_names() & var_names)
-            for insn in expanded_kernel.instructions)
-
-    new_insns = []
-    for insn in kernel.instructions:
-        if not insn.depends_on_is_final:
-            auto_deps = set()
-
-            # {{{ add automatic dependencies
-
-            all_my_var_writers = set()
-            for var in dep_map[insn.id]:
-                var_writers = writer_map.get(var, set())
-                all_my_var_writers |= var_writers
-
-                if not var_writers and var not in arg_names:
-                    tv = kernel.temporary_variables[var]
-                    if tv.initializer is None:
-                        warn_with_kernel(kernel, "read_no_write(%s)" % var,
-                                "temporary variable '%s' is read, but never written."
-                                % var)
-
-                if len(var_writers) == 1:
-                    auto_deps.update(
-                            var_writers
-                            - set([insn.id]))
-
-            # }}}
-
-            depends_on = insn.depends_on
-            if depends_on is None:
-                depends_on = frozenset()
-
-            insn = insn.copy(depends_on=frozenset(auto_deps) | depends_on)
-
-        new_insns.append(insn)
-
-    return kernel.copy(instructions=new_insns)
-
-# }}}
-
-
 # {{{ rewrite reduction to imperative form
 
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
@@ -518,7 +295,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
     var_name_gen = kernel.get_var_name_generator()
     new_temporary_variables = kernel.temporary_variables.copy()
 
-    from loopy.expression import TypeInferenceMapper
+    from loopy.type_inference import TypeInferenceMapper
     type_inf_mapper = TypeInferenceMapper(kernel)
 
     # {{{ sequential
@@ -1117,9 +894,11 @@ def preprocess_kernel(kernel, device=None):
 
     kernel = infer_unknown_types(kernel, expect_completion=False)
 
+    check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
 
-    kernel = add_default_dependencies(kernel)
+    from loopy.kernel.creation import apply_single_writer_depencency_heuristic
+    kernel = apply_single_writer_depencency_heuristic(kernel)
 
     # Ordering restrictions:
     #

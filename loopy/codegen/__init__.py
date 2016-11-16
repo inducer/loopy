@@ -409,7 +409,7 @@ def generate_code_v2(kernel):
 
     # }}}
 
-    from loopy.preprocess import infer_unknown_types
+    from loopy.type_inference import infer_unknown_types
     kernel = infer_unknown_types(kernel, expect_completion=True)
 
     from loopy.check import pre_codegen_checks

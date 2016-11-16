@@ -51,6 +51,17 @@ class InstructionBase(Record):
 
         May be *None* to invoke the default.
 
+        There are two extensions to this:
+
+        - You may use `*` as a wildcard in the given IDs. This will be expanded
+          to all matching instruction IDs during :func:`loopy.make_kernel`.
+        - Instead of an instruction ID, you may pass an instance of
+          :class:`loopy.match.MatchExpressionBase` into the :attr:`depends_on`
+          :class:`frozenset`. The given expression will be used to add any
+          matching instructions in the kernel to :attr:`depends_on` during
+          :func:`loopy.make_kernel`. Note, that this is not meant as a user-facing
+          interface.
+
     .. attribute:: depends_on_is_final
 
         A :class:`bool` determining whether :attr:`depends_on` constitutes
@@ -82,7 +93,10 @@ class InstructionBase(Record):
 
         a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
         with which no barrier synchronization is necessary, even given the existence
-        of a dependency chain and apparently conflicting access
+        of a dependency chain and apparently conflicting access.
+
+        Note, that :attr:`no_sync_with` allows instruction matching through wildcards
+        and match expression, just like :attr:`depends_on`.
 
     .. rubric:: Conditionals
 
@@ -160,6 +174,9 @@ class InstructionBase(Record):
             within_inames = forced_iname_deps
             within_inames_is_final = forced_iname_deps_is_final
 
+        if predicates is None:
+            predicates = frozenset()
+
         new_predicates = set()
         for pred in predicates:
             if isinstance(pred, str):
@@ -206,6 +223,9 @@ class InstructionBase(Record):
 
         if tags is None:
             tags = frozenset()
+
+        if priority is None:
+            priority = 0
 
         if not isinstance(tags, frozenset):
             # was previously allowed to be tuple
@@ -358,7 +378,7 @@ class InstructionBase(Record):
             raise RuntimeError("unexpected value for Instruction.boostable")
 
         if self.depends_on:
-            result.append("deps="+":".join(self.depends_on))
+            result.append("dep="+":".join(self.depends_on))
         if self.no_sync_with:
             result.append("nosync="+":".join(self.no_sync_with))
         if self.groups:
@@ -429,8 +449,6 @@ class InstructionBase(Record):
                 intern_frozenset_of_ids(self.conflicts_with_groups))
         self.within_inames = (
                 intern_frozenset_of_ids(self.within_inames))
-        self.predicates = (
-                intern_frozenset_of_ids(self.predicates))
 
 # }}}
 
@@ -1281,6 +1299,8 @@ class BarrierInstruction(_DataObliviousInstruction):
 
         ... gbarrier
     """
+
+    fields = _DataObliviousInstruction.fields | set(["kind"])
 
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,

@@ -133,7 +133,19 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         store_expression=None, within=None, default_tag="l.auto",
         temporary_scope=None, temporary_is_local=None,
         fetch_bounding_box=False):
-    """
+    """Replace accesses to *var_name* with ones to a temporary, which is
+    created and acts as a buffer. To perform this transformation, the access
+    footprint to *var_name* is determined and a temporary of a suitable
+    :class:`loopy.temp_var_scope` and shape is created.
+
+    By default, the value of the buffered cells in *var_name* are read prior to
+    any (read/write) use, and the modified values are written out after use has
+    concluded, but for special use cases (e.g. additive accumulation), the
+    behavior can be modified using *init_expression* and *store_expression*.
+
+    :arg buffer_inames: The inames across which the buffer should be usable--i.e.
+        all possible values of these inames will be covered by the buffer footprint.
+        A tuple of inames or a comma-separated string.
     :arg init_expression: Either *None* (indicating the prior value of the buffered
         array should be read) or an expression optionally involving the
         variable 'base' (which references the associated location in the array
@@ -143,6 +155,17 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         (*None* indicates that a default storage instruction should be used,
         *False* indicates that no storing of the temporary should occur
         at all.)
+    :arg within: If not None, limit the action of the transformation to
+        matching contexts.  See :func:`loopy.match.parse_stack_match`
+        for syntax.
+    :arg temp_var_scope: If given, override the choice of :class:`temp_var_scope`
+        for the created temporary.
+    :arg default_tag: The default :ref:`iname-tags` to be assigned to the
+        inames used for fetching and storing
+    :arg fetch_bounding_box: If the access footprint is non-convex
+        (resulting in an error), setting this argument to *True* will force a
+        rectangular (and hence convex) superset of the footprint to be
+        fetched.
     """
 
     # {{{ unify temporary_scope / temporary_is_local

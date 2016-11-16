@@ -214,22 +214,18 @@ def test_local_parallel_reduction(ctx_factory, size):
         lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-# FIXME: Make me a test
-@pytest.mark.parametrize("size", [10000])
-def no_test_global_parallel_reduction(ctx_factory, size):
+@pytest.mark.parametrize("size", [1000])
+def test_global_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
-    queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
             "{[i]: 0 <= i < n }",
             """
-            <> key = make_uint2(i, 324830944)  {inames=i}
-            <> ctr = make_uint4(0, 1, 2, 3)  {inames=i,id=init_ctr}
-            <> vals, ctr = philox4x32_f32(ctr, key)  {dep=init_ctr}
-            z = sum(i, vals.s0 + vals.s1 + vals.s2 + vals.s3)
+            # Using z[0] instead of z works around a bug in ancient PyOpenCL.
+            z[0] = sum(i, i/13)
             """)
 
-    # ref_knl = knl
+    ref_knl = knl
 
     gsize = 128
     knl = lp.split_iname(knl, "i", gsize * 20)
@@ -238,46 +234,55 @@ def no_test_global_parallel_reduction(ctx_factory, size):
     knl = lp.split_reduction_inward(knl, "i_inner_outer")
     from loopy.transform.data import reduction_arg_to_subst_rule
     knl = reduction_arg_to_subst_rule(knl, "i_outer")
-    knl = lp.precompute(knl, "red_i_outer_arg", "i_outer")
-    print(knl)
-    1/0
+    knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
+            temporary_scope=lp.temp_var_scope.GLOBAL)
     knl = lp.realize_reduction(knl)
+    knl = lp.add_dependency(
+            knl, "writes:acc_i_outer",
+            "red_i_outer_arg_b")
 
-    evt, (z,) = knl(queue, n=size)
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl, parameters={"n": size},
+            print_ref_code=True)
 
-    #lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
-
-@pytest.mark.parametrize("size", [10000])
-def test_global_parallel_reduction_simpler(ctx_factory, size):
+@pytest.mark.parametrize("size", [1000])
+def test_global_mc_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
 
-    pytest.xfail("very sensitive to kernel ordering, fails unused hw-axis check")
+    import pyopencl.version  # noqa
+    if cl.version.VERSION < (2016, 2):
+        pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
 
     knl = lp.make_kernel(
-            "{[l,g,j]: 0 <= l < nl and 0 <= g,j < ng}",
+            "{[i]: 0 <= i < n }",
             """
-            <> key = make_uint2(l+nl*g, 1234)  {inames=l:g}
-            <> ctr = make_uint4(0, 1, 2, 3)  {inames=l:g,id=init_ctr}
-            <> vals, ctr = philox4x32_f32(ctr, key)  {dep=init_ctr}
-
-            <> tmp[g] = sum(l, vals.s0 + 1j*vals.s1 + vals.s2 + 1j*vals.s3)
-
-            result = sum(j, tmp[j])
+            for i
+                <> key = make_uint2(i, 324830944)  {inames=i}
+                <> ctr = make_uint4(0, 1, 2, 3)  {inames=i,id=init_ctr}
+                <> vals, ctr = philox4x32_f32(ctr, key)  {dep=init_ctr}
+            end
+            z = sum(i, vals.s0 + vals.s1 + vals.s2 + vals.s3)
             """)
-
-    ng = 50
-    knl = lp.fix_parameters(knl, ng=ng)
-
-    knl = lp.set_options(knl, write_cl=True)
 
     ref_knl = knl
 
-    knl = lp.split_iname(knl, "l", 128, inner_tag="l.0")
-    knl = lp.split_reduction_outward(knl, "l_inner")
-    knl = lp.tag_inames(knl, "g:g.0,j:l.0")
+    gsize = 128
+    knl = lp.split_iname(knl, "i", gsize * 20)
+    knl = lp.split_iname(knl, "i_inner", gsize, outer_tag="l.0")
+    knl = lp.split_reduction_inward(knl, "i_inner_inner")
+    knl = lp.split_reduction_inward(knl, "i_inner_outer")
+    from loopy.transform.data import reduction_arg_to_subst_rule
+    knl = reduction_arg_to_subst_rule(knl, "i_outer")
+    knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
+            temporary_scope=lp.temp_var_scope.GLOBAL)
+    knl = lp.realize_reduction(knl)
+    knl = lp.add_dependency(
+            knl, "writes:acc_i_outer",
+            "red_i_outer_arg_b")
 
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nl": size})
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl, parameters={"n": size})
 
 
 def test_argmax(ctx_factory):
@@ -463,16 +468,16 @@ def test_poisson_fem(ctx_factory):
 
     ref_knl = knl
 
-    knl = lp.set_loop_priority(knl, ["c", "j", "i", "k"])
+    knl = lp.prioritize_loops(knl, ["c", "j", "i", "k"])
 
     def variant_1(knl):
         knl = lp.precompute(knl, "dpsi", "i,k,ell", default_tag='for')
-        knl = lp.set_loop_priority(knl, "c,i,j")
+        knl = lp.prioritize_loops(knl, "c,i,j")
         return knl
 
     def variant_2(knl):
         knl = lp.precompute(knl, "dpsi", "i,ell", default_tag='for')
-        knl = lp.set_loop_priority(knl, "c,i,j")
+        knl = lp.prioritize_loops(knl, "c,i,j")
         return knl
 
     def add_types(knl):

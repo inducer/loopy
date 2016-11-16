@@ -84,12 +84,12 @@ def test_convolution(ctx_factory):
 
     def variant_0(knl):
         #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
-        knl = lp.set_loop_priority(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
+        knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
         return knl
 
     def variant_1(knl):
         knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
-        knl = lp.set_loop_priority(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
+        knl = lp.prioritize_loops(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
         return knl
 
     def variant_2(knl):
@@ -151,12 +151,12 @@ def test_convolution_with_nonzero_base(ctx_factory):
 
     def variant_0(knl):
         #knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
-        knl = lp.set_loop_priority(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
+        knl = lp.prioritize_loops(knl, "iimg,im_x,im_y,ifeat,f_x,f_y")
         return knl
 
     def variant_1(knl):
         knl = lp.split_iname(knl, "im_x", 16, inner_tag="l.0")
-        knl = lp.set_loop_priority(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
+        knl = lp.prioritize_loops(knl, "iimg,im_x_outer,im_y,ifeat,f_x,f_y")
         return knl
 
     for variant in [
@@ -341,7 +341,7 @@ def test_stencil(ctx_factory):
         knl = lp.split_iname(knl, "i", 16, outer_tag="g.1", inner_tag="l.1")
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"])
-        knl = lp.set_loop_priority(knl, ["a_dim_0_outer", "a_dim_1_outer"])
+        knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
     def variant_2(knl):
@@ -349,7 +349,7 @@ def test_stencil(ctx_factory):
         knl = lp.split_iname(knl, "j", 16, outer_tag="g.0", inner_tag="l.0")
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True)
-        knl = lp.set_loop_priority(knl, ["a_dim_0_outer", "a_dim_1_outer"])
+        knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
     for variant in [
@@ -396,7 +396,7 @@ def test_stencil_with_overfetch(ctx_factory):
                slabs=(1, 1))
         knl = lp.add_prefetch(knl, "a", ["i_inner", "j_inner"],
                 fetch_bounding_box=True)
-        knl = lp.set_loop_priority(knl, ["a_dim_0_outer", "a_dim_1_outer"])
+        knl = lp.prioritize_loops(knl, ["a_dim_0_outer", "a_dim_1_outer"])
         return knl
 
     for variant in [variant_overfetch]:
@@ -438,6 +438,8 @@ def test_sum_factorization():
 def test_lbm(ctx_factory):
     ctx = ctx_factory()
 
+    # D2Q4Q4Q4 lattice Boltzmann scheme for the shallow water equations
+    # Example by Loic Gouarin <loic.gouarin@math.u-psud.fr>
     knl = lp.make_kernel(
         "{[ii,jj]:0<=ii<nx-2 and 0<=jj<ny-2}",
         """  # noqa (silences flake8 line length warning)
@@ -489,7 +491,6 @@ def test_lbm(ctx_factory):
         """)
 
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
-    #knl = lp.add_and_infer_dtypes(knl, {"f_new": np.float32})
 
     ref_knl = knl
 

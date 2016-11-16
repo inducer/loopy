@@ -36,7 +36,8 @@ import pymbolic.primitives as p
 from pymbolic import var
 
 
-from loopy.expression import dtype_to_type_context, TypeInferenceMapper
+from loopy.expression import dtype_to_type_context
+from loopy.type_inference import TypeInferenceMapper
 
 from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.tools import is_integer
@@ -104,7 +105,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 self.infer_type(expr), needed_dtype,
                 RecursiveMapper.rec(self, expr, type_context))
 
-    def __call__(self, expr, prec, type_context=None, needed_dtype=None):
+    def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
+        if prec is None:
+            prec = PREC_NONE
+
         assert prec == PREC_NONE
         from loopy.target.c import CExpression
         return CExpression(
@@ -136,6 +140,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             from loopy.kernel.data import ValueArg
             if isinstance(arg, ValueArg) and self.fortran_abi:
+                postproc = lambda x: x[0]  # noqa
+        elif expr.name in self.kernel.temporary_variables:
+            temporary = self.kernel.temporary_variables[expr.name]
+            if temporary.base_storage:
                 postproc = lambda x: x[0]  # noqa
 
         result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
@@ -169,7 +177,8 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 lambda expr: evaluate(expr, self.codegen_state.var_subst_map),
                 self.codegen_state.vectorization_info)
 
-        from loopy.kernel.data import ImageArg, GlobalArg, TemporaryVariable
+        from loopy.kernel.data import (
+                ImageArg, GlobalArg, TemporaryVariable, ConstantArg)
 
         if isinstance(ary, ImageArg):
             extra_axes = 0
@@ -202,14 +211,16 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 raise NotImplementedError(
                         "non-floating-point images not supported for now")
 
-        elif isinstance(ary, (GlobalArg, TemporaryVariable)):
+        elif isinstance(ary, (GlobalArg, TemporaryVariable, ConstantArg)):
             if len(access_info.subscripts) == 0:
-                if isinstance(ary, GlobalArg):
+                if (isinstance(ary, (ConstantArg, GlobalArg)) or
+                        (isinstance(ary, TemporaryVariable) and ary.base_storage)):
                     # unsubscripted global args are pointers
                     result = var(access_info.array_name)[0]
 
                 else:
                     # unsubscripted temp vars are scalars
+                    # (unless they use base_storage)
                     result = var(access_info.array_name)
 
             else:
@@ -826,6 +837,9 @@ class CExpressionToCodeMapper(RecursiveMapper):
 
     def map_local_hw_index(self, expr, enclosing_prec):
         raise LoopyError("plain C does not have local hw axes")
+
+    def map_array_literal(self, expr, enclosing_prec):
+        return "{ %s }" % self.join_rec(", ", expr.children, PREC_NONE)
 
 # }}}
 

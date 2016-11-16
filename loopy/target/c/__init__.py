@@ -33,6 +33,7 @@ from loopy.diagnostic import LoopyError
 from cgen import Pointer
 from pymbolic.mapper.stringifier import PREC_NONE
 import cgen
+import pymbolic.primitives as p
 
 from pytools import memoize_method
 
@@ -221,11 +222,15 @@ def generate_array_literal(codegen_state, array, value):
 
     from pymbolic.mapper.stringifier import PREC_NONE
     from loopy.expression import dtype_to_type_context
+    from loopy.symbolic import ArrayLiteral
 
     type_context = dtype_to_type_context(codegen_state.kernel.target, array.dtype)
-    return "{ %s }" % ", ".join(
-            ecm(d_i, PREC_NONE, type_context, array.dtype)
-            for d_i in data)
+    return CExpression(
+            codegen_state.ast_builder.get_c_expression_to_code_mapper(),
+            ArrayLiteral(
+                tuple(
+                    ecm(d_i, PREC_NONE, type_context, array.dtype).expr
+                    for d_i in data)))
 
 # }}}
 
@@ -299,7 +304,7 @@ class CTarget(TargetBase):
 class _ConstRestrictPointer(Pointer):
     def get_decl_pair(self):
         sub_tp, sub_decl = self.subdecl.get_decl_pair()
-        return sub_tp, ("*const restrict %s" % sub_decl)
+        return sub_tp, ("*const __restrict__ %s" % sub_decl)
 
 
 class CASTBuilder(ASTBuilderBase):
@@ -343,7 +348,7 @@ class CASTBuilder(ASTBuilderBase):
                                 index_dtype=kernel.index_dtype)
                 decl = self.wrap_global_constant(
                         self.get_temporary_decl(
-                            kernel, schedule_index, tv,
+                            codegen_state, schedule_index, tv,
                             decl_info))
 
                 if tv.initializer is not None:
@@ -419,7 +424,8 @@ class CASTBuilder(ASTBuilderBase):
                     if tv.scope != temp_var_scope.GLOBAL:
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
-                                    kernel, schedule_index, tv, idi), tv.scope)
+                                    codegen_state, schedule_index, tv, idi),
+                                tv.scope)
 
                         if tv.initializer is not None:
                             decl = Initializer(decl, generate_array_literal(
@@ -477,12 +483,21 @@ class CASTBuilder(ASTBuilderBase):
                             idi.dtype.itemsize
                             * product(si for si in idi.shape))
 
+        ecm = self.get_expression_to_code_mapper(codegen_state)
+
         for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
             bs_var_decl = Value("char", bs_name)
             from pytools import single_valued
             bs_var_decl = self.wrap_temporary_decl(
                     bs_var_decl, single_valued(base_storage_to_scope[bs_name]))
-            bs_var_decl = ArrayOf(bs_var_decl, max(bs_sizes))
+
+            # FIXME: Could try to use isl knowledge to simplify max.
+            if all(isinstance(bs, int) for bs in bs_sizes):
+                bs_size_max = max(bs_sizes)
+            else:
+                bs_size_max = p.Max(tuple(bs_sizes))
+
+            bs_var_decl = ArrayOf(bs_var_decl, ecm(bs_size_max))
 
             alignment = max(base_storage_to_align_bytes[bs_name])
             bs_var_decl = AlignedAttribute(alignment, bs_var_decl)
@@ -519,7 +534,7 @@ class CASTBuilder(ASTBuilderBase):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
         return CExpressionToCodeMapper(codegen_state)
 
-    def get_temporary_decl(self, knl, schedule_index, temp_var, decl_info):
+    def get_temporary_decl(self, codegen_state, schedule_index, temp_var, decl_info):
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
         if temp_var.read_only:
@@ -528,8 +543,10 @@ class CASTBuilder(ASTBuilderBase):
 
         if decl_info.shape:
             from cgen import ArrayOf
+            ecm = self.get_expression_to_code_mapper(codegen_state)
             temp_var_decl = ArrayOf(temp_var_decl,
-                    " * ".join(str(s) for s in decl_info.shape))
+                    ecm(p.flattened_product(decl_info.shape),
+                        prec=PREC_NONE, type_context="i"))
 
         return temp_var_decl
 
@@ -554,6 +571,17 @@ class CASTBuilder(ASTBuilderBase):
         return result
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
+        from cgen import RestrictPointer, Const
+
+        arg_decl = RestrictPointer(POD(self, dtype, name))
+
+        if not is_written:
+            arg_decl = Const(arg_decl)
+
+        return arg_decl
+
+    def get_constant_arg_decl(self, name, shape, dtype, is_written):
+        from loopy.target.c import POD  # uses the correct complex type
         from cgen import RestrictPointer, Const
 
         arg_decl = RestrictPointer(POD(self, dtype, name))
