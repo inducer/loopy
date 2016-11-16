@@ -62,23 +62,33 @@ def get_bounds_checks(domain, check_inames, implemented_domain,
 # {{{ on which inames may a conditional depend?
 
 def get_usable_inames_for_conditional(kernel, sched_index):
-    from loopy.schedule import EnterLoop, LeaveLoop
+    from loopy.schedule import (
+        find_active_inames_at, get_insn_ids_for_block_at, has_barrier_within)
     from loopy.kernel.data import ParallelTag, LocalIndexTagBase, IlpBaseTag
 
-    result = set()
+    result = find_active_inames_at(kernel, sched_index)
+    crosses_barrier = has_barrier_within(kernel, sched_index)
 
-    for i, sched_item in enumerate(kernel.schedule):
-        if i >= sched_index:
-            break
-        if isinstance(sched_item, EnterLoop):
-            result.add(sched_item.iname)
-        elif isinstance(sched_item, LeaveLoop):
-            result.remove(sched_item.iname)
+    # Find our containing subkernel, grab inames for all insns from there.
 
-    for iname in kernel.all_inames():
+    subkernel_index = sched_index
+    from loopy.schedule import CallKernel
+
+    while not isinstance(kernel.schedule[subkernel_index], CallKernel):
+        subkernel_index -= 1
+
+    insn_ids_for_subkernel = get_insn_ids_for_block_at(
+        kernel.schedule, subkernel_index)
+
+    inames_for_subkernel = (
+        iname
+        for insn in insn_ids_for_subkernel
+        for iname in kernel.insn_inames(insn))
+
+    for iname in inames_for_subkernel:
         tag = kernel.iname_to_tag.get(iname)
 
-        # Parallel inames are always defined, BUT:
+        # Parallel inames are defined within a subkernel, BUT:
         #
         # - local indices may not be used in conditionals that cross barriers.
         #
@@ -87,7 +97,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
 
         if (
                 isinstance(tag, ParallelTag)
-                and not isinstance(tag, LocalIndexTagBase)
+                and not (isinstance(tag, LocalIndexTagBase) and crosses_barrier)
                 and not isinstance(tag, IlpBaseTag)
                 ):
             result.add(iname)
