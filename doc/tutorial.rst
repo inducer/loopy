@@ -789,17 +789,18 @@ enabling some cost savings:
         a[4 * i_outer + 3] = 0.0f;
       }
       /* final slab for 'i_outer' */
-      for (int i_outer = -1 + n + -1 * (3 * n / 4); i_outer <= -1 + ((3 + n) / 4); ++i_outer)
-        if (-1 + n >= 0)
-        {
-          a[4 * i_outer] = 0.0f;
-          if (-2 + -4 * i_outer + n >= 0)
-            a[4 * i_outer + 1] = 0.0f;
-          if (-3 + -4 * i_outer + n >= 0)
-            a[4 * i_outer + 2] = 0.0f;
-          if (4 + 4 * i_outer + -1 * n == 0)
-            a[4 * i_outer + 3] = 0.0f;
-        }
+      int const i_outer = -1 + n + -1 * (3 * n / 4);
+    <BLANKLINE>
+      if (-1 + n >= 0)
+      {
+        a[4 * i_outer] = 0.0f;
+        if (-2 + -4 * i_outer + n >= 0)
+          a[4 * i_outer + 1] = 0.0f;
+        if (-3 + -4 * i_outer + n >= 0)
+          a[4 * i_outer + 2] = 0.0f;
+        if (4 + 4 * i_outer + -1 * n == 0)
+          a[4 * i_outer + 3] = 0.0f;
+      }
     ...
 
 .. }}}
