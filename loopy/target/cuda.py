@@ -148,7 +148,7 @@ class ExpressionToCudaCExpressionMapper(ExpressionToCExpressionMapper):
     def _get_index_ctype(kernel):
         if kernel.index_dtype.numpy_dtype == np.int32:
             return "int32_t"
-        elif kernel.index_dtype.numpy_dtype == np.int32:
+        elif kernel.index_dtype.numpy_dtype == np.int64:
             return "int64_t"
         else:
             raise LoopyError("unexpected index type")
