@@ -79,8 +79,8 @@ __doc__ = """
 
 def set_loop_priority(kernel, loop_priority):
     from warnings import warn
-    warn("set_loop_priority is deprecated. Use prioritize_loops instead."
-         "Attention: A call to set_loop_priority will overwrite any previously"
+    warn("set_loop_priority is deprecated. Use prioritize_loops instead. "
+         "Attention: A call to set_loop_priority will overwrite any previously "
          "set priorities!", DeprecationWarning, stacklevel=2)
 
     if isinstance(loop_priority, str):

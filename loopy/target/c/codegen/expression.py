@@ -148,6 +148,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             from loopy.kernel.data import ValueArg
             if isinstance(arg, ValueArg) and self.fortran_abi:
                 postproc = lambda x: x[0]  # noqa
+        elif expr.name in self.kernel.temporary_variables:
+            temporary = self.kernel.temporary_variables[expr.name]
+            if temporary.base_storage:
+                postproc = lambda x: x[0]  # noqa
 
         result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
         if result is not None:
@@ -216,12 +220,14 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif isinstance(ary, (GlobalArg, TemporaryVariable, ConstantArg)):
             if len(access_info.subscripts) == 0:
-                if isinstance(ary, GlobalArg) or isinstance(ary, ConstantArg):
+                if (isinstance(ary, (ConstantArg, GlobalArg)) or
+                    (isinstance(ary, TemporaryVariable) and ary.base_storage)):
                     # unsubscripted global args are pointers
                     result = var(access_info.array_name)[0]
 
                 else:
                     # unsubscripted temp vars are scalars
+                    # (unless they use base_storage)
                     result = var(access_info.array_name)
 
             else:
