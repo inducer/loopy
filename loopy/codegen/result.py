@@ -61,10 +61,6 @@ class GeneratedProgram(Record):
         Once generated, this captures the AST of the operative function
         body (including declaration of necessary temporaries), but not
         the overall function definition.
-    .. attribute:: decl_ast
-        Once generated, this captures the AST of the operative function
-        definition but not the function body or declaration of necessary
-        temporaries.
     """
 
 
@@ -314,7 +310,6 @@ def generate_host_or_device_program(codegen_state, schedule_index):
             codegen_state,
             cur_prog.copy(
                 ast=ast_builder.process_ast(fdef_ast),
-                decl_ast=ast_builder.process_ast(fdecl_ast),
                 body_ast=ast_builder.process_ast(body_ast)))
 
     return codegen_result

@@ -126,6 +126,7 @@ def _create_vector_types():
             vec.types[np.dtype(base_type), count] = dtype
             vec.type_to_scalar_and_count[dtype] = np.dtype(base_type), count
 
+
 _create_vector_types()
 
 
@@ -400,6 +401,10 @@ class OpenCLCASTBuilder(CASTBuilder):
         fdecl = super(OpenCLCASTBuilder, self).get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
+        from loopy.target.c import FunctionDeclarationWrapper
+        assert isinstance(fdecl, FunctionDeclarationWrapper)
+        fdecl = fdecl.subdecl
+
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
         fdecl = CLKernel(fdecl)
 
@@ -415,7 +420,7 @@ class OpenCLCASTBuilder(CASTBuilder):
 
             fdecl = CLRequiredWorkGroupSize(local_sizes, fdecl)
 
-        return fdecl
+        return FunctionDeclarationWrapper(fdecl)
 
     def generate_top_of_body(self, codegen_state):
         from loopy.kernel.data import ImageArg

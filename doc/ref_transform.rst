@@ -119,6 +119,8 @@ Finishing up
 
 .. autofunction:: generate_code_v2
 
+.. autofunction:: generate_header
+
 Setting options
 ---------------
 

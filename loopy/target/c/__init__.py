@@ -29,7 +29,7 @@ import six
 import numpy as np  # noqa
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError
-from cgen import Pointer
+from cgen import Pointer, NestedDeclarator
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.symbolic import IdentityMapper
@@ -132,6 +132,10 @@ class POD(Declarator):
 
     mapper_method = "map_loopy_pod"
 
+
+class FunctionDeclarationWrapper(NestedDeclarator):
+    mapper_method = "map_function_decl_wrapper"
+
 # }}}
 
 
@@ -203,6 +207,10 @@ class CASTIdentityMapper(CASTIdentityMapperBase):
     def map_loopy_pod(self, node, *args, **kwargs):
         return type(node)(node.ast_builder, node.dtype, node.name)
 
+    def map_function_decl_wrapper(self, node, *args, **kwargs):
+        return FunctionDeclarationWrapper(
+                self.rec(node.subdecl, *args, **kwargs))
+
 
 class SubscriptSubsetCounter(IdentityMapper):
     def __init__(self, subset_counters):
@@ -258,9 +266,6 @@ class CTarget(TargetBase):
 
     def get_device_ast_builder(self):
         return CASTBuilder(self)
-
-    def get_device_decl_extractor(self):
-        return CFunctionDeclExtractor()
 
     # {{{ types
 
@@ -381,10 +386,11 @@ class CASTBuilder(ASTBuilderBase):
         if self.target.fortran_abi:
             name += "_"
 
-        return FunctionDeclaration(
-                        Value("void", name),
-                        [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                            for idi in codegen_state.implemented_data_info])
+        return FunctionDeclarationWrapper(
+                FunctionDeclaration(
+                    Value("void", name),
+                    [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
+                        for idi in codegen_state.implemented_data_info]))
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import temp_var_scope
@@ -756,12 +762,46 @@ class CASTBuilder(ASTBuilderBase):
         sc(node)
         return node
 
+
+# {{{ header generation
+
 class CFunctionDeclExtractor(CASTIdentityMapper):
     def __init__(self):
         self.decls = []
 
-    def map_function_declaration(self, node):
-        self.decls.append(node)
-        return super(self.__class__, self).map_function_declaration(node)
+    def map_expression(self, expr):
+        return expr
+
+    def map_function_decl_wrapper(self, node):
+        self.decls.append(node.subdecl)
+        return super(CFunctionDeclExtractor, self)\
+                .map_function_decl_wrapper(node)
+
+
+def generate_header(kernel, codegen_result=None):
+    """
+    :arg kernel: a :class:`loopy.LoopKernel`
+    :arg codegen_result: an instance of :class:`loopy.CodeGenerationResult`
+    :returns: a list of AST nodes (which may have :func:`str`
+        called on them to produce a string) representing
+        function declarations for the generated device
+        functions.
+    """
+
+    if not isinstance(kernel.target, CTarget):
+        raise LoopyError(
+                'Header generation for non C-based languages are not implemented')
+
+    if codegen_result is None:
+        from loopy.codegen import generate_code_v2
+        codegen_result = generate_code_v2(kernel)
+
+    fde = CFunctionDeclExtractor()
+    for dev_prg in codegen_result.device_programs:
+        fde(dev_prg.ast)
+
+    return fde.decls
+
+# }}}
 
 # vim: foldmethod=marker
