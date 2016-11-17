@@ -318,7 +318,7 @@ class CUDACASTBuilder(CASTBuilder):
                     % scope)
 
     def wrap_global_constant(self, decl):
-        from cgen.opencl import CudaConstant
+        from cgen.cuda import CudaConstant
         return CudaConstant(decl)
 
     def get_global_arg_decl(self, name, shape, dtype, is_written):
