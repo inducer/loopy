@@ -237,15 +237,18 @@ class ISPCASTBuilder(CASTBuilder):
         arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
 
         if codegen_state.is_generating_device_code:
-            return ISPCTask(
+            result = ISPCTask(
                         FunctionDeclaration(
                             Value("void", name),
                             arg_decls))
         else:
-            return ISPCExport(
+            result = ISPCExport(
                     FunctionDeclaration(
                         Value("void", name),
                         arg_decls))
+
+        from loopy.target.c import FunctionDeclarationWrapper
+        return FunctionDeclarationWrapper(result)
 
     # }}}
 

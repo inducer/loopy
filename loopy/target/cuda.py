@@ -99,6 +99,7 @@ def _create_vector_types():
             vec.types[np.dtype(base_type), count] = dtype
             vec.type_to_scalar_and_count[dtype] = np.dtype(base_type), count
 
+
 _create_vector_types()
 
 
@@ -232,6 +233,10 @@ class CUDACASTBuilder(CASTBuilder):
         fdecl = super(CUDACASTBuilder, self).get_function_declaration(
                 codegen_state, codegen_result, schedule_index)
 
+        from loopy.target.c import FunctionDeclarationWrapper
+        assert isinstance(fdecl, FunctionDeclarationWrapper)
+        fdecl = fdecl.subdecl
+
         from cgen.cuda import CudaGlobal, CudaLaunchBounds
         fdecl = CudaGlobal(fdecl)
 
@@ -254,7 +259,7 @@ class CUDACASTBuilder(CASTBuilder):
 
             fdecl = CudaLaunchBounds(nthreads, fdecl)
 
-        return fdecl
+        return FunctionDeclarationWrapper(fdecl)
 
     def generate_code(self, kernel, codegen_state, impl_arg_info):
         code, implemented_domains = (

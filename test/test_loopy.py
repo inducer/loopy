@@ -1587,6 +1587,36 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
     assert np.array_equal(a, a2)
 
 
+def test_header_extract():
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             T[k] = k**2
+         end
+         """,
+         [lp.GlobalArg('T', shape=(200,), dtype=np.float32),
+         '...'])
+
+    knl = lp.fix_parameters(knl, n=200)
+
+    #test C
+    cknl = knl.copy(target=lp.CTarget())
+    assert str(lp.generate_header(cknl)[0]) == (
+            'void loopy_kernel(float *__restrict__ T);')
+
+    #test CUDA
+    cuknl = knl.copy(target=lp.CudaTarget())
+    assert str(lp.generate_header(cuknl)[0]) == (
+            'extern "C" __global__ void __launch_bounds__(1) '
+            'loopy_kernel(float *__restrict__ T);')
+
+    #test OpenCL
+    oclknl = knl.copy(target=lp.PyOpenCLTarget())
+    assert str(lp.generate_header(oclknl)[0]) == (
+            '__kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) '
+            'loopy_kernel(__global float *__restrict__ T);')
+
+
 def test_scalars_with_base_storage(ctx_factory):
     """ Regression test for !50 """
     ctx = ctx_factory()
@@ -1649,6 +1679,7 @@ def test_tight_loop_bounds_codegen():
         "j <= (lid(0) == 0 && -1 + gid(0) == 0 ? 9 : 2 * lid(0)); ++j)"
 
     assert for_loop in cgr.device_code()
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
