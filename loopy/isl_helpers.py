@@ -102,7 +102,7 @@ def make_slab(space, iname, start, stop):
     return result
 
 
-def make_slab_from_bound_pwaffs(space, iname, lbound, ubound):
+def make_loop_bounds_from_pwaffs(space, iname, lbound, ubound):
     dt, pos = space.get_var_dict()[iname]
     iname_pwaff = isl.PwAff.var_on_domain(space, dt, pos)
 
@@ -111,10 +111,10 @@ def make_slab_from_bound_pwaffs(space, iname, lbound, ubound):
     assert iname_pwaff.space == lbound.space
     assert iname_pwaff.space == ubound.space
 
-    return convexify(
-            iname_pwaff.ge_set(lbound)
-            &
-            iname_pwaff.le_set(ubound))
+    return (
+        iname_pwaff.ge_set(lbound)
+        &
+        iname_pwaff.le_set(ubound))
 
 # }}}
 

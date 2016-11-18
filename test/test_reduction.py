@@ -214,10 +214,45 @@ def test_local_parallel_reduction(ctx_factory, size):
         lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
 
-@pytest.mark.parametrize("size", [10000])
+@pytest.mark.parametrize("size", [1000])
 def test_global_parallel_reduction(ctx_factory, size):
-    # ctx = ctx_factory()
-    # queue = cl.CommandQueue(ctx)
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < n }",
+            """
+            # Using z[0] instead of z works around a bug in ancient PyOpenCL.
+            z[0] = sum(i, i/13)
+            """)
+
+    ref_knl = knl
+
+    gsize = 128
+    knl = lp.split_iname(knl, "i", gsize * 20)
+    knl = lp.split_iname(knl, "i_inner", gsize, outer_tag="l.0")
+    knl = lp.split_reduction_inward(knl, "i_inner_inner")
+    knl = lp.split_reduction_inward(knl, "i_inner_outer")
+    from loopy.transform.data import reduction_arg_to_subst_rule
+    knl = reduction_arg_to_subst_rule(knl, "i_outer")
+    knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
+            temporary_scope=lp.temp_var_scope.GLOBAL)
+    knl = lp.realize_reduction(knl)
+    knl = lp.add_dependency(
+            knl, "writes:acc_i_outer",
+            "red_i_outer_arg_b")
+
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl, parameters={"n": size},
+            print_ref_code=True)
+
+
+@pytest.mark.parametrize("size", [1000])
+def test_global_mc_parallel_reduction(ctx_factory, size):
+    ctx = ctx_factory()
+
+    import pyopencl.version  # noqa
+    if cl.version.VERSION < (2016, 2):
+        pytest.skip("Random123 RNG not supported in PyOpenCL < 2016.2")
 
     knl = lp.make_kernel(
             "{[i]: 0 <= i < n }",
@@ -230,7 +265,7 @@ def test_global_parallel_reduction(ctx_factory, size):
             z = sum(i, vals.s0 + vals.s1 + vals.s2 + vals.s3)
             """)
 
-    # ref_knl = knl
+    ref_knl = knl
 
     gsize = 128
     knl = lp.split_iname(knl, "i", gsize * 20)
@@ -242,42 +277,12 @@ def test_global_parallel_reduction(ctx_factory, size):
     knl = lp.precompute(knl, "red_i_outer_arg", "i_outer",
             temporary_scope=lp.temp_var_scope.GLOBAL)
     knl = lp.realize_reduction(knl)
+    knl = lp.add_dependency(
+            knl, "writes:acc_i_outer",
+            "red_i_outer_arg_b")
 
-    #evt, (z,) = knl(queue, n=size)
-
-    #lp.auto_test_vs_ref(ref_knl, ctx, knl)
-
-
-@pytest.mark.parametrize("size", [10000])
-def test_global_parallel_reduction_simpler(ctx_factory, size):
-    ctx = ctx_factory()
-
-    pytest.xfail("very sensitive to kernel ordering, fails unused hw-axis check")
-
-    knl = lp.make_kernel(
-            "{[l,g,j]: 0 <= l < nl and 0 <= g,j < ng}",
-            """
-            <> key = make_uint2(l+nl*g, 1234)  {inames=l:g}
-            <> ctr = make_uint4(0, 1, 2, 3)  {inames=l:g,id=init_ctr}
-            <> vals, ctr = philox4x32_f32(ctr, key)  {dep=init_ctr}
-
-            <> tmp[g] = sum(l, vals.s0 + 1j*vals.s1 + vals.s2 + 1j*vals.s3)
-
-            result = sum(j, tmp[j])
-            """)
-
-    ng = 50
-    knl = lp.fix_parameters(knl, ng=ng)
-
-    knl = lp.set_options(knl, write_cl=True)
-
-    ref_knl = knl
-
-    knl = lp.split_iname(knl, "l", 128, inner_tag="l.0")
-    knl = lp.split_reduction_outward(knl, "l_inner")
-    knl = lp.tag_inames(knl, "g:g.0,j:l.0")
-
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters={"nl": size})
+    lp.auto_test_vs_ref(
+            ref_knl, ctx, knl, parameters={"n": size})
 
 
 def test_argmax(ctx_factory):
@@ -386,112 +391,6 @@ def test_double_sum_made_unique(ctx_factory):
     ref = sum(i*j for i in range(n) for j in range(n))
     assert a.get() == ref
     assert b.get() == ref
-
-
-def test_fd_demo():
-    knl = lp.make_kernel(
-        "{[i,j]: 0<=i,j<n}",
-        "result[i+1,j+1] = u[i + 1, j + 1]**2 + -1 + (-4)*u[i + 1, j + 1] \
-                + u[i + 1 + 1, j + 1] + u[i + 1 + -1, j + 1] \
-                + u[i + 1, j + 1 + 1] + u[i + 1, j + 1 + -1]")
-    #assumptions="n mod 16=0")
-    knl = lp.split_iname(knl,
-            "i", 16, outer_tag="g.1", inner_tag="l.1")
-    knl = lp.split_iname(knl,
-            "j", 16, outer_tag="g.0", inner_tag="l.0")
-    knl = lp.add_prefetch(knl, "u",
-            ["i_inner", "j_inner"],
-            fetch_bounding_box=True)
-
-    #n = 1000
-    #u = cl.clrandom.rand(queue, (n+2, n+2), dtype=np.float32)
-
-    knl = lp.set_options(knl, write_cl=True)
-    knl = lp.add_and_infer_dtypes(knl, dict(u=np.float32))
-    code, inf = lp.generate_code(knl)
-    print(code)
-
-    assert "double" not in code
-
-
-def test_fd_1d(ctx_factory):
-    ctx = ctx_factory()
-
-    knl = lp.make_kernel(
-        "{[i]: 0<=i<n}",
-        "result[i] = u[i+1]-u[i]")
-
-    knl = lp.add_and_infer_dtypes(knl, {"u": np.float32})
-    ref_knl = knl
-
-    knl = lp.split_iname(knl, "i", 16)
-    knl = lp.extract_subst(knl, "u_acc", "u[j]", parameters="j")
-    knl = lp.precompute(knl, "u_acc", "i_inner", default_tag="for")
-    knl = lp.assume(knl, "n mod 16 = 0")
-
-    lp.auto_test_vs_ref(
-            ref_knl, ctx, knl,
-            parameters=dict(n=2048))
-
-
-def test_poisson_fem(ctx_factory):
-    # Stolen from Peter Coogan and Rob Kirby for FEM assembly
-    ctx = ctx_factory()
-
-    nbf = 5
-    nqp = 5
-    sdim = 3
-
-    knl = lp.make_kernel(
-            "{ [c,i,j,k,ell,ell2,ell3]: \
-            0 <= c < nels and \
-            0 <= i < nbf and \
-            0 <= j < nbf and \
-            0 <= k < nqp and \
-            0 <= ell,ell2 < sdim}",
-            """
-            dpsi(bf,k0,dir) := \
-                    simul_reduce(sum, ell2, DFinv[c,ell2,dir] * DPsi[bf,k0,ell2] )
-            Ael[c,i,j] = \
-                    J[c] * w[k] * sum(ell, dpsi(i,k,ell) * dpsi(j,k,ell))
-            """,
-            assumptions="nels>=1 and nbf >= 1 and nels mod 4 = 0")
-
-    print(knl)
-
-    knl = lp.fix_parameters(knl, nbf=nbf, sdim=sdim, nqp=nqp)
-
-    ref_knl = knl
-
-    knl = lp.prioritize_loops(knl, ["c", "j", "i", "k"])
-
-    def variant_1(knl):
-        knl = lp.precompute(knl, "dpsi", "i,k,ell", default_tag='for')
-        knl = lp.prioritize_loops(knl, "c,i,j")
-        return knl
-
-    def variant_2(knl):
-        knl = lp.precompute(knl, "dpsi", "i,ell", default_tag='for')
-        knl = lp.prioritize_loops(knl, "c,i,j")
-        return knl
-
-    def add_types(knl):
-        return lp.add_and_infer_dtypes(knl, dict(
-            w=np.float32,
-            J=np.float32,
-            DPsi=np.float32,
-            DFinv=np.float32,
-            ))
-
-    for variant in [
-            #variant_1,
-            variant_2
-            ]:
-        knl = variant(knl)
-
-        lp.auto_test_vs_ref(
-                add_types(ref_knl), ctx, add_types(knl),
-                parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
 
 
 if __name__ == "__main__":

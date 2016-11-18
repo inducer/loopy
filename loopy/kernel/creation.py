@@ -149,9 +149,9 @@ def expand_defines_in_expr(expr, defines):
 
 def get_default_insn_options_dict():
     return {
-        "depends_on": None,
+        "depends_on": frozenset(),
         "depends_on_is_final": False,
-        "no_sync_with": None,
+        "no_sync_with": frozenset(),
         "groups": frozenset(),
         "conflicts_with_groups": frozenset(),
         "insn_id": None,
@@ -221,18 +221,33 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 result["depends_on_is_final"] = True
                 opt_value = (opt_value[1:]).strip()
 
-            result["depends_on"] = frozenset(
+            result["depends_on"] = result["depends_on"].union(frozenset(
                     intern(dep.strip()) for dep in opt_value.split(":")
-                    if dep.strip())
+                    if dep.strip()))
+
+        elif opt_key == "dep_query" and opt_value is not None:
+            from loopy.match import parse_match
+            match = parse_match(opt_value)
+            result["depends_on"] = result["depends_on"].union(frozenset([match]))
 
         elif opt_key == "nosync" and opt_value is not None:
             if is_with_block:
                 raise LoopyError("'nosync' option may not be specified "
                         "in a 'with' block")
 
-            result["no_sync_with"] = frozenset(
+            result["no_sync_with"] = result["no_sync_with"].union(frozenset(
                     intern(dep.strip()) for dep in opt_value.split(":")
-                    if dep.strip())
+                    if dep.strip()))
+
+        elif opt_key == "nosync_query" and opt_value is not None:
+            if is_with_block:
+                raise LoopyError("'nosync' option may not be specified "
+                        "in a 'with' block")
+
+            from loopy.match import parse_match
+            match = parse_match(opt_value)
+            result["no_sync_with"] = result["no_sync_with"].union(
+                    frozenset([match]))
 
         elif opt_key == "groups" and opt_value is not None:
             result["groups"] = frozenset(
@@ -555,10 +570,16 @@ def parse_instructions(instructions, defines):
             continue
 
         elif isinstance(insn, InstructionBase):
+            def intern_if_str(s):
+                if isinstance(s, str):
+                    return intern(s)
+                else:
+                    return s
+
             new_instructions.append(
                     insn.copy(
                         id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
-                        depends_on=frozenset(intern(dep) for dep in insn.depends_on),
+                        depends_on=frozenset(intern_if_str(dep) for dep in insn.depends_on),
                         groups=frozenset(intern(grp) for grp in insn.groups),
                         conflicts_with_groups=frozenset(
                             intern(grp) for grp in insn.conflicts_with_groups),
@@ -1244,7 +1265,8 @@ def create_temporaries(knl, default_order):
                         scope=lp.auto,
                         base_indices=lp.auto,
                         shape=lp.auto,
-                        order=default_order)
+                        order=default_order,
+                        target=knl.target)
 
                 if isinstance(insn, Assignment):
                     insn = insn.copy(temp_var_type=None)
@@ -1412,43 +1434,37 @@ def apply_default_order_to_args(kernel, default_order):
 # }}}
 
 
-# {{{ resolve wildcard insn dependencies
+# {{{ resolve instruction dependencies
 
-def find_matching_insn_ids(knl, dep):
-    from fnmatch import fnmatchcase
+def _resolve_dependencies(knl, insn, deps):
+    from loopy import find_instructions
+    from loopy.match import MatchExpressionBase
 
-    return [
-        other_insn.id
-        for other_insn in knl.instructions
-        if fnmatchcase(other_insn.id, dep)]
-
-
-def resove_wildcard_insn_ids(knl, deps):
     new_deps = []
-    for dep in deps:
-        matches = find_matching_insn_ids(knl, dep)
 
-        if matches:
-            new_deps.extend(matches)
+    for dep in deps:
+        if isinstance(dep, MatchExpressionBase):
+            for new_dep in find_instructions(knl, dep):
+                if new_dep.id != insn.id:
+                    new_deps.append(new_dep.id)
         else:
-            # Uh, best we can do
-            new_deps.append(dep)
+            from fnmatch import fnmatchcase
+            for other_insn in knl.instructions:
+                if fnmatchcase(other_insn.id, dep):
+                    new_deps.append(other_insn.id)
 
     return frozenset(new_deps)
 
 
-def resolve_wildcard_deps(knl):
+def resolve_dependencies(knl):
     new_insns = []
 
     for insn in knl.instructions:
-        if insn.depends_on is not None:
-            insn = insn.copy(
-                    depends_on=resove_wildcard_insn_ids(knl, insn.depends_on),
-                    no_sync_with=resove_wildcard_insn_ids(
-                        knl, insn.no_sync_with),
-                    )
-
-        new_insns.append(insn)
+        new_insns.append(insn.copy(
+                    depends_on=_resolve_dependencies(knl, insn, insn.depends_on),
+                    no_sync_with=_resolve_dependencies(
+                        knl, insn, insn.no_sync_with),
+                    ))
 
     return knl.copy(instructions=new_insns)
 
@@ -1785,7 +1801,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
-    knl = resolve_wildcard_deps(knl)
+    knl = resolve_dependencies(knl)
     knl = apply_single_writer_depencency_heuristic(knl, warn_if_used=False)
 
     # -------------------------------------------------------------------------

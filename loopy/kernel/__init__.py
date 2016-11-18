@@ -259,7 +259,7 @@ class LoopKernel(RecordWithoutPickling):
         # }}}
 
         from loopy.types import to_loopy_type
-        index_dtype = to_loopy_type(index_dtype).with_target(target)
+        index_dtype = to_loopy_type(index_dtype, target=target)
         if not index_dtype.is_integral():
             raise TypeError("index_dtype must be an integer")
         if np.iinfo(index_dtype.numpy_dtype).min >= 0:

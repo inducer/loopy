@@ -32,6 +32,7 @@ from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
 from pymbolic import var
 import pymbolic.primitives as p
+from pymbolic.mapper.stringifier import PREC_NONE
 
 from pytools import memoize_method
 
@@ -236,15 +237,18 @@ class ISPCASTBuilder(CASTBuilder):
         arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
 
         if codegen_state.is_generating_device_code:
-            return ISPCTask(
+            result = ISPCTask(
                         FunctionDeclaration(
                             Value("void", name),
                             arg_decls))
         else:
-            return ISPCExport(
+            result = ISPCExport(
                     FunctionDeclaration(
                         Value("void", name),
                         arg_decls))
+
+        from loopy.target.c import FunctionDeclarationWrapper
+        return FunctionDeclarationWrapper(result)
 
     # }}}
 
@@ -295,7 +299,7 @@ class ISPCASTBuilder(CASTBuilder):
         else:
             raise LoopyError("unknown barrier kind")
 
-    def get_temporary_decl(self, knl, sched_index, temp_var, decl_info):
+    def get_temporary_decl(self, codegen_state, sched_index, temp_var, decl_info):
         from loopy.target.c import POD  # uses the correct complex type
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
@@ -306,13 +310,16 @@ class ISPCASTBuilder(CASTBuilder):
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # above in expr to code mapper)
-            _, lsize = knl.get_grid_size_upper_bounds_as_exprs()
+            _, lsize = codegen_state.kernel.get_grid_size_upper_bounds_as_exprs()
             shape = lsize + shape
 
         if shape:
             from cgen import ArrayOf
-            temp_var_decl = ArrayOf(temp_var_decl,
-                    " * ".join(str(s) for s in shape))
+            ecm = self.get_expression_to_code_mapper(codegen_state)
+            temp_var_decl = ArrayOf(
+                    temp_var_decl,
+                    ecm(p.flattened_product(shape),
+                        prec=PREC_NONE, type_context="i"))
 
         return temp_var_decl
 
@@ -465,23 +472,22 @@ class ISPCASTBuilder(CASTBuilder):
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
+            lbound, ubound, inner):
         ecm = codegen_state.expression_to_code_mapper
 
-        from loopy.symbolic import aff_to_expr
         from loopy.target.c import POD
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        from cgen import For, Initializer
+        from cgen import For, InlineInitializer
 
         from cgen.ispc import ISPCUniform
 
         return For(
-                Initializer(
+                InlineInitializer(
                     ISPCUniform(POD(self, iname_dtype, iname)),
-                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                    ecm(lbound, PREC_NONE, "i")),
                 ecm(
-                    p.Comparison(var(iname), "<=", aff_to_expr(static_ubound)),
+                    p.Comparison(var(iname), "<=", ubound),
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
