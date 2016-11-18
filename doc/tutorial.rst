@@ -1064,6 +1064,27 @@ More complicated programs
 
 SCOP
 
+External Functions
+~~~~~~~~~~~~~~~~~~
+
+Loopy currently supports calls to several commonly used mathematical functions,
+e.g. exp/log, min/max, sin/cos/tan, sinh/cosh, abs, etc.  They may be used in
+a loopy kernel by simply calling them, e.g.::
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            for i
+                a[i] = sqrt(i)
+            end
+            """)
+
+Additionally, all functions of one variable are currently recognized during
+code-generation however additional implementation may be required for custom
+functions.  The full lists of available functions may be found in a the
+:class:`TargetBase` implementation (e.g. :class:`CudaTarget`)
+
+
 Data-dependent control flow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
