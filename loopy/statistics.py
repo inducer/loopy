@@ -592,14 +592,16 @@ class ExpressionOpCounter(CombineMapper):
     #map_logical_and = map_logical_or
 
     def map_if(self, expr):
-        warnings.warn("ExpressionOpCounter counting ops as "
-                      "sum of if-statement branches.")
+        warn_with_kernel(self.knl, "summing_if_branches_ops", 
+                         "ExpressionOpCounter counting ops as sum of "
+                         "if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) \
                + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("ExpressionOpCounter counting ops as "
-                      "sum of if_pos-statement branches.")
+        warn_with_kernel(self.knl, "summing_ifpos_branches_ops",
+                         "ExpressionOpCounter counting ops as sum of "
+                         "if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) \
                + self.rec(expr.else_)
 
@@ -701,14 +703,16 @@ class LocalSubscriptCounter(CombineMapper):
     map_logical_and = map_logical_or
 
     def map_if(self, expr):
-        warnings.warn("LocalSubscriptCounter counting LMEM accesses as "
-                      "sum of if-statement branches.")
+        warn_with_kernel(self.knl, "summing_if_branches_lsubs", 
+                         "LocalSubscriptCounter counting LMEM accesses as sum "
+                         "of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) \
                + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("LocalSubscriptCounter counting LMEM accesses as "
-                      "sum of if_pos-statement branches.")
+        warn_with_kernel(self.knl, "summing_ifpos_branches_lsubs", 
+                         "LocalSubscriptCounter counting LMEM accesses as sum "
+                         "of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) \
                + self.rec(expr.else_)
 
@@ -797,12 +801,10 @@ class GlobalSubscriptCounter(CombineMapper):
                              ) + self.rec(expr.index)
 
         if min_tag_axis != 0:
-            warn_with_kernel(knl, "unknown_gmem_stride",
-                                  "GlobalSubscriptCounter: "
-                                  "Memory access minimum tag axis %d != 0, "
-                                  "stride unknown, using sys.maxsize."
-                                  % (min_tag_axis))
-            #TODO switch all warnings to loopy warnings warn_with_kernel
+            warn_with_kernel(self.knl, "unknown_gmem_stride",
+                             "GlobalSubscriptCounter: Memory access minimum "
+                             "tag axis %d != 0, stride unknown, using "
+                             "sys.maxsize." % (min_tag_axis))
             return ToCountMap({MemAccess(mtype='global',
                                          dtype=self.type_inf(expr),
                                          stride=sys.maxsize, variable=name): 1}
@@ -886,14 +888,16 @@ class GlobalSubscriptCounter(CombineMapper):
     map_logical_and = map_logical_or
 
     def map_if(self, expr):
-        warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
-                      "sum of if-statement branches.")
+        warn_with_kernel(self.knl, "summing_if_branches_gsubs", 
+                         "GlobalSubscriptCounter counting GMEM accesses as "
+                         "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) \
                + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
-                      "sum of if_pos-statement branches.")
+        warn_with_kernel(self.knl, "summing_ifpos_branches_gsubs", 
+                         "GlobalSubscriptCounter counting GMEM accesses as "
+                         "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) \
                + self.rec(expr.else_)
 
@@ -1093,9 +1097,8 @@ def get_op_poly(knl, numpy_types=True):
     get_op_poly is deprecated. Use get_op_map instead.
 
     """
-    from warnings import warn
-    warn("get_op_poly is deprecated. Use get_op_map instead.",
-         DeprecationWarning, stacklevel=2)
+    warn_with_kernel(knl, "depricated_get_op_poly",
+                     "get_op_poly is deprecated. Use get_op_map instead.")
     return get_op_map(knl, numpy_types)
 
 # }}}
@@ -1166,10 +1169,10 @@ def get_lmem_access_poly(knl):
     result with the mtype=['local'] option.
 
     """
-    from warnings import warn
-    warn("get_lmem_access_poly is deprecated. Use get_mem_access_map and "
-         "filter the result with the mtype=['local'] option.",
-         DeprecationWarning, stacklevel=2)
+    warn_with_kernel(knl, "depricated_get_lmem_access_poly",
+                     "get_lmem_access_poly is deprecated. Use "
+                     "get_mem_access_map and filter the result with the "
+                     "mtype=['local'] option.")
     return get_mem_access_map(knl).filter_by(mtype=['local'])
 
 
@@ -1180,10 +1183,10 @@ def get_DRAM_access_poly(knl):
     result with the mtype=['global'] option.
 
     """
-    from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. Use get_mem_access_map and "
-         "filter the result with the mtype=['global'] option.",
-         DeprecationWarning, stacklevel=2)
+    warn_with_kernel(knl, "depricated_get_DRAM_access_poly",
+                     "get_DRAM_access_poly is deprecated. Use "
+                     "get_mem_access_map and filter the result with the "
+                     "mtype=['global'] option.")
     return get_mem_access_map(knl).filter_by(mtype=['global'])
 
 
@@ -1196,10 +1199,10 @@ def get_gmem_access_poly(knl):
     result with the mtype=['global'] option.
 
     """
-    from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. Use get_mem_access_map and "
-         "filter the result with the mtype=['global'] option.",
-         DeprecationWarning, stacklevel=2)
+    warn_with_kernel(knl, "depricated_get_gmem_access_poly",
+                     "get_DRAM_access_poly is deprecated. Use "
+                     "get_mem_access_map and filter the result with the "
+                     "mtype=['global'] option.")
     return get_mem_access_map(knl).filter_by(mtype=['global'])
 
 # }}}
@@ -1349,9 +1352,9 @@ def get_synchronization_poly(knl):
     get_synchronization_poly is deprecated. Use get_synchronization_map instead.
 
     """
-    from warnings import warn
-    warn("get_synchronization_poly is deprecated. Use get_synchronization_map instead.",
-         DeprecationWarning, stacklevel=2)
+    warn_with_kernel(knl, "depricated_get_synchronization_poly",
+                     "get_synchronization_poly is deprecated. Use "
+                     "get_synchronization_map instead.")
     return get_synchronization_map(knl)
 
 # }}}
