@@ -1084,6 +1084,8 @@ code-generation however additional implementation may be required for custom
 functions.  The full lists of available functions may be found in a the
 :class:`TargetBase` implementation (e.g. :class:`CudaTarget`)
 
+Custom user functions may be represented using the method described in :ref:`_functions`
+
 
 Data-dependent control flow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
