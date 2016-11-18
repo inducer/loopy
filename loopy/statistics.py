@@ -580,17 +580,6 @@ class ExpressionOpCounter(CombineMapper):
     map_bitwise_xor = map_bitwise_or
     map_bitwise_and = map_bitwise_or
 
-    def map_comparison(self, expr):
-        return self.rec(expr.left)+self.rec(expr.right)
-
-    def map_logical_not(self, expr):
-        return self.rec(expr.child)
-
-    #def map_logical_or(self, expr):
-    #    return sum(self.rec(child) for child in expr.children)
-
-    #map_logical_and = map_logical_or
-
     def map_if(self, expr):
         warn_with_kernel(self.knl, "summing_if_branches_ops", 
                          "ExpressionOpCounter counting ops as sum of "
@@ -672,35 +661,8 @@ class LocalSubscriptCounter(CombineMapper):
 
     map_product = map_sum
 
-    def map_quotient(self, expr, *args):
-        return self.rec(expr.numerator) + self.rec(expr.denominator)
-
-    map_floor_div = map_quotient
-    map_remainder = map_quotient
-
-    def map_power(self, expr):
-        return self.rec(expr.base) + self.rec(expr.exponent)
-
-    def map_left_shift(self, expr):
-        return self.rec(expr.shiftee)+self.rec(expr.shift)
-
-    map_right_shift = map_left_shift
-
-    def map_bitwise_not(self, expr):
-        return self.rec(expr.child)
-
-    def map_bitwise_or(self, expr):
-        return sum(self.rec(child) for child in expr.children)
-
-    map_bitwise_xor = map_bitwise_or
-    map_bitwise_and = map_bitwise_or
-
     def map_comparison(self, expr):
         return self.rec(expr.left)+self.rec(expr.right)
-
-    map_logical_not = map_bitwise_not
-    map_logical_or = map_bitwise_or
-    map_logical_and = map_logical_or
 
     def map_if(self, expr):
         warn_with_kernel(self.knl, "summing_if_branches_lsubs", 
@@ -715,8 +677,6 @@ class LocalSubscriptCounter(CombineMapper):
                          "of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) \
                + self.rec(expr.else_)
-
-    map_min = map_bitwise_or
 
     def map_common_subexpression(self, expr):
         raise NotImplementedError("LocalSubscriptCounter encountered "
@@ -857,36 +817,6 @@ class GlobalSubscriptCounter(CombineMapper):
 
     map_product = map_sum
 
-    def map_quotient(self, expr, *args):
-        return self.rec(expr.numerator) + self.rec(expr.denominator)
-
-    map_floor_div = map_quotient
-    map_remainder = map_quotient
-
-    def map_power(self, expr):
-        return self.rec(expr.base) + self.rec(expr.exponent)
-
-    def map_left_shift(self, expr):
-        return self.rec(expr.shiftee)+self.rec(expr.shift)
-
-    map_right_shift = map_left_shift
-
-    def map_bitwise_not(self, expr):
-        return self.rec(expr.child)
-
-    def map_bitwise_or(self, expr):
-        return sum(self.rec(child) for child in expr.children)
-
-    map_bitwise_xor = map_bitwise_or
-    map_bitwise_and = map_bitwise_or
-
-    def map_comparison(self, expr):
-        return self.rec(expr.left)+self.rec(expr.right)
-
-    map_logical_not = map_bitwise_not
-    map_logical_or = map_bitwise_or
-    map_logical_and = map_logical_or
-
     def map_if(self, expr):
         warn_with_kernel(self.knl, "summing_if_branches_gsubs", 
                          "GlobalSubscriptCounter counting GMEM accesses as "
@@ -900,8 +830,6 @@ class GlobalSubscriptCounter(CombineMapper):
                          "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) \
                + self.rec(expr.else_)
-
-    map_min = map_bitwise_or
 
     def map_common_subexpression(self, expr):
         raise NotImplementedError("GlobalSubscriptCounter encountered "
