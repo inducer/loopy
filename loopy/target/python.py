@@ -33,6 +33,7 @@ from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
+from genpy import Suite
 
 
 # {{{ expression to code
@@ -145,6 +146,17 @@ class ExpressionToPythonMapper(StringifyMapper):
 # }}}
 
 
+# {{{ genpy extensions
+
+class Collection(Suite):
+    def generate(self):
+        for item in self.contents:
+            for item_line in item.generate():
+                yield item_line
+
+# }}}
+
+
 # {{{ ast builder
 
 def _numpy_single_arg_function_mangler(kernel, name, arg_dtypes):
@@ -232,8 +244,14 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     @property
     def ast_block_class(self):
-        from genpy import Suite
         return Suite
+
+    @property
+    def ast_block_scope_class(self):
+        # Once a new version of genpy is released, switch to this:
+        # from genpy import Collection
+        # and delete the implementation above.
+        return Collection
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             lbound, ubound, inner):

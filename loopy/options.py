@@ -41,10 +41,18 @@ def _apply_legacy_map(lmap, kwargs):
 
     for name, val in six.iteritems(kwargs):
         try:
-            new_name, translator = lmap[name]
+            lmap_value = lmap[name]
         except KeyError:
             new_name = name
         else:
+            if lmap_value is None:
+                # ignore this
+                from warnings import warn
+                warn("option '%s' is deprecated and was ignored" % name,
+                        DeprecationWarning)
+                continue
+
+            new_name, translator = lmap_value
             if name in result:
                 raise TypeError("may not pass a value for both '%s' and '%s'"
                         % (name, new_name))
@@ -145,8 +153,10 @@ class Options(Record):
     _legacy_options_map = {
             "cl_build_options": ("build_options", None),
             "write_cl": ("write_code", None),
-            "highlight_cl": ("disable_code_highlight", lambda val: not val),
-            "highlight_wrapper": ("disable_wrapper_highlight", lambda val: not val),
+            "highlight_cl": None,
+            "highlight_wrapper": None,
+            "disable_wrapper_highlight": None,
+            "disable_code_highlight": None,
             "edit_cl": ("edit_code", None),
             }
 
