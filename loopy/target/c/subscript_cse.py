@@ -57,6 +57,14 @@ def generate_all_subsets(l, min_length):
             yield frozenset(entry for i, entry in enumerate(l) if (1 << i) & bits)
 
 
+def is_const_product(term):
+    return (
+            p.is_constant(term)
+            or (
+                isinstance(term, p.Product)
+                and all(is_const_product(ch) for ch in term.children)))
+
+
 def get_terms(allowable_vars, expr):
     if isinstance(expr, p.Sum):
         terms = expr.children
@@ -64,16 +72,15 @@ def get_terms(allowable_vars, expr):
         terms = (expr,)
 
     from loopy.symbolic import get_dependencies
-    from pymbolic.primitives import is_constant
 
     result = []
     remainder = []
     for term in terms:
         deps = get_dependencies(term)
         if (deps <= allowable_vars
-                and not is_constant(term)):
+                and not is_const_product(term)):
             result.append(term)
-        elif remainder is not None:
+        else:
             remainder.append(term)
 
     return result, remainder
@@ -84,28 +91,54 @@ def get_terms(allowable_vars, expr):
 # {{{ counting
 
 class SubscriptSubsetCounter(ExprIdentityMapper):
-    def __init__(self, codegen_state, term_set_to_count):
+    def __init__(self, codegen_state, term_set_to_inside_inames_list,
+            inside_inames):
         self.codegen_state = codegen_state
-        self.term_set_to_count = term_set_to_count
+        self.term_set_to_inside_inames_list = term_set_to_inside_inames_list
         kernel = codegen_state.kernel
         self.allowable_vars = kernel.all_inames() | kernel.outer_params()
+        self.inside_inames = inside_inames
 
     def map_subscript(self, expr):
         terms, _ = get_terms(self.allowable_vars, expr.index)
         terms = frozenset(terms)
-        self.term_set_to_count[terms] = self.term_set_to_count.get(terms, 0) + 1
+        self.term_set_to_inside_inames_list[terms] = (
+                self.term_set_to_inside_inames_list.get(terms, [])
+                + [self.inside_inames])
 
 
 class ASTSubexpressionCollector(CASTIdentityMapper):
     def __init__(self, codegen_state):
-        self.term_set_to_count = {}
-        self.subset_count_mapper = SubscriptSubsetCounter(
-                codegen_state, self.term_set_to_count)
+        self.term_set_to_inside_inames_list = {}
+        self.codegen_state = codegen_state
+        self.inside_inames_stack = []
+
+    def map_loopy_scope(self, node):
+        if self.inside_inames_stack:
+            new_inside_inames = self.inside_inames_stack[-1]
+        else:
+            new_inside_inames = ()
+
+        new_inside_inames = (
+                new_inside_inames + node.available_variables)
+
+        self.inside_inames_stack.append(new_inside_inames)
+        result = super(ASTSubexpressionCollector, self).map_loopy_scope(node)
+        self.inside_inames_stack.pop()
+        return result
 
     def map_expression(self, expr):
         from pymbolic.primitives import is_constant
         if isinstance(expr, CExpression):
-            self.subset_count_mapper(expr.expr)
+            if self.inside_inames_stack:
+                inside_inames = self.inside_inames_stack[-1]
+            else:
+                inside_inames = ()
+            count_mapper = SubscriptSubsetCounter(
+                self.codegen_state,
+                self.term_set_to_inside_inames_list,
+                inside_inames)
+            count_mapper(expr.expr)
             return expr
         elif isinstance(expr, str) or is_constant(expr):
             return expr
@@ -126,11 +159,12 @@ class SubexpressionReplacementState(Record):
 
         A callable that can generate new identifiers.
 
-    .. attribute:: term_set_to_count
+    .. attribute:: term_set_to_inside_inames_list
 
-        A mapping from (summed) sets of subexpressions to their use counts.
+        A mapping from (summed) sets of subexpressions to a list of tuples of inames
+        within which the use is nested, one per use.
 
-    .. attribute:: term_subset_to_count
+    .. attribute:: term_subset_to_inside_inames_list
 
         A mapping from (summed) subsets of subexpressions to their use counts.
 
@@ -144,13 +178,45 @@ class SubexpressionReplacementState(Record):
     """
 
 
-def compute_term_subset_to_count(term_set_to_count, term_set_to_variable):
+def is_simple(term):
+    from loopy.symbolic import HardwareAxisIndex
+
+    if p.is_constant(term):
+        return True
+
+    if (isinstance(term, p.Variable)
+            or isinstance(term, HardwareAxisIndex)):
+        return True
+
+    if isinstance(term, p.Product):
+        n_constants = 0
+        n_simple = 0
+        n_other = 0
+
+        for ch in term.children:
+            if p.is_constant(ch):
+                n_constants += 1
+            elif is_simple(ch):
+                n_simple += 1
+            else:
+                n_other += 1
+
+        return n_other == 0 and n_simple <= 1
+
+    return False
+
+
+def compute_term_subset_to_inside_inames_list(
+        term_set_to_inside_inames_list, term_set_to_variable):
     logger.debug("TERM SET TO SUBSET COUNT:")
-    for term_set, count in six.iteritems(term_set_to_count):
-        logger.debug("%s: %d" % (" + ".join(str(i) for i in term_set), count))
+    for term_set, in_iname_uses in six.iteritems(term_set_to_inside_inames_list):
+        logger.debug(
+                "%s: %d" % (" + ".join(str(i) for i in term_set),
+                    len(in_iname_uses)))
 
     result = {}
-    for code_term_set, cnt in six.iteritems(term_set_to_count):
+    for code_term_set, in_iname_uses in six.iteritems(
+            term_set_to_inside_inames_list):
         logger.debug("CTS: " + " + ".join(str(i) for i in code_term_set))
         interacts_with_var_term_sets = [
                 var_term_set
@@ -159,8 +225,10 @@ def compute_term_subset_to_count(term_set_to_count, term_set_to_variable):
 
         logger.debug("INTERACTS: " + str(interacts_with_var_term_sets))
         for subset in generate_all_subsets(code_term_set, 1):
-            if len(subset) == 1 and isinstance(six.next(iter(subset)), p.Variable):
-                continue
+            if len(subset) == 1:
+                term, = subset
+                if is_simple(term):
+                    continue
 
             will_contribute = True
 
@@ -172,13 +240,15 @@ def compute_term_subset_to_count(term_set_to_count, term_set_to_variable):
                     break
 
             if will_contribute:
-                result[subset] = result.get(subset, 0) + cnt
+                result[subset] = result.get(subset, []) + in_iname_uses
 
         logger.debug("CTS DONE")
 
     logger.debug("TERM SUBSET TO COUNT:")
-    for term_set, count in six.iteritems(result):
-        logger.debug("%s: %d" % (" + ".join(str(i) for i in term_set), count))
+    for term_set, in_iname_uses in six.iteritems(result):
+        logger.debug(
+                "%s: %d" % (" + ".join(str(i) for i in term_set),
+                    len(in_iname_uses)))
 
     return result
 
@@ -203,7 +273,11 @@ def simplify_terms(terms, term_set_to_variable):
                 break
 
     logger.debug("GOT " + "+".join(str(s) for s in terms))
-    return terms
+
+    def term_sort_key(term):
+        return str(term)
+
+    return sorted(terms, key=term_sort_key)
 
 
 class SubscriptSubsetReplacer(ExprIdentityMapper):
@@ -239,38 +313,57 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
         available_variables = (
                 subex_rep_state.available_variables
                 | frozenset(node.available_variables))
+
         subex_rep_state = subex_rep_state.copy(
                 available_variables=available_variables)
 
         term_set_to_variable = subex_rep_state.term_set_to_variable.copy()
-        term_subset_to_count = subex_rep_state.term_subset_to_count
+        term_subset_to_inside_inames_list = \
+                subex_rep_state.term_subset_to_inside_inames_list
 
         from loopy.symbolic import get_dependencies
+
         from pytools import argmin2
         from cgen import Block
         from loopy.target.c import ScopeASTNode
 
         initializers = []
 
+        def is_in_deeper_loop(in_iname_uses):
+            for iiu in in_iname_uses:
+                iiu = frozenset(iiu)
+
+                if available_variables & iiu < iiu:  # note: not equal!
+                    return True
+
+            return False
+
         while True:
             eligible_subsets = frozenset(
                     term_set
-                    for term_set, count in six.iteritems(term_subset_to_count)
+                    for term_set, in_iname_uses in six.iteritems(
+                        term_subset_to_inside_inames_list)
                     if all(get_dependencies(term) <= available_variables
                         for term in term_set)
-                    if count >= 2)
+                    if len(in_iname_uses) >= 2  # used more than once
+                    or is_in_deeper_loop(in_iname_uses))
 
             if not eligible_subsets:
                 break
 
+            def get_name_sort_key(subset):
+                return (sorted(str(term) for term in subset))
+
             # find the shortest, most-used subexpression
             new_var_subset, _ = argmin2(
                     ((subset,
-                        (len(subset), -term_subset_to_count[subset]))
+                        (len(subset),
+                            -len(term_subset_to_inside_inames_list[subset]),
+                            get_name_sort_key(subset)))
                         for subset in eligible_subsets),
                     return_value=True)
 
-            var_name = subex_rep_state.name_generator("index_subexp")
+            var_name = subex_rep_state.name_generator("ind")
 
             old_var_expr = p.Sum(tuple(new_var_subset))
             new_var_expr = p.Sum(tuple(
@@ -289,9 +382,10 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
                         is_const=True,
                         short_for_expr=old_var_expr))
 
-            term_subset_to_count = compute_term_subset_to_count(
-                    subex_rep_state.term_set_to_count,
-                    term_set_to_variable)
+            term_subset_to_inside_inames_list = \
+                    compute_term_subset_to_inside_inames_list(
+                            subex_rep_state.term_set_to_inside_inames_list,
+                            term_set_to_variable)
 
         # insert initializer code
         if initializers:
@@ -305,7 +399,7 @@ class ASTSubexpressionReplacer(CASTIdentityMapper):
 
         subex_rep_state = subex_rep_state.copy(
                 term_set_to_variable=term_set_to_variable,
-                term_subset_to_count=term_subset_to_count)
+                term_subset_to_inside_inames_list=term_subset_to_inside_inames_list)
 
         return super(ASTSubexpressionReplacer, self).map_loopy_scope(
                 node, subex_rep_state)
@@ -339,10 +433,11 @@ def eliminate_common_subscripts(codegen_state, node):
     subex_rep_state = SubexpressionReplacementState(
             codegen_state=codegen_state,
             name_generator=codegen_state.kernel.get_var_name_generator(),
-            term_set_to_count=sc.term_set_to_count,
+            term_set_to_inside_inames_list=sc.term_set_to_inside_inames_list,
             available_variables=codegen_state.kernel.outer_params(),
             term_set_to_variable=term_set_to_variable,
-            term_subset_to_count=compute_term_subset_to_count(
-                sc.term_set_to_count, term_set_to_variable))
+            term_subset_to_inside_inames_list=(
+                compute_term_subset_to_inside_inames_list(
+                        sc.term_set_to_inside_inames_list, term_set_to_variable)))
 
     return sr(node, subex_rep_state)

@@ -46,7 +46,7 @@ def _multiply_terms(expr, factor):
     else:
         terms = (expr,)
 
-    return p.flattened_sum(factor*term for term in terms)
+    return p.flattened_sum(p.flattened_product((factor, term)) for term in terms)
 
 
 class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
