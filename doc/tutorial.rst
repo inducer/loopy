@@ -53,6 +53,13 @@ And some data on the host:
 
 .. }}}
 
+We'll also disable console syntax highlighting because it confuses
+doctest::
+
+    >>> # not a documented interface
+    >>> import loopy.options
+    >>> loopy.options.ALLOW_TERMINAL_COLORS = False
+
 Getting started
 ---------------
 
