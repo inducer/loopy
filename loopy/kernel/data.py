@@ -214,6 +214,7 @@ class KernelArgument(Record):
 
 
 class GlobalArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
@@ -223,6 +224,7 @@ class GlobalArg(ArrayBase, KernelArgument):
 
 
 class ConstantArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
@@ -232,6 +234,7 @@ class ConstantArg(ArrayBase, KernelArgument):
 
 
 class ImageArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 1
     max_target_axes = 3
 
