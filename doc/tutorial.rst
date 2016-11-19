@@ -53,6 +53,13 @@ And some data on the host:
 
 .. }}}
 
+We'll also disable console syntax highlighting because it confuses
+doctest::
+
+    >>> # not a documented interface
+    >>> import loopy.options
+    >>> loopy.options.ALLOW_TERMINAL_COLORS = False
+
 Getting started
 ---------------
 
@@ -797,17 +804,19 @@ enabling some cost savings:
         a[4 * i_outer + 3] = 0.0f;
       }
       /* final slab for 'i_outer' */
-      int const i_outer = -1 + n + -1 * (3 * n / 4);
-    <BLANKLINE>
-      if (-1 + n >= 0)
       {
-        a[4 * i_outer] = 0.0f;
-        if (-2 + -4 * i_outer + n >= 0)
-          a[4 * i_outer + 1] = 0.0f;
-        if (-3 + -4 * i_outer + n >= 0)
-          a[4 * i_outer + 2] = 0.0f;
-        if (4 + 4 * i_outer + -1 * n == 0)
-          a[4 * i_outer + 3] = 0.0f;
+        int const i_outer = -1 + n + -1 * (3 * n / 4);
+    <BLANKLINE>
+        if (-1 + n >= 0)
+        {
+          a[4 * i_outer] = 0.0f;
+          if (-2 + -4 * i_outer + n >= 0)
+            a[4 * i_outer + 1] = 0.0f;
+          if (-3 + -4 * i_outer + n >= 0)
+            a[4 * i_outer + 2] = 0.0f;
+          if (4 + 4 * i_outer + -1 * n == 0)
+            a[4 * i_outer + 3] = 0.0f;
+        }
       }
     ...
 
@@ -1525,16 +1534,18 @@ Now to make things more interesting, we'll create a kernel with barriers:
     {
       __local int c[50 * 10 * 99];
     <BLANKLINE>
-      int const k_outer = 0;
+      {
+        int const k_outer = 0;
     <BLANKLINE>
-      for (int j = 0; j <= 9; ++j)
-        for (int i = 0; i <= 49; ++i)
-        {
-          barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
-          c[990 * i + 99 * j + lid(0) + 1] = 2 * a[980 * i + 98 * j + lid(0) + 1];
-          barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
-          e[980 * i + 98 * j + lid(0) + 1] = c[990 * i + 99 * j + 1 + lid(0) + 1] + c[990 * i + 99 * j + -1 + lid(0) + 1];
-        }
+        for (int j = 0; j <= 9; ++j)
+          for (int i = 0; i <= 49; ++i)
+          {
+            barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
+            c[990 * i + 99 * j + lid(0) + 1] = 2 * a[980 * i + 98 * j + lid(0) + 1];
+            barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
+            e[980 * i + 98 * j + lid(0) + 1] = c[990 * i + 99 * j + 1 + lid(0) + 1] + c[990 * i + 99 * j + -1 + lid(0) + 1];
+          }
+      }
     }
 
 

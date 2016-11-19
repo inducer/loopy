@@ -29,7 +29,7 @@ import six
 import numpy as np  # noqa
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError
-from cgen import Pointer, NestedDeclarator
+from cgen import Pointer, NestedDeclarator, Block
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.symbolic import IdentityMapper
@@ -131,6 +131,12 @@ class POD(Declarator):
         return 0
 
     mapper_method = "map_loopy_pod"
+
+
+class ScopingBlock(Block):
+    """A block that is mandatory for scoping and may not be simplified away
+    by :func:`loopy.codegen.results.merge_codegen_results`.
+    """
 
 
 class FunctionDeclarationWrapper(NestedDeclarator):
@@ -512,6 +518,10 @@ class CASTBuilder(ASTBuilderBase):
     def ast_block_class(self):
         from cgen import Block
         return Block
+
+    @property
+    def ast_block_scope_class(self):
+        return ScopingBlock
 
     # }}}
 

@@ -28,6 +28,9 @@ from pytools import Record
 import re
 
 
+ALLOW_TERMINAL_COLORS = False
+
+
 class _ColoramaStub(object):
     def __getattribute__(self, name):
         return ""
@@ -38,10 +41,18 @@ def _apply_legacy_map(lmap, kwargs):
 
     for name, val in six.iteritems(kwargs):
         try:
-            new_name, translator = lmap[name]
+            lmap_value = lmap[name]
         except KeyError:
             new_name = name
         else:
+            if lmap_value is None:
+                # ignore this
+                from warnings import warn
+                warn("option '%s' is deprecated and was ignored" % name,
+                        DeprecationWarning)
+                continue
+
+            new_name, translator = lmap_value
             if name in result:
                 raise TypeError("may not pass a value for both '%s' and '%s'"
                         % (name, new_name))
@@ -113,18 +124,10 @@ class Options(Record):
         Accepts a file name as a value. Writes to
         ``sys.stdout`` if none is given.
 
-    .. attribute:: disable_wrapper_highlight
-
-        Use syntax highlighting in :attr:`write_wrapper`.
-
     .. attribute:: write_code
 
         Print the generated code.  Accepts a file name or a boolean as a value.
         Writes to ``sys.stdout`` if set to *True*.
-
-    .. attribute:: disable_code_highlight
-
-        Use syntax highlighting in :attr:`write_code`.
 
     .. attribute:: edit_code
 
@@ -150,8 +153,10 @@ class Options(Record):
     _legacy_options_map = {
             "cl_build_options": ("build_options", None),
             "write_cl": ("write_code", None),
-            "highlight_cl": ("disable_code_highlight", lambda val: not val),
-            "highlight_wrapper": ("disable_wrapper_highlight", lambda val: not val),
+            "highlight_cl": None,
+            "highlight_wrapper": None,
+            "disable_wrapper_highlight": None,
+            "disable_code_highlight": None,
             "edit_cl": ("edit_code", None),
             }
 
@@ -173,6 +178,9 @@ class Options(Record):
         else:
             allow_terminal_colors_def = True
 
+        allow_terminal_colors_def = (
+                ALLOW_TERMINAL_COLORS and allow_terminal_colors_def)
+
         Record.__init__(
                 self,
 
@@ -185,9 +193,7 @@ class Options(Record):
                 no_numpy=kwargs.get("no_numpy", False),
                 return_dict=kwargs.get("return_dict", False),
                 write_wrapper=kwargs.get("write_wrapper", False),
-                highlight_wrapper=kwargs.get("highlight_wrapper", False),
                 write_code=kwargs.get("write_code", False),
-                disable_code_highlight=kwargs.get("disable_code_highlight", False),
                 edit_code=kwargs.get("edit_code", False),
                 build_options=kwargs.get("build_options", []),
                 allow_terminal_colors=kwargs.get("allow_terminal_colors",
@@ -208,7 +214,11 @@ class Options(Record):
 
     @property
     def highlight_cl(self):
-        return not self.disable_code_highlight
+        return self.allow_terminal_colors
+
+    @property
+    def highlight_wrapper(self):
+        return self.allow_terminal_colors
 
     @property
     def write_cl(self):
