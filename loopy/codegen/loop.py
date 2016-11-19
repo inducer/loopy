@@ -439,7 +439,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         if (ubound - lbound).plain_is_equal(zero):
             # single-trip, generate just a variable assignment, not a loop
-            result.append(merge_codegen_results(codegen_state, [
+            inner = merge_codegen_results(codegen_state, [
                 astb.emit_initializer(
                     codegen_state,
                     kernel.index_dtype, loop_iname,
@@ -447,7 +447,12 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                     is_const=True),
                 astb.emit_blank_line(),
                 inner,
-                ]))
+                ])
+            result.append(
+                    inner.with_new_ast(
+                        codegen_state,
+                        astb.ast_block_scope_class(
+                            inner.current_ast(codegen_state))))
 
         else:
             inner_ast = inner.current_ast(codegen_state)
