@@ -274,15 +274,18 @@ class ISPCASTBuilder(CASTBuilder):
         arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
 
         if codegen_state.is_generating_device_code:
-            return ISPCTask(
+            result = ISPCTask(
                         FunctionDeclaration(
                             Value("void", name),
                             arg_decls))
         else:
-            return ISPCExport(
+            result = ISPCExport(
                     FunctionDeclaration(
                         Value("void", name),
                         arg_decls))
+
+        from loopy.target.c import FunctionDeclarationWrapper
+        return FunctionDeclarationWrapper(result)
 
     # }}}
 
@@ -509,12 +512,10 @@ class ISPCASTBuilder(CASTBuilder):
         return Assign(ecm(lhs, prec=PREC_NONE, type_context=None), rhs_code)
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
+            lbound, ubound, inner):
         ecm = codegen_state.expression_to_code_mapper
 
-        from loopy.symbolic import aff_to_expr
         from loopy.target.c import POD, For
-
         from pymbolic.mapper.stringifier import PREC_NONE
         from cgen import InlineInitializer
 
@@ -523,9 +524,9 @@ class ISPCASTBuilder(CASTBuilder):
         return For(
                 InlineInitializer(
                     ISPCUniform(POD(self, iname_dtype, iname)),
-                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                    ecm(lbound, PREC_NONE, "i")),
                 ecm(
-                    p.Comparison(var(iname), "<=", aff_to_expr(static_ubound)),
+                    p.Comparison(var(iname), "<=", ubound),
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)

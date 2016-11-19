@@ -220,6 +220,9 @@ class ASTBuilderBase(object):
             short_for_expr=None):
         raise NotImplementedError()
 
+    def emit_declaration_scope(self, codegen_state, inner):
+        raise NotImplementedError()
+
     def emit_blank_line(self):
         raise NotImplementedError()
 
@@ -269,6 +272,10 @@ class DummyHostASTBuilder(ASTBuilderBase):
 
     @property
     def ast_block_class(self):
+        return _DummyASTBlock
+
+    @property
+    def ast_block_scope_class(self):
         return _DummyASTBlock
 
     def emit_assignment(self, codegen_state, insn):

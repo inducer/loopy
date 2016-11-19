@@ -207,6 +207,7 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
     codegen_result = None
 
     block_cls = codegen_state.ast_builder.ast_block_class
+    block_scope_cls = codegen_state.ast_builder.ast_block_scope_class
 
     for el in elements:
         if isinstance(el, CodeGenerationResult):
@@ -227,7 +228,8 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
                         dev_program_names.add(dp.name)
 
             cur_ast = el.current_ast(codegen_state)
-            if isinstance(cur_ast, block_cls):
+            if (isinstance(cur_ast, block_cls)
+                    and not isinstance(cur_ast, block_scope_cls)):
                 ast_els.extend(cur_ast.contents)
             else:
                 ast_els.append(cur_ast)
