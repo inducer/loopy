@@ -1123,8 +1123,8 @@ def spill_and_reload_test(queue, knl, out_expect, debug=False):
         print(cgr.host_code())
         1/0
 
-    _, (out,) = knl(queue)
-    assert (out.get() == out_expect).all()
+    _, (out,) = knl(queue, out_host=True)
+    assert (out == out_expect).all()
 
 
 @pytest.mark.parametrize("hw_loop", [True, False])
