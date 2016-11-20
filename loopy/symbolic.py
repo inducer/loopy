@@ -31,8 +31,7 @@ from six.moves import range, zip, reduce, intern
 from pytools import memoize, memoize_method, Record
 import pytools.lex
 
-from pymbolic.primitives import (
-        Leaf, Expression, Variable, CommonSubexpression)
+import pymbolic.primitives as p
 
 from pymbolic.mapper import (
         CombineMapper as CombineMapperBase,
@@ -83,11 +82,11 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_reduction(self, expr, *args):
-        mapped_inames = [self.rec(Variable(iname), *args) for iname in expr.inames]
+        mapped_inames = [self.rec(p.Variable(iname), *args) for iname in expr.inames]
 
         new_inames = []
         for iname, new_sym_iname in zip(expr.inames, mapped_inames):
-            if not isinstance(new_sym_iname, Variable):
+            if not isinstance(new_sym_iname, p.Variable):
                 from loopy.diagnostic import LoopyError
                 raise LoopyError("%s did not map iname '%s' to a variable"
                         % (type(self).__name__, iname))
@@ -253,7 +252,7 @@ class DependencyMapper(DependencyMapperBase):
 
     def map_reduction(self, expr):
         return (self.rec(expr.expr)
-                - set(Variable(iname) for iname in expr.inames))
+                - set(p.Variable(iname) for iname in expr.inames))
 
     def map_tagged_variable(self, expr):
         return set([expr])
@@ -303,7 +302,7 @@ class SubstitutionRuleExpander(IdentityMapper):
 
 # {{{ loopy-specific primitives
 
-class Literal(Leaf):
+class Literal(p.Leaf):
     """A literal to be used during code generation."""
 
     def __init__(self, s):
@@ -320,7 +319,7 @@ class Literal(Leaf):
     mapper_method = "map_literal"
 
 
-class ArrayLiteral(Leaf):
+class ArrayLiteral(p.Leaf):
     "An array literal."
 
     # Currently only used after loopy -> C expression translation.
@@ -339,7 +338,7 @@ class ArrayLiteral(Leaf):
     mapper_method = "map_array_literal"
 
 
-class HardwareAxisIndex(Leaf):
+class HardwareAxisIndex(p.Leaf):
     def __init__(self, axis):
         self.axis = axis
 
@@ -360,7 +359,7 @@ class LocalHardwareAxisIndex(HardwareAxisIndex):
     mapper_method = "map_local_hw_index"
 
 
-class FunctionIdentifier(Leaf):
+class FunctionIdentifier(p.Leaf):
     """A base class for symbols representing functions."""
 
     init_arg_names = ()
@@ -371,13 +370,13 @@ class FunctionIdentifier(Leaf):
     mapper_method = intern("map_loopy_function_identifier")
 
 
-class TypedCSE(CommonSubexpression):
+class TypedCSE(p.CommonSubexpression):
     """A :class:`pymbolic.primitives.CommonSubexpression` annotated with
     a :class:`numpy.dtype`.
     """
 
     def __init__(self, child, prefix=None, dtype=None):
-        CommonSubexpression.__init__(self, child, prefix)
+        super(TypedCSE, self).__init__(child, prefix)
         self.dtype = dtype
 
     def __getinitargs__(self):
@@ -387,7 +386,7 @@ class TypedCSE(CommonSubexpression):
         return dict(dtype=self.dtype)
 
 
-class TypeAnnotation(Expression):
+class TypeAnnotation(p.Expression):
     def __init__(self, type, child):
         super(TypeAnnotation, self).__init__()
         self.type = type
@@ -399,7 +398,7 @@ class TypeAnnotation(Expression):
     mapper_method = intern("map_type_annotation")
 
 
-class TaggedVariable(Variable):
+class TaggedVariable(p.Variable):
     """This is an identifier with a tag, such as 'matrix$one', where
     'one' identifies this specific use of the identifier. This mechanism
     may then be used to address these uses--such as by prefetching only
@@ -409,7 +408,7 @@ class TaggedVariable(Variable):
     init_arg_names = ("name", "tag")
 
     def __init__(self, name, tag):
-        Variable.__init__(self, name)
+        super(TaggedVariable, self).__init__(name)
         self.tag = tag
 
     def __getinitargs__(self):
@@ -421,7 +420,7 @@ class TaggedVariable(Variable):
     mapper_method = intern("map_tagged_variable")
 
 
-class Reduction(Expression):
+class Reduction(p.Expression):
     """Represents a reduction operation on :attr:`expr`
     across :attr:`inames`.
 
@@ -451,13 +450,13 @@ class Reduction(Expression):
         if isinstance(inames, str):
             inames = tuple(iname.strip() for iname in inames.split(","))
 
-        elif isinstance(inames, Variable):
+        elif isinstance(inames, p.Variable):
             inames = (inames,)
 
         assert isinstance(inames, tuple)
 
         def strip_var(iname):
-            if isinstance(iname, Variable):
+            if isinstance(iname, p.Variable):
                 iname = iname.name
 
             assert isinstance(iname, str)
@@ -501,7 +500,7 @@ class Reduction(Expression):
     mapper_method = intern("map_reduction")
 
 
-class LinearSubscript(Expression):
+class LinearSubscript(p.Expression):
     """Represents a linear index into a multi-dimensional array, completely
     ignoring any multi-dimensional layout.
     """
@@ -521,7 +520,7 @@ class LinearSubscript(Expression):
     mapper_method = intern("map_linear_subscript")
 
 
-class RuleArgument(Expression):
+class RuleArgument(p.Expression):
     """Represents a (numbered) argument of a :class:`loopy.SubstitutionRule`.
     Only used internally in the rule-aware mappers to match subst rules
     independently of argument names.
@@ -554,7 +553,7 @@ def get_dependencies(expr):
 def parse_tagged_name(expr):
     if isinstance(expr, TaggedVariable):
         return expr.name, expr.tag
-    elif isinstance(expr, Variable):
+    elif isinstance(expr, p.Variable):
         return expr.name, None
     else:
         raise RuntimeError("subst rule name not understood: %s" % expr)
@@ -590,7 +589,7 @@ class SubstitutionRuleRenamer(IdentityMapper):
         self.renames = renames
 
     def map_call(self, expr):
-        if not isinstance(expr.function, Variable):
+        if not isinstance(expr.function, p.Variable):
             return IdentityMapper.map_call(self, expr)
 
         name, tag = parse_tagged_name(expr.function)
@@ -600,7 +599,7 @@ class SubstitutionRuleRenamer(IdentityMapper):
             return IdentityMapper.map_call(self, expr)
 
         if tag is None:
-            sym = Variable(new_name)
+            sym = p.Variable(new_name)
         else:
             sym = TaggedVariable(new_name, tag)
 
@@ -614,7 +613,7 @@ class SubstitutionRuleRenamer(IdentityMapper):
             return IdentityMapper.map_variable(self, expr)
 
         if tag is None:
-            return Variable(new_name)
+            return p.Variable(new_name)
         else:
             return TaggedVariable(new_name, tag)
 
@@ -760,7 +759,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
             return self.map_substitution(name, tag, (), expn_state)
 
     def map_call(self, expr, expn_state):
-        if not isinstance(expr.function, Variable):
+        if not isinstance(expr.function, p.Variable):
             return IdentityMapper.map_call(self, expr, expn_state)
 
         name, tag = parse_tagged_name(expr.function)
@@ -803,7 +802,7 @@ class RuleAwareIdentityMapper(IdentityMapper):
                 name, rule.arguments, result)
 
         if tag is None:
-            sym = Variable(new_name)
+            sym = p.Variable(new_name)
         else:
             sym = TaggedVariable(new_name, tag)
 
@@ -920,7 +919,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
     def _parse_reduction(self, operation, inames, red_expr,
             allow_simultaneous=False):
-        if isinstance(inames, Variable):
+        if isinstance(inames, p.Variable):
             inames = (inames,)
 
         if not isinstance(inames, (tuple)):
@@ -929,7 +928,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
         processed_inames = []
         for iname in inames:
-            if not isinstance(iname, Variable):
+            if not isinstance(iname, p.Variable):
                 raise TypeError("iname argument to reduce() must be a symbol "
                         "or a tuple or a tuple of symbols")
 
@@ -941,22 +940,20 @@ class FunctionToPrimitiveMapper(IdentityMapper):
     def map_call(self, expr):
         from loopy.library.reduction import parse_reduction_op
 
-        from pymbolic.primitives import Variable
-        if not isinstance(expr.function, Variable):
+        if not isinstance(expr.function, p.Variable):
             return IdentityMapper.map_call(self, expr)
 
         name = expr.function.name
         if name == "cse":
-            from pymbolic.primitives import CommonSubexpression
             if len(expr.parameters) in [1, 2]:
                 if len(expr.parameters) == 2:
-                    if not isinstance(expr.parameters[1], Variable):
+                    if not isinstance(expr.parameters[1], p.Variable):
                         raise TypeError("second argument to cse() must be a symbol")
                     tag = expr.parameters[1].name
                 else:
                     tag = None
 
-                return CommonSubexpression(
+                return p.CommonSubexpression(
                         self.rec(expr.parameters[0]), tag)
             else:
                 raise TypeError("cse takes two arguments")
@@ -965,7 +962,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
             if len(expr.parameters) == 3:
                 operation, inames, red_expr = expr.parameters
 
-                if not isinstance(operation, Variable):
+                if not isinstance(operation, p.Variable):
                     raise TypeError("operation argument to reduce() "
                             "must be a symbol")
 
@@ -1098,8 +1095,7 @@ class ArrayAccessFinder(CombineMapper):
         return set()
 
     def map_subscript(self, expr):
-        from pymbolic.primitives import Variable
-        assert isinstance(expr.aggregate, Variable)
+        assert isinstance(expr.aggregate, p.Variable)
 
         if self.tgt_vector_name is None \
                 or expr.aggregate.name == self.tgt_vector_name:
@@ -1144,25 +1140,7 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
     pieces = pw_aff.get_pieces()
     last_expr = aff_to_expr(pieces[-1][1])
 
-    # {{{ make exprs from set constraints
-
-    from pymbolic.primitives import LogicalAnd, LogicalOr
-
-    def set_to_expr(isl_set):
-        constrs = []
-        for isl_basicset in isl_set.get_basic_sets():
-            constrs.append(basic_set_to_expr(isl_basicset))
-        return LogicalOr(tuple(constrs))
-
-    def basic_set_to_expr(isl_basicset):
-        constrs = []
-        for constr in isl_basicset.get_constraints():
-            constrs.append(constraint_to_expr(constr))
-        return LogicalAnd(tuple(constrs))
-
-    # }}}
-
-    pairs = [(set_to_expr(constr_set), aff_to_expr(aff))
+    pairs = [(set_to_cond_expr(constr_set), aff_to_expr(aff))
              for constr_set, aff in pieces[:-1]]
 
     from pymbolic.primitives import If
@@ -1278,7 +1256,7 @@ def simplify_using_aff(kernel, expr):
 # }}}
 
 
-# {{{ expression <-> constraint conversion
+# {{{ expression/set <-> constraint conversion
 
 def eq_constraint_from_expr(space, expr):
     return isl.Constraint.equality_from_aff(aff_from_expr(space, expr))
@@ -1288,7 +1266,7 @@ def ineq_constraint_from_expr(space, expr):
     return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
 
 
-def constraint_to_expr(cns):
+def constraint_to_cond_expr(cns):
     # Looks like this is ok after all--get_aff() performs some magic.
     # Not entirely sure though... FIXME
     #
@@ -1303,6 +1281,39 @@ def constraint_to_expr(cns):
         return Comparison(expr, "==", 0)
     else:
         return Comparison(expr, ">=", 0)
+
+# }}}
+
+
+# {{{ set_to_cond_expr
+
+def basic_set_to_cond_expr(isl_basicset):
+    constrs = []
+    for constr in isl_basicset.get_constraints():
+        constrs.append(constraint_to_cond_expr(constr))
+
+    if len(constrs) == 0:
+        raise ValueError("may not be called on universe")
+    elif len(constrs) == 1:
+        constr, = constrs
+        return constr
+    else:
+        return p.LogicalAnd(tuple(constrs))
+
+
+def set_to_cond_expr(isl_set):
+    conjs = []
+    for isl_basicset in isl_set.get_basic_sets():
+        conjs.append(basic_set_to_cond_expr(isl_basicset))
+
+    if len(conjs) == 0:
+        raise ValueError("may not be called on universe")
+    elif len(conjs) == 1:
+        conj, = conjs
+        return conj
+    else:
+        return p.LogicalOr(tuple(conjs))
+
 
 # }}}
 
@@ -1341,10 +1352,9 @@ class IndexVariableFinder(CombineMapper):
     def map_subscript(self, expr):
         idx_vars = DependencyMapper()(expr.index)
 
-        from pymbolic.primitives import Variable
         result = set()
         for idx_var in idx_vars:
-            if isinstance(idx_var, Variable):
+            if isinstance(idx_var, p.Variable):
                 result.add(idx_var.name)
             else:
                 raise RuntimeError("index variable not understood: %s" % idx_var)
@@ -1455,8 +1465,7 @@ class AccessRangeMapper(WalkMapper):
         domain = self.kernel.get_inames_domain(inames)
         WalkMapper.map_subscript(self, expr, inames)
 
-        from pymbolic.primitives import Variable
-        assert isinstance(expr.aggregate, Variable)
+        assert isinstance(expr.aggregate, p.Variable)
 
         if expr.aggregate.name != self.arg_name:
             return
@@ -1499,8 +1508,7 @@ def is_expression_equal(a, b):
     if a == b:
         return True
 
-    from pymbolic.primitives import Expression
-    if isinstance(a, Expression) or isinstance(b, Expression):
+    if isinstance(a, p.Expression) or isinstance(b, p.Expression):
         if a is None or b is None:
             return False
 
