@@ -301,13 +301,11 @@ def build_loop_nest(codegen_state, schedule_index):
             domain = isl.align_spaces(
                     self.kernel.get_inames_domain(check_inames),
                     self.impl_domain, obj_bigger_ok=True)
-            from loopy.codegen.bounds import get_bounds_checks
-            return get_bounds_checks(domain,
-                    check_inames, self.impl_domain,
-
-                    # Each instruction individually gets its bounds checks,
-                    # so we can safely overapproximate here.
-                    overapproximate=True)
+            from loopy.codegen.bounds import get_approximate_convex_bounds_checks
+            # Each instruction individually gets its bounds checks,
+            # so we can safely overapproximate here.
+            return get_approximate_convex_bounds_checks(domain,
+                    check_inames, self.impl_domain)
 
     def build_insn_group(sched_index_info_entries, codegen_state,
             done_group_lengths=set()):
@@ -451,13 +449,13 @@ def build_loop_nest(codegen_state, schedule_index):
             # gen_code returns a list
 
             if bounds_checks or pred_checks:
-                from loopy.symbolic import constraint_to_expr
+                from loopy.symbolic import constraint_to_cond_expr
 
                 prev_gen_code = gen_code
 
                 def gen_code(inner_codegen_state):
                     condition_exprs = [
-                            constraint_to_expr(cns)
+                            constraint_to_cond_expr(cns)
                             for cns in bounds_checks] + [
                                 pred_chk for pred_chk in pred_checks]
 

@@ -1140,25 +1140,7 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
     pieces = pw_aff.get_pieces()
     last_expr = aff_to_expr(pieces[-1][1])
 
-    # {{{ make exprs from set constraints
-
-    from pymbolic.primitives import LogicalAnd, LogicalOr
-
-    def set_to_expr(isl_set):
-        constrs = []
-        for isl_basicset in isl_set.get_basic_sets():
-            constrs.append(basic_set_to_expr(isl_basicset))
-        return LogicalOr(tuple(constrs))
-
-    def basic_set_to_expr(isl_basicset):
-        constrs = []
-        for constr in isl_basicset.get_constraints():
-            constrs.append(constraint_to_expr(constr))
-        return LogicalAnd(tuple(constrs))
-
-    # }}}
-
-    pairs = [(set_to_expr(constr_set), aff_to_expr(aff))
+    pairs = [(set_to_cond_expr(constr_set), aff_to_expr(aff))
              for constr_set, aff in pieces[:-1]]
 
     from pymbolic.primitives import If
@@ -1274,7 +1256,7 @@ def simplify_using_aff(kernel, expr):
 # }}}
 
 
-# {{{ expression <-> constraint conversion
+# {{{ expression/set <-> constraint conversion
 
 def eq_constraint_from_expr(space, expr):
     return isl.Constraint.equality_from_aff(aff_from_expr(space, expr))
@@ -1284,7 +1266,7 @@ def ineq_constraint_from_expr(space, expr):
     return isl.Constraint.inequality_from_aff(aff_from_expr(space, expr))
 
 
-def constraint_to_expr(cns):
+def constraint_to_cond_expr(cns):
     # Looks like this is ok after all--get_aff() performs some magic.
     # Not entirely sure though... FIXME
     #
@@ -1299,6 +1281,39 @@ def constraint_to_expr(cns):
         return Comparison(expr, "==", 0)
     else:
         return Comparison(expr, ">=", 0)
+
+# }}}
+
+
+# {{{ set_to_cond_expr
+
+def basic_set_to_cond_expr(isl_basicset):
+    constrs = []
+    for constr in isl_basicset.get_constraints():
+        constrs.append(constraint_to_cond_expr(constr))
+
+    if len(constrs) == 0:
+        raise ValueError("may not be called on universe")
+    elif len(constrs) == 1:
+        constr, = constrs
+        return constr
+    else:
+        return p.LogicalAnd(tuple(constrs))
+
+
+def set_to_cond_expr(isl_set):
+    conjs = []
+    for isl_basicset in isl_set.get_basic_sets():
+        conjs.append(basic_set_to_cond_expr(isl_basicset))
+
+    if len(conjs) == 0:
+        raise ValueError("may not be called on universe")
+    elif len(conjs) == 1:
+        conj, = conjs
+        return conj
+    else:
+        return p.LogicalOr(tuple(conjs))
+
 
 # }}}
 
