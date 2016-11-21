@@ -792,7 +792,10 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 mapped_child = "(%s)" % mapped_child
             mapped_children.append(mapped_child)
 
-        return self.join(" || ", mapped_children)
+        result = self.join(" || ", mapped_children)
+        if enclosing_prec > PREC_LOGICAL_OR:
+            result = "(%s)" % result
+        return result
 
     def map_sum(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_SUM
