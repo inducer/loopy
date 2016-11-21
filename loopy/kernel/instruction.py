@@ -1173,7 +1173,7 @@ class CInstruction(InstructionBase):
                     for name, expr in self.iname_exprs],
                 assignees=[f(a, *args) for a in self.assignees],
                 predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                    f(pred, *args) for pred in self.predicates))
 
     # }}}
 
