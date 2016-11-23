@@ -292,6 +292,8 @@ Loopy's expressions are a slight superset of the expressions supported by
 :mod:`pymbolic`.
 
 * ``if``
+* ``elif`` (following an ``if``)
+* ``else`` (following an ``if`` / ``elif``)
 * ``reductions``
     * duplication of reduction inames
     * ``reduce`` vs ``simul_reduce``
