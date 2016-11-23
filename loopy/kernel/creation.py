@@ -691,6 +691,7 @@ def parse_instructions(instructions, defines):
     # {{{ pass 4: parsing
 
     insn_options_stack = [get_default_insn_options_dict()]
+    if_predicates_stack = [{'predicates' : frozenset()}]
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
@@ -787,6 +788,7 @@ def parse_instructions(instructions, defines):
                     | frozenset([predicate]))
 
             insn_options_stack.append(options)
+            if_predicates_stack.append(options)
             del options
             del predicate
             continue
@@ -796,11 +798,15 @@ def parse_instructions(instructions, defines):
         if elif_match is not None or else_match is not None:
             prev_predicates = insn_options_stack[-1].get(
                     "predicates", frozenset())
+            last_if_predicates = if_predicates_stack[-1].get(
+                    "predicates", frozenset())
             insn_options_stack.pop()
+            if_predicates_stack.pop()
 
             outer_predicates = insn_options_stack[-1].get(
                     "predicates", frozenset())
-            last_if_predicates = prev_predicates - outer_predicates
+            last_if_predicates = last_if_predicates - outer_predicates
+
 
             if elif_match is not None:
                 predicate = elif_match.group("predicate")
@@ -814,20 +820,26 @@ def parse_instructions(instructions, defines):
 
             else:
                 assert else_match is not None
+                if not last_if_predicates:
+                    raise LoopyError("'else' without 'if'/'elif' encountered")
                 additional_preds = frozenset()
 
             options = insn_options_stack[-1].copy()
+            if_options = insn_options_stack[-1].copy()
 
             from pymbolic.primitives import LogicalNot
             options["predicates"] = (
                     options.get("predicates", frozenset())
                     | outer_predicates
+                    | prev_predicates - last_if_predicates
                     | frozenset(
                         LogicalNot(pred) for pred in last_if_predicates)
                     | additional_preds
                     )
+            if_options["predicates"] = additional_preds
 
             insn_options_stack.append(options)
+            if_predicates_stack.append(if_options)
 
             del options
             del additional_preds
