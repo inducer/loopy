@@ -386,48 +386,39 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         _, loop_iname_idx = dom_and_slab.get_var_dict()[loop_iname]
 
-        from loopy.isl_helpers import (
-                static_min_of_pw_aff,
-                static_max_of_pw_aff)
-
         lbound = (
                 kernel.cache_manager.dim_min(
                     dom_and_slab, loop_iname_idx)
                 .gist(kernel.assumptions)
+                .gist(dom_and_slab.params())
                 .coalesce())
         ubound = (
             kernel.cache_manager.dim_max(
                 dom_and_slab, loop_iname_idx)
             .gist(kernel.assumptions)
+            .gist(dom_and_slab.params())
             .coalesce())
-
-        static_lbound = static_min_of_pw_aff(
-                lbound,
-                constants_only=False)
-        static_ubound = static_max_of_pw_aff(
-                ubound,
-                constants_only=False)
 
         # }}}
 
-        # {{{ find implemented slab, build inner code
+        # {{{ find implemented loop, build inner code
 
-        from loopy.isl_helpers import make_slab_from_bound_pwaffs
+        from loopy.isl_helpers import make_loop_bounds_from_pwaffs
 
-        # impl_slab may be overapproximated
-        impl_slab = make_slab_from_bound_pwaffs(
+        # impl_loop may be overapproximated
+        impl_loop = make_loop_bounds_from_pwaffs(
                 dom_and_slab.space,
-                loop_iname, static_lbound, static_ubound)
+                loop_iname, lbound, ubound)
 
         for iname in moved_inames:
-            dt, idx = impl_slab.get_var_dict()[iname]
-            impl_slab = impl_slab.move_dims(
-                    dim_type.set, impl_slab.dim(dim_type.set),
+            dt, idx = impl_loop.get_var_dict()[iname]
+            impl_loop = impl_loop.move_dims(
+                    dim_type.set, impl_loop.dim(dim_type.set),
                     dt, idx, 1)
 
         new_codegen_state = (
                 codegen_state
-                .intersect(impl_slab)
+                .intersect(impl_loop)
                 .copy(kernel=intersect_kernel_with_slab(
                     kernel, slab, iname)))
 
@@ -438,21 +429,30 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
         if cmt is not None:
             result.append(codegen_state.ast_builder.emit_comment(cmt))
 
-        from loopy.symbolic import aff_to_expr
-
         astb = codegen_state.ast_builder
 
-        if (static_ubound - static_lbound).plain_is_zero():
+        zero = isl.PwAff.zero_on_domain(
+            isl.LocalSpace.from_space(
+                lbound.get_space()).domain())
+
+        from loopy.symbolic import pw_aff_to_expr
+
+        if (ubound - lbound).plain_is_equal(zero):
             # single-trip, generate just a variable assignment, not a loop
-            result.append(merge_codegen_results(codegen_state, [
+            inner = merge_codegen_results(codegen_state, [
                 astb.emit_initializer(
                     codegen_state,
                     kernel.index_dtype, loop_iname,
-                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i"),
+                    ecm(pw_aff_to_expr(lbound), PREC_NONE, "i"),
                     is_const=True),
                 astb.emit_blank_line(),
                 inner,
-                ]))
+                ])
+            result.append(
+                    inner.with_new_ast(
+                        codegen_state,
+                        astb.ast_block_scope_class(
+                            inner.current_ast(codegen_state))))
 
         else:
             inner_ast = inner.current_ast(codegen_state)
@@ -461,7 +461,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                     codegen_state,
                     astb.emit_sequential_loop(
                         codegen_state, loop_iname, kernel.index_dtype,
-                        static_lbound, static_ubound, inner_ast)))
+                        pw_aff_to_expr(lbound), pw_aff_to_expr(ubound), inner_ast)))
 
     return merge_codegen_results(codegen_state, result)
 

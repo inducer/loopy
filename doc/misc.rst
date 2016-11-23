@@ -101,6 +101,10 @@ In the meantime, you can generate code simply by saying::
     print(cg_result.host_code())
     print(cg_result.device_code())
 
+Additionally, for C-based languages, header defintions are available via::
+
+    loopy.generate_header(knl)
+
 For what types of codes does :mod:`loopy` work well?
 ----------------------------------------------------
 
