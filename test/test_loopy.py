@@ -1647,9 +1647,6 @@ def test_if_else(ctx_factory):
             end
             """
             )
-    print(knl)
-
-    knl = lp.set_options(knl, write_cl=True)
 
     evt, (out,) = knl(queue, out_host=True)
 
