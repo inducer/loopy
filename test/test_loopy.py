@@ -1657,6 +1657,33 @@ def test_if_else(ctx_factory):
 
     assert np.array_equal(out_ref, out)
 
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<50}",
+            """
+            for i
+                if i % 2 == 0
+                    if i % 3 == 0
+                        a[i] = 15
+                    elif i % 3 == 1
+                        a[i] = 11
+                    else
+                        a[i] = 3
+                    end
+                end
+            end
+            """
+            )
+    print knl
+
+    evt, (out,) = knl(queue, out_host=True)
+
+    out_ref = np.empty(50)
+    out_ref[::6] = 15
+    out_ref[4::6] = 11
+    out_ref[2::6] = 3
+
+    assert np.array_equal(out_ref, out)
+
 
 def test_tight_loop_bounds(ctx_factory):
     ctx = ctx_factory()
