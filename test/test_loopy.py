@@ -1673,7 +1673,6 @@ def test_if_else(ctx_factory):
             end
             """
             )
-    print knl
 
     evt, (out,) = knl(queue, out_host=True)
 
