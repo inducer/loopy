@@ -58,6 +58,7 @@ def re_from_glob(s):
     from fnmatch import translate
     return re.compile("^"+translate(s.strip())+"$")
 
+
 # {{{ parsing
 
 # {{{ lexer data
