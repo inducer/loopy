@@ -117,7 +117,7 @@ class LivenessAnalysis(object):
                     #
                     # We don't currently check if the write is a partial write
                     # or a full write. Instead, we analyze the access
-                    # footprint later on to determine how much to reload/spill.
+                    # footprint later on to determine how much to reload/save.
                     gen[sched_idx].add(var)
             for var in insn.read_dependency_names():
                 if var not in self.kernel.temporary_variables:
@@ -176,9 +176,9 @@ class LivenessAnalysis(object):
 # }}}
 
 
-# {{{ spill and reload implementation
+# {{{ save and reload implementation
 
-class Spiller(object):
+class TemporarySaver(object):
 
     class PromotedTemporary(Record):
         """
@@ -232,7 +232,7 @@ class Spiller(object):
         self.extra_args_to_add = {}
         self.updated_iname_to_tag = {}
         self.updated_temporary_variables = {}
-        self.spills_or_reloads_added = {}
+        self.saves_or_reloads_added = {}
 
     @memoize_method
     def auto_promote_temporary(self, temporary_name):
@@ -296,7 +296,7 @@ class Spiller(object):
             non_hw_dims = (1,)
 
         backing_temporary = self.PromotedTemporary(
-            name=self.var_name_gen(temporary.name + "_spill_slot"),
+            name=self.var_name_gen(temporary.name + "_save_slot"),
             orig_temporary=temporary,
             hw_dims=tuple(hw_dims),
             non_hw_dims=non_hw_dims,
@@ -304,9 +304,9 @@ class Spiller(object):
 
         return backing_temporary
 
-    def spill_or_reload_impl(self, temporary, subkernel, mode,
+    def save_or_reload_impl(self, temporary, subkernel, mode,
                              promoted_temporary=lp.auto):
-        assert mode in ("spill", "reload")
+        assert mode in ("save", "reload")
 
         if promoted_temporary is auto:
             promoted_temporary = self.auto_promote_temporary(temporary)
@@ -322,12 +322,12 @@ class Spiller(object):
                 set(promoted_temporary.hw_inames)))
 
         domain, hw_inames, dim_inames, iname_to_tag = \
-            self.augment_domain_for_spill_or_reload(
-                dchg.domain, promoted_temporary, mode)
+            self.augment_domain_for_save_or_reload(
+                dchg.domain, promoted_temporary, mode, subkernel)
 
         self.kernel = dchg.get_kernel_with(domain)
 
-        spill_or_load_insn_id = self.insn_name_gen(
+        save_or_load_insn_id = self.insn_name_gen(
             "{name}.{mode}".format(name=temporary, mode=mode))
 
         def subscript_or_var(agg, subscript=()):
@@ -347,14 +347,14 @@ class Spiller(object):
             subscript_or_var(
                 promoted_temporary.name, hw_inames + dim_inames))
 
-        if mode == "spill":
+        if mode == "save":
             args = reversed(args)
 
         accessing_insns_in_subkernel = (
             self.insn_query.insns_reading_or_writing(temporary) &
             self.insn_query.insns_in_subkernel(subkernel))
 
-        if mode == "spill":
+        if mode == "save":
             depends_on = accessing_insns_in_subkernel
             update_deps = frozenset()
         elif mode == "reload":
@@ -371,9 +371,9 @@ class Spiller(object):
 
         # Create the load / store instruction.
         from loopy.kernel.data import Assignment
-        spill_or_load_insn = Assignment(
+        save_or_load_insn = Assignment(
             *args,
-            id=spill_or_load_insn_id,
+            id=save_or_load_insn_id,
             within_inames=(
                 self.insn_query.inames_in_subkernel(subkernel) |
                 frozenset(hw_inames + dim_inames)),
@@ -382,16 +382,16 @@ class Spiller(object):
             boostable=False,
             boostable_into=frozenset())
 
-        if temporary not in self.spills_or_reloads_added:
-            self.spills_or_reloads_added[temporary] = set()
-        self.spills_or_reloads_added[temporary].add(spill_or_load_insn_id)
+        if temporary not in self.saves_or_reloads_added:
+            self.saves_or_reloads_added[temporary] = set()
+        self.saves_or_reloads_added[temporary].add(save_or_load_insn_id)
 
-        self.insns_to_insert.append(spill_or_load_insn)
+        self.insns_to_insert.append(save_or_load_insn)
 
         for insn_id in update_deps:
             insn = self.insns_to_update.get(insn_id, self.kernel.id_to_insn[insn_id])
             self.insns_to_update[insn_id] = insn.copy(
-                depends_on=insn.depends_on | frozenset([spill_or_load_insn_id]))
+                depends_on=insn.depends_on | frozenset([save_or_load_insn_id]))
 
         self.updated_temporary_variables[promoted_temporary.name] = \
             promoted_temporary.as_variable()
@@ -404,9 +404,9 @@ class Spiller(object):
 
         insns_to_insert = dict((insn.id, insn) for insn in self.insns_to_insert)
 
-        # Add global no_sync_with between any added reloads and spills
+        # Add global no_sync_with between any added reloads and saves
         from six import iteritems
-        for temporary, added_insns in iteritems(self.spills_or_reloads_added):
+        for temporary, added_insns in iteritems(self.saves_or_reloads_added):
             for insn_id in added_insns:
                 insn = insns_to_insert[insn_id]
                 insns_to_insert[insn_id] = insn.copy(
@@ -432,24 +432,20 @@ class Spiller(object):
         from loopy.kernel.tools import assign_automatic_axes
         return assign_automatic_axes(kernel)
 
-    def spill(self, temporary, subkernel):
-        self.spill_or_reload_impl(temporary, subkernel, "spill")
+    def save(self, temporary, subkernel):
+        self.save_or_reload_impl(temporary, subkernel, "save")
 
     def reload(self, temporary, subkernel):
-        self.spill_or_reload_impl(temporary, subkernel, "reload")
+        self.save_or_reload_impl(temporary, subkernel, "reload")
 
-    def get_access_footprint_in_subkernel(self, temporary, subkernel, kind):
-        # FIXME: Return some sort of actual non-trivial access footprint.
-        assert kind in ("read", "write")
-
-    def augment_domain_for_spill_or_reload(self,
-            domain, promoted_temporary, mode):
+    def augment_domain_for_save_or_reload(self,
+            domain, promoted_temporary, mode, subkernel):
         """
         Add new axes to the domain corresponding to the dimensions of
-        `promoted_temporary`. These axes will be used in the spill/
+        `promoted_temporary`. These axes will be used in the save/
         reload stage.
         """
-        assert mode in ("spill", "reload")
+        assert mode in ("save", "reload")
         import islpy as isl
 
         orig_temporary = promoted_temporary.orig_temporary
@@ -465,10 +461,11 @@ class Spiller(object):
         domain = domain.add(isl.dim_type.set, len(promoted_temporary.non_hw_dims))
 
         for dim_idx, dim_size in enumerate(promoted_temporary.non_hw_dims):
-            new_iname = self.insn_name_gen("{name}_{mode}_axis_{dim}".
+            new_iname = self.insn_name_gen("{name}_{mode}_axis_{dim}_{sk}".
                 format(name=orig_temporary.name,
                        mode=mode,
-                       dim=dim_idx))
+                       dim=dim_idx,
+                       sk=subkernel))
             domain = domain.set_dim_name(
                 isl.dim_type.set, orig_dim + dim_idx, new_iname)
 
@@ -491,10 +488,11 @@ class Spiller(object):
 
         # Add hardware inames duplicates.
         for t_idx, hw_iname in enumerate(promoted_temporary.hw_inames):
-            new_iname = self.insn_name_gen("{name}_{mode}_hw_dim_{dim}".
+            new_iname = self.insn_name_gen("{name}_{mode}_hw_dim_{dim}_{sk}".
                 format(name=orig_temporary.name,
                        mode=mode,
-                       dim=t_idx))
+                       dim=t_idx,
+                       sk=subkernel))
             hw_inames.append(new_iname)
             iname_to_tag[new_iname] = self.kernel.iname_to_tag[hw_iname]
 
@@ -512,11 +510,11 @@ class Spiller(object):
 # }}}
 
 
-# {{{ auto spill and reload across kernel calls
+# {{{ auto save and reload across kernel calls
 
-def spill_and_reload(knl, **kwargs):
+def save_and_reload(knl, **kwargs):
     """
-    Add instructions to spill and reload temporary variables that are live
+    Add instructions to save and reload temporary variables that are live
     across kernel calls.
 
     The basic code transformation turns schedule segments:
@@ -528,21 +526,19 @@ def spill_and_reload(knl, **kwargs):
     into this code:
 
         t = <...>
-        t_spill_slot = t
+        t_save_slot = t
         <return followed by call>
-        t = t_spill_slot
+        t = t_save_slot
         <...> = t
 
-    where `t_spill_slot` is a newly-created global temporary variable.
+    where `t_save_slot` is a newly-created global temporary variable.
 
     :arg knl:
     :arg barriers:
     :returns:
     """
     liveness = LivenessAnalysis(knl)
-    spiller = Spiller(knl)
-
-    #liveness.print_liveness()
+    saver = TemporarySaver(knl)
 
     insn_query = InstructionQuery(knl)
 
@@ -562,7 +558,7 @@ def spill_and_reload(knl, **kwargs):
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
                 logger.info("reloading {0} at entry of {1}"
                         .format(temporary, sched_item.kernel_name))
-                spiller.reload(temporary, sched_item.kernel_name)
+                saver.reload(temporary, sched_item.kernel_name)
 
         elif isinstance(sched_item, ReturnFromKernel):
             if sched_idx == len(knl.schedule) - 1:
@@ -574,11 +570,11 @@ def spill_and_reload(knl, **kwargs):
                         sched_item.kernel_name))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
-                logger.info("spilling {0} before return of {1}"
+                logger.info("saving {0} before return of {1}"
                         .format(temporary, sched_item.kernel_name))
-                spiller.spill(temporary, sched_item.kernel_name)
+                saver.save(temporary, sched_item.kernel_name)
 
-    return spiller.finish()
+    return saver.finish()
 
 # }}}
 
