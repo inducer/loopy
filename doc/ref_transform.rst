@@ -106,6 +106,8 @@ Creating Batches of Operations
 Finishing up
 ------------
 
+.. automodule:: loopy.transform.save
+
 .. currentmodule:: loopy
 
 .. autofunction:: preprocess_kernel

@@ -39,6 +39,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+__doc__ = """
+.. autofunction:: save_and_reload
+"""
+
+
 # {{{ liveness analysis
 
 class LivenessResult(dict):
@@ -512,18 +517,18 @@ class TemporarySaver(object):
 
 # {{{ auto save and reload across kernel calls
 
-def save_and_reload(knl, **kwargs):
+def save_and_reload(knl):
     """
     Add instructions to save and reload temporary variables that are live
     across kernel calls.
 
-    The basic code transformation turns schedule segments:
+    The basic code transformation turns schedule segments::
 
         t = <...>
         <return followed by call>
         <...> = t
 
-    into this code:
+    into this code::
 
         t = <...>
         t_save_slot = t
@@ -533,8 +538,6 @@ def save_and_reload(knl, **kwargs):
 
     where `t_save_slot` is a newly-created global temporary variable.
 
-    :arg knl:
-    :arg barriers:
     :returns:
     """
     liveness = LivenessAnalysis(knl)
