@@ -316,6 +316,8 @@ def build_loop_nest(codegen_state, schedule_index):
             recursive calls from doing anything about groups that are too small.
         """
 
+        from loopy.symbolic import get_dependencies
+
         # The rough plan here is that build_insn_group starts out with the
         # entirety of the current schedule item's downward siblings (i.e. all
         # the ones up to the next LeaveLoop). It will then iterate upward to
@@ -362,6 +364,11 @@ def build_loop_nest(codegen_state, schedule_index):
                     current_pred_set
                     & sched_index_info_entries[candidate_group_length-1]
                     .required_predicates)
+
+            current_pred_set = frozenset(
+                    pred for pred in current_pred_set
+                    if get_dependencies(pred) & kernel.all_inames()
+                    <= current_iname_set)
 
             # {{{ see which inames are actually used in group
 
