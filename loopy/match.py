@@ -72,7 +72,7 @@ _id = intern("_id")
 _tag = intern("_tag")
 _writes = intern("_writes")
 _reads = intern("_reads")
-_iname = intern("_reads")
+_iname = intern("_iname")
 
 _whitespace = intern("_whitespace")
 
@@ -104,6 +104,8 @@ _TERMINALS = ([_id, _tag, _writes, _reads, _iname])
 _PREC_OR = 10
 _PREC_AND = 20
 _PREC_NOT = 30
+
+# }}}
 
 # }}}
 
@@ -244,7 +246,7 @@ class Reads(GlobMatchExpressionBase):
 class Iname(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
-                for name in matchable.inames(kernel))
+                for name in matchable.within_inames)
 
 # }}}
 
@@ -347,8 +349,6 @@ def parse_match(expr):
         pstate.raise_parse_error("leftover input after completed parse")
 
     return result
-
-# }}}
 
 # }}}
 

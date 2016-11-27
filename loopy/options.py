@@ -23,13 +23,46 @@ THE SOFTWARE.
 """
 
 
+import six
 from pytools import Record
 import re
+
+
+ALLOW_TERMINAL_COLORS = False
 
 
 class _ColoramaStub(object):
     def __getattribute__(self, name):
         return ""
+
+
+def _apply_legacy_map(lmap, kwargs):
+    result = {}
+
+    for name, val in six.iteritems(kwargs):
+        try:
+            lmap_value = lmap[name]
+        except KeyError:
+            new_name = name
+        else:
+            if lmap_value is None:
+                # ignore this
+                from warnings import warn
+                warn("option '%s' is deprecated and was ignored" % name,
+                        DeprecationWarning)
+                continue
+
+            new_name, translator = lmap_value
+            if name in result:
+                raise TypeError("may not pass a value for both '%s' and '%s'"
+                        % (name, new_name))
+
+            if translator is not None:
+                val = translator(val)
+
+        result[new_name] = val
+
+    return result
 
 
 class Options(Record):
@@ -91,30 +124,21 @@ class Options(Record):
         Accepts a file name as a value. Writes to
         ``sys.stdout`` if none is given.
 
-    .. attribute:: highlight_wrapper
+    .. attribute:: write_code
 
-        Use syntax highlighting in :attr:`write_wrapper`.
+        Print the generated code.  Accepts a file name or a boolean as a value.
+        Writes to ``sys.stdout`` if set to *True*.
 
-    .. attribute:: write_cl
-
-        Print the generated OpenCL kernel.
-        Accepts a file name as a value. Writes to
-        ``sys.stdout`` if none is given.
-
-    .. attribute:: highlight_cl
-
-        Use syntax highlighting in :attr:`write_cl`.
-
-    .. attribute:: edit_cl
+    .. attribute:: edit_code
 
         Invoke an editor (given by the environment variable
         :envvar:`EDITOR`) on the generated kernel code,
         allowing for tweaks before the code is passed on to
-        the OpenCL implementation for compilation.
+        the target for compilation.
 
-    .. attribute:: cl_build_options
+    .. attribute:: build_options
 
-        Options to pass to the OpenCL compiler when building the kernel.
+        Options to pass to the target compiler when building the kernel.
         A list of strings.
 
     .. attribute:: allow_terminal_colors
@@ -126,6 +150,16 @@ class Options(Record):
     .. attribute:: disable_global_barriers
     """
 
+    _legacy_options_map = {
+            "cl_build_options": ("build_options", None),
+            "write_cl": ("write_code", None),
+            "highlight_cl": None,
+            "highlight_wrapper": None,
+            "disable_wrapper_highlight": None,
+            "disable_code_highlight": None,
+            "edit_cl": ("edit_code", None),
+            }
+
     def __init__(
             # All Boolean flags in here should default to False for the
             # string-based interface of make_options (below) to make sense.
@@ -133,45 +167,64 @@ class Options(Record):
             # All defaults are further required to be False when cast to bool
             # for the update() functionality to work.
 
-            self,
+            self, **kwargs):
 
-            annotate_inames=False,
-            trace_assignments=False,
-            trace_assignment_values=False,
-            ignore_boostable_into=False,
+        kwargs = _apply_legacy_map(self._legacy_options_map, kwargs)
 
-            skip_arg_checks=False, no_numpy=False, return_dict=False,
-            write_wrapper=False, highlight_wrapper=False,
-            write_cl=False, highlight_cl=False,
-            edit_cl=False, cl_build_options=[],
-            allow_terminal_colors=None,
-            disable_global_barriers=False,
-            ):
+        try:
+            import colorama  # noqa
+        except ImportError:
+            allow_terminal_colors_def = False
+        else:
+            allow_terminal_colors_def = True
 
-        if allow_terminal_colors is None:
-            try:
-                import colorama  # noqa
-            except ImportError:
-                allow_terminal_colors = False
-            else:
-                allow_terminal_colors = True
+        allow_terminal_colors_def = (
+                ALLOW_TERMINAL_COLORS and allow_terminal_colors_def)
 
         Record.__init__(
                 self,
 
-                annotate_inames=annotate_inames,
-                trace_assignments=trace_assignments,
-                trace_assignment_values=trace_assignment_values,
-                ignore_boostable_into=ignore_boostable_into,
+                annotate_inames=kwargs.get("annotate_inames", False),
+                trace_assignments=kwargs.get("trace_assignments", False),
+                trace_assignment_values=kwargs.get("trace_assignment_values", False),
+                ignore_boostable_into=kwargs.get("ignore_boostable_into", False),
 
-                skip_arg_checks=skip_arg_checks, no_numpy=no_numpy,
-                return_dict=return_dict,
-                write_wrapper=write_wrapper, highlight_wrapper=highlight_wrapper,
-                write_cl=write_cl, highlight_cl=highlight_cl,
-                edit_cl=edit_cl, cl_build_options=cl_build_options,
-                allow_terminal_colors=allow_terminal_colors,
-                disable_global_barriers=disable_global_barriers,
+                skip_arg_checks=kwargs.get("skip_arg_checks", False),
+                no_numpy=kwargs.get("no_numpy", False),
+                return_dict=kwargs.get("return_dict", False),
+                write_wrapper=kwargs.get("write_wrapper", False),
+                write_code=kwargs.get("write_code", False),
+                edit_code=kwargs.get("edit_code", False),
+                build_options=kwargs.get("build_options", []),
+                allow_terminal_colors=kwargs.get("allow_terminal_colors",
+                    allow_terminal_colors_def),
+                disable_global_barriers=kwargs.get("disable_global_barriers",
+                    False),
                 )
+
+    # {{{ legacy compatibility
+
+    @property
+    def edit_cl(self):
+        return self.edit_code
+
+    @property
+    def cl_build_options(self):
+        return self.build_options
+
+    @property
+    def highlight_cl(self):
+        return self.allow_terminal_colors
+
+    @property
+    def highlight_wrapper(self):
+        return self.allow_terminal_colors
+
+    @property
+    def write_cl(self):
+        return self.write_code
+
+    # }}}
 
     def update(self, other):
         for f in self.__class__.fields:

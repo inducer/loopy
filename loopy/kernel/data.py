@@ -203,15 +203,18 @@ class KernelArgument(Record):
     def __init__(self, **kwargs):
         kwargs["name"] = intern(kwargs.pop("name"))
 
+        target = kwargs.pop("target", None)
+
         dtype = kwargs.pop("dtype", None)
         from loopy.types import to_loopy_type
         kwargs["dtype"] = to_loopy_type(
-                dtype, allow_auto=True, allow_none=True)
+                dtype, allow_auto=True, allow_none=True, target=target)
 
         Record.__init__(self, **kwargs)
 
 
 class GlobalArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
@@ -221,6 +224,7 @@ class GlobalArg(ArrayBase, KernelArgument):
 
 
 class ConstantArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
@@ -230,6 +234,7 @@ class ConstantArg(ArrayBase, KernelArgument):
 
 
 class ImageArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 1
     max_target_axes = 3
 
@@ -243,11 +248,11 @@ class ImageArg(ArrayBase, KernelArgument):
 
 
 class ValueArg(KernelArgument):
-    def __init__(self, name, dtype=None, approximately=1000):
-        from loopy.types import to_loopy_type
+    def __init__(self, name, dtype=None, approximately=1000, target=None):
         KernelArgument.__init__(self, name=name,
-                dtype=to_loopy_type(dtype, allow_auto=True, allow_none=True),
-                approximately=approximately)
+                dtype=dtype,
+                approximately=approximately,
+                target=target)
 
     def __str__(self):
         import loopy as lp

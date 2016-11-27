@@ -29,10 +29,11 @@ import numpy as np
 
 from pymbolic.mapper import Mapper
 from pymbolic.mapper.stringifier import StringifyMapper
-from loopy.expression import TypeInferenceMapper
+from loopy.type_inference import TypeInferenceMapper
 from loopy.kernel.data import ValueArg
 from loopy.diagnostic import LoopyError  # noqa
 from loopy.target import ASTBuilderBase
+from genpy import Suite
 
 
 # {{{ expression to code
@@ -129,6 +130,30 @@ class ExpressionToPythonMapper(StringifyMapper):
     def map_local_hw_index(self, expr, enclosing_prec):
         raise LoopyError("plain Python does not have local hw axes")
 
+    def map_if(self, expr, enclosing_prec):
+        # Synthesize PREC_IFTHENELSE, make sure it is in the right place in the
+        # operator precedence hierarchy (right above "or").
+        from pymbolic.mapper.stringifier import PREC_LOGICAL_OR, PREC_NONE
+        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1
+
+        return self.parenthesize_if_needed(
+            "{then} if {cond} else {else_}".format(
+                then=self.rec(expr.then, PREC_IFTHENELSE),
+                cond=self.rec(expr.condition, PREC_IFTHENELSE),
+                else_=self.rec(expr.else_, PREC_IFTHENELSE)),
+            enclosing_prec, PREC_NONE)
+
+# }}}
+
+
+# {{{ genpy extensions
+
+class Collection(Suite):
+    def generate(self):
+        for item in self.contents:
+            for item_line in item.generate():
+                yield item_line
+
 # }}}
 
 
@@ -219,14 +244,18 @@ class PythonASTBuilderBase(ASTBuilderBase):
 
     @property
     def ast_block_class(self):
-        from genpy import Suite
         return Suite
 
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
-        ecm = codegen_state.expression_to_code_mapper
+    @property
+    def ast_block_scope_class(self):
+        # Once a new version of genpy is released, switch to this:
+        # from genpy import Collection
+        # and delete the implementation above.
+        return Collection
 
-        from loopy.symbolic import aff_to_expr
+    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
+            lbound, ubound, inner):
+        ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic.mapper.stringifier import PREC_NONE
         from genpy import For
@@ -235,8 +264,8 @@ class PythonASTBuilderBase(ASTBuilderBase):
                 (iname,),
                 "range(%s, %s + 1)"
                 % (
-                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i"),
-                    ecm(aff_to_expr(static_ubound), PREC_NONE, "i"),
+                    ecm(lbound, PREC_NONE, "i"),
+                    ecm(ubound, PREC_NONE, "i"),
                     ),
                 inner)
 

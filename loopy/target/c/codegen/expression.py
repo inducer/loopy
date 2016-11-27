@@ -36,7 +36,8 @@ import pymbolic.primitives as p
 from pymbolic import var
 
 
-from loopy.expression import dtype_to_type_context, TypeInferenceMapper
+from loopy.expression import dtype_to_type_context
+from loopy.type_inference import TypeInferenceMapper
 
 from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.tools import is_integer
@@ -104,7 +105,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                 self.infer_type(expr), needed_dtype,
                 RecursiveMapper.rec(self, expr, type_context))
 
-    def __call__(self, expr, prec, type_context=None, needed_dtype=None):
+    def __call__(self, expr, prec=None, type_context=None, needed_dtype=None):
+        if prec is None:
+            prec = PREC_NONE
+
         assert prec == PREC_NONE
         from loopy.target.c import CExpression
         return CExpression(
@@ -143,6 +147,10 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             from loopy.kernel.data import ValueArg
             if isinstance(arg, ValueArg) and self.fortran_abi:
+                postproc = lambda x: x[0]  # noqa
+        elif expr.name in self.kernel.temporary_variables:
+            temporary = self.kernel.temporary_variables[expr.name]
+            if temporary.base_storage:
                 postproc = lambda x: x[0]  # noqa
 
         result = self.kernel.mangle_symbol(self.codegen_state.ast_builder, expr.name)
@@ -212,12 +220,15 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif isinstance(ary, (GlobalArg, TemporaryVariable, ConstantArg)):
             if len(access_info.subscripts) == 0:
-                if isinstance(ary, GlobalArg) or isinstance(ary, ConstantArg):
+                if (
+                        (isinstance(ary, (ConstantArg, GlobalArg)) or
+                         (isinstance(ary, TemporaryVariable) and ary.base_storage))):
                     # unsubscripted global args are pointers
                     result = var(access_info.array_name)[0]
 
                 else:
                     # unsubscripted temp vars are scalars
+                    # (unless they use base_storage)
                     result = var(access_info.array_name)
 
             else:
@@ -675,6 +686,10 @@ class CExpressionToCodeMapper(RecursiveMapper):
         return f % tuple(
                 self.rec(i, prec) for i in iterable)
 
+    def join(self, joiner, iterable):
+        f = joiner.join("%s" for i in iterable)
+        return f % tuple(iterable)
+
     # }}}
 
     def map_constant(self, expr, prec):
@@ -769,9 +784,19 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 enclosing_prec, PREC_LOGICAL_AND)
 
     def map_logical_or(self, expr, enclosing_prec):
-        return self.parenthesize_if_needed(
-                self.join_rec(" || ", expr.children, PREC_LOGICAL_OR),
-                enclosing_prec, PREC_LOGICAL_OR)
+        mapped_children = []
+        from pymbolic.primitives import LogicalAnd
+        for child in expr.children:
+            mapped_child = self.rec(child, PREC_LOGICAL_OR)
+            # clang warns on unparenthesized && within ||
+            if isinstance(child, LogicalAnd):
+                mapped_child = "(%s)" % mapped_child
+            mapped_children.append(mapped_child)
+
+        result = self.join(" || ", mapped_children)
+        if enclosing_prec > PREC_LOGICAL_OR:
+            result = "(%s)" % result
+        return result
 
     def map_sum(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_SUM

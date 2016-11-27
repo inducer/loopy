@@ -224,12 +224,12 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
 
     if 1:
         print("OPS")
-        op_poly = lp.get_op_poly(hsv)
-        print(lp.stringify_stats_mapping(op_poly))
+        op_map = lp.get_op_map(hsv)
+        print(lp.stringify_stats_mapping(op_map))
 
         print("MEM")
-        gmem_poly = lp.sum_mem_access_to_bytes(lp.get_gmem_access_poly(hsv))
-        print(lp.stringify_stats_mapping(gmem_poly))
+        gmem_map = lp.get_mem_access_map(hsv).to_bytes()
+        print(lp.stringify_stats_mapping(gmem_map))
 
     hsv = lp.set_options(hsv, cl_build_options=[
          "-cl-denorms-are-zero",

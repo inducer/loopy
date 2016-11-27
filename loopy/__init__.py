@@ -109,13 +109,13 @@ from loopy.transform.parameter import assume, fix_parameters
 
 # }}}
 
-from loopy.preprocess import (preprocess_kernel, realize_reduction,
-        infer_unknown_types)
+from loopy.type_inference import infer_unknown_types
+from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (get_op_poly, sum_ops_to_dtypes,
-        get_gmem_access_poly,
-        get_DRAM_access_poly, get_synchronization_poly, stringify_stats_mapping,
-        sum_mem_access_to_bytes,
+from loopy.statistics import (ToCountMap, stringify_stats_mapping, Op,
+        MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
+        get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_map,
+        get_synchronization_poly, get_synchronization_map,
         gather_access_footprints, gather_access_footprint_bytes)
 from loopy.codegen import (
         PreambleInfo,
@@ -130,7 +130,7 @@ from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
         parse_fortran)
 
 from loopy.target import TargetBase, ASTBuilderBase
-from loopy.target.c import CTarget
+from loopy.target.c import CTarget, generate_header
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
@@ -213,16 +213,18 @@ __all__ = [
         "add_dtypes",
         "add_and_infer_dtypes",
 
-        "preprocess_kernel", "realize_reduction", "infer_unknown_types",
+        "infer_unknown_types",
+
+        "preprocess_kernel", "realize_reduction",
         "generate_loop_schedules", "get_one_scheduled_kernel",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
-        "get_op_poly", "sum_ops_to_dtypes", "get_gmem_access_poly",
-        "get_DRAM_access_poly",
-        "get_synchronization_poly", "stringify_stats_mapping",
-        "sum_mem_access_to_bytes",
+        "ToCountMap", "stringify_stats_mapping", "Op", "MemAccess",
+        "get_op_poly", "get_op_map", "get_lmem_access_poly",
+        "get_DRAM_access_poly", "get_gmem_access_poly", "get_mem_access_map",
+        "get_synchronization_poly", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
 
         "CompiledKernel",
@@ -236,7 +238,9 @@ __all__ = [
 
         "LoopyError", "LoopyWarning",
 
-        "TargetBase", "CTarget", "CudaTarget", "OpenCLTarget",
+        "TargetBase",
+        "CTarget", "generate_header",
+        "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
         "ASTBuilderBase",
@@ -274,6 +278,9 @@ def set_options(kernel, *args, **kwargs):
     new_opt = kernel.options.copy()
 
     if kwargs:
+        from loopy.options import _apply_legacy_map, Options
+        kwargs = _apply_legacy_map(Options._legacy_options_map, kwargs)
+
         for key, val in six.iteritems(kwargs):
             if not hasattr(new_opt, key):
                 raise ValueError("unknown option '%s'" % key)
