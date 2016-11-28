@@ -1501,7 +1501,7 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
                                 "Dependency '%s' (for variable '%s') "
                                 "requires synchronization "
                                 "by a %s barrier (add a 'no_sync_with' "
-                                "instruction option to state that no"
+                                "instruction option to state that no "
                                 "synchronization is needed)"
                                 % (
                                     dep.dep_descr.format(
