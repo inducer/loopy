@@ -235,9 +235,11 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 raise LoopyError("'nosync' option may not be specified "
                         "in a 'with' block")
 
+            # TODO: Come up with a syntax that allows the user to express
+            # different synchronization scopes.
             result["no_sync_with"] = result["no_sync_with"].union(frozenset(
-                    intern(dep.strip()) for dep in opt_value.split(":")
-                    if dep.strip()))
+                    (intern(dep.strip()), "any")
+                    for dep in opt_value.split(":") if dep.strip()))
 
         elif opt_key == "nosync_query" and opt_value is not None:
             if is_with_block:
@@ -246,8 +248,10 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
             from loopy.match import parse_match
             match = parse_match(opt_value)
+            # TODO: Come up with a syntax that allows the user to express
+            # different synchronization scopes.
             result["no_sync_with"] = result["no_sync_with"].union(
-                    frozenset([match]))
+                    frozenset([(match, "any")]))
 
         elif opt_key == "groups" and opt_value is not None:
             result["groups"] = frozenset(
@@ -1462,8 +1466,11 @@ def resolve_dependencies(knl):
     for insn in knl.instructions:
         new_insns.append(insn.copy(
                     depends_on=_resolve_dependencies(knl, insn, insn.depends_on),
-                    no_sync_with=_resolve_dependencies(
-                        knl, insn, insn.no_sync_with),
+                    no_sync_with=frozenset(
+                        (resolved_insn_id, nosync_scope)
+                        for nosync_dep, nosync_scope in insn.no_sync_with
+                        for resolved_insn_id in
+                        _resolve_dependencies(knl, insn, nosync_dep)),
                     ))
 
     return knl.copy(instructions=new_insns)

@@ -114,6 +114,8 @@ Finishing up
 
 .. autofunction:: get_one_scheduled_kernel
 
+.. autofunction:: save_and_reload_temporaries
+
 .. autoclass:: GeneratedProgram
 .. autoclass:: CodeGenerationResult
 

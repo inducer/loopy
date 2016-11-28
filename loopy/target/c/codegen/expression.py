@@ -220,8 +220,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif isinstance(ary, (GlobalArg, TemporaryVariable, ConstantArg)):
             if len(access_info.subscripts) == 0:
-                if (isinstance(ary, (ConstantArg, GlobalArg)) or
-                    (isinstance(ary, TemporaryVariable) and ary.base_storage)):
+                if (
+                        (isinstance(ary, (ConstantArg, GlobalArg)) or
+                         (isinstance(ary, TemporaryVariable) and ary.base_storage))):
                     # unsubscripted global args are pointers
                     result = var(access_info.array_name)[0]
 

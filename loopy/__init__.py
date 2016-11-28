@@ -106,6 +106,7 @@ from loopy.transform.padding import (
 from loopy.transform.ilp import realize_ilp
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
+from loopy.transform.save import save_and_reload_temporaries
 
 # }}}
 
@@ -206,6 +207,8 @@ __all__ = [
 
         "assume", "fix_parameters",
 
+        "save_and_reload_temporaries",
+
         # }}}
 
         "get_dot_dependency_graph",
@@ -257,7 +260,6 @@ __all__ = [
 
         # }}}
         ]
-
 
 # }}}
 

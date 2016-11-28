@@ -91,9 +91,17 @@ class InstructionBase(Record):
 
     .. attribute:: no_sync_with
 
-        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
-        with which no barrier synchronization is necessary, even given the existence
-        of a dependency chain and apparently conflicting access.
+        a :class:`frozenset` of tuples of the form `(insn_id, scope)`, where
+        `insn_id` refers to :attr:`id` of :class:`Instruction` instances
+        and `scope` is one of the following strings:
+
+           - `"local"`
+           - `"global"`
+           - `"any"`.
+
+        This indicates no barrier synchronization is necessary with the given
+        instruction using barriers of type `scope`, even given the existence of
+        a dependency chain and apparently conflicting access.
 
         Note, that :attr:`no_sync_with` allows instruction matching through wildcards
         and match expression, just like :attr:`depends_on`.
@@ -380,7 +388,10 @@ class InstructionBase(Record):
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
         if self.no_sync_with:
-            result.append("nosync="+":".join(self.no_sync_with))
+            # TODO: Come up with a syntax to express different kinds of
+            # synchronization scopes.
+            result.append("nosync="+":".join(
+                    insn_id for insn_id, _ in self.no_sync_with))
         if self.groups:
             result.append("groups=%s" % ":".join(self.groups))
         if self.conflicts_with_groups:
