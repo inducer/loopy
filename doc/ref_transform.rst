@@ -106,8 +106,6 @@ Creating Batches of Operations
 Finishing up
 ------------
 
-.. automodule:: loopy.transform.save
-
 .. currentmodule:: loopy
 
 .. autofunction:: preprocess_kernel
@@ -115,6 +113,8 @@ Finishing up
 .. autofunction:: generate_loop_schedules
 
 .. autofunction:: get_one_scheduled_kernel
+
+.. autofunction:: save_and_reload_temporaries
 
 .. autoclass:: GeneratedProgram
 .. autoclass:: CodeGenerationResult

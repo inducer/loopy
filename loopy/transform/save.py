@@ -40,7 +40,9 @@ logger = logging.getLogger(__name__)
 
 
 __doc__ = """
-.. autofunction:: save_and_reload
+.. currentmodule:: loopy
+
+.. autofunction:: save_and_reload_temporaries
 """
 
 
@@ -517,7 +519,7 @@ class TemporarySaver(object):
 
 # {{{ auto save and reload across kernel calls
 
-def save_and_reload(knl):
+def save_and_reload_temporaries(knl):
     """
     Add instructions to save and reload temporary variables that are live
     across kernel calls.
@@ -538,7 +540,7 @@ def save_and_reload(knl):
 
     where `t_save_slot` is a newly-created global temporary variable.
 
-    :returns:
+    :returns: The resulting kernel
     """
     liveness = LivenessAnalysis(knl)
     saver = TemporarySaver(knl)

@@ -1105,15 +1105,15 @@ def test_kernel_splitting_with_loop(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-def save_and_reload_test(queue, knl, out_expect, debug=False):
+def save_and_reload_temporaries_test(queue, knl, out_expect, debug=False):
     from loopy.preprocess import preprocess_kernel
     from loopy.schedule import get_one_scheduled_kernel
 
     knl = preprocess_kernel(knl)
     knl = get_one_scheduled_kernel(knl)
 
-    from loopy.transform.save import save_and_reload
-    knl = save_and_reload(knl)
+    from loopy.transform.save import save_and_reload_temporaries
+    knl = save_and_reload_temporaries(knl)
     knl = get_one_scheduled_kernel(knl)
 
     if debug:
@@ -1145,7 +1145,7 @@ def test_save_of_private_scalar(ctx_factory, hw_loop, debug=False):
     if hw_loop:
         knl = lp.tag_inames(knl, dict(i="g.0"))
 
-    save_and_reload_test(queue, knl, np.arange(8), debug)
+    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
 
 
 def test_save_of_private_array(ctx_factory, debug=False):
@@ -1163,7 +1163,7 @@ def test_save_of_private_array(ctx_factory, debug=False):
         """, seq_dependencies=True)
 
     knl = lp.set_temporary_scope(knl, "t", "private")
-    save_and_reload_test(queue, knl, np.arange(8), debug)
+    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
 
 
 def test_save_of_private_array_in_hw_loop(ctx_factory, debug=False):
@@ -1187,7 +1187,8 @@ def test_save_of_private_array_in_hw_loop(ctx_factory, debug=False):
     knl = lp.tag_inames(knl, dict(i="g.0"))
     knl = lp.set_temporary_scope(knl, "t", "private")
 
-    save_and_reload_test(queue, knl, np.vstack((8 * (np.arange(8),))), debug)
+    save_and_reload_temporaries_test(
+        queue, knl, np.vstack((8 * (np.arange(8),))), debug)
 
 
 def test_save_of_private_multidim_array(ctx_factory, debug=False):
@@ -1211,7 +1212,7 @@ def test_save_of_private_multidim_array(ctx_factory, debug=False):
     knl = lp.set_temporary_scope(knl, "t", "private")
 
     result = np.array([np.vstack((8 * (np.arange(8),))) for i in range(8)])
-    save_and_reload_test(queue, knl, result, debug)
+    save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
 def test_save_of_private_multidim_array_in_hw_loop(ctx_factory, debug=False):
@@ -1236,7 +1237,7 @@ def test_save_of_private_multidim_array_in_hw_loop(ctx_factory, debug=False):
     knl = lp.tag_inames(knl, dict(i="g.0"))
 
     result = np.array([np.vstack((8 * (np.arange(8),))) for i in range(8)])
-    save_and_reload_test(queue, knl, result, debug)
+    save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
 @pytest.mark.parametrize("hw_loop", [True, False])
@@ -1270,7 +1271,7 @@ def test_save_of_multiple_private_temporaries(ctx_factory, hw_loop, debug=False)
 
     result = np.array([1, 10, 10, 10, 10, 10, 10, 10, 10, 9])
 
-    save_and_reload_test(queue, knl, result, debug)
+    save_and_reload_temporaries_test(queue, knl, result, debug)
 
 
 def test_save_of_local_array(ctx_factory, debug=False):
@@ -1291,7 +1292,7 @@ def test_save_of_local_array(ctx_factory, debug=False):
     knl = lp.set_temporary_scope(knl, "t", "local")
     knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
 
-    save_and_reload_test(queue, knl, np.arange(8), debug)
+    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
 
 
 def test_save_local_multidim_array(ctx_factory, debug=False):
@@ -1312,7 +1313,7 @@ def test_save_local_multidim_array(ctx_factory, debug=False):
     knl = lp.set_temporary_scope(knl, "t_local", "local")
     knl = lp.tag_inames(knl, dict(j="l.0", i="g.0"))
 
-    save_and_reload_test(queue, knl, 1, debug)
+    save_and_reload_temporaries_test(queue, knl, 1, debug)
 
 
 def test_global_temporary(ctx_factory):
