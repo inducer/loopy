@@ -500,7 +500,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         store_instruction = Assignment(
                     id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
                     depends_on=frozenset(aar.modified_insn_ids),
-                    no_sync_with=frozenset([init_insn_id]),
+                    no_sync_with=frozenset([(init_insn_id, "any")]),
                     assignee=store_target,
                     expression=store_expression,
                     within_inames=(
