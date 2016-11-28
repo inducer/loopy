@@ -1128,7 +1128,7 @@ to the right by 1:
    >>> cgr = lp.generate_code_v2(knl)
    Traceback (most recent call last):
    ...
-   MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that nosynchronization is needed)
+   MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
 
 Because of the write-after-read dependency in global memory, a global barrier
 needs to be inserted. This can be accomplished with a ``... gbarrier``
