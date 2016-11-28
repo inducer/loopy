@@ -1226,7 +1226,9 @@ class LoopKernel(RecordWithoutPickling):
                     options.append(
                             "conflicts=%s" % ":".join(insn.conflicts_with_groups))
                 if insn.no_sync_with:
-                    options.append("no_sync_with=%s" % ":".join(insn.no_sync_with))
+                    # FIXME: Find a syntax to express scopes.
+                    options.append("no_sync_with=%s" % ":".join(id for id, _ in
+                                                                insn.no_sync_with))
 
                 if lhs:
                     core = "%s <- %s" % (
