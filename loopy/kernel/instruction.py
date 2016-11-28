@@ -199,7 +199,7 @@ class InstructionBase(Record):
 
             new_predicates.add(pred)
 
-        predicates = new_predicates
+        predicates = frozenset(tuple(p for p in new_predicates))
         del new_predicates
 
         # }}}
@@ -430,6 +430,9 @@ class InstructionBase(Record):
         # Order matters for hash forming--sort the field names
         for field_name in sorted(self.fields):
             key_builder.rec(key_hash, getattr(self, field_name))
+
+    def __hash__(self):
+        return hash((type(self),) + tuple(getattr(self, field) for field in self.fields))
 
     # }}}
 
