@@ -1074,9 +1074,9 @@ Synchronization
 
 .. {{{
 
-In OpenCL, memory operations are not generally guaranteed to be immediately
-visible to other work items. In order to ensure that memory is consistent across
-work items, some sort of synchronization operation is used.
+In OpenCL, writes are not generally guaranteed to be immediately visible to
+other work items. In order to ensure that memory is consistent across work
+items, some sort of synchronization operation is used.
 
 :mod:`loopy` supports synchronization in the form of *barriers* or *atomic
 operations*.
