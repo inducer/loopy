@@ -23,7 +23,7 @@ THE SOFTWARE.
 """
 
 import six
-from pytools import Record
+from pytools import ImmutableRecord
 
 
 def process_preambles(preambles):
@@ -45,7 +45,7 @@ def process_preambles(preambles):
 
 # {{{ code generation result
 
-class GeneratedProgram(Record):
+class GeneratedProgram(ImmutableRecord):
     """
     .. attribute:: name
 
@@ -64,7 +64,7 @@ class GeneratedProgram(Record):
     """
 
 
-class CodeGenerationResult(Record):
+class CodeGenerationResult(ImmutableRecord):
     """
     .. attribute:: host_program
     .. attribute:: device_programs
