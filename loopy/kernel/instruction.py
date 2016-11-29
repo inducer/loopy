@@ -407,19 +407,6 @@ class InstructionBase(ImmutableRecord):
 
     # {{{ comparison, hashing
 
-    def __eq__(self, other):
-        if not type(self) == type(other):
-            return False
-
-        for field_name in self.fields:
-            if getattr(self, field_name) != getattr(other, field_name):
-                return False
-
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
