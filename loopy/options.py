@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 
 import six
-from pytools import Record
+from pytools import ImmutableRecord
 import re
 
 
@@ -65,7 +65,7 @@ def _apply_legacy_map(lmap, kwargs):
     return result
 
 
-class Options(Record):
+class Options(ImmutableRecord):
     """
     Unless otherwise specified, these options are Boolean-valued
     (i.e. on/off).
@@ -181,7 +181,7 @@ class Options(Record):
         allow_terminal_colors_def = (
                 ALLOW_TERMINAL_COLORS and allow_terminal_colors_def)
 
-        Record.__init__(
+        ImmutableRecord.__init__(
                 self,
 
                 annotate_inames=kwargs.get("annotate_inames", False),

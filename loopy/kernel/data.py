@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 from six.moves import intern
 import numpy as np  # noqa
-from pytools import Record
+from pytools import ImmutableRecord
 from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (  # noqa
@@ -54,7 +54,7 @@ class auto(object):  # noqa
 
 # {{{ iname tags
 
-class IndexTag(Record):
+class IndexTag(ImmutableRecord):
     __slots__ = []
 
     def __hash__(self):
@@ -93,7 +93,7 @@ class AxisTag(UniqueTag):
     __slots__ = ["axis"]
 
     def __init__(self, axis):
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 axis=axis)
 
     @property
@@ -197,7 +197,7 @@ def parse_tag(tag):
 
 # {{{ arguments
 
-class KernelArgument(Record):
+class KernelArgument(ImmutableRecord):
     """Base class for all argument types"""
 
     def __init__(self, **kwargs):
@@ -210,7 +210,7 @@ class KernelArgument(Record):
         kwargs["dtype"] = to_loopy_type(
                 dtype, allow_auto=True, allow_none=True, target=target)
 
-        Record.__init__(self, **kwargs)
+        ImmutableRecord.__init__(self, **kwargs)
 
 
 class GlobalArg(ArrayBase, KernelArgument):
@@ -514,7 +514,7 @@ class TemporaryVariable(ArrayBase):
 
 # {{{ subsitution rule
 
-class SubstitutionRule(Record):
+class SubstitutionRule(ImmutableRecord):
     """
     .. attribute:: name
     .. attribute:: arguments
@@ -527,7 +527,7 @@ class SubstitutionRule(Record):
     def __init__(self, name, arguments, expression):
         assert isinstance(arguments, tuple)
 
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 name=name, arguments=arguments, expression=expression)
 
     def __str__(self):
@@ -548,7 +548,7 @@ class SubstitutionRule(Record):
 
 # {{{ function call mangling
 
-class CallMangleInfo(Record):
+class CallMangleInfo(ImmutableRecord):
     """
     .. attribute:: target_name
 

@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 
 import six
-from pytools import Record
+from pytools import ImmutableRecord
 import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 # {{{ schedule items
 
-class ScheduleItem(Record):
+class ScheduleItem(ImmutableRecord):
     __slots__ = []
 
     def update_persistent_hash(self, key_hash, key_builder):
@@ -552,7 +552,7 @@ class ScheduleDebugInput(Exception):
 
 # {{{ scheduling algorithm
 
-class SchedulerState(Record):
+class SchedulerState(ImmutableRecord):
     """
     .. attribute:: kernel
 
@@ -1351,7 +1351,7 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
 
 # {{{ barrier insertion/verification
 
-class DependencyRecord(Record):
+class DependencyRecord(ImmutableRecord):
     """
     .. attribute:: source
 
@@ -1376,7 +1376,7 @@ class DependencyRecord(Record):
     """
 
     def __init__(self, source, target, dep_descr, variable, var_kind):
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 source=source,
                 target=target,
                 dep_descr=dep_descr,

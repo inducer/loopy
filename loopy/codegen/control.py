@@ -255,9 +255,9 @@ def build_loop_nest(codegen_state, schedule_index):
 
     # {{{ pass 2: find admissible conditional inames for each sibling schedule item
 
-    from pytools import Record
+    from pytools import ImmutableRecord
 
-    class ScheduleIndexInfo(Record):
+    class ScheduleIndexInfo(ImmutableRecord):
         """
         .. attribute:: schedule_index
         .. attribute:: admissible_cond_inames

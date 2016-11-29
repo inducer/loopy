@@ -25,13 +25,13 @@ THE SOFTWARE.
 
 import six
 import numpy as np
-from pytools import Record, memoize_method
+from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
 
 
 # {{{ object array argument packing
 
-class _PackingInfo(Record):
+class _PackingInfo(ImmutableRecord):
     """
     .. attribute:: name
     .. attribute:: sep_shape
