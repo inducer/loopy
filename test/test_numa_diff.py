@@ -46,7 +46,7 @@ __all__ = [
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("ilp_multiple", [1, 2])
 @pytest.mark.parametrize("opt_level", [11])
-def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):
+def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     ctx = ctx_factory()
 
     filename = "strongVolumeKernels.f90"
