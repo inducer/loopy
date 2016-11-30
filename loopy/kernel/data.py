@@ -289,7 +289,7 @@ class InameArg(ValueArg):
 
 # {{{ temporary variable
 
-class temp_var_scope:
+class temp_var_scope:  # noqa
     """Storage location of a temporary
 
     .. attribute:: PRIVATE
