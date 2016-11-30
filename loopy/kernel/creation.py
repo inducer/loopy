@@ -583,7 +583,8 @@ def parse_instructions(instructions, defines):
             new_instructions.append(
                     insn.copy(
                         id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
-                        depends_on=frozenset(intern_if_str(dep) for dep in insn.depends_on),
+                        depends_on=frozenset(
+                            intern_if_str(dep) for dep in insn.depends_on),
                         groups=frozenset(intern(grp) for grp in insn.groups),
                         conflicts_with_groups=frozenset(
                             intern(grp) for grp in insn.conflicts_with_groups),

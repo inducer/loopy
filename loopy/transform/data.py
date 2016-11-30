@@ -431,6 +431,7 @@ def set_array_axis_names(kernel, ary_names, dim_names):
 
     return kernel
 
+
 set_array_dim_names = MovedFunctionDeprecationWrapper(set_array_axis_names)
 
 # }}}

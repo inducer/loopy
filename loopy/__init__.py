@@ -457,8 +457,8 @@ def _set_up_default_target():
 
     set_default_target(target)
 
-_set_up_default_target()
 
+_set_up_default_target()
 
 # }}}
 

@@ -22,8 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import six
-from six.moves import range
+import six  # noqa
+from six.moves import range  # noqa
 
 import sys
 import numpy as np
@@ -31,7 +31,7 @@ import loopy as lp
 import pyopencl as cl
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
-import pytest
+import pytest  # noqa
 
 import logging
 logger = logging.getLogger(__name__)
@@ -225,7 +225,6 @@ def test_dependent_loop_bounds_3(ctx_factory):
 
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
 
-    import pytest
     with pytest.raises(RuntimeError):
         list(lp.generate_loop_schedules(knl_bad))
 
