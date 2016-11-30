@@ -100,3 +100,12 @@ Documentation:
   - python3.5
   only:
   - master
+
+Flake8:
+  script:
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/prepare-and-run-flake8.sh
+  - ". ./prepare-and-run-flake8.sh loopy test"
+  tags:
+  - python3.5
+  except:
+  - tags
