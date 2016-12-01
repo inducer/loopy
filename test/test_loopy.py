@@ -1316,6 +1316,22 @@ def test_save_local_multidim_array(ctx_factory, debug=False):
     save_and_reload_temporaries_test(queue, knl, 1, debug)
 
 
+def test_missing_temporary_definition_detection():
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<10 }",
+            """
+            for i
+                <> t = 1
+                ... gbarrier
+                out[i] = t
+            end
+            """, seq_dependencies=True)
+
+    from loopy.diagnostic import MissingDefinitionError
+    with pytest.raises(MissingDefinitionError):
+        lp.generate_code_v2(knl)
+
+
 def test_global_temporary(ctx_factory):
     ctx = ctx_factory()
 
