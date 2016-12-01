@@ -99,6 +99,10 @@ class MissingBarrierError(LoopyError):
 class MissingDefinitionError(LoopyError):
     pass
 
+
+class UnscheduledInstructionError(LoopyError):
+    pass
+
 # }}}
 
 

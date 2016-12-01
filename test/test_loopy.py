@@ -1817,6 +1817,23 @@ def test_tight_loop_bounds_codegen():
     assert for_loop in cgr.device_code()
 
 
+def test_unscheduled_insn_detection():
+    knl = lp.make_kernel(
+        "{ [i]: 0 <= i < 10 }",
+        """
+        out[i] = i {id=insn1}
+        """,
+        "...")
+
+    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    insn1, = lp.find_instructions(knl, "id:insn1")
+    knl.instructions.append(insn1.copy(id="insn2"))
+
+    from loopy.diagnostic import UnscheduledInstructionError
+    with pytest.raises(UnscheduledInstructionError):
+        lp.generate_code(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
