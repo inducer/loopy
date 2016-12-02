@@ -825,6 +825,7 @@ def parse_instructions(instructions, defines):
             else:
                 assert else_match is not None
                 if not last_if_predicates:
+                    import pdb; pdb.set_trace()
                     raise LoopyError("'else' without 'if'/'elif' encountered")
                 additional_preds = frozenset()
 

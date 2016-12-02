@@ -1811,6 +1811,8 @@ def test_if_else(ctx_factory):
                     else
                         a[i] = 3
                     end
+                else
+                    a[i] = 4
                 end
             end
             """
@@ -1818,8 +1820,9 @@ def test_if_else(ctx_factory):
 
     evt, (out,) = knl(queue, out_host=True)
 
-    out_ref = np.empty(50)
-    out_ref[::6] = 15
+    out_ref = np.zeros(50)
+    out_ref[1::2] = 4
+    out_ref[0::6] = 15
     out_ref[4::6] = 11
     out_ref[2::6] = 3
 
