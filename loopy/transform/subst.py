@@ -31,7 +31,7 @@ from loopy.symbolic import (
 from loopy.diagnostic import LoopyError
 from pymbolic.mapper.substitutor import make_subst_func
 
-from pytools import Record
+from pytools import ImmutableRecord
 from pymbolic import var
 
 
@@ -39,7 +39,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class ExprDescriptor(Record):
+class ExprDescriptor(ImmutableRecord):
     __slots__ = ["insn", "expr", "unif_var_dict"]
 
 

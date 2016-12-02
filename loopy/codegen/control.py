@@ -150,8 +150,15 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         return func(codegen_state, sched_index)
 
     elif isinstance(sched_item, Barrier):
-        return codegen_state.ast_builder.emit_barrier(
-                sched_item.kind, sched_item.comment)
+        if codegen_state.is_generating_device_code:
+            return codegen_state.ast_builder.emit_barrier(
+                    sched_item.kind, sched_item.comment)
+        from loopy.codegen.result import CodeGenerationResult
+        return CodeGenerationResult(
+                host_program=None,
+                device_programs=[],
+                implemented_domains={},
+                implemented_data_info=codegen_state.implemented_data_info)
 
     elif isinstance(sched_item, RunInstruction):
         insn = kernel.id_to_insn[sched_item.insn_id]
@@ -248,9 +255,9 @@ def build_loop_nest(codegen_state, schedule_index):
 
     # {{{ pass 2: find admissible conditional inames for each sibling schedule item
 
-    from pytools import Record
+    from pytools import ImmutableRecord
 
-    class ScheduleIndexInfo(Record):
+    class ScheduleIndexInfo(ImmutableRecord):
         """
         .. attribute:: schedule_index
         .. attribute:: admissible_cond_inames
@@ -316,6 +323,8 @@ def build_loop_nest(codegen_state, schedule_index):
             recursive calls from doing anything about groups that are too small.
         """
 
+        from loopy.symbolic import get_dependencies
+
         # The rough plan here is that build_insn_group starts out with the
         # entirety of the current schedule item's downward siblings (i.e. all
         # the ones up to the next LeaveLoop). It will then iterate upward to
@@ -362,6 +371,11 @@ def build_loop_nest(codegen_state, schedule_index):
                     current_pred_set
                     & sched_index_info_entries[candidate_group_length-1]
                     .required_predicates)
+
+            current_pred_set = frozenset(
+                    pred for pred in current_pred_set
+                    if get_dependencies(pred) & kernel.all_inames()
+                    <= current_iname_set)
 
             # {{{ see which inames are actually used in group
 

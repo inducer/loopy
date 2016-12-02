@@ -922,6 +922,8 @@ expression being assigned.
     ...     """)
     >>> evt, (out1, out2) = knl(queue, a=x_vec_dev)
 
+.. _local_temporaries:
+
 Temporaries in local memory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1064,6 +1066,170 @@ Generic Precomputation
 
 .. }}}
 
+
+.. _synchronization:
+
+Synchronization
+---------------
+
+.. {{{
+
+In OpenCL, writes are not generally guaranteed to be immediately visible to
+other work items. In order to ensure that memory is consistent across work
+items, some sort of synchronization operation is used.
+
+:mod:`loopy` supports synchronization in the form of *barriers* or *atomic
+operations*.
+
+Barriers
+~~~~~~~~
+
+Prior to code generation, :mod:`loopy` performs a check to see that every memory
+access is free of dependencies requiring a barrier. A memory access dependency
+that exists across multiple work items requires a barrier if it involves at
+least one write operation.
+
+:mod:`loopy` supports two kinds of barriers:
+
+* *Local barriers* ensure consistency of local memory accesses to items within
+  *the same* work group. As in OpenCL, all work items in the group are required
+  to wait until everyone has reached the barrier instruction before continuing.
+
+* *Global barriers* ensure consistency of *global* memory accesses across *all*
+  work groups. Note that there is no exact equivalent in OpenCL. All work items
+  across all work groups are required to wait until everyone has reached the
+  barrier instruction before continuing.
+
+By default, :mod:`loopy` inserts local barriers between two instructions when it
+detects that a dependency involving local memory may occur across work items. To
+see this in action, take a look at the section on :ref:`local_temporaries`.
+
+In contrast, :mod:`loopy` will *not* insert global barriers
+automatically. Consider the following kernel, which attempts to rotate its input
+to the right by 1:
+
+.. doctest::
+
+   >>> knl = lp.make_kernel(
+   ...     "[n] -> {[i] : 0<=i<n}",
+   ...     """
+   ...     for i
+   ...        <>tmp = arr[i] {id=maketmp,dep=*}
+   ...        arr[(i + 1) % n] = tmp {id=rotate,dep=*maketmp}
+   ...     end
+   ...     """,
+   ...      [
+   ...         lp.GlobalArg("arr", shape=("n",), dtype=np.int32),
+   ...          "...",
+   ...      ],
+   ...     name="rotate_v1",
+   ...     assumptions="n mod 16 = 0")
+   >>> knl = lp.split_iname(knl, "i", 16, inner_tag="l.0", outer_tag="g.0")
+   >>> cgr = lp.generate_code_v2(knl)
+   Traceback (most recent call last):
+   ...
+   MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
+
+Because of the write-after-read dependency in global memory, a global barrier
+needs to be inserted. This can be accomplished with a ``... gbarrier``
+instruction. Note that :mod:`loopy` implements global barriers by splitting the
+kernel into multiple device-side kernels, so that the resulting code will
+contain more than one kernel.
+
+.. doctest::
+
+   >>> knl = lp.make_kernel(
+   ...     "[n] -> {[i] : 0<=i<n}",
+   ...     """
+   ...     for i
+   ...        <>tmp = arr[i] {id=maketmp,dep=*}
+   ...        ... gbarrier {id=bar,dep=*maketmp}
+   ...        arr[(i + 1) % n] = tmp {id=rotate,dep=*bar}
+   ...     end
+   ...     """,
+   ...      [
+   ...         lp.GlobalArg("arr", shape=("n",), dtype=np.int32),
+   ...          "...",
+   ...      ],
+   ...     name="rotate_v2",
+   ...     assumptions="n mod 16 = 0")
+   >>> knl = lp.split_iname(knl, "i", 16, inner_tag="l.0", outer_tag="g.0")
+   >>> cgr = lp.generate_code_v2(knl)
+   >>> print(cgr.device_code())
+   #define lid(N) ((int) get_local_id(N))
+   #define gid(N) ((int) get_group_id(N))
+   <BLANKLINE>
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int *__restrict__ arr, int const n)
+   {
+     int tmp;
+   <BLANKLINE>
+     tmp = arr[16 * gid(0) + lid(0)];
+   }
+   <BLANKLINE>
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n)
+   {
+     int tmp;
+   <BLANKLINE>
+     arr[((1 + lid(0) + gid(0) * 16) % n)] = tmp;
+   }
+
+Note that we are not done yet. The problem is that while `tmp` is assigned in
+the first kernel, the assignment of `tmp` is not saved for the second
+kernel. :mod:`loopy` provides a function called
+:func:`loopy.save_and_reload_temporaries` for the purpose of handling the
+situation of saving and restoring temporary values across global barriers. In
+order to use this function the kernel must be preprocessed and scheduled first,
+the latter of which is handled by :func:`loopy.get_one_scheduled_kernel`.
+
+.. doctest::
+
+   >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+   >>> knl = lp.save_and_reload_temporaries(knl)
+   >>> knl = lp.get_one_scheduled_kernel(knl)
+   >>> cgr = lp.generate_code_v2(knl)
+   >>> print(cgr.device_code())
+   #define lid(N) ((int) get_local_id(N))
+   #define gid(N) ((int) get_group_id(N))
+   <BLANKLINE>
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
+   {
+     int tmp;
+   <BLANKLINE>
+     tmp = arr[16 * gid(0) + lid(0)];
+     tmp_save_slot[16 * gid(0) + lid(0)] = tmp;
+   }
+   <BLANKLINE>
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
+   {
+     int tmp;
+   <BLANKLINE>
+     tmp = tmp_save_slot[16 * gid(0) + lid(0)];
+     arr[((1 + lid(0) + gid(0) * 16) % n)] = tmp;
+   }
+   >>> evt, (out,) = knl(queue, arr=cl.array.arange(queue, 16, dtype=np.int32), out_host=True)
+   >>> print(out)
+   [15  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14]
+
+Atomic operations
+~~~~~~~~~~~~~~~~~
+
+:mod:`loopy` supports atomic operations. To use them, both the data on which the
+atomic operations work as well as the operations themselves must be suitably
+tagged, as in the following example::
+
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            "out[i%20] = out[i%20] + 2*a[i] {atomic}",
+            [
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.auto),
+                "..."
+                ],
+            assumptions="n>0")
+
+.. }}}
+
 .. _more-complicated-programs:
 
 More complicated programs
@@ -1104,24 +1270,6 @@ Conditionals
 
 Snippets of C
 ~~~~~~~~~~~~~
-
-Atomic operations
-~~~~~~~~~~~~~~~~~
-
-Loopy supports atomic operations. To use them, both the data on which the
-atomic operations work as well as the operations themselves must be
-suitably tagged, as in the following example::
-
-
-    knl = lp.make_kernel(
-            "{ [i]: 0<=i<n }",
-            "out[i%20] = out[i%20] + 2*a[i] {atomic}",
-            [
-                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
-                lp.GlobalArg("a", dtype, shape=lp.auto),
-                "..."
-                ],
-            assumptions="n>0")
 
 .. }}}
 
@@ -1328,7 +1476,7 @@ One way to evaluate these polynomials is with :func:`islpy.eval_with_dict`:
     >>> f64add = op_map[lp.Op(np.float64, 'add')].eval_with_dict(param_dict)
     >>> f64mul = op_map[lp.Op(np.float64, 'mul')].eval_with_dict(param_dict)
     >>> i32add = op_map[lp.Op(np.int32, 'add')].eval_with_dict(param_dict)
-    >>> print("%i\n%i\n%i\n%i\n%i\n%i" % 
+    >>> print("%i\n%i\n%i\n%i\n%i\n%i" %
     ...     (f32add, f32div, f32mul, f64add, f64mul, i32add))
     524288
     524288

@@ -239,7 +239,7 @@ def test_global_parallel_reduction(ctx_factory, size):
     knl = lp.realize_reduction(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
-            "red_i_outer_arg_b")
+            "id:red_i_outer_arg_barrier")
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl, parameters={"n": size},
@@ -279,7 +279,7 @@ def test_global_mc_parallel_reduction(ctx_factory, size):
     knl = lp.realize_reduction(knl)
     knl = lp.add_dependency(
             knl, "writes:acc_i_outer",
-            "red_i_outer_arg_b")
+            "id:red_i_outer_arg_barrier")
 
     lp.auto_test_vs_ref(
             ref_knl, ctx, knl, parameters={"n": size})

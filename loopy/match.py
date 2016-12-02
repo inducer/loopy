@@ -58,6 +58,7 @@ def re_from_glob(s):
     from fnmatch import translate
     return re.compile("^"+translate(s.strip())+"$")
 
+
 # {{{ parsing
 
 # {{{ lexer data
@@ -139,6 +140,9 @@ class All(MatchExpressionBase):
     def __eq__(self, other):
         return (type(self) == type(other))
 
+    def __hash__(self):
+        return hash(type(self))
+
 
 class And(MatchExpressionBase):
     def __init__(self, children):
@@ -157,6 +161,9 @@ class And(MatchExpressionBase):
     def __eq__(self, other):
         return (type(self) == type(other)
                 and self.children == other.children)
+
+    def __hash__(self):
+        return hash((type(self), self.children))
 
 
 class Or(MatchExpressionBase):
@@ -177,6 +184,9 @@ class Or(MatchExpressionBase):
         return (type(self) == type(other)
                 and self.children == other.children)
 
+    def __hash__(self):
+        return hash((type(self), self.children))
+
 
 class Not(MatchExpressionBase):
     def __init__(self, child):
@@ -195,6 +205,9 @@ class Not(MatchExpressionBase):
     def __eq__(self, other):
         return (type(self) == type(other)
                 and self.child == other.child)
+
+    def __hash__(self):
+        return hash((type(self), self.child))
 
 
 class GlobMatchExpressionBase(MatchExpressionBase):
@@ -216,6 +229,9 @@ class GlobMatchExpressionBase(MatchExpressionBase):
     def __eq__(self, other):
         return (type(self) == type(other)
                 and self.glob == other.glob)
+
+    def __hash__(self):
+        return hash((type(self), self.glob))
 
 
 class Id(GlobMatchExpressionBase):

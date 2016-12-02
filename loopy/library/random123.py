@@ -25,14 +25,14 @@ THE SOFTWARE.
 """
 
 
-from pytools import Record
+from pytools import ImmutableRecord
 from mako.template import Template
 import numpy as np
 
 
 # {{{ rng metadata
 
-class RNGInfo(Record):
+class RNGInfo(ImmutableRecord):
     @property
     def full_name(self):
         return "%s%dx%d" % (self.name, self.width, self.bits)
