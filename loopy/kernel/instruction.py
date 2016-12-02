@@ -23,14 +23,14 @@ THE SOFTWARE.
 """
 
 from six.moves import intern
-from pytools import Record, memoize_method
+from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
 from warnings import warn
 
 
 # {{{ instructions: base class
 
-class InstructionBase(Record):
+class InstructionBase(ImmutableRecord):
     """A base class for all types of instruction that can occur in
     a kernel.
 
@@ -50,6 +50,17 @@ class InstructionBase(Record):
         by this instruction.
 
         May be *None* to invoke the default.
+
+        There are two extensions to this:
+
+        - You may use `*` as a wildcard in the given IDs. This will be expanded
+          to all matching instruction IDs during :func:`loopy.make_kernel`.
+        - Instead of an instruction ID, you may pass an instance of
+          :class:`loopy.match.MatchExpressionBase` into the :attr:`depends_on`
+          :class:`frozenset`. The given expression will be used to add any
+          matching instructions in the kernel to :attr:`depends_on` during
+          :func:`loopy.make_kernel`. Note, that this is not meant as a user-facing
+          interface.
 
     .. attribute:: depends_on_is_final
 
@@ -80,9 +91,20 @@ class InstructionBase(Record):
 
     .. attribute:: no_sync_with
 
-        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
-        with which no barrier synchronization is necessary, even given the existence
-        of a dependency chain and apparently conflicting access
+        a :class:`frozenset` of tuples of the form `(insn_id, scope)`, where
+        `insn_id` refers to :attr:`id` of :class:`Instruction` instances
+        and `scope` is one of the following strings:
+
+           - `"local"`
+           - `"global"`
+           - `"any"`.
+
+        This indicates no barrier synchronization is necessary with the given
+        instruction using barriers of type `scope`, even given the existence of
+        a dependency chain and apparently conflicting access.
+
+        Note, that :attr:`no_sync_with` allows instruction matching through wildcards
+        and match expression, just like :attr:`depends_on`.
 
     .. rubric:: Conditionals
 
@@ -177,7 +199,7 @@ class InstructionBase(Record):
 
             new_predicates.add(pred)
 
-        predicates = new_predicates
+        predicates = frozenset(new_predicates)
         del new_predicates
 
         # }}}
@@ -233,7 +255,7 @@ class InstructionBase(Record):
         assert isinstance(groups, frozenset)
         assert isinstance(conflicts_with_groups, frozenset)
 
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -366,7 +388,10 @@ class InstructionBase(Record):
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
         if self.no_sync_with:
-            result.append("nosync="+":".join(self.no_sync_with))
+            # TODO: Come up with a syntax to express different kinds of
+            # synchronization scopes.
+            result.append("nosync="+":".join(
+                    insn_id for insn_id, _ in self.no_sync_with))
         if self.groups:
             result.append("groups=%s" % ":".join(self.groups))
         if self.conflicts_with_groups:
@@ -381,19 +406,6 @@ class InstructionBase(Record):
         return result
 
     # {{{ comparison, hashing
-
-    def __eq__(self, other):
-        if not type(self) == type(other):
-            return False
-
-        for field_name in self.fields:
-            if getattr(self, field_name) != getattr(other, field_name):
-                return False
-
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -1159,7 +1171,7 @@ class CInstruction(InstructionBase):
                     for name, expr in self.iname_exprs],
                 assignees=[f(a, *args) for a in self.assignees],
                 predicates=frozenset(
-                    f(pred) for pred in self.predicates))
+                    f(pred, *args) for pred in self.predicates))
 
     # }}}
 

@@ -30,7 +30,7 @@ import six
 from six.moves import range, zip
 from six import iteritems
 
-from pytools import Record, memoize_method
+from pytools import ImmutableRecord, memoize_method
 
 import numpy as np  # noqa
 
@@ -40,7 +40,7 @@ from loopy.tools import is_integer
 
 # {{{ array dimension tags
 
-class ArrayDimImplementationTag(Record):
+class ArrayDimImplementationTag(ImmutableRecord):
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
@@ -544,7 +544,7 @@ def _parse_shape_or_strides(x):
     return tuple(_pymbolic_parse_if_necessary(xi) for xi in x)
 
 
-class ArrayBase(Record):
+class ArrayBase(ImmutableRecord):
     """
     .. attribute :: name
 
@@ -576,6 +576,7 @@ class ArrayBase(Record):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
+            target=None,
             **kwargs):
         """
         All of the following are optional. Specify either strides or shape.
@@ -659,7 +660,7 @@ class ArrayBase(Record):
 
         from loopy.types import to_loopy_type
         dtype = to_loopy_type(dtype, allow_auto=True, allow_none=True,
-                for_atomic=for_atomic)
+                for_atomic=for_atomic, target=target)
 
         strides_known = strides is not None and strides is not lp.auto
         shape_known = shape is not None and shape is not lp.auto
@@ -786,7 +787,7 @@ class ArrayBase(Record):
             warn("dim_names is not a tuple when calling ArrayBase constructor",
                     DeprecationWarning, stacklevel=2)
 
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 name=name,
                 dtype=dtype,
                 shape=shape,
@@ -1162,7 +1163,7 @@ class ArrayBase(Record):
 
 # {{{ access code generation
 
-class AccessInfo(Record):
+class AccessInfo(ImmutableRecord):
     """
     .. attribute:: array_name
     .. attribute:: vector_index

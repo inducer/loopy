@@ -1105,95 +1105,215 @@ def test_kernel_splitting_with_loop(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
-def test_kernel_splitting_with_loop_and_private_temporary(ctx_factory):
-    ctx = ctx_factory()
-
-    pytest.xfail("spilling doesn't yet use local axes")
-
-    knl = lp.make_kernel(
-            "{ [i,k]: 0<=i<n and 0<=k<3 }",
-            """
-            for i, k
-                ... gbarrier
-                <> t_private_scalar = a[k,i+1]
-                <> t_private_array[i % 2] = a[k,i+1]
-                c[k,i] = a[k,i+1]
-                ... gbarrier
-                out[k,i] = c[k,i] + t_private_scalar + t_private_array[i % 2]
-            end
-            """, seq_dependencies=True)
-
-    knl = lp.add_and_infer_dtypes(knl,
-            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
-    knl = lp.set_temporary_scope(knl, "t_private_scalar", "private")
-    knl = lp.set_temporary_scope(knl, "t_private_array", "private")
-
-    ref_knl = knl
-
-    knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
-
-    # schedule
+def save_and_reload_temporaries_test(queue, knl, out_expect, debug=False):
     from loopy.preprocess import preprocess_kernel
-    knl = preprocess_kernel(knl)
-
     from loopy.schedule import get_one_scheduled_kernel
+
+    knl = preprocess_kernel(knl)
     knl = get_one_scheduled_kernel(knl)
 
-    # map schedule onto host or device
-    print(knl)
+    from loopy.transform.save import save_and_reload_temporaries
+    knl = save_and_reload_temporaries(knl)
+    knl = get_one_scheduled_kernel(knl)
 
-    cgr = lp.generate_code_v2(knl)
+    if debug:
+        print(knl)
+        cgr = lp.generate_code_v2(knl)
+        print(cgr.device_code())
+        print(cgr.host_code())
+        1/0
 
-    assert len(cgr.device_programs) == 2
-
-    print(cgr.device_code())
-    print(cgr.host_code())
-
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+    _, (out,) = knl(queue, out_host=True)
+    assert (out == out_expect).all()
 
 
-def test_kernel_splitting_with_loop_and_local_temporary(ctx_factory):
+@pytest.mark.parametrize("hw_loop", [True, False])
+def test_save_of_private_scalar(ctx_factory, hw_loop, debug=False):
     ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-            "{ [i,k]: 0<=i<n and 0<=k<3 }",
+        "{ [i]: 0<=i<8 }",
+        """
+        for i
+            <>t = i
+            ... gbarrier
+            out[i] = t
+        end
+        """, seq_dependencies=True)
+
+    if hw_loop:
+        knl = lp.tag_inames(knl, dict(i="g.0"))
+
+    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
+
+
+def test_save_of_private_array(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<8 }",
+        """
+        for i
+            <>t[i] = i
+            ... gbarrier
+            out[i] = t[i]
+        end
+        """, seq_dependencies=True)
+
+    knl = lp.set_temporary_scope(knl, "t", "private")
+    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
+
+
+def test_save_of_private_array_in_hw_loop(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{ [i,j,k]: 0<=i,j,k<8 }",
+        """
+        for i
+            for j
+               <>t[j] = j
+            end
+            ... gbarrier
+            for k
+                out[i,k] = t[k]
+            end
+        end
+        """, seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, dict(i="g.0"))
+    knl = lp.set_temporary_scope(knl, "t", "private")
+
+    save_and_reload_temporaries_test(
+        queue, knl, np.vstack((8 * (np.arange(8),))), debug)
+
+
+def test_save_of_private_multidim_array(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{ [i,j,k,l,m]: 0<=i,j,k,l,m<8 }",
+        """
+        for i
+            for j, k
+               <>t[j,k] = k
+            end
+            ... gbarrier
+            for l, m
+                out[i,l,m] = t[l,m]
+            end
+        end
+        """, seq_dependencies=True)
+
+    knl = lp.set_temporary_scope(knl, "t", "private")
+
+    result = np.array([np.vstack((8 * (np.arange(8),))) for i in range(8)])
+    save_and_reload_temporaries_test(queue, knl, result, debug)
+
+
+def test_save_of_private_multidim_array_in_hw_loop(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{ [i,j,k,l,m]: 0<=i,j,k,l,m<8 }",
+        """
+        for i
+            for j, k
+               <>t[j,k] = k
+            end
+            ... gbarrier
+            for l, m
+                out[i,l,m] = t[l,m]
+            end
+        end
+        """, seq_dependencies=True)
+
+    knl = lp.set_temporary_scope(knl, "t", "private")
+    knl = lp.tag_inames(knl, dict(i="g.0"))
+
+    result = np.array([np.vstack((8 * (np.arange(8),))) for i in range(8)])
+    save_and_reload_temporaries_test(queue, knl, result, debug)
+
+
+@pytest.mark.parametrize("hw_loop", [True, False])
+def test_save_of_multiple_private_temporaries(ctx_factory, hw_loop, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{ [i,j,k]: 0<=i,j,k<10 }",
             """
-            for i, k
+            for i
+                for k
+                    <> t_arr[k] = k
+                end
+                <> t_scalar = 1
+                for j
+                    ... gbarrier
+                    out[j] = t_scalar
+                    ... gbarrier
+                    t_scalar = 10
+                end
                 ... gbarrier
-                <> t_local[i % 8,k] = i % 8
-                c[k,i] = a[k,i+1]
-                ... gbarrier
-                out[k,i] = c[k,i] + t_local[i % 8,k]
+                <> flag = i == 9
+                out[i] = t_arr[i] {if=flag}
             end
             """, seq_dependencies=True)
 
-    knl = lp.add_and_infer_dtypes(knl,
-            {"a": np.float32, "c": np.float32, "out": np.float32, "n": np.int32})
+    knl = lp.set_temporary_scope(knl, "t_arr", "private")
+    if hw_loop:
+        knl = lp.tag_inames(knl, dict(i="g.0"))
+
+    result = np.array([1, 10, 10, 10, 10, 10, 10, 10, 10, 9])
+
+    save_and_reload_temporaries_test(queue, knl, result, debug)
+
+
+def test_save_of_local_array(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<8 }",
+        """
+        for i, j
+            <>t[2*j] = j
+            t[2*j+1] = j
+            ... gbarrier
+            out[i] = t[2*i]
+        end
+        """, seq_dependencies=True)
+
+    knl = lp.set_temporary_scope(knl, "t", "local")
+    knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
+
+    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
+
+
+def test_save_local_multidim_array(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{ [i,j,k]: 0<=i<2 and 0<=k<3 and 0<=j<2}",
+            """
+            for i, j, k
+                ... gbarrier
+                <> t_local[k,j] = 1
+                ... gbarrier
+                out[k,i*2+j] = t_local[k,j]
+            end
+            """, seq_dependencies=True)
 
     knl = lp.set_temporary_scope(knl, "t_local", "local")
+    knl = lp.tag_inames(knl, dict(j="l.0", i="g.0"))
 
-    ref_knl = knl
-
-    knl = lp.split_iname(knl, "i", 8, outer_tag="g.0", inner_tag="l.0")
-
-    # schedule
-    from loopy.preprocess import preprocess_kernel
-    knl = preprocess_kernel(knl)
-
-    from loopy.schedule import get_one_scheduled_kernel
-    knl = get_one_scheduled_kernel(knl)
-
-    # map schedule onto host or device
-    print(knl)
-
-    cgr = lp.generate_code_v2(knl)
-
-    assert len(cgr.device_programs) == 2
-
-    print(cgr.device_code())
-    print(cgr.host_code())
-
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=8))
+    save_and_reload_temporaries_test(queue, knl, 1, debug)
 
 
 def test_global_temporary(ctx_factory):
@@ -1607,6 +1727,100 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
     evt, (a2,) = knl(queue, out_host=True)
 
     assert np.array_equal(a, a2)
+
+
+def test_header_extract():
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             T[k] = k**2
+         end
+         """,
+         [lp.GlobalArg('T', shape=(200,), dtype=np.float32),
+         '...'])
+
+    knl = lp.fix_parameters(knl, n=200)
+
+    #test C
+    cknl = knl.copy(target=lp.CTarget())
+    assert str(lp.generate_header(cknl)[0]) == (
+            'void loopy_kernel(float *__restrict__ T);')
+
+    #test CUDA
+    cuknl = knl.copy(target=lp.CudaTarget())
+    assert str(lp.generate_header(cuknl)[0]) == (
+            'extern "C" __global__ void __launch_bounds__(1) '
+            'loopy_kernel(float *__restrict__ T);')
+
+    #test OpenCL
+    oclknl = knl.copy(target=lp.PyOpenCLTarget())
+    assert str(lp.generate_header(oclknl)[0]) == (
+            '__kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) '
+            'loopy_kernel(__global float *__restrict__ T);')
+
+
+def test_scalars_with_base_storage(ctx_factory):
+    """ Regression test for !50 """
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<1}",
+            "a = 1",
+            [lp.TemporaryVariable("a", dtype=np.float64,
+                                  shape=(), base_storage="base")])
+
+    knl(queue, out_host=True)
+
+
+def test_tight_loop_bounds(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        ["{ [i] : 0 <= i <= 5 }",
+         "[i] -> { [j] : 2 * i - 2 < j <= 2 * i and 0 <= j <= 9 }"],
+        """
+        for i
+          for j
+            out[j] = j
+          end
+        end
+        """,
+        silenced_warnings="write_race(insn)")
+
+    knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
+
+    evt, (out,) = knl(queue, out_host=True)
+
+    assert (out == np.arange(10)).all()
+
+
+def test_tight_loop_bounds_codegen():
+    knl = lp.make_kernel(
+        ["{ [i] : 0 <= i <= 5 }",
+         "[i] -> { [j] : 2 * i - 2 <= j <= 2 * i and 0 <= j <= 9 }"],
+        """
+        for i
+          for j
+            out[j] = j
+          end
+        end
+        """,
+        silenced_warnings="write_race(insn)",
+        target=lp.OpenCLTarget())
+
+    knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
+
+    cgr = lp.generate_code_v2(knl)
+    #print(cgr.device_code())
+
+    for_loop = \
+        "for (int j = " \
+        "(lid(0) == 0 && gid(0) == 0 ? 0 : -2 + 10 * gid(0) + 2 * lid(0)); " \
+        "j <= (lid(0) == 0 && -1 + gid(0) == 0 ? 9 : 2 * lid(0)); ++j)"
+
+    assert for_loop in cgr.device_code()
 
 
 if __name__ == "__main__":

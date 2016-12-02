@@ -25,7 +25,7 @@ THE SOFTWARE.
 import six
 from six.moves import range, zip
 
-from pytools import Record, memoize_method
+from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import ParameterFinderWarning
 from pytools.py_codegen import (
         Indentation, PythonFunctionGenerator)
@@ -610,7 +610,7 @@ def generate_invoker(kernel, codegen_result):
 
 # {{{ kernel executor
 
-class _CLKernelInfo(Record):
+class _CLKernelInfo(ImmutableRecord):
     pass
 
 

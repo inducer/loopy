@@ -25,6 +25,7 @@ THE SOFTWARE.
 import six
 
 import loopy as lp
+import numpy as np
 import warnings
 from islpy import dim_type
 import islpy as isl
@@ -39,13 +40,13 @@ __doc__ = """
 
 .. currentmodule:: loopy
 
-.. autofunction:: get_op_poly
+.. autoclass:: ToCountMap
+.. autoclass:: Op
+.. autoclass:: MemAccess
 
-.. autofunction:: get_gmem_access_poly
-
-.. autofunction:: sum_mem_access_to_bytes
-
-.. autofunction:: get_synchronization_poly
+.. autofunction:: get_op_map
+.. autofunction:: get_mem_access_map
+.. autofunction:: get_synchronization_map
 
 .. autofunction:: gather_access_footprints
 .. autofunction:: gather_access_footprint_bytes
@@ -55,18 +56,27 @@ __doc__ = """
 
 # {{{ ToCountMap
 
-class ToCountMap:
-    """Maps any type of key to an arithmetic type."""
+class ToCountMap(object):
+    """Maps any type of key to an arithmetic type.
+
+    .. automethod:: filter_by
+    .. automethod:: filter_by_func
+    .. automethod:: group_by
+    .. automethod:: to_bytes
+    .. automethod:: sum
+    .. automethod:: eval_and_sum
+
+    """
 
     def __init__(self, init_dict=None):
         if init_dict is None:
             init_dict = {}
-        self.dict = init_dict
+        self.count_map = init_dict
 
     def __add__(self, other):
-        result = self.dict.copy()
-        for k, v in six.iteritems(other.dict):
-            result[k] = self.dict.get(k, 0) + v
+        result = self.count_map.copy()
+        for k, v in six.iteritems(other.count_map):
+            result[k] = self.count_map.get(k, 0) + v
         return ToCountMap(result)
 
     def __radd__(self, other):
@@ -80,8 +90,8 @@ class ToCountMap:
     def __mul__(self, other):
         if isinstance(other, isl.PwQPolynomial):
             return ToCountMap(dict(
-                (index, self.dict[index]*other)
-                for index in self.dict.keys()))
+                (index, self.count_map[index]*other)
+                for index in self.keys()))
         else:
             raise ValueError("ToCountMap: Attempted to multiply "
                                 "ToCountMap by {0} {1}."
@@ -91,12 +101,262 @@ class ToCountMap:
 
     def __getitem__(self, index):
         try:
-            return self.dict[index]
+            return self.count_map[index]
         except KeyError:
             return isl.PwQPolynomial('{ 0 }')
 
+    def __setitem__(self, index, value):
+        self.count_map[index] = value
+
     def __repr__(self):
-        return repr(self.dict)
+        return repr(self.count_map)
+
+    def __len__(self):
+        return len(self.count_map)
+
+    def items(self):
+        return self.count_map.items()
+
+    def keys(self):
+        return self.count_map.keys()
+
+    def pop(self, item):
+        return self.count_map.pop(item)
+
+    def copy(self):
+        return ToCountMap(dict(self.count_map))
+
+    def filter_by(self, **kwargs):
+        """Remove items without specified key fields.
+
+        :parameter \*\*kwargs: Keyword arguments matching fields in the keys of
+                             the :class:`ToCountMap`, each given a list of
+                             allowable values for that key field.
+
+        :return: A :class:`ToCountMap` containing the subset of the items in
+                 the original :class:`ToCountMap` that match the field values
+                 passed.
+
+        Example usage::
+
+            # (first create loopy kernel and specify array data types)
+
+            params = {'n': 512, 'm': 256, 'l': 128}
+            mem_map = lp.get_mem_access_map(knl)
+            filtered_map = mem_map.filter_by(direction=['load'],
+                                             variable=['a','g'])
+            tot_loads_a_g = filtered_map.eval_and_sum(params)
+
+            # (now use these counts to predict performance)
+
+        """
+
+        result_map = ToCountMap()
+
+        from loopy.types import to_loopy_type
+        if 'dtype' in kwargs.keys():
+            kwargs['dtype'] = [to_loopy_type(d) for d in kwargs['dtype']]
+
+        # for each item in self.count_map
+        for self_key, self_val in self.items():
+            try:
+                # check to see if key attribute values match all filters
+                for arg_field, allowable_vals in kwargs.items():
+                    attr_val = getattr(self_key, arg_field)
+                    # see if the value is in the filter list
+                    if attr_val not in allowable_vals:
+                        break
+                else:  # loop terminated without break or error
+                    result_map[self_key] = self_val
+            except(AttributeError):
+                # the field passed is not a field of this key
+                continue
+
+        return result_map
+
+    def filter_by_func(self, func):
+        """Keep items that pass a test.
+
+        :parameter func: A function that takes a map key a parameter and
+                         returns a :class:`bool`.
+
+        :return: A :class:`ToCountMap` containing the subset of the items in
+                 the original :class:`ToCountMap` for which func(key) is true.
+
+        Example usage::
+
+            # (first create loopy kernel and specify array data types)
+
+            params = {'n': 512, 'm': 256, 'l': 128}
+            mem_map = lp.get_mem_access_map(knl)
+            def filter_func(key):
+                return key.stride > 1 and key.stride <= 4:
+
+            filtered_map = mem_map.filter_by_func(filter_func)
+            tot = filtered_map.eval_and_sum(params)
+
+            # (now use these counts to predict performance)
+
+        """
+
+        result_map = ToCountMap()
+
+        # for each item in self.count_map, call func on the key
+        for self_key, self_val in self.items():
+            if func(self_key):
+                result_map[self_key] = self_val
+
+        return result_map
+
+    def group_by(self, *args):
+        """Group map items together, distinguishing by only the key fields
+           passed in args.
+
+        :parameter \*args: Zero or more :class:`str` fields of map keys.
+
+        :return: A :class:`ToCountMap` containing the same total counts
+                 grouped together by new keys that only contain the fields
+                 specified in the arguments passed.
+
+        Example usage::
+
+            # (first create loopy kernel and specify array data types)
+
+            params = {'n': 512, 'm': 256, 'l': 128}
+            mem_map = get_mem_access_map(knl)
+            grouped_map = mem_map.group_by('mtype', 'dtype', 'direction')
+
+            f32_global_ld = grouped_map[MemAccess(mtype='global',
+                                                  dtype=np.float32,
+                                                  direction='load')
+                                       ].eval_with_dict(params)
+            f32_global_st = grouped_map[MemAccess(mtype='global',
+                                                  dtype=np.float32,
+                                                  direction='store')
+                                       ].eval_with_dict(params)
+            f32_local_ld = grouped_map[MemAccess(mtype='local',
+                                                 dtype=np.float32,
+                                                 direction='load')
+                                      ].eval_with_dict(params)
+            f32_local_st = grouped_map[MemAccess(mtype='local',
+                                                 dtype=np.float32,
+                                                 direction='store')
+                                      ].eval_with_dict(params)
+
+            op_map = get_op_map(knl)
+            ops_dtype = op_map.group_by('dtype')
+
+            f32ops = ops_dtype[Op(dtype=np.float32)].eval_with_dict(params)
+            f64ops = ops_dtype[Op(dtype=np.float64)].eval_with_dict(params)
+            i32ops = ops_dtype[Op(dtype=np.int32)].eval_with_dict(params)
+
+            # (now use these counts to predict performance)
+
+        """
+
+        result_map = ToCountMap()
+
+        # make sure all item keys have same type
+        if self.count_map:
+            key_type = type(list(self.keys())[0])
+            if not all(isinstance(x, key_type) for x in self.keys()):
+                raise ValueError("ToCountMap: group_by() function may only "
+                                 "be used on ToCountMaps with uniform keys")
+        else:
+            return result_map
+
+        # for each item in self.count_map
+        for self_key, self_val in self.items():
+            new_key = key_type()
+
+            # set all specified fields
+            for field in args:
+                setattr(new_key, field, getattr(self_key, field))
+
+            if new_key in result_map.keys():
+                result_map[new_key] += self_val
+            else:
+                result_map[new_key] = self_val
+
+        return result_map
+
+    def to_bytes(self):
+        """Convert counts to bytes using data type in map key.
+
+        :return: A :class:`ToCountMap` mapping each original key to a
+                 :class:`islpy.PwQPolynomial` with counts in bytes rather than
+                 instances.
+
+        Example usage::
+
+            # (first create loopy kernel and specify array data types)
+
+            bytes_map = get_mem_access_map(knl).to_bytes()
+            params = {'n': 512, 'm': 256, 'l': 128}
+
+            s1_g_ld_byt = bytes_map.filter_by(
+                                mtype=['global'], stride=[1],
+                                direction=['load']).eval_and_sum(params)
+            s2_g_ld_byt = bytes_map.filter_by(
+                                mtype=['global'], stride=[2],
+                                direction=['load']).eval_and_sum(params)
+            s1_g_st_byt = bytes_map.filter_by(
+                                mtype=['global'], stride=[1],
+                                direction=['store']).eval_and_sum(params)
+            s2_g_st_byt = bytes_map.filter_by(
+                                mtype=['global'], stride=[2],
+                                direction=['store']).eval_and_sum(params)
+
+            # (now use these counts to predict performance)
+
+        """
+
+        result = self.copy()
+
+        for key, val in self.items():
+            bytes_processed = int(key.dtype.itemsize) * val
+            result[key] = bytes_processed
+
+        return result
+
+
+    def sum(self):
+        """Add all counts in ToCountMap.
+
+        :return: A :class:`islpy.PwQPolynomial` containing the sum of counts.
+
+        """
+        total = isl.PwQPolynomial('{ 0 }')
+        for k, v in self.items():
+            if not isinstance(v, isl.PwQPolynomial):
+                raise ValueError("ToCountMap: sum() encountered type {0} but "
+                                 "may only be used on PwQPolynomials."
+                                 .format(type(v)))
+            total += v
+        return total
+
+
+    def eval_and_sum(self, params):
+        """Add all counts in :class:`ToCountMap` and evaluate with provided
+        parameter dict.
+
+        :return: An :class:`int` containing the sum of all counts in the
+                 :class:`ToCountMap` evaluated with the parameters provided.
+
+        Example usage::
+
+            # (first create loopy kernel and specify array data types)
+
+            params = {'n': 512, 'm': 256, 'l': 128}
+            mem_map = lp.get_mem_access_map(knl)
+            filtered_map = mem_map.filter_by(direction=['load'],
+                                             variable=['a','g'])
+            tot_loads_a_g = filtered_map.eval_and_sum(params)
+
+            # (now use these counts to predict performance)
+
+        """
+        return self.sum().eval_with_dict(params)
 
 # }}}
 
@@ -108,13 +368,150 @@ def stringify_stats_mapping(m):
     return result
 
 
+class Op(object):
+    """An arithmetic operation.
+
+    .. attribute:: dtype
+
+       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       data type operated on.
+
+    .. attribute:: name
+
+       A :class:`str` that specifies the kind of arithmetic operation as
+       *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
+
+    """
+
+    def __init__(self, dtype=None, name=None):
+        self.name = name
+        if dtype is None:
+            self.dtype = dtype
+        else:
+            from loopy.types import to_loopy_type
+            self.dtype = to_loopy_type(dtype)
+
+    def __eq__(self, other):
+        return isinstance(other, Op) and (
+                (self.dtype is None or other.dtype is None or
+                 self.dtype == other.dtype) and
+                (self.name is None or other.name is None or
+                 self.name == other.name))
+
+    def __hash__(self):
+        return hash(str(self))
+
+    def __str__(self):
+        if self.dtype is None:
+            dtype = 'None'
+        else:
+            dtype = str(self.dtype)
+        if self.name is None:
+            name = 'None'
+        else:
+            name = self.name
+        return "Op("+dtype+", "+name+")"
+
+
+class MemAccess(object):
+    """A memory access.
+
+    .. attribute:: mtype
+
+       A :class:`str` that specifies the memory type accessed as **global**
+       or **local**
+
+    .. attribute:: dtype
+
+       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       data type accessed.
+
+    .. attribute:: stride
+
+       An :class:`int` that specifies stride of the memory access. A stride of 0
+       indicates a uniform access (i.e. all threads access the same item).
+
+    .. attribute:: direction
+
+       A :class:`str` that specifies the direction of memory access as
+       **load** or **store**.
+
+    .. attribute:: variable
+
+       A :class:`str` that specifies the variable name of the data
+       accessed.
+
+    """
+
+    def __init__(self, mtype=None, dtype=None, stride=None, direction=None, variable=None):
+        self.mtype = mtype
+        self.stride = stride
+        self.direction = direction
+        self.variable = variable
+        if dtype is None:
+            self.dtype = dtype
+        else:
+            from loopy.types import to_loopy_type
+            self.dtype = to_loopy_type(dtype)
+
+        #TODO currently giving all lmem access stride=None
+        if (mtype == 'local') and (stride is not None):
+            raise NotImplementedError("MemAccess: stride must be None when "
+                                      "mtype is 'local'")
+
+        #TODO currently giving all lmem access variable=None
+        if (mtype == 'local') and (variable is not None):
+            raise NotImplementedError("MemAccess: variable must be None when "
+                                      "mtype is 'local'")
+
+    def __eq__(self, other):
+        return isinstance(other, MemAccess) and (
+                (self.mtype is None or other.mtype is None or
+                 self.mtype == other.mtype) and
+                (self.dtype is None or other.dtype is None or
+                 self.dtype == other.dtype) and
+                (self.stride is None or other.stride is None or
+                 self.stride == other.stride) and
+                (self.direction is None or other.direction is None or
+                 self.direction == other.direction) and
+                (self.variable is None or other.variable is None or
+                 self.variable == other.variable))
+
+    def __hash__(self):
+        return hash(str(self))
+
+    def __str__(self):
+        if self.mtype is None:
+            mtype = 'None'
+        else:
+            mtype = self.mtype
+        if self.dtype is None:
+            dtype = 'None'
+        else:
+            dtype = str(self.dtype)
+        if self.stride is None:
+            stride = 'None'
+        else:
+            stride = str(self.stride)
+        if self.direction is None:
+            direction = 'None'
+        else:
+            direction = self.direction
+        if self.variable is None:
+            variable = 'None'
+        else:
+            variable = self.variable
+        return "MemAccess("+mtype+", "+dtype+", "+stride+", "+direction+", " \
+               +variable+")"
+
+
 # {{{ ExpressionOpCounter
 
 class ExpressionOpCounter(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
-        from loopy.expression import TypeInferenceMapper
+        from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
     def combine(self, values):
@@ -126,41 +523,33 @@ class ExpressionOpCounter(CombineMapper):
     map_tagged_variable = map_constant
     map_variable = map_constant
 
-    #def map_wildcard(self, expr):
-    #    return 0,0
-
-    #def map_function_symbol(self, expr):
-    #    return 0,0
-
     def map_call(self, expr):
         return ToCountMap(
-                    {(self.type_inf(expr), 'func:'+str(expr.function)): 1}
+                    {Op(dtype=self.type_inf(expr),
+                        name='func:'+str(expr.function)): 1}
                     ) + self.rec(expr.parameters)
 
-    # def map_call_with_kwargs(self, expr):  # implemented in CombineMapper
-
-    def map_subscript(self, expr):  # implemented in CombineMapper
+    def map_subscript(self, expr):
         return self.rec(expr.index)
-
-    # def map_lookup(self, expr):  # implemented in CombineMapper
 
     def map_sum(self, expr):
         assert expr.children
         return ToCountMap(
-                    {(self.type_inf(expr), 'add'): len(expr.children)-1}
+                    {Op(dtype=self.type_inf(expr),
+                        name='add'): len(expr.children)-1}
                     ) + sum(self.rec(child) for child in expr.children)
 
     def map_product(self, expr):
         from pymbolic.primitives import is_zero
         assert expr.children
-        return sum(ToCountMap({(self.type_inf(expr), 'mul'): 1})
+        return sum(ToCountMap({Op(dtype=self.type_inf(expr), name='mul'): 1})
                    + self.rec(child)
                    for child in expr.children
                    if not is_zero(child + 1)) + \
-                   ToCountMap({(self.type_inf(expr), 'mul'): -1})
+                   ToCountMap({Op(dtype=self.type_inf(expr), name='mul'): -1})
 
     def map_quotient(self, expr, *args):
-        return ToCountMap({(self.type_inf(expr), 'div'): 1}) \
+        return ToCountMap({Op(dtype=self.type_inf(expr), name='div'): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
 
@@ -168,54 +557,47 @@ class ExpressionOpCounter(CombineMapper):
     map_remainder = map_quotient
 
     def map_power(self, expr):
-        return ToCountMap({(self.type_inf(expr), 'pow'): 1}) \
+        return ToCountMap({Op(dtype=self.type_inf(expr), name='pow'): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):
-        return ToCountMap({(self.type_inf(expr), 'shift'): 1}) \
+        return ToCountMap({Op(dtype=self.type_inf(expr), name='shift'): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
     map_right_shift = map_left_shift
 
     def map_bitwise_not(self, expr):
-        return ToCountMap({(self.type_inf(expr), 'bw'): 1}) \
+        return ToCountMap({Op(dtype=self.type_inf(expr), name='bw'): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
-        return ToCountMap(
-                        {(self.type_inf(expr), 'bw'): len(expr.children)-1}
-                        ) + sum(self.rec(child) for child in expr.children)
+        return ToCountMap({Op(dtype=self.type_inf(expr), name='bw'):
+                           len(expr.children)-1}
+                         ) + sum(self.rec(child) for child in expr.children)
 
     map_bitwise_xor = map_bitwise_or
     map_bitwise_and = map_bitwise_or
 
-    def map_comparison(self, expr):
-        return self.rec(expr.left)+self.rec(expr.right)
-
-    def map_logical_not(self, expr):
-        return self.rec(expr.child)
-
-    def map_logical_or(self, expr):
-        return sum(self.rec(child) for child in expr.children)
-
-    map_logical_and = map_logical_or
-
     def map_if(self, expr):
-        warnings.warn("ExpressionOpCounter counting ops as "
-                      "sum of if-statement branches.")
-        return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
+        warn_with_kernel(self.knl, "summing_if_branches_ops", 
+                         "ExpressionOpCounter counting ops as sum of "
+                         "if-statement branches.")
+        return self.rec(expr.condition) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("ExpressionOpCounter counting ops as "
-                      "sum of if_pos-statement branches.")
-        return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
+        warn_with_kernel(self.knl, "summing_ifpos_branches_ops",
+                         "ExpressionOpCounter counting ops as sum of "
+                         "if_pos-statement branches.")
+        return self.rec(expr.criterion) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     def map_min(self, expr):
-        return ToCountMap(
-                        {(self.type_inf(expr), 'maxmin'): len(expr.children)-1}
-                        ) + sum(self.rec(child) for child in expr.children)
+        return ToCountMap({Op(dtype=self.type_inf(expr), name='maxmin'):
+                           len(expr.children)-1}
+                         ) + sum(self.rec(child) for child in expr.children)
 
     map_max = map_min
 
@@ -225,15 +607,94 @@ class ExpressionOpCounter(CombineMapper):
                                   "map_common_subexpression not implemented.")
 
     def map_substitution(self, expr):
-        raise NotImplementedError("ExpressionOpCounter encountered substitution, "
+        raise NotImplementedError("ExpressionOpCounter encountered "
+                                  "substitution, "
                                   "map_substitution not implemented.")
 
     def map_derivative(self, expr):
-        raise NotImplementedError("ExpressionOpCounter encountered derivative, "
+        raise NotImplementedError("ExpressionOpCounter encountered "
+                                  "derivative, "
                                   "map_derivative not implemented.")
 
     def map_slice(self, expr):
         raise NotImplementedError("ExpressionOpCounter encountered slice, "
+                                  "map_slice not implemented.")
+
+# }}}
+
+
+# {{{ LocalSubscriptCounter
+
+class LocalSubscriptCounter(CombineMapper):
+
+    def __init__(self, knl):
+        self.knl = knl
+        from loopy.type_inference import TypeInferenceMapper
+        self.type_inf = TypeInferenceMapper(knl)
+
+    def combine(self, values):
+        return sum(values)
+
+    def map_constant(self, expr):
+        return ToCountMap()
+
+    map_tagged_variable = map_constant
+    map_variable = map_constant
+
+    def map_call(self, expr):
+        return self.rec(expr.parameters)
+
+    def map_subscript(self, expr):
+        sub_map = ToCountMap()
+        name = expr.aggregate.name  # name of array
+        if name in self.knl.temporary_variables:
+            array = self.knl.temporary_variables[name]
+            if array.is_local:
+                sub_map[MemAccess(mtype='local', dtype=self.type_inf(expr))] = 1
+        return sub_map + self.rec(expr.index)
+            
+    def map_sum(self, expr):
+        if expr.children:
+            return sum(self.rec(child) for child in expr.children)
+        else:
+            return ToCountMap()
+
+    map_product = map_sum
+
+    def map_comparison(self, expr):
+        return self.rec(expr.left)+self.rec(expr.right)
+
+    def map_if(self, expr):
+        warn_with_kernel(self.knl, "summing_if_branches_lsubs", 
+                         "LocalSubscriptCounter counting LMEM accesses as sum "
+                         "of if-statement branches.")
+        return self.rec(expr.condition) + self.rec(expr.then) \
+               + self.rec(expr.else_)
+
+    def map_if_positive(self, expr):
+        warn_with_kernel(self.knl, "summing_ifpos_branches_lsubs", 
+                         "LocalSubscriptCounter counting LMEM accesses as sum "
+                         "of if_pos-statement branches.")
+        return self.rec(expr.criterion) + self.rec(expr.then) \
+               + self.rec(expr.else_)
+
+    def map_common_subexpression(self, expr):
+        raise NotImplementedError("LocalSubscriptCounter encountered "
+                                  "common_subexpression, "
+                                  "map_common_subexpression not implemented.")
+
+    def map_substitution(self, expr):
+        raise NotImplementedError("LocalSubscriptCounter encountered "
+                                  "substitution, "
+                                  "map_substitution not implemented.")
+
+    def map_derivative(self, expr):
+        raise NotImplementedError("LocalSubscriptCounter encountered "
+                                  "derivative, "
+                                  "map_derivative not implemented.")
+
+    def map_slice(self, expr):
+        raise NotImplementedError("LocalSubscriptCounter encountered slice, "
                                   "map_slice not implemented.")
 
 # }}}
@@ -245,7 +706,7 @@ class GlobalSubscriptCounter(CombineMapper):
 
     def __init__(self, knl):
         self.knl = knl
-        from loopy.expression import TypeInferenceMapper
+        from loopy.type_inference import TypeInferenceMapper
         self.type_inf = TypeInferenceMapper(knl)
 
     def combine(self, values):
@@ -278,33 +739,52 @@ class GlobalSubscriptCounter(CombineMapper):
             index = (index,)
 
         from loopy.symbolic import get_dependencies
-        from loopy.kernel.data import LocalIndexTag
+        from loopy.kernel.data import LocalIndexTag, GroupIndexTag
         my_inames = get_dependencies(index) & self.knl.all_inames()
-        local_id0 = None
+
+        # find min tag axis
+        import sys
+        min_tag_axis = sys.maxsize
         local_id_found = False
         for iname in my_inames:
-            # find local id0
             tag = self.knl.iname_to_tag.get(iname)
             if isinstance(tag, LocalIndexTag):
                 local_id_found = True
-                if tag.axis == 0:
-                    local_id0 = iname
-                    break  # there will be only one local_id0
+                if tag.axis < min_tag_axis:
+                    min_tag_axis = tag.axis
 
         if not local_id_found:
             # count as uniform access
-            return ToCountMap(
-                    {(self.type_inf(expr), 'uniform'): 1}
-                    ) + self.rec(expr.index)
+            return ToCountMap({MemAccess(mtype='global',
+                                         dtype=self.type_inf(expr), stride=0,
+                                         variable=name): 1}
+                             ) + self.rec(expr.index)
 
-        if local_id0 is None:
-            # only non-zero local id(s) found, assume non-consecutive access
-            return ToCountMap(
-                    {(self.type_inf(expr), 'nonconsecutive'): 1}
-                    ) + self.rec(expr.index)
+        if min_tag_axis != 0:
+            warn_with_kernel(self.knl, "unknown_gmem_stride",
+                             "GlobalSubscriptCounter: Memory access minimum "
+                             "tag axis %d != 0, stride unknown, using "
+                             "sys.maxsize." % (min_tag_axis))
+            return ToCountMap({MemAccess(mtype='global',
+                                         dtype=self.type_inf(expr),
+                                         stride=sys.maxsize, variable=name): 1}
+                             ) + self.rec(expr.index)
 
-        # check coefficient of local_id0 for each axis
+        # get local_id associated with minimum tag axis
+        min_lid = None
+        for iname in my_inames:
+            tag = self.knl.iname_to_tag.get(iname)
+            if isinstance(tag, LocalIndexTag):
+                if tag.axis == min_tag_axis:
+                    min_lid = iname
+                    break  # there will be only one min local_id
+
+        # found local_id associated with minimum tag axis
+
+        total_stride = 0
+        # check coefficient of min_lid for each axis
         from loopy.symbolic import CoefficientCollector
+        from loopy.kernel.array import FixedStrideArrayDimTag
         from pymbolic.primitives import Variable
         for idx, axis_tag in zip(index, array.dim_tags):
 
@@ -312,36 +792,22 @@ class GlobalSubscriptCounter(CombineMapper):
             coeffs = CoefficientCollector()(simplify_using_aff(self.knl, idx))
             # check if he contains the lid 0 guy
             try:
-                coeff_id0 = coeffs[Variable(local_id0)]
+                coeff_min_lid = coeffs[Variable(min_lid)]
             except KeyError:
-                # does not contain local_id0
+                # does not contain min_lid
                 continue
-
-            if coeff_id0 != 1:
-                # non-consecutive access
-                return ToCountMap(
-                        {(self.type_inf(expr), 'nonconsecutive'): 1}
-                        ) + self.rec(expr.index)
-
-            # coefficient is 1, now determine if stride is 1
-            from loopy.kernel.array import FixedStrideArrayDimTag
+            # found coefficient of min_lid
+            # now determine stride
             if isinstance(axis_tag, FixedStrideArrayDimTag):
                 stride = axis_tag.stride
             else:
                 continue
 
-            if stride != 1:
-                # non-consecutive
-                return ToCountMap(
-                        {(self.type_inf(expr), 'nonconsecutive'): 1}
-                        ) + self.rec(expr.index)
+            total_stride += stride*coeff_min_lid
 
-            # else, stride == 1, continue since another idx could contain id0
-
-        # loop finished without returning, stride==1 for every instance of local_id0
-        return ToCountMap(
-                {(self.type_inf(expr), 'consecutive'): 1}
-                ) + self.rec(expr.index)
+        return ToCountMap({MemAccess(mtype='global', dtype=self.type_inf(expr),
+                                     stride=total_stride, variable=name): 1}
+                         ) + self.rec(expr.index)
 
     def map_sum(self, expr):
         if expr.children:
@@ -351,48 +817,19 @@ class GlobalSubscriptCounter(CombineMapper):
 
     map_product = map_sum
 
-    def map_quotient(self, expr, *args):
-        return self.rec(expr.numerator) + self.rec(expr.denominator)
-
-    map_floor_div = map_quotient
-    map_remainder = map_quotient
-
-    def map_power(self, expr):
-        return self.rec(expr.base) + self.rec(expr.exponent)
-
-    def map_left_shift(self, expr):
-        return self.rec(expr.shiftee)+self.rec(expr.shift)
-
-    map_right_shift = map_left_shift
-
-    def map_bitwise_not(self, expr):
-        return self.rec(expr.child)
-
-    def map_bitwise_or(self, expr):
-        return sum(self.rec(child) for child in expr.children)
-
-    map_bitwise_xor = map_bitwise_or
-    map_bitwise_and = map_bitwise_or
-
-    def map_comparison(self, expr):
-        return self.rec(expr.left)+self.rec(expr.right)
-
-    map_logical_not = map_bitwise_not
-    map_logical_or = map_bitwise_or
-    map_logical_and = map_logical_or
-
     def map_if(self, expr):
-        warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
-                      "sum of if-statement branches.")
-        return self.rec(expr.condition) + self.rec(expr.then) + self.rec(expr.else_)
+        warn_with_kernel(self.knl, "summing_if_branches_gsubs", 
+                         "GlobalSubscriptCounter counting GMEM accesses as "
+                         "sum of if-statement branches.")
+        return self.rec(expr.condition) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warnings.warn("GlobalSubscriptCounter counting GMEM accesses as "
-                      "sum of if_pos-statement branches.")
-        return self.rec(expr.criterion) + self.rec(expr.then) + self.rec(expr.else_)
-
-    map_min = map_bitwise_or
-    map_max = map_min
+        warn_with_kernel(self.knl, "summing_ifpos_branches_gsubs", 
+                         "GlobalSubscriptCounter counting GMEM accesses as "
+                         "sum of if_pos-statement branches.")
+        return self.rec(expr.criterion) + self.rec(expr.then) \
+               + self.rec(expr.else_)
 
     def map_common_subexpression(self, expr):
         raise NotImplementedError("GlobalSubscriptCounter encountered "
@@ -524,7 +961,8 @@ def count(kernel, set):
 
             # {{{ rebuild check domain
 
-            zero = isl.Aff.zero_on_domain(isl.LocalSpace.from_space(bset.space))
+            zero = isl.Aff.zero_on_domain(
+                        isl.LocalSpace.from_space(bset.space))
             iname = isl.PwAff.from_aff(
                     zero.set_coefficient_val(isl.dim_type.in_, i, 1))
             dmin_matched = dmin.insert_dims(
@@ -584,31 +1022,44 @@ def get_op_poly(knl, numpy_types=True):
 
     """Count the number of operations in a loopy kernel.
 
+    get_op_poly is deprecated. Use get_op_map instead.
+
+    """
+    warn_with_kernel(knl, "depricated_get_op_poly",
+                     "get_op_poly is deprecated. Use get_op_map instead.")
+    return get_op_map(knl, numpy_types)
+
+# }}}
+
+
+def get_op_map(knl, numpy_types=True):
+
+    """Count the number of operations in a loopy kernel.
+
     :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
-    :return: A mapping of **{(** *type* **,** :class:`string` **)**
-             **:** :class:`islpy.PwQPolynomial` **}**.
+    :parameter numpy_types: A :class:`bool` specifying whether the types
+                            in the returned mapping should be numpy types
+                            instead of :class:`loopy.LoopyType`.
 
-             - The *type* specifies the type of the data being
-               accessed. This can be a :class:`numpy.dtype` if
-               *numpy_types* is True, otherwise the internal
-               loopy type.
+    :return: A :class:`ToCountMap` of **{** :class:`Op` **:**
+             :class:`islpy.PwQPolynomial` **}**.
 
-             - The string specifies the operation type as
-               *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
+             - The :class:`Op` specifies the characteristics of the arithmetic
+               operation.
 
              - The :class:`islpy.PwQPolynomial` holds the number of operations of
                the kind specified in the key (in terms of the
-               :class:`loopy.LoopKernel` *parameter inames*).
+               :class:`loopy.LoopKernel` parameter *inames*).
 
     Example usage::
 
         # (first create loopy kernel and specify array data types)
 
-        poly = get_op_poly(knl)
+        op_map = get_op_map(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        f32add = poly[(np.dtype(np.float32), 'add')].eval_with_dict(params)
-        f32mul = poly[(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+        f32add = op_map[Op(np.float32, 'add')].eval_with_dict(params)
+        f32mul = op_map[Op(np.float32, 'mul')].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -618,88 +1069,128 @@ def get_op_poly(knl, numpy_types=True):
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
-    op_poly = ToCountMap()
+    op_map = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
         # how many times is this instruction executed?
         # check domain size:
         insn_inames = knl.insn_inames(insn)
         inames_domain = knl.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+        domain = (inames_domain.project_out_except(
+                                        insn_inames, [dim_type.set]))
         ops = op_counter(insn.assignee) + op_counter(insn.expression)
-        op_poly = op_poly + ops*count(knl, domain)
-    result = op_poly.dict
+        op_map = op_map + ops*count(knl, domain)
 
     if numpy_types:
-        result = dict(
-                ((dtype.numpy_dtype, kind), count)
-                for (dtype, kind), count in six.iteritems(result))
+        op_map.count_map = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
+                                 count)
+                for op, count in six.iteritems(op_map.count_map))
 
-    return result
-# }}}
+    return op_map
 
 
-def sum_ops_to_dtypes(op_poly_dict):
-    result = {}
-    for (dtype, kind), v in op_poly_dict.items():
-        new_key = dtype
-        if new_key in result:
-            result[new_key] += v
-        else:
-            result[new_key] = v
+#TODO test deprecated functions?
+def get_lmem_access_poly(knl):
+    """Count the number of local memory accesses in a loopy kernel.
 
-    return result
+    get_lmem_access_poly is deprecated. Use get_mem_access_map and filter the
+    result with the mtype=['local'] option.
+
+    """
+    warn_with_kernel(knl, "depricated_get_lmem_access_poly",
+                     "get_lmem_access_poly is deprecated. Use "
+                     "get_mem_access_map and filter the result with the "
+                     "mtype=['local'] option.")
+    return get_mem_access_map(knl).filter_by(mtype=['local'])
+
+
+def get_DRAM_access_poly(knl):
+    """Count the number of global memory accesses in a loopy kernel.
+
+    get_DRAM_access_poly is deprecated. Use get_mem_access_map and filter the
+    result with the mtype=['global'] option.
+
+    """
+    warn_with_kernel(knl, "depricated_get_DRAM_access_poly",
+                     "get_DRAM_access_poly is deprecated. Use "
+                     "get_mem_access_map and filter the result with the "
+                     "mtype=['global'] option.")
+    return get_mem_access_map(knl).filter_by(mtype=['global'])
 
 
 # {{{ get_gmem_access_poly
-def get_gmem_access_poly(knl, numpy_types=True):  # for now just counting subscripts
 
+def get_gmem_access_poly(knl):
     """Count the number of global memory accesses in a loopy kernel.
 
-    :parameter knl: A :class:`loopy.LoopKernel` whose DRAM accesses are to be
+    get_DRAM_access_poly is deprecated. Use get_mem_access_map and filter the
+    result with the mtype=['global'] option.
+
+    """
+    warn_with_kernel(knl, "depricated_get_gmem_access_poly",
+                     "get_DRAM_access_poly is deprecated. Use "
+                     "get_mem_access_map and filter the result with the "
+                     "mtype=['global'] option.")
+    return get_mem_access_map(knl).filter_by(mtype=['global'])
+
+# }}}
+
+
+def get_mem_access_map(knl, numpy_types=True):
+    """Count the number of memory accesses in a loopy kernel.
+
+    :parameter knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
                     counted.
 
-    :return: A mapping of **{(** *type* **,** :class:`string` **,**
-             :class:`string` **)** **:** :class:`islpy.PwQPolynomial` **}**.
+    :parameter numpy_types: A :class:`bool` specifying whether the types
+                            in the returned mapping should be numpy types
+                            instead of :class:`loopy.LoopyType`.
 
-             - The *type* specifies the type of the data being
-               accessed. This can be a :class:`numpy.dtype` if
-               *numpy_types* is True, otherwise the internal
-               loopy type.
+    :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
+             :class:`islpy.PwQPolynomial` **}**.
 
-             - The first string in the map key specifies the global memory
-               access type as
-               *consecutive*, *nonconsecutive*, or *uniform*.
+             - The :class:`MemAccess` specifies the characteristics of the
+               memory access.
 
-             - The second string in the map key specifies the global memory
-               access type as a
-               *load*, or a *store*.
-
-             - The :class:`islpy.PwQPolynomial` holds the number of DRAM accesses
-               with the characteristics specified in the key (in terms of the
-               :class:`loopy.LoopKernel` *inames*).
+             - The :class:`islpy.PwQPolynomial` holds the number of memory
+               accesses with the characteristics specified in the key (in terms
+               of the :class:`loopy.LoopKernel` *inames*).
 
     Example usage::
 
         # (first create loopy kernel and specify array data types)
 
-        subscript_map = get_gmem_access_poly(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
+        mem_map = get_mem_access_map(knl)
 
-        f32_uncoalesced_load = subscript_map.dict[
-                            (np.dtype(np.float32), 'nonconsecutive', 'load')
-                            ].eval_with_dict(params)
-        f32_coalesced_load = subscript_map.dict[
-                            (np.dtype(np.float32), 'consecutive', 'load')
-                            ].eval_with_dict(params)
-        f32_coalesced_store = subscript_map.dict[
-                            (np.dtype(np.float32), 'consecutive', 'store')
-                            ].eval_with_dict(params)
+        f32_s1_g_ld_a = mem_map[MemAccess(mtype='global',
+                                          dtype=np.float32,
+                                          stride=1,
+                                          direction='load',
+                                          variable='a')
+                               ].eval_with_dict(params)
+        f32_s1_g_st_a = mem_map[MemAccess(mtype='global',
+                                          dtype=np.float32,
+                                          stride=1,
+                                          direction='store',
+                                          variable='a')
+                               ].eval_with_dict(params)
+        f32_s1_l_ld_x = mem_map[MemAccess(mtype='local',
+                                          dtype=np.float32,
+                                          stride=1,
+                                          direction='load',
+                                          variable='x')
+                               ].eval_with_dict(params)
+        f32_s1_l_st_x = mem_map[MemAccess(mtype='local',
+                                          dtype=np.float32,
+                                          stride=1,
+                                          direction='store',
+                                          variable='x')
+                               ].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
     """
-
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
 
     class CacheHolder(object):
@@ -712,7 +1203,8 @@ def get_gmem_access_poly(knl, numpy_types=True):  # for now just counting subscr
         if uniform:
             from loopy.kernel.data import LocalIndexTag
             insn_inames = [iname for iname in insn_inames if not
-                           isinstance(knl.iname_to_tag.get(iname), LocalIndexTag)]
+                           isinstance(
+                           knl.iname_to_tag.get(iname), LocalIndexTag)]
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(
                                 insn_inames, [dim_type.set]))
@@ -721,82 +1213,82 @@ def get_gmem_access_poly(knl, numpy_types=True):  # for now just counting subscr
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
-    subs_poly = ToCountMap()
-    subscript_counter = GlobalSubscriptCounter(knl)
+    subs_map = ToCountMap()
+    subs_counter_g = GlobalSubscriptCounter(knl)
+    subs_counter_l = LocalSubscriptCounter(knl)
+
     for insn in knl.instructions:
-        # count subscripts, distinguishing loads and stores
-        subs_expr = subscript_counter(insn.expression)
-        subs_expr = ToCountMap(dict(
-            (key + ("load",), val)
-            for key, val in six.iteritems(subs_expr.dict)))
-        subs_assignee = subscript_counter(insn.assignee)
-        subs_assignee = ToCountMap(dict(
-            (key + ("store",), val)
-            for key, val in six.iteritems(subs_assignee.dict)))
+        # count subscripts
+        subs_expr = subs_counter_g(insn.expression) \
+                    + subs_counter_l(insn.expression)
+
+        # distinguish loads and stores
+        for key in subs_expr.count_map:
+            subs_expr[MemAccess(mtype=key.mtype, dtype=key.dtype,
+                                stride=key.stride, direction='load',
+                                variable=key.variable)
+                     ] = subs_expr.pop(key)
+
+        subs_assignee_g = subs_counter_g(insn.assignee)
+        for key in subs_assignee_g.count_map:
+            subs_assignee_g[MemAccess(mtype=key.mtype, dtype=key.dtype,
+                                      stride=key.stride,
+                                      direction='store',
+                                      variable=key.variable)
+                           ] = subs_assignee_g.pop(key)
+        # for now, don't count writes to local mem
 
         insn_inames = knl.insn_inames(insn)
 
         # use count excluding local index tags for uniform accesses
-        for key in subs_expr.dict:
-            poly = ToCountMap({key: subs_expr.dict[key]})
-            if key[1] == "uniform":
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames, True)
+        for key in subs_expr.count_map:
+            map = ToCountMap({key: subs_expr[key]})
+            if key.mtype == 'global' and isinstance(key.stride, int) and key.stride == 0:
+                subs_map = subs_map \
+                            + map*get_insn_count(knl, insn_inames, True)
             else:
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
-        for key in subs_assignee.dict:
-            poly = ToCountMap({key: subs_assignee.dict[key]})
-            if key[1] == "uniform":
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames, True)
-            else:
-                subs_poly = subs_poly + poly*get_insn_count(knl, insn_inames)
+                subs_map = subs_map + map*get_insn_count(knl, insn_inames)
+                #currently not counting stride of local mem access
 
-    result = subs_poly.dict
+        for key in subs_assignee_g.count_map:
+            map = ToCountMap({key: subs_assignee_g[key]})
+            if isinstance(key.stride, int) and key.stride == 0:
+                subs_map = subs_map \
+                            + map*get_insn_count(knl, insn_inames, True)
+            else:
+                subs_map = subs_map + map*get_insn_count(knl, insn_inames)
+            # for now, don't count writes to local mem
 
     if numpy_types:
-        result = dict(
-                ((dtype.numpy_dtype, kind, direction), count)
-                for (dtype, kind, direction), count in six.iteritems(result))
+        subs_map.count_map = dict((MemAccess(mtype=mem_access.mtype,
+                                             dtype=mem_access.dtype.numpy_dtype,
+                                             stride=mem_access.stride,
+                                             direction=mem_access.direction,
+                                             variable=mem_access.variable)
+                                   , count)
+                      for mem_access, count in six.iteritems(subs_map.count_map))
 
-    return result
-
-
-def get_DRAM_access_poly(knl):
-    from warnings import warn
-    warn("get_DRAM_access_poly is deprecated. Use get_gmem_access_poly instead",
-            DeprecationWarning, stacklevel=2)
-    return get_gmem_access_poly(knl)
-
-# }}}
-
-
-# {{{ sum_mem_access_to_bytes
-
-def sum_mem_access_to_bytes(m):
-    """Sum the mapping returned by :func:`get_gmem_access_poly` to a mapping
-
-    **{(** :class:`string` **,** :class:`string` **)**
-    **:** :class:`islpy.PwQPolynomial` **}**
-
-    i.e., aggregate the transfer numbers for all types into a single byte count.
-    """
-
-    result = {}
-    for (dtype, kind, direction), v in m.items():
-        new_key = (kind, direction)
-        bytes_transferred = int(dtype.itemsize) * v
-        if new_key in result:
-            result[new_key] += bytes_transferred
-        else:
-            result[new_key] = bytes_transferred
-
-    return result
-
-# }}}
+    return subs_map
 
 
 # {{{ get_synchronization_poly
 
 def get_synchronization_poly(knl):
+    """Count the number of synchronization events each thread encounters in a
+    loopy kernel.
+
+    get_synchronization_poly is deprecated. Use get_synchronization_map instead.
+
+    """
+    warn_with_kernel(knl, "depricated_get_synchronization_poly",
+                     "get_synchronization_poly is deprecated. Use "
+                     "get_synchronization_map instead.")
+    return get_synchronization_map(knl)
+
+# }}}
+
+
+def get_synchronization_map(knl):
 
     """Count the number of synchronization events each thread encounters in a
     loopy kernel.
@@ -804,8 +1296,8 @@ def get_synchronization_poly(knl):
     :parameter knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
     :return: A dictionary mapping each type of synchronization event to a
-            :class:`islpy.PwQPolynomial` holding the number of such events
-            per thread.
+            :class:`islpy.PwQPolynomial` holding the number of events per
+            thread.
 
             Possible keys include ``barrier_local``, ``barrier_global``
             (if supported by the target) and ``kernel_launch``.
@@ -814,9 +1306,9 @@ def get_synchronization_poly(knl):
 
         # (first create loopy kernel and specify array data types)
 
-        barrier_poly = get_barrier_poly(knl)
+        sync_map = get_synchronization_map(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        barrier_count = barrier_poly.eval_with_dict(params)
+        barrier_ct = sync_map['barrier_local'].eval_with_dict(params)
 
         # (now use this count to predict performance)
 
@@ -854,8 +1346,8 @@ def get_synchronization_poly(knl):
                 iname_list.pop()
 
         elif isinstance(sched_item, Barrier):
-            result = result + ToCountMap(
-                    {"barrier_%s" % sched_item.kind: get_count_poly(iname_list)})
+            result = result + ToCountMap({"barrier_%s" % sched_item.kind:
+                                          get_count_poly(iname_list)})
 
         elif isinstance(sched_item, CallKernel):
             result = result + ToCountMap(
@@ -868,9 +1360,8 @@ def get_synchronization_poly(knl):
             raise LoopyError("unexpected schedule item: %s"
                     % type(sched_item).__name__)
 
-    return result.dict
-
-# }}}
+    #return result.count_map #TODO is this change okay?
+    return result
 
 
 # {{{ gather_access_footprints
@@ -881,7 +1372,7 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
     of each the array *var_name* are read/written (where
     *direction* is either ``read`` or ``write``.
 
-    :arg ignore_uncountable: If *True*, an error will be raised for
+    :arg ignore_uncountable: If *False*, an error will be raised for
         accesses on which the footprint cannot be determined (e.g.
         data-dependent or nonlinear indices)
     """
@@ -905,7 +1396,8 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
 
         insn_inames = kernel.insn_inames(insn)
         inames_domain = kernel.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames, [dim_type.set]))
+        domain = (inames_domain.project_out_except(insn_inames,
+                                                   [dim_type.set]))
 
         afg = AccessFootprintGatherer(kernel, domain,
                 ignore_uncountable=ignore_uncountable)
@@ -947,7 +1439,8 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
         kernel = preprocess_kernel(kernel)
 
     result = {}
-    fp = gather_access_footprints(kernel, ignore_uncountable=ignore_uncountable)
+    fp = gather_access_footprints(kernel,
+                                  ignore_uncountable=ignore_uncountable)
 
     for key, var_fp in fp.items():
         vname, direction = key

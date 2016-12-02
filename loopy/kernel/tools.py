@@ -70,7 +70,7 @@ def _add_dtypes(knl, dtype_dict):
     for arg in knl.args:
         new_dtype = dtype_dict.pop(arg.name, None)
         if new_dtype is not None:
-            new_dtype = to_loopy_type(new_dtype)
+            new_dtype = to_loopy_type(new_dtype, target=knl.target)
             if arg.dtype is not None and arg.dtype != new_dtype:
                 raise RuntimeError(
                         "argument '%s' already has a different dtype "
@@ -116,14 +116,14 @@ def add_and_infer_dtypes(knl, dtype_dict):
 
     knl = add_dtypes(knl, processed_dtype_dict)
 
-    from loopy.preprocess import infer_unknown_types
+    from loopy.type_inference import infer_unknown_types
     return infer_unknown_types(knl, expect_completion=True)
 
 
 def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
     knl = _add_dtypes_overdetermined(knl, dtype_dict)
 
-    from loopy.preprocess import infer_unknown_types
+    from loopy.type_inference import infer_unknown_types
     return infer_unknown_types(knl, expect_completion=True)
 
 # }}}

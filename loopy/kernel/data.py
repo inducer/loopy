@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 from six.moves import intern
 import numpy as np  # noqa
-from pytools import Record
+from pytools import ImmutableRecord
 from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (  # noqa
@@ -54,7 +54,7 @@ class auto(object):  # noqa
 
 # {{{ iname tags
 
-class IndexTag(Record):
+class IndexTag(ImmutableRecord):
     __slots__ = []
 
     def __hash__(self):
@@ -93,7 +93,7 @@ class AxisTag(UniqueTag):
     __slots__ = ["axis"]
 
     def __init__(self, axis):
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 axis=axis)
 
     @property
@@ -197,21 +197,24 @@ def parse_tag(tag):
 
 # {{{ arguments
 
-class KernelArgument(Record):
+class KernelArgument(ImmutableRecord):
     """Base class for all argument types"""
 
     def __init__(self, **kwargs):
         kwargs["name"] = intern(kwargs.pop("name"))
 
+        target = kwargs.pop("target", None)
+
         dtype = kwargs.pop("dtype", None)
         from loopy.types import to_loopy_type
         kwargs["dtype"] = to_loopy_type(
-                dtype, allow_auto=True, allow_none=True)
+                dtype, allow_auto=True, allow_none=True, target=target)
 
-        Record.__init__(self, **kwargs)
+        ImmutableRecord.__init__(self, **kwargs)
 
 
 class GlobalArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
@@ -221,6 +224,7 @@ class GlobalArg(ArrayBase, KernelArgument):
 
 
 class ConstantArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 0
     max_target_axes = 1
 
@@ -230,6 +234,7 @@ class ConstantArg(ArrayBase, KernelArgument):
 
 
 class ImageArg(ArrayBase, KernelArgument):
+    __doc__ = ArrayBase.__doc__
     min_target_axes = 1
     max_target_axes = 3
 
@@ -243,11 +248,11 @@ class ImageArg(ArrayBase, KernelArgument):
 
 
 class ValueArg(KernelArgument):
-    def __init__(self, name, dtype=None, approximately=1000):
-        from loopy.types import to_loopy_type
+    def __init__(self, name, dtype=None, approximately=1000, target=None):
         KernelArgument.__init__(self, name=name,
-                dtype=to_loopy_type(dtype, allow_auto=True, allow_none=True),
-                approximately=approximately)
+                dtype=dtype,
+                approximately=approximately,
+                target=target)
 
     def __str__(self):
         import loopy as lp
@@ -509,7 +514,7 @@ class TemporaryVariable(ArrayBase):
 
 # {{{ subsitution rule
 
-class SubstitutionRule(Record):
+class SubstitutionRule(ImmutableRecord):
     """
     .. attribute:: name
     .. attribute:: arguments
@@ -522,7 +527,7 @@ class SubstitutionRule(Record):
     def __init__(self, name, arguments, expression):
         assert isinstance(arguments, tuple)
 
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 name=name, arguments=arguments, expression=expression)
 
     def __str__(self):
@@ -543,7 +548,7 @@ class SubstitutionRule(Record):
 
 # {{{ function call mangling
 
-class CallMangleInfo(Record):
+class CallMangleInfo(ImmutableRecord):
     """
     .. attribute:: target_name
 

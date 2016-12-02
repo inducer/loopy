@@ -89,9 +89,7 @@ class StaticValueFindingError(LoopyError):
 
 
 class DependencyTypeInferenceFailure(TypeInferenceFailure):
-    def __init__(self, message, symbol):
-        TypeInferenceFailure.__init__(self, message)
-        self.symbol = symbol
+    pass
 
 
 class MissingBarrierError(LoopyError):

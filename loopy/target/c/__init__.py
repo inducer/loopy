@@ -1,4 +1,4 @@
-"""OpenCL target independent of PyOpenCL."""
+"""Plain C target and base for other C-family languages."""
 
 from __future__ import division, absolute_import
 
@@ -29,10 +29,11 @@ import six
 import numpy as np  # noqa
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError
-from cgen import Pointer
+from cgen import Pointer, NestedDeclarator, Block
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.symbolic import IdentityMapper
+import pymbolic.primitives as p
 
 from pytools import memoize_method
 
@@ -131,6 +132,16 @@ class POD(Declarator):
 
     mapper_method = "map_loopy_pod"
 
+
+class ScopingBlock(Block):
+    """A block that is mandatory for scoping and may not be simplified away
+    by :func:`loopy.codegen.results.merge_codegen_results`.
+    """
+
+
+class FunctionDeclarationWrapper(NestedDeclarator):
+    mapper_method = "map_function_decl_wrapper"
+
 # }}}
 
 
@@ -201,6 +212,10 @@ def generate_array_literal(codegen_state, array, value):
 class CASTIdentityMapper(CASTIdentityMapperBase):
     def map_loopy_pod(self, node, *args, **kwargs):
         return type(node)(node.ast_builder, node.dtype, node.name)
+
+    def map_function_decl_wrapper(self, node, *args, **kwargs):
+        return FunctionDeclarationWrapper(
+                self.rec(node.subdecl, *args, **kwargs))
 
 
 class SubscriptSubsetCounter(IdentityMapper):
@@ -333,7 +348,7 @@ class CASTBuilder(ASTBuilderBase):
                                 index_dtype=kernel.index_dtype)
                 decl = self.wrap_global_constant(
                         self.get_temporary_decl(
-                            kernel, schedule_index, tv,
+                            codegen_state, schedule_index, tv,
                             decl_info))
 
                 if tv.initializer is not None:
@@ -377,10 +392,11 @@ class CASTBuilder(ASTBuilderBase):
         if self.target.fortran_abi:
             name += "_"
 
-        return FunctionDeclaration(
-                        Value("void", name),
-                        [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                            for idi in codegen_state.implemented_data_info])
+        return FunctionDeclarationWrapper(
+                FunctionDeclaration(
+                    Value("void", name),
+                    [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
+                        for idi in codegen_state.implemented_data_info]))
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import temp_var_scope
@@ -409,7 +425,8 @@ class CASTBuilder(ASTBuilderBase):
                     if tv.scope != temp_var_scope.GLOBAL:
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
-                                    kernel, schedule_index, tv, idi), tv.scope)
+                                    codegen_state, schedule_index, tv, idi),
+                                tv.scope)
 
                         if tv.initializer is not None:
                             decl = Initializer(decl, generate_array_literal(
@@ -467,12 +484,21 @@ class CASTBuilder(ASTBuilderBase):
                             idi.dtype.itemsize
                             * product(si for si in idi.shape))
 
+        ecm = self.get_expression_to_code_mapper(codegen_state)
+
         for bs_name, bs_sizes in sorted(six.iteritems(base_storage_sizes)):
             bs_var_decl = Value("char", bs_name)
             from pytools import single_valued
             bs_var_decl = self.wrap_temporary_decl(
                     bs_var_decl, single_valued(base_storage_to_scope[bs_name]))
-            bs_var_decl = ArrayOf(bs_var_decl, max(bs_sizes))
+
+            # FIXME: Could try to use isl knowledge to simplify max.
+            if all(isinstance(bs, int) for bs in bs_sizes):
+                bs_size_max = max(bs_sizes)
+            else:
+                bs_size_max = p.Max(tuple(bs_sizes))
+
+            bs_var_decl = ArrayOf(bs_var_decl, ecm(bs_size_max))
 
             alignment = max(base_storage_to_align_bytes[bs_name])
             bs_var_decl = AlignedAttribute(alignment, bs_var_decl)
@@ -493,6 +519,10 @@ class CASTBuilder(ASTBuilderBase):
         from cgen import Block
         return Block
 
+    @property
+    def ast_block_scope_class(self):
+        return ScopingBlock
+
     # }}}
 
     # {{{ code generation guts
@@ -509,7 +539,7 @@ class CASTBuilder(ASTBuilderBase):
         from loopy.target.c.codegen.expression import CExpressionToCodeMapper
         return CExpressionToCodeMapper()
 
-    def get_temporary_decl(self, knl, schedule_index, temp_var, decl_info):
+    def get_temporary_decl(self, codegen_state, schedule_index, temp_var, decl_info):
         temp_var_decl = POD(self, decl_info.dtype, decl_info.name)
 
         if temp_var.read_only:
@@ -518,8 +548,10 @@ class CASTBuilder(ASTBuilderBase):
 
         if decl_info.shape:
             from cgen import ArrayOf
+            ecm = self.get_expression_to_code_mapper(codegen_state)
             temp_var_decl = ArrayOf(temp_var_decl,
-                    " * ".join(str(s) for s in decl_info.shape))
+                    ecm(p.flattened_product(decl_info.shape),
+                        prec=PREC_NONE, type_context="i"))
 
         return temp_var_decl
 
@@ -690,10 +722,8 @@ class CASTBuilder(ASTBuilderBase):
                 CExpression(self.get_c_expression_to_code_mapper(), result))
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
+            lbound, ubound, inner):
         ecm = codegen_state.expression_to_code_mapper
-
-        from loopy.symbolic import aff_to_expr
 
         from pymbolic import var
         from pymbolic.primitives import Comparison
@@ -703,12 +733,12 @@ class CASTBuilder(ASTBuilderBase):
         return For(
                 InlineInitializer(
                     POD(self, iname_dtype, iname),
-                    ecm(aff_to_expr(static_lbound), PREC_NONE, "i")),
+                    ecm(lbound, PREC_NONE, "i")),
                 ecm(
                     Comparison(
                         var(iname),
                         "<=",
-                        aff_to_expr(static_ubound)),
+                        ubound),
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
@@ -742,5 +772,46 @@ class CASTBuilder(ASTBuilderBase):
         sc(node)
         return node
 
+
+# {{{ header generation
+
+class CFunctionDeclExtractor(CASTIdentityMapper):
+    def __init__(self):
+        self.decls = []
+
+    def map_expression(self, expr):
+        return expr
+
+    def map_function_decl_wrapper(self, node):
+        self.decls.append(node.subdecl)
+        return super(CFunctionDeclExtractor, self)\
+                .map_function_decl_wrapper(node)
+
+
+def generate_header(kernel, codegen_result=None):
+    """
+    :arg kernel: a :class:`loopy.LoopKernel`
+    :arg codegen_result: an instance of :class:`loopy.CodeGenerationResult`
+    :returns: a list of AST nodes (which may have :func:`str`
+        called on them to produce a string) representing
+        function declarations for the generated device
+        functions.
+    """
+
+    if not isinstance(kernel.target, CTarget):
+        raise LoopyError(
+                'Header generation for non C-based languages are not implemented')
+
+    if codegen_result is None:
+        from loopy.codegen import generate_code_v2
+        codegen_result = generate_code_v2(kernel)
+
+    fde = CFunctionDeclExtractor()
+    for dev_prg in codegen_result.device_programs:
+        fde(dev_prg.ast)
+
+    return fde.decls
+
+# }}}
 
 # vim: foldmethod=marker

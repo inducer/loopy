@@ -58,6 +58,7 @@ def re_from_glob(s):
     from fnmatch import translate
     return re.compile("^"+translate(s.strip())+"$")
 
+
 # {{{ parsing
 
 # {{{ lexer data
@@ -72,7 +73,7 @@ _id = intern("_id")
 _tag = intern("_tag")
 _writes = intern("_writes")
 _reads = intern("_reads")
-_iname = intern("_reads")
+_iname = intern("_iname")
 
 _whitespace = intern("_whitespace")
 
@@ -107,6 +108,8 @@ _PREC_NOT = 30
 
 # }}}
 
+# }}}
+
 
 # {{{ match expression
 
@@ -137,6 +140,9 @@ class All(MatchExpressionBase):
     def __eq__(self, other):
         return (type(self) == type(other))
 
+    def __hash__(self):
+        return hash(type(self))
+
 
 class And(MatchExpressionBase):
     def __init__(self, children):
@@ -155,6 +161,9 @@ class And(MatchExpressionBase):
     def __eq__(self, other):
         return (type(self) == type(other)
                 and self.children == other.children)
+
+    def __hash__(self):
+        return hash((type(self), self.children))
 
 
 class Or(MatchExpressionBase):
@@ -175,6 +184,9 @@ class Or(MatchExpressionBase):
         return (type(self) == type(other)
                 and self.children == other.children)
 
+    def __hash__(self):
+        return hash((type(self), self.children))
+
 
 class Not(MatchExpressionBase):
     def __init__(self, child):
@@ -193,6 +205,9 @@ class Not(MatchExpressionBase):
     def __eq__(self, other):
         return (type(self) == type(other)
                 and self.child == other.child)
+
+    def __hash__(self):
+        return hash((type(self), self.child))
 
 
 class GlobMatchExpressionBase(MatchExpressionBase):
@@ -214,6 +229,9 @@ class GlobMatchExpressionBase(MatchExpressionBase):
     def __eq__(self, other):
         return (type(self) == type(other)
                 and self.glob == other.glob)
+
+    def __hash__(self):
+        return hash((type(self), self.glob))
 
 
 class Id(GlobMatchExpressionBase):
@@ -244,7 +262,7 @@ class Reads(GlobMatchExpressionBase):
 class Iname(GlobMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(self.re.match(name)
-                for name in matchable.inames(kernel))
+                for name in matchable.within_inames)
 
 # }}}
 
@@ -347,8 +365,6 @@ def parse_match(expr):
         pstate.raise_parse_error("leftover input after completed parse")
 
     return result
-
-# }}}
 
 # }}}
 

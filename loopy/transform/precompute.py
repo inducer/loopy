@@ -799,7 +799,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     if temporary_scope == temp_var_scope.GLOBAL:
         barrier_insn_id = kernel.make_unique_instruction_id(
-                based_on=c_subst_name+"_b")
+                based_on=c_subst_name+"_barrier")
         from loopy.kernel.instruction import BarrierInstruction
         barrier_insn = BarrierInstruction(
                 id=barrier_insn_id,

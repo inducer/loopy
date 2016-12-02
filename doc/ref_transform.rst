@@ -114,10 +114,14 @@ Finishing up
 
 .. autofunction:: get_one_scheduled_kernel
 
+.. autofunction:: save_and_reload_temporaries
+
 .. autoclass:: GeneratedProgram
 .. autoclass:: CodeGenerationResult
 
 .. autofunction:: generate_code_v2
+
+.. autofunction:: generate_header
 
 Setting options
 ---------------
