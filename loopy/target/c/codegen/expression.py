@@ -213,8 +213,9 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
         elif isinstance(ary, (GlobalArg, TemporaryVariable, ConstantArg)):
             if len(access_info.subscripts) == 0:
-                if (isinstance(ary, (ConstantArg, GlobalArg)) or
-                        (isinstance(ary, TemporaryVariable) and ary.base_storage)):
+                if (
+                        (isinstance(ary, (ConstantArg, GlobalArg)) or
+                         (isinstance(ary, TemporaryVariable) and ary.base_storage))):
                     # unsubscripted global args are pointers
                     result = var(access_info.array_name)[0]
 
@@ -681,6 +682,10 @@ class CExpressionToCodeMapper(RecursiveMapper):
         return f % tuple(
                 self.rec(i, prec) for i in iterable)
 
+    def join(self, joiner, iterable):
+        f = joiner.join("%s" for i in iterable)
+        return f % tuple(iterable)
+
     # }}}
 
     def map_constant(self, expr, prec):
@@ -788,9 +793,19 @@ class CExpressionToCodeMapper(RecursiveMapper):
                 enclosing_prec, PREC_LOGICAL_AND)
 
     def map_logical_or(self, expr, enclosing_prec):
-        return self.parenthesize_if_needed(
-                self.join_rec(" || ", expr.children, PREC_LOGICAL_OR),
-                enclosing_prec, PREC_LOGICAL_OR)
+        mapped_children = []
+        from pymbolic.primitives import LogicalAnd
+        for child in expr.children:
+            mapped_child = self.rec(child, PREC_LOGICAL_OR)
+            # clang warns on unparenthesized && within ||
+            if isinstance(child, LogicalAnd):
+                mapped_child = "(%s)" % mapped_child
+            mapped_children.append(mapped_child)
+
+        result = self.join(" || ", mapped_children)
+        if enclosing_prec > PREC_LOGICAL_OR:
+            result = "(%s)" % result
+        return result
 
     def map_sum(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_SUM

@@ -459,7 +459,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     | frozenset([red_iname])),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset([init_id]) | insn.depends_on,
-                no_sync_with=frozenset([init_id]))
+                no_sync_with=frozenset([(init_id, "any")]))
         generated_insns.append(transfer_insn)
 
         def _strip_if_scalar(c):
@@ -517,7 +517,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
             istage += 1
 
         new_insn_add_depends_on.add(prev_id)
-        new_insn_add_no_sync_with.add(prev_id)
+        new_insn_add_no_sync_with.add((prev_id, "any"))
         new_insn_add_within_inames.add(stage_exec_iname or base_exec_iname)
 
         if nresults == 1:

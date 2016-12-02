@@ -27,6 +27,7 @@ THE SOFTWARE.
 
 from six.moves import range
 import islpy as isl
+dim_type = isl.dim_type
 from loopy.codegen import Unvectorizable
 from loopy.codegen.result import CodeGenerationResult
 from pymbolic.mapper.stringifier import PREC_NONE
@@ -34,24 +35,27 @@ from pymbolic.mapper.stringifier import PREC_NONE
 
 def to_codegen_result(
         codegen_state, insn_id, domain, check_inames, required_preds, ast):
-    from loopy.codegen.bounds import get_bounds_checks
-    from loopy.symbolic import constraint_to_expr
+    # {{{ get bounds check
 
-    bounds_checks = get_bounds_checks(
-            domain, check_inames,
-            codegen_state.implemented_domain, overapproximate=False)
-    bounds_check_set = isl.Set.universe(domain.get_space()) \
-            .add_constraints(bounds_checks)
-    bounds_check_set, new_implemented_domain = isl.align_two(
-            bounds_check_set, codegen_state.implemented_domain)
-    new_implemented_domain = new_implemented_domain & bounds_check_set
+    chk_domain = isl.Set.from_basic_set(domain)
+    chk_domain = chk_domain.remove_redundancies()
+    chk_domain = chk_domain.eliminate_except(check_inames, [dim_type.set])
 
-    if bounds_check_set.is_empty():
+    chk_domain, implemented_domain = isl.align_two(
+            chk_domain, codegen_state.implemented_domain)
+    chk_domain = chk_domain.gist(implemented_domain)
+
+    # }}}
+
+    new_implemented_domain = implemented_domain & chk_domain
+
+    if chk_domain.is_empty():
         return None
 
-    condition_exprs = [
-            constraint_to_expr(cns)
-            for cns in bounds_checks]
+    condition_exprs = []
+    if not chk_domain.plain_is_universe():
+        from loopy.symbolic import set_to_cond_expr
+        condition_exprs.append(set_to_cond_expr(chk_domain))
 
     condition_exprs.extend(
             required_preds - codegen_state.implemented_predicates)

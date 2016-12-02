@@ -27,30 +27,24 @@ import islpy as isl
 from islpy import dim_type
 
 
-# {{{ bounds check generator
+# {{{ approximate, convex bounds check generator
 
-def get_bounds_checks(domain, check_inames, implemented_domain,
-        overapproximate):
+def get_approximate_convex_bounds_checks(domain, check_inames, implemented_domain):
     if isinstance(domain, isl.BasicSet):
         domain = isl.Set.from_basic_set(domain)
     domain = domain.remove_redundancies()
     result = domain.eliminate_except(check_inames, [dim_type.set])
 
-    if overapproximate:
-        # This is ok, because we're really looking for the
-        # projection, with no remaining constraints from
-        # the eliminated variables.
-        result = result.remove_divs()
-    else:
-        result = result.compute_divs()
+    # This is ok, because we're really looking for the
+    # projection, with no remaining constraints from
+    # the eliminated variables.
+    result = result.remove_divs()
 
     result, implemented_domain = isl.align_two(result, implemented_domain)
     result = result.gist(implemented_domain)
 
-    if overapproximate:
-        result = result.remove_divs()
-    else:
-        result = result.compute_divs()
+    # (see above)
+    result = result.remove_divs()
 
     from loopy.isl_helpers import convexify
     result = convexify(result)

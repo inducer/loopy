@@ -409,14 +409,17 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
             result = []
             for return_dtype_set in return_dtype_set:
                 result_i = None
+                found = False
                 for assignee, comp_dtype_set in zip(
                         writer_insn.assignee_var_names(), return_dtype_set):
                     if assignee == var_name:
+                        found = True
                         result_i = comp_dtype_set
                         break
 
-                assert result is not None
-                result.append(result_i)
+                assert found
+                if result_i is not None:
+                    result.append(result_i)
 
         debug("             result: %s" % result)
 

@@ -1056,6 +1056,19 @@ class LoopKernel(RecordWithoutPickling):
 
     # }}}
 
+    # {{{ nosync sets
+
+    @memoize_method
+    def get_nosync_set(self, insn_id, scope):
+        assert scope in ("local", "global")
+
+        return frozenset(
+            insn_id
+            for insn_id, nosync_scope in self.id_to_insn[insn_id].no_sync_with
+            if nosync_scope == scope or nosync_scope == "any")
+
+    # }}}
+
     # {{{ pretty-printing
 
     def stringify(self, what=None, with_dependencies=False):
@@ -1213,7 +1226,9 @@ class LoopKernel(RecordWithoutPickling):
                     options.append(
                             "conflicts=%s" % ":".join(insn.conflicts_with_groups))
                 if insn.no_sync_with:
-                    options.append("no_sync_with=%s" % ":".join(insn.no_sync_with))
+                    # FIXME: Find a syntax to express scopes.
+                    options.append("no_sync_with=%s" % ":".join(id for id, _ in
+                                                                insn.no_sync_with))
 
                 if lhs:
                     core = "%s <- %s" % (

@@ -92,13 +92,18 @@ def add_dependency(kernel, insn_match, depends_on):
     if isinstance(depends_on, str) and depends_on in kernel.id_to_insn:
         added_deps = frozenset([depends_on])
     else:
-        added_deps = find_instructions(depends_on)
+        added_deps = frozenset(
+                dep.id for dep in find_instructions(kernel, depends_on))
 
     if not added_deps:
-        raise LoopyError("no instructions found matching '%s'" % depends_on)
+        raise LoopyError("no instructions found matching '%s' "
+                "(to add as dependencies)" % depends_on)
+
+    matched = [False]
 
     def add_dep(insn):
         new_deps = insn.depends_on
+        matched[0] = True
         if new_deps is None:
             new_deps = added_deps
         else:
@@ -106,7 +111,13 @@ def add_dependency(kernel, insn_match, depends_on):
 
         return insn.copy(depends_on=new_deps)
 
-    return map_instructions(kernel, insn_match, add_dep)
+    result = map_instructions(kernel, insn_match, add_dep)
+
+    if not matched[0]:
+        raise LoopyError("no instructions found matching '%s' "
+                "(to which dependencies would be added)" % insn_match)
+
+    return result
 
 # }}}
 
