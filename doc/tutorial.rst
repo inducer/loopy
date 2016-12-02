@@ -1188,7 +1188,7 @@ When we try to generate code for this, it will still not work.
 To understand what is going on, you need to know that :mod:`loopy` implements
 global barriers by splitting the kernel into multiple device-side kernels. The
 splitting happens when the instruction schedule is generated. To see the
-schedule, we must first must first call :func:`loopy.get_one_scheduled_kernel`:
+schedule, we must first call :func:`loopy.get_one_scheduled_kernel`:
 
    >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
    >>> print(knl)
@@ -1500,7 +1500,7 @@ be counted, which may facilitate performance prediction and optimization of a
     The functions used in the following examples may produce warnings. If you have
     already made the filterwarnings and catch_warnings calls used in the examples
     above, you may want to reset these before continuing. We will temporarily
-    supress warnings to keep the output clean:
+    suppress warnings to keep the output clean:
 
     .. doctest::
 
@@ -1667,7 +1667,7 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
     f64 st e: 65536
 
 :class:`loopy.ToCountMap` also makes it easy to determine the total amount
-of data moved in bytes. Suppose we want to know the total abount of global
+of data moved in bytes. Suppose we want to know the total amount of global
 memory data loaded and stored. We can produce a map with just this information
 using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
 
