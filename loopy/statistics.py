@@ -401,7 +401,7 @@ class Op(object):
     def __hash__(self):
         return hash(str(self))
 
-    def __str__(self):
+    def __repr__(self):
         if self.dtype is None:
             dtype = 'None'
         else:
@@ -480,7 +480,7 @@ class MemAccess(object):
     def __hash__(self):
         return hash(str(self))
 
-    def __str__(self):
+    def __repr__(self):
         if self.mtype is None:
             mtype = 'None'
         else:
