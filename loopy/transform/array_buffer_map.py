@@ -28,11 +28,11 @@ from islpy import dim_type
 from loopy.symbolic import (get_dependencies, SubstitutionMapper)
 from pymbolic.mapper.substitutor import make_subst_func
 
-from pytools import Record, memoize_method
+from pytools import ImmutableRecord, memoize_method
 from pymbolic import var
 
 
-class AccessDescriptor(Record):
+class AccessDescriptor(ImmutableRecord):
     """
     .. attribute:: identifier
 

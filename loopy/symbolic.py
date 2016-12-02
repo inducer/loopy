@@ -28,7 +28,7 @@ THE SOFTWARE.
 import six
 from six.moves import range, zip, reduce, intern
 
-from pytools import memoize, memoize_method, Record
+from pytools import memoize, memoize_method, ImmutableRecord
 import pytools.lex
 
 import pymbolic.primitives as p
@@ -559,7 +559,7 @@ def parse_tagged_name(expr):
         raise RuntimeError("subst rule name not understood: %s" % expr)
 
 
-class ExpansionState(Record):
+class ExpansionState(ImmutableRecord):
     """
     .. attribute:: kernel
     .. attribute:: instruction

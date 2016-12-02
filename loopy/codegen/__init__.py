@@ -25,7 +25,7 @@ THE SOFTWARE.
 import six
 
 from loopy.diagnostic import LoopyError, warn
-from pytools import Record
+from pytools import ImmutableRecord
 import islpy as isl
 
 from pytools.persistent_dict import PersistentDict
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 # {{{ implemented data info
 
-class ImplementedDataInfo(Record):
+class ImplementedDataInfo(ImmutableRecord):
     """
     .. attribute:: name
 
@@ -91,7 +91,7 @@ class ImplementedDataInfo(Record):
         from loopy.types import LoopyType
         assert isinstance(dtype, LoopyType)
 
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 name=name,
                 dtype=dtype,
                 arg_class=arg_class,
@@ -127,7 +127,7 @@ class VectorizationInfo(object):
         self.space = space
 
 
-class SeenFunction(Record):
+class SeenFunction(ImmutableRecord):
     """
     .. attribute:: name
     .. attribute:: c_name
@@ -137,14 +137,10 @@ class SeenFunction(Record):
     """
 
     def __init__(self, name, c_name, arg_dtypes):
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 name=name,
                 c_name=c_name,
                 arg_dtypes=arg_dtypes)
-
-    def __hash__(self):
-        return hash((type(self),)
-                + tuple((f, getattr(self, f)) for f in type(self).fields))
 
 
 class CodeGenerationState(object):
@@ -365,7 +361,7 @@ code_gen_cache = PersistentDict("loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
-class PreambleInfo(Record):
+class PreambleInfo(ImmutableRecord):
     """
     .. attribute:: kernel
     .. attribute:: seen_dtypes

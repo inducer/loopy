@@ -23,14 +23,14 @@ THE SOFTWARE.
 """
 
 from six.moves import intern
-from pytools import Record, memoize_method
+from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
 from warnings import warn
 
 
 # {{{ instructions: base class
 
-class InstructionBase(Record):
+class InstructionBase(ImmutableRecord):
     """A base class for all types of instruction that can occur in
     a kernel.
 
@@ -199,7 +199,7 @@ class InstructionBase(Record):
 
             new_predicates.add(pred)
 
-        predicates = new_predicates
+        predicates = frozenset(new_predicates)
         del new_predicates
 
         # }}}
@@ -255,7 +255,7 @@ class InstructionBase(Record):
         assert isinstance(groups, frozenset)
         assert isinstance(conflicts_with_groups, frozenset)
 
-        Record.__init__(self,
+        ImmutableRecord.__init__(self,
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -406,19 +406,6 @@ class InstructionBase(Record):
         return result
 
     # {{{ comparison, hashing
-
-    def __eq__(self, other):
-        if not type(self) == type(other):
-            return False
-
-        for field_name in self.fields:
-            if getattr(self, field_name) != getattr(other, field_name):
-                return False
-
-        return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
