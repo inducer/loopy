@@ -1635,6 +1635,28 @@ def test_ilp_and_conditionals(ctx_factory):
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
+def test_unr_and_conditionals(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel('{[k]: 0<=k<n}}',
+         """
+         for k
+             <> Tcond[k] = T[k] < 0.5
+             if Tcond[k]
+                 cp[k] = 2 * T[k] + Tcond[k]
+             end
+         end
+         """)
+
+    knl = lp.fix_parameters(knl, n=200)
+    knl = lp.add_and_infer_dtypes(knl, {"T": np.float32})
+
+    ref_knl = knl
+
+    knl = lp.split_iname(knl, 'k', 2, inner_tag='unr')
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl)
+
 
 def test_unr_and_conditionals(ctx_factory):
     ctx = ctx_factory()
@@ -1749,6 +1771,62 @@ def test_scalars_with_base_storage(ctx_factory):
                                   shape=(), base_storage="base")])
 
     knl(queue, out_host=True)
+
+
+def test_if_else(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<50}",
+            """
+            if i % 3 == 0
+                a[i] = 15
+            elif i % 3 == 1
+                a[i] = 11
+            else
+                a[i] = 3
+            end
+            """
+            )
+
+    evt, (out,) = knl(queue, out_host=True)
+
+    out_ref = np.empty(50)
+    out_ref[::3] = 15
+    out_ref[1::3] = 11
+    out_ref[2::3] = 3
+
+    assert np.array_equal(out_ref, out)
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<50}",
+            """
+            for i
+                if i % 2 == 0
+                    if i % 3 == 0
+                        a[i] = 15
+                    elif i % 3 == 1
+                        a[i] = 11
+                    else
+                        a[i] = 3
+                    end
+                else
+                    a[i] = 4
+                end
+            end
+            """
+            )
+
+    evt, (out,) = knl(queue, out_host=True)
+
+    out_ref = np.zeros(50)
+    out_ref[1::2] = 4
+    out_ref[0::6] = 15
+    out_ref[4::6] = 11
+    out_ref[2::6] = 3
+
+    assert np.array_equal(out_ref, out)
 
 
 def test_tight_loop_bounds(ctx_factory):

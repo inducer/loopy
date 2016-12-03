@@ -274,7 +274,26 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                     opt_value.split(":"))
 
         elif opt_key == "if" and opt_value is not None:
-            result["predicates"] = intern_frozenset_of_ids(opt_value.split(":"))
+            predicates = opt_value.split(":")
+            new_predicates = set()
+
+            for pred in predicates:
+                from pymbolic.primitives import LogicalNot
+                from loopy.symbolic import parse
+                if pred.startswith("!"):
+                    from warnings import warn
+                    warn("predicates starting with '!' are deprecated. "
+                            "Simply use 'not' instead")
+                    pred = LogicalNot(parse(pred[1:]))
+                else:
+                    pred = parse(pred)
+
+                new_predicates.add(pred)
+
+            result["predicates"] = frozenset(new_predicates)
+
+            del predicates
+            del new_predicates
 
         elif opt_key == "tags" and opt_value is not None:
             result["tags"] = frozenset(
@@ -334,8 +353,16 @@ FOR_RE = re.compile(
 IF_RE = re.compile(
         "^"
         "\s*if\s+"
-        "(?P<predicate>(?:not\s+)?\w+(?:\[[ ,\w\d]+\])?)"
+        "(?P<predicate>.+)"
         "\s*$")
+
+ELIF_RE = re.compile(
+        "^"
+        "\s*elif\s+"
+        "(?P<predicate>.+)"
+        "\s*$")
+
+ELSE_RE = re.compile("^\s*else\s*$")
 
 INSN_RE = re.compile(
         "^"
@@ -583,7 +610,8 @@ def parse_instructions(instructions, defines):
             new_instructions.append(
                     insn.copy(
                         id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
-                        depends_on=frozenset(intern_if_str(dep) for dep in insn.depends_on),
+                        depends_on=frozenset(intern_if_str(dep)
+                            for dep in insn.depends_on),
                         groups=frozenset(intern(grp) for grp in insn.groups),
                         conflicts_with_groups=frozenset(
                             intern(grp) for grp in insn.conflicts_with_groups),
@@ -667,6 +695,7 @@ def parse_instructions(instructions, defines):
     # {{{ pass 4: parsing
 
     insn_options_stack = [get_default_insn_options_dict()]
+    if_predicates_stack = [{'predicates' : frozenset(), 'insn_predicates' : frozenset()}]
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
@@ -755,16 +784,85 @@ def parse_instructions(instructions, defines):
             if not predicate:
                 raise LoopyError("'if' without predicate encountered")
 
+            from loopy.symbolic import parse
+            predicate = parse(predicate)
+
             options["predicates"] = (
                     options.get("predicates", frozenset())
                     | frozenset([predicate]))
 
             insn_options_stack.append(options)
+
+            #add to the if_stack
+            if_options = options.copy()
+            if_options['insn_predicates'] = options["predicates"]
+            if_predicates_stack.append(if_options)
             del options
+            del predicate
+            continue
+
+        elif_match = ELIF_RE.match(insn)
+        else_match = ELSE_RE.match(insn)
+        if elif_match is not None or else_match is not None:
+            prev_predicates = insn_options_stack[-1].get(
+                    "predicates", frozenset())
+            last_if_predicates = if_predicates_stack[-1].get(
+                    "predicates", frozenset())
+            insn_options_stack.pop()
+            if_predicates_stack.pop()
+
+            outer_predicates = insn_options_stack[-1].get(
+                    "predicates", frozenset())
+            last_if_predicates = last_if_predicates - outer_predicates
+
+
+            if elif_match is not None:
+                predicate = elif_match.group("predicate")
+                if not predicate:
+                    raise LoopyError("'elif' without predicate encountered")
+                from loopy.symbolic import parse
+                predicate = parse(predicate)
+
+                additional_preds = frozenset([predicate])
+                del predicate
+
+            else:
+                assert else_match is not None
+                if not last_if_predicates:
+                    raise LoopyError("'else' without 'if'/'elif' encountered")
+                additional_preds = frozenset()
+
+            options = insn_options_stack[-1].copy()
+            if_options = insn_options_stack[-1].copy()
+
+            from pymbolic.primitives import LogicalNot
+            options["predicates"] = (
+                    options.get("predicates", frozenset())
+                    | outer_predicates
+                    | prev_predicates - last_if_predicates
+                    | frozenset(
+                        LogicalNot(pred) for pred in last_if_predicates)
+                    | additional_preds
+                    )
+            if_options["predicates"] = additional_preds
+            #hold on to this for comparison / stack popping later
+            if_options["insn_predicates"] = options["predicates"]
+
+            insn_options_stack.append(options)
+            if_predicates_stack.append(if_options)
+
+            del options
+            del additional_preds
+            del last_if_predicates
+
             continue
 
         if insn == "end":
-            insn_options_stack.pop()
+            obj = insn_options_stack.pop()
+            #if this object is the end of an if statement
+            if obj['predicates'] == if_predicates_stack[-1]["insn_predicates"] and\
+                if_predicates_stack[-1]["insn_predicates"]:
+                if_predicates_stack.pop()
             continue
 
         insn_match = SPECIAL_INSN_RE.match(insn)
