@@ -792,6 +792,10 @@ def parse_instructions(instructions, defines):
                     | frozenset([predicate]))
 
             insn_options_stack.append(options)
+
+            #add to the if_stack
+            if_options = options.copy()
+            if_options['insn_predicates'] = options["predicates"]
             if_predicates_stack.append(options)
             del options
             del predicate
@@ -825,7 +829,6 @@ def parse_instructions(instructions, defines):
             else:
                 assert else_match is not None
                 if not last_if_predicates:
-                    import pdb; pdb.set_trace()
                     raise LoopyError("'else' without 'if'/'elif' encountered")
                 additional_preds = frozenset()
 
