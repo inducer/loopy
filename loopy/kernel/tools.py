@@ -1139,7 +1139,7 @@ def find_reverse_dependencies(kernel, insn_ids):
 # {{{ draw_dependencies_as_unicode_arrows
 
 def draw_dependencies_as_unicode_arrows(
-        instructions, fore, style, flag_downward=True):
+        instructions, fore, style, flag_downward=True, max_columns=20):
     """
     :arg instructions: an ordered iterable of :class:`loopy.InstructionBase`
         instances
@@ -1222,12 +1222,17 @@ def draw_dependencies_as_unicode_arrows(
 
     # }}}
 
-    def extend_to_uniform_length(s):
-        return s + " "*(n_columns[0]-len(s))
+    uniform_length = min(n_columns[0], max_columns)
+
+    def conform_to_uniform_length(s):
+        if len(s) <= uniform_length:
+            return s + " "*(uniform_length-len(s))
+        else:
+            return s[:uniform_length] + "..."
 
     return [
-            (extend_to_uniform_length(row),
-                extend_to_uniform_length(extender))
+            (conform_to_uniform_length(row),
+                conform_to_uniform_length(extender))
             for row, extender in rows]
 
 # }}}
