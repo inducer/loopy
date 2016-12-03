@@ -796,7 +796,7 @@ def parse_instructions(instructions, defines):
             #add to the if_stack
             if_options = options.copy()
             if_options['insn_predicates'] = options["predicates"]
-            if_predicates_stack.append(options)
+            if_predicates_stack.append(if_options)
             del options
             del predicate
             continue
