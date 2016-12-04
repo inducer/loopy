@@ -1695,6 +1695,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
                     initializer=a,
                     shape=lp.auto,
                     scope=lp.temp_var_scope.PRIVATE,
+                    read_only=True,
                     order=tmp_order),
                 "..."
                 ])
