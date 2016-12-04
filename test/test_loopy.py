@@ -1635,28 +1635,6 @@ def test_ilp_and_conditionals(ctx_factory):
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl)
 
-def test_unr_and_conditionals(ctx_factory):
-    ctx = ctx_factory()
-
-    knl = lp.make_kernel('{[k]: 0<=k<n}}',
-         """
-         for k
-             <> Tcond[k] = T[k] < 0.5
-             if Tcond[k]
-                 cp[k] = 2 * T[k] + Tcond[k]
-             end
-         end
-         """)
-
-    knl = lp.fix_parameters(knl, n=200)
-    knl = lp.add_and_infer_dtypes(knl, {"T": np.float32})
-
-    ref_knl = knl
-
-    knl = lp.split_iname(knl, 'k', 2, inner_tag='unr')
-
-    lp.auto_test_vs_ref(ref_knl, ctx, knl)
-
 
 def test_unr_and_conditionals(ctx_factory):
     ctx = ctx_factory()
@@ -1717,6 +1695,7 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
                     initializer=a,
                     shape=lp.auto,
                     scope=lp.temp_var_scope.PRIVATE,
+                    read_only=True,
                     order=tmp_order),
                 "..."
                 ])
@@ -1727,6 +1706,31 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
     evt, (a2,) = knl(queue, out_host=True)
 
     assert np.array_equal(a, a2)
+
+
+def test_const_temp_with_initializer_not_saved():
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        ... gbarrier
+        out[i] = tmp[i]
+        """,
+        [
+            lp.TemporaryVariable("tmp",
+                initializer=np.arange(10),
+                shape=lp.auto,
+                scope=lp.temp_var_scope.PRIVATE,
+                read_only=True),
+            "..."
+            ],
+        seq_dependencies=True)
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.save_and_reload_temporaries(knl)
+
+    # This ensures no save slot was added.
+    assert len(knl.temporary_variables) == 1
 
 
 def test_header_extract():

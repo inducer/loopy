@@ -405,11 +405,10 @@ class TemporaryVariable(ArrayBase):
             base_indices = (0,) * len(shape)
 
         if (not read_only
-                and initializer is not None
-                and scope == temp_var_scope.GLOBAL):
+            and initializer is not None):
             raise LoopyError(
                     "temporary variable '%s': "
-                    "read-write global variables with initializer "
+                    "read-write variables with initializer "
                     "are not currently supported "
                     "(did you mean to set read_only=True?)"
                     % name)
