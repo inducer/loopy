@@ -252,6 +252,7 @@ class TemporarySaver(object):
         if temporary.initializer is not None:
             # Temporaries with initializers do not need saving/reloading - the
             # code generation takes care of emitting the initializers.
+            assert temporary.read_only
             return None
 
         if temporary.base_storage is not None:
