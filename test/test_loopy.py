@@ -1708,6 +1708,31 @@ def test_temp_initializer(ctx_factory, src_order, tmp_order):
     assert np.array_equal(a, a2)
 
 
+def test_const_temp_with_initializer_not_saved():
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<10}",
+        """
+        ... gbarrier
+        out[i] = tmp[i]
+        """,
+        [
+            lp.TemporaryVariable("tmp",
+                initializer=np.arange(10),
+                shape=lp.auto,
+                scope=lp.temp_var_scope.PRIVATE,
+                read_only=True),
+            "..."
+            ],
+        seq_dependencies=True)
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    knl = lp.save_and_reload_temporaries(knl)
+
+    # This ensures no save slot was added.
+    assert len(knl.temporary_variables) == 1
+
+
 def test_header_extract():
     knl = lp.make_kernel('{[k]: 0<=k<n}}',
          """
