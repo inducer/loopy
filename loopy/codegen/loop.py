@@ -386,17 +386,24 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         _, loop_iname_idx = dom_and_slab.get_var_dict()[loop_iname]
 
+        impl_domain = isl.align_spaces(
+            codegen_state.implemented_domain,
+            dom_and_slab,
+            obj_bigger_ok=True,
+            across_dim_types=True
+            ).params()
+
         lbound = (
                 kernel.cache_manager.dim_min(
                     dom_and_slab, loop_iname_idx)
                 .gist(kernel.assumptions)
-                .gist(dom_and_slab.params())
+                .gist(impl_domain)
                 .coalesce())
         ubound = (
             kernel.cache_manager.dim_max(
                 dom_and_slab, loop_iname_idx)
             .gist(kernel.assumptions)
-            .gist(dom_and_slab.params())
+            .gist(impl_domain)
             .coalesce())
 
         # }}}
