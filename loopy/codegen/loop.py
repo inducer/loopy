@@ -431,13 +431,9 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         astb = codegen_state.ast_builder
 
-        zero = isl.PwAff.zero_on_domain(
-            isl.LocalSpace.from_space(
-                lbound.get_space()).domain())
-
         from loopy.symbolic import pw_aff_to_expr
 
-        if (ubound - lbound).plain_is_equal(zero):
+        if ubound.is_equal(lbound):
             # single-trip, generate just a variable assignment, not a loop
             inner = merge_codegen_results(codegen_state, [
                 astb.emit_initializer(
