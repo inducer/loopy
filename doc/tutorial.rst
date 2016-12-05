@@ -267,6 +267,7 @@ Additionally, for C-based languages, header definitions can be obtained via
 the :func:`loopy.generate_header`:
 
 .. doctest::
+
     >>> header = str(lp.generate_header(typed_knl)[0])
     >>> print(header)
     __kernel void __attribute__ ((reqd_work_group_size(1, 1, 1))) loopy_kernel(__global float const *__restrict__ a, int const n, __global float *__restrict__ out);
@@ -1057,6 +1058,16 @@ earlier:
 Tagged prefetching
 ~~~~~~~~~~~~~~~~~~
 
+.. _global_temporaries:
+
+Temporaries in global memory
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:mod:`loopy` supports using temporaries with global storage duration. As with
+local and private temporaries, the runtime allocates storage for global
+temporaries when the kernel gets executed. The user must explicitly specify that
+a temporary is global. To specify that a temporary is global, use
+:func:`loopy.set_temporary_scope`.
 
 Substitution rules
 ~~~~~~~~~~~~~~~~~~
@@ -1074,9 +1085,11 @@ Synchronization
 
 .. {{{
 
-In OpenCL, writes are not generally guaranteed to be immediately visible to
-other work items. In order to ensure that memory is consistent across work
-items, some sort of synchronization operation is used.
+When one work item executing with others writes to a memory location, OpenCL
+does not guarantee that other work items will immediately be able to read the
+memory location and get back the same thing that was written. In order to ensure
+that memory is consistent across work items, some sort of synchronization
+operation is used.
 
 :mod:`loopy` supports synchronization in the form of *barriers* or *atomic
 operations*.
@@ -1085,28 +1098,37 @@ Barriers
 ~~~~~~~~
 
 Prior to code generation, :mod:`loopy` performs a check to see that every memory
-access is free of dependencies requiring a barrier. A memory access dependency
-that exists across multiple work items requires a barrier if it involves at
-least one write operation.
+access is free of dependencies requiring a barrier. The following kinds of
+memory access dependencies require a barrier when they involve more than one
+work item:
+
+* read-after-write
+* write-after-read
+* write-after-write.
 
 :mod:`loopy` supports two kinds of barriers:
 
 * *Local barriers* ensure consistency of local memory accesses to items within
-  *the same* work group. As in OpenCL, all work items in the group are required
-  to wait until everyone has reached the barrier instruction before continuing.
+  *the same* work group. This synchronizes with all instructions in the work
+  group.
 
-* *Global barriers* ensure consistency of *global* memory accesses across *all*
-  work groups. Note that there is no exact equivalent in OpenCL. All work items
-  across all work groups are required to wait until everyone has reached the
-  barrier instruction before continuing.
+* *Global barriers* ensure consistency of global memory accesses
+  across *all* work groups, i.e. it synchronizes with every work item
+  executing the kernel. Note that there is no exact equivalent for
+  this kind of barrier in OpenCL. [#global-barrier-note]_
+
+Once a work item has reached a barrier, it waits for everyone that it
+synchronizes with to reach the barrier before continuing. This means that unless
+all work items reach the same barrier, the kernel will hang during execution.
 
 By default, :mod:`loopy` inserts local barriers between two instructions when it
 detects that a dependency involving local memory may occur across work items. To
-see this in action, take a look at the section on :ref:`local_temporaries`.
+see this in action, take a look at the section on :ref:`local_temporaries`. 
 
-In contrast, :mod:`loopy` will *not* insert global barriers
-automatically. Consider the following kernel, which attempts to rotate its input
-to the right by 1:
+In contrast, :mod:`loopy` will *not* insert global barriers automatically.
+Global barriers require manual intervention along with some special
+post-processing which we describe below. Consider the following kernel, which
+attempts to rotate its input to the right by 1 in parallel:
 
 .. doctest::
 
@@ -1125,16 +1147,17 @@ to the right by 1:
    ...     name="rotate_v1",
    ...     assumptions="n mod 16 = 0")
    >>> knl = lp.split_iname(knl, "i", 16, inner_tag="l.0", outer_tag="g.0")
+
+Note the presence of the write-after-read dependency in global memory. Due to
+this, :mod:`loopy` will complain that global barrier needs to be inserted:
+
    >>> cgr = lp.generate_code_v2(knl)
    Traceback (most recent call last):
    ...
    MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
 
-Because of the write-after-read dependency in global memory, a global barrier
-needs to be inserted. This can be accomplished with a ``... gbarrier``
-instruction. Note that :mod:`loopy` implements global barriers by splitting the
-kernel into multiple device-side kernels, so that the resulting code will
-contain more than one kernel.
+The syntax for a global barrier instruction is ``... gbarrier``. This needs to
+be added between the pair of offending instructions.
 
 .. doctest::
 
@@ -1154,38 +1177,91 @@ contain more than one kernel.
    ...     name="rotate_v2",
    ...     assumptions="n mod 16 = 0")
    >>> knl = lp.split_iname(knl, "i", 16, inner_tag="l.0", outer_tag="g.0")
+
+When we try to generate code for this, it will still not work.
+
    >>> cgr = lp.generate_code_v2(knl)
-   >>> print(cgr.device_code())
-   #define lid(N) ((int) get_local_id(N))
-   #define gid(N) ((int) get_group_id(N))
-   <BLANKLINE>
-   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int *__restrict__ arr, int const n)
-   {
-     int tmp;
-   <BLANKLINE>
-     tmp = arr[16 * gid(0) + lid(0)];
-   }
-   <BLANKLINE>
-   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n)
-   {
-     int tmp;
-   <BLANKLINE>
-     arr[((1 + lid(0) + gid(0) * 16) % n)] = tmp;
-   }
+   Traceback (most recent call last):
+   ...
+   MissingDefinitionError: temporary variable 'tmp' gets used in subkernel 'rotate_v2_0' without a definition (maybe you forgot to call loopy.save_and_reload_temporaries?)
 
-Note that we are not done yet. The problem is that while `tmp` is assigned in
-the first kernel, the assignment of `tmp` is not saved for the second
-kernel. :mod:`loopy` provides a function called
+To understand what is going on, you need to know that :mod:`loopy` implements
+global barriers by splitting the kernel into multiple device-side kernels. The
+splitting happens when the instruction schedule is generated. To see the
+schedule, we must first call :func:`loopy.get_one_scheduled_kernel`:
+
+   >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+   >>> print(knl)
+   ---------------------------------------------------------------------------
+   KERNEL: rotate_v2
+   ---------------------------------------------------------------------------
+   ...
+   ---------------------------------------------------------------------------
+   SCHEDULE:
+      0: CALL KERNEL rotate_v2(extra_args=[], extra_inames=[])
+      1:     [maketmp] tmp <- arr[i_inner + i_outer*16]
+      2: RETURN FROM KERNEL rotate_v2
+      3: ---BARRIER:global---
+      4: CALL KERNEL rotate_v2_0(extra_args=[], extra_inames=[])
+      5:     [rotate] arr[((1 + i_inner + i_outer*16) % n)] <- tmp
+      6: RETURN FROM KERNEL rotate_v2_0
+   ---------------------------------------------------------------------------
+
+As the error message suggests, taking a look at the generated instruction
+schedule will show that while ``tmp`` is assigned in the first kernel, the
+assignment to ``tmp`` is not seen by the second kernel. Because the temporary is
+in private memory, it does not persist across calls to device kernels (the same
+goes for local temporaries).
+
+:mod:`loopy` provides a function called
 :func:`loopy.save_and_reload_temporaries` for the purpose of handling the
-situation of saving and restoring temporary values across global barriers. In
-order to use this function the kernel must be preprocessed and scheduled first,
-the latter of which is handled by :func:`loopy.get_one_scheduled_kernel`.
-
-.. doctest::
+task of saving and restoring temporary values across global barriers. This
+function adds instructions to the kernel without scheduling them. That means
+that :func:`loopy.get_one_scheduled_kernel` needs to be called one more time to
+put those instructions into the schedule.
 
    >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
    >>> knl = lp.save_and_reload_temporaries(knl)
-   >>> knl = lp.get_one_scheduled_kernel(knl)
+   >>> knl = lp.get_one_scheduled_kernel(knl)  # Schedule added instructions
+   >>> print(knl)
+   ---------------------------------------------------------------------------
+   KERNEL: rotate_v2
+   ---------------------------------------------------------------------------
+   ...
+   ---------------------------------------------------------------------------
+   TEMPORARIES:
+   tmp: type: np:dtype('int32'), shape: () scope:private
+   tmp_save_slot: type: np:dtype('int32'), shape: (n // 16, 16), dim_tags: (N1:stride:16, N0:stride:1) scope:global
+   ---------------------------------------------------------------------------
+   ...
+   ---------------------------------------------------------------------------
+   SCHEDULE:
+      0: CALL KERNEL rotate_v2(extra_args=['tmp_save_slot'], extra_inames=[])
+      1:     [maketmp] tmp <- arr[i_inner + i_outer*16]
+      2:     [tmp.save] tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] <- tmp
+      3: RETURN FROM KERNEL rotate_v2
+      4: ---BARRIER:global---
+      5: CALL KERNEL rotate_v2_0(extra_args=['tmp_save_slot'], extra_inames=[])
+      6:     [tmp.reload] tmp <- tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]
+      7:     [rotate] arr[((1 + i_inner + i_outer*16) % n)] <- tmp
+      8: RETURN FROM KERNEL rotate_v2_0
+   ---------------------------------------------------------------------------
+
+Here's an overview of what :func:`loopy.save_and_reload_temporaries` actually
+does in more detail:
+
+1. :mod:`loopy` first uses liveness analysis to determine which temporary
+   variables' live ranges cross a global barrier.
+
+2. For each temporary, :mod:`loopy` creates a storage slot for the temporary in
+   global memory (see :ref:`global_temporaries`).
+
+3. :mod:`loopy` saves the temporary into its global storage slot whenever it
+   detects the temporary is live-out from a kernel, and reloads the temporary
+   from its global storage slot when it detects that it needs to do so.
+
+The kernel translates into two OpenCL kernels.
+
    >>> cgr = lp.generate_code_v2(knl)
    >>> print(cgr.device_code())
    #define lid(N) ((int) get_local_id(N))
@@ -1206,8 +1282,14 @@ the latter of which is handled by :func:`loopy.get_one_scheduled_kernel`.
      tmp = tmp_save_slot[16 * gid(0) + lid(0)];
      arr[((1 + lid(0) + gid(0) * 16) % n)] = tmp;
    }
-   >>> evt, (out,) = knl(queue, arr=cl.array.arange(queue, 16, dtype=np.int32), out_host=True)
-   >>> print(out)
+
+Executing the kernel does what we expect.
+
+   >>> arr = cl.array.arange(queue, 16, dtype=np.int32)
+   >>> print(arr)
+   [ 0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15]
+   >>> evt, (out,) = knl(queue, arr=arr)
+   >>> print(arr)
    [15  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14]
 
 Atomic operations
@@ -1227,6 +1309,9 @@ tagged, as in the following example::
                 "..."
                 ],
             assumptions="n>0")
+
+.. [#global-barrier-note] In particular, this is *not* the same as a call to
+ ``barrier(CLK_GLOBAL_MEM_FENCE)``. 
 
 .. }}}
 
@@ -1391,6 +1476,12 @@ considers making *a_fetch* ``local`` (in the OpenCL memory sense of the word)
 to make use of parallelism in prefetching, it discovers that a write race
 across the remaining axis of the workgroup would emerge.
 
+Barriers
+~~~~~~~~
+
+:mod:`loopy` may infer the need for a barrier when it is not necessary. The
+``no_sync_with`` instruction attribute can be used to resolve this.
+
 TODO
 
 .. }}}
@@ -1409,7 +1500,7 @@ be counted, which may facilitate performance prediction and optimization of a
     The functions used in the following examples may produce warnings. If you have
     already made the filterwarnings and catch_warnings calls used in the examples
     above, you may want to reset these before continuing. We will temporarily
-    supress warnings to keep the output clean:
+    suppress warnings to keep the output clean:
 
     .. doctest::
 
@@ -1576,7 +1667,7 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
     f64 st e: 65536
 
 :class:`loopy.ToCountMap` also makes it easy to determine the total amount
-of data moved in bytes. Suppose we want to know the total abount of global
+of data moved in bytes. Suppose we want to know the total amount of global
 memory data loaded and stored. We can produce a map with just this information
 using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
 

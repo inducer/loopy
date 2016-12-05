@@ -95,6 +95,14 @@ class DependencyTypeInferenceFailure(TypeInferenceFailure):
 class MissingBarrierError(LoopyError):
     pass
 
+
+class MissingDefinitionError(LoopyError):
+    pass
+
+
+class UnscheduledInstructionError(LoopyError):
+    pass
+
 # }}}
 
 
