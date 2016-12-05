@@ -1150,6 +1150,23 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
 
     return expr
 
+
+def pw_aff_to_pw_aff_implemented_by_expr(pw_aff):
+    pieces = pw_aff.get_pieces()
+
+    rest = isl.Set.universe(pw_aff.space.params())
+    aff_set, aff = pieces[0]
+    impl_pw_aff = isl.PwAff.alloc(aff_set, aff)
+    rest = rest.intersect_params(aff_set.complement())
+
+    for aff_set, aff in pieces[1:-1]:
+        impl_pw_aff = impl_pw_aff.union_max(
+            isl.PwAff.alloc(aff_set, aff))
+        rest = rest.intersect_params(aff_set.complement())
+
+    _, aff = pieces[-1]
+    return impl_pw_aff.union_max(isl.PwAff.alloc(rest, aff)).coalesce()
+
 # }}}
 
 
