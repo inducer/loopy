@@ -410,12 +410,17 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # {{{ find implemented loop, build inner code
 
-        from loopy.isl_helpers import make_loop_bounds_from_pwaffs
+        from loopy.symbolic import pw_aff_to_pw_aff_implemented_by_expr
+        impl_lbound = pw_aff_to_pw_aff_implemented_by_expr(lbound)
+        impl_ubound = pw_aff_to_pw_aff_implemented_by_expr(ubound)
 
         # impl_loop may be overapproximated
+        from loopy.isl_helpers import make_loop_bounds_from_pwaffs
         impl_loop = make_loop_bounds_from_pwaffs(
                 dom_and_slab.space,
-                loop_iname, lbound, ubound)
+                loop_iname,
+                impl_lbound,
+                impl_ubound)
 
         for iname in moved_inames:
             dt, idx = impl_loop.get_var_dict()[iname]
