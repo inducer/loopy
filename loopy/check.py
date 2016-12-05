@@ -515,7 +515,7 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
                 insn_query.temporaries_read_in_subkernel(subkernel) -
                 insn_query.temporaries_written_in_subkernel(subkernel)):
 
-            if temporary.initializer is not None:
+            if kernel.temporary_variables[temporary].initializer is not None:
                 continue
 
             if kernel.temporary_variables[temporary].scope in (
