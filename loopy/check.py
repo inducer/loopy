@@ -511,15 +511,31 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
     insn_query = InstructionQuery(kernel)
 
     for subkernel in insn_query.subkernels():
+        defined_base_storage = set()
+
+        for temporary in insn_query.temporaries_written_in_subkernel(subkernel):
+            tval = kernel.temporary_variables[temporary]
+            if tval.base_storage is not None:
+                defined_base_storage.add(tval.base_storage)
+
         for temporary in (
                 insn_query.temporaries_read_in_subkernel(subkernel) -
                 insn_query.temporaries_written_in_subkernel(subkernel)):
+            tval = kernel.temporary_variables[temporary]
 
-            if kernel.temporary_variables[temporary].initializer is not None:
+            if tval.initializer is not None:
                 continue
 
-            if kernel.temporary_variables[temporary].scope in (
-                    temp_var_scope.PRIVATE, temp_var_scope.LOCAL):
+            # For aliased temporaries, check if there is an aliased definition.
+            if tval.base_storage is not None:
+                if tval.base_storage not in defined_base_storage:
+                    from loopy.diagnostic import MissingDefinitionError
+                    raise MissingDefinitionError("temporary variable '%s' gets used "
+                        "in subkernel '%s' and neither it nor its aliases have a "
+                        "definition" % (temporary, subkernel))
+                continue
+
+            if tval.scope in (temp_var_scope.PRIVATE, temp_var_scope.LOCAL):
                 from loopy.diagnostic import MissingDefinitionError
                 raise MissingDefinitionError("temporary variable '%s' gets used in "
                     "subkernel '%s' without a definition (maybe you forgot to call "
