@@ -1316,6 +1316,22 @@ def test_save_local_multidim_array(ctx_factory, debug=False):
     save_and_reload_temporaries_test(queue, knl, 1, debug)
 
 
+def test_missing_temporary_definition_detection():
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<10 }",
+            """
+            for i
+                <> t = 1
+                ... gbarrier
+                out[i] = t
+            end
+            """, seq_dependencies=True)
+
+    from loopy.diagnostic import MissingDefinitionError
+    with pytest.raises(MissingDefinitionError):
+        lp.generate_code_v2(knl)
+
+
 def test_global_temporary(ctx_factory):
     ctx = ctx_factory()
 
@@ -1881,6 +1897,23 @@ def test_tight_loop_bounds_codegen():
         "j <= (lid(0) == 0 && -1 + gid(0) == 0 ? 9 : 2 * lid(0)); ++j)"
 
     assert for_loop in cgr.device_code()
+
+
+def test_unscheduled_insn_detection():
+    knl = lp.make_kernel(
+        "{ [i]: 0 <= i < 10 }",
+        """
+        out[i] = i {id=insn1}
+        """,
+        "...")
+
+    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+    insn1, = lp.find_instructions(knl, "id:insn1")
+    knl.instructions.append(insn1.copy(id="insn2"))
+
+    from loopy.diagnostic import UnscheduledInstructionError
+    with pytest.raises(UnscheduledInstructionError):
+        lp.generate_code(knl)
 
 
 if __name__ == "__main__":

@@ -502,6 +502,58 @@ def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
 # }}}
 
 
+# {{{ check that temporaries are defined in subkernels where used
+
+def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
+    from loopy.schedule.tools import InstructionQuery
+    from loopy.kernel.data import temp_var_scope
+
+    insn_query = InstructionQuery(kernel)
+
+    for subkernel in insn_query.subkernels():
+        for temporary in (
+                insn_query.temporaries_read_in_subkernel(subkernel) -
+                insn_query.temporaries_written_in_subkernel(subkernel)):
+
+            if kernel.temporary_variables[temporary].initializer is not None:
+                continue
+
+            if kernel.temporary_variables[temporary].scope in (
+                    temp_var_scope.PRIVATE, temp_var_scope.LOCAL):
+                from loopy.diagnostic import MissingDefinitionError
+                raise MissingDefinitionError("temporary variable '%s' gets used in "
+                    "subkernel '%s' without a definition (maybe you forgot to call "
+                    "loopy.save_and_reload_temporaries?)" % (temporary, subkernel))
+
+# }}}
+
+
+# {{{ check that all instructions are scheduled
+
+def check_that_all_insns_are_scheduled(kernel):
+    from loopy.kernel.instruction import NoOpInstruction
+
+    all_schedulable_insns = set(
+        insn.id for insn in kernel.instructions
+        # nops are not schedulable
+        if not isinstance(insn, NoOpInstruction))
+    from loopy.schedule import sched_item_to_insn_id
+    scheduled_insns = set(
+        insn_id
+        for sched_item in kernel.schedule
+        for insn_id in sched_item_to_insn_id(sched_item))
+
+    assert scheduled_insns <= all_schedulable_insns
+
+    if scheduled_insns < all_schedulable_insns:
+        from loopy.diagnostic import UnscheduledInstructionError
+        raise UnscheduledInstructionError(
+            "unscheduled instructions: '%s'"
+            % ', '.join(all_schedulable_insns - scheduled_insns))
+
+# }}}
+
+
 # {{{ check that shapes and strides are arguments
 
 def check_that_shapes_and_strides_are_arguments(kernel):
@@ -552,6 +604,8 @@ def pre_codegen_checks(kernel):
 
         check_for_unused_hw_axes_in_insns(kernel)
         check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
+        check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
+        check_that_all_insns_are_scheduled(kernel)
         kernel.target.pre_codegen_check(kernel)
         check_that_shapes_and_strides_are_arguments(kernel)
 
