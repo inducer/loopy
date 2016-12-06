@@ -26,7 +26,7 @@ THE SOFTWARE.
 from loopy.diagnostic import LoopyError
 import loopy as lp
 
-from loopy.kernel.data import auto
+from loopy.kernel.data import auto, temp_var_scope
 from pytools import memoize_method, Record
 from loopy.schedule import (
             EnterLoop, LeaveLoop, RunInstruction,
@@ -217,7 +217,7 @@ class TemporarySaver(object):
         @memoize_method
         def as_variable(self):
             temporary = self.orig_temporary
-            from loopy.kernel.data import TemporaryVariable, temp_var_scope
+            from loopy.kernel.data import TemporaryVariable
             return TemporaryVariable(
                 name=self.name,
                 dtype=temporary.dtype,
@@ -245,9 +245,14 @@ class TemporarySaver(object):
     def auto_promote_temporary(self, temporary_name):
         temporary = self.kernel.temporary_variables[temporary_name]
 
-        from loopy.kernel.data import temp_var_scope
         if temporary.scope == temp_var_scope.GLOBAL:
             # Nothing to be done for global temporaries (I hope)
+            return None
+
+        if temporary.initializer is not None:
+            # Temporaries with initializers do not need saving/reloading - the
+            # code generation takes care of emitting the initializers.
+            assert temporary.read_only
             return None
 
         if temporary.base_storage is not None:

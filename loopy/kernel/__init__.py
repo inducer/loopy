@@ -28,7 +28,7 @@ import six
 from six.moves import range, zip, intern
 
 import numpy as np
-from pytools import RecordWithoutPickling, Record, memoize_method
+from pytools import ImmutableRecordWithoutPickling, ImmutableRecord, memoize_method
 import islpy as isl
 from islpy import dim_type
 import re
@@ -83,7 +83,7 @@ class kernel_state:  # noqa
     SCHEDULED = 2
 
 
-class LoopKernel(RecordWithoutPickling):
+class LoopKernel(ImmutableRecordWithoutPickling):
     """These correspond more or less directly to arguments of
     :func:`loopy.make_kernel`.
 
@@ -279,7 +279,7 @@ class LoopKernel(RecordWithoutPickling):
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
-        RecordWithoutPickling.__init__(self,
+        ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,
                 instructions=instructions,
                 args=args,
@@ -889,7 +889,7 @@ class LoopKernel(RecordWithoutPickling):
                     dom_intersect_assumptions, iname_idx)
                 .coalesce())
 
-        class BoundsRecord(Record):
+        class BoundsRecord(ImmutableRecord):
             pass
 
         size = (upper_bound_pw_aff - lower_bound_pw_aff + 1)

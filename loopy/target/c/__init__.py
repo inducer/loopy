@@ -429,6 +429,7 @@ class CASTBuilder(ASTBuilderBase):
                                 tv.scope)
 
                         if tv.initializer is not None:
+                            assert tv.read_only
                             decl = Initializer(decl, generate_array_literal(
                                 codegen_state, tv, tv.initializer))
 

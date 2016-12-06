@@ -193,7 +193,7 @@ def realize_ilp(kernel, iname):
     on a per-iname basis (so that, for instance, data layout of the duplicated
     storage can be controlled explicitly.
     """
-    from loopy.ilp import add_axes_to_temporaries_for_ilp_and_vec
+    from loopy.transform.ilp import add_axes_to_temporaries_for_ilp_and_vec
     return add_axes_to_temporaries_for_ilp_and_vec(kernel, iname)
 
 # }}}

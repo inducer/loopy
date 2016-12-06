@@ -28,7 +28,7 @@ THE SOFTWARE.
 import six
 from six.moves import range, zip, reduce, intern
 
-from pytools import memoize, memoize_method, Record
+from pytools import memoize, memoize_method, ImmutableRecord
 import pytools.lex
 
 import pymbolic.primitives as p
@@ -559,7 +559,7 @@ def parse_tagged_name(expr):
         raise RuntimeError("subst rule name not understood: %s" % expr)
 
 
-class ExpansionState(Record):
+class ExpansionState(ImmutableRecord):
     """
     .. attribute:: kernel
     .. attribute:: instruction
@@ -1149,6 +1149,23 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
         expr = If(condition, then_expr, expr)
 
     return expr
+
+
+def pw_aff_to_pw_aff_implemented_by_expr(pw_aff):
+    pieces = pw_aff.get_pieces()
+
+    rest = isl.Set.universe(pw_aff.space.params())
+    aff_set, aff = pieces[0]
+    impl_pw_aff = isl.PwAff.alloc(aff_set, aff)
+    rest = rest.intersect_params(aff_set.complement())
+
+    for aff_set, aff in pieces[1:-1]:
+        impl_pw_aff = impl_pw_aff.union_max(
+            isl.PwAff.alloc(aff_set, aff))
+        rest = rest.intersect_params(aff_set.complement())
+
+    _, aff = pieces[-1]
+    return impl_pw_aff.union_max(isl.PwAff.alloc(rest, aff)).coalesce()
 
 # }}}
 
