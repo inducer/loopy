@@ -404,8 +404,7 @@ class TemporaryVariable(ArrayBase):
         if base_indices is None:
             base_indices = (0,) * len(shape)
 
-        if (not read_only
-            and initializer is not None):
+        if not read_only and initializer is not None:
             raise LoopyError(
                     "temporary variable '%s': "
                     "read-write variables with initializer "
