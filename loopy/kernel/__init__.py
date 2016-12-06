@@ -1175,8 +1175,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             import loopy as lp
 
-            Fore = self.options._fore
-            Style = self.options._style
+            Fore = self.options._fore  # noqa
+            Style = self.options._style  # noqa
 
             from loopy.kernel.tools import draw_dependencies_as_unicode_arrows
             for insn, (arrows, extender) in zip(

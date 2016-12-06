@@ -134,7 +134,7 @@ class ExpressionToPythonMapper(StringifyMapper):
         # Synthesize PREC_IFTHENELSE, make sure it is in the right place in the
         # operator precedence hierarchy (right above "or").
         from pymbolic.mapper.stringifier import PREC_LOGICAL_OR, PREC_NONE
-        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1
+        PREC_IFTHENELSE = PREC_LOGICAL_OR - 1  # noqa
 
         return self.parenthesize_if_needed(
             "{then} if {cond} else {else_}".format(

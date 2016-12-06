@@ -695,7 +695,9 @@ def parse_instructions(instructions, defines):
     # {{{ pass 4: parsing
 
     insn_options_stack = [get_default_insn_options_dict()]
-    if_predicates_stack = [{'predicates' : frozenset(), 'insn_predicates' : frozenset()}]
+    if_predicates_stack = [
+            {'predicates': frozenset(),
+                'insn_predicates': frozenset()}]
 
     for insn in instructions:
         if isinstance(insn, InstructionBase):
@@ -815,7 +817,6 @@ def parse_instructions(instructions, defines):
                     "predicates", frozenset())
             last_if_predicates = last_if_predicates - outer_predicates
 
-
             if elif_match is not None:
                 predicate = elif_match.group("predicate")
                 if not predicate:
@@ -861,7 +862,7 @@ def parse_instructions(instructions, defines):
             obj = insn_options_stack.pop()
             #if this object is the end of an if statement
             if obj['predicates'] == if_predicates_stack[-1]["insn_predicates"] and\
-                if_predicates_stack[-1]["insn_predicates"]:
+                    if_predicates_stack[-1]["insn_predicates"]:
                 if_predicates_stack.pop()
             continue
 

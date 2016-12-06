@@ -1,1 +1,1 @@
-from loopy import *
+from loopy import *  # noqa

@@ -489,7 +489,7 @@ def _get_assignee_subscript_deps(expr):
 
 # {{{ atomic ops
 
-class memory_ordering:
+class memory_ordering:  # noqa
     """Ordering of atomic operations, defined as in C11 and OpenCL.
 
     .. attribute:: relaxed
@@ -517,7 +517,7 @@ class memory_ordering:
         raise ValueError("Unknown value of memory_ordering")
 
 
-class memory_scope:
+class memory_scope:  # noqa
     """Scope of atomicity, defined as in OpenCL.
 
     .. attribute:: auto

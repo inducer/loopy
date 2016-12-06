@@ -245,6 +245,7 @@ def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
 
     return kernel
 
+
 split_arg_axis = MovedFunctionDeprecationWrapper(split_array_dim)
 
 # }}}

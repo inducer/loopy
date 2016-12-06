@@ -416,15 +416,15 @@ def sched_item_to_insn_id(sched_item):
 # {{{ debug help
 
 def format_insn_id(kernel, insn_id):
-    Fore = kernel.options._fore
-    Style = kernel.options._style
+    Fore = kernel.options._fore  # noqa
+    Style = kernel.options._style  # noqa
     return Fore.GREEN + insn_id + Style.RESET_ALL
 
 
 def format_insn(kernel, insn_id):
     insn = kernel.id_to_insn[insn_id]
-    Fore = kernel.options._fore
-    Style = kernel.options._style
+    Fore = kernel.options._fore  # noqa
+    Style = kernel.options._style  # noqa
     from loopy.kernel.instruction import (
             MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
     if isinstance(insn, MultiAssignmentBase):
@@ -645,8 +645,8 @@ def generate_loop_schedules_internal(
     # to give loops containing high-priority instructions a chance.
 
     kernel = sched_state.kernel
-    Fore = kernel.options._fore
-    Style = kernel.options._style
+    Fore = kernel.options._fore  # noqa
+    Style = kernel.options._style  # noqa
 
     if allow_boost is None:
         rec_allow_boost = None
