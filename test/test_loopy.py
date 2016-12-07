@@ -1344,7 +1344,7 @@ def test_missing_definition_check_respects_aliases():
                         dtype=np.float64, shape=("n",), base_storage="base")
          },
          target=lp.CTarget(),
-         silenced_warnings=frozenset({"read_no_write(b)"}))
+         silenced_warnings=frozenset(["read_no_write(b)"]))
 
     lp.generate_code_v2(knl)
 
