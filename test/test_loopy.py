@@ -1332,6 +1332,23 @@ def test_missing_temporary_definition_detection():
         lp.generate_code_v2(knl)
 
 
+def test_missing_definition_check_respects_aliases():
+    # Based on https://github.com/inducer/loopy/issues/69
+    knl = lp.make_kernel("{ [i] : 0<=i<n }",
+         ["a[i] = 0",
+          "c[i] = b[i]"],
+         temporary_variables={
+             "a": lp.TemporaryVariable("a",
+                        dtype=np.float64, shape=("n",), base_storage="base"),
+             "b": lp.TemporaryVariable("b",
+                        dtype=np.float64, shape=("n",), base_storage="base")
+         },
+         target=lp.CTarget(),
+         silenced_warnings=frozenset({"read_no_write(b)"}))
+
+    lp.generate_code_v2(knl)
+
+
 def test_global_temporary(ctx_factory):
     ctx = ctx_factory()
 
