@@ -28,7 +28,7 @@ from pytools import ImmutableRecord
 import re
 
 
-ALLOW_TERMINAL_COLORS = False
+ALLOW_TERMINAL_COLORS = True
 
 
 class _ColoramaStub(object):
