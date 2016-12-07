@@ -211,10 +211,15 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
             for value in opt_value.split(":"):
                 arrow_idx = value.find("->")
                 if arrow_idx >= 0:
-                    result.setdefault("inames_to_dup", []).append(
-                            (value[:arrow_idx], value[arrow_idx+2:]))
+                    result["inames_to_dup"] = (
+                            result.get("inames_to_dup", [])
+                            +
+                            [(value[:arrow_idx], value[arrow_idx+2:])])
                 else:
-                    result.setdefault("inames_to_dup", []).append((value, None))
+                    result["inames_to_dup"] = (
+                            result.get("inames_to_dup", [])
+                            +
+                            [(value, None)])
 
         elif opt_key == "dep" and opt_value is not None:
             if opt_value.startswith("*"):
@@ -1765,6 +1770,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         *seq_dependencies* added.
     """
 
+    logger.info(
+            "%s: kernel creation start" % kwargs.get("name", "(unnamed)"))
+
     defines = kwargs.pop("defines", {})
     default_order = kwargs.pop("default_order", "C")
     default_offset = kwargs.pop("default_offset", 0)
@@ -1904,6 +1912,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # Must infer inames before determining shapes.
     # -------------------------------------------------------------------------
     knl = determine_shapes_of_temporaries(knl)
+
     knl = expand_defines_in_shapes(knl, defines)
     knl = guess_arg_shape_if_requested(knl, default_order)
     knl = apply_default_order_to_args(knl, default_order)
@@ -1923,6 +1932,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)
+
+    logger.info(
+            "%s: kernel creation done" % knl.name)
 
     return knl
 
