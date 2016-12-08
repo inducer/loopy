@@ -581,7 +581,7 @@ class ExpressionOpCounter(CombineMapper):
     map_bitwise_and = map_bitwise_or
 
     def map_if(self, expr):
-        warn_with_kernel(self.knl, "summing_if_branches_ops", 
+        warn_with_kernel(self.knl, "summing_if_branches_ops",
                          "ExpressionOpCounter counting ops as sum of "
                          "if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) \
@@ -652,7 +652,7 @@ class LocalSubscriptCounter(CombineMapper):
             if array.is_local:
                 sub_map[MemAccess(mtype='local', dtype=self.type_inf(expr))] = 1
         return sub_map + self.rec(expr.index)
-            
+
     def map_sum(self, expr):
         if expr.children:
             return sum(self.rec(child) for child in expr.children)
@@ -665,14 +665,14 @@ class LocalSubscriptCounter(CombineMapper):
         return self.rec(expr.left)+self.rec(expr.right)
 
     def map_if(self, expr):
-        warn_with_kernel(self.knl, "summing_if_branches_lsubs", 
+        warn_with_kernel(self.knl, "summing_if_branches_lsubs",
                          "LocalSubscriptCounter counting LMEM accesses as sum "
                          "of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) \
                + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warn_with_kernel(self.knl, "summing_ifpos_branches_lsubs", 
+        warn_with_kernel(self.knl, "summing_ifpos_branches_lsubs",
                          "LocalSubscriptCounter counting LMEM accesses as sum "
                          "of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) \
@@ -818,14 +818,14 @@ class GlobalSubscriptCounter(CombineMapper):
     map_product = map_sum
 
     def map_if(self, expr):
-        warn_with_kernel(self.knl, "summing_if_branches_gsubs", 
+        warn_with_kernel(self.knl, "summing_if_branches_gsubs",
                          "GlobalSubscriptCounter counting GMEM accesses as "
                          "sum of if-statement branches.")
         return self.rec(expr.condition) + self.rec(expr.then) \
                + self.rec(expr.else_)
 
     def map_if_positive(self, expr):
-        warn_with_kernel(self.knl, "summing_ifpos_branches_gsubs", 
+        warn_with_kernel(self.knl, "summing_ifpos_branches_gsubs",
                          "GlobalSubscriptCounter counting GMEM accesses as "
                          "sum of if_pos-statement branches.")
         return self.rec(expr.criterion) + self.rec(expr.then) \
