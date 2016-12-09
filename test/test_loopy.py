@@ -1960,8 +1960,8 @@ def test_integer_reduction(ctx_factory):
 
         for reduction, function in reductions:
             kstr = (("out" if 'arg' not in reduction
-                else "out[0], out[1]") + ' = {}(k, var[k])'.format(reduction))
-            knl = lp.make_kernel('{[k]: 0<=k<n}}',
+                else "out[0], out[1]") + ' = %s(k, var[k])' % reduction)`
+            knl = lp.make_kernel('{[k]: 0<=k<n}',
                                 kstr,
                                 [var_lp, '...'])
 
