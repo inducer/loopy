@@ -145,6 +145,7 @@ def get_le_neutral(dtype):
     else:
         raise NotImplementedError("less")
 
+
 def get_ge_neutral(dtype):
     """Return a number y that satisfies (x >= y) for all y."""
 
@@ -160,7 +161,6 @@ def get_ge_neutral(dtype):
             return var('LONG_MIN')
     else:
         raise NotImplementedError("less")
-
 
 
 class MaxReductionOperation(ScalarReductionOperation):

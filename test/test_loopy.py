@@ -1933,7 +1933,7 @@ def test_unscheduled_insn_detection():
         lp.generate_code(knl)
 
 
-def test_integer_reduction():
+def test_integer_reduction(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
