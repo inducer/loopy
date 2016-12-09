@@ -1942,7 +1942,7 @@ def test_integer_reduction(ctx_factory):
 
     n = 200
     for vtype in [np.int32, np.int64]:
-        var_int = np.random.randint(1000, size=n, dtype=vtype)
+        var_int = np.random.randint(1000, size=n).astype(vtype)
         var_lp = lp.TemporaryVariable('var', initializer=var_int,
                                    read_only=True,
                                    scope=scopes.PRIVATE,
