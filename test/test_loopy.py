@@ -1959,8 +1959,9 @@ def test_integer_reduction(ctx_factory):
                         var_int[out[1]] == np.min(var_int)))]
 
         for reduction, function in reductions:
-            kstr = (("out" if 'arg' not in reduction
-                else "out[0], out[1]") + ' = %s(k, var[k])' % reduction)`
+            kstr = ("out" if 'arg' not in reduction
+                        else "out[0], out[1]")
+            kstr += ' = {0}(k, var[k])'.format(reduction)
             knl = lp.make_kernel('{[k]: 0<=k<n}',
                                 kstr,
                                 [var_lp, '...'])
