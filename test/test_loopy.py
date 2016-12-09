@@ -1934,6 +1934,9 @@ def test_unscheduled_insn_detection():
 
 
 def test_integer_reduction():
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
     n = 200
     for vtype in [np.int32, np.int64]:
         var_int = np.random.randint(1000, size=n, dtype=vtype)
