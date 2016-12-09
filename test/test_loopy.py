@@ -1954,9 +1954,9 @@ def test_integer_reduction(ctx_factory):
                       ('sum', lambda x: x == np.sum(var_int)),
                       ('product', lambda x: x == np.prod(var_int)),
                       ('argmax', lambda x: (x[0] == np.max(var_int) and
-                        x[1] == np.argmax(var_int))),
+                        var_int[out[1]] == np.max(var_int))),
                       ('argmin', lambda x: (x[0] == np.min(var_int) and
-                        x[1] == np.argmin(var_int)))]
+                        var_int[out[1]] == np.min(var_int)))]
 
         for reduction, function in reductions:
             kstr = (("out" if 'arg' not in reduction
@@ -1967,7 +1967,7 @@ def test_integer_reduction(ctx_factory):
 
             knl = lp.fix_parameters(knl, n=200)
 
-            _, (out,) = knl(queue)
+            _, (out,) = knl(queue, out_host=True)
 
             assert function(out)
 
