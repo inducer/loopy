@@ -379,10 +379,13 @@ class TemporaryVariable(ArrayBase):
                         "offset must be 0 if initializer specified"
                         % name)
 
+            from loopy.types import NumpyType
             if dtype is auto or dtype is None:
-                from loopy.types import NumpyType
                 dtype = NumpyType(initializer.dtype)
-            elif dtype.numpy_dtype != initializer.dtype:
+            elif ((isinstance(dtype, NumpyType) and
+                    dtype.numpy_dtype != initializer.dtype) or
+                  (isinstance(dtype, np.dtype) and
+                    dtype != initializer.dtype)):
                 raise LoopyError(
                         "temporary variable '%s': "
                         "dtype of initializer does not match "
