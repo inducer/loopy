@@ -1933,6 +1933,37 @@ def test_unscheduled_insn_detection():
         lp.generate_code(knl)
 
 
+def test_integer_reduction():
+    n = 200
+    var_int = np.random.randint(1000, size=n, dtype=np.int32)
+    var_lp = lp.TemporaryVariable('var', initializer=var_int,
+                               scope=scopes.PRIVATE,
+                               read_only=True,
+                               dtype=np.int32,
+                               shape=lp.auto)
+
+    reductions = [('max', lambda x: x == np.max(var_int)),
+                  ('min', lambda x: x == np.min(var_int)),
+                  ('sum', lambda x: x == np.sum(var_int)),
+                  ('product', lambda x: x == np.prod(var_int)),
+                  ('argmax', lambda x: (x[0] == np.max(var_int) and
+                    x[1] == np.argmax(var_int))),
+                  ('argmin', lambda x: (x[0] == np.min(var_int) and
+                    x[1] == np.argmin(var_int)))]
+
+    for reduction, function in reductions:
+        kstr = (("out" if not 'arg' in reduction
+            else "out[0], out[1]") + ' = {}(k, var[k])'.format(reduction))
+        knl = lp.make_kernel('{[k]: 0<=k<n}}',
+                            kstr,
+                            [var_lp, '...'])
+
+        knl = lp.fix_parameters(knl, n=200)
+
+        _, (out,) = knl(queue)
+
+        assert function(out)
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
