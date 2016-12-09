@@ -135,13 +135,37 @@ def get_le_neutral(dtype):
     if dtype.numpy_dtype.kind == "f":
         # OpenCL 1.1, section 6.11.2
         return var("INFINITY")
+    elif dtype.numpy_dtype.kind == "i":
+        if dtype.numpy_dtype.itemsize == 4:
+            #32 bit integer
+            return var("INT_MAX")
+        elif dtype.numpy_dtype.itemsize == 8:
+            #64 bit integer
+            return var('LONG_MAX')
+    else:
+        raise NotImplementedError("less")
+
+def get_ge_neutral(dtype):
+    """Return a number y that satisfies (x >= y) for all y."""
+
+    if dtype.numpy_dtype.kind == "f":
+        # OpenCL 1.1, section 6.11.2
+        return -var("INFINITY")
+    elif dtype.numpy_dtype.kind == "i":
+        if dtype.numpy_dtype.itemsize == 4:
+            #32 bit integer
+            return var("INT_MIN")
+        elif dtype.numpy_dtype.itemsize == 8:
+            #64 bit integer
+            return var('LONG_MIN')
     else:
         raise NotImplementedError("less")
 
 
+
 class MaxReductionOperation(ScalarReductionOperation):
     def neutral_element(self, dtype, inames):
-        return -get_le_neutral(dtype)
+        return get_ge_neutral(dtype)
 
     def __call__(self, dtype, operand1, operand2, inames):
         return var("max")(operand1, operand2)
@@ -212,6 +236,8 @@ def get_argext_preamble(kernel, func_id):
     from pymbolic.mapper.c_code import CCodeMapper
 
     c_code_mapper = CCodeMapper()
+
+    neutral = get_ge_neutral if op.neutral_sign < 0 else get_le_neutral
 
     return (prefix, """
     inline %(scalar_t)s %(prefix)s_init(%(index_t)s *index_out)
