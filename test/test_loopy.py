@@ -1937,12 +1937,14 @@ def test_integer_reduction():
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    from loopy.kernel.data import temp_var_scope as scopes
+
     n = 200
     for vtype in [np.int32, np.int64]:
         var_int = np.random.randint(1000, size=n, dtype=vtype)
         var_lp = lp.TemporaryVariable('var', initializer=var_int,
-                                   scope=scopes.PRIVATE,
                                    read_only=True,
+                                   scopes=scopes.PRIVATE,
                                    dtype=vtype,
                                    shape=lp.auto)
 
