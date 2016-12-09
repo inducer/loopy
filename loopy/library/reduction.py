@@ -266,8 +266,7 @@ def get_argext_preamble(kernel, func_id):
             scalar_t=kernel.target.dtype_to_typename(func_id.scalar_dtype),
             prefix=prefix,
             index_t=kernel.target.dtype_to_typename(kernel.index_dtype),
-            neutral=c_code_mapper(
-                op.neutral_sign*get_le_neutral(func_id.scalar_dtype)),
+            neutral=c_code_mapper(neutral(func_id.scalar_dtype)),
             comp=op.update_comparison,
             ))
 
