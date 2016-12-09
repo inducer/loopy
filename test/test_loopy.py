@@ -1958,7 +1958,7 @@ def test_integer_reduction():
                         x[1] == np.argmin(var_int)))]
 
         for reduction, function in reductions:
-            kstr = (("out" if not 'arg' in reduction
+            kstr = (("out" if 'arg' not in reduction
                 else "out[0], out[1]") + ' = {}(k, var[k])'.format(reduction))
             knl = lp.make_kernel('{[k]: 0<=k<n}}',
                                 kstr,
@@ -1969,6 +1969,7 @@ def test_integer_reduction():
             _, (out,) = knl(queue)
 
             assert function(out)
+
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
