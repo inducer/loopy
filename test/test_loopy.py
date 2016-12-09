@@ -1938,14 +1938,15 @@ def test_integer_reduction(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     from loopy.kernel.data import temp_var_scope as scopes
+    from loopy.types import to_loopy_type
 
     n = 200
     for vtype in [np.int32, np.int64]:
         var_int = np.random.randint(1000, size=n, dtype=vtype)
         var_lp = lp.TemporaryVariable('var', initializer=var_int,
                                    read_only=True,
-                                   scopes=scopes.PRIVATE,
-                                   dtype=vtype,
+                                   scope=scopes.PRIVATE,
+                                   dtype=to_loopy_type(vtype),
                                    shape=lp.auto)
 
         reductions = [('max', lambda x: x == np.max(var_int)),
