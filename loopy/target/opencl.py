@@ -249,6 +249,10 @@ def opencl_symbol_mangler(kernel, name):
             return NumpyType(np.dtype(np.float64)), name
     elif name == "INFINITY":
         return NumpyType(np.dtype(np.float32)), name
+    elif name.startswith("INT_"):
+        return NumpyType(np.dtype(np.int32)), name
+    elif name.startswith("LONG_"):
+        return NumpyType(np.dtype(np.int64)), name
     else:
         return None
 
