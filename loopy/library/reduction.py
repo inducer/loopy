@@ -136,6 +136,7 @@ def get_le_neutral(dtype):
         # OpenCL 1.1, section 6.11.2
         return var("INFINITY")
     elif dtype.numpy_dtype.kind == "i":
+        # OpenCL 1.1, section 6.11.3
         if dtype.numpy_dtype.itemsize == 4:
             #32 bit integer
             return var("INT_MAX")
