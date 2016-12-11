@@ -70,6 +70,7 @@ class ToCountMap(object):
         if init_dict is None:
             init_dict = {}
         self.count_map = init_dict
+        self.val_type = isl.PwQPolynomial
 
     def __add__(self, other):
         result = self.count_map.copy()
@@ -101,7 +102,11 @@ class ToCountMap(object):
         try:
             return self.count_map[index]
         except KeyError:
-            return isl.PwQPolynomial('{ 0 }')
+            #TODO what is the best way to handle this?
+            if self.val_type is isl.PwQPolynomial:
+                return isl.PwQPolynomial('{ 0 }')
+            else:
+                return 0
 
     def __setitem__(self, index, value):
         self.count_map[index] = value
@@ -318,22 +323,35 @@ class ToCountMap(object):
             bytes_processed = int(key.dtype.itemsize) * val
             result[key] = bytes_processed
 
+        #TODO again, is this okay?
+        result.val_type = int
+
         return result
 
     def sum(self):
         """Add all counts in ToCountMap.
 
-        :return: A :class:`islpy.PwQPolynomial` containing the sum of counts.
+        :return: A :class:`islpy.PwQPolynomial` or :class:`int` containing the sum of
+                 counts.
 
         """
-        total = isl.PwQPolynomial('{ 0 }')
+
+        if self.val_type is isl.PwQPolynomial:
+            total = isl.PwQPolynomial('{ 0 }')
+        else:
+            total = 0
+
         for k, v in self.items():
-            if not isinstance(v, isl.PwQPolynomial):
-                raise ValueError("ToCountMap: sum() encountered type {0} but "
-                                 "may only be used on PwQPolynomials."
-                                 .format(type(v)))
             total += v
         return total
+
+    #TODO test and document
+    def eval(self, params):
+        result = self.copy()
+        for key, val in self.items():
+            result[key] = val.eval_with_dict(params)
+        result.val_type = int
+        return result
 
     def eval_and_sum(self, params):
         """Add all counts in :class:`ToCountMap` and evaluate with provided
