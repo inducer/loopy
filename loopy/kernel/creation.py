@@ -1392,11 +1392,11 @@ def create_temporaries(knl, default_order):
 
 # {{{ determine shapes of temporaries
 
-def find_var_shape(knl, var_name, feed_expression):
-    from loopy.symbolic import AccessRangeMapper, SubstitutionRuleExpander
+def find_shapes_of_vars(knl, var_names, feed_expression):
+    from loopy.symbolic import BatchedAccessRangeMapper, SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(knl.substitutions)
 
-    armap = AccessRangeMapper(knl, var_name)
+    armap = BatchedAccessRangeMapper(knl, var_names)
 
     def run_through_armap(expr, inames):
         armap(submap(expr), inames)
@@ -1404,61 +1404,105 @@ def find_var_shape(knl, var_name, feed_expression):
 
     feed_expression(run_through_armap)
 
-    if armap.access_range is not None:
-        base_indices, shape = list(zip(*[
-                knl.cache_manager.base_index_and_length(
-                    armap.access_range, i)
-                for i in range(armap.access_range.dim(dim_type.set))]))
-    else:
-        if armap.bad_subscripts:
-            raise RuntimeError("cannot determine access range for '%s': "
-                    "undetermined index in subscript(s) '%s'"
-                    % (var_name, ", ".join(
-                            str(i) for i in armap.bad_subscripts)))
+    var_to_base_indices = {}
+    var_to_shape = {}
+    var_to_error = {}
 
-        # no subscripts found, let's call it a scalar
-        base_indices = ()
-        shape = ()
+    from loopy.diagnostic import StaticValueFindingError
 
-    return base_indices, shape
+    for var_name in var_names:
+        access_range = armap.access_ranges[var_name]
+        bad_subscripts = armap.bad_subscripts[var_name]
+
+        if access_range is not None:
+            try:
+                base_indices, shape = list(zip(*[
+                        knl.cache_manager.base_index_and_length(
+                            access_range, i)
+                        for i in range(access_range.dim(dim_type.set))]))
+            except StaticValueFindingError as e:
+                var_to_error[var_name] = str(e)
+                continue
+
+        else:
+            if bad_subscripts:
+                raise RuntimeError("cannot determine access range for '%s': "
+                        "undetermined index in subscript(s) '%s'"
+                        % (var_name, ", ".join(
+                                str(i) for i in bad_subscripts)))
+
+            # no subscripts found, let's call it a scalar
+            base_indices = ()
+            shape = ()
+
+        var_to_base_indices[var_name] = base_indices
+        var_to_shape[var_name] = shape
+
+    return var_to_base_indices, var_to_shape, var_to_error
 
 
 def determine_shapes_of_temporaries(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
     import loopy as lp
-    from loopy.diagnostic import StaticValueFindingError
 
-    new_temp_vars = {}
+    vars_needing_shape_inference = set()
+
     for tv in six.itervalues(knl.temporary_variables):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
-            def feed_all_expressions(receiver):
-                for insn in knl.instructions:
-                    insn.with_transformed_expressions(
-                            lambda expr: receiver(expr, knl.insn_inames(insn)))
+            vars_needing_shape_inference.add(tv.name)
 
-            def feed_assignee_of_instruction(receiver):
-                for insn in knl.instructions:
-                    for assignee in insn.assignees:
-                        receiver(assignee, knl.insn_inames(insn))
+    def feed_all_expressions(receiver):
+        for insn in knl.instructions:
+            insn.with_transformed_expressions(
+                lambda expr: receiver(expr, knl.insn_inames(insn)))
 
-            try:
-                base_indices, shape = find_var_shape(
-                        knl, tv.name, feed_all_expressions)
-            except StaticValueFindingError as e:
-                warn_with_kernel(knl, "temp_shape_fallback",
-                        "Had to fall back to legacy method of determining "
-                        "shape of temporary '%s' because: %s"
-                        % (tv.name, str(e)))
+    var_to_base_indices, var_to_shape, var_to_error = (
+        find_shapes_of_vars(
+                knl, vars_needing_shape_inference, feed_all_expressions))
 
-                base_indices, shape = find_var_shape(
-                        knl, tv.name, feed_assignee_of_instruction)
+    # {{{ fall back to legacy method
 
-            if tv.base_indices is lp.auto:
-                tv = tv.copy(base_indices=base_indices)
-            if tv.shape is lp.auto:
-                tv = tv.copy(shape=shape)
+    if len(var_to_error) > 0:
+        vars_needing_shape_inference = set(var_to_error.keys())
 
+        from six import iteritems
+        for varname, err in iteritems(var_to_error):
+            warn_with_kernel(knl, "temp_shape_fallback",
+                             "Had to fall back to legacy method of determining "
+                             "shape of temporary '%s' because: %s"
+                             % (varname, err))
+
+        def feed_assignee_of_instruction(receiver):
+            for insn in knl.instructions:
+                for assignee in insn.assignees:
+                    receiver(assignee, knl.insn_inames(insn))
+
+        var_to_base_indices_fallback, var_to_shape_fallback, var_to_error = (
+            find_shapes_of_vars(
+                    knl, vars_needing_shape_inference, feed_assignee_of_instruction))
+
+        if len(var_to_error) > 0:
+            # No way around errors: propagate an exception upward.
+            formatted_errors = (
+                "\n\n".join("'%s': %s" % (varname, var_to_error[varname])
+                for varname in sorted(var_to_error.keys())))
+
+            raise LoopyError("got the following exception(s) trying to find the "
+                    "shape of temporary variables: %s" % formatted_errors)
+
+        var_to_base_indices.update(var_to_base_indices_fallback)
+        var_to_shape.update(var_to_shape_fallback)
+
+    # }}}
+
+    new_temp_vars = {}
+
+    for tv in six.itervalues(knl.temporary_variables):
+        if tv.base_indices is lp.auto:
+            tv = tv.copy(base_indices=var_to_base_indices[tv.name])
+        if tv.shape is lp.auto:
+            tv = tv.copy(shape=var_to_shape[tv.name])
         new_temp_vars[tv.name] = tv
 
     return knl.copy(temporary_variables=new_temp_vars)
