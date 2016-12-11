@@ -112,6 +112,9 @@ class ToCountMap(object):
     def __len__(self):
         return len(self.count_map)
 
+    def get(self, key, default=None):
+        return self.count_map.get(key, default)
+
     def items(self):
         return self.count_map.items()
 
