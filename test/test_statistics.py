@@ -801,6 +801,7 @@ def test_summations_and_filters():
     s1f64l = mem_map.filter_by_func(func_filter).eval_and_sum(params)
     assert s1f64l == 2*n*m
 
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

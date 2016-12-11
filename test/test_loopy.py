@@ -1933,6 +1933,46 @@ def test_unscheduled_insn_detection():
         lp.generate_code(knl)
 
 
+def test_integer_reduction(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from loopy.kernel.data import temp_var_scope as scopes
+    from loopy.types import to_loopy_type
+
+    n = 200
+    for vtype in [np.int32, np.int64]:
+        var_int = np.random.randint(1000, size=n).astype(vtype)
+        var_lp = lp.TemporaryVariable('var', initializer=var_int,
+                                   read_only=True,
+                                   scope=scopes.PRIVATE,
+                                   dtype=to_loopy_type(vtype),
+                                   shape=lp.auto)
+
+        reductions = [('max', lambda x: x == np.max(var_int)),
+                      ('min', lambda x: x == np.min(var_int)),
+                      ('sum', lambda x: x == np.sum(var_int)),
+                      ('product', lambda x: x == np.prod(var_int)),
+                      ('argmax', lambda x: (x[0] == np.max(var_int) and
+                        var_int[out[1]] == np.max(var_int))),
+                      ('argmin', lambda x: (x[0] == np.min(var_int) and
+                        var_int[out[1]] == np.min(var_int)))]
+
+        for reduction, function in reductions:
+            kstr = ("out" if 'arg' not in reduction
+                        else "out[0], out[1]")
+            kstr += ' = {0}(k, var[k])'.format(reduction)
+            knl = lp.make_kernel('{[k]: 0<=k<n}',
+                                kstr,
+                                [var_lp, '...'])
+
+            knl = lp.fix_parameters(knl, n=200)
+
+            _, (out,) = knl(queue, out_host=True)
+
+            assert function(out)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
