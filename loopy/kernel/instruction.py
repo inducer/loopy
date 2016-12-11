@@ -1287,7 +1287,7 @@ class NoOpInstruction(_DataObliviousInstruction):
 
 class BarrierInstruction(_DataObliviousInstruction):
     """An instruction that requires synchronization with all
-    concurrent work items of :attr:`kind.
+    concurrent work items of :attr:`kind`.
 
     .. attribute:: kind
 
