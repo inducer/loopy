@@ -1422,6 +1422,7 @@ def find_shapes_of_vars(knl, var_names, feed_expression):
                         for i in range(access_range.dim(dim_type.set))]))
             except StaticValueFindingError as e:
                 var_to_error[var_name] = str(e)
+                continue
 
         else:
             if bad_subscripts:
