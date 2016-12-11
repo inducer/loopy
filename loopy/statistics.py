@@ -66,17 +66,17 @@ class ToCountMap(object):
 
     """
 
-    def __init__(self, init_dict=None):
+    def __init__(self, init_dict=None, val_type=isl.PwQPolynomial):
         if init_dict is None:
             init_dict = {}
         self.count_map = init_dict
-        self.val_type = isl.PwQPolynomial
+        self.val_type = val_type
 
     def __add__(self, other):
         result = self.count_map.copy()
         for k, v in six.iteritems(other.count_map):
             result[k] = self.count_map.get(k, 0) + v
-        return ToCountMap(result)
+        return ToCountMap(result, self.val_type)
 
     def __radd__(self, other):
         if other != 0:
@@ -130,7 +130,7 @@ class ToCountMap(object):
         return self.count_map.pop(item)
 
     def copy(self):
-        return ToCountMap(dict(self.count_map))
+        return ToCountMap(dict(self.count_map), self.val_type)
 
     def filter_by(self, **kwargs):
         """Remove items without specified key fields.
@@ -157,7 +157,7 @@ class ToCountMap(object):
 
         """
 
-        result_map = ToCountMap()
+        result_map = ToCountMap(val_type=self.val_type)
 
         from loopy.types import to_loopy_type
         if 'dtype' in kwargs.keys():
@@ -205,7 +205,7 @@ class ToCountMap(object):
 
         """
 
-        result_map = ToCountMap()
+        result_map = ToCountMap(val_type=self.val_type)
 
         # for each item in self.count_map, call func on the key
         for self_key, self_val in self.items():
@@ -260,7 +260,7 @@ class ToCountMap(object):
 
         """
 
-        result_map = ToCountMap()
+        result_map = ToCountMap(val_type=self.val_type)
 
         # make sure all item keys have same type
         if self.count_map:
