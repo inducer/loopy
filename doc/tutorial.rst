@@ -54,7 +54,9 @@ And some data on the host:
 .. }}}
 
 We'll also disable console syntax highlighting because it confuses
-doctest::
+doctest:
+
+.. doctest::
 
     >>> # not a documented interface
     >>> import loopy.options
