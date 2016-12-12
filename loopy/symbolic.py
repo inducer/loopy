@@ -38,6 +38,7 @@ from pymbolic.mapper import (
         IdentityMapper as IdentityMapperBase,
         WalkMapper as WalkMapperBase,
         CallbackMapper as CallbackMapperBase,
+        CSECachingMapperMixin,
         )
 from pymbolic.mapper.evaluator import \
         EvaluationMapper as EvaluationMapperBase
@@ -113,9 +114,13 @@ class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
 
 
-class PartialEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
+class PartialEvaluationMapper(
+        EvaluationMapperBase, CSECachingMapperMixin, IdentityMapperMixin):
     def map_variable(self, expr):
         return expr
+
+    def map_common_subexpression_uncached(self, expr):
+        return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
 
 class WalkMapper(WalkMapperBase):
@@ -162,8 +167,10 @@ class CombineMapper(CombineMapperBase):
     map_linear_subscript = CombineMapperBase.map_subscript
 
 
-class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
-    pass
+class SubstitutionMapper(
+        CSECachingMapperMixin, SubstitutionMapperBase, IdentityMapperMixin):
+    def map_common_subexpression_uncached(self, expr):
+        return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
 
 class ConstantFoldingMapper(ConstantFoldingMapperBase,
