@@ -26,6 +26,8 @@ THE SOFTWARE.
 
 
 import numpy as np
+
+from pymbolic.mapper import CSECachingMapperMixin
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
@@ -995,7 +997,7 @@ def parse_domains(domains, defines):
 
 # {{{ guess kernel args (if requested)
 
-class IndexRankFinder(WalkMapper):
+class IndexRankFinder(CSECachingMapperMixin, WalkMapper):
     def __init__(self, arg_name):
         self.arg_name = arg_name
         self.index_ranks = []
@@ -1011,6 +1013,13 @@ class IndexRankFinder(WalkMapper):
                 self.index_ranks.append(1)
             else:
                 self.index_ranks.append(len(expr.index))
+
+    def map_common_subexpression_uncached(self, expr):
+        if not self.visit(expr):
+            return
+
+        self.rec(expr.child)
+        self.post_visit(expr)
 
 
 class ArgumentGuesser:
