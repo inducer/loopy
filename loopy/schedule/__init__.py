@@ -1763,7 +1763,8 @@ def generate_loop_schedules(kernel, debug_args={}):
     new_limit = max(rec_limit, len(kernel.instructions) * 2)
     sys.setrecursionlimit(new_limit)
     try:
-        return generate_loop_schedules_inner(kernel, debug_args=debug_args)
+        for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
+            yield sched
     finally:
         sys.setrecursionlimit(rec_limit)
 
@@ -1915,7 +1916,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
                 from loopy.schedule.tools import add_extra_args_to_schedule
                 new_kernel = add_extra_args_to_schedule(new_kernel)
-                return new_kernel
+                yield new_kernel
 
                 debug.start()
 
@@ -1971,7 +1972,7 @@ def get_one_scheduled_kernel(kernel):
 
         logger.info("%s: schedule start" % kernel.name)
 
-        result = generate_loop_schedules(kernel)
+        result = next(iter(generate_loop_schedules(kernel)))
 
         logger.info("%s: scheduling done after %.2f s" % (
             kernel.name, time()-start_time))
