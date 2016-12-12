@@ -456,8 +456,8 @@ control is the nesting of loops. For example, should the *i* loop be nested
 around the *j* loop, or the other way around, in the following simple
 zero-fill kernel?
 
-It turns out that Loopy will choose a loop nesting for us, but it might be
-ambiguous. Consider the following code:
+It turns out that Loopy will typically choose a loop nesting for us, but it
+does not like doing so. Loo.py will react to the following code
 
 .. doctest::
 
@@ -467,8 +467,13 @@ ambiguous. Consider the following code:
     ...     a[i,j] = 0
     ...     """)
 
-Both nestings of the inames `i` and `j` result in a correct kernel.
-This ambiguity can be resolved:
+By saying::
+
+    LoopyWarning: kernel scheduling was ambiguous--more than one schedule found, ignoring
+
+And by picking one of the possible loop orderings at random.
+
+The warning (and the nondeterminism it warns about) is easily resolved:
 
 .. doctest::
 
