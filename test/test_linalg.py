@@ -192,6 +192,10 @@ def test_plain_matrix_mul(ctx_factory):
 def test_variable_size_matrix_mul(ctx_factory):
     ctx = ctx_factory()
 
+    if (not ctx.devices[0].image_support
+            or ctx.devices[0].platform.name == "Portable Computing Language"):
+        pytest.skip("crashes on pocl")
+
     n = get_suitable_size(ctx)
 
     knl = lp.make_kernel(
