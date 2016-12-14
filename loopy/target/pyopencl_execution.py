@@ -669,8 +669,6 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         import pyopencl as cl
 
-        logger.info("%s: opencl compilation start" % self.kernel.name)
-
         cl_program = (
                 cl.Program(self.context, dev_code)
                 .build(options=kernel.options.cl_build_options))
@@ -678,8 +676,6 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         cl_kernels = _CLKernels()
         for dp in codegen_result.device_programs:
             setattr(cl_kernels, dp.name, getattr(cl_program, dp.name))
-
-        logger.info("%s: opencl compilation done" % self.kernel.name)
 
         return _CLKernelInfo(
                 kernel=kernel,
