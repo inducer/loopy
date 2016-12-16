@@ -30,8 +30,6 @@ import numpy as np
 from loopy.tools import is_integer
 from loopy.types import NumpyType
 
-from pytools import memoize_method
-
 from loopy.diagnostic import (
         LoopyError,
         TypeInferenceFailure, DependencyTypeInferenceFailure)
@@ -199,7 +197,6 @@ class TypeInferenceMapper(CombineMapper):
         else:
             return self.combine([n_dtype_set, d_dtype_set])
 
-    @memoize_method
     def map_constant(self, expr):
         if is_integer(expr):
             for tp in [np.int32, np.int64]:
