@@ -41,8 +41,8 @@ def test_compute_sccs():
         graph = dict((i, set()) for i in range(nnodes))
         for i in range(nnodes):
             for j in range(nnodes):
-                # Edge probability 1/n: Generates decently interesting inputs.
-                if rng.randint(0, nnodes - 1) == 0:
+                # Edge probability 2/n: Generates decently interesting inputs.
+                if rng.randint(0, nnodes - 1) <= 1:
                     graph[i].add(j)
         return graph
 
