@@ -495,7 +495,8 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     # }}}
 
-    logger.debug("finding types for {} names".format(len(names_for_type_inference)))
+    logger.debug("finding types for {:d} names".format(
+            len(names_for_type_inference)))
 
     writer_map = kernel.writer_map()
 
@@ -607,7 +608,8 @@ def infer_unknown_types(kernel, expect_completion=False):
     # }}}
 
     end_time = time.time()
-    logger.debug("type inference took {:.2f} seconds".format(end_time - start_time))
+    logger.debug("type inference took {:.2f} seconds".format(
+            end_time - start_time))
 
     return unexpanded_kernel.copy(
             temporary_variables=new_temp_vars,
