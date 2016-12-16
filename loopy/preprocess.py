@@ -746,7 +746,8 @@ def find_idempotence(kernel):
                 for var in reads_map[insn.id]
                 for writer_id in writer_map.get(var, set()))
 
-    # Find SCCs of dep_graph.
+    # Find SCCs of dep_graph. These are used for checking if the instruction is
+    # in a dependency cycle.
     from loopy.tools import compute_sccs
 
     sccs = dict((item, scc)

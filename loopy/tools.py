@@ -291,48 +291,49 @@ def compute_sccs(graph):
 
     while to_search:
         top = next(iter(to_search))
-        stack = [top]
+        call_stack = [(top, iter(graph[top]), None)]
+        visit_stack = []
         visiting = set()
 
         scc = []
 
-        while stack:
-            top = stack[-1]
+        while call_stack:
+            top, children, last_popped_child = call_stack.pop()
 
-            if top in visiting:
-                for child in graph[top]:
-                    if child in visiting:
-                        # Update SCC root.
-                        scc_root[top] = min(
-                            scc_root[top],
-                            scc_root[child])
-
-                # Add to the current SCC and check if we're the root.
-                scc.append(top)
-
-                if visit_order[top] == scc_root[top]:
-                    sccs.append(scc)
-                    scc = []
-
-                to_search.discard(top)
-                visiting.remove(top)
-
-            if top in visit_order:
-                stack.pop()
-            else:
+            if top not in visiting:
+                # Unvisited: mark as visited, initialize SCC root.
                 count = len(visit_order)
+                visit_stack.append(top)
                 visit_order[top] = count
                 scc_root[top] = count
                 visiting.add(top)
+                to_search.discard(top)
 
-                for child in graph[top]:
-                    if child in visiting:
-                        # Update SCC root.
-                        scc_root[top] = min(
-                            scc_root[top],
-                            visit_order[child])
-                    elif child not in visit_order:
-                        stack.append(child)
+            # Returned from a recursion, update SCC.
+            if last_popped_child is not None:
+                scc_root[top] = min(
+                    scc_root[top],
+                    scc_root[last_popped_child])
+
+            for child in children:
+                if child not in visit_order:
+                    # Recurse.
+                    call_stack.append((top, children, child))
+                    call_stack.append((child, iter(graph[child]), None))
+                    break
+                if child in visiting:
+                    scc_root[top] = min(
+                        scc_root[top],
+                        visit_order[child])
+            else:
+                if scc_root[top] == visit_order[top]:
+                    scc = []
+                    while visit_stack[-1] != top:
+                        scc.append(visit_stack.pop())
+                    scc.append(visit_stack.pop())
+                    for item in scc:
+                        visiting.remove(item)
+                    sccs.append(scc)
 
     return sccs
 

@@ -511,9 +511,9 @@ def infer_unknown_types(kernel, expect_completion=False):
     from loopy.tools import compute_sccs
 
     # To speed up processing, we sort the variables by computing the SCCs of the
-    # type dependency graph. Each SCC represents a set of variables whose type
-    # mutually depends on themselves. The SCCs are returned in topological
-    # order.
+    # type dependency graph. Each SCC represents a set of variables whose types
+    # mutually depend on themselves. The SCCs are returned and processed in
+    # topological order.
     sccs = compute_sccs(dep_graph)
 
     item_lookup = _DictUnionView([
@@ -529,17 +529,18 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     from loopy.kernel.data import TemporaryVariable, KernelArgument
 
-    failed_names = set()
     for var_chain in sccs:
         changed_during_last_queue_run = False
         queue = var_chain[:]
+        failed_names = set()
 
         while queue or changed_during_last_queue_run:
             if not queue and changed_during_last_queue_run:
                 changed_during_last_queue_run = False
-                # Optimization: If there's a single variable in the SCC and
-                # the type of variable does not depend on itself, then
-                # the type is known after a single iteration.
+                # Optimization: If there's a single variable in the SCC without
+                # a self-referential dependency, then the type is known after a
+                # single iteration (we don't need to look at the expressions
+                # again).
                 if len(var_chain) == 1:
                     single_var, = var_chain
                     if single_var not in dep_graph[single_var]:
