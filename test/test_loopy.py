@@ -102,6 +102,28 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
         assert "double" not in code
 
 
+def test_type_inference_with_type_dependencies():
+    knl = lp.make_kernel(
+            "{[i]: i=0}",
+            """
+            <>a = 99
+            a = a + 1
+            <>b = 0
+            <>c = 1
+            b = b + c + 1.0
+            c = b + c
+            <>d = b + 2 + 1j
+            """,
+            "...")
+    knl = lp.infer_unknown_types(knl)
+
+    from loopy.types import to_loopy_type
+    assert knl.temporary_variables["a"].dtype == to_loopy_type(np.int32)
+    assert knl.temporary_variables["b"].dtype == to_loopy_type(np.float32)
+    assert knl.temporary_variables["c"].dtype == to_loopy_type(np.float32)
+    assert knl.temporary_variables["d"].dtype == to_loopy_type(np.complex128)
+
+
 def test_sized_and_complex_literals(ctx_factory):
     ctx = ctx_factory()
 
