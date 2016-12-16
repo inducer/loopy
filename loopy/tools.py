@@ -281,6 +281,64 @@ def empty_aligned(shape, dtype, order='C', n=64):
 # }}}
 
 
+# {{{ compute SCCs with Tarjan's algorithm
+
+def compute_sccs(graph):
+    to_search = set(graph.keys())
+    visit_order = {}
+    scc_root = {}
+    sccs = []
+
+    while to_search:
+        top = next(iter(to_search))
+        stack = [top]
+        visiting = set()
+
+        scc = []
+
+        while stack:
+            top = stack[-1]
+
+            if top in visiting:
+                for child in graph[top]:
+                    if child in visiting:
+                        # Update SCC root.
+                        scc_root[top] = min(
+                            scc_root[top],
+                            scc_root[child])
+
+                # Add to the current SCC and check if we're the root.
+                scc.append(top)
+
+                if visit_order[top] == scc_root[top]:
+                    sccs.append(scc)
+                    scc = []
+
+                to_search.discard(top)
+                visiting.remove(top)
+
+            if top in visit_order:
+                stack.pop()
+            else:
+                count = len(visit_order)
+                visit_order[top] = count
+                scc_root[top] = count
+                visiting.add(top)
+
+                for child in graph[top]:
+                    if child in visiting:
+                        # Update SCC root.
+                        scc_root[top] = min(
+                            scc_root[top],
+                            visit_order[child])
+                    elif child not in visit_order:
+                        stack.append(child)
+
+    return sccs
+
+# }}}
+
+
 def is_interned(s):
     return s is None or intern(s) is s
 

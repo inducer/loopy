@@ -30,6 +30,8 @@ import numpy as np
 from loopy.tools import is_integer
 from loopy.types import NumpyType
 
+from pytools import memoize_method
+
 from loopy.diagnostic import (
         LoopyError,
         TypeInferenceFailure, DependencyTypeInferenceFailure)
@@ -202,6 +204,7 @@ class TypeInferenceMapper(CombineMapper):
         else:
             return self.combine([n_dtype_set, d_dtype_set])
 
+    @memoize_method
     def map_constant(self, expr):
         if is_integer(expr):
             for tp in [np.int32, np.int64]:
@@ -462,6 +465,9 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     logger.debug("%s: infer types" % kernel.name)
 
+    import time
+    start_time = time.time()
+
     def debug(s):
         logger.debug("%s: %s" % (kernel.name, s))
 
@@ -489,6 +495,26 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     # }}}
 
+    logger.debug("finding types for {} names".format(len(names_for_type_inference)))
+
+    writer_map = kernel.writer_map()
+
+    dep_graph = dict(
+            (written_var, set(
+                read_var
+                for insn_id in writer_map.get(written_var, [])
+                for read_var in kernel.id_to_insn[insn_id].read_dependency_names()
+                if read_var in names_for_type_inference))
+            for written_var in names_for_type_inference)
+
+    from loopy.tools import compute_sccs
+
+    # To speed up processing, we sort the variables by computing the SCCs of the
+    # type dependency graph. Each SCC represents a set of variables whose type
+    # mutually depends on themselves. The SCCs are returned in topological
+    # order.
+    sccs = compute_sccs(dep_graph)
+
     item_lookup = _DictUnionView([
             new_temp_vars,
             new_arg_dict
@@ -502,74 +528,86 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     from loopy.kernel.data import TemporaryVariable, KernelArgument
 
-    changed_during_last_queue_run = False
-    queue = names_for_type_inference[:]
-
     failed_names = set()
-    while queue or changed_during_last_queue_run:
-        if not queue and changed_during_last_queue_run:
-            changed_during_last_queue_run = False
-            queue = names_for_type_inference[:]
+    for var_chain in sccs:
+        changed_during_last_queue_run = False
+        queue = var_chain[:]
 
-        name = queue.pop(0)
-        item = item_lookup[name]
+        while queue or changed_during_last_queue_run:
+            if not queue and changed_during_last_queue_run:
+                changed_during_last_queue_run = False
+                # Optimization: If there's a single variable in the SCC and
+                # the type of variable does not depend on itself, then
+                # the type is known after a single iteration.
+                if len(var_chain) == 1:
+                    single_var, = var_chain
+                    if single_var not in dep_graph[single_var]:
+                        break
+                queue = var_chain[:]
 
-        debug("inferring type for %s %s" % (type(item).__name__, item.name))
+            name = queue.pop(0)
+            item = item_lookup[name]
 
-        result, symbols_with_unavailable_types = \
-                _infer_var_type(kernel, item.name, type_inf_mapper, subst_expander)
+            debug("inferring type for %s %s" % (type(item).__name__, item.name))
 
-        failed = not result
-        if not failed:
-            new_dtype, = result
-            debug("     success: %s" % new_dtype)
-            if new_dtype != item.dtype:
-                debug("     changed from: %s" % item.dtype)
-                changed_during_last_queue_run = True
+            result, symbols_with_unavailable_types = (
+                    _infer_var_type(
+                            kernel, item.name, type_inf_mapper, subst_expander))
 
-                if isinstance(item, TemporaryVariable):
-                    new_temp_vars[name] = item.copy(dtype=new_dtype)
-                elif isinstance(item, KernelArgument):
-                    new_arg_dict[name] = item.copy(dtype=new_dtype)
-                else:
-                    raise LoopyError("unexpected item type in type inference")
-        else:
-            debug("     failure")
+            failed = not result
+            if not failed:
+                new_dtype, = result
+                debug("     success: %s" % new_dtype)
+                if new_dtype != item.dtype:
+                    debug("     changed from: %s" % item.dtype)
+                    changed_during_last_queue_run = True
 
-        if failed:
-            if item.name in failed_names:
-                # this item has failed before, give up.
-                advice = ""
-                if symbols_with_unavailable_types:
-                    advice += (
-                            " (need type of '%s'--check for missing arguments)"
-                            % ", ".join(symbols_with_unavailable_types))
+                    if isinstance(item, TemporaryVariable):
+                        new_temp_vars[name] = item.copy(dtype=new_dtype)
+                    elif isinstance(item, KernelArgument):
+                        new_arg_dict[name] = item.copy(dtype=new_dtype)
+                    else:
+                        raise LoopyError("unexpected item type in type inference")
+            else:
+                debug("     failure")
 
-                if expect_completion:
-                    raise LoopyError(
-                            "could not determine type of '%s'%s"
-                            % (item.name, advice))
+            if failed:
+                if item.name in failed_names:
+                    # this item has failed before, give up.
+                    advice = ""
+                    if symbols_with_unavailable_types:
+                        advice += (
+                                " (need type of '%s'--check for missing arguments)"
+                                % ", ".join(symbols_with_unavailable_types))
 
-                else:
-                    # We're done here.
+                    if expect_completion:
+                        raise LoopyError(
+                                "could not determine type of '%s'%s"
+                                % (item.name, advice))
+
+                    else:
+                        # We're done here.
+                        break
+
+                # remember that this item failed
+                failed_names.add(item.name)
+
+                if set(queue) == failed_names:
+                    # We did what we could...
+                    print(queue, failed_names, item.name)
+                    assert not expect_completion
                     break
 
-            # remember that this item failed
-            failed_names.add(item.name)
-
-            if set(queue) == failed_names:
-                # We did what we could...
-                print(queue, failed_names, item.name)
-                assert not expect_completion
-                break
-
-            # can't infer type yet, put back into queue
-            queue.append(name)
-        else:
-            # we've made progress, reset failure markers
-            failed_names = set()
+                # can't infer type yet, put back into queue
+                queue.append(name)
+            else:
+                # we've made progress, reset failure markers
+                failed_names = set()
 
     # }}}
+
+    end_time = time.time()
+    logger.debug("type inference took {:.2f} seconds".format(end_time - start_time))
 
     return unexpanded_kernel.copy(
             temporary_variables=new_temp_vars,
