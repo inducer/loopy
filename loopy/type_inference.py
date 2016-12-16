@@ -114,31 +114,27 @@ class TypeInferenceMapper(CombineMapper):
                 0 <= len(dtype_set) <= 1
                 for dtype_set in dtype_sets)
 
-        if not all(
-                isinstance(dtype, NumpyType)
-                for dtype_set in dtype_sets
-                for dtype in dtype_set):
-            from pytools import is_single_valued, single_valued
-            if not is_single_valued(
-                    dtype
-                    for dtype_set in dtype_sets
-                    for dtype in dtype_set):
-                raise TypeInferenceFailure(
-                        "Nothing known about operations between '%s'"
-                        % ", ".join(str(dtype)
-                            for dtype_set in dtype_sets
-                            for dtype in dtype_set))
+        from pytools import is_single_valued
 
-            return single_valued(dtype
-                            for dtype_set in dtype_sets
-                            for dtype in dtype_set)
-
-        numpy_dtypes = [dtype.dtype
+        dtypes = [dtype
                 for dtype_set in dtype_sets
                 for dtype in dtype_set]
 
+        if not all(isinstance(dtype, NumpyType) for dtype in dtypes):
+            if not is_single_valued(dtypes):
+                raise TypeInferenceFailure(
+                        "Nothing known about operations between '%s'"
+                        % ", ".join(str(dtype) for dtype in dtypes))
+
+            return [dtypes[0]]
+
+        numpy_dtypes = [dtype.dtype for dtype in dtypes]
+
         if not numpy_dtypes:
             return []
+
+        if is_single_valued(numpy_dtypes):
+            return [dtypes[0]]
 
         result = numpy_dtypes.pop()
         while numpy_dtypes:
@@ -181,7 +177,6 @@ class TypeInferenceMapper(CombineMapper):
             else:
                 dtype_sets.append(dtype_set)
 
-        from pytools import all
         if all(dtype.is_integral()
                 for dtype_set in dtype_sets
                 for dtype in dtype_set):
