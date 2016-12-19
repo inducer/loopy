@@ -221,7 +221,7 @@ def generate_call_code(codegen_state, insn):
 
     if codegen_state.vectorization_info:
         if insn.atomicity:
-            raise Unvectorizable("function call")
+            raise Unvectorizable("atomic operation")
 
     # }}}
 

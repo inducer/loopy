@@ -994,6 +994,13 @@ class CallInstruction(MultiAssignmentBase):
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
 
+    @property
+    def atomicity(self):
+        # Function calls can impossibly be atomic, and even the result assignment
+        # is troublesome, especially in the case of multiple results. Avoid the
+        # issue altogether by disallowing atomicity.
+        return ()
+
 # }}}
 
 
