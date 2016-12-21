@@ -738,61 +738,21 @@ def find_idempotence(kernel):
             (insn.id, insn.read_dependency_names() & var_names)
             for insn in kernel.instructions)
 
-    dep_graph = {}
+    from collections import defaultdict
+    dep_graph = defaultdict(lambda: set())
 
     for insn in kernel.instructions:
         dep_graph[insn.id] = set(writer_id
                 for var in reads_map[insn.id]
                 for writer_id in writer_map.get(var, set()))
 
-    # {{{ find SCCs of dep_graph
+    # Find SCCs of dep_graph. These are used for checking if the instruction is
+    # in a dependency cycle.
+    from loopy.tools import compute_sccs
 
-    def dfs(graph, root_node=None, exclude=frozenset()):
-        postorder = []
-        visited = set()
-        have_root_node = root_node is not None
-        to_search = set([root_node] if have_root_node else graph.keys())
-
-        while to_search:
-            stack = [next(iter(to_search))]
-            visiting = set()
-
-            while stack:
-                top = stack[-1]
-                if top in visiting:
-                    visiting.discard(top)
-                    postorder.append(top)
-                    to_search.discard(top)
-                if top in visited:
-                    stack.pop()
-                else:
-                    visiting.add(top)
-                    visited.add(top)
-                    stack.extend(
-                            item for item in graph[top]
-                            if item not in visited and item not in exclude)
-
-        return postorder
-
-    inv_dep_graph = dict((insn.id, set()) for insn in kernel.instructions)
-    for key, vals in six.iteritems(dep_graph):
-        for val in vals:
-            inv_dep_graph[val].add(key)
-
-    postorder = dfs(inv_dep_graph)
-
-    sccs = {}
-    exclude = set()
-
-    for item in reversed(postorder):
-        if item in sccs:
-            continue
-        scc = dfs(dep_graph, root_node=item, exclude=exclude)
-        exclude.update(scc)
-        for scc_item in scc:
-            sccs[scc_item] = scc
-
-    # }}}
+    sccs = dict((item, scc)
+            for scc in compute_sccs(dep_graph)
+            for item in scc)
 
     non_idempotently_updated_vars = set()
 
