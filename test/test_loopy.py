@@ -1995,6 +1995,31 @@ def test_integer_reduction(ctx_factory):
             assert function(out)
 
 
+def test_ilp_modified_var_in_loop_bound(ctx_factory):
+    # https://github.com/inducer/loopy/issues/77
+
+    knl = lp.make_kernel([
+        "{ [i] : 0 <= i < m }",
+        "{ [j] : 0 <= j < length }"],
+        """
+        for i
+            <> rowstart = rowstarts[i]
+            <> rowend = rowstarts[i]
+            <> length = rowend - rowstart
+            y[i] = sum(j, values[rowstart+j] * x[colindices[rowstart + j]])
+        end
+        """)
+
+    knl = lp.add_and_infer_dtypes(
+            knl, {
+                'values,x': np.float64,
+                'rowstarts,colindices': knl.index_dtype})
+    knl = lp.split_iname(knl, 'i', 2, inner_tag='ilp')
+    code = lp.generate_code_v2(knl).device_code()
+    print(code.replace("length[", "LENGTH["))
+    assert 'length' not in code.replace("length[", "LENGTH[")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
