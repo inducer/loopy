@@ -1640,7 +1640,6 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
                         barrier_kind_more_or_equally_global(
                             sub_sched_item.kind, kind)):
 
-                    seen_barrier()
                     last_barrier_index = j
                     if first_barrier_index is None:
                         first_barrier_index = j
@@ -1683,6 +1682,7 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
             if last_barrier_index is None:
                 candidates.update(insn_ids_from_schedule(subresult))
             else:
+                seen_barrier()
                 candidates.update(
                         insn_ids_from_schedule(
                             subresult[last_barrier_index+1:]))
