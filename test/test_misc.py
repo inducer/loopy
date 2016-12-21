@@ -60,8 +60,15 @@ def test_compute_sccs():
                 return result + [node]
 
         for scc in sccs:
-            result = visit(scc[0])
-            assert set(result) == set(scc), (set(result), set(scc))
+            scc = set(scc)
+            assert not scc & visited
+            # Check that starting from each element of the SCC results
+            # in the same set of reachable nodes.
+            for scc_root in scc:
+                visited.difference_update(scc)
+                result = visit(scc_root)
+                assert set(result) == scc, (set(result), scc)
+
 
     for nnodes in range(10, 20):
         for i in range(40):
