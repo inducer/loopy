@@ -69,7 +69,6 @@ def test_compute_sccs():
                 result = visit(scc_root)
                 assert set(result) == scc, (set(result), scc)
 
-
     for nnodes in range(10, 20):
         for i in range(40):
             graph = generate_random_graph(nnodes)
