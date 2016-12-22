@@ -1582,7 +1582,7 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
                 "Dependency '%s' (for variable '%s') "
                 "requires synchronization "
                 "by a %s barrier (add a 'no_sync_with' "
-                "instruction option to state that no"
+                "instruction option to state that no "
                 "synchronization is needed)"
                 % (
                     dep.dep_descr.format(
