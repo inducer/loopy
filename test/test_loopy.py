@@ -1995,10 +1995,11 @@ def test_integer_reduction(ctx_factory):
             assert function(out)
 
 
-def assert_barrier_between(knl, id1, id2):
-    from loopy.schedule import RunInstruction, Barrier
+def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
+    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop)
     watch_for_barrier = False
     seen_barrier = False
+    loop_level = 0
 
     for sched_item in knl.schedule:
         if isinstance(sched_item, RunInstruction):
@@ -2008,9 +2009,13 @@ def assert_barrier_between(knl, id1, id2):
                 assert watch_for_barrier
                 assert seen_barrier
                 return
-        if isinstance(sched_item, Barrier):
-            if watch_for_barrier:
+        elif isinstance(sched_item, Barrier):
+            if watch_for_barrier and loop_level not in ignore_barriers_in_levels:
                 seen_barrier = True
+        elif isinstance(sched_item, EnterLoop):
+            loop_level += 1
+        elif isinstance(sched_item, LeaveLoop):
+            loop_level -= 1
 
     raise RuntimeError("id2 was not seen")
 
@@ -2029,6 +2034,7 @@ def test_barrier_insertion_near_top_of_loop():
         end
         """,
         seq_dependencies=True)
+
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.set_temporary_scope(knl, "a", "local")
     knl = lp.set_temporary_scope(knl, "b", "local")
@@ -2039,6 +2045,32 @@ def test_barrier_insertion_near_top_of_loop():
     assert_barrier_between(knl, "ainit", "tcomp")
     assert_barrier_between(knl, "tcomp", "bcomp1")
     assert_barrier_between(knl, "bcomp1", "bcomp2")
+
+
+def test_barrier_insertion_near_bottom_of_loop():
+    knl = lp.make_kernel(
+        ["{[i]: 0 <= i < 10 }",
+         "[jmax] -> {[j]: 0 <= j < jmax}"],
+        """
+        for i
+         <>a[i] = i  {id=ainit}
+         for j
+          <>b[i,j] = a[i] + t   {id=bcomp1}
+          b[i,j] = b[i,j] + 1  {id=bcomp2}
+         end
+         a[i] = i + 1 {id=aupdate}
+        end
+        """,
+        seq_dependencies=True)
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.set_temporary_scope(knl, "a", "local")
+    knl = lp.set_temporary_scope(knl, "b", "local")
+    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+
+    print(knl)
+
+    assert_barrier_between(knl, "bcomp1", "bcomp2")
+    assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
 if __name__ == "__main__":
