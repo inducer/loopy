@@ -1511,29 +1511,6 @@ def barrier_kind_more_or_equally_global(kind1, kind2):
     return (kind1 == kind2) or (kind1 == "global" and kind2 == "local")
 
 
-def first_and_last_barrier_indices_not_within_loops(schedule, kind):
-    first_barrier_index = None
-    last_barrier_index = None
-
-    loop_level = 0
-
-    for j, sub_sched_item in enumerate(schedule):
-        if (
-                loop_level == 0
-                and (isinstance(sub_sched_item, Barrier)
-                and barrier_kind_more_or_equally_global(
-                    sub_sched_item.kind, kind))):
-            last_barrier_index = j
-            if first_barrier_index is None:
-                first_barrier_index = j
-        elif isinstance(sub_sched_item, EnterLoop):
-            loop_level += 1
-        elif isinstance(sub_sched_item, LeaveLoop):
-            loop_level -= 1
-
-    return first_barrier_index, last_barrier_index
-
-
 def insn_ids_with_path_to_end_without_intervening_barrier(schedule, kind):
     insn_ids_killable_by_level = [set()]
 
