@@ -1553,7 +1553,9 @@ def insn_ids_reachable_from_start_without_intervening_barrier(schedule, kind):
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
             insn_ids_alive_at_level.append(set())
-            seen_barrier_at_level.append(False)
+            # Barriers seen at the shallower level will also prevent
+            # instructions from being reached at the deeper level.
+            seen_barrier_at_level.append(seen_barrier_at_level[-1])
         elif isinstance(sched_item, LeaveLoop):
             result |= insn_ids_alive_at_level.pop()
             seen_barrier_at_level.pop()
