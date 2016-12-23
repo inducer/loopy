@@ -1511,70 +1511,62 @@ def barrier_kind_more_or_equally_global(kind1, kind2):
     return (kind1 == kind2) or (kind1 == "global" and kind2 == "local")
 
 
-def insn_ids_with_path_to_end_without_intervening_barrier(schedule, kind):
-    insn_ids_killable_by_level = [set()]
+def insn_ids_reaching_end_without_intervening_barrier(schedule, kind):
+    return _insn_ids_reaching_end(schedule, kind, reverse=False)
+
+
+def insn_ids_reachable_from_start_without_intervening_barrier(schedule, kind):
+    return _insn_ids_reaching_end(schedule, kind, reverse=True)
+
+
+def _insn_ids_reaching_end(schedule, kind, reverse):
+    if reverse:
+        schedule = reversed(schedule)
+        enter_scope_item_kind = LeaveLoop
+        leave_scope_item_kind = EnterLoop
+    else:
+        enter_scope_item_kind = EnterLoop
+        leave_scope_item_kind = LeaveLoop
+
+    insn_ids_alive_at_scope = [set()]
 
     for sched_item in schedule:
-        if isinstance(sched_item, EnterLoop):
-            insn_ids_killable_by_level.append(set())
-        elif isinstance(sched_item, LeaveLoop):
-            end = insn_ids_killable_by_level.pop()
-            # Deeper instructions can be killed by barriers at a shallower
-            # level, e.g.:
+        if isinstance(sched_item, enter_scope_item_kind):
+            insn_ids_alive_at_scope.append(set())
+        elif isinstance(sched_item, leave_scope_item_kind):
+            innermost_scope = insn_ids_alive_at_scope.pop()
+            # Instructions in deeper scopes are alive but could be killed by
+            # barriers at a shallower level, e.g.:
             #
             # for i
             #     insn0
             # end
             # barrier()   <= kills insn0
             #
-            # On the other hand, we can't assume that shallower instructions can
-            # be killed by deeper barriers, since loops might be empty, e.g.:
+            # Hence we merge this scope into the parent scope.
+            insn_ids_alive_at_scope[-1].update(innermost_scope)
+        elif isinstance(sched_item, Barrier):
+            # This barrier kills only the instruction ids that are alive at
+            # the current scope (or deeper). Without further analysis, we
+            # can't assume that instructions at shallower scope can be
+            # killed by deeper barriers, since loops might be empty, e.g.:
             #
-            # insn0       <= isn't killed by barrier
+            # insn0          <= isn't killed by barrier (i loop could be empty)
             # for i
+            #     insn1      <= is killed by barrier
+            #     for j
+            #         insn2  <= is killed by barrier
+            #     end
             #     barrier()
             # end
-            insn_ids_killable_by_level[-1].update(end)
-        elif isinstance(sched_item, Barrier):
             if barrier_kind_more_or_equally_global(sched_item.kind, kind):
-                insn_ids_killable_by_level[-1].clear()
+                insn_ids_alive_at_scope[-1].clear()
         else:
-            insn_ids_killable_by_level[-1] |= set(
+            insn_ids_alive_at_scope[-1] |= set(
                     insn_id for insn_id in sched_item_to_insn_id(sched_item))
 
-    return insn_ids_killable_by_level[0]
-
-
-def insn_ids_reachable_from_start_without_intervening_barrier(schedule, kind):
-    seen_barrier_at_level = [False]
-    insn_ids_alive_at_level = [set()]
-    result = set()
-
-    for sched_item in schedule:
-        if isinstance(sched_item, EnterLoop):
-            insn_ids_alive_at_level.append(set())
-            # Barriers seen at the shallower level will also prevent
-            # instructions from being reached at the deeper level.
-            seen_barrier_at_level.append(seen_barrier_at_level[-1])
-        elif isinstance(sched_item, LeaveLoop):
-            result |= insn_ids_alive_at_level.pop()
-            seen_barrier_at_level.pop()
-        elif isinstance(sched_item, Barrier):
-            if barrier_kind_more_or_equally_global(sched_item.kind, kind):
-                seen_barrier_at_level[-1] = True
-        else:
-            if not seen_barrier_at_level[-1]:
-                insn_ids_alive_at_level[-1] |= set(
-                    insn_id for insn_id in sched_item_to_insn_id(sched_item))
-
-    return result | insn_ids_alive_at_level[-1]
-
-
-def insn_ids_from_schedule(schedule):
-    from itertools import chain
-    return chain.from_iterable(
-            sched_item_to_insn_id(sched_item)
-            for sched_item in schedule)
+    assert len(insn_ids_alive_at_scope) == 1
+    return insn_ids_alive_at_scope[-1]
 
 
 def append_barrier_or_raise_error(schedule, dep, verify_only):
@@ -1617,7 +1609,7 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
             # Populate the dependency tracker with sources from the tail end of
             # the schedule block.
             for insn_id in (
-                    insn_ids_with_path_to_end_without_intervening_barrier(
+                    insn_ids_reaching_end_without_intervening_barrier(
                         schedule, kind)):
                 dep_tracker.add_source(insn_id)
 
@@ -1635,7 +1627,7 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
                         subloop, kind))
 
                 loop_tail = (
-                    insn_ids_with_path_to_end_without_intervening_barrier(
+                    insn_ids_reaching_end_without_intervening_barrier(
                         subloop, kind))
 
                 # Checks if a barrier is needed before the loop. This handles
