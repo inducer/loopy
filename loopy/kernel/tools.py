@@ -527,7 +527,9 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
             lines.append("%s -> %s" % (insn_2, insn_1))
 
     if iname_cluster:
-        from loopy.schedule import EnterLoop, LeaveLoop, RunInstruction, Barrier
+        from loopy.schedule import (
+                EnterLoop, LeaveLoop, RunInstruction, Barrier,
+                CallKernel, ReturnFromKernel)
 
         for sched_item in kernel.schedule:
             if isinstance(sched_item, EnterLoop):
@@ -537,7 +539,7 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
                 lines.append("}")
             elif isinstance(sched_item, RunInstruction):
                 lines.append(sched_item.insn_id)
-            elif isinstance(sched_item, Barrier):
+            elif isinstance(sched_item, (CallKernel, ReturnFromKernel, Barrier)):
                 pass
             else:
                 raise LoopyError("schedule item not unterstood: %r" % sched_item)

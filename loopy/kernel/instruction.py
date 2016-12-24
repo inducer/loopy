@@ -440,7 +440,8 @@ class InstructionBase(ImmutableRecord):
 
         from loopy.tools import intern_frozenset_of_ids
 
-        self.id = intern(self.id)
+        if self.id is not None:
+            self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
@@ -992,6 +993,13 @@ class CallInstruction(MultiAssignmentBase):
                         key_hash, getattr(self, field_name))
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
+
+    @property
+    def atomicity(self):
+        # Function calls can impossibly be atomic, and even the result assignment
+        # is troublesome, especially in the case of multiple results. Avoid the
+        # issue altogether by disallowing atomicity.
+        return ()
 
 # }}}
 

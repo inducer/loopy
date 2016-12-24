@@ -102,6 +102,28 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
         assert "double" not in code
 
 
+def test_type_inference_with_type_dependencies():
+    knl = lp.make_kernel(
+            "{[i]: i=0}",
+            """
+            <>a = 99
+            a = a + 1
+            <>b = 0
+            <>c = 1
+            b = b + c + 1.0
+            c = b + c
+            <>d = b + 2 + 1j
+            """,
+            "...")
+    knl = lp.infer_unknown_types(knl)
+
+    from loopy.types import to_loopy_type
+    assert knl.temporary_variables["a"].dtype == to_loopy_type(np.int32)
+    assert knl.temporary_variables["b"].dtype == to_loopy_type(np.float32)
+    assert knl.temporary_variables["c"].dtype == to_loopy_type(np.float32)
+    assert knl.temporary_variables["d"].dtype == to_loopy_type(np.complex128)
+
+
 def test_sized_and_complex_literals(ctx_factory):
     ctx = ctx_factory()
 
@@ -1971,6 +1993,52 @@ def test_integer_reduction(ctx_factory):
             _, (out,) = knl(queue, out_host=True)
 
             assert function(out)
+
+
+def assert_barrier_between(knl, id1, id2):
+    from loopy.schedule import RunInstruction, Barrier
+    watch_for_barrier = False
+    seen_barrier = False
+
+    for sched_item in knl.schedule:
+        if isinstance(sched_item, RunInstruction):
+            if sched_item.insn_id == id1:
+                watch_for_barrier = True
+            elif sched_item.insn_id == id2:
+                assert watch_for_barrier
+                assert seen_barrier
+                return
+        if isinstance(sched_item, Barrier):
+            if watch_for_barrier:
+                seen_barrier = True
+
+    raise RuntimeError("id2 was not seen")
+
+
+def test_barrier_insertion_near_top_of_loop():
+    knl = lp.make_kernel(
+        "{[i,j]: 0 <= i,j < 10 }",
+        """
+        for i
+         <>a[i] = i  {id=ainit}
+         for j
+          <>t = a[(i + 1) % 10]  {id=tcomp}
+          <>b[i,j] = a[i] + t   {id=bcomp1}
+          b[i,j] = b[i,j] + 1  {id=bcomp2}
+         end
+        end
+        """,
+        seq_dependencies=True)
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.set_temporary_scope(knl, "a", "local")
+    knl = lp.set_temporary_scope(knl, "b", "local")
+    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+
+    print(knl)
+
+    assert_barrier_between(knl, "ainit", "tcomp")
+    assert_barrier_between(knl, "tcomp", "bcomp1")
+    assert_barrier_between(knl, "bcomp1", "bcomp2")
 
 
 if __name__ == "__main__":

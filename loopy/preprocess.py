@@ -738,52 +738,43 @@ def find_idempotence(kernel):
             (insn.id, insn.read_dependency_names() & var_names)
             for insn in kernel.instructions)
 
-    non_idempotently_updated_vars = set()
+    from collections import defaultdict
+    dep_graph = defaultdict(lambda: set())
 
-    # FIXME: This can be made more efficient by simply starting
-    # from all written variables and not even considering
-    # instructions as the start of the first pass.
+    for insn in kernel.instructions:
+        dep_graph[insn.id] = set(writer_id
+                for var in reads_map[insn.id]
+                for writer_id in writer_map.get(var, set()))
+
+    # Find SCCs of dep_graph. These are used for checking if the instruction is
+    # in a dependency cycle.
+    from loopy.tools import compute_sccs
+
+    sccs = dict((item, scc)
+            for scc in compute_sccs(dep_graph)
+            for item in scc)
+
+    non_idempotently_updated_vars = set()
 
     new_insns = []
     for insn in kernel.instructions:
-        all_my_var_writers = set()
-        for var in reads_map[insn.id]:
-            var_writers = writer_map.get(var, set())
-            all_my_var_writers |= var_writers
-
-        # {{{ find dependency loops, flag boostability
-
-        while True:
-            last_all_my_var_writers = all_my_var_writers
-
-            for writer_insn_id in last_all_my_var_writers:
-                for var in reads_map[writer_insn_id]:
-                    all_my_var_writers = \
-                            all_my_var_writers | writer_map.get(var, set())
-
-            if last_all_my_var_writers == all_my_var_writers:
-                break
-
-        # }}}
-
-        boostable = insn.id not in all_my_var_writers
+        boostable = len(sccs[insn.id]) == 1 and insn.id not in dep_graph[insn.id]
 
         if not boostable:
             non_idempotently_updated_vars.update(
                     insn.assignee_var_names())
 
-        insn = insn.copy(boostable=boostable)
-
-        new_insns.append(insn)
+        new_insns.append(insn.copy(boostable=boostable))
 
     # {{{ remove boostability from isns that access non-idempotently updated vars
 
     new2_insns = []
     for insn in new_insns:
-        accessed_vars = insn.dependency_names()
-        boostable = insn.boostable and not bool(
-                non_idempotently_updated_vars & accessed_vars)
-        new2_insns.append(insn.copy(boostable=boostable))
+        if insn.boostable and bool(
+                non_idempotently_updated_vars & insn.dependency_names()):
+            new2_insns.append(insn.copy(boostable=False))
+        else:
+            new2_insns.append(insn)
 
     # }}}
 

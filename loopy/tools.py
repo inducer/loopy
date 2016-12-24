@@ -281,6 +281,65 @@ def empty_aligned(shape, dtype, order='C', n=64):
 # }}}
 
 
+# {{{ compute SCCs with Tarjan's algorithm
+
+def compute_sccs(graph):
+    to_search = set(graph.keys())
+    visit_order = {}
+    scc_root = {}
+    sccs = []
+
+    while to_search:
+        top = next(iter(to_search))
+        call_stack = [(top, iter(graph[top]), None)]
+        visit_stack = []
+        visiting = set()
+
+        scc = []
+
+        while call_stack:
+            top, children, last_popped_child = call_stack.pop()
+
+            if top not in visiting:
+                # Unvisited: mark as visited, initialize SCC root.
+                count = len(visit_order)
+                visit_stack.append(top)
+                visit_order[top] = count
+                scc_root[top] = count
+                visiting.add(top)
+                to_search.discard(top)
+
+            # Returned from a recursion, update SCC.
+            if last_popped_child is not None:
+                scc_root[top] = min(
+                    scc_root[top],
+                    scc_root[last_popped_child])
+
+            for child in children:
+                if child not in visit_order:
+                    # Recurse.
+                    call_stack.append((top, children, child))
+                    call_stack.append((child, iter(graph[child]), None))
+                    break
+                if child in visiting:
+                    scc_root[top] = min(
+                        scc_root[top],
+                        visit_order[child])
+            else:
+                if scc_root[top] == visit_order[top]:
+                    scc = []
+                    while visit_stack[-1] != top:
+                        scc.append(visit_stack.pop())
+                    scc.append(visit_stack.pop())
+                    for item in scc:
+                        visiting.remove(item)
+                    sccs.append(scc)
+
+    return sccs
+
+# }}}
+
+
 def is_interned(s):
     return s is None or intern(s) is s
 
