@@ -1957,7 +1957,7 @@ def get_one_scheduled_kernel(kernel):
 
     if CACHING_ENABLED:
         try:
-            result, ambiguous = schedule_cache[sched_cache_key]
+            result = schedule_cache[sched_cache_key]
 
             logger.debug("%s: schedule cache hit" % kernel.name)
             from_cache = True
@@ -1965,38 +1965,18 @@ def get_one_scheduled_kernel(kernel):
             pass
 
     if not from_cache:
-        ambiguous = False
-
-        kernel_count = 0
-
         from time import time
         start_time = time()
 
         logger.info("%s: schedule start" % kernel.name)
 
-        for scheduled_kernel in generate_loop_schedules(kernel):
-            kernel_count += 1
-
-            if kernel_count == 1:
-                # use the first schedule
-                result = scheduled_kernel
-
-            if kernel_count == 2:
-                ambiguous = True
-                break
+        result = next(iter(generate_loop_schedules(kernel)))
 
         logger.info("%s: scheduling done after %.2f s" % (
             kernel.name, time()-start_time))
 
-    if ambiguous:
-        from warnings import warn
-        from loopy.diagnostic import LoopyWarning
-        warn("scheduling for kernel '%s' was ambiguous--more than one "
-                "schedule found, ignoring" % kernel.name, LoopyWarning,
-                stacklevel=2)
-
     if CACHING_ENABLED and not from_cache:
-        schedule_cache[sched_cache_key] = result, ambiguous
+        schedule_cache[sched_cache_key] = result
 
     return result
 
