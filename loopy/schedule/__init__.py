@@ -1385,8 +1385,43 @@ class DependencyRecord(ImmutableRecord):
 
 
 class DependencyTracker(object):
+    """
+    A utility to help track dependencies between originating from a set
+    of sources (as defined by :meth:`add_source`. For each target,
+    dependencies can then be obtained using :meth:`gen_dependencies_with_target_at`.
+
+    .. automethod:: add_source
+    .. automethod:: gen_dependencies_with_target_at
+    """
 
     def __init__(self, kernel, var_kind, reverse):
+        """
+        :arg var_kind: "global" or "local", the kind of variable based on which
+            barrier-needing dependencies should be found.
+        :arg reverse:
+            In straight-line code, this  only tracks 'b depends on
+            a'-type 'forward' dependencies. But a loop of the type::
+
+                for i in range(10):
+                    A
+                    B
+
+            effectively glues multiple copies of 'A;B' one after the other::
+
+                A
+                B
+                A
+                B
+                ...
+
+            Now, if B depends on (i.e. is required to be textually before) A in a
+            way requiring a barrier, then we will assume that the reverse
+            dependency exists as well, i.e. a barrier between the tail end of
+            execution of B and the next beginning of A is also needed.
+
+            Setting *reverse* to *True* tracks these reverse (instead of forward)
+            dependencies.
+        """
         self.kernel = kernel
         self.reverse = reverse
         self.var_kind = var_kind
@@ -1432,9 +1467,13 @@ class DependencyTracker(object):
                 source.read_dependency_names() & self.relevant_vars):
             self.reader_map[read].add(source.id)
 
-    def get_dependencies_with_target_at(self, target):
+    def gen_dependencies_with_target_at(self, target):
         """
-        Generate all dependencies edges whose target is the given instruction.
+        Generate :class:`DependencyRecord` instances for dependencies edges
+        whose target is the given instruction.
+
+        :arg target: The ID of the instruction for which dependencies
+            with conflicting var access should be found.
         """
         # If target is an insn ID, look up the actual instruction.
         target = self.kernel.id_to_insn.get(target, target)
@@ -1641,7 +1680,7 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
                 #     ...
                 from itertools import chain
                 for dep in chain.from_iterable(
-                        dep_tracker.get_dependencies_with_target_at(insn)
+                        dep_tracker.gen_dependencies_with_target_at(insn)
                         for insn in loop_head):
                     append_barrier_or_raise_error(result, dep, verify_only)
                     # This barrier gets inserted outside the loop, hence it is
@@ -1672,7 +1711,7 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
                 i += 1
 
             elif isinstance(sched_item, RunInstruction):
-                for dep in dep_tracker.get_dependencies_with_target_at(
+                for dep in dep_tracker.gen_dependencies_with_target_at(
                         sched_item.insn_id):
                     append_barrier_or_raise_error(result, dep, verify_only)
                     dep_tracker.discard_all_sources()
@@ -1693,9 +1732,7 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 
     # }}}
 
-    #################################################
-    # Part 1: Recursively insert barriers in loops. #
-    #################################################
+    # {{{ recursively insert barriers in loops
 
     result = []
     i = 0
@@ -1720,32 +1757,12 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
             raise ValueError("unexpected schedule item type '%s'"
                     % type(sched_item).__name__)
 
-    ###################################################
-    # Part 2: Insert barriers at the outermost level. #
-    ###################################################
+    # }}}
 
     result = insert_barriers_at_outer_level(result)
+
     # When level = 0 there is no loop.
     if level != 0:
-        # In straight-line code, we have only 'b depends on a'-type 'forward'
-        # dependencies. But a loop of the type
-        #
-        # for i in range(10):
-        #     A
-        #     B
-        #
-        # effectively glues multiple copies of 'A;B' one after the other:
-        #
-        # A
-        # B
-        # A
-        # B
-        # ...
-        #
-        # Now, if B depends on (i.e. is required to be textually before) A in a
-        # way requiring a barrier, then we will assume that the reverse
-        # dependency exists as well, i.e. a barrier between the tail end of
-        # execution of B and the next beginning of A is also needed.
         result = insert_barriers_at_outer_level(result, reverse=True)
 
     return result
