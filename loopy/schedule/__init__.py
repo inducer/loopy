@@ -1483,21 +1483,19 @@ class DependencyTracker(object):
         tgt_read = self.map_to_base_storage(
             target.read_dependency_names() & self.relevant_vars)
 
-        for (accessed_vars, accessor_map, ignore_self) in [
-                (tgt_read, self.writer_map, False),
-                (tgt_write, self.reader_map, False),
-                (tgt_write, self.writer_map, True)]:
+        for (accessed_vars, accessor_map) in [
+                (tgt_read, self.writer_map),
+                (tgt_write, self.reader_map),
+                (tgt_write, self.writer_map)]:
 
             for dep in self.get_conflicting_accesses(
-                    accessed_vars, accessor_map, ignore_self, target.id):
+                    accessed_vars, accessor_map, target.id):
                 yield dep
 
     def get_conflicting_accesses(
-            self, accessed_vars, var_to_accessor_map, ignore_self, target):
+            self, accessed_vars, var_to_accessor_map, target):
 
         def determine_conflict_nature(source, target):
-            if ignore_self and source == target:
-                return None
             if (not self.reverse and source in
                     self.kernel.get_nosync_set(target, scope=self.var_kind)):
                 return None
