@@ -1,8 +1,6 @@
 """Loop nest build top-level control/hoisting."""
 
-from __future__ import division
-from __future__ import absolute_import
-import six
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -26,6 +24,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+
+import six
 
 from loopy.codegen.result import merge_codegen_results, wrap_in_if
 import islpy as isl
@@ -464,12 +464,15 @@ def build_loop_nest(codegen_state, schedule_index):
 
             if bounds_checks or pred_checks:
                 from loopy.symbolic import constraint_to_cond_expr
+                from loopy.codegen.bounds import rewrite_loop_bound_expression
 
                 prev_gen_code = gen_code
 
                 def gen_code(inner_codegen_state):
                     condition_exprs = [
-                            constraint_to_cond_expr(cns)
+                            rewrite_loop_bound_expression(
+                                kernel,
+                                constraint_to_cond_expr(cns))
                             for cns in bounds_checks] + [
                                 pred_chk for pred_chk in pred_checks]
 

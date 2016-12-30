@@ -170,7 +170,10 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
 
     return kernel.copy(
         temporary_variables=new_temp_vars,
-        instructions=new_insns)
+        instructions=new_insns,
+        loop_bound_expression_rewriters=(
+            kernel.loop_bound_expression_rewriters
+            + (eiii,)))
 
 # }}}
 

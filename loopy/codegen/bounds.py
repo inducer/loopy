@@ -27,6 +27,13 @@ import islpy as isl
 from islpy import dim_type
 
 
+def rewrite_loop_bound_expression(kernel, expr):
+    for rewriter in kernel.loop_bound_expression_rewriters:
+        expr = rewriter(expr)
+
+    return expr
+
+
 # {{{ approximate, convex bounds check generator
 
 def get_approximate_convex_bounds_checks(domain, check_inames, implemented_domain):

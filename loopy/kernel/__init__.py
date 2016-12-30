@@ -147,6 +147,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     .. attribute:: silenced_warnings
 
+    .. attribute:: loop_bound_expression_rewriters
+
+        A tuple of expression mappings that need to be applied to loop bound
+        expressions once generated. This is necessary, for example, to
+        capture ILP-based rewritings of data-dependent loop bounds.
+
     .. attribute:: applied_iname_rewrites
 
         A list of past substitution dictionaries that
@@ -189,6 +195,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             silenced_warnings=[],
 
             applied_iname_rewrites=[],
+            loop_bound_expression_rewriters=(),
             cache_manager=None,
             index_dtype=np.int32,
             options=None,
@@ -279,7 +286,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
-        ImmutableRecordWithoutPickling.__init__(self,
+        super(LoopKernel, self).__init__(
                 domains=domains,
                 instructions=instructions,
                 args=args,
@@ -297,6 +304,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 substitutions=substitutions,
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
+                loop_bound_expression_rewriters=loop_bound_expression_rewriters,
                 function_manglers=function_manglers,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,

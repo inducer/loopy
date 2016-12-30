@@ -349,7 +349,8 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
     slabs = get_slab_decomposition(kernel, loop_iname)
 
-    from loopy.codegen.bounds import get_usable_inames_for_conditional
+    from loopy.codegen.bounds import (
+            get_usable_inames_for_conditional, rewrite_loop_bound_expression)
 
     # Note: this does not include loop_iname itself!
     usable_inames = get_usable_inames_for_conditional(kernel, sched_index)
@@ -451,7 +452,8 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                 astb.emit_initializer(
                     codegen_state,
                     kernel.index_dtype, loop_iname,
-                    ecm(pw_aff_to_expr(lbound), PREC_NONE, "i"),
+                    ecm(rewrite_loop_bound_expression(kernel,
+                        pw_aff_to_expr(lbound), PREC_NONE, "i")),
                     is_const=True),
                 astb.emit_blank_line(),
                 inner,
@@ -469,7 +471,11 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                     codegen_state,
                     astb.emit_sequential_loop(
                         codegen_state, loop_iname, kernel.index_dtype,
-                        pw_aff_to_expr(lbound), pw_aff_to_expr(ubound), inner_ast)))
+                        rewrite_loop_bound_expression(kernel,
+                            pw_aff_to_expr(lbound)),
+                        rewrite_loop_bound_expression(kernel,
+                            pw_aff_to_expr(ubound)),
+                        inner_ast)))
 
     return merge_codegen_results(codegen_state, result)
 
