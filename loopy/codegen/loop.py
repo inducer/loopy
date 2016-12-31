@@ -452,8 +452,11 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                 astb.emit_initializer(
                     codegen_state,
                     kernel.index_dtype, loop_iname,
-                    ecm(rewrite_loop_bound_expression(kernel,
-                        pw_aff_to_expr(lbound), PREC_NONE, "i")),
+                    ecm(
+                        rewrite_loop_bound_expression(
+                            kernel,
+                            pw_aff_to_expr(lbound)),
+                        PREC_NONE, "i"),
                     is_const=True),
                 astb.emit_blank_line(),
                 inner,
