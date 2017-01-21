@@ -608,6 +608,61 @@ def test_poisson_fem(ctx_factory):
                 parameters=dict(n=5, nels=15, nbf=5, sdim=2, nqp=7))
 
 
+def test_domain_tree_nesting():
+    # From https://github.com/inducer/loopy/issues/78
+    from loopy.kernel.data import temp_var_scope as scopes
+
+    out_map = np.array([1, 2], dtype=np.int32)
+    if_val = np.array([-1, 0], dtype=np.int32)
+    vals = np.array([2, 3], dtype=np.int32)
+    num_vals = np.array([2, 4], dtype=np.int32)
+    num_vals_offset = np.array(np.cumsum(num_vals) - num_vals, dtype=np.int32)
+
+    TV = lp.TemporaryVariable  # noqa
+
+    knl = lp.make_kernel(['{[i]: 0 <= i < 12}',
+                    '{[j]: 0 <= j < 100}',
+                    '{[a_count]: 0 <= a_count < a_end}',
+                    '{[b_count]: 0 <= b_count < b_end}'],
+    """
+    for j
+        for i
+            <> a_end = abs(if_val[i])
+
+            <>b_end = num_vals[i]
+            <>offset = num_vals_offset[i] {id=offset}
+            <>b_sum = 0 {id=b_init}
+            for b_count
+                <>val = vals[offset + b_count] {dep=offset}
+            end
+            b_sum = exp(b_sum) {id=b_final, dep=b_accum}
+
+            out[j,i] =  b_sum {dep=a_accum:b_final}
+        end
+    end
+    """,
+    [
+        TV('out_map', initializer=out_map, read_only=True, scope=scopes.PRIVATE),
+        TV('if_val', initializer=if_val, read_only=True, scope=scopes.PRIVATE),
+        TV('vals', initializer=vals, read_only=True, scope=scopes.PRIVATE),
+        TV('num_vals', initializer=num_vals, read_only=True, scope=scopes.PRIVATE),
+        TV('num_vals_offset', initializer=num_vals_offset, read_only=True,
+            scope=scopes.PRIVATE),
+        lp.GlobalArg('B', shape=(100, 31), dtype=np.float64),
+        lp.GlobalArg('out', shape=(100, 12), dtype=np.float64)])
+
+    parents_per_domain = knl.parents_per_domain()
+
+    def depth(i):
+        if parents_per_domain[i] is None:
+            return 0
+        else:
+            return 1 + depth(parents_per_domain[i])
+
+    for i in range(len(parents_per_domain)):
+        assert depth(i) < 2
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
