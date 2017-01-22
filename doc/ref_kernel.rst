@@ -248,8 +248,8 @@ These are usually key-value pairs. The following attributes are recognized:
   expression is used to match instructions in the kernel and add them as
   dependencies.
 
-* ``nosync=id1:id2`` prescribes that no barrier synchronization is necessary
-  the instructions with identifiers ``id1`` and ``id2`` to the, even if
+* ``nosync=id1:id2`` prescribes that no barrier synchronization is
+  necessary the instructions with identifiers ``id1`` and ``id2``, even if
   a dependency chain exists and variables are accessed in an apparently
   racy way.
 
@@ -257,8 +257,24 @@ These are usually key-value pairs. The following attributes are recognized:
   function :func:`fnmatch.fnmatchcase`. This is helpful in conjunction with
   ``id_prefix``.
 
+  Identifiers (including wildcards) accept an optional `@scope` suffix,
+  which prescribes that no synchronization at level *scope* is needed.
+  This does not preclude barriers at levels different from *scope*.
+  Allowable scope values are:
+
+  * `local`
+  * `global`
+  * `any`
+
+  As an example, ``nosync=id1@local:id2@global`` prescribes that no local
+  synchronization is needed with instruction ``id1`` and no global
+  synchronization is needed with instruction ``id2``.
+
+  ``nosync=id1@any`` has the same effect as ``nosync=id1``.
+
 * ``nosync_query=...`` provides an alternative way of specifying ``nosync``,
-  just like ``dep_query`` and ``dep``.
+  just like ``dep_query`` and ``dep``. As with ``nosync``, ``nosync_query``
+  accepts an optional `@scope` suffix.
 
 * ``priority=integer`` sets the instructions priority to the value
   ``integer``. Instructions with higher priority will be scheduled sooner,
