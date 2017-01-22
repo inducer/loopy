@@ -248,19 +248,19 @@ These are usually key-value pairs. The following attributes are recognized:
   expression is used to match instructions in the kernel and add them as
   dependencies.
 
-* ``nosync=id1:id2`` prescribes that no barrier synchronization is
-  necessary the instructions with identifiers ``id1`` and ``id2``, even if
-  a dependency chain exists and variables are accessed in an apparently
-  racy way.
+* ``nosync=id1:id2`` prescribes that no barrier synchronization is necessary
+  for the instructions with identifiers ``id1`` and ``id2``, even if a
+  dependency chain exists and variables are accessed in an apparently racy
+  way.
 
   Identifiers here are allowed to be wildcards as defined by the Python
   function :func:`fnmatch.fnmatchcase`. This is helpful in conjunction with
   ``id_prefix``.
 
   Identifiers (including wildcards) accept an optional `@scope` suffix,
-  which prescribes that no synchronization at level *scope* is needed.
-  This does not preclude barriers at levels different from *scope*.
-  Allowable scope values are:
+  which prescribes that no synchronization at level `scope` is needed.
+  This does not preclude barriers at levels different from `scope`.
+  Allowable `scope` values are:
 
   * `local`
   * `global`
