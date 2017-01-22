@@ -1116,6 +1116,20 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         sep = 75*"-"
 
+        def natorder(key):
+            # Return natural ordering for strings, as opposed to dictionary order.
+            # E.g. will result in
+            #  'abc1' < 'abc9' < 'abc10'
+            # rather than
+            #  'abc1' < 'abc10' < 'abc9'
+            # Based on
+            # http://code.activestate.com/recipes/285264-natural-string-sorting/#c7
+            import re
+            return [int(n) if n else s for n, s in re.findall(r'(\d+)|(\D+)', key)]
+
+        def natsorted(seq, key=lambda x: x):
+            return sorted(seq, key=lambda y: natorder(key(y)))
+
         if "name" in what:
             lines.append(sep)
             lines.append("KERNEL: " + kernel.name)
@@ -1123,7 +1137,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if "arguments" in what:
             lines.append(sep)
             lines.append("ARGUMENTS:")
-            for arg_name in sorted(kernel.arg_dict):
+            for arg_name in natsorted(kernel.arg_dict):
                 lines.append(str(kernel.arg_dict[arg_name]))
 
         if "domains" in what:
@@ -1135,21 +1149,21 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if "tags" in what:
             lines.append(sep)
             lines.append("INAME IMPLEMENTATION TAGS:")
-            for iname in sorted(kernel.all_inames()):
+            for iname in natsorted(kernel.all_inames()):
                 line = "%s: %s" % (iname, kernel.iname_to_tag.get(iname))
                 lines.append(line)
 
         if "variables" in what and kernel.temporary_variables:
             lines.append(sep)
             lines.append("TEMPORARIES:")
-            for tv in sorted(six.itervalues(kernel.temporary_variables),
+            for tv in natsorted(six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
                 lines.append(str(tv))
 
         if "rules" in what and kernel.substitutions:
             lines.append(sep)
             lines.append("SUBSTIUTION RULES:")
-            for rule_name in sorted(six.iterkeys(kernel.substitutions)):
+            for rule_name in natsorted(six.iterkeys(kernel.substitutions)):
                 lines.append(str(kernel.substitutions[rule_name]))
 
         if "instructions" in what:
@@ -1167,7 +1181,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     return
                 printed_insn_ids.add(insn.id)
 
-                for dep_id in sorted(insn.depends_on):
+                for dep_id in natsorted(insn.depends_on):
                     insert_insn_into_order(kernel.id_to_insn[dep_id])
 
                 printed_insn_order.append(insn)
@@ -1214,7 +1228,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     raise LoopyError("unexpected instruction type: %s"
                             % type(insn).__name__)
 
-                loop_list = ",".join(sorted(kernel.insn_inames(insn)))
+                loop_list = ",".join(natsorted(kernel.insn_inames(insn)))
 
                 options = [Fore.GREEN+insn.id+Style.RESET_ALL]
                 if insn.priority:
