@@ -38,6 +38,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _debug(kernel, s, *args):
+    if logger.isEnabledFor(logging.DEBUG):
+        logstr = s % args
+        logger.debug("%s: %s" % (kernel.name, logstr))
+
+
 # {{{ type inference mapper
 
 class TypeInferenceMapper(CombineMapper):
@@ -378,8 +384,8 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if var_name in kernel.all_params():
         return [kernel.index_dtype], []
 
-    def debug(s):
-        logger.debug("%s: %s" % (kernel.name, s))
+    from functools import partial
+    debug = partial(_debug, kernel)
 
     dtype_sets = []
 
@@ -394,7 +400,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
         expr = subst_expander(writer_insn.expression)
 
-        debug("             via expr %s" % expr)
+        debug("             via expr %s", expr)
         if isinstance(writer_insn, lp.Assignment):
             result = type_inf_mapper(expr, return_dtype_set=True)
         elif isinstance(writer_insn, lp.CallInstruction):
@@ -416,7 +422,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
                 if result_i is not None:
                     result.append(result_i)
 
-        debug("             result: %s" % result)
+        debug("             result: %s", result)
 
         dtype_sets.append(result)
 
@@ -457,11 +463,11 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     logger.debug("%s: infer types" % kernel.name)
 
+    from functools import partial
+    debug = partial(_debug, kernel)
+
     import time
     start_time = time.time()
-
-    def debug(s):
-        logger.debug("%s: %s" % (kernel.name, s))
 
     unexpanded_kernel = kernel
     if kernel.substitutions:
@@ -542,7 +548,7 @@ def infer_unknown_types(kernel, expect_completion=False):
             name = queue.pop(0)
             item = item_lookup[name]
 
-            debug("inferring type for %s %s" % (type(item).__name__, item.name))
+            debug("inferring type for %s %s", type(item).__name__, item.name)
 
             result, symbols_with_unavailable_types = (
                     _infer_var_type(
@@ -551,9 +557,9 @@ def infer_unknown_types(kernel, expect_completion=False):
             failed = not result
             if not failed:
                 new_dtype, = result
-                debug("     success: %s" % new_dtype)
+                debug("     success: %s", new_dtype)
                 if new_dtype != item.dtype:
-                    debug("     changed from: %s" % item.dtype)
+                    debug("     changed from: %s", item.dtype)
                     changed_during_last_queue_run = True
 
                     if isinstance(item, TemporaryVariable):

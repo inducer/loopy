@@ -467,7 +467,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
             discard_level_count = 0
             while discard_level_count < len(iname_set_stack):
-                last_inames = iname_set_stack[-1-discard_level_count]
+                last_inames = (
+                        iname_set_stack[-1-discard_level_count])
+                if discard_level_count + 1 < len(iname_set_stack):
+                    last_inames = (
+                            last_inames - iname_set_stack[-2-discard_level_count])
 
                 if is_domain_dependent_on_inames(self, dom_idx, last_inames):
                     break
