@@ -249,7 +249,7 @@ These are usually key-value pairs. The following attributes are recognized:
   dependencies.
 
 * ``nosync=id1:id2`` prescribes that no barrier synchronization is necessary
-  due to the instructions with identifiers ``id1`` and ``id2``, even if a
+  for the instructions with identifiers ``id1`` and ``id2``, even if a
   dependency chain exists and variables are accessed in an apparently racy
   way.
 
