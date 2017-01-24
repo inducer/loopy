@@ -1075,6 +1075,21 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # {{{ pretty-printing
 
+    @memoize_method
+    def _get_iname_order_for_printing(self):
+        try:
+            from loopy.kernel.tools import get_visual_iname_order_embedding
+            embedding = get_visual_iname_order_embedding(self)
+        except ValueError:
+            from loopy.diagnostic import warn_with_kernel
+            warn_with_kernel(self,
+                "iname-order",
+                "LoopNestTracker could not determine a consistent iname "
+                "nesting order")
+            embedding = dict((iname, iname) for iname in self.all_inames())
+
+        return embedding
+
     def stringify(self, what=None, with_dependencies=False):
         all_what = set([
             "name",
@@ -1214,7 +1229,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     raise LoopyError("unexpected instruction type: %s"
                             % type(insn).__name__)
 
-                loop_list = ",".join(sorted(kernel.insn_inames(insn)))
+                order = self._get_iname_order_for_printing()
+                loop_list = ",".join(
+                    sorted(kernel.insn_inames(insn), key=lambda iname: order[iname]))
 
                 options = [Fore.GREEN+insn.id+Style.RESET_ALL]
                 if insn.priority:
