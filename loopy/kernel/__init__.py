@@ -1084,8 +1084,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             from loopy.diagnostic import warn_with_kernel
             warn_with_kernel(self,
                 "iname-order",
-                "LoopNestTracker could not determine a consistent iname "
-                "nesting order")
+                "get_visual_iname_order_embedding() could not determine a "
+                "consistent iname nesting order")
             embedding = dict((iname, iname) for iname in self.all_inames())
 
         return embedding
