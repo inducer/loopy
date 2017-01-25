@@ -1100,6 +1100,120 @@ def guess_var_shape(kernel, var_name):
 # }}}
 
 
+# {{{ loop nest tracker
+
+class SetTrie(object):
+    """
+    Similar to a trie, but uses an unordered sequence as the key.
+    """
+
+    def __init__(self, children=(), all_items=None):
+        self.children = dict(children)
+        # all_items should be shared within a trie.
+        if all_items is None:
+            self.all_items = set()
+        else:
+            self.all_items = all_items
+
+    def descend(self, on_found=lambda prefix: None, prefix=frozenset()):
+        on_found(prefix)
+        from six import iteritems
+        for prefix, child in sorted(
+                iteritems(self.children),
+                key=lambda it: sorted(it[0])):
+            child.descend(on_found, prefix=prefix)
+
+    def check_consistent_insert(self, items_to_insert):
+        if items_to_insert & self.all_items:
+            raise ValueError("inconsistent nesting")
+
+    def add_or_update(self, key):
+        if len(key) == 0:
+            return
+
+        from six import iteritems
+
+        for child_key, child in iteritems(self.children):
+            common = child_key & key
+            if common:
+                break
+        else:
+            # Key not found - insert new child
+            self.check_consistent_insert(key)
+            self.children[frozenset(key)] = SetTrie(all_items=self.all_items)
+            self.all_items.update(key)
+            return
+
+        if child_key <= key:
+            # child is a prefix of key:
+            child.add_or_update(key - common)
+        elif key < child_key:
+            # key is a strict prefix of child:
+            #
+            #  -[new child]
+            #     |
+            #   [child]
+            #
+            del self.children[child_key]
+            self.children[common] = SetTrie(
+                children={frozenset(child_key - common): child},
+                all_items=self.all_items)
+        else:
+            # key and child share a common prefix:
+            #
+            # -[new placeholder]
+            #      /        \
+            #  [new child]   [child]
+            #
+            self.check_consistent_insert(key - common)
+
+            del self.children[child_key]
+            self.children[common] = SetTrie(
+                children={
+                    frozenset(child_key - common): child,
+                    frozenset(key - common): SetTrie(all_items=self.all_items)},
+                all_items=self.all_items)
+            self.all_items.update(key - common)
+
+
+def get_visual_iname_order_embedding(kernel):
+    """
+    Return :class:`dict` `embedding` mapping inames to a totally ordered set of
+    values, such that `embedding[iname1] < embedding[iname2]` when `iname2`
+    is nested inside `iname1`.
+    """
+    from loopy.kernel.data import IlpBaseTag
+    # Ignore ILP tagged inames, since they do not have to form a strict loop
+    # nest.
+    ilp_inames = frozenset(
+        iname for iname in kernel.iname_to_tag
+        if isinstance(kernel.iname_to_tag[iname], IlpBaseTag))
+
+    iname_trie = SetTrie()
+
+    for insn in kernel.instructions:
+        within_inames = set(
+            iname for iname in insn.within_inames
+            if iname not in ilp_inames)
+        iname_trie.add_or_update(within_inames)
+
+    embedding = {}
+
+    def update_embedding(inames):
+        embedding.update(
+            dict((iname, (len(embedding), iname)) for iname in inames))
+
+    iname_trie.descend(update_embedding)
+
+    for iname in ilp_inames:
+        # Nest ilp_inames innermost, so they don't interrupt visual order.
+        embedding[iname] = (len(embedding), iname)
+
+    return embedding
+
+# }}}
+
+
 # {{{ find_recursive_dependencies
 
 def find_recursive_dependencies(kernel, insn_ids):
