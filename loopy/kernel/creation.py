@@ -394,7 +394,7 @@ ELSE_RE = re.compile("^\s*else\s*$")
 INSN_RE = re.compile(
         "^"
         "\s*"
-        "(?P<lhs>.+?)"
+        "(?P<lhs>[^{]+?)"
         "\s*(?<!\:)=\s*"
         "(?P<rhs>.+?)"
         "\s*?"
