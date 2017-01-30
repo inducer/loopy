@@ -1510,7 +1510,8 @@ def test_call_with_options(ctx_factory):
     from library_for_test import no_ret_f_mangler, no_ret_f_preamble_gen
     knl = lp.register_function_manglers(knl, [no_ret_f_mangler])
 
-    evt, _ = knl(queue)
+    print(lp.generate_code_v2(knl).device_code())
+
 
 # }}}
 
