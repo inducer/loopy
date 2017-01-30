@@ -1495,6 +1495,22 @@ def test_call_with_no_returned_value(ctx_factory):
 # }}}
 
 
+# {{{ call with no return values and options
+
+def test_call_with_options():
+    knl = lp.make_kernel(
+        "{:}",
+        "f() {id=init}"
+        )
+
+    from library_for_test import no_ret_f_mangler
+    knl = lp.register_function_manglers(knl, [no_ret_f_mangler])
+
+    print(lp.generate_code_v2(knl).device_code())
+
+# }}}
+
+
 def test_unschedulable_kernel_detection():
     knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
                          """
