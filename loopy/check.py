@@ -696,10 +696,10 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                     for i in range(insn_impl_domain.dim(dim_type.param)))
 
             lines = []
-            for kind, diff_set, gist_domain in [
-                    ("implemented, but not desired", i_minus_d,
+            for bigger, smaller, diff_set, gist_domain in [
+                    ("implemented", "desired", i_minus_d,
                         desired_domain.gist(insn_impl_domain)),
-                    ("desired, but not implemented", d_minus_i,
+                    ("desired", "implemented", d_minus_i,
                         insn_impl_domain.gist(desired_domain))]:
 
                 if diff_set.is_empty():
@@ -721,9 +721,11 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                         iname, pt.get_coordinate_val(tp, dim).to_python()))
 
                 lines.append(
-                        "sample point in %s: %s" % (kind, ", ".join(point_axes)))
+                        "sample point in %s but not %s: %s" % (
+                            bigger, smaller, ", ".join(point_axes)))
                 lines.append(
-                        "gist of %s: %s" % (kind, gist_domain))
+                        "gist of constraints in %s but not %s: %s" % (
+                            smaller, bigger, gist_domain))
 
             if code is not None:
                 print(79*"-")
