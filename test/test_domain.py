@@ -260,7 +260,8 @@ def test_dependent_loop_bounds_4():
 
     loopy_knl = lp.fix_parameters(loopy_knl, dim=3)
 
-    lp.generate_code_v2(loopy_knl)
+    with lp.CacheMode(False):
+        lp.generate_code_v2(loopy_knl)
 
 
 def test_independent_multi_domain(ctx_factory):
