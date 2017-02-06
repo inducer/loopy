@@ -423,6 +423,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                 impl_ubound)
 
         for moved_iname in moved_inames:
+            # move moved_iname to 'set' dim_type in impl_loop
             dt, idx = impl_loop.get_var_dict()[moved_iname]
             impl_loop = impl_loop.move_dims(
                     dim_type.set, impl_loop.dim(dim_type.set),
