@@ -376,7 +376,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # move inames that are usable into parameters
         moved_inames = []
-        for das_iname in dom_and_slab.get_var_names(dim_type.set):
+        for das_iname in sorted(dom_and_slab.get_var_names(dim_type.set)):
             if das_iname in usable_inames:
                 moved_inames.append(das_iname)
                 dt, idx = dom_and_slab.get_var_dict()[das_iname]
