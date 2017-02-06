@@ -220,7 +220,7 @@ def intersect_kernel_with_slab(kernel, slab, iname):
 
     domch = DomainChanger(kernel, (iname,))
     orig_domain = domch.get_original_domain()
-    orig_domain, slab = isl.align_two(orig_domain, slab)
+    orig_domain, slab = isl.align_two(slab, orig_domain)
     return domch.get_kernel_with(orig_domain & slab)
 
 
