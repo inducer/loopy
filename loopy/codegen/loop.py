@@ -220,7 +220,7 @@ def intersect_kernel_with_slab(kernel, slab, iname):
 
     domch = DomainChanger(kernel, (iname,))
     orig_domain = domch.get_original_domain()
-    orig_domain, slab = isl.align_two(orig_domain, slab)
+    orig_domain, slab = isl.align_two(slab, orig_domain)
     return domch.get_kernel_with(orig_domain & slab)
 
 
@@ -376,10 +376,10 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # move inames that are usable into parameters
         moved_inames = []
-        for iname in dom_and_slab.get_var_names(dim_type.set):
-            if iname in usable_inames:
-                moved_inames.append(iname)
-                dt, idx = dom_and_slab.get_var_dict()[iname]
+        for das_iname in sorted(dom_and_slab.get_var_names(dim_type.set)):
+            if das_iname in usable_inames:
+                moved_inames.append(das_iname)
+                dt, idx = dom_and_slab.get_var_dict()[das_iname]
                 dom_and_slab = dom_and_slab.move_dims(
                         dim_type.param, dom_and_slab.dim(dim_type.param),
                         dt, idx, 1)
@@ -422,8 +422,9 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                 impl_lbound,
                 impl_ubound)
 
-        for iname in moved_inames:
-            dt, idx = impl_loop.get_var_dict()[iname]
+        for moved_iname in moved_inames:
+            # move moved_iname to 'set' dim_type in impl_loop
+            dt, idx = impl_loop.get_var_dict()[moved_iname]
             impl_loop = impl_loop.move_dims(
                     dim_type.set, impl_loop.dim(dim_type.set),
                     dt, idx, 1)
@@ -432,7 +433,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                 codegen_state
                 .intersect(impl_loop)
                 .copy(kernel=intersect_kernel_with_slab(
-                    kernel, slab, iname)))
+                    kernel, slab, loop_iname)))
 
         inner = build_loop_nest(new_codegen_state, sched_index+1)
 
