@@ -229,6 +229,41 @@ def test_dependent_loop_bounds_3(ctx_factory):
         list(lp.generate_loop_schedules(knl_bad))
 
 
+def test_dependent_loop_bounds_4():
+    # https://gitlab.tiker.net/inducer/loopy/issues/23
+    import loopy as lp
+
+    loopy_knl = lp.make_kernel(
+        [
+            "{[a]: 0<=a<10}",
+            "{[b]: b_start<=b<b_end}",
+            "{[c,idim]: c_start<=c<c_end and 0<=idim<dim}",
+        ],
+        """
+        for a
+         <> b_start = 1
+         <> b_end = 2
+         for b
+          <> c_start = 1
+          <> c_end = 2
+
+          for c
+           ... nop
+          end
+
+          <>t[idim] = 1
+         end
+        end
+        """,
+        "...",
+        seq_dependencies=True)
+
+    loopy_knl = lp.fix_parameters(loopy_knl, dim=3)
+
+    with lp.CacheMode(False):
+        lp.generate_code_v2(loopy_knl)
+
+
 def test_independent_multi_domain(ctx_factory):
     dtype = np.dtype(np.float32)
     ctx = ctx_factory()
