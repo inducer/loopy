@@ -1624,15 +1624,30 @@ def _resolve_dependencies(knl, insn, deps):
     new_deps = []
 
     for dep in deps:
+        found_any = False
+
         if isinstance(dep, MatchExpressionBase):
             for new_dep in find_instructions(knl, dep):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
+                    found_any = True
         else:
             from fnmatch import fnmatchcase
             for other_insn in knl.instructions:
                 if fnmatchcase(other_insn.id, dep):
                     new_deps.append(other_insn.id)
+                    found_any = True
+
+        if not found_any:
+            raise LoopyError("instruction '%s' declared a depency on '%s', "
+                    "which did not resolve to any instruction present in the "
+                    "kernel '%s'"
+                    % (insn.id, dep, knl.name))
+
+    for dep_id in new_deps:
+        if dep_id not in knl.id_to_insn:
+            raise LoopyError("instruction '%s' depends on instruction id '%s', "
+                    "which was not found" % (insn.id, dep_id))
 
     return frozenset(new_deps)
 
