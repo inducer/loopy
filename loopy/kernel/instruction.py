@@ -224,7 +224,7 @@ class InstructionBase(ImmutableRecord):
 
         if isinstance(depends_on, str):
             depends_on = frozenset(
-                    s.strip() for s in depends_on.split() if s.strip())
+                    s.strip() for s in depends_on.split(",") if s.strip())
 
         if depends_on_is_final is None:
             depends_on_is_final = False
