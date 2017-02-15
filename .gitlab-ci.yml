@@ -85,18 +85,18 @@ Python 3.6 POCL:
   except:
   - tags
 
-# PyPy AMD CPU:
-#   script:
-#   - export PY_EXE=pypy
-#   - export PYOPENCL_TEST="amd:pu"
-#   - export EXTRA_INSTALL="numpy mako"
-#   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
-#   - ". ./build-and-test-py-project.sh"
-#   tags:
-#   - pypy
-#   - amd-cl-cpu
-#   except:
-#   - tags
+PyPy POCL:
+  script:
+  - export PY_EXE=pypy
+  - export PYOPENCL_TEST="portable"
+  - export EXTRA_INSTALL="numpy mako"
+  - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
+  - ". ./build-and-test-py-project.sh"
+  tags:
+  - pypy
+  - amd-cl-cpu
+  except:
+  - tags
 
 CentOS binary:
   script:
