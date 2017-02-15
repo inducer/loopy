@@ -635,9 +635,9 @@ def test_domain_tree_nesting():
             for b_count
                 <>val = vals[offset + b_count] {dep=offset}
             end
-            b_sum = exp(b_sum) {id=b_final, dep=b_accum}
+            b_sum = exp(b_sum) {id=b_final}
 
-            out[j,i] =  b_sum {dep=a_accum:b_final}
+            out[j,i] =  b_sum {dep=b_final}
         end
     end
     """,
