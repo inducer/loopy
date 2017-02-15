@@ -24,6 +24,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import sys
 import numpy as np
 
 from pytools import memoize_method
@@ -45,7 +46,7 @@ class vec:  # noqa
 def _create_vector_types():
     field_names = ["x", "y", "z", "w"]
 
-    if tuple.__itemsize__ * 8 == 32:
+    if sys.maxsize == 2**32-1:
         long_dtype = np.int32
         ulong_dtype = np.uint32
     else:
