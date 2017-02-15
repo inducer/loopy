@@ -1273,14 +1273,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                     core = Fore.MAGENTA+rhs+Style.RESET_ALL
 
                 if len(loop_list) > loop_list_width:
-                    lines.append("%s[%s]" % (arrows, loop_list))
-                    lines.append("%s%s%s   # %s" % (
+                    lines.append("%s [%s]" % (arrows, loop_list))
+                    lines.append("%s %s%s   # %s" % (
                         extender,
                         (loop_list_width+2)*" ",
                         core,
                         ", ".join(options)))
                 else:
-                    lines.append("%s[%s]%s%s   # %s" % (
+                    lines.append("%s [%s]%s%s   # %s" % (
                         arrows,
                         loop_list, " "*(loop_list_width-len(loop_list)),
                         core,
