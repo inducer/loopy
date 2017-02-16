@@ -1183,7 +1183,7 @@ def draw_dependencies_as_unicode_arrows(
     def make_extender():
         result = n_columns[0] * [" "]
         for col, (_, updown) in six.iteritems(columns_in_use):
-            result[col] = do_flag_downward("│", updown)
+            result[col] = do_flag_downward(u"│", updown)
 
         return result
 
@@ -1198,7 +1198,7 @@ def draw_dependencies_as_unicode_arrows(
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
                 columns_in_use[col] = (rdep, "up")
-                row[col] = "↱"
+                row[col] = u"↱"
 
         for dep in insn.depends_on:
             assert dep != insn.id
@@ -1206,15 +1206,15 @@ def draw_dependencies_as_unicode_arrows(
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
                 columns_in_use[col] = (dep, "down")
-                row[col] = do_flag_downward("┌", "down")
+                row[col] = do_flag_downward(u"┌", "down")
 
         for col, (end, updown) in list(six.iteritems(columns_in_use)):
             if insn.id == end:
                 del columns_in_use[col]
                 if updown == "up":
-                    row[col] = "└"
+                    row[col] = u"└"
                 else:
-                    row[col] = do_flag_downward("↳", updown)
+                    row[col] = do_flag_downward(u"↳", updown)
 
         extender = make_extender()
 

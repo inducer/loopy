@@ -1280,6 +1280,13 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return "\n".join(lines)
 
     def __str__(self):
+        if six.PY3:
+            return self.stringify()
+        else:
+            # Path of least resistance...
+            return self.stringify().encode("utf-8")
+
+    def __unicode__(self):
         return self.stringify()
 
     # }}}
