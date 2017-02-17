@@ -348,8 +348,6 @@ class _PickledObjectWrapper(object):
     A class meant to wrap a pickled value (for :class:`LazilyUnpicklingDictionary`).
     """
 
-    __slots__ = ["objstring"]
-
     @classmethod
     def from_object(cls, obj):
         if isinstance(obj, cls):
@@ -363,6 +361,9 @@ class _PickledObjectWrapper(object):
     def unpickle(self):
         from pickle import loads
         return loads(self.objstring)
+
+    def __getstate__(self):
+        return {"objstring": self.objstring}
 
 
 import collections
