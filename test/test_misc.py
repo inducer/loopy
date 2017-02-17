@@ -97,7 +97,7 @@ class PicklableItem(object):
     flags = {"unpickled": False}
 
     def __getstate__(self):
-        return ()
+        return True
 
     def __setstate__(self, state):
         PicklableItem.flags["unpickled"] = True
@@ -132,6 +132,14 @@ def test_LazilyUnpicklingDictionary():
 
     mapping = loads(dumps(loads(pickled_mapping)))
     assert isinstance(mapping[0], PicklableItem)
+
+    # }}}
+
+    # {{{ test empty map
+
+    mapping = LazilyUnpicklingDictionary({})
+    mapping = loads(dumps(mapping))
+    assert len(mapping) == 0
 
     # }}}
 

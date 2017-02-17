@@ -396,12 +396,9 @@ class LazilyUnpicklingDictionary(collections.MutableMapping):
         return iter(self._map)
 
     def __getstate__(self):
-        return dict(
+        return {"_map": dict(
             (key, _PickledObjectWrapper.from_object(val))
-            for key, val in six.iteritems(self._map))
-
-    def __setstate__(self, state):
-        self._map = state
+            for key, val in six.iteritems(self._map))}
 
 # }}}
 
