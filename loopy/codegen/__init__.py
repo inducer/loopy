@@ -397,10 +397,13 @@ def generate_code_v2(kernel):
     if CACHING_ENABLED:
         input_kernel = kernel
         try:
+            print("===trying to find kernel")
             result = code_gen_cache[input_kernel]
+            print("===FOUND")
             logger.debug("%s: code generation cache hit" % kernel.name)
             return result
         except KeyError:
+            print("===NOT FOUND")
             pass
 
     # }}}
@@ -505,6 +508,12 @@ def generate_code_v2(kernel):
     codegen_result = codegen_result.copy(device_preambles=preambles)
 
     # }}}
+
+    # For faster unpickling in the common case when implemented_domains isn't needed.
+    from loopy.tools import LazilyUnpicklingDictionary
+    codegen_result = codegen_result.copy(
+            implemented_domains=LazilyUnpicklingDictionary(
+                    codegen_result.implemented_domains))
 
     logger.info("%s: generate code: done" % kernel.name)
 
