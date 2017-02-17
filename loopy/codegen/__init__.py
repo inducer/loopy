@@ -397,13 +397,10 @@ def generate_code_v2(kernel):
     if CACHING_ENABLED:
         input_kernel = kernel
         try:
-            print("===trying to find kernel")
             result = code_gen_cache[input_kernel]
-            print("===FOUND")
             logger.debug("%s: code generation cache hit" % kernel.name)
             return result
         except KeyError:
-            print("===NOT FOUND")
             pass
 
     # }}}
