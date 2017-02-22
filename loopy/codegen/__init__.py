@@ -506,6 +506,12 @@ def generate_code_v2(kernel):
 
     # }}}
 
+    # For faster unpickling in the common case when implemented_domains isn't needed.
+    from loopy.tools import LazilyUnpicklingDictionary
+    codegen_result = codegen_result.copy(
+            implemented_domains=LazilyUnpicklingDictionary(
+                    codegen_result.implemented_domains))
+
     logger.info("%s: generate code: done" % kernel.name)
 
     if CACHING_ENABLED:

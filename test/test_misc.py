@@ -92,6 +92,58 @@ def test_SetTrie():
         s.add_or_update(set([1, 4]))
 
 
+class PicklableItem(object):
+
+    flags = {"unpickled": False}
+
+    def __getstate__(self):
+        return True
+
+    def __setstate__(self, state):
+        PicklableItem.flags["unpickled"] = True
+
+
+def test_LazilyUnpicklingDictionary():
+    def is_unpickled():
+        return PicklableItem.flags["unpickled"]
+
+    from loopy.tools import LazilyUnpicklingDictionary
+
+    mapping = LazilyUnpicklingDictionary({0: PicklableItem()})
+
+    assert not is_unpickled()
+
+    from pickle import loads, dumps
+
+    pickled_mapping = dumps(mapping)
+
+    # {{{ test lazy loading
+
+    mapping = loads(pickled_mapping)
+    assert not is_unpickled()
+    list(mapping.keys())
+    assert not is_unpickled()
+    assert isinstance(mapping[0], PicklableItem)
+    assert is_unpickled()
+
+    # }}}
+
+    # {{{ test multi round trip
+
+    mapping = loads(dumps(loads(pickled_mapping)))
+    assert isinstance(mapping[0], PicklableItem)
+
+    # }}}
+
+    # {{{ test empty map
+
+    mapping = LazilyUnpicklingDictionary({})
+    mapping = loads(dumps(mapping))
+    assert len(mapping) == 0
+
+    # }}}
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

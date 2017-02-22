@@ -340,6 +340,69 @@ def compute_sccs(graph):
 # }}}
 
 
+# {{{ lazily unpickling dictionary
+
+
+class _PickledObjectWrapper(object):
+    """
+    A class meant to wrap a pickled value (for :class:`LazilyUnpicklingDictionary`).
+    """
+
+    @classmethod
+    def from_object(cls, obj):
+        if isinstance(obj, cls):
+            return obj
+        from pickle import dumps
+        return cls(dumps(obj))
+
+    def __init__(self, objstring):
+        self.objstring = objstring
+
+    def unpickle(self):
+        from pickle import loads
+        return loads(self.objstring)
+
+    def __getstate__(self):
+        return {"objstring": self.objstring}
+
+
+import collections
+
+
+class LazilyUnpicklingDictionary(collections.MutableMapping):
+    """
+    A dictionary-like object which lazily unpickles its values.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self._map = dict(*args, **kwargs)
+
+    def __getitem__(self, key):
+        value = self._map[key]
+        if isinstance(value, _PickledObjectWrapper):
+            value = self._map[key] = value.unpickle()
+        return value
+
+    def __setitem__(self, key, value):
+        self._map[key] = value
+
+    def __delitem__(self, key):
+        del self._map[key]
+
+    def __len__(self):
+        return len(self._map)
+
+    def __iter__(self):
+        return iter(self._map)
+
+    def __getstate__(self):
+        return {"_map": dict(
+            (key, _PickledObjectWrapper.from_object(val))
+            for key, val in six.iteritems(self._map))}
+
+# }}}
+
+
 def is_interned(s):
     return s is None or intern(s) is s
 
