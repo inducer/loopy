@@ -199,7 +199,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             # When kernels get intersected in slab decomposition,
             # their grid sizes shouldn't change. This provides
             # a way to forward sub-kernel grid size requests.
-            get_grid_sizes_for_insn_ids=None):
+            overridden_get_grid_sizes_for_insn_ids=None):
 
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
@@ -265,10 +265,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if np.iinfo(index_dtype.numpy_dtype).min >= 0:
             raise TypeError("index_dtype must be signed")
 
-        if get_grid_sizes_for_insn_ids is not None:
-            # overwrites method down below
-            self.get_grid_sizes_for_insn_ids = get_grid_sizes_for_insn_ids
-
         if state not in [
                 kernel_state.INITIAL,
                 kernel_state.PREPROCESSED,
@@ -302,7 +298,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 index_dtype=index_dtype,
                 options=options,
                 state=state,
-                target=target)
+                target=target,
+                overridden_get_grid_sizes_for_insn_ids=(
+                    overridden_get_grid_sizes_for_insn_ids))
 
         self._kernel_executor_cache = {}
 
@@ -922,6 +920,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         *global_size* and *local_size* are :class:`islpy.PwAff` objects.
         """
+
+        if self.overridden_get_grid_sizes_for_insn_ids:
+            return self.overridden_get_grid_sizes_for_insn_ids(
+                    insn_ids,
+                    ignore_auto=ignore_auto)
 
         all_inames_by_insns = set()
         for insn_id in insn_ids:

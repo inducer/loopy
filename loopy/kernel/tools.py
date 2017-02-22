@@ -439,7 +439,8 @@ class DomainChanger:
                 # Changing the domain might look like it wants to change grid
                 # sizes. Not true.
                 # (Relevant for 'slab decomposition')
-                get_grid_sizes_for_insn_ids=self.kernel.get_grid_sizes_for_insn_ids)
+                overridden_get_grid_sizes_for_insn_ids=(
+                    self.kernel.get_grid_sizes_for_insn_ids))
 
 # }}}
 
