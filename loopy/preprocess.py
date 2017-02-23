@@ -326,9 +326,10 @@ def _add_params_to_domain(domain, param_names):
     return domain
 
 
-def _check_reduction_is_triangular(kernel, expr, scan_info):
-    """
-    This verifies that the domain for the scan and sweep inames is as follows:
+def _check_reduction_is_triangular(kernel, expr, scan_param):
+    """Check whether the reduction within `expr` with scan parameters described by
+    the structure `scan_param` is triangular. This attempts to verify that the
+    domain for the scan and sweep inames is as follows:
 
     [scan_iname, sweep_iname]:
         (sweep_min_value
@@ -343,26 +344,26 @@ def _check_reduction_is_triangular(kernel, expr, scan_info):
     dim_type = isl.dim_type
 
     domain = kernel.get_inames_domain(
-            (scan_info.sweep_iname, scan_info.scan_iname))
+            (scan_param.sweep_iname, scan_param.scan_iname))
 
     tri_domain = isl.BasicSet.universe(domain.params().space)
 
-    sweep_iname = scan_info.sweep_iname
-    scan_iname = scan_info.scan_iname
+    sweep_iname = scan_param.sweep_iname
+    scan_iname = scan_param.scan_iname
 
     tri_domain = _add_params_to_domain(tri_domain, (sweep_iname, scan_iname))
 
     affs = isl.affs_from_space(tri_domain.space)
 
     # Add sweep iname constraints
-    tri_domain &= affs[sweep_iname].ge_set(scan_info.sweep_lower_bound)
-    tri_domain &= affs[sweep_iname].le_set(scan_info.sweep_upper_bound)
+    tri_domain &= affs[sweep_iname].ge_set(scan_param.sweep_lower_bound)
+    tri_domain &= affs[sweep_iname].le_set(scan_param.sweep_upper_bound)
 
     # Add scan iname constraints
-    offset = scan_info.offset
-    tri_domain &= affs[scan_iname].ge_set(scan_info.sweep_lower_bound + offset)
+    offset = scan_param.offset
+    tri_domain &= affs[scan_iname].ge_set(scan_param.sweep_lower_bound + offset)
     tri_domain &= affs[scan_iname].le_set(
-            scan_info.stride * affs[sweep_iname] + offset)
+            scan_param.stride * affs[sweep_iname] + offset)
 
     # Gist against domain params
     tri_domain = tri_domain.gist(domain.params())
@@ -381,13 +382,15 @@ def _check_reduction_is_triangular(kernel, expr, scan_info):
         return True, "ok"
 
 
-_ScanCandidateInfo = namedtuple(
-        "_ScanCandidateInfo",
+_ScanCandidateParameters = namedtuple(
+        "_ScanCandidateParameters",
         "sweep_iname, scan_iname, sweep_lower_bound, "
         "sweep_upper_bound, offset, stride")
 
 
 def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
+    """Analyze `expr` and determine if it can be implemented as a scan.
+    """
     from loopy.symbolic import Reduction
     assert isinstance(expr, Reduction)
 
@@ -420,13 +423,12 @@ def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
     except ValueError as v:
         raise ValueError("Couldn't determine a scan stride: %s" % v)
 
-    return _ScanCandidateInfo(sweep_iname, scan_iname, sweep_lower_bound,
+    return _ScanCandidateParameters(sweep_iname, scan_iname, sweep_lower_bound,
             sweep_upper_bound, offset, stride)
 
 
 def _try_infer_sweep_iname(domain, scan_iname, candidate_inames):
-    """
-    The sweep iname is the outer iname which guides the scan.
+    """The sweep iname is the outer iname which guides the scan.
 
     E.g. for a domain of {[i,j]: 0<=i<n and 0<=j<=i}, i is the sweep iname.
     """
@@ -513,6 +515,8 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
 
     if len(scan_iname_pieces) > 1:
         raise ValueError("range in multiple pieces: %s" % scan_iname_range)
+    elif len(scan_iname_pieces) == 0:
+        raise ValueError("empty range found for iname '%s'" % scan_iname)
 
     scan_iname_constr, scan_iname_aff = scan_iname_pieces[0]
 
@@ -1256,7 +1260,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             try:
                 # Try to determine scan candidate information (sweep iname, scan
                 # iname, etc).
-                scan_info = _try_infer_scan_candidate_from_expr(
+                scan_param = _try_infer_scan_candidate_from_expr(
                         temp_kernel, expr, sweep_iname=force_outer_iname_for_scan)
 
             except ValueError as v:
@@ -1265,7 +1269,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             else:
                 # Ensures the reduction is triangular (somewhat expensive).
                 may_be_implemented_as_scan, error = (
-                        _check_reduction_is_triangular(kernel, expr, scan_info))
+                        _check_reduction_is_triangular(kernel, expr, scan_param))
 
             if not may_be_implemented_as_scan:
                 _error_if_force_scan_on(ReductionIsNotTriangularError, error)
@@ -1309,7 +1313,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             assert force_scan or automagic_scans_ok
 
             if n_sequential:
-                sweep_iname = scan_info.sweep_iname
+                sweep_iname = scan_param.sweep_iname
                 sweep_class = _classify_reduction_inames(kernel, (sweep_iname,))
 
                 sequential = sweep_iname in sweep_class.sequential
@@ -1328,15 +1332,15 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 elif parallel:
                     return map_scan_local(
                             expr, rec, nresults, arg_dtype, reduction_dtypes,
-                            sweep_iname, scan_info.scan_iname,
-                            scan_info.sweep_lower_bound, scan_info.offset,
-                            scan_info.stride)
+                            sweep_iname, scan_param.scan_iname,
+                            scan_param.sweep_lower_bound, scan_param.offset,
+                            scan_param.stride)
                 elif sequential:
                     return map_scan_seq(
                             expr, rec, nresults, arg_dtype, reduction_dtypes,
-                            sweep_iname, scan_info.scan_iname,
-                            scan_info.sweep_lower_bound, scan_info.offset,
-                            scan_info.stride)
+                            sweep_iname, scan_param.scan_iname,
+                            scan_param.sweep_lower_bound, scan_param.offset,
+                            scan_param.stride)
 
                 # fallthrough to reduction implementation
 
