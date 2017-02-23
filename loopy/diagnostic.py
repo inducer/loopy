@@ -103,6 +103,10 @@ class MissingDefinitionError(LoopyError):
 class UnscheduledInstructionError(LoopyError):
     pass
 
+
+class ReductionIsNotTriangularError(LoopyError):
+    pass
+
 # }}}
 
 
