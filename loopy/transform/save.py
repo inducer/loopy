@@ -439,7 +439,8 @@ class TemporarySaver(object):
         kernel = self.kernel.copy(
             instructions=new_instructions,
             iname_to_tag=self.updated_iname_to_tag,
-            temporary_variables=self.updated_temporary_variables)
+            temporary_variables=self.updated_temporary_variables,
+            overridden_get_grid_sizes_for_insn_ids=None)
 
         from loopy.kernel.tools import assign_automatic_axes
         return assign_automatic_axes(kernel)
