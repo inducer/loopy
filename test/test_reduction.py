@@ -393,6 +393,18 @@ def test_double_sum_made_unique(ctx_factory):
     assert b.get() == ref
 
 
+def test_parallel_multi_output_reduction():
+    knl = lp.make_kernel(
+                "{[i]: 0<=i<128}",
+                """
+                max_val, max_indices = argmax(i, fabs(a[i]))
+                """)
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.realize_reduction(knl)
+    print(knl)
+    # TODO: Add functional test
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
