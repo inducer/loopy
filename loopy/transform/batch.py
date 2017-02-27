@@ -63,7 +63,7 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
         if not self.needs_batch_subscript(expr.aggregate.name):
             return super(_BatchVariableChanger, self).map_subscript(expr, expn_state)
 
-        idx = expr.index
+        idx = self.rec(expr.index, expn_state)
         if not isinstance(idx, tuple):
             idx = (idx,)
 
