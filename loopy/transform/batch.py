@@ -73,6 +73,9 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
         if not self.needs_batch_subscript(expr.name):
             return super(_BatchVariableChanger, self).map_variable(expr, expn_state)
 
+        from pymbolic.primitives import Subscript
+        if not isinstance(expr, Subscript):
+            return Subscript(expr, self.batch_iname_expr)
         return expr.aggregate[self.batch_iname_expr]
 
 
