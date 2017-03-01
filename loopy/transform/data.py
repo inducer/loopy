@@ -683,7 +683,8 @@ def set_temporary_scope(kernel, temp_var_names, scope):
 
 # {{{ reduction_arg_to_subst_rule
 
-def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=None):
+def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=None,
+                                arg_number=0):
     if isinstance(inames, str):
         inames = [s.strip() for s in inames.split(",")]
 
@@ -715,15 +716,24 @@ def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=No
         substs[my_subst_rule_name] = SubstitutionRule(
                 name=my_subst_rule_name,
                 arguments=tuple(inames),
-                expression=expr.expr)
+                expression=expr.exprs[arg_number])
 
         from pymbolic import var
         iname_vars = [var(iname) for iname in inames]
 
+        new_exprs = []
+        for sub_expr_number, sub_expr in enumerate(expr.exprs):
+            if sub_expr_number == arg_number:
+                new_exprs.append(var(my_subst_rule_name)(*iname_vars))
+            else:
+                new_exprs.append(sub_expr)
+
+        new_exprs = tuple(new_exprs)
+
         return type(expr)(
                 operation=expr.operation,
                 inames=expr.inames,
-                expr=var(my_subst_rule_name)(*iname_vars),
+                exprs=new_exprs,
                 allow_simultaneous=expr.allow_simultaneous)
 
     from loopy.symbolic import ReductionCallbackMapper

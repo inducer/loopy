@@ -352,28 +352,23 @@ class TypeInferenceMapper(CombineMapper):
         return [self.kernel.index_dtype]
 
     def map_reduction(self, expr, return_tuple=False):
-        rec_result = self.rec(expr.expr)
+        rec_results = tuple(self.rec(sub_expr) for sub_expr in expr.exprs)
 
-        if rec_result:
-            rec_result, = rec_result
-            result = expr.operation.result_dtypes(
-                    self.kernel, rec_result, expr.inames)
-        else:
-            result = expr.operation.result_dtypes(
-                    self.kernel, None, expr.inames)
+        result = expr.operation.result_dtypes(self.kernel, *rec_results)
 
         if result is None:
             return []
 
         if return_tuple:
-            return [result]
+            from itertools import product
+            return list(product(*result))
 
         else:
             if len(result) != 1 and not return_tuple:
                 raise LoopyError("reductions with more or fewer than one "
                         "return value may only be used in direct assignments")
 
-            return [result[0]]
+            return result[0] # FIXME: wtf is going on here
 
 # }}}
 
@@ -381,6 +376,7 @@ class TypeInferenceMapper(CombineMapper):
 # {{{ infer single variable
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
+    print(kernel)
     if var_name in kernel.all_params():
         return [kernel.index_dtype], []
 
@@ -429,6 +425,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if not dtype_sets:
         return None, type_inf_mapper.symbols_with_unknown_types
 
+    print("got dtype sets", dtype_sets)
     result = type_inf_mapper.combine(dtype_sets)
 
     return result, type_inf_mapper.symbols_with_unknown_types

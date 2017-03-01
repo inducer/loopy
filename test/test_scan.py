@@ -58,24 +58,28 @@ __all__ = [
 # - scan(a) + scan(b)
 # - global parallel scan
 # - segmented scan
+# - base_exec_iname different bounds from sweep iname
+
+# TO DO:
+# segmented<sum>(...) syntax
 
 
 @pytest.mark.parametrize("n", [1, 2, 3, 16])
-def test_sequential_scan(ctx_factory, n):
+@pytest.mark.parametrize("stride", [1, 2])
+def test_sequential_scan(ctx_factory, n, stride):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-        "[n] -> {[i,j]: 0<=i<n and 0<=j<=2*i}",
-        """
-        a[i] = sum(j, j**2) {id=scan}
-        """
+        "[n] -> {[i,j]: 0<=i<n and 0<=j<=%d*i}" % stride,
+        "a[i] = sum(j, j**2) {id=scan}"
         )
 
+    knl = lp.fix_parameters(knl, n=n)
     knl = lp.realize_reduction(knl, force_scan=True)
-    evt, (a,) = knl(queue, n=n)
+    evt, (a,) = knl(queue)
 
-    assert (a.get() == np.cumsum(np.arange(2*n)**2)[::2]).all()
+    assert (a.get() == np.cumsum(np.arange(stride*n)**2)[::stride]).all()
 
 
 def test_scan_with_different_lower_bound_from_sweep(ctx_factory):
@@ -83,10 +87,8 @@ def test_scan_with_different_lower_bound_from_sweep(ctx_factory):
     queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-        "[n,lbound] -> {[i,j]: 0<=i<n and lbound<=j<=2*i+lbound}",
-        """
-        a[i] = sum(j, j**2) {id=scan}
-        """
+        "[n, lbound] -> {[i,j]: 0<=i<n and lbound<=j<=2*i+lbound}",
+        "a[i] = sum(j, j**2) {id=scan}"
         )
 
     lbound = 7
@@ -203,6 +205,92 @@ def test_scan_data_types():
 def test_scan_library():
     # TODO
     pass
+
+
+@pytest.mark.parametrize("i_tag", ["for", "l.0"])
+def test_argmax(ctx_factory, i_tag):
+    logging.basicConfig(level=logging.INFO)
+
+    dtype = np.dtype(np.float32)
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    n = 128
+
+    knl = lp.make_kernel(
+            "{[i,j]: 0<=i<%d and 0<=j<=i}" % n,
+            """
+            max_vals[i], max_indices[i] = argmax(j, fabs(a[j]), j)
+            """)
+
+    knl = lp.tag_inames(knl, dict(i=i_tag))
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+    print(knl)
+
+    a = np.random.randn(n).astype(dtype)
+    evt, (max_indices, max_vals) = knl(queue, a=a, out_host=True)
+
+    assert (max_vals == [np.max(np.abs(a)[0:i+1]) for i in range(n)]).all()
+    assert (max_indices == [np.argmax(np.abs(a[0:i+1])) for i in range(n)]).all()
+
+
+@pytest.mark.parametrize("n, segment_boundaries_indices", (
+    (1, (0,)),
+    (2, (0,)),
+    (2, (0, 1)),
+    #(3, (0,)),
+    #(3, (0, 1)),
+    #(3, (0, 2)),
+    #(3, (0, 1, 2)),
+    (16, (0, 5)),
+    ))
+@pytest.mark.parametrize("iname_tag", ("for", "l.0"))
+def test_segmented_scan(ctx_getter, n, segment_boundaries_indices, iname_tag):
+    ctx = ctx_getter()
+    queue = cl.CommandQueue(ctx)
+
+    arr = np.ones(n, dtype=np.float32)
+    segment_boundaries = np.zeros(n, dtype=np.int32)
+    segment_boundaries[(segment_boundaries_indices,)] = 1
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<n and 0<=j<=i}",
+        "out[i], <>_ = segmented_sum(j, arr[j], segflag[j])",
+        [
+            lp.GlobalArg("arr", np.float32, shape=("n",)),
+            lp.GlobalArg("segflag", np.int32, shape=("n",)),
+            "..."
+        ])
+
+    knl = lp.fix_parameters(knl, n=n)
+    knl = lp.tag_inames(knl, dict(i=iname_tag))
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+    (evt, (out,)) = knl(queue, arr=arr, segflag=segment_boundaries)
+
+    class SegmentGrouper(object):
+
+        def __init__(self):
+            self.seg_idx = 0
+            self.idx = 0
+
+        def __call__(self, key):
+            if self.idx in segment_boundaries_indices:
+                self.seg_idx += 1
+            self.idx += 1
+            return self.seg_idx
+
+    from itertools import groupby
+
+    expected = [np.cumsum(list(group))
+            for _, group in groupby(arr, SegmentGrouper())]
+    actual = [np.array(list(group))
+            for _, group in groupby(out, SegmentGrouper())]
+
+    assert len(expected) == len(actual) == len(segment_boundaries_indices)
+    assert [(e == a).all() for e, a in zip(expected, actual)]
 
 
 if __name__ == "__main__":

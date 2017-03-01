@@ -98,7 +98,9 @@ def check_reduction_iname_uniqueness(kernel):
     iname_to_nonsimultaneous_reduction_count = {}
 
     def map_reduction(expr, rec):
-        rec(expr.expr)
+        for sub_expr in expr.exprs:
+            rec(sub_expr)
+
         for iname in expr.inames:
             iname_to_reduction_count[iname] = (
                     iname_to_reduction_count.get(iname, 0) + 1)
@@ -531,6 +533,18 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
     if len(coeffs) > 1:
         raise ValueError("found more than one coeff: %s" % coeffs)
 
+    if len(coeffs) == 0:
+        try:
+            scan_iname_aff.get_constant_val()
+        except:
+            raise ValueError("range for aff isn't constant: '%s'" % scan_iname_aff)
+
+        # If this point is reached we're assuming the domain is of the form
+        # {[i,j]: i=0 and j=0}, so the stride is technically 1 - any value
+        # this function returns will be verified later by
+        # _check_reduction_is_triangular().
+        return 1
+
     if sweep_iname not in coeffs:
         raise ValueError("didn't find sweep iname in coeffs: %s" % sweep_iname)
 
@@ -586,13 +600,54 @@ def _create_domain_for_sweep_tracking(orig_domain,
 
     # Move tracking_iname into a set dim (NOT sweep iname).
     subd = subd.move_dims(
-        dim_type.set, 0,
-        dim_type.param, subd.dim(dim_type.param) - 1, 1)
+            dim_type.set, 0,
+            dim_type.param, subd.dim(dim_type.param) - 1, 1)
+
+    # Simplify (maybe).
+    orig_domain_with_sweep_param = (
+            _get_domain_with_iname_as_param(orig_domain, sweep_iname))
+    subd = subd.gist_params(orig_domain_with_sweep_param.params())
 
     subd, = subd.get_basic_sets()
 
     return subd
 
+
+def _strip_if_scalar(reference_exprs, expr):
+    if len(reference_exprs) == 1:
+        return expr[0]
+    else:
+        return expr
+
+
+def _infer_arg_dtypes_and_reduction_dtypes(kernel, expr, unknown_types_ok):
+    arg_dtypes = []
+
+    from loopy.type_inference import TypeInferenceMapper
+    type_inf_mapper = TypeInferenceMapper(kernel)
+    import loopy as lp
+
+    for sub_expr in expr.exprs:
+        try:
+            arg_dtype = type_inf_mapper(sub_expr)
+        except DependencyTypeInferenceFailure:
+            if unknown_types_ok:
+                arg_dtype = lp.auto
+            else:
+                raise LoopyError("failed to determine type of accumulator for "
+                        "reduction sub-expression '%s'" % sub_expr)
+        else:
+            arg_dtype = arg_dtype.with_target(kernel.target)
+
+        arg_dtypes.append(arg_dtype)
+
+    reduction_dtypes = expr.operation.result_dtypes(kernel, *arg_dtypes)
+    reduction_dtypes = tuple(
+            dt.with_target(kernel.target)
+            if dt is not lp.auto else dt
+            for dt in reduction_dtypes)
+
+    return tuple(arg_dtypes), reduction_dtypes
 
 # }}}
 
@@ -636,31 +691,24 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
     # Dummy inames to remove after scans have been realized
     inames_to_remove = set()
 
-    from loopy.type_inference import TypeInferenceMapper
-    type_inf_mapper = TypeInferenceMapper(kernel)
-
     inames_added_for_scan = set()
 
     # {{{ sequential
 
-    def map_reduction_seq(expr, rec, nresults, arg_dtype,
+    def map_reduction_seq(expr, rec, nresults, arg_dtypes,
             reduction_dtypes):
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
+        from loopy.kernel.data import temp_var_scope
+        acc_var_names = make_temporaries(
+                name_based_on="acc_"+"_".join(expr.inames),
+                nvars=nresults,
+                shape=(),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.PRIVATE)
+
         from pymbolic import var
-        acc_var_names = [
-                var_name_gen("acc_"+"_".join(expr.inames))
-                for i in range(nresults)]
         acc_vars = tuple(var(n) for n in acc_var_names)
-
-        from loopy.kernel.data import TemporaryVariable, temp_var_scope
-
-        for name, dtype in zip(acc_var_names, reduction_dtypes):
-            new_temporary_variables[name] = TemporaryVariable(
-                    name=name,
-                    shape=(),
-                    dtype=dtype,
-                    scope=temp_var_scope.PRIVATE)
 
         init_id = insn_id_gen(
                 "%s_%s_init" % (insn.id, "_".join(expr.inames)))
@@ -671,7 +719,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset(),
-                expression=expr.operation.neutral_element(arg_dtype, expr.inames))
+                expression=expr.operation.neutral_element(*arg_dtypes))
 
         generated_insns.append(init_insn)
 
@@ -686,9 +734,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 id=update_id,
                 assignees=acc_vars,
                 expression=expr.operation(
-                    arg_dtype,
-                    acc_vars if len(acc_vars) > 1 else acc_vars[0],
-                    expr.expr, expr.inames),
+                    arg_dtypes,
+                    _strip_if_scalar(acc_vars, acc_vars),
+                    _strip_if_scalar(acc_vars, expr.exprs)),
                 depends_on=frozenset([init_insn.id]) | insn.depends_on,
                 within_inames=update_insn_iname_deps,
                 within_inames_is_final=insn.within_inames_is_final)
@@ -733,7 +781,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 v[iname].lt_set(v[0] + ubound)).get_basic_sets()
         return bs
 
-    def map_reduction_local(expr, rec, nresults, arg_dtype,
+    def map_reduction_local(expr, rec, nresults, arg_dtypes,
             reduction_dtypes):
         red_iname, = expr.inames
 
@@ -757,6 +805,24 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 _get_int_iname_size(oiname)
                 for oiname in outer_local_inames)
 
+        from loopy.kernel.data import temp_var_scope
+
+        neutral_var_names = make_temporaries(
+                name_based_on="neutral_"+red_iname,
+                nvars=nresults,
+                shape=(),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.PRIVATE)
+
+        acc_var_names = make_temporaries(
+                name_based_on="acc_"+red_iname,
+                nvars=nresults,
+                shape=outer_local_iname_sizes + (size,),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.LOCAL)
+
+        acc_vars = tuple(var(n) for n in acc_var_names)
+
         # {{{ add separate iname to carry out the reduction
 
         # Doing this sheds any odd conditionals that may be active
@@ -768,31 +834,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         # }}}
 
-        neutral_var_names = [
-                var_name_gen("neutral_"+red_iname)
-                for i in range(nresults)]
-        acc_var_names = [
-                var_name_gen("acc_"+red_iname)
-                for i in range(nresults)]
-        acc_vars = tuple(var(n) for n in acc_var_names)
-
-        from loopy.kernel.data import TemporaryVariable, temp_var_scope
-        for name, dtype in zip(acc_var_names, reduction_dtypes):
-            new_temporary_variables[name] = TemporaryVariable(
-                    name=name,
-                    shape=outer_local_iname_sizes + (size,),
-                    dtype=dtype,
-                    scope=temp_var_scope.LOCAL)
-        for name, dtype in zip(neutral_var_names, reduction_dtypes):
-            new_temporary_variables[name] = TemporaryVariable(
-                    name=name,
-                    shape=(),
-                    dtype=dtype,
-                    scope=temp_var_scope.PRIVATE)
-
         base_iname_deps = outer_insn_inames - frozenset(expr.inames)
 
-        neutral = expr.operation.neutral_element(arg_dtype, expr.inames)
+        neutral = expr.operation.neutral_element(*arg_dtypes)
 
         init_id = insn_id_gen("%s_%s_init" % (insn.id, red_iname))
         init_insn = make_assignment(
@@ -805,12 +849,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset())
         generated_insns.append(init_insn)
-
-        def _strip_if_scalar(c):
-            if len(acc_vars) == 1:
-                return c[0]
-            else:
-                return c
 
         init_neutral_id = insn_id_gen("%s_%s_init_neutral" % (insn.id, red_iname))
         init_neutral_insn = make_assignment(
@@ -829,9 +867,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     acc_var[outer_local_iname_vars + (var(red_iname),)]
                     for acc_var in acc_vars),
                 expression=expr.operation(
-                    arg_dtype,
-                    _strip_if_scalar(tuple(var(nvn) for nvn in neutral_var_names)),
-                    expr.expr, expr.inames),
+                    arg_dtypes,
+                    _strip_if_scalar(
+                        expr.exprs,
+                        tuple(var(nvn) for nvn in neutral_var_names)),
+                    _strip_if_scalar(expr.exprs, expr.exprs)),
                 within_inames=(
                     (outer_insn_inames - frozenset(expr.inames))
                     | frozenset([red_iname])),
@@ -864,17 +904,16 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         acc_var[outer_local_iname_vars + (var(stage_exec_iname),)]
                         for acc_var in acc_vars),
                     expression=expr.operation(
-                        arg_dtype,
-                        _strip_if_scalar(tuple(
+                        arg_dtypes,
+                        _strip_if_scalar(acc_vars, tuple(
                             acc_var[
                                 outer_local_iname_vars + (var(stage_exec_iname),)]
                             for acc_var in acc_vars)),
-                        _strip_if_scalar(tuple(
+                        _strip_if_scalar(acc_vars, tuple(
                             acc_var[
                                 outer_local_iname_vars + (
                                     var(stage_exec_iname) + new_size,)]
-                            for acc_var in acc_vars)),
-                        expr.inames),
+                            for acc_var in acc_vars))),
                     within_inames=(
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=insn.within_inames_is_final,
@@ -899,7 +938,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             return [acc_var[outer_local_iname_vars + (0,)] for acc_var in acc_vars]
     # }}}
 
-    # {{{ scan utils (stateful)
+    # {{{ utils (stateful)
 
     @memoize
     def get_or_add_sweep_tracking_iname_and_domain(
@@ -919,7 +958,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         return tracking_iname, new_domain
 
-    def replace_scan_iname_with_tracking_iname(scan_iname, track_iname, expr):
+    def replace_var_within_expr(expr, from_var, to_var):
         from pymbolic.mapper.substitutor import make_subst_func
 
         from loopy.symbolic import (
@@ -931,16 +970,32 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         from pymbolic import var
         mapper = RuleAwareSubstitutionMapper(
             rule_mapping_context,
-            make_subst_func({scan_iname: var(track_iname)}),
+            make_subst_func({from_var: var(to_var)}),
             within=lambda *args: True)
 
         return mapper(expr, temp_kernel, None)
+
+    def make_temporaries(name_based_on, nvars, shape, dtypes, scope):
+        var_names = [
+                var_name_gen(name_based_on.format(index=i))
+                for i in range(nvars)]
+
+        from loopy.kernel.data import TemporaryVariable
+
+        for name, dtype in zip(var_names, dtypes):
+            new_temporary_variables[name] = TemporaryVariable(
+                    name=name,
+                    shape=shape,
+                    dtype=dtype,
+                    scope=scope)
+
+        return var_names
 
     # }}}
 
     # {{{ sequential scan
 
-    def map_scan_seq(expr, rec, nresults, arg_dtype,
+    def map_scan_seq(expr, rec, nresults, arg_dtypes,
             reduction_dtypes, sweep_iname, scan_iname, sweep_min_value, offset,
             stride):
         outer_insn_inames = temp_kernel.insn_inames(insn)
@@ -948,22 +1003,18 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         track_iname, track_iname_domain = (
                 get_or_add_sweep_tracking_iname_and_domain(
-                        scan_iname, sweep_iname, sweep_min_value, offset, stride))
+                    scan_iname, sweep_iname, sweep_min_value, offset, stride))
+
+        from loopy.kernel.data import temp_var_scope
+        acc_var_names = make_temporaries(
+                name_based_on="acc_" + scan_iname,
+                nvars=nresults,
+                shape=(),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.PRIVATE)
 
         from pymbolic import var
-        acc_var_names = [
-                var_name_gen("acc_"+"_".join(expr.inames))
-                for i in range(nresults)]
         acc_vars = tuple(var(n) for n in acc_var_names)
-
-        from loopy.kernel.data import TemporaryVariable, temp_var_scope
-
-        for name, dtype in zip(acc_var_names, reduction_dtypes):
-            new_temporary_variables[name] = TemporaryVariable(
-                    name=name,
-                    shape=(),
-                    dtype=dtype,
-                    scope=temp_var_scope.PRIVATE)
 
         init_id = insn_id_gen(
                 "%s_%s_init" % (insn.id, "_".join(expr.inames)))
@@ -975,15 +1026,18 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     (sweep_iname,) + expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset(),
-                expression=expr.operation.neutral_element(arg_dtype, expr.inames))
+                expression=expr.operation.neutral_element(*arg_dtypes))
 
         generated_insns.append(init_insn)
 
-        updated_inner_expr = replace_scan_iname_with_tracking_iname(
-                scan_iname, track_iname, expr.expr)
+        updated_inner_exprs = tuple(
+                replace_var_within_expr(sub_expr, scan_iname, track_iname)
+                for sub_expr in expr.exprs)
 
+        """
         updated_inames = tuple(
-            (set(expr.inames) - set([scan_iname])) | set([track_iname]))
+                (set(expr.inames) - set([scan_iname])) | set([track_iname]))
+        """
 
         update_id = insn_id_gen(
                 based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)))
@@ -996,9 +1050,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 id=update_id,
                 assignees=acc_vars,
                 expression=expr.operation(
-                    arg_dtype,
-                    acc_vars if len(acc_vars) > 1 else acc_vars[0],
-                    updated_inner_expr, updated_inames),
+                    arg_dtypes,
+                    _strip_if_scalar(acc_vars, acc_vars),
+                    _strip_if_scalar(acc_vars, updated_inner_exprs)),
                 depends_on=frozenset([init_insn.id]) | insn.depends_on,
                 within_inames=update_insn_iname_deps,
                 within_inames_is_final=insn.within_inames_is_final)
@@ -1017,7 +1071,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     # {{{ local-parallel scan
 
-    def map_scan_local(expr, rec, nresults, arg_dtype,
+    def map_scan_local(expr, rec, nresults, arg_dtypes,
             reduction_dtypes, sweep_iname, scan_iname,
             sweep_min_value, offset, stride):
 
@@ -1059,36 +1113,39 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         # }}}
 
-        acc_var_names = [
-                var_name_gen("acc_"+scan_iname)
-                for i in range(nresults)]
+        from loopy.kernel.data import temp_var_scope
+
+        """
+        neutral_var_names = make_temporaries(
+                name_based_on="neutral_"+scan_iname,
+                nvars=nresults,
+                shape=(),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.PRIVATE)
+        """
+
+        read_var_names = make_temporaries(
+                name_based_on="read_"+scan_iname+"_arg_{index}",
+                nvars=nresults,
+                shape=(),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.PRIVATE)
+
+        acc_var_names = make_temporaries(
+                name_based_on="acc_"+scan_iname,
+                nvars=nresults,
+                shape=outer_local_iname_sizes + (size,),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.LOCAL)
+
         acc_vars = tuple(var(n) for n in acc_var_names)
-
-        read_var_names = [
-                var_name_gen("read_"+scan_iname)
-                for i in range(nresults)]
-
         read_vars = tuple(var(n) for n in read_var_names)
-
-        from loopy.kernel.data import TemporaryVariable, temp_var_scope
-        for name, dtype in zip(acc_var_names, reduction_dtypes):
-            new_temporary_variables[name] = TemporaryVariable(
-                    name=name,
-                    shape=outer_local_iname_sizes + (size,),
-                    dtype=dtype,
-                    scope=temp_var_scope.LOCAL)
-
-        for name, dtype in zip(read_var_names, reduction_dtypes):
-            new_temporary_variables[name] = TemporaryVariable(
-                    name=name,
-                    shape=(),
-                    dtype=dtype,
-                    scope=temp_var_scope.PRIVATE)
+        #neutral_vars = tuple(var(n) for n in neutral_var_names)
 
         base_iname_deps = (outer_insn_inames
                 - frozenset(expr.inames) - frozenset([sweep_iname]))
 
-        neutral = expr.operation.neutral_element(arg_dtype, expr.inames)
+        neutral = expr.operation.neutral_element(*arg_dtypes)
 
         init_id = insn_id_gen("%s_%s_init" % (insn.id, red_iname))
         init_insn = make_assignment(
@@ -1102,21 +1159,22 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 depends_on=frozenset())
         generated_insns.append(init_insn)
 
-        # TODO: make a function..
+        """
+        # XXX: Is this needed?
+        init_neutral_id = insn_id_gen("%s_%s_init_neutral" % (insn.id, red_iname))
+        init_neutral_insn = make_assignment(
+                id=init_neutral_id,
+                assignees=tuple(var(nvn) for nvn in neutral_var_names),
+                expression=neutral,
+                within_inames=base_iname_deps | frozenset([base_exec_iname]),
+                within_inames_is_final=insn.within_inames_is_final,
+                depends_on=frozenset())
+        generated_insns.append(init_neutral_insn)
+        """
 
-        from pymbolic.mapper.substitutor import make_subst_func
-
-        from loopy.symbolic import (
-            SubstitutionRuleMappingContext, RuleAwareSubstitutionMapper)
-
-        rule_mapping_context = SubstitutionRuleMappingContext(
-            temp_kernel.substitutions, var_name_gen)
-
-        from pymbolic import var
-        mapper = RuleAwareSubstitutionMapper(
-            rule_mapping_context,
-            make_subst_func({red_iname: var(track_iname)}),
-            within=lambda *args: True)
+        updated_inner_exprs = tuple(
+                replace_var_within_expr(sub_expr, scan_iname, track_iname)
+                for sub_expr in expr.exprs)
 
         from loopy.symbolic import Reduction
 
@@ -1131,7 +1189,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 expression=Reduction(
                     operation=expr.operation,
                     inames=(track_iname,),
-                    expr=mapper(expr.expr, temp_kernel, None),
+                    exprs=updated_inner_exprs,
                     allow_simultaneous=False,
                     ),
                 within_inames=outer_insn_inames - frozenset(expr.inames),
@@ -1163,23 +1221,24 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     _make_slab_set_from_range(stage_exec_iname, cur_size, scan_size))
             new_iname_tags[stage_exec_iname] = kernel.iname_to_tag[sweep_iname]
 
-            read_stage_id = insn_id_gen(
-                    "scan_%s_read_stage_%d" % (red_iname, istage))
-            read_stage_insn = make_assignment(
-                    id=read_stage_id,
-                    assignees=read_vars,
-                    expression=_strip_if_scalar([
-                            acc_var[
-                                outer_local_iname_vars + (
-                                    var(stage_exec_iname) - cur_size,)]
-                            for acc_var in acc_vars]),
-                    within_inames=(
-                        base_iname_deps | frozenset([stage_exec_iname])),
-                    within_inames_is_final=insn.within_inames_is_final,
-                    depends_on=frozenset([prev_id]))
+            for read_var, acc_var in zip(read_vars, acc_vars):
+                read_stage_id = insn_id_gen(
+                        "scan_%s_read_stage_%d" % (red_iname, istage))
 
-            generated_insns.append(read_stage_insn)
-            prev_id = read_stage_id
+                read_stage_insn = make_assignment(
+                        id=read_stage_id,
+                        assignees=(read_var,),
+                        expression=(
+                                acc_var[
+                                    outer_local_iname_vars
+                                    + (var(stage_exec_iname) - cur_size,)]),
+                        within_inames=(
+                            base_iname_deps | frozenset([stage_exec_iname])),
+                        within_inames_is_final=insn.within_inames_is_final,
+                        depends_on=frozenset([prev_id]))
+
+                generated_insns.append(read_stage_insn)
+                prev_id = read_stage_id
 
             write_stage_id = insn_id_gen(
                     "scan_%s_write_stage_%d" % (red_iname, istage))
@@ -1189,13 +1248,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         acc_var[outer_local_iname_vars + (var(stage_exec_iname),)]
                         for acc_var in acc_vars),
                     expression=expr.operation(
-                        arg_dtype,
-                        _strip_if_scalar([
+                        arg_dtypes,
+                        _strip_if_scalar(tuple(
                             acc_var[
                                 outer_local_iname_vars + (var(stage_exec_iname),)]
-                            for acc_var in acc_vars]),
-                        _strip_if_scalar(read_vars),
-                        expr.inames),
+                            for acc_var in acc_vars)),
+                        _strip_if_scalar(read_vars)
+                        ),
                     within_inames=(
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=insn.within_inames_is_final,
@@ -1236,24 +1295,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
-        try:
-            arg_dtype = type_inf_mapper(expr.expr)
-        except DependencyTypeInferenceFailure:
-            if unknown_types_ok:
-                arg_dtype = lp.auto
-
-                reduction_dtypes = (lp.auto,)*nresults
-
-            else:
-                raise LoopyError("failed to determine type of accumulator for "
-                        "reduction '%s'" % expr)
-        else:
-            arg_dtype = arg_dtype.with_target(kernel.target)
-
-            reduction_dtypes = expr.operation.result_dtypes(
-                        kernel, arg_dtype, expr.inames)
-            reduction_dtypes = tuple(
-                    dt.with_target(kernel.target) for dt in reduction_dtypes)
+        arg_dtypes, reduction_dtypes = (
+                _infer_arg_dtypes_and_reduction_dtypes(
+                        temp_kernel, expr, unknown_types_ok))
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
         bad_inames = frozenset(expr.inames) & outer_insn_inames
@@ -1290,7 +1334,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             else:
                 # Ensures the reduction is triangular (somewhat expensive).
                 may_be_implemented_as_scan, error = (
-                        _check_reduction_is_triangular(kernel, expr, scan_param))
+                        _check_reduction_is_triangular(
+                            temp_kernel, expr, scan_param))
 
             if not may_be_implemented_as_scan:
                 _error_if_force_scan_on(ReductionIsNotTriangularError, error)
@@ -1326,6 +1371,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     "Empty reduction found (no inames to reduce over). "
                     "Eliminating.")
 
+            # FIXME: return neutral element...
+
             return expr.expr
 
         # }}}
@@ -1351,14 +1398,15 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                             "- the only parallelism allowed is 'local'." %
                             (sweep_iname, sweep_class.nonlocal_parallel[0]))
                 elif parallel:
+                    print(temp_kernel)
                     return map_scan_local(
-                            expr, rec, nresults, arg_dtype, reduction_dtypes,
+                            expr, rec, nresults, arg_dtypes, reduction_dtypes,
                             sweep_iname, scan_param.scan_iname,
                             scan_param.sweep_lower_bound, scan_param.offset,
                             scan_param.stride)
                 elif sequential:
                     return map_scan_seq(
-                            expr, rec, nresults, arg_dtype, reduction_dtypes,
+                            expr, rec, nresults, arg_dtypes, reduction_dtypes,
                             sweep_iname, scan_param.scan_iname,
                             scan_param.sweep_lower_bound, scan_param.offset,
                             scan_param.stride)
@@ -1378,11 +1426,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         if n_sequential:
             assert n_local_par == 0
             return map_reduction_seq(
-                    expr, rec, nresults, arg_dtype, reduction_dtypes)
+                    expr, rec, nresults, arg_dtypes, reduction_dtypes)
         else:
             assert n_local_par > 0
             return map_reduction_local(
-                    expr, rec, nresults, arg_dtype, reduction_dtypes)
+                    expr, rec, nresults, arg_dtypes, reduction_dtypes)
 
     # }}}
 

@@ -658,7 +658,8 @@ class MultiAssignmentBase(InstructionBase):
     @memoize_method
     def reduction_inames(self):
         def map_reduction(expr, rec):
-            rec(expr.expr)
+            for sub_expr in expr.exprs:
+                rec(sub_expr)
             for iname in expr.inames:
                 result.add(iname)
 
