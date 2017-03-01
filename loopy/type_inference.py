@@ -352,23 +352,30 @@ class TypeInferenceMapper(CombineMapper):
         return [self.kernel.index_dtype]
 
     def map_reduction(self, expr, return_tuple=False):
+        """
+        :arg return_tuple: If *True*, treat the type of the reduction expression
+            as a tuple type. Otherwise, the number of expressions being reduced over
+            must equal 1, and the type of the first expression is returned.
+        """
         rec_results = tuple(self.rec(sub_expr) for sub_expr in expr.exprs)
 
-        result = expr.operation.result_dtypes(self.kernel, *rec_results)
-
-        if result is None:
+        if any(len(rec_result) == 0 for rec_result in rec_results):
             return []
 
         if return_tuple:
             from itertools import product
-            return list(product(*result))
+            return list(
+                    expr.operation.result_dtypes(self.kernel, *product_element)
+                    for product_element in product(*rec_results))
 
         else:
-            if len(result) != 1 and not return_tuple:
+            if len(rec_results) != 1:
                 raise LoopyError("reductions with more or fewer than one "
                         "return value may only be used in direct assignments")
 
-            return result[0] # FIXME: wtf is going on here
+            return list(
+                    expr.operation.result_dtypes(self.kernel, rec_result)[0]
+                    for rec_result in rec_results[0])
 
 # }}}
 
@@ -376,7 +383,6 @@ class TypeInferenceMapper(CombineMapper):
 # {{{ infer single variable
 
 def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
-    print(kernel)
     if var_name in kernel.all_params():
         return [kernel.index_dtype], []
 
@@ -425,7 +431,6 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
     if not dtype_sets:
         return None, type_inf_mapper.symbols_with_unknown_types
 
-    print("got dtype sets", dtype_sets)
     result = type_inf_mapper.combine(dtype_sets)
 
     return result, type_inf_mapper.symbols_with_unknown_types
