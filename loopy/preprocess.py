@@ -1384,18 +1384,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             else:
                 return c
 
-        scan_size = 1
-        while scan_size < size:
-            scan_size *= 2
-
+        scan_size = size
         prev_id = transfer_id
 
         istage = 0
         cur_size = 1
-        while cur_size != scan_size:
-            #new_size = cur_size // 2
-            #assert new_size * 2 == cur_size
-
+        while cur_size < scan_size:
             stage_exec_iname = var_name_gen("scan_%s_s%d" % (red_iname, istage))
             domains.append(
                     _make_slab_set_from_range(stage_exec_iname, cur_size, scan_size))
@@ -1450,8 +1444,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             istage += 1
 
         new_insn_add_depends_on.add(prev_id)
-        new_insn_add_no_sync_with.add((prev_id, "any"))
-
         #output_iname = var_name_gen("scan_%s_output" % red_iname)
         #domains.append(_make_slab_set(output_iname, scan_size))
         #new_iname_tags[output_iname] = kernel.iname_to_tag[sweep_iname]

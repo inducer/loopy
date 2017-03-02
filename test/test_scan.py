@@ -57,7 +57,6 @@ __all__ = [
 # - nested sequential/parallel scan
 # - scan(a) + scan(b)
 # - global parallel scan
-# - segmented scan
 # - base_exec_iname different bounds from sweep iname
 
 # TO DO:
@@ -182,19 +181,29 @@ def test_local_parallel_scan(ctx_factory, n):
     assert (a == np.cumsum(np.arange(16)**2)).all()
 
 
-"""
 @pytest.mark.parametrize("sweep_iname_tag", ["for", "l.1"])
 def test_scan_with_outer_parallel_iname(ctx_factory, sweep_iname_tag):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-        "[n] -> {[i,j,k]: 0<=i<n and 0<=j<=i and 0<=k<=1}",
-        "out[k,i] = sum(j, a[k,j]**2)"
+        [
+            "{[k]: 0<=k<=1}",
+            "[n] -> {[i,j]: 0<=i<n and 0<=j<=i}"
+        ],
+        "out[k,i] = k + sum(j, j**2)"
         )
 
-    knl = lp.tag_inames(knl, dict(i=sweep_iname_tag))
-"""
+    knl = lp.tag_inames(knl, dict(k="l.0", i=sweep_iname_tag))
+    n = 10
+    knl = lp.fix_parameters(knl, n=n)
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+    evt, (out,) = knl(queue)
+
+    inner = np.cumsum(np.arange(n)**2)
+
+    assert (out.get() == np.array([inner, 1 + inner])).all()
 
 
 def test_scan_data_types():
@@ -240,10 +249,10 @@ def test_argmax(ctx_factory, i_tag):
     (1, (0,)),
     (2, (0,)),
     (2, (0, 1)),
-    #(3, (0,)),
-    #(3, (0, 1)),
-    #(3, (0, 2)),
-    #(3, (0, 1, 2)),
+    (3, (0,)),
+    (3, (0, 1)),
+    (3, (0, 2)),
+    (3, (0, 1, 2)),
     (16, (0, 5)),
     ))
 @pytest.mark.parametrize("iname_tag", ("for", "l.0"))
