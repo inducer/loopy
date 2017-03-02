@@ -769,7 +769,8 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
                         id=new_assignment_id,
                         depends_on=frozenset([last_added_insn_id]),
                         depends_on_is_final=True,
-                        no_sync_with=insn.no_sync_with,
+                        no_sync_with=(
+                            insn.no_sync_with | frozenset([(insn.id, "any")])),
                         predicates=insn.predicates,
                         within_inames=insn.within_inames))
 
@@ -796,7 +797,9 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
         for new_insn_id in newly_added_assignments_ids:
             _add_to_no_sync_with(new_insn_id,
-                    [(id, "any") for id in newly_added_assignments_ids])
+                    [(id, "any")
+                     for id in newly_added_assignments_ids
+                     if id != new_insn_id])
 
         # }}}
 
