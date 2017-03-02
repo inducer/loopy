@@ -186,7 +186,7 @@ def test_local_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i, j]: 1 <= i < n and 0 <= j < 5}",
+            "{[i, j]: 0 <= i < n and 0 <= j < 5}",
             """
             z[j] = sum(i, i+j)
             """)
