@@ -81,24 +81,36 @@ def test_sequential_scan(ctx_factory, n, stride):
     assert (a.get() == np.cumsum(np.arange(stride*n)**2)[::stride]).all()
 
 
-def test_scan_with_different_lower_bound_from_sweep(ctx_factory):
+@pytest.mark.parametrize("sweep_lbound, scan_lbound", [
+    (4, 0),
+    (3, 1),
+    (2, 2),
+    (1, 3),
+    (0, 4),
+    (5, -1),
+    ])
+def test_scan_with_different_lower_bound_from_sweep(
+        ctx_factory, sweep_lbound, scan_lbound):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     knl = lp.make_kernel(
-        "[n, lbound] -> {[i,j]: 0<=i<n and lbound<=j<=2*i+lbound}",
-        "a[i] = sum(j, j**2) {id=scan}"
+        "[n, sweep_lbound, scan_lbound] -> "
+        "{[i,j]: sweep_lbound<=i<n+sweep_lbound "
+        "and scan_lbound<=j<=2*(i-sweep_lbound)+scan_lbound}",
+        """
+        out[i-sweep_lbound] = sum(j, j**2)
+        """
         )
 
-    lbound = 7
     n = 10
 
-    knl = lp.fix_parameters(knl, lbound=lbound)
+    knl = lp.fix_parameters(knl, sweep_lbound=sweep_lbound, scan_lbound=scan_lbound)
     knl = lp.realize_reduction(knl, force_scan=True)
-    print(knl)
-    evt, (a,) = knl(queue, n=n)
+    evt, (out,) = knl(queue, n=n)
 
-    assert (a.get() == np.cumsum(np.arange(lbound, 2*n+lbound)**2)[::2]).all()
+    assert (out.get()
+            == np.cumsum(np.arange(scan_lbound, 2*n+scan_lbound)**2)[::2]).all()
 
 
 def test_automatic_scan_detection():
@@ -179,6 +191,29 @@ def test_local_parallel_scan(ctx_factory, n):
     print(a)
 
     assert (a == np.cumsum(np.arange(16)**2)).all()
+
+
+def test_local_parallel_scan_with_nonzero_lower_bounds(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "[n] -> {[i,j]: 1<=i<n+1 and 0<=j<=i-1}",
+        """
+        out[i-1] = sum(j, a[j]**2)
+        """,
+        "..."
+        )
+
+    knl = lp.fix_parameters(knl, n=16)
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.realize_reduction(knl, force_scan=True)
+    knl = lp.realize_reduction(knl)
+
+    knl = lp.add_dtypes(knl, dict(a=int))
+    evt, (out,) = knl(queue, a=np.arange(1, 17))
+
+    assert (out == np.cumsum(np.arange(1, 17)**2)).all()
 
 
 @pytest.mark.parametrize("sweep_iname_tag", ["for", "l.1"])

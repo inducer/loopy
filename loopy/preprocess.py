@@ -338,9 +338,9 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
             <= sweep_iname
             <= sweep_max_value)
         and
-        (sweep_min_value + offset
+        (scan_min_value
             <= scan_iname
-            <= stride * sweep_iname + offset)
+            <= stride * (sweep_iname - sweep_min_value) + scan_min_value)
     """
 
     dim_type = isl.dim_type
@@ -362,10 +362,11 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
     tri_domain &= affs[sweep_iname].le_set(scan_param.sweep_upper_bound)
 
     # Add scan iname constraints
-    offset = scan_param.offset
-    tri_domain &= affs[scan_iname].ge_set(scan_param.sweep_lower_bound + offset)
+    scan_min_value = scan_param.scan_lower_bound
+    tri_domain &= affs[scan_iname].ge_set(scan_min_value)
     tri_domain &= affs[scan_iname].le_set(
-            scan_param.stride * affs[sweep_iname] + offset)
+            scan_param.stride * (affs[sweep_iname] - scan_param.sweep_lower_bound)
+            + scan_min_value)
 
     # Gist against domain params
     tri_domain = tri_domain.gist(domain.params())
@@ -379,7 +380,8 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
 
     if domain != tri_domain:
         # FIXME: Return a more descriptive error message.
-        return False, "domains are not equal"
+        return False, (
+            "domains are not equal: expected '%s', got '%s'" % (tri_domain, domain))
     else:
         return True, "ok"
 
@@ -387,7 +389,7 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
 _ScanCandidateParameters = namedtuple(
         "_ScanCandidateParameters",
         "sweep_iname, scan_iname, sweep_lower_bound, "
-        "sweep_upper_bound, offset, stride")
+        "sweep_upper_bound, scan_lower_bound, stride")
 
 
 def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
@@ -414,7 +416,7 @@ def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
             raise ValueError("Couldn't determine a sweep iname for the scan: %s" % v)
 
     try:
-        sweep_lower_bound, sweep_upper_bound, offset = (
+        sweep_lower_bound, sweep_upper_bound, scan_lower_bound = (
                 _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname))
     except Exception as e:
         raise ValueError("Couldn't determine bounds for scan: %s" % e)
@@ -426,7 +428,7 @@ def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
         raise ValueError("Couldn't determine a scan stride: %s" % v)
 
     return _ScanCandidateParameters(sweep_iname, scan_iname, sweep_lower_bound,
-            sweep_upper_bound, offset, stride)
+            sweep_upper_bound, scan_lower_bound, stride)
 
 
 def _try_infer_sweep_iname(domain, scan_iname, candidate_inames):
@@ -482,11 +484,10 @@ def _try_infer_sweep_iname(domain, scan_iname, candidate_inames):
 def _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname):
     sweep_bounds = kernel.get_iname_bounds(sweep_iname)
     scan_bounds = kernel.get_iname_bounds(scan_iname)
-    scan_offset = scan_bounds.lower_bound_pw_aff - sweep_bounds.lower_bound_pw_aff
 
     return (sweep_bounds.lower_bound_pw_aff,
             sweep_bounds.upper_bound_pw_aff,
-            scan_offset)
+            scan_bounds.lower_bound_pw_aff)
 
 
 def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
@@ -508,7 +509,6 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
     scan_iname_range = (
             domain_with_sweep_param.dim_max(scan_iname_idx)
             - domain_with_sweep_param.dim_min(scan_iname_idx)
-            - sweep_lower_bound
             ).gist(domain_with_sweep_param.params())
 
     scan_iname_pieces = scan_iname_range.get_pieces()
@@ -529,9 +529,6 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
         raise ValueError("aff has div: %s" % scan_iname_aff)
 
     coeffs = scan_iname_aff.get_coefficients_by_name(dim_type.param)
-
-    if len(coeffs) > 1:
-        raise ValueError("found more than one coeff: %s" % coeffs)
 
     if len(coeffs) == 0:
         try:
@@ -575,7 +572,7 @@ def _get_domain_with_iname_as_param(domain, iname):
 
 
 def _create_domain_for_sweep_tracking(orig_domain,
-        tracking_iname, sweep_iname, sweep_min_value, offset, stride):
+        tracking_iname, sweep_iname, sweep_min_value, scan_min_value, stride):
     dim_type = isl.dim_type
 
     subd = isl.BasicSet.universe(orig_domain.params().space)
@@ -586,17 +583,26 @@ def _create_domain_for_sweep_tracking(orig_domain,
 
     # Here we realize the domain:
     #
-    # [params, sweep_iname] -> {
-    #      [tracking_iname]:
-    #          offset + stride * (sweep_iname - 1) < tracking_iname
-    #          and tracking_iname <= stride * sweep_iname + offset
-    #          and min_value + offset <= tracking_iname }
+    # [..., i] -> {
+    #  [j]: 0 <= j - l
+    #       and
+    #       j - l <= k * (i - m)
+    #       and
+    #       k * (i - m - 1) < j - l }
+    # where
+    #   * i is the sweep iname
+    #   * j is the tracking iname
+    #   * k is the stride for the scan
+    #   * l is the lower bound for the scan
+    #   * m is the lower bound for the sweep iname
     #
     affs = isl.affs_from_space(subd.space)
 
-    subd &= affs[tracking_iname].gt_set(stride * affs[sweep_iname] - stride + offset)
-    subd &= affs[tracking_iname].le_set(stride * affs[sweep_iname] + offset)
-    subd &= affs[tracking_iname].ge_set(sweep_min_value + offset)
+    subd &= (affs[tracking_iname] - scan_min_value).ge_set(affs[0])
+    subd &= (affs[tracking_iname] - scan_min_value)\
+            .le_set(stride * (affs[sweep_iname] - sweep_min_value))
+    subd &= (affs[tracking_iname] - scan_min_value)\
+            .gt_set(stride * (affs[sweep_iname] - sweep_min_value - 1))
 
     # Move tracking_iname into a set dim (NOT sweep iname).
     subd = subd.move_dims(
@@ -1122,7 +1128,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     @memoize
     def get_or_add_sweep_tracking_iname_and_domain(
-            scan_iname, sweep_iname, sweep_min_value, offset, stride):
+            scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride):
         domain = kernel.get_inames_domain((scan_iname, sweep_iname))
 
         tracking_iname = var_name_gen(
@@ -1132,7 +1138,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         inames_added_for_scan.add(tracking_iname)
 
         new_domain = _create_domain_for_sweep_tracking(domain,
-                tracking_iname, sweep_iname, sweep_min_value, offset, stride)
+                tracking_iname, sweep_iname, sweep_min_value, scan_min_value, stride)
 
         domains.append(new_domain)
 
@@ -1176,14 +1182,15 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
     # {{{ sequential scan
 
     def map_scan_seq(expr, rec, nresults, arg_dtypes,
-            reduction_dtypes, sweep_iname, scan_iname, sweep_min_value, offset,
-            stride):
+            reduction_dtypes, sweep_iname, scan_iname, sweep_min_value,
+            scan_min_value, stride):
         outer_insn_inames = temp_kernel.insn_inames(insn)
         inames_to_remove.add(scan_iname)
 
         track_iname, track_iname_domain = (
                 get_or_add_sweep_tracking_iname_and_domain(
-                    scan_iname, sweep_iname, sweep_min_value, offset, stride))
+                    scan_iname, sweep_iname, sweep_min_value, scan_min_value,
+                    stride))
 
         from loopy.kernel.data import temp_var_scope
         acc_var_names = make_temporaries(
@@ -1253,7 +1260,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     def map_scan_local(expr, rec, nresults, arg_dtypes,
             reduction_dtypes, sweep_iname, scan_iname,
-            sweep_min_value, offset, stride):
+            sweep_min_value, scan_min_value, stride):
 
         # TODO: rename
         red_iname = scan_iname
@@ -1280,7 +1287,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 for oiname in outer_local_inames)
 
         track_iname, track_iname_domain = get_or_add_sweep_tracking_iname_and_domain(
-                scan_iname, sweep_iname, sweep_min_value, offset, stride)
+                scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride)
 
         # {{{ add separate iname to carry out the scan
 
@@ -1339,32 +1346,21 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 depends_on=frozenset())
         generated_insns.append(init_insn)
 
-        """
-        # XXX: Is this needed?
-        init_neutral_id = insn_id_gen("%s_%s_init_neutral" % (insn.id, red_iname))
-        init_neutral_insn = make_assignment(
-                id=init_neutral_id,
-                assignees=tuple(var(nvn) for nvn in neutral_var_names),
-                expression=neutral,
-                within_inames=base_iname_deps | frozenset([base_exec_iname]),
-                within_inames_is_final=insn.within_inames_is_final,
-                depends_on=frozenset())
-        generated_insns.append(init_neutral_insn)
-        """
-
         updated_inner_exprs = tuple(
                 replace_var_within_expr(sub_expr, scan_iname, track_iname)
                 for sub_expr in expr.exprs)
 
         from loopy.symbolic import Reduction
 
-        # TODO: change sweep iname to base exec iname...
+        from loopy.symbolic import pw_aff_to_expr
+        sweep_min_value_expr = pw_aff_to_expr(sweep_min_value)
 
         transfer_id = insn_id_gen("%s_%s_transfer" % (insn.id, red_iname))
         transfer_insn = make_assignment(
                 id=transfer_id,
                 assignees=tuple(
-                    acc_var[outer_local_iname_vars + (var(sweep_iname),)]
+                    acc_var[outer_local_iname_vars
+                            + (var(sweep_iname) - sweep_min_value_expr,)]
                     for acc_var in acc_vars),
                 expression=Reduction(
                     operation=expr.operation,
@@ -1450,7 +1446,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         #new_insn_add_within_inames.add(output_iname)
         new_insn_add_within_inames.add(sweep_iname)
 
-        output_idx = var(sweep_iname)
+        output_idx = var(sweep_iname) - sweep_min_value_expr
 
         if nresults == 1:
             assert len(acc_vars) == 1
@@ -1574,13 +1570,15 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     return map_scan_local(
                             expr, rec, nresults, arg_dtypes, reduction_dtypes,
                             sweep_iname, scan_param.scan_iname,
-                            scan_param.sweep_lower_bound, scan_param.offset,
+                            scan_param.sweep_lower_bound,
+                            scan_param.scan_lower_bound,
                             scan_param.stride)
                 elif sequential:
                     return map_scan_seq(
                             expr, rec, nresults, arg_dtypes, reduction_dtypes,
                             sweep_iname, scan_param.scan_iname,
-                            scan_param.sweep_lower_bound, scan_param.offset,
+                            scan_param.sweep_lower_bound,
+                            scan_param.scan_lower_bound,
                             scan_param.stride)
 
                 # fallthrough to reduction implementation
