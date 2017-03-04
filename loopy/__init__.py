@@ -108,6 +108,8 @@ from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
 
+from loopy.transform.reduction import make_two_level_reduction
+
 # }}}
 
 from loopy.type_inference import infer_unknown_types

@@ -328,25 +328,49 @@ def _add_params_to_domain(domain, param_names):
     return domain
 
 
+def _move_set_to_param_dims_except(domain, except_dims):
+    dim_type = isl.dim_type
+
+    iname_idx = 0
+    for iname in domain.get_var_names(dim_type.set):
+        if iname not in except_dims:
+            domain = domain.move_dims(
+                    dim_type.param, 0,
+                    dim_type.set, iname_idx, 1)
+            iname_idx -= 1
+        iname_idx += 1
+
+    return domain
+
+
 def _check_reduction_is_triangular(kernel, expr, scan_param):
     """Check whether the reduction within `expr` with scan parameters described by
     the structure `scan_param` is triangular. This attempts to verify that the
     domain for the scan and sweep inames is as follows:
 
-    [scan_iname, sweep_iname]:
-        (sweep_min_value
-            <= sweep_iname
-            <= sweep_max_value)
-        and
-        (scan_min_value
-            <= scan_iname
-            <= stride * (sweep_iname - sweep_min_value) + scan_min_value)
+    [other inames] -> {
+        [scan_iname, sweep_iname]:
+            (sweep_min_value
+                <= sweep_iname
+                <= sweep_max_value)
+            and
+            (scan_min_value
+                <= scan_iname
+                <= stride * (sweep_iname - sweep_min_value) + scan_min_value)
+    }
     """
 
     dim_type = isl.dim_type
 
-    domain = kernel.get_inames_domain(
+    orig_domain = kernel.get_inames_domain(
             (scan_param.sweep_iname, scan_param.scan_iname))
+
+    domain = _move_set_to_param_dims_except(orig_domain,
+            (scan_param.sweep_iname, scan_param.scan_iname))
+
+    params_for_gisting = domain.params()
+
+    domain = domain.gist_params(params_for_gisting)
 
     tri_domain = isl.BasicSet.universe(domain.params().space)
 
@@ -369,7 +393,7 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
             + scan_min_value)
 
     # Gist against domain params
-    tri_domain = tri_domain.gist(domain.params())
+    tri_domain = tri_domain.gist_params(params_for_gisting)
 
     # Move sweep and scan inames into the set
     tri_domain = tri_domain.move_dims(
@@ -418,7 +442,7 @@ def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
     try:
         sweep_lower_bound, sweep_upper_bound, scan_lower_bound = (
                 _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname))
-    except Exception as e:
+    except ValueError as v:
         raise ValueError("Couldn't determine bounds for scan: %s" % e)
 
     try:
@@ -482,12 +506,18 @@ def _try_infer_sweep_iname(domain, scan_iname, candidate_inames):
 
 
 def _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname):
-    sweep_bounds = kernel.get_iname_bounds(sweep_iname)
-    scan_bounds = kernel.get_iname_bounds(scan_iname)
+    # FIXME: use home domain of scan_iname...
+    domain = kernel.get_inames_domain((sweep_iname, scan_iname))
+    domain = _move_set_to_param_dims_except(domain, (sweep_iname, scan_iname))
 
-    return (sweep_bounds.lower_bound_pw_aff,
-            sweep_bounds.upper_bound_pw_aff,
-            scan_bounds.lower_bound_pw_aff)
+    domain = domain.gist_params(domain.params()).project_out_except(
+            (sweep_iname,), (isl.dim_type.param,))
+
+    sweep_lower_bound = domain.dim_min(domain.get_var_dict()[sweep_iname][1])
+    sweep_upper_bound = domain.dim_max(domain.get_var_dict()[sweep_iname][1])
+    scan_lower_bound = domain.dim_min(domain.get_var_dict()[scan_iname][1])
+
+    return (sweep_lower_bound, sweep_upper_bound, scan_lower_bound)
 
 
 def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
@@ -499,7 +529,7 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
     dim_type = isl.dim_type
 
     domain = kernel.get_inames_domain((sweep_iname, scan_iname))
-    domain_with_sweep_param = _get_domain_with_iname_as_param(domain, sweep_iname)
+    domain_with_sweep_param = _move_set_to_param_dims_except(domain, (scan_iname,))
 
     scan_iname_idx = domain_with_sweep_param.find_dim_by_name(
             dim_type.set, scan_iname)
@@ -659,11 +689,11 @@ def _infer_arg_dtypes_and_reduction_dtypes(kernel, expr, unknown_types_ok):
 def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
     """
     Multi assignment function calls are currently lowered into OpenCL so that
-    the function call:
+    the function call::
 
        a, b = segmented_sum(x, y, z, w)
 
-    becomes
+    becomes::
 
        a = segmented_sum_mangled(x, y, z, w, &b).
 
@@ -834,6 +864,12 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
     return kernel.copy(temporary_variables=new_temporary_variables,
                        instructions=new_instructions)
+
+
+def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
+    dependent_inames = frozenset(subdomain.get_var_names(isl.dim_type.param))
+    idx, = kernel.get_leaf_domain_indices(dependent_inames)
+    domains.insert(idx + 1, subdomain)
 
 # }}}
 
@@ -1140,7 +1176,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         new_domain = _create_domain_for_sweep_tracking(domain,
                 tracking_iname, sweep_iname, sweep_min_value, scan_min_value, stride)
 
-        domains.append(new_domain)
+        _insert_subdomain_into_domain_tree(kernel, domains, new_domain)
 
         return tracking_iname, new_domain
 

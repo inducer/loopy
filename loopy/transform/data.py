@@ -694,12 +694,14 @@ def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=No
 
     var_name_gen = knl.get_var_name_generator()
 
+    # XXX
     def map_reduction(expr, rec, nresults=1):
         if frozenset(expr.inames) != inames_set:
+            assert len(expr.exprs) == 1
             return type(expr)(
                     operation=expr.operation,
                     inames=expr.inames,
-                    expr=rec(expr.expr),
+                    exprs=(rec(expr.exprs[0]),),
                     allow_simultaneous=expr.allow_simultaneous)
 
         if subst_rule_name is None:

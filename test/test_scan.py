@@ -2,7 +2,7 @@ from __future__ import division, absolute_import, print_function
 
 __copyright__ = """
 Copyright (C) 2012 Andreas Kloeckner
-Copyright (C) 2016 Matt Wala
+Copyright (C) 2016, 2017 Matt Wala
 """
 
 __license__ = """
@@ -54,10 +54,8 @@ __all__ = [
 
 # More things to test.
 # - test that dummy inames are removed
-# - nested sequential/parallel scan
 # - scan(a) + scan(b)
 # - global parallel scan
-# - base_exec_iname different bounds from sweep iname
 
 # TO DO:
 # segmented<sum>(...) syntax
@@ -71,11 +69,14 @@ def test_sequential_scan(ctx_factory, n, stride):
 
     knl = lp.make_kernel(
         "[n] -> {[i,j]: 0<=i<n and 0<=j<=%d*i}" % stride,
-        "a[i] = sum(j, j**2) {id=scan}"
+        """
+        a[i] = sum(j, j**2)
+        """
         )
 
     knl = lp.fix_parameters(knl, n=n)
     knl = lp.realize_reduction(knl, force_scan=True)
+
     evt, (a,) = knl(queue)
 
     assert (a.get() == np.cumsum(np.arange(stride*n)**2)[::stride]).all()
@@ -114,6 +115,21 @@ def test_scan_with_different_lower_bound_from_sweep(
 
 
 def test_automatic_scan_detection():
+    knl = lp.make_kernel(
+        [
+            "[n] -> {[i]: 0<=i<n}",
+            "{[j]: 0<=j<=2*i}"
+        ],
+        """
+        a[i] = sum(j, j**2)
+        """
+        )
+
+    cgr = lp.generate_code_v2(knl)
+    assert "tracking" in cgr.device_code()
+
+
+def test_selective_scan_realization():
     pass
 
 
@@ -136,23 +152,41 @@ def test_dependent_domain_scan(ctx_factory):
     assert (a.get() == np.cumsum(np.arange(200)**2)[::2]).all()
 
 
-"""
-def test_nested_scan():
+@pytest.mark.parametrize("i_tag, j_tag", [
+    ("for", "for")
+    ])
+def test_nested_scan(ctx_factory, i_tag, j_tag):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
     knl = lp.make_kernel(
         [
             "[n] -> {[i]: 0 <= i < n}",
-            "{[j]: 0 <= j <= i}",
-            "{[k]: 0 <= j <= k}"
+            "[i] -> {[j]: 0 <= j <= i}",
+            "[i] -> {[k]: 0 <= k <= i}"
         ],
-        "a[i] = sum(j, sum(k, k))")
-"""
+        """
+        <>tmp[i] = sum(k, 1)
+        out[i] = sum(j, tmp[j])
+        """)
+
+    knl = lp.fix_parameters(knl, n=10)
+    knl = lp.tag_inames(knl, dict(i=i_tag, j=j_tag))
+
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+    print(knl)
+
+    evt, (out,) = knl(queue)
+
+    print(out)
 
 
-def test_scan_unsupported_stride():
+def test_scan_not_triangular():
     knl = lp.make_kernel(
         "{[i,j]: 0<=i<100 and 1<=j<=2*i}",
         """
-        a[i] = sum(j, j**2) {id=scan}
+        a[i] = sum(j, j**2)
         """
         )
 
@@ -177,19 +211,11 @@ def test_local_parallel_scan(ctx_factory, n):
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    print(knl)
-
     knl = lp.realize_reduction(knl)
 
     knl = lp.add_dtypes(knl, dict(a=int))
-    c = lp.generate_code_v2(knl)
-
-    print(c.device_code())
 
     evt, (a,) = knl(queue, a=np.arange(16))
-
-    print(a)
-
     assert (a == np.cumsum(np.arange(16)**2)).all()
 
 
@@ -291,8 +317,8 @@ def test_argmax(ctx_factory, i_tag):
     (16, (0, 5)),
     ))
 @pytest.mark.parametrize("iname_tag", ("for", "l.0"))
-def test_segmented_scan(ctx_getter, n, segment_boundaries_indices, iname_tag):
-    ctx = ctx_getter()
+def test_segmented_scan(ctx_factory, n, segment_boundaries_indices, iname_tag):
+    ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
     arr = np.ones(n, dtype=np.float32)
@@ -335,6 +361,37 @@ def test_segmented_scan(ctx_getter, n, segment_boundaries_indices, iname_tag):
 
     assert len(expected) == len(actual) == len(segment_boundaries_indices)
     assert [(e == a).all() for e, a in zip(expected, actual)]
+
+
+def test_two_level_scan(ctx_getter):
+    knl = lp.make_kernel(
+        [
+            "{[i,j]: 0 <= i < 256 and 0 <= j <= i}",
+        ],
+        """
+        out[i] = sum(j, j) {id=scan}
+        """,
+        "...")
+
+    #knl = lp.tag_inames(knl, dict(i="l.0"))
+
+    from loopy.transform.reduction import make_two_level_scan
+
+    knl = make_two_level_scan(
+        knl, "scan", inner_length=128,
+        scan_iname="j",
+        sweep_iname="i")
+
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+    print(knl)
+
+    c = ctx_getter()
+    q = cl.CommandQueue(c)
+
+    _, (out,) = knl(q)
+
+    print(out.get())
 
 
 if __name__ == "__main__":
