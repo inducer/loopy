@@ -366,10 +366,10 @@ def test_segmented_scan(ctx_factory, n, segment_boundaries_indices, iname_tag):
 def test_two_level_scan(ctx_getter):
     knl = lp.make_kernel(
         [
-            "{[i,j]: 0 <= i < 256 and 0 <= j <= i}",
+            "{[i,j]: 0 <= i < 16 and 0 <= j <= i}",
         ],
         """
-        out[i] = sum(j, j) {id=scan}
+        out[i] = sum(j, 1) {id=insn}
         """,
         "...")
 
@@ -378,11 +378,35 @@ def test_two_level_scan(ctx_getter):
     from loopy.transform.reduction import make_two_level_scan
 
     knl = make_two_level_scan(
-        knl, "scan", inner_length=128,
+        knl, "insn", inner_length=4,
         scan_iname="j",
-        sweep_iname="i")
+        sweep_iname="i",
+        local_storage_axes=(("l0_inner_update_i",)),
+        inner_iname="l0_inner_update_i",
+        inner_tag="l.0",
+        outer_tag="g.0",
+        local_storage_scope=lp.temp_var_scope.PRIVATE,
+        nonlocal_storage_scope=lp.temp_var_scope.GLOBAL,
+        inner_local_tag="l.0",
+        outer_local_tag="g.0")
+
+    print(knl)
 
     knl = lp.realize_reduction(knl, force_scan=True)
+
+    from loopy.transform.instruction import add_nosync_to_instructions
+    knl = add_nosync_to_instructions(
+            knl,
+            scope="global",
+            source="writes:acc_l0_j",
+            sink="reads:acc_l0_j")
+
+    from loopy.transform.save import save_and_reload_temporaries
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    knl = save_and_reload_temporaries(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
 
     print(knl)
 

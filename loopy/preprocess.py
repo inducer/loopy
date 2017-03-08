@@ -1242,13 +1242,20 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         init_id = insn_id_gen(
                 "%s_%s_init" % (insn.id, "_".join(expr.inames)))
 
+        init_insn_depends_on = frozenset()
+
+        global_barrier = temp_kernel.find_most_recent_global_barrier(insn.id)
+
+        if global_barrier is not None:
+            init_insn_depends_on |= frozenset([global_barrier])
+
         init_insn = make_assignment(
                 id=init_id,
                 assignees=acc_vars,
                 within_inames=outer_insn_inames - frozenset(
                     (sweep_iname,) + expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
-                depends_on=frozenset(),
+                depends_on=init_insn_depends_on,
                 expression=expr.operation.neutral_element(*arg_dtypes))
 
         generated_insns.append(init_insn)
@@ -1256,11 +1263,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         updated_inner_exprs = tuple(
                 replace_var_within_expr(sub_expr, scan_iname, track_iname)
                 for sub_expr in expr.exprs)
-
-        """
-        updated_inames = tuple(
-                (set(expr.inames) - set([scan_iname])) | set([track_iname]))
-        """
 
         update_id = insn_id_gen(
                 based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)))
@@ -1600,9 +1602,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     _error_if_force_scan_on(LoopyError,
                             "Sweep iname '%s' has an unsupported parallel tag '%s' "
                             "- the only parallelism allowed is 'local'." %
-                            (sweep_iname, sweep_class.nonlocal_parallel[0]))
+                            (sweep_iname, temp_kernel.iname_to_tag[sweep_iname]))
                 elif parallel:
-                    print(temp_kernel)
                     return map_scan_local(
                             expr, rec, nresults, arg_dtypes, reduction_dtypes,
                             sweep_iname, scan_param.scan_iname,

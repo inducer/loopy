@@ -823,6 +823,95 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return result
 
+    @property
+    @memoize_method
+    def global_barrier_order(self):
+        """Return a :class:`tuple` of the listing the ids of global barrier instructions
+        as they appear in order in the kernel.
+
+        See also :class:`loopy.instruction.BarrierInstruction`.
+        """
+        barriers = []
+        visiting = set()
+        visited = set()
+
+        unvisited = set(insn.id for insn in self.instructions)
+
+        while unvisited:
+            stack = [unvisited.pop()]
+
+            while stack:
+                top = stack[-1]
+
+                if top in visiting:
+                    visiting.remove(top)
+
+                    from loopy.kernel.instruction import BarrierInstruction
+                    insn = self.id_to_insn[top]
+                    if isinstance(insn, BarrierInstruction):
+                        if insn.kind == "global":
+                            barriers.append(top)
+
+                if top in visited:
+                    stack.pop()
+                    continue
+
+                visited.add(top)
+                visiting.add(top)
+
+                for child in self.id_to_insn[top].depends_on:
+                    # Check for no cycles.
+                    assert child not in visiting
+                    stack.append(child)
+
+        # Ensure this is the only possible order.
+        for prev_barrier, barrier in zip(barriers, barriers[1:]):
+            if prev_barrier not in self.recursive_insn_dep_map()[barrier]:
+                raise LoopyError(
+                        "Unordered global barriers detected: '%s', '%s'"
+                        % (barrier, prev_barrier))
+
+        return tuple(barriers)
+
+    @memoize_method
+    def find_most_recent_global_barrier(self, insn_id):
+        """Return the id of the latest occuring global barrier which the
+        given instruction (indirectly or directly) depends on, or *None* if this
+        instruction does not depend on a global barrier.
+
+        The return value is guaranteed to be unique because global barriers are
+        totally ordered within the kernel.
+        """
+
+        if len(self.global_barrier_order) == 0:
+            return None
+
+        insn = self.id_to_insn[insn_id]
+
+        if len(insn.depends_on) == 0:
+            return None
+
+        def is_barrier(my_insn_id):
+            insn = self.id_to_insn[my_insn_id]
+            from loopy.kernel.instruction import BarrierInstruction
+            return isinstance(insn, BarrierInstruction) and insn.kind == "global"
+
+        global_barrier_to_ordinal = dict(
+            (b, i) for i, b in enumerate(self.global_barrier_order))
+
+        def get_barrier_ordinal(barrier_id):
+            return global_barrier_to_ordinal[barrier_id] if barrier_id is not None else -1
+
+        direct_barrier_dependencies = set(
+                dep for dep in insn.depends_on if is_barrier(dep))
+
+        if len(direct_barrier_dependencies) > 0:
+            return max(direct_barrier_dependencies, key=get_barrier_ordinal)
+        else:
+            return max((self.find_most_recent_global_barrier(dep)
+                        for dep in insn.depends_on),
+                    key=get_barrier_ordinal)
+
     # }}}
 
     # {{{ argument wrangling

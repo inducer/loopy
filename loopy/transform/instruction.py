@@ -34,7 +34,6 @@ def find_instructions(kernel, insn_match):
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
 
-
 # }}}
 
 
@@ -203,6 +202,74 @@ def tag_instructions(kernel, new_tag, within=None):
             new_insns.append(insn)
 
     return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
+# {{{ add nosync
+
+def add_nosync_to_instructions(
+        kernel, scope, source, sink, bidirectional=False):
+    """Add a *nosync* directive between *source* and *sync*.
+
+    *source* and *sink* may be any instruction id match understood by
+    :func:`loopy.match.parse_match`.
+
+    *scope* should be a valid nosync scope.
+
+    If *bidirectional* is True, this adds a nosync to both the source
+    and sink instructions, otherwise the directive is only added to the
+    sink instructions.
+
+    *nosync* attributes are only added if a dependency is present or if
+    the instruction pair is spread across a conflicting group.
+    """
+
+    if isinstance(source, str) and source in kernel.id_to_insn:
+        sources = frozenset([source])
+    else:
+        sources = frozenset(
+                source.id for source in find_instructions(kernel, source))
+
+    if isinstance(sink, str) and sink in kernel.id_to_insn:
+        sinks = frozenset([sink])
+    else:
+        sinks = frozenset(
+                sink.id for sink in find_instructions(kernel, sink))
+
+    def insns_in_conflicting_groups(insn1_id, insn2_id):
+        insn1 = kernel.id_to_insn[insn1_id]
+        insn2 = kernel.id_to_insn[insn2_id]
+        return (
+                bool(insn1.groups & insn2.conflicts_with_groups)
+                or
+                bool(insn2.groups & insn1.conflicts_with_groups))
+
+    from collections import defaultdict
+    nosync_to_add = defaultdict(lambda: set())
+
+    for sink in sinks:
+        for source in sources:
+
+            needs_nosync = (
+                    source in kernel.recursive_insn_dep_map()[sink]
+                    or insns_in_conflicting_groups(source, sink))
+
+            if not needs_nosync:
+                continue
+
+            nosync_to_add[sink].add((source, scope))
+            if bidirectional:
+                nosync_to_add[source].add((sink, scope))
+
+    new_instructions = list(kernel.instructions)
+
+    for i, insn in enumerate(new_instructions):
+        if insn.id in nosync_to_add:
+            new_instructions[i] = insn.copy(
+                    no_sync_with=insn.no_sync_with | frozenset(nosync_to_add[insn.id]))
+
+    return kernel.copy(instructions=new_instructions)
 
 # }}}
 

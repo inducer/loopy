@@ -402,6 +402,10 @@ def test_precompute_with_preexisting_inames_fail():
                 precompute_inames="ii,jj")
 
 
+def test_add_nosync_to_instructions():
+    knl = lp.make_kernel("")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

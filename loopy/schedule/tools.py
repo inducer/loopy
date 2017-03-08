@@ -144,17 +144,6 @@ class InstructionQuery(object):
                    if isinstance(self.kernel.iname_to_tag.get(iname),
                                  HardwareParallelTag))
 
-    @memoize_method
-    def common_hw_inames(self, insn_ids):
-        """
-        Return the common set of hardware parallel tagged inames among
-        the list of instructions.
-        """
-        # Get the list of hardware inames in which the temporary is defined.
-        if len(insn_ids) == 0:
-            return set()
-        return set.intersection(*(self.hw_inames(id) for id in insn_ids))
-
 # }}}
 
 
