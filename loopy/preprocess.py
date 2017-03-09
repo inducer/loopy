@@ -363,7 +363,7 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
     dim_type = isl.dim_type
 
     orig_domain = kernel.get_inames_domain(
-            (scan_param.sweep_iname, scan_param.scan_iname))
+            frozenset((scan_param.sweep_iname, scan_param.scan_iname)))
 
     domain = _move_set_to_param_dims_except(orig_domain,
             (scan_param.sweep_iname, scan_param.scan_iname))
@@ -443,7 +443,7 @@ def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
         sweep_lower_bound, sweep_upper_bound, scan_lower_bound = (
                 _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname))
     except ValueError as v:
-        raise ValueError("Couldn't determine bounds for scan: %s" % e)
+        raise ValueError("Couldn't determine bounds for scan: %s" % v)
 
     try:
         stride = _try_infer_scan_stride(
@@ -506,16 +506,21 @@ def _try_infer_sweep_iname(domain, scan_iname, candidate_inames):
 
 
 def _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname):
-    # FIXME: use home domain of scan_iname...
-    domain = kernel.get_inames_domain((sweep_iname, scan_iname))
+    domain = kernel.get_inames_domain(frozenset((sweep_iname, scan_iname)))
     domain = _move_set_to_param_dims_except(domain, (sweep_iname, scan_iname))
 
-    domain = domain.gist_params(domain.params()).project_out_except(
-            (sweep_iname,), (isl.dim_type.param,))
+    var_dict = domain.get_var_dict()
+    sweep_idx = var_dict[sweep_iname][1]
+    scan_idx = var_dict[scan_iname][1]
 
-    sweep_lower_bound = domain.dim_min(domain.get_var_dict()[sweep_iname][1])
-    sweep_upper_bound = domain.dim_max(domain.get_var_dict()[sweep_iname][1])
-    scan_lower_bound = domain.dim_min(domain.get_var_dict()[scan_iname][1])
+    domain = domain.gist_params(domain.params())
+
+    try:
+        sweep_lower_bound = domain.dim_min(sweep_idx)
+        sweep_upper_bound = domain.dim_max(sweep_idx)
+        scan_lower_bound = domain.dim_min(scan_idx)
+    except isl.Error as e:
+        raise ValueError("isl error: %s" % e)
 
     return (sweep_lower_bound, sweep_upper_bound, scan_lower_bound)
 
@@ -867,7 +872,11 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
 
 def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
-    dependent_inames = frozenset(subdomain.get_var_names(isl.dim_type.param))
+    # Intersect with inames, because we could have captured some kernel params
+    # in here too..
+    dependent_inames = (
+            frozenset(subdomain.get_var_names(isl.dim_type.param))
+            & kernel.all_inames())
     idx, = kernel.get_leaf_domain_indices(dependent_inames)
     domains.insert(idx + 1, subdomain)
 
@@ -1165,7 +1174,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
     @memoize
     def get_or_add_sweep_tracking_iname_and_domain(
             scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride):
-        domain = kernel.get_inames_domain((scan_iname, sweep_iname))
+        domain = temp_kernel.get_inames_domain(frozenset((scan_iname, sweep_iname)))
 
         tracking_iname = var_name_gen(
                 "{scan_iname}_tracking_{sweep_iname}"
@@ -1176,9 +1185,20 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         new_domain = _create_domain_for_sweep_tracking(domain,
                 tracking_iname, sweep_iname, sweep_min_value, scan_min_value, stride)
 
-        _insert_subdomain_into_domain_tree(kernel, domains, new_domain)
+        from loopy.kernel.tools import DomainChanger
+        domain_idx, = temp_kernel.get_leaf_domain_indices(frozenset([sweep_iname]))
 
-        return tracking_iname, new_domain
+        orig_domain = domains[domain_idx]
+        new_domain = isl.align_spaces(new_domain, domains[domain_idx],
+                                      obj_bigger_ok=True,
+                                      across_dim_types=True)
+        orig_domain = isl.align_spaces(orig_domain, new_domain)
+
+        orig_domain &= new_domain
+
+        domains[domain_idx] = orig_domain
+        
+        return tracking_iname
 
     def replace_var_within_expr(expr, from_var, to_var):
         from pymbolic.mapper.substitutor import make_subst_func
@@ -1223,7 +1243,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         outer_insn_inames = temp_kernel.insn_inames(insn)
         inames_to_remove.add(scan_iname)
 
-        track_iname, track_iname_domain = (
+        track_iname = (
                 get_or_add_sweep_tracking_iname_and_domain(
                     scan_iname, sweep_iname, sweep_min_value, scan_min_value,
                     stride))
@@ -1303,7 +1323,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         # TODO: rename
         red_iname = scan_iname
 
-        size = _get_int_iname_size(sweep_iname)
+        scan_size = _get_int_iname_size(sweep_iname)
+
+        assert scan_size > 0
+
+        if scan_size == 1:
+            raise NotImplementedError("tell matt to fix this")
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
@@ -1324,7 +1349,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 _get_int_iname_size(oiname)
                 for oiname in outer_local_inames)
 
-        track_iname, track_iname_domain = get_or_add_sweep_tracking_iname_and_domain(
+        track_iname = get_or_add_sweep_tracking_iname_and_domain(
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride)
 
         # {{{ add separate iname to carry out the scan
@@ -1333,7 +1358,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         # on our red_iname.
 
         base_exec_iname = var_name_gen("scan_"+sweep_iname)
-        domains.append(_make_slab_set(base_exec_iname, size))
+        domains.append(_make_slab_set(base_exec_iname, scan_size))
         new_iname_tags[base_exec_iname] = kernel.iname_to_tag[sweep_iname]
 
         # }}}
@@ -1359,7 +1384,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         acc_var_names = make_temporaries(
                 name_based_on="acc_"+scan_iname,
                 nvars=nresults,
-                shape=outer_local_iname_sizes + (size,),
+                shape=outer_local_iname_sizes + (scan_size,),
                 dtypes=reduction_dtypes,
                 scope=temp_var_scope.LOCAL)
 
@@ -1418,7 +1443,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             else:
                 return c
 
-        scan_size = size
         prev_id = transfer_id
 
         istage = 0

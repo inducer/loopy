@@ -207,7 +207,7 @@ def test_local_parallel_scan(ctx_factory, n):
         "..."
         )
 
-    knl = lp.fix_parameters(knl, n=16)
+    knl = lp.fix_parameters(knl, n=n)
     knl = lp.tag_inames(knl, dict(i="l.0"))
     knl = lp.realize_reduction(knl, force_scan=True)
 
@@ -215,8 +215,8 @@ def test_local_parallel_scan(ctx_factory, n):
 
     knl = lp.add_dtypes(knl, dict(a=int))
 
-    evt, (a,) = knl(queue, a=np.arange(16))
-    assert (a == np.cumsum(np.arange(16)**2)).all()
+    evt, (a,) = knl(queue, a=np.arange(n))
+    assert (a == np.cumsum(np.arange(n)**2)).all()
 
 
 def test_local_parallel_scan_with_nonzero_lower_bounds(ctx_factory):
@@ -369,7 +369,7 @@ def test_two_level_scan(ctx_getter):
             "{[i,j]: 0 <= i < 16 and 0 <= j <= i}",
         ],
         """
-        out[i] = sum(j, 1) {id=insn}
+        out[i] = sum(j, j) {id=insn}
         """,
         "...")
 
@@ -381,7 +381,7 @@ def test_two_level_scan(ctx_getter):
         knl, "insn", inner_length=4,
         scan_iname="j",
         sweep_iname="i",
-        local_storage_axes=(("l0_inner_update_i",)),
+        local_storage_axes=(("l0_inner2_i",)),
         inner_iname="l0_inner_update_i",
         inner_tag="l.0",
         outer_tag="g.0",
@@ -402,6 +402,81 @@ def test_two_level_scan(ctx_getter):
             sink="reads:acc_l0_j")
 
     from loopy.transform.save import save_and_reload_temporaries
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    knl = save_and_reload_temporaries(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+
+    print(knl)
+
+    c = ctx_getter()
+    q = cl.CommandQueue(c)
+
+    _, (out,) = knl(q)
+
+    print(out.get())
+
+
+def test_three_level_scan(ctx_getter):
+    knl = lp.make_kernel(
+        [
+            "{[i,j]: 0 <= i < 16 and 0 <= j <= i}",
+        ],
+        """
+        out[i] = sum(j, j) {id=insn}
+        """,
+        "...")
+
+    #knl = lp.tag_inames(knl, dict(i="l.0"))
+
+    from loopy.transform.reduction import make_two_level_scan
+
+    knl = make_two_level_scan(
+        knl, "insn", inner_length=4,
+        scan_iname="j",
+        sweep_iname="i",
+        local_storage_axes=(("l0_inner_update_i",)),
+        inner_iname="l0_inner_update_i",
+        inner_tag="l.0",
+        outer_tag="g.0",
+        local_storage_scope=lp.temp_var_scope.LOCAL,
+        nonlocal_storage_scope=lp.temp_var_scope.GLOBAL,
+        inner_local_tag=None,
+        outer_local_tag="g.0")
+
+    knl = make_two_level_scan(
+        knl, "j_local_scan", inner_length=2,
+        scan_iname="l1_j",
+        sweep_iname="l1_inner_i",
+        inner_tag="for",
+        outer_tag="l.0",
+        nonlocal_tag="l.0",
+        local_storage_scope=lp.temp_var_scope.LOCAL,
+        nonlocal_storage_scope=lp.temp_var_scope.LOCAL,
+        inner_local_tag="for",
+        outer_local_tag="l.0")
+
+    print(knl)
+
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+    from loopy.transform.instruction import add_nosync_to_instructions
+    knl = add_nosync_to_instructions(
+            knl,
+            scope="global",
+            source="writes:acc_l0_j",
+            sink="reads:acc_l0_j")
+
+    knl = lp.alias_temporaries(knl, ["l1l_insn", "l2l_j_local_scan"], synchronize_for_exclusive_use=False)
+
+    print(knl.get_temporary_to_base_storage_map())
+
+    print(knl)
+
+    from loopy.transform.save import save_and_reload_temporaries
+
+    print(knl)
 
     knl = lp.preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)

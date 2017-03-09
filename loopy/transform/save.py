@@ -193,9 +193,9 @@ class TemporarySaver(object):
 
             The name of the new temporary.
 
-        .. attribute:: orig_temporary
+        .. attribute:: orig_temporary_name
 
-            The original temporary variable object.
+            The name of original temporary variable object.
 
         .. attribute:: hw_dims
 
@@ -214,9 +214,10 @@ class TemporarySaver(object):
             non-hardware dimensions
         """
 
-        @memoize_method
-        def as_variable(self):
-            temporary = self.orig_temporary
+        __slots__ = ["name", "orig_temporary_name", "hw_dims", "hw_tags", "non_hw_dims"]
+
+        def as_kernel_temporary(self, kernel):
+            temporary = kernel.temporary_variables[self.orig_temporary_name]
             from loopy.kernel.data import TemporaryVariable
             return TemporaryVariable(
                 name=self.name,
@@ -239,7 +240,12 @@ class TemporarySaver(object):
         self.extra_args_to_add = {}
         self.updated_iname_to_tag = {}
         self.updated_temporary_variables = {}
+        # temporary name -> save or reload insns
         self.saves_or_reloads_added = {}
+        from collections import defaultdict
+        self.subkernel_to_saves = defaultdict(lambda: set())
+        self.subkernel_to_reloads = defaultdict(lambda: set())
+        self.base_storage_to_representative = {}
 
     def get_hw_axis_sizes_and_tags_for_save_slot(self, temporary):
         """
@@ -256,6 +262,7 @@ class TemporarySaver(object):
 
         group_tags = None
         local_tags = None
+        originating_insn_id = None
 
         def _sortedtags(tags):
             return sorted(tags, key=lambda tag: tag.axis)
@@ -286,13 +293,18 @@ class TemporarySaver(object):
             if group_tags is None:
                 group_tags = _sortedtags(my_group_tags)
                 local_tags = _sortedtags(my_local_tags)
+                originating_insn_id = insn_id
 
             if (
                     group_tags != _sortedtags(my_group_tags)
                     or local_tags != _sortedtags(my_local_tags)):
                 raise ValueError(
-                    "inconsistent parallel tags across instructions that access '%s'"
-                    % temporary.name)
+                    "inconsistent parallel tags across instructions that access "
+                    "'%s', instruction '%s' has tags '%s' but instruction '%s' "
+                    "has tags '%s'"
+                    % (temporary.name,
+                       originating_insn_id, group_tags + local_tags,
+                       insn_id, my_group_tags + my_local_tags))
 
         if group_tags is None:
             assert local_tags is None
@@ -324,9 +336,8 @@ class TemporarySaver(object):
             assert temporary.read_only
             return None
 
-        if temporary.base_storage is not None:
-            raise ValueError(
-                "Cannot promote temporaries with base_storage to global")
+        if temporary.base_storage in self.base_storage_to_representative:
+            return self.base_storage_to_representative[temporary.base_storage]
 
         hw_dims, hw_tags = self.get_hw_axis_sizes_and_tags_for_save_slot(temporary)
         non_hw_dims = temporary.shape
@@ -337,10 +348,13 @@ class TemporarySaver(object):
 
         backing_temporary = self.PromotedTemporary(
             name=self.var_name_gen(temporary.name + "_save_slot"),
-            orig_temporary=temporary,
+            orig_temporary_name=temporary.name,
             hw_dims=hw_dims,
             hw_tags=hw_tags,
             non_hw_dims=non_hw_dims)
+
+        if temporary.base_storage is not None:
+            self.base_storage_to_representative[temporary.base_storage] = backing_temporary
 
         return backing_temporary
 
@@ -353,6 +367,18 @@ class TemporarySaver(object):
 
         if promoted_temporary is None:
             return
+
+        if mode == "save":
+            if promoted_temporary.name in self.subkernel_to_saves[subkernel]:
+                return
+            else:
+                self.subkernel_to_saves[subkernel].add(promoted_temporary.name)
+
+        elif mode == "reload":
+            if promoted_temporary.name in self.subkernel_to_reloads[subkernel]:
+                return
+            else:
+                self.subkernel_to_reloads[subkernel].add(promoted_temporary.name)
 
         from loopy.kernel.tools import DomainChanger
         dchg = DomainChanger(
@@ -378,7 +404,8 @@ class TemporarySaver(object):
                     Variable(agg),
                     tuple(map(Variable, subscript)))
 
-        dim_inames_trunc = dim_inames[:len(promoted_temporary.orig_temporary.shape)]
+        orig_temporary = self.kernel.temporary_variables[promoted_temporary.orig_temporary_name]
+        dim_inames_trunc = dim_inames[:len(orig_temporary.shape)]
 
         args = (
             add_subscript_if_nonempty(
@@ -433,7 +460,7 @@ class TemporarySaver(object):
                 depends_on=insn.depends_on | frozenset([save_or_load_insn_id]))
 
         self.updated_temporary_variables[promoted_temporary.name] = \
-            promoted_temporary.as_variable()
+            promoted_temporary.as_kernel_temporary(self.kernel)
 
         self.updated_iname_to_tag.update(iname_to_tag)
 
@@ -488,7 +515,7 @@ class TemporarySaver(object):
         assert mode in ("save", "reload")
         import islpy as isl
 
-        orig_temporary = promoted_temporary.orig_temporary
+        orig_temporary = self.kernel.temporary_variables[promoted_temporary.orig_temporary_name]
         orig_dim = domain.dim(isl.dim_type.set)
 
         # Tags for newly added inames
