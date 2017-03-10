@@ -145,14 +145,45 @@ def _update_instructions(kernel, id_to_new_insn, copy=True):
     return kernel
 
 
-def _make_slab_set(iname, size):
+def _make_slab_set(iname, size, space):
     # FIXME: stolen from preprocess, should be its own thing...
-    v = isl.make_zero_and_vars([iname])
+    from pymbolic.mapper.dependency import DependencyMapper
+
+    space = size.get_domain_space()
+
+    new_space = (size.get_domain_space()
+            .add_dims(isl.dim_type.set, 1)
+            .set_dim_name(isl.dim_type.set, space.dim(isl.dim_type.set), iname))
+
+    v = isl.affs_from_space(new_space)
+
+    size = isl.align_spaces(size, v[0])
+
     bs, = (
             v[0].le_set(v[iname])
             &
             v[iname].lt_set(v[0] + size)).get_basic_sets()
+
     return bs
+
+
+def _add_subdomain_to_kernel(kernel, subdomain):
+    domains = list(kernel.domains)
+    dep_inames = (
+            frozenset(subdomain.get_var_names(isl.dim_type.param)) & kernel.all_inames())
+
+    indices = kernel.get_leaf_domain_indices(dep_inames)
+
+    if len(indices) == 0:
+        domains.append(subdomain)
+    elif len(indices) == 1:
+        idx, = indices
+        domains.insert(idx + 1, subdomain)
+    else:
+        print(indices)
+        raise ValueError("more than 1 leaf index")
+
+    return kernel.copy(domains=domains)
 
 
 def _add_scan_subdomain(
@@ -174,12 +205,7 @@ def _add_scan_subdomain(
             &
             affs[scan_iname].ge_set(affs[0])).get_basic_sets()
 
-    sweep_idx, = kernel.get_leaf_domain_indices((sweep_iname,))
-
-    domains = list(kernel.domains)
-    domains.insert(sweep_idx + 1, subd)
-
-    return kernel.copy(domains=domains)
+    return _add_subdomain_to_kernel(kernel, subd)
 
 
 def _expand_subst_within_expression(kernel, expr):
@@ -217,7 +243,7 @@ def _add_global_barrier(kernel, source, sink, barrier_id):
 
 
 def _get_scan_level(sweep_iname):
-    SWEEP_RE = r"l(\d+)_.*"
+    SWEEP_RE = r".*__l(\d+)(?:_outer)?"
 
     import re
     match_result = re.match(SWEEP_RE, sweep_iname)
@@ -229,7 +255,7 @@ def _get_scan_level(sweep_iname):
 
 
 def _get_base_iname(iname):
-    BASE_INAME_RE = r"l\d+_(.*)"
+    BASE_INAME_RE = r"(.*)__l\d+(?:_outer)?"
 
     import re
     match_result = re.match(BASE_INAME_RE, iname)
@@ -237,16 +263,7 @@ def _get_base_iname(iname):
     if match_result is None:
         return iname
 
-    base_iname = match_result.group(1)
-
-    MODIFIERS = ("inner_", "outer_")
-
-    for modifier in MODIFIERS:
-        if base_iname.startswith(modifier):
-            base_iname = base_iname[len(modifier):]
-            break
-
-    return base_iname
+    return match_result.group(1)
 
 
 def make_two_level_scan(
@@ -303,36 +320,34 @@ def make_two_level_scan(
     level = _get_scan_level(sweep_iname)
     base_scan_iname = _get_base_iname(scan_iname)
     base_sweep_iname = _get_base_iname(sweep_iname)
+    base_insn_id = _get_base_iname(insn_id)
 
     format_kwargs = {
-            "insn": insn_id, "iname": base_scan_iname, "sweep": base_sweep_iname,
+            "insn": base_insn_id, "iname": base_scan_iname, "sweep": base_sweep_iname,
             "level": level, "next_level": level + 1, "prefix": "l"}
-
-    nonlocal_storage_name = var_name_gen(
-            "{prefix}{level}_insn".format(**format_kwargs))
 
     if inner_iname is None:
         inner_iname = var_name_gen(
-                "{prefix}{level}_inner2_{sweep}".format(**format_kwargs))
+                "{sweep}__l{level}".format(**format_kwargs))
 
     if outer_iname is None:
         outer_iname = var_name_gen(
-                "{prefix}{level}_outer2_{sweep}".format(**format_kwargs))
+                "{sweep}__l{level}_outer".format(**format_kwargs))
 
     nonlocal_iname = var_name_gen(
-            "{prefix}{level}_combine_{sweep}".format(**format_kwargs))
+            "{sweep}__l{level}_nonloc".format(**format_kwargs))
 
     inner_local_iname = var_name_gen(
-            "{prefix}{next_level}_inner_{sweep}".format(**format_kwargs))
+            "{sweep}__l{next_level}".format(**format_kwargs))
 
     inner_scan_iname = var_name_gen(
-            "{prefix}{next_level}_{iname}".format(**format_kwargs))
-
-    outer_scan_iname = var_name_gen(
-            "{prefix}{level}_{iname}".format(**format_kwargs))
+            "{iname}__l{next_level}".format(**format_kwargs))
 
     outer_local_iname = var_name_gen(
-            "{prefix}{next_level}_outer_{sweep}".format(**format_kwargs))
+            "{sweep}__l{next_level}_outer".format(**format_kwargs))
+
+    outer_scan_iname = var_name_gen(
+            "{iname}__l{level}".format(**format_kwargs))
 
     subst_name = var_name_gen(
             "{insn}_inner_subst".format(**format_kwargs))
@@ -342,17 +357,17 @@ def make_two_level_scan(
 
     if local_storage_name is None:
         local_storage_name = var_name_gen(
-            "{prefix}{next_level}l_{insn}".format(**format_kwargs))
+            "{insn}__l{next_level}".format(**format_kwargs))
 
     if nonlocal_storage_name is None:
         nonlocal_storage_name = var_name_gen(
-            "{prefix}{level}nl_{insn}".format(**format_kwargs))
+            "{insn}__l{level}_outer".format(**format_kwargs))
 
     local_scan_insn_id = insn_id_gen(
-            "{iname}_local_scan".format(**format_kwargs))
+            "{insn}__l{next_level}".format(**format_kwargs))
 
     nonlocal_scan_insn_id = insn_id_gen(
-            "{iname}_nonlocal_scan".format(**format_kwargs))
+            "{insn}__l{level}".format(**format_kwargs))
 
     format_kwargs.update({"nonlocal": nonlocal_storage_name})
 
@@ -394,9 +409,11 @@ def make_two_level_scan(
     kernel = reduction_arg_to_subst_rule(
             kernel, scan_iname, subst_rule_name=subst_name)
 
+
     from loopy.kernel.instruction import NoOpInstruction
     # FIXME: this is stupid
     kernel = _update_instructions(kernel, {insn_id: insn.copy(expression=0)})
+
     """
             {insn_id: NoOpInstruction(
                 id=insn_id,
@@ -425,33 +442,13 @@ def make_two_level_scan(
 
     from pymbolic import var
     local_scan_expr = _expand_subst_within_expression(kernel,
-            var(subst_name)(var(outer_local_iname) * inner_length +
+            var(subst_name)(var(outer_iname) * inner_length +
                             var(inner_scan_iname)))
-
-    new_inames = ["temp"]
-
-    kernel = lp.duplicate_inames(kernel,
-            (sweep_iname),
-            within="not id:*",
-            new_inames=new_inames)
 
     kernel = lp.split_iname(kernel, sweep_iname, inner_length,
             inner_iname=inner_iname, outer_iname=outer_iname,
             inner_tag=inner_tag, outer_tag=outer_tag)
 
-    kernel = lp.split_iname(kernel, new_inames[0], inner_length,
-            inner_iname=inner_local_iname, outer_iname=outer_local_iname,
-            inner_tag=inner_local_tag, outer_tag=outer_local_tag)
-
-    """
-    kernel = lp.duplicate_inames(kernel,
-            (outer_iname, inner_iname),
-            within="not id:*",
-            new_inames=[outer_local_iname, inner_local_iname],
-            tags={outer_iname: outer_local_tag, inner_iname: inner_local_tag})
-    """
-
-    kernel = _add_scan_subdomain(kernel, inner_scan_iname, inner_local_iname)
 
     from loopy.kernel.data import SubstitutionRule
     from loopy.symbolic import Reduction
@@ -467,6 +464,8 @@ def make_two_level_scan(
 
     kernel = kernel.copy(substitutions=substitutions)
 
+    outer_local_iname = outer_iname
+
     all_precompute_inames = (outer_local_iname, inner_local_iname)
 
     precompute_inames = pick_out_relevant_axes(all_precompute_inames)
@@ -481,8 +480,10 @@ def make_two_level_scan(
     within_inames = insn.within_inames - frozenset([outer_iname, inner_iname])
 
     from pymbolic import var
+
     kernel = lp.precompute(kernel,
-            [var(local_subst_name)(var(outer_iname), var(inner_iname))],
+            [var(local_subst_name)(
+                var(outer_iname), var(inner_iname))],
             sweep_inames=sweep_inames,
             precompute_inames=precompute_inames,
             storage_axes=local_storage_axes,
@@ -490,14 +491,27 @@ def make_two_level_scan(
             temporary_name=local_storage_name,
             compute_insn_id=local_scan_insn_id)
 
+    kernel = _add_scan_subdomain(kernel, inner_scan_iname, inner_local_iname)
+
     # }}}
 
     # {{{ implement local to nonlocal information transfer
+
+    from loopy.isl_helpers import static_max_of_pw_aff
+    from loopy.symbolic import aff_to_expr, pw_aff_to_expr
+    nonlocal_storage_len_pw_aff = 2 + static_max_of_pw_aff(
+            kernel.get_iname_bounds(outer_iname).size,
+            constants_only=False)
+
+    """
+    nonlocal_storage_len = (
+           kernel.get_constant_iname_length(outer_iname)
 
     from loopy.symbolic import pw_aff_to_expr
     nonlocal_storage_len_pw_aff = (
             # FIXME: should be 1 + len, bounds check doesnt like this..
             2 + kernel.get_iname_bounds(outer_iname).upper_bound_pw_aff)
+    """
 
     nonlocal_storage_len = pw_aff_to_expr(nonlocal_storage_len_pw_aff)
 
@@ -547,7 +561,9 @@ def make_two_level_scan(
 
     # {{{ implement nonlocal scan
 
-    kernel.domains.append(_make_slab_set(nonlocal_iname, nonlocal_storage_len))
+    outer_idx, = kernel.get_leaf_domain_indices((outer_iname,))
+    subd = _make_slab_set(nonlocal_iname, nonlocal_storage_len_pw_aff, nonlocal_storage_len_pw_aff.space)
+    kernel = _add_subdomain_to_kernel(kernel, subd)
 
     if nonlocal_tag is not None:
         kernel = lp.tag_inames(kernel, {nonlocal_iname: nonlocal_tag})

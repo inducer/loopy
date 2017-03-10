@@ -343,13 +343,21 @@ def _move_set_to_param_dims_except(domain, except_dims):
     return domain
 
 
+def _domain_depends_on_given_set_dims(domain, set_dim_names):
+    set_dim_names = frozenset(set_dim_names)
+
+    return any(
+            set_dim_names & set(constr.get_coefficients_by_name())
+            for constr in domain.get_constraints())
+
+
 def _check_reduction_is_triangular(kernel, expr, scan_param):
     """Check whether the reduction within `expr` with scan parameters described by
     the structure `scan_param` is triangular. This attempts to verify that the
     domain for the scan and sweep inames is as follows:
 
-    [other inames] -> {
-        [scan_iname, sweep_iname]:
+    [params] -> {
+        [other inames..., scan_iname, sweep_iname]:
             (sweep_min_value
                 <= sweep_iname
                 <= sweep_max_value)
@@ -357,6 +365,8 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
             (scan_min_value
                 <= scan_iname
                 <= stride * (sweep_iname - sweep_min_value) + scan_min_value)
+            and
+            (irrelevant constraints)
     }
     """
 
@@ -365,49 +375,74 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
     orig_domain = kernel.get_inames_domain(
             frozenset((scan_param.sweep_iname, scan_param.scan_iname)))
 
-    domain = _move_set_to_param_dims_except(orig_domain,
-            (scan_param.sweep_iname, scan_param.scan_iname))
-
-    params_for_gisting = domain.params()
-
-    domain = domain.gist_params(params_for_gisting)
-
-    tri_domain = isl.BasicSet.universe(domain.params().space)
-
     sweep_iname = scan_param.sweep_iname
     scan_iname = scan_param.scan_iname
+    affs = isl.affs_from_space(orig_domain.space)
 
-    tri_domain = _add_params_to_domain(tri_domain, (sweep_iname, scan_iname))
+    sweep_lower_bound = isl.align_spaces(
+            scan_param.sweep_lower_bound,
+            affs[0],
+            across_dim_types=True)
 
-    affs = isl.affs_from_space(tri_domain.space)
+    sweep_upper_bound = isl.align_spaces(
+            scan_param.sweep_upper_bound,
+            affs[0],
+            across_dim_types=True)
 
-    # Add sweep iname constraints
-    tri_domain &= affs[sweep_iname].ge_set(scan_param.sweep_lower_bound)
-    tri_domain &= affs[sweep_iname].le_set(scan_param.sweep_upper_bound)
+    scan_lower_bound = isl.align_spaces(
+            scan_param.scan_lower_bound,
+            affs[0],
+            across_dim_types=True)
 
-    # Add scan iname constraints
-    scan_min_value = scan_param.scan_lower_bound
-    tri_domain &= affs[scan_iname].ge_set(scan_min_value)
-    tri_domain &= affs[scan_iname].le_set(
-            scan_param.stride * (affs[sweep_iname] - scan_param.sweep_lower_bound)
-            + scan_min_value)
+    """
+    print("SWEEP AND SCAN INAMES", sweep_iname, scan_iname)
+    print("SWEEP UPPER BOUND", sweep_upper_bound)
+    print("SCAN LOWER BOUND", scan_lower_bound)
+    print("SWEEP LOWER BOUND", sweep_lower_bound)
+    """
 
-    # Gist against domain params
-    tri_domain = tri_domain.gist_params(params_for_gisting)
+    from itertools import product
 
-    # Move sweep and scan inames into the set
-    tri_domain = tri_domain.move_dims(
-        dim_type.set, 0,
-        dim_type.param, tri_domain.dim(dim_type.param) - 2, 2)
+    for (sweep_lb_domain, sweep_lb_aff), \
+        (sweep_ub_domain, sweep_ub_aff), \
+        (scan_lb_domain, scan_lb_aff) in \
+            product(sweep_lower_bound.get_pieces(),
+                    sweep_upper_bound.get_pieces(),
+                    scan_lower_bound.get_pieces()):
 
-    tri_domain, domain = isl.align_two(tri_domain, domain)
+        # Assumptions inherited from the domains of the pwaffs
+        assumptions = sweep_lb_domain & sweep_ub_domain & scan_lb_domain
 
-    if domain != tri_domain:
-        # FIXME: Return a more descriptive error message.
-        return False, (
-            "domains are not equal: expected '%s', got '%s'" % (tri_domain, domain))
-    else:
-        return True, "ok"
+        # Sweep iname constraints
+        hyp_domain = affs[sweep_iname].ge_set(sweep_lb_aff)
+        hyp_domain &= affs[sweep_iname].le_set(sweep_ub_aff)
+
+        # Scan iname constraints
+        hyp_domain &= affs[scan_iname].ge_set(scan_lb_aff)
+        hyp_domain &= affs[scan_iname].le_set(
+                scan_param.stride * (affs[sweep_iname] - sweep_lb_aff)
+                + scan_lb_aff)
+
+        hyp_domain, = (hyp_domain & assumptions).get_basic_sets()
+        test_domain, = (orig_domain & assumptions).get_basic_sets()
+
+        """
+        print("ASSUMPTIONS", assumptions)
+        print("HYP", hyp_domain)
+        print("TEST", test_domain)
+        print("HYP AGAINST TEST", hyp_domain.gist(test_domain))
+        print("TEST AGAINST HYP", test_domain.gist(hyp_domain))
+        """
+
+        if _domain_depends_on_given_set_dims(hyp_domain.gist(test_domain),
+                (sweep_iname, scan_iname)):
+            return False, "cond1"
+
+        if _domain_depends_on_given_set_dims(test_domain.gist(hyp_domain),
+                (sweep_iname, scan_iname)):
+            return False, "cond2"
+
+    return True, "ok"
 
 
 _ScanCandidateParameters = namedtuple(
@@ -416,7 +451,7 @@ _ScanCandidateParameters = namedtuple(
         "sweep_upper_bound, scan_lower_bound, stride")
 
 
-def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
+def _try_infer_scan_candidate_from_expr(kernel, expr, within_inames, sweep_iname=None):
     """Analyze `expr` and determine if it can be implemented as a scan.
     """
     from loopy.symbolic import Reduction
@@ -437,19 +472,19 @@ def _try_infer_scan_candidate_from_expr(kernel, expr, sweep_iname=None):
             sweep_iname = _try_infer_sweep_iname(
                     domain, scan_iname, kernel.all_inames())
         except ValueError as v:
-            raise ValueError("Couldn't determine a sweep iname for the scan: %s" % v)
+            raise ValueError("Couldn't determine a sweep iname for the scan expression '%s': %s" % (expr, v))
 
     try:
         sweep_lower_bound, sweep_upper_bound, scan_lower_bound = (
-                _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname))
+                _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname, within_inames))
     except ValueError as v:
-        raise ValueError("Couldn't determine bounds for scan: %s" % v)
+        raise ValueError("Couldn't determine bounds for the scan with expression '%s' (sweep iname: '%s', scan iname: '%s'): %s" % (expr, sweep_iname, scan_iname, v))
 
     try:
         stride = _try_infer_scan_stride(
                 kernel, scan_iname, sweep_iname, sweep_lower_bound)
     except ValueError as v:
-        raise ValueError("Couldn't determine a scan stride: %s" % v)
+        raise ValueError("Couldn't determine a scan stride for the scan with expression '%s' (sweep iname: '%s', scan iname: '%s'): %s" % (expr, sweep_iname, scan_iname, v))
 
     return _ScanCandidateParameters(sweep_iname, scan_iname, sweep_lower_bound,
             sweep_upper_bound, scan_lower_bound, stride)
@@ -505,7 +540,7 @@ def _try_infer_sweep_iname(domain, scan_iname, candidate_inames):
     return sweep_iname_candidate
 
 
-def _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname):
+def _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname, within_inames):
     domain = kernel.get_inames_domain(frozenset((sweep_iname, scan_iname)))
     domain = _move_set_to_param_dims_except(domain, (sweep_iname, scan_iname))
 
@@ -513,7 +548,8 @@ def _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname):
     sweep_idx = var_dict[sweep_iname][1]
     scan_idx = var_dict[scan_iname][1]
 
-    domain = domain.gist_params(domain.params())
+    domain = domain.project_out_except(
+            within_inames | kernel.non_iname_variable_names(), (isl.dim_type.param,))
 
     try:
         sweep_lower_bound = domain.dim_min(sweep_idx)
@@ -535,6 +571,9 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
 
     domain = kernel.get_inames_domain((sweep_iname, scan_iname))
     domain_with_sweep_param = _move_set_to_param_dims_except(domain, (scan_iname,))
+
+    domain_with_sweep_param = domain_with_sweep_param.project_out_except(
+            (sweep_iname, scan_iname), (dim_type.set, dim_type.param))
 
     scan_iname_idx = domain_with_sweep_param.find_dim_by_name(
             dim_type.set, scan_iname)
@@ -1173,18 +1212,16 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     @memoize
     def get_or_add_sweep_tracking_iname_and_domain(
-            scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride):
+            scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride,
+            tracking_iname):
         domain = temp_kernel.get_inames_domain(frozenset((scan_iname, sweep_iname)))
-
-        tracking_iname = var_name_gen(
-                "{scan_iname}_tracking_{sweep_iname}"
-                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
 
         inames_added_for_scan.add(tracking_iname)
 
         new_domain = _create_domain_for_sweep_tracking(domain,
                 tracking_iname, sweep_iname, sweep_min_value, scan_min_value, stride)
 
+        """
         from loopy.kernel.tools import DomainChanger
         domain_idx, = temp_kernel.get_leaf_domain_indices(frozenset([sweep_iname]))
 
@@ -1195,8 +1232,10 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         orig_domain = isl.align_spaces(orig_domain, new_domain)
 
         orig_domain &= new_domain
+        """
+        _insert_subdomain_into_domain_tree(temp_kernel, domains, new_domain)
 
-        domains[domain_idx] = orig_domain
+        #domains[domain_idx] = orig_domain
         
         return tracking_iname
 
@@ -1243,10 +1282,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         outer_insn_inames = temp_kernel.insn_inames(insn)
         inames_to_remove.add(scan_iname)
 
-        track_iname = (
-                get_or_add_sweep_tracking_iname_and_domain(
-                    scan_iname, sweep_iname, sweep_min_value, scan_min_value,
-                    stride))
+        track_iname = var_name_gen(
+                "{sweep_iname}__seq_scan"
+                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
+
+        get_or_add_sweep_tracking_iname_and_domain(
+                scan_iname, sweep_iname, sweep_min_value, scan_min_value,
+                stride, track_iname)
 
         from loopy.kernel.data import temp_var_scope
         acc_var_names = make_temporaries(
@@ -1349,15 +1391,20 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 _get_int_iname_size(oiname)
                 for oiname in outer_local_inames)
 
-        track_iname = get_or_add_sweep_tracking_iname_and_domain(
-                scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride)
+        track_iname = var_name_gen(
+                "{sweep_iname}__pre_scan"
+                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
+
+        get_or_add_sweep_tracking_iname_and_domain(
+                scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride,
+                track_iname)
 
         # {{{ add separate iname to carry out the scan
 
         # Doing this sheds any odd conditionals that may be active
         # on our red_iname.
 
-        base_exec_iname = var_name_gen("scan_"+sweep_iname)
+        base_exec_iname = var_name_gen(sweep_iname + "__scan")
         domains.append(_make_slab_set(base_exec_iname, scan_size))
         new_iname_tags[base_exec_iname] = kernel.iname_to_tag[sweep_iname]
 
@@ -1448,7 +1495,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         istage = 0
         cur_size = 1
         while cur_size < scan_size:
-            stage_exec_iname = var_name_gen("scan_%s_s%d" % (red_iname, istage))
+            stage_exec_iname = var_name_gen("%s__scan_s%d" % (sweep_iname, istage))
             domains.append(
                     _make_slab_set_from_range(stage_exec_iname, cur_size, scan_size))
             new_iname_tags[stage_exec_iname] = kernel.iname_to_tag[sweep_iname]
@@ -1525,6 +1572,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         # Only expand one level of reduction at a time, going from outermost to
         # innermost. Otherwise we get the (iname + insn) dependencies wrong.
 
+        #print(temp_kernel)
+
         arg_dtypes, reduction_dtypes = (
                 _infer_arg_dtypes_and_reduction_dtypes(
                         temp_kernel, expr, unknown_types_ok))
@@ -1556,7 +1605,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 # Try to determine scan candidate information (sweep iname, scan
                 # iname, etc).
                 scan_param = _try_infer_scan_candidate_from_expr(
-                        temp_kernel, expr, sweep_iname=force_outer_iname_for_scan)
+                        temp_kernel, expr, outer_insn_inames, sweep_iname=force_outer_iname_for_scan)
 
             except ValueError as v:
                 error = str(v)

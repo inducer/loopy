@@ -324,7 +324,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                 if not may_add_to_loop_dep_map:
                     continue
 
-                print("{knl}: loop dependency map: iname '{iname}' "
+                logger.debug("{knl}: loop dependency map: iname '{iname}' "
                         "depends on '{dep_insn}' via '{insn}'"
                         .format(
                             knl=kernel.name,

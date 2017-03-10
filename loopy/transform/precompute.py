@@ -725,11 +725,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 mod_check_domain, check_domain)
 
         # The modified domain can't get bigger by adding constraints
-        assert mod_check_domain <= check_domain
+        assert mod_check_domain.gist_params(kernel.assumptions) <= check_domain.gist_params(kernel.assumptions)
 
         if not check_domain <= mod_check_domain:
-            print(check_domain)
-            print(mod_check_domain)
+            print(check_domain.gist_params(kernel.assumptions))
+            print(mod_check_domain.gist_params(kernel.assumptions))
             raise LoopyError("original domain got shrunk by applying the precompute")
 
         # }}}
