@@ -478,7 +478,8 @@ def _try_infer_scan_candidate_from_expr(kernel, expr, within_inames, sweep_iname
         sweep_lower_bound, sweep_upper_bound, scan_lower_bound = (
                 _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname, within_inames))
     except ValueError as v:
-        raise ValueError("Couldn't determine bounds for the scan with expression '%s' (sweep iname: '%s', scan iname: '%s'): %s" % (expr, sweep_iname, scan_iname, v))
+        raise ValueError("Couldn't determine bounds for the scan with expression '%s' "
+                "(sweep iname: '%s', scan iname: '%s'): %s" % (expr, sweep_iname, scan_iname, v))
 
     try:
         stride = _try_infer_scan_stride(
@@ -580,10 +581,13 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
 
     # Should be equal to k * sweep_iname, where k is the stride.
 
-    scan_iname_range = (
-            domain_with_sweep_param.dim_max(scan_iname_idx)
-            - domain_with_sweep_param.dim_min(scan_iname_idx)
-            ).gist(domain_with_sweep_param.params())
+    try:
+        scan_iname_range = (
+                domain_with_sweep_param.dim_max(scan_iname_idx)
+                - domain_with_sweep_param.dim_min(scan_iname_idx)
+                ).gist(domain_with_sweep_param.params())
+    except isl.Error as e:
+        raise ValueError("isl error: '%s'" % e)
 
     scan_iname_pieces = scan_iname_range.get_pieces()
 
@@ -1370,7 +1374,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         assert scan_size > 0
 
         if scan_size == 1:
-            raise NotImplementedError("tell matt to fix this")
+            return map_reduction_seq(
+                    expr, rec, nresults, arg_dtypes, reduction_dtypes)
 
         outer_insn_inames = temp_kernel.insn_inames(insn)
 
@@ -1482,6 +1487,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset([init_id]) | insn.depends_on,
                 no_sync_with=frozenset([(init_id, "any")]))
+
         generated_insns.append(transfer_insn)
 
         def _strip_if_scalar(c):
@@ -1494,6 +1500,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         istage = 0
         cur_size = 1
+
         while cur_size < scan_size:
             stage_exec_iname = var_name_gen("%s__scan_s%d" % (sweep_iname, istage))
             domains.append(
@@ -1549,10 +1556,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             istage += 1
 
         new_insn_add_depends_on.add(prev_id)
-        #output_iname = var_name_gen("scan_%s_output" % red_iname)
-        #domains.append(_make_slab_set(output_iname, scan_size))
-        #new_iname_tags[output_iname] = kernel.iname_to_tag[sweep_iname]
-        #new_insn_add_within_inames.add(output_iname)
         new_insn_add_within_inames.add(sweep_iname)
 
         output_idx = var(sweep_iname) - sweep_min_value_expr
