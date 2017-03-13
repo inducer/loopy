@@ -1057,7 +1057,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             try:
                 # insist block size is constant
                 size = static_max_of_pw_aff(size,
-                        constants_only=isinstance(tag, LocalIndexTag))
+                        constants_only=isinstance(tag, LocalIndexTag),
+                        context=self.assumptions)
             except ValueError:
                 pass
 

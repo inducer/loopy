@@ -403,7 +403,8 @@ def test_precompute_with_preexisting_inames_fail():
 
 
 def test_add_nosync_to_instructions():
-    knl = lp.make_kernel("")
+    # FIXME: Write test.
+    pass
 
 
 if __name__ == "__main__":

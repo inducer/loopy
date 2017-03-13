@@ -216,6 +216,8 @@ def test_local_parallel_scan(ctx_factory, n):
 
     knl = lp.add_dtypes(knl, dict(a=int))
 
+    print(knl)
+
     evt, (a,) = knl(queue, a=np.arange(n))
     assert (a == np.cumsum(np.arange(n)**2)).all()
 
@@ -375,7 +377,8 @@ def _get_two_level_scan_kernel(g_size):
         """
         out[i] = sum(j, a[j]) {id=insn}
         """,
-        "...")
+        "...",
+        assumptions="n > 0")
 
     from loopy.transform.reduction import make_two_level_scan
     knl = make_two_level_scan(
@@ -419,7 +422,8 @@ def _get_three_level_scan_kernel(g_size, p_size):
         """
         out[i] = sum(j, a[j]) {id=insn}
         """,
-        "...")
+        "...",
+        assumptions="n > 0")
 
     from loopy.transform.reduction import make_two_level_scan
     knl = make_two_level_scan(
@@ -435,8 +439,6 @@ def _get_three_level_scan_kernel(g_size, p_size):
         inner_local_tag=None,
         outer_local_tag="g.0")
 
-    knl = lp.tag_inames(knl, dict(i__l0="l.0"))
-
     knl = make_two_level_scan(
         knl, "insn__l1", inner_length=p_size,
         scan_iname="j__l1",
@@ -448,6 +450,9 @@ def _get_three_level_scan_kernel(g_size, p_size):
         nonlocal_storage_scope=lp.temp_var_scope.LOCAL,
         inner_local_tag="for",
         outer_local_tag="l.0")
+
+    knl = lp.tag_inames(knl, dict(i__l0="l.0",
+                                  i__l0_nltail_inner="l.0"))
 
     knl = lp.realize_reduction(knl, force_scan=True)
 
