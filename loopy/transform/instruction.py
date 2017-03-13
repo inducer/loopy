@@ -266,8 +266,8 @@ def add_nosync_to_instructions(
 
     for i, insn in enumerate(new_instructions):
         if insn.id in nosync_to_add:
-            new_instructions[i] = insn.copy(
-                    no_sync_with=insn.no_sync_with | frozenset(nosync_to_add[insn.id]))
+            new_instructions[i] = insn.copy(no_sync_with=insn.no_sync_with
+                    | frozenset(nosync_to_add[insn.id]))
 
     return kernel.copy(instructions=new_instructions)
 
