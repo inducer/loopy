@@ -391,13 +391,6 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
             affs[0],
             across_dim_types=True)
 
-    """
-    print("SWEEP AND SCAN INAMES", sweep_iname, scan_iname)
-    print("SWEEP UPPER BOUND", sweep_upper_bound)
-    print("SCAN LOWER BOUND", scan_lower_bound)
-    print("SWEEP LOWER BOUND", sweep_lower_bound)
-    """
-
     from itertools import product
 
     for (sweep_lb_domain, sweep_lb_aff), \
@@ -423,21 +416,21 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
         hyp_domain, = (hyp_domain & assumptions).get_basic_sets()
         test_domain, = (orig_domain & assumptions).get_basic_sets()
 
-        """
-        print("ASSUMPTIONS", assumptions)
-        print("HYP", hyp_domain)
-        print("TEST", test_domain)
-        print("HYP AGAINST TEST", hyp_domain.gist(test_domain))
-        print("TEST AGAINST HYP", test_domain.gist(hyp_domain))
-        """
-
-        if _domain_depends_on_given_set_dims(hyp_domain.gist(test_domain),
+        hyp_gist_against_test = hyp_domain.gist(test_domain)
+        if _domain_depends_on_given_set_dims(hyp_gist_against_test,
                 (sweep_iname, scan_iname)):
-            return False, "cond1"
+            return False, (
+                    "gist of hypothesis against test domain "
+                    "has sweep or scan dependent constraints: '%s'"
+                    % hyp_gist_against_test)
 
-        if _domain_depends_on_given_set_dims(test_domain.gist(hyp_domain),
+        test_gist_against_hyp = test_domain.gist(hyp_domain)
+        if _domain_depends_on_given_set_dims(test_gist_against_hyp,
                 (sweep_iname, scan_iname)):
-            return False, "cond2"
+            return False, (
+                   "gist of test against hypothesis domain "
+                   "has sweep or scan dependent constraint: '%s'"
+                    % test_gist_against_hyp)
 
     return True, "ok"
 
@@ -1525,6 +1518,14 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                             base_iname_deps | frozenset([stage_exec_iname])),
                         within_inames_is_final=insn.within_inames_is_final,
                         depends_on=frozenset([prev_id]))
+
+                if cur_size == 1:
+                    # Performance hack: don't add a barrier here with transfer_insn.
+                    # XXX: If the lowering logic changes, this could be brittle.
+                    read_stage_insn = read_stage_insn.copy(
+                            no_sync_with=(
+                                read_stage_insn.no_sync_with
+                                | frozenset([(transfer_id, "any")])))
 
                 generated_insns.append(read_stage_insn)
                 prev_id = read_stage_id

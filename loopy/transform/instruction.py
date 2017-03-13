@@ -170,6 +170,7 @@ def replace_instruction_ids(kernel, replacements):
     for insn in kernel.instructions:
         changed = False
         new_depends_on = []
+        new_no_sync_with = []
 
         for dep in insn.depends_on:
             if dep in replacements:
@@ -178,8 +179,18 @@ def replace_instruction_ids(kernel, replacements):
             else:
                 new_depends_on.append(dep)
 
+        for insn_id, scope in insn.no_sync_with:
+            if insn_id in replacements:
+                new_no_sync_with.extend(
+                        (repl, scope) for repl in replacements[insn_id])
+                changed = True
+            else:
+                new_no_sync_with.append((insn_id, scope))
+
         new_insns.append(
-                insn.copy(depends_on=frozenset(new_depends_on))
+                insn.copy(
+                    depends_on=frozenset(new_depends_on),
+                    no_sync_with=frozenset(new_no_sync_with))
                 if changed else insn)
 
     return kernel.copy(instructions=new_insns)
@@ -210,19 +221,21 @@ def tag_instructions(kernel, new_tag, within=None):
 
 def add_nosync_to_instructions(
         kernel, scope, source, sink, bidirectional=False):
-    """Add a *nosync* directive between *source* and *sync*.
+    """Add a *no_sync_with* directive between *source* and *sink*.
+    *no_sync_with* is only added if a dependency is present or if the
+    instruction pair is in a conflicting group.
 
-    *source* and *sink* may be any instruction id match understood by
-    :func:`loopy.match.parse_match`.
+    :arg kernel:
+    :arg source: Either a single instruction id, or any instruction id
+        match understood by :func:`loopy.match.parse_match`.
+    :arg sink: Either a single instruction id, or any instruction id
+        match understood by :func:`loopy.match.parse_match`.
+    :arg scope: A string which is a valid *no_sync_with* scope.
+    :arg bidirectional: A :class:`bool`. If *True*, add a *no_sync_with*
+        to both the source and sink instructions, otherwise the directive
+        is only added to the sink instructions.
 
-    *scope* should be a valid nosync scope.
-
-    If *bidirectional* is True, this adds a nosync to both the source
-    and sink instructions, otherwise the directive is only added to the
-    sink instructions.
-
-    *nosync* attributes are only added if a dependency is present or if
-    the instruction pair is spread across a conflicting group.
+    :return: The updated kernel
     """
 
     if isinstance(source, str) and source in kernel.id_to_insn:

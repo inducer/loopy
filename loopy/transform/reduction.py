@@ -687,6 +687,9 @@ def make_two_level_scan(
                 (var(outer_iname), var(inner_iname)), strip_scalar=True)]
 
     updated_insn = insn.copy(
+            no_sync_with=(
+                insn.no_sync_with
+                | frozenset([(nonlocal_scan_insn_id, "any")])),
             depends_on=updated_depends_on,
             # XXX: scan binary op
             expression=nonlocal_part + local_part)
