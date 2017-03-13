@@ -214,7 +214,8 @@ class TemporarySaver(object):
             non-hardware dimensions
         """
 
-        __slots__ = ["name", "orig_temporary_name", "hw_dims", "hw_tags", "non_hw_dims"]
+        __slots__ = ["name", "orig_temporary_name", "hw_dims", "hw_tags",
+                "non_hw_dims"]
 
         def as_kernel_temporary(self, kernel):
             temporary = kernel.temporary_variables[self.orig_temporary_name]
@@ -277,7 +278,6 @@ class TemporarySaver(object):
 
         group_tags = None
         local_tags = None
-        group_tag_originating_insn_id = None
 
         def _sortedtags(tags):
             return sorted(tags, key=lambda tag: tag.axis)
@@ -373,7 +373,8 @@ class TemporarySaver(object):
             non_hw_dims=non_hw_dims)
 
         if temporary.base_storage is not None:
-            self.base_storage_to_representative[temporary.base_storage] = backing_temporary
+            self.base_storage_to_representative[temporary.base_storage] = (
+                    backing_temporary)
 
         return backing_temporary
 
@@ -415,7 +416,9 @@ class TemporarySaver(object):
                     Variable(agg),
                     tuple(map(Variable, subscript)))
 
-        orig_temporary = self.kernel.temporary_variables[promoted_temporary.orig_temporary_name]
+        orig_temporary = (
+                self.kernel.temporary_variables[
+                    promoted_temporary.orig_temporary_name])
         dim_inames_trunc = dim_inames[:len(orig_temporary.shape)]
 
         args = (
@@ -532,11 +535,15 @@ class TemporarySaver(object):
         assert mode in ("save", "reload")
         import islpy as isl
 
-        orig_temporary = self.kernel.temporary_variables[promoted_temporary.orig_temporary_name]
+        orig_temporary = (
+                self.kernel.temporary_variables[
+                    promoted_temporary.orig_temporary_name])
         orig_dim = domain.dim(isl.dim_type.set)
 
         # Tags for newly added inames
         iname_to_tag = {}
+
+        from loopy.symbolic import aff_from_expr
 
         # FIXME: Restrict size of new inames to access footprint.
 
@@ -566,7 +573,6 @@ class TemporarySaver(object):
             # Add size information.
             aff = isl.affs_from_space(domain.space)
             domain &= aff[0].le_set(aff[new_iname])
-            from loopy.symbolic import aff_from_expr
             domain &= aff[new_iname].lt_set(aff_from_expr(domain.space, dim_size))
 
         dim_offset = orig_dim + len(promoted_temporary.non_hw_dims)
@@ -584,7 +590,6 @@ class TemporarySaver(object):
                 isl.dim_type.set, dim_offset + hw_iname_idx, new_iname)
 
             aff = isl.affs_from_space(domain.space)
-            from loopy.symbolic import aff_from_expr
             domain = (domain
                 &
                 aff[0].le_set(aff[new_iname])

@@ -253,7 +253,7 @@ def _add_global_barrier(kernel, source, sink, barrier_id):
 
 
 def _get_scan_level(sweep_iname):
-    SWEEP_RE = r".*__l(\d+)(?:_outer)?"
+    SWEEP_RE = r".*__l(\d+)(?:_outer)?"  # noqa
 
     import re
     match_result = re.match(SWEEP_RE, sweep_iname)
@@ -265,7 +265,7 @@ def _get_scan_level(sweep_iname):
 
 
 def _get_base_iname(iname):
-    BASE_INAME_RE = r"(.*)__l\d+(?:_outer)?"
+    BASE_INAME_RE = r"(.*)__l\d+(?:_outer)?"  # noqa
 
     import re
     match_result = re.match(BASE_INAME_RE, iname)

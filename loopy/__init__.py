@@ -209,6 +209,8 @@ __all__ = [
 
         "assume", "fix_parameters",
 
+        "make_two_level_reduction",
+
         "save_and_reload_temporaries",
 
         # }}}

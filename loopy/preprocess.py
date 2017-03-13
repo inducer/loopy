@@ -369,8 +369,6 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
     }
     """
 
-    dim_type = isl.dim_type
-
     orig_domain = kernel.get_inames_domain(
             frozenset((scan_param.sweep_iname, scan_param.scan_iname)))
 
@@ -450,7 +448,8 @@ _ScanCandidateParameters = namedtuple(
         "sweep_upper_bound, scan_lower_bound, stride")
 
 
-def _try_infer_scan_candidate_from_expr(kernel, expr, within_inames, sweep_iname=None):
+def _try_infer_scan_candidate_from_expr(
+        kernel, expr, within_inames, sweep_iname=None):
     """Analyze `expr` and determine if it can be implemented as a scan.
     """
     from loopy.symbolic import Reduction
@@ -471,20 +470,28 @@ def _try_infer_scan_candidate_from_expr(kernel, expr, within_inames, sweep_iname
             sweep_iname = _try_infer_sweep_iname(
                     domain, scan_iname, kernel.all_inames())
         except ValueError as v:
-            raise ValueError("Couldn't determine a sweep iname for the scan expression '%s': %s" % (expr, v))
+            raise ValueError(
+                    "Couldn't determine a sweep iname for the scan "
+                    "expression '%s': %s" % (expr, v))
 
     try:
         sweep_lower_bound, sweep_upper_bound, scan_lower_bound = (
-                _try_infer_scan_and_sweep_bounds(kernel, scan_iname, sweep_iname, within_inames))
+                _try_infer_scan_and_sweep_bounds(
+                    kernel, scan_iname, sweep_iname, within_inames))
     except ValueError as v:
-        raise ValueError("Couldn't determine bounds for the scan with expression '%s' "
-                "(sweep iname: '%s', scan iname: '%s'): %s" % (expr, sweep_iname, scan_iname, v))
+        raise ValueError(
+                "Couldn't determine bounds for the scan with expression '%s' "
+                "(sweep iname: '%s', scan iname: '%s'): %s"
+                % (expr, sweep_iname, scan_iname, v))
 
     try:
         stride = _try_infer_scan_stride(
                 kernel, scan_iname, sweep_iname, sweep_lower_bound)
     except ValueError as v:
-        raise ValueError("Couldn't determine a scan stride for the scan with expression '%s' (sweep iname: '%s', scan iname: '%s'): %s" % (expr, sweep_iname, scan_iname, v))
+        raise ValueError(
+                "Couldn't determine a scan stride for the scan with expression '%s' "
+                "(sweep iname: '%s', scan iname: '%s'): %s"
+                % (expr, sweep_iname, scan_iname, v))
 
     return _ScanCandidateParameters(sweep_iname, scan_iname, sweep_lower_bound,
             sweep_upper_bound, scan_lower_bound, stride)
@@ -1117,7 +1124,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         base_iname_deps = outer_insn_inames - frozenset(expr.inames)
 
         neutral = expr.operation.neutral_element(*arg_dtypes)
-
         init_id = insn_id_gen("%s_%s_init" % (insn.id, red_iname))
         init_insn = make_assignment(
                 id=init_id,
@@ -1232,7 +1238,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 tracking_iname, sweep_iname, sweep_min_value, scan_min_value, stride)
 
         _insert_subdomain_into_domain_tree(temp_kernel, domains, new_domain)
-        
+
         return tracking_iname
 
     def replace_var_within_expr(expr, from_var, to_var):
@@ -1407,34 +1413,32 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         from loopy.kernel.data import temp_var_scope
 
-        LOCAL_SCAN_SUBSTAGES = 1
+        """
+        neutral_var_names = make_temporaries(
+                name_based_on="neutral_"+scan_iname,
+                nvars=nresults,
+                shape=(),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.PRIVATE)
+        """
 
-        read_var_names_by_substage = []
-
-        for i in range(LOCAL_SCAN_SUBSTAGES):
-            substage_suffix = "" if i == 0 else ("_substage%d" % i)
-
-            read_var_names_by_substage.append(
-                    make_temporaries(
-                        name_based_on=(
-                            "read_" + scan_iname + "_arg_{index}" + substage_suffix),
-                        nvars=nresults,
-                        shape=(),
-                        dtypes=reduction_dtypes,
-                        scope=temp_var_scope.PRIVATE))
+        read_var_names = make_temporaries(
+                name_based_on="read_"+scan_iname+"_arg_{index}",
+                nvars=nresults,
+                shape=(),
+                dtypes=reduction_dtypes,
+                scope=temp_var_scope.PRIVATE)
 
         acc_var_names = make_temporaries(
-                name_based_on="acc_" + scan_iname,
+                name_based_on="acc_"+scan_iname,
                 nvars=nresults,
                 shape=outer_local_iname_sizes + (scan_size,),
                 dtypes=reduction_dtypes,
                 scope=temp_var_scope.LOCAL)
 
         acc_vars = tuple(var(n) for n in acc_var_names)
-
-        read_vars_by_substage = [
-            tuple(var(n) for n in read_var_names_by_substage[i])
-            for i in range(len(read_var_names_by_substage))]
+        read_vars = tuple(var(n) for n in read_var_names)
+        #neutral_vars = tuple(var(n) for n in neutral_var_names)
 
         base_iname_deps = (outer_insn_inames
                 - frozenset(expr.inames) - frozenset([sweep_iname]))
@@ -1498,125 +1502,60 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         prev_id = transfer_id
 
         istage = 0
-        curr_stride = 1
-        substage_chunk_size = scan_size // LOCAL_SCAN_SUBSTAGES
+        cur_size = 1
 
-        substage_chunks = list(zip(
-                range(0, scan_size, substage_chunk_size),
-                range(substage_chunk_size,
-                      (LOCAL_SCAN_SUBSTAGES+1)*substage_chunk_size,
-                      substage_chunk_size)))
+        while cur_size < scan_size:
+            stage_exec_iname = var_name_gen("%s__scan_s%d" % (sweep_iname, istage))
+            domains.append(
+                    _make_slab_set_from_range(stage_exec_iname, cur_size, scan_size))
+            new_iname_tags[stage_exec_iname] = kernel.iname_to_tag[sweep_iname]
 
-        # Fix up last one.
-        substage_chunks[-1] = (substage_chunks[-1][0], scan_size)
+            for read_var, acc_var in zip(read_vars, acc_vars):
+                read_stage_id = insn_id_gen(
+                        "scan_%s_read_stage_%d" % (scan_iname, istage))
 
-        # Parallel scan algorithm:
-        # - I add to myself the item that's to the left of me;
-        # - I add to myself the item that's 2 to the left of me;
-        # - I add to myself the item that's 4 to the left of me;
-        # - etc.
-        while curr_stride < scan_size:
-            # Lowers a single parallel iteration of the local scan.
-            #
-            # This is divided into a "read stage" followed by a "write stage"
-
-            # Add inames.
-
-            substage_exec_inames = []
-            substage_suffixes = []
-            substage_kept_indices = []
-
-            for isubstage, chunk in enumerate(substage_chunks):
-                substage_min, substage_max = chunk
-
-                if substage_max <= curr_stride:
-                    continue
-
-                substage_kept_indices.append(isubstage)
-
-                substage_suffix = ("_chunk%d" % isubstage) if isubstage > 0 else ""
-                substage_suffixes.append(substage_suffix)
-
-                substage_exec_iname = var_name_gen(
-                        "%s__scan_s%d%s" % (sweep_iname, istage, substage_suffix))
-                substage_exec_inames.append(substage_exec_iname)
-                new_iname_tags[substage_exec_iname] = kernel.iname_to_tag[sweep_iname]
-
-                domains.append(
-                        _make_slab_set_from_range(
-                            substage_exec_iname,
-                            max(curr_stride, substage_min),
-                            substage_max))
-
-            # Read stage
-            for isubstage, suffix, substage_exec_iname in zip(
-                    substage_kept_indices,
-                    substage_suffixes,
-                    substage_exec_inames):
-
-                read_vars = read_vars_by_substage[isubstage]
-
-                for read_var, acc_var in zip(read_vars, acc_vars):
-                    read_stage_id = insn_id_gen(
-                            "scan_%s_read_stage_%d%s"
-                            % (scan_iname, istage, substage_suffix))
-
-                    read_stage_insn = make_assignment(
-                            id=read_stage_id,
-                            assignees=(read_var,),
-                            expression=(
-                                    acc_var[
-                                        outer_local_iname_vars
-                                        + (var(substage_exec_iname) - curr_stride,)]),
-                            within_inames=(
-                                base_iname_deps | frozenset([substage_exec_iname])),
-                            within_inames_is_final=insn.within_inames_is_final,
-                            depends_on=frozenset([prev_id]))
-
-                    generated_insns.append(read_stage_insn)
-                    prev_id = read_stage_id
-
-            last_write_id = None
-
-            for isubstage, suffix, substage_exec_iname in zip(
-                    substage_kept_indices,
-                    substage_suffixes,
-                    substage_exec_inames):
-
-                read_vars = read_vars_by_substage[isubstage]
-
-                write_stage_id = insn_id_gen(
-                        "scan_%s_write_stage_%d%s" % (scan_iname, istage, substage_suffix))
-                write_stage_insn = make_assignment(
-                        id=write_stage_id,
-                        no_sync_with=frozenset(
-                            [(last_write_id, "local")]
-                            if last_write_id is not None
-                            else []),
-                        assignees=tuple(
-                            acc_var[outer_local_iname_vars + (var(substage_exec_iname),)]
-                            for acc_var in acc_vars),
-                        expression=expr.operation(
-                            arg_dtypes,
-                            _strip_if_scalar(tuple(
+                read_stage_insn = make_assignment(
+                        id=read_stage_id,
+                        assignees=(read_var,),
+                        expression=(
                                 acc_var[
-                                    outer_local_iname_vars + (var(substage_exec_iname),)]
-                                for acc_var in acc_vars)),
-                            _strip_if_scalar(read_vars)
-                            ),
+                                    outer_local_iname_vars
+                                    + (var(stage_exec_iname) - cur_size,)]),
                         within_inames=(
-                            base_iname_deps | frozenset([substage_exec_iname])),
+                            base_iname_deps | frozenset([stage_exec_iname])),
                         within_inames_is_final=insn.within_inames_is_final,
-                        depends_on=frozenset([prev_id]),
-                        )
+                        depends_on=frozenset([prev_id]))
 
-                generated_insns.append(write_stage_insn)
-                last_write_id = write_stage_id
-                prev_id = write_stage_id
+                generated_insns.append(read_stage_insn)
+                prev_id = read_stage_id
 
-            #curr_stride = new_size
-            #bound = curr_stride
-            curr_stride *= 2
+            write_stage_id = insn_id_gen(
+                    "scan_%s_write_stage_%d" % (scan_iname, istage))
+            write_stage_insn = make_assignment(
+                    id=write_stage_id,
+                    assignees=tuple(
+                        acc_var[outer_local_iname_vars + (var(stage_exec_iname),)]
+                        for acc_var in acc_vars),
+                    expression=expr.operation(
+                        arg_dtypes,
+                        _strip_if_scalar(tuple(
+                            acc_var[
+                                outer_local_iname_vars + (var(stage_exec_iname),)]
+                            for acc_var in acc_vars)),
+                        _strip_if_scalar(read_vars)
+                        ),
+                    within_inames=(
+                        base_iname_deps | frozenset([stage_exec_iname])),
+                    within_inames_is_final=insn.within_inames_is_final,
+                    depends_on=frozenset([prev_id]),
+                    )
+
+            generated_insns.append(write_stage_insn)
+            prev_id = write_stage_id
+
+            #cur_size = new_size
+            #bound = cur_size
+            cur_size *= 2
             istage += 1
 
         new_insn_add_depends_on.add(prev_id)

@@ -900,7 +900,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             (b, i) for i, b in enumerate(self.global_barrier_order))
 
         def get_barrier_ordinal(barrier_id):
-            return global_barrier_to_ordinal[barrier_id] if barrier_id is not None else -1
+            return (global_barrier_to_ordinal[barrier_id]
+                    if barrier_id is not None
+                    else -1)
 
         direct_barrier_dependencies = set(
                 dep for dep in insn.depends_on if is_barrier(dep))
