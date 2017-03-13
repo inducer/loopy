@@ -1228,18 +1228,18 @@ put those instructions into the schedule.
    ---------------------------------------------------------------------------
    TEMPORARIES:
    tmp: type: np:dtype('int32'), shape: () scope:private
-   tmp_save_slot: type: np:dtype('int32'), shape: (n // 16, 16), dim_tags: (N1:stride:16, N0:stride:1) scope:global
+   tmp__save_slot: type: np:dtype('int32'), shape: (n // 16, 16), dim_tags: (N1:stride:16, N0:stride:1) scope:global
    ---------------------------------------------------------------------------
    ...
    ---------------------------------------------------------------------------
    SCHEDULE:
-      0: CALL KERNEL rotate_v2(extra_args=['tmp_save_slot'], extra_inames=[])
+      0: CALL KERNEL rotate_v2(extra_args=['tmp__save_slot'], extra_inames=[])
       1:     [maketmp] tmp <- arr[i_inner + i_outer*16]
-      2:     [tmp.save] tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] <- tmp
+      2:     [tmp.save] tmp__save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] <- tmp
       3: RETURN FROM KERNEL rotate_v2
       4: ---BARRIER:global---
-      5: CALL KERNEL rotate_v2_0(extra_args=['tmp_save_slot'], extra_inames=[])
-      6:     [tmp.reload] tmp <- tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]
+      5: CALL KERNEL rotate_v2_0(extra_args=['tmp__save_slot'], extra_inames=[])
+      6:     [tmp.reload] tmp <- tmp__save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]
       7:     [rotate] arr[((1 + i_inner + i_outer*16) % n)] <- tmp
       8: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
@@ -1264,19 +1264,19 @@ The kernel translates into two OpenCL kernels.
    #define lid(N) ((int) get_local_id(N))
    #define gid(N) ((int) get_group_id(N))
    <BLANKLINE>
-   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp__save_slot)
    {
      int tmp;
    <BLANKLINE>
      tmp = arr[16 * gid(0) + lid(0)];
-     tmp_save_slot[16 * gid(0) + lid(0)] = tmp;
+     tmp__save_slot[16 * gid(0) + lid(0)] = tmp;
    }
    <BLANKLINE>
-   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp_save_slot)
+   __kernel void __attribute__ ((reqd_work_group_size(16, 1, 1))) rotate_v2_0(__global int *__restrict__ arr, int const n, __global int *__restrict__ tmp__save_slot)
    {
      int tmp;
    <BLANKLINE>
-     tmp = tmp_save_slot[16 * gid(0) + lid(0)];
+     tmp = tmp__save_slot[16 * gid(0) + lid(0)];
      arr[((1 + lid(0) + gid(0) * 16) % n)] = tmp;
    }
 
