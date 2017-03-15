@@ -1198,7 +1198,8 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
                 return Reduction(expr.operation, tuple(self.inames),
                         Reduction(expr.operation, tuple(leftover_inames),
                             self.rec(expr.expr, expn_state),
-                            expr.allow_simultaneous))
+                            expr.allow_simultaneous),
+                        expr.allow_simultaneous)
             else:
                 assert False
         else:
