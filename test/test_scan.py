@@ -134,6 +134,20 @@ def test_selective_scan_realization():
     pass
 
 
+def test_force_outer_iname_for_scan():
+    knl = lp.make_kernel(
+        "[n] -> {[i,j,k]: 0<=k<n and 0<=i<=k and 0<=j<=i}",
+        "out[i] = product(j, a[j]) {inames=i:k}")
+
+    knl = lp.add_dtypes(knl, dict(a=np.float32))
+
+    # TODO: Maybe this deserves to work?
+    with pytest.raises(lp.diagnostic.ReductionIsNotTriangularError):
+        lp.realize_reduction(knl, force_scan=True)
+
+    knl = lp.realize_reduction(knl, force_scan=True, force_outer_iname_for_scan="i")
+
+
 def test_dependent_domain_scan(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

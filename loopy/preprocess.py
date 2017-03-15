@@ -430,7 +430,7 @@ def _check_reduction_is_triangular(kernel, expr, scan_param):
             return False, (
                    "gist of test against hypothesis domain "
                    "has sweep or scan dependent constraint: '%s'"
-                    % test_gist_against_hyp)
+                   % test_gist_against_hyp)
 
     return True, "ok"
 
