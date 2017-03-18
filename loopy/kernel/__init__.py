@@ -786,6 +786,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             for var_name in insn.read_dependency_names() & admissible_vars:
                 result.setdefault(var_name, set()).add(insn.id)
 
+        return result
+
     @memoize_method
     def writer_map(self):
         """
@@ -913,6 +915,40 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             return max((self.find_most_recent_global_barrier(dep)
                         for dep in insn.depends_on),
                     key=get_barrier_ordinal)
+
+    @property
+    @memoize_method
+    def subkernels(self):
+        return tuple(self.subkernel_to_insn_ids.keys())
+
+    @property
+    @memoize_method
+    def subkernel_to_insn_ids(self):
+        if self.state != kernel_state.SCHEDULED:
+            raise LoopyError("Kernel must be scheduled")
+
+        from loopy.schedule import (
+                sched_item_to_insn_id, CallKernel, ReturnFromKernel)
+
+        from collections import OrderedDict
+        result = OrderedDict()
+
+        subkernel = None
+
+        for sched_item in self.schedule:
+            if isinstance(sched_item, CallKernel):
+                subkernel = sched_item.kernel_name
+                result[subkernel] = set()
+
+            if isinstance(sched_item, ReturnFromKernel):
+                subkernel = None
+
+            if subkernel is not None:
+                for insn_id in sched_item_to_insn_id(sched_item):
+                    result[subkernel].add(insn_id)
+
+        return OrderedDict(
+                (subkernel, frozenset(ids)) for subkernel, ids in result.items())
 
     # }}}
 

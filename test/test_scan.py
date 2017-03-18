@@ -54,8 +54,8 @@ __all__ = [
 
 
 # More things to test.
-# - test that dummy inames are removed
 # - scan(a) + scan(b)
+# - test for badly tagged inames
 # - global parallel scan
 
 # TO DO:
@@ -410,8 +410,7 @@ def _get_two_level_scan_kernel(g_size):
 
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    from loopy.transform.instruction import add_nosync_to_instructions
-    knl = add_nosync_to_instructions(
+    knl = lp.add_nosync(
             knl,
             scope="global",
             source="writes:acc_j__l0",
@@ -470,8 +469,7 @@ def _get_three_level_scan_kernel(g_size, p_size):
 
     knl = lp.realize_reduction(knl, force_scan=True)
 
-    from loopy.transform.instruction import add_nosync_to_instructions
-    knl = add_nosync_to_instructions(
+    knl = lp.add_nosync(
             knl,
             scope="global",
             source="writes:acc_j__l0",
@@ -493,6 +491,8 @@ def _get_three_level_scan_kernel(g_size, p_size):
 # }}}
 
 
+# TODO: Test everything from the matrix
+# (l.0, seq) x (l.0, seq)
 @pytest.mark.parametrize("input_len",
         (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 32))
 @pytest.mark.parametrize("g_size", (16,))
@@ -528,6 +528,16 @@ def test_three_level_scan(ctx_getter, g_size, p_size, input_len):
     _, (out,) = knl(q, a=a)
 
     assert (out == np.cumsum(a)).all()
+
+
+def test_scan_extra_constraints_on_domain():
+    knl = lp.make_kernel(
+        "{[i,j,k]: 0<=i<n and 0<=j<=i and i=k}",
+        "out[i] = sum(j, a[j])")
+
+    with pytest.raises(lp.diagnostic.ReductionIsNotTriangularError):
+        knl = lp.realize_reduction(
+                knl, force_scan=True, force_outer_iname_for_scan="i")
 
 
 if __name__ == "__main__":

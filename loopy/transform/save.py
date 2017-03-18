@@ -32,7 +32,7 @@ from loopy.schedule import (
             EnterLoop, LeaveLoop, RunInstruction,
             CallKernel, ReturnFromKernel, Barrier)
 
-from loopy.schedule.tools import (get_block_boundaries, InstructionQuery)
+from loopy.schedule.tools import get_block_boundaries
 
 
 import logging
@@ -232,7 +232,6 @@ class TemporarySaver(object):
 
     def __init__(self, kernel):
         self.kernel = kernel
-        self.insn_query = InstructionQuery(kernel)
         self.var_name_gen = kernel.get_var_name_generator()
         self.insn_name_gen = kernel.get_instruction_id_generator()
 
@@ -243,12 +242,14 @@ class TemporarySaver(object):
         self.updated_iname_to_tag = {}
         self.updated_temporary_variables = {}
 
-        # temporary name -> save or reload insns
-        self.saves_or_reloads_added = {}
-
+        # temporary name -> save or reload insn ids
         from collections import defaultdict
-        self.subkernel_to_saves = defaultdict(lambda: set())
-        self.subkernel_to_reloads = defaultdict(lambda: set())
+        self.temporary_to_save_ids = defaultdict(set)
+        self.temporary_to_reload_ids = defaultdict(set)
+        self.subkernel_to_newly_added_insn_ids = defaultdict(set)
+
+        # Maps names of base_storage to the name of the temporary
+        # representative chosen for saves/reloads
         self.base_storage_to_representative = {}
 
         from loopy.kernel.data import ValueArg
@@ -262,6 +263,64 @@ class TemporarySaver(object):
                             arg.name for arg in kernel.args
                             if isinstance(arg, ValueArg)))))
 
+    @property
+    @memoize_method
+    def subkernel_to_slice_indices(self):
+        result = {}
+
+        for sched_item_idx, sched_item in enumerate(self.kernel.schedule):
+            if isinstance(sched_item, CallKernel):
+                start_idx = sched_item_idx
+            elif isinstance(sched_item, ReturnFromKernel):
+                result[sched_item.kernel_name] = (start_idx, 1 + sched_item_idx)
+
+        return result
+
+    @property
+    @memoize_method
+    def subkernel_to_surrounding_inames(self):
+        current_outer_inames = set()
+        within_subkernel = False
+        result = {}
+
+        for sched_item_idx, sched_item in enumerate(self.kernel.schedule):
+            if isinstance(sched_item, CallKernel):
+                within_subkernel = True
+                result[sched_item.kernel_name] = frozenset(current_outer_inames)
+            elif isinstance(sched_item, ReturnFromKernel):
+                within_subkernel = False
+            elif isinstance(sched_item, EnterLoop):
+                if not within_subkernel:
+                    current_outer_inames.add(sched_item.iname)
+            elif isinstance(sched_item, LeaveLoop):
+                current_outer_inames.discard(sched_item.iname)
+
+        return result
+
+    @memoize_method
+    def get_defining_global_barrier_pair(self, subkernel):
+        subkernel_start, subkernel_end = (
+            self.subkernel_to_slice_indices[subkernel])
+
+        def is_global_barrier(item):
+            return isinstance(item, Barrier) and item.kind == "global"
+
+        try:
+            pre_barrier = next(item for item in
+                self.kernel.schedule[subkernel_start::-1]
+                if is_global_barrier(item)).originating_insn_id
+        except StopIteration:
+            pre_barrier = None
+
+        try:
+            post_barrier = next(item for item in
+                self.kernel.schedule[subkernel_end:]
+                if is_global_barrier(item)).originating_insn_id
+        except StopIteration:
+            post_barrier = None
+
+        return (pre_barrier, post_barrier)
+
     def get_hw_axis_sizes_and_tags_for_save_slot(self, temporary):
         """
         This is used for determining the amount of global storage needed for saving
@@ -272,9 +331,9 @@ class TemporarySaver(object):
         In the case of local temporaries, inames that are tagged
         hw-local do not contribute to the global storage shape.
         """
-
-        accessor_insn_ids = (
-            self.insn_query.insns_reading_or_writing(temporary.name))
+        accessor_insn_ids = frozenset(
+            self.kernel.reader_map()[temporary.name]
+            | self.kernel.writer_map()[temporary.name])
 
         group_tags = None
         local_tags = None
@@ -355,8 +414,9 @@ class TemporarySaver(object):
             return None
 
         if temporary.base_storage in self.base_storage_to_representative:
-            # FIXME: Pick the representative with the largest size...
-            return self.base_storage_to_representative[temporary.base_storage]
+            # XXX: Todo: Warn about multiple base_storage
+            #repr = self.base_storage_to_representative[temporary.base_storage]
+            pass
 
         hw_dims, hw_tags = self.get_hw_axis_sizes_and_tags_for_save_slot(temporary)
         non_hw_dims = temporary.shape
@@ -388,19 +448,9 @@ class TemporarySaver(object):
         if promoted_temporary is None:
             return
 
-        if mode == "save":
-            if promoted_temporary.name in self.subkernel_to_saves[subkernel]:
-                return
-            self.subkernel_to_saves[subkernel].add(promoted_temporary.name)
-
-        elif mode == "reload":
-            if promoted_temporary.name in self.subkernel_to_reloads[subkernel]:
-                return
-            self.subkernel_to_reloads[subkernel].add(promoted_temporary.name)
-
-        new_subdomain, hw_inames, dim_inames, iname_to_tag = \
+        new_subdomain, hw_inames, dim_inames, iname_to_tag = (
             self.augment_domain_for_save_or_reload(
-                self.new_subdomain, promoted_temporary, mode, subkernel)
+                self.new_subdomain, promoted_temporary, mode, subkernel))
 
         self.new_subdomain = new_subdomain
 
@@ -417,8 +467,8 @@ class TemporarySaver(object):
                     tuple(map(Variable, subscript)))
 
         orig_temporary = (
-                self.kernel.temporary_variables[
-                    promoted_temporary.orig_temporary_name])
+            self.kernel.temporary_variables[
+                promoted_temporary.orig_temporary_name])
         dim_inames_trunc = dim_inames[:len(orig_temporary.shape)]
 
         args = (
@@ -430,9 +480,10 @@ class TemporarySaver(object):
         if mode == "save":
             args = reversed(args)
 
-        accessing_insns_in_subkernel = (
-            self.insn_query.insns_reading_or_writing(temporary) &
-            self.insn_query.insns_in_subkernel(subkernel))
+        accessing_insns_in_subkernel = (frozenset(
+                self.kernel.reader_map()[temporary]
+                | self.kernel.writer_map()[temporary])
+            & self.kernel.subkernel_to_insn_ids[subkernel])
 
         if mode == "save":
             depends_on = accessing_insns_in_subkernel
@@ -441,7 +492,7 @@ class TemporarySaver(object):
             depends_on = frozenset()
             update_deps = accessing_insns_in_subkernel
 
-        pre_barrier, post_barrier = self.insn_query.pre_and_post_barriers(subkernel)
+        pre_barrier, post_barrier = self.get_defining_global_barrier_pair(subkernel)
 
         if pre_barrier is not None:
             depends_on |= set([pre_barrier])
@@ -455,16 +506,19 @@ class TemporarySaver(object):
             *args,
             id=save_or_load_insn_id,
             within_inames=(
-                self.insn_query.inames_in_subkernel(subkernel) |
-                frozenset(hw_inames + dim_inames)),
+                self.subkernel_to_surrounding_inames[subkernel]
+                | frozenset(hw_inames + dim_inames)),
             within_inames_is_final=True,
             depends_on=depends_on,
             boostable=False,
             boostable_into=frozenset())
 
-        if temporary not in self.saves_or_reloads_added:
-            self.saves_or_reloads_added[temporary] = set()
-        self.saves_or_reloads_added[temporary].add(save_or_load_insn_id)
+        if mode == "save":
+            self.temporary_to_save_ids[temporary].add(save_or_load_insn_id)
+        else:
+            self.temporary_to_reload_ids[temporary].add(save_or_load_insn_id)
+
+        self.subkernel_to_newly_added_insn_ids[subkernel].add(save_or_load_insn_id)
 
         self.insns_to_insert.append(save_or_load_insn)
 
@@ -473,8 +527,8 @@ class TemporarySaver(object):
             self.insns_to_update[insn_id] = insn.copy(
                 depends_on=insn.depends_on | frozenset([save_or_load_insn_id]))
 
-        self.updated_temporary_variables[promoted_temporary.name] = \
-            promoted_temporary.as_kernel_temporary(self.kernel)
+        self.updated_temporary_variables[promoted_temporary.name] = (
+            promoted_temporary.as_kernel_temporary(self.kernel))
 
         self.updated_iname_to_tag.update(iname_to_tag)
 
@@ -483,15 +537,6 @@ class TemporarySaver(object):
         new_instructions = []
 
         insns_to_insert = dict((insn.id, insn) for insn in self.insns_to_insert)
-
-        # Add global no_sync_with between any added reloads and saves
-        from six import iteritems
-        for temporary, added_insns in iteritems(self.saves_or_reloads_added):
-            for insn_id in added_insns:
-                insn = insns_to_insert[insn_id]
-                insns_to_insert[insn_id] = insn.copy(
-                    no_sync_with=frozenset(
-                        (added_insn, "global") for added_insn in added_insns))
 
         for orig_insn in self.kernel.instructions:
             if orig_insn.id in self.insns_to_update:
@@ -516,6 +561,18 @@ class TemporarySaver(object):
             temporary_variables=self.updated_temporary_variables,
             overridden_get_grid_sizes_for_insn_ids=None)
 
+        # Add nosync directives to any saves or reloads that were added with a
+        # potential dependency chain.
+        for subkernel in self.kernel.subkernels:
+            relevant_insns = self.subkernel_to_newly_added_insn_ids[subkernel]
+
+            from itertools import product
+            for temporary in self.temporary_to_reload_ids:
+                for source, sink in product(
+                        relevant_insns & self.temporary_to_reload_ids[temporary],
+                        relevant_insns & self.temporary_to_save_ids[temporary]):
+                    kernel = lp.add_nosync(kernel, "global", source, sink)
+
         from loopy.kernel.tools import assign_automatic_axes
         return assign_automatic_axes(kernel)
 
@@ -530,7 +587,7 @@ class TemporarySaver(object):
         """
         Add new axes to the domain corresponding to the dimensions of
         `promoted_temporary`. These axes will be used in the save/
-        reload stage.
+        reload stage. These get prefixed onto the already existing axes.
         """
         assert mode in ("save", "reload")
         import islpy as isl
@@ -637,7 +694,8 @@ def save_and_reload_temporaries(knl):
     liveness = LivenessAnalysis(knl)
     saver = TemporarySaver(knl)
 
-    insn_query = InstructionQuery(knl)
+    from loopy.schedule.tools import (
+        temporaries_read_in_subkernel, temporaries_written_in_subkernel)
 
     for sched_idx, sched_item in enumerate(knl.schedule):
 
@@ -648,9 +706,10 @@ def save_and_reload_temporaries(knl):
                 # Kernel entry: nothing live
                 interesting_temporaries = set()
             else:
+                subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    insn_query.temporaries_read_or_written_in_subkernel(
-                        sched_item.kernel_name))
+                    temporaries_read_in_subkernel(knl, subkernel)
+                    | temporaries_written_in_subkernel(knl, subkernel))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
                 logger.info("reloading {0} at entry of {1}"
@@ -662,9 +721,9 @@ def save_and_reload_temporaries(knl):
                 # Kernel exit: nothing live
                 interesting_temporaries = set()
             else:
+                subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    insn_query.temporaries_written_in_subkernel(
-                        sched_item.kernel_name))
+                    temporaries_written_in_subkernel(knl, subkernel))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
                 logger.info("saving {0} before return of {1}"

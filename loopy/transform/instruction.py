@@ -219,11 +219,11 @@ def tag_instructions(kernel, new_tag, within=None):
 
 # {{{ add nosync
 
-def add_nosync_to_instructions(
-        kernel, scope, source, sink, bidirectional=False):
+def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
     """Add a *no_sync_with* directive between *source* and *sink*.
-    *no_sync_with* is only added if a dependency is present or if the
-    instruction pair is in a conflicting group.
+    *no_sync_with* is only added if a (syntactic) dependency edge
+    is present or if the instruction pair is in a conflicting group
+    (this does not check for memory dependencies).
 
     :arg kernel:
     :arg source: Either a single instruction id, or any instruction id
@@ -234,6 +234,9 @@ def add_nosync_to_instructions(
     :arg bidirectional: A :class:`bool`. If *True*, add a *no_sync_with*
         to both the source and sink instructions, otherwise the directive
         is only added to the sink instructions.
+    :arg force: A :class:`bool`. If *True*, will add a *no_sync_with*
+        even without the presence of a syntactic dependency edge/
+        conflicting instruction group.
 
     :return: The updated kernel
     """
@@ -259,12 +262,12 @@ def add_nosync_to_instructions(
                 bool(insn2.groups & insn1.conflicts_with_groups))
 
     from collections import defaultdict
-    nosync_to_add = defaultdict(lambda: set())
+    nosync_to_add = defaultdict(set)
 
     for sink in sinks:
         for source in sources:
 
-            needs_nosync = (
+            needs_nosync = force or (
                     source in kernel.recursive_insn_dep_map()[sink]
                     or insns_in_conflicting_groups(source, sink))
 
