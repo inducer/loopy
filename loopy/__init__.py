@@ -192,6 +192,7 @@ __all__ = [
         "remove_instructions",
         "replace_instruction_ids",
         "tag_instructions",
+        "add_nosync",
 
         "extract_subst", "expand_subst", "assignment_to_subst",
         "find_rules_matching", "find_one_rule_matching",
