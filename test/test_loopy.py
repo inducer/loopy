@@ -2161,6 +2161,25 @@ def test_global_barrier_error_if_unordered():
         knl.global_barrier_order
 
 
+def test_multi_base_storage_save_and_reload_not_supported():
+    # FIXME: This ought to work, change the test when it does.
+    knl = lp.make_kernel("{[i]: 0<=i<10}",
+        """
+        <>a[0] = 1
+        <>b[0] = 2
+        ... gbarrier
+        out = a[0] + b[0]
+        """,
+        seq_dependencies=True)
+
+    knl = lp.alias_temporaries(knl, ("a", "b"), synchronize_for_exclusive_use=False)
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+
+    with pytest.raises(NotImplementedError):
+        lp.save_and_reload_temporaries(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

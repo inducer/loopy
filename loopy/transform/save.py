@@ -298,7 +298,7 @@ class TemporarySaver(object):
         return result
 
     @memoize_method
-    def get_defining_global_barrier_pair(self, subkernel):
+    def get_enclosing_global_barrier_pair(self, subkernel):
         subkernel_start, subkernel_end = (
             self.subkernel_to_slice_indices[subkernel])
 
@@ -413,10 +413,14 @@ class TemporarySaver(object):
             assert temporary.read_only
             return None
 
-        if temporary.base_storage in self.base_storage_to_representative:
-            # XXX: Todo: Warn about multiple base_storage
-            #repr = self.base_storage_to_representative[temporary.base_storage]
-            pass
+        base_storage_conflict = (
+            self.base_storage_to_representative.get(
+                temporary.base_storage, temporary) is not temporary)
+
+        if base_storage_conflict:
+            raise NotImplementedError(
+                "tried to save/reload multiple temporaries with the "
+                "same base_storage; this is currently not supported")
 
         hw_dims, hw_tags = self.get_hw_axis_sizes_and_tags_for_save_slot(temporary)
         non_hw_dims = temporary.shape
@@ -492,7 +496,7 @@ class TemporarySaver(object):
             depends_on = frozenset()
             update_deps = accessing_insns_in_subkernel
 
-        pre_barrier, post_barrier = self.get_defining_global_barrier_pair(subkernel)
+        pre_barrier, post_barrier = self.get_enclosing_global_barrier_pair(subkernel)
 
         if pre_barrier is not None:
             depends_on |= set([pre_barrier])
