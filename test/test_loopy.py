@@ -2108,6 +2108,41 @@ def test_barrier_insertion_near_bottom_of_loop():
     assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
+def test_struct_assignment(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    bbhit = np.dtype([
+        ("tmin", np.float32),
+        ("tmax", np.float32),
+        ("bi", np.int32),
+        ("hit", np.int32)])
+
+    bbhit, bbhit_c_decl = cl.tools.match_dtype_to_c_struct(
+            ctx.devices[0], "bbhit", bbhit)
+    bbhit = cl.tools.get_or_register_dtype('bbhit', bbhit)
+
+    preamble = bbhit_c_decl
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<N }",
+        """
+        for i
+            result[i].hit = i % 2
+            result[i].tmin = i
+            result[i].tmax = i+10
+            result[i].bi = i
+        end
+        """,
+        [
+            lp.GlobalArg("result", shape=("N",), dtype=bbhit),
+            "..."],
+        preambles=[("000", preamble)])
+
+    knl = lp.set_options(knl, write_cl=True)
+    knl(queue, N=200)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

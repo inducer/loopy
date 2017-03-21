@@ -448,7 +448,7 @@ def parse_insn(groups, insn_options):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import TypeAnnotation
 
     if not isinstance(lhs, tuple):
@@ -469,11 +469,15 @@ def parse_insn(groups, insn_options):
         else:
             temp_var_types.append(None)
 
+        inner_lhs_i = lhs_i
+        if isinstance(inner_lhs_i, Lookup):
+            inner_lhs_i = inner_lhs_i.aggregate
+
         from loopy.symbolic import LinearSubscript
-        if isinstance(lhs_i, Variable):
-            assignee_names.append(lhs_i.name)
-        elif isinstance(lhs_i, (Subscript, LinearSubscript)):
-            assignee_names.append(lhs_i.aggregate.name)
+        if isinstance(inner_lhs_i, Variable):
+            assignee_names.append(inner_lhs_i.name)
+        elif isinstance(inner_lhs_i, (Subscript, LinearSubscript)):
+            assignee_names.append(inner_lhs_i.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
                     "be variable or subscript" % (lhs_i,))
