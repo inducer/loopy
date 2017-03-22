@@ -1341,16 +1341,29 @@ def draw_dependencies_as_unicode_arrows(
 
     uniform_length = min(n_columns[0], max_columns)
 
+    added_ellipsis = [False]
+
     def conform_to_uniform_length(s):
         if len(s) <= uniform_length:
-            return s + " "*(uniform_length+1-len(s))
+            return s + " "*(uniform_length-len(s))
         else:
+            added_ellipsis[0] = True
             return s[:uniform_length] + u"…"
 
-    return [
+    rows = [
             (conform_to_uniform_length(row),
                 conform_to_uniform_length(extender))
             for row, extender in rows]
+
+    if added_ellipsis[0]:
+        uniform_length += 1
+
+    rows = [
+            (conform_to_uniform_length(row),
+                conform_to_uniform_length(extender))
+            for row, extender in rows]
+
+    return rows
 
 # }}}
 
