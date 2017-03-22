@@ -1343,9 +1343,9 @@ def draw_dependencies_as_unicode_arrows(
 
     def conform_to_uniform_length(s):
         if len(s) <= uniform_length:
-            return s + " "*(uniform_length-len(s))
+            return s + " "*(uniform_length+1-len(s))
         else:
-            return s[:uniform_length] + "..."
+            return s[:uniform_length] + u"…"
 
     return [
             (conform_to_uniform_length(row),
