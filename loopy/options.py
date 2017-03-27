@@ -98,7 +98,7 @@ class Options(ImmutableRecord):
     .. attribute:: check_dep_resolution
 
         Whether loopy should issue an error if a dependency
-        expressions does not match any instructions in the kernel.
+        expression does not match any instructions in the kernel.
 
     .. rubric:: Invocation-related options
 
