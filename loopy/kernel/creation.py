@@ -1642,7 +1642,7 @@ def _resolve_dependencies(knl, insn, deps):
                     new_deps.append(other_insn.id)
                     found_any = True
 
-        if not found_any:
+        if not found_any and knl.options.check_dep_resolution:
             raise LoopyError("instruction '%s' declared a depency on '%s', "
                     "which did not resolve to any instruction present in the "
                     "kernel '%s'"
