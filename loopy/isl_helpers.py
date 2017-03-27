@@ -29,6 +29,7 @@ from six.moves import range, zip
 
 from loopy.diagnostic import StaticValueFindingError
 
+import contextlib
 import islpy as isl
 from islpy import dim_type
 
@@ -58,6 +59,14 @@ def pw_aff_to_aff(pw_aff):
 def dump_space(ls):
     return " ".join("%s: %d" % (dt, ls.dim(getattr(dim_type, dt)))
             for dt in dim_type.names)
+
+
+@contextlib.contextmanager
+def no_stderr_output_from_isl(ctx):
+    prev_on_error = ctx.get_on_error()
+    ctx.set_on_error(isl.on_error.CONTINUE)
+    yield
+    ctx.set_on_error(prev_on_error)
 
 
 # {{{ make_slab
