@@ -999,6 +999,11 @@ class CallInstruction(MultiAssignmentBase):
             if field_name in ["assignees", "expression"]:
                 key_builder.update_for_pymbolic_expression(
                         key_hash, getattr(self, field_name))
+            elif field_name == "predicates":
+                preds = sorted(self.predicates, key=str)
+                for pred in preds:
+                    key_builder.update_for_pymbolic_expression(
+                            key_hash, pred)
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
 
