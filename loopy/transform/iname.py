@@ -986,8 +986,9 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             # Emit a warning that we needed boostable_into
             from warnings import warn
             from loopy.diagnostic import LoopyWarning
-            warn("Kernel '%s' required the deprecated 'boostable_into"
-                 "field in order to be schedulable!" % knl.name, LoopyWarning)
+            warn("Kernel '%s' required the deprecated 'boostable_into' "
+                 "instruction attribute in order to be schedulable!" % knl.name,
+                 LoopyWarning)
 
             # Return to avoid yielding the duplication
             # options without boostable_into
