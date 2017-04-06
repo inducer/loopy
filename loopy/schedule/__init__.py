@@ -1384,172 +1384,251 @@ class DependencyRecord(ImmutableRecord):
                 var_kind=var_kind)
 
 
-def get_barrier_needing_dependency(kernel, target, source, reverse, var_kind):
-    """If there exists a dependency between target and source and the two access
-    a common variable of *var_kind* in a way that requires a barrier (essentially,
-    at least one write), then the function will return a tuple
-    ``(target, source, var_name)``. Otherwise, it will return *None*.
+class DependencyTracker(object):
+    """
+    A utility to help track dependencies between originating from a set
+    of sources (as defined by :meth:`add_source`. For each target,
+    dependencies can then be obtained using :meth:`gen_dependencies_with_target_at`.
 
-    This function finds direct or indirect instruction dependencies, but does
-    not attempt to guess dependencies that exist based on common access to
-    variables.
-
-    :arg reverse: a :class:`bool` indicating whether
-        forward or reverse dependencies are sought. (see above)
-    :arg var_kind: "global" or "local", the kind of variable based on which
-        barrier-needing dependencies should be found.
+    .. automethod:: add_source
+    .. automethod:: gen_dependencies_with_target_at
     """
 
-    # If target or source are insn IDs, look up the actual instructions.
-    from loopy.kernel.data import InstructionBase
-    if not isinstance(source, InstructionBase):
-        source = kernel.id_to_insn[source]
-    if not isinstance(target, InstructionBase):
-        target = kernel.id_to_insn[target]
+    def __init__(self, kernel, var_kind, reverse):
+        """
+        :arg var_kind: "global" or "local", the kind of variable based on which
+            barrier-needing dependencies should be found.
+        :arg reverse:
+            In straight-line code, this  only tracks 'b depends on
+            a'-type 'forward' dependencies. But a loop of the type::
 
-    if reverse:
-        source, target = target, source
+                for i in range(10):
+                    A
+                    B
 
-    if source.id in kernel.get_nosync_set(target.id, var_kind):
-        return
+            effectively glues multiple copies of 'A;B' one after the other::
 
-    # {{{ check that a dependency exists
+                A
+                B
+                A
+                B
+                ...
 
-    dep_descr = None
+            Now, if B depends on (i.e. is required to be textually before) A in a
+            way requiring a barrier, then we will assume that the reverse
+            dependency exists as well, i.e. a barrier between the tail end of
+            execution of B and the next beginning of A is also needed.
 
-    target_deps = kernel.recursive_insn_dep_map()[target.id]
-    if source.id in target_deps:
-        if reverse:
-            dep_descr = "{src} rev-depends on {tgt}"
+            Setting *reverse* to *True* tracks these reverse (instead of forward)
+            dependencies.
+        """
+        self.kernel = kernel
+        self.reverse = reverse
+        self.var_kind = var_kind
+
+        if var_kind == "local":
+            self.relevant_vars = kernel.local_var_names()
+        elif var_kind == "global":
+            self.relevant_vars = kernel.global_var_names()
         else:
-            dep_descr = "{tgt} depends on {src}"
+            raise ValueError("unknown 'var_kind': %s" % var_kind)
 
-    grps = source.groups & target.conflicts_with_groups
-    if grps:
-        dep_descr = "{src} conflicts with {tgt} (via '%s')" % ", ".join(grps)
+        from collections import defaultdict
+        self.writer_map = defaultdict(lambda: set())
+        self.reader_map = defaultdict(lambda: set())
+        self.temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
 
-    grps = target.groups & source.conflicts_with_groups
-    if grps:
-        dep_descr = "{src} conflicts with {tgt} (via '%s')" % ", ".join(grps)
-
-    if not dep_descr:
-        return None
-
-    # }}}
-
-    if var_kind == "local":
-        relevant_vars = kernel.local_var_names()
-    elif var_kind == "global":
-        relevant_vars = kernel.global_var_names()
-    else:
-        raise ValueError("unknown 'var_kind': %s" % var_kind)
-
-    temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
-
-    def map_to_base_storage(var_names):
+    def map_to_base_storage(self, var_names):
         result = set(var_names)
 
         for name in var_names:
-            bs = temp_to_base_storage.get(name)
+            bs = self.temp_to_base_storage.get(name)
             if bs is not None:
                 result.add(bs)
 
         return result
 
-    tgt_write = map_to_base_storage(
-            set(target.assignee_var_names()) & relevant_vars)
-    tgt_read = map_to_base_storage(
-            target.read_dependency_names() & relevant_vars)
+    def discard_all_sources(self):
+        self.writer_map.clear()
+        self.reader_map.clear()
 
-    src_write = map_to_base_storage(
-            set(source.assignee_var_names()) & relevant_vars)
-    src_read = map_to_base_storage(
-            source.read_dependency_names() & relevant_vars)
+    def add_source(self, source):
+        """
+        Specify that an instruction may be used as the source of a dependency edge.
+        """
+        # If source is an insn ID, look up the actual instruction.
+        source = self.kernel.id_to_insn.get(source, source)
 
-    waw = tgt_write & src_write
-    raw = tgt_read & src_write
-    war = tgt_write & src_read
+        for written in self.map_to_base_storage(
+                set(source.assignee_var_names()) & self.relevant_vars):
+            self.writer_map[written].add(source.id)
 
-    for var_name in sorted(raw | war):
-        return DependencyRecord(
-                source=source,
-                target=target,
-                dep_descr=dep_descr,
-                variable=var_name,
-                var_kind=var_kind)
+        for read in self.map_to_base_storage(
+                source.read_dependency_names() & self.relevant_vars):
+            self.reader_map[read].add(source.id)
 
-    if source is target:
-        return None
+    def gen_dependencies_with_target_at(self, target):
+        """
+        Generate :class:`DependencyRecord` instances for dependencies edges
+        whose target is the given instruction.
 
-    for var_name in sorted(waw):
-        return DependencyRecord(
-                source=source,
-                target=target,
-                dep_descr=dep_descr,
-                variable=var_name,
-                var_kind=var_kind)
+        :arg target: The ID of the instruction for which dependencies
+            with conflicting var access should be found.
+        """
+        # If target is an insn ID, look up the actual instruction.
+        target = self.kernel.id_to_insn.get(target, target)
 
-    return None
+        tgt_write = self.map_to_base_storage(
+            set(target.assignee_var_names()) & self.relevant_vars)
+        tgt_read = self.map_to_base_storage(
+            target.read_dependency_names() & self.relevant_vars)
+
+        for (accessed_vars, accessor_map) in [
+                (tgt_read, self.writer_map),
+                (tgt_write, self.reader_map),
+                (tgt_write, self.writer_map)]:
+
+            for dep in self.get_conflicting_accesses(
+                    accessed_vars, accessor_map, target.id):
+                yield dep
+
+    def get_conflicting_accesses(
+            self, accessed_vars, var_to_accessor_map, target):
+
+        def determine_conflict_nature(source, target):
+            if (not self.reverse and source in
+                    self.kernel.get_nosync_set(target, scope=self.var_kind)):
+                return None
+            if (self.reverse and target in
+                    self.kernel.get_nosync_set(source, scope=self.var_kind)):
+                return None
+            return self.describe_dependency(source, target)
+
+        for var in sorted(accessed_vars):
+            for source in sorted(var_to_accessor_map[var]):
+                dep_descr = determine_conflict_nature(source, target)
+
+                if dep_descr is None:
+                    continue
+
+                yield DependencyRecord(
+                        source=self.kernel.id_to_insn[source],
+                        target=self.kernel.id_to_insn[target],
+                        dep_descr=dep_descr,
+                        variable=var,
+                        var_kind=self.var_kind)
+
+    def describe_dependency(self, source, target):
+        dep_descr = None
+
+        source = self.kernel.id_to_insn[source]
+        target = self.kernel.id_to_insn[target]
+
+        if self.reverse:
+            source, target = target, source
+
+        target_deps = self.kernel.recursive_insn_dep_map()[target.id]
+        if source.id in target_deps:
+            if self.reverse:
+                dep_descr = "{tgt} rev-depends on {src}"
+            else:
+                dep_descr = "{tgt} depends on {src}"
+
+        grps = source.groups & target.conflicts_with_groups
+        if not grps:
+            grps = target.groups & source.conflicts_with_groups
+
+        if grps:
+            dep_descr = "{src} conflicts with {tgt} (via '%s')" % ", ".join(grps)
+
+        return dep_descr
 
 
 def barrier_kind_more_or_equally_global(kind1, kind2):
     return (kind1 == kind2) or (kind1 == "global" and kind2 == "local")
 
 
-def get_tail_starting_at_last_barrier(schedule, kind):
-    result = []
+def insn_ids_reaching_end_without_intervening_barrier(schedule, kind):
+    return _insn_ids_reaching_end(schedule, kind, reverse=False)
 
-    for sched_item in reversed(schedule):
-        if isinstance(sched_item, Barrier):
+
+def insn_ids_reachable_from_start_without_intervening_barrier(schedule, kind):
+    return _insn_ids_reaching_end(schedule, kind, reverse=True)
+
+
+def _insn_ids_reaching_end(schedule, kind, reverse):
+    if reverse:
+        schedule = reversed(schedule)
+        enter_scope_item_kind = LeaveLoop
+        leave_scope_item_kind = EnterLoop
+    else:
+        enter_scope_item_kind = EnterLoop
+        leave_scope_item_kind = LeaveLoop
+
+    insn_ids_alive_at_scope = [set()]
+
+    for sched_item in schedule:
+        if isinstance(sched_item, enter_scope_item_kind):
+            insn_ids_alive_at_scope.append(set())
+        elif isinstance(sched_item, leave_scope_item_kind):
+            innermost_scope = insn_ids_alive_at_scope.pop()
+            # Instructions in deeper scopes are alive but could be killed by
+            # barriers at a shallower level, e.g.:
+            #
+            # for i
+            #     insn0
+            # end
+            # barrier()   <= kills insn0
+            #
+            # Hence we merge this scope into the parent scope.
+            insn_ids_alive_at_scope[-1].update(innermost_scope)
+        elif isinstance(sched_item, Barrier):
+            # This barrier kills only the instruction ids that are alive at
+            # the current scope (or deeper). Without further analysis, we
+            # can't assume that instructions at shallower scope can be
+            # killed by deeper barriers, since loops might be empty, e.g.:
+            #
+            # insn0          <= isn't killed by barrier (i loop could be empty)
+            # for i
+            #     insn1      <= is killed by barrier
+            #     for j
+            #         insn2  <= is killed by barrier
+            #     end
+            #     barrier()
+            # end
             if barrier_kind_more_or_equally_global(sched_item.kind, kind):
-                break
-
-        elif isinstance(sched_item, RunInstruction):
-            result.append(sched_item.insn_id)
-
-        elif isinstance(sched_item, (EnterLoop, LeaveLoop)):
-            pass
-
-        elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
-            pass
-
+                insn_ids_alive_at_scope[-1].clear()
         else:
-            raise ValueError("unexpected schedule item type '%s'"
-                    % type(sched_item).__name__)
+            insn_ids_alive_at_scope[-1] |= set(
+                    insn_id for insn_id in sched_item_to_insn_id(sched_item))
 
-    return reversed(result)
-
-
-def insn_ids_from_schedule(schedule):
-    result = []
-    for sched_item in reversed(schedule):
-        if isinstance(sched_item, RunInstruction):
-            result.append(sched_item.insn_id)
-
-        elif isinstance(sched_item, (EnterLoop, LeaveLoop, Barrier, CallKernel,
-                                     ReturnFromKernel)):
-            pass
-
-        else:
-            raise ValueError("unexpected schedule item type '%s'"
-                    % type(sched_item).__name__)
-
-    return result
+    assert len(insn_ids_alive_at_scope) == 1
+    return insn_ids_alive_at_scope[-1]
 
 
-def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
+def append_barrier_or_raise_error(schedule, dep, verify_only):
+    if verify_only:
+        from loopy.diagnostic import MissingBarrierError
+        raise MissingBarrierError(
+                "Dependency '%s' (for variable '%s') "
+                "requires synchronization "
+                "by a %s barrier (add a 'no_sync_with' "
+                "instruction option to state that no "
+                "synchronization is needed)"
+                % (
+                    dep.dep_descr.format(
+                        tgt=dep.target.id, src=dep.source.id),
+                    dep.variable,
+                    dep.var_kind))
+    else:
+        comment = "for %s (%s)" % (
+                dep.variable, dep.dep_descr.format(
+                    tgt=dep.target.id, src=dep.source.id))
+        schedule.append(Barrier(comment=comment, kind=dep.var_kind))
+
+
+def insert_barriers(kernel, schedule, kind, verify_only, level=0):
     """
-    :arg reverse: a :class:`bool`. For ``level > 0``, this function should be
-        called twice, first with ``reverse=False`` to insert barriers for
-        forward dependencies, and then again with ``reverse=True`` to insert
-        reverse depedencies. This order is preferable because the forward pass
-        will limit the number of instructions that need to be considered as
-        depedency source candidates by already inserting some number of
-        barriers into *schedule*.
-
-        Calling it with ``reverse==True and level==0` is not necessary,
-        since the root of the schedule is in no loop, therefore not repeated,
-        and therefore reverse dependencies don't need to be added.
     :arg kind: "local" or "global". The :attr:`Barrier.kind` to be inserted.
         Generally, this function will be called once for each kind of barrier
         at the top level, where more global barriers should be inserted first.
@@ -1557,184 +1636,118 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
         missing.
     :arg level: the current level of loop nesting, 0 for outermost.
     """
+
+    # {{{ insert barriers at outermost scheduling level
+
+    def insert_barriers_at_outer_level(schedule, reverse=False):
+        dep_tracker = DependencyTracker(kernel, var_kind=kind, reverse=reverse)
+
+        if reverse:
+            # Populate the dependency tracker with sources from the tail end of
+            # the schedule block.
+            for insn_id in (
+                    insn_ids_reaching_end_without_intervening_barrier(
+                        schedule, kind)):
+                dep_tracker.add_source(insn_id)
+
+        result = []
+
+        i = 0
+        while i < len(schedule):
+            sched_item = schedule[i]
+
+            if isinstance(sched_item, EnterLoop):
+                subloop, new_i = gather_schedule_block(schedule, i)
+
+                loop_head = (
+                    insn_ids_reachable_from_start_without_intervening_barrier(
+                        subloop, kind))
+
+                loop_tail = (
+                    insn_ids_reaching_end_without_intervening_barrier(
+                        subloop, kind))
+
+                # Checks if a barrier is needed before the loop. This handles
+                # dependencies with targets that can be reached without an
+                # intervening barrier from the start of the loop:
+                #
+                # a[x] = ...      <= source
+                # for i
+                #     ... = a[y]  <= target
+                #     barrier()
+                #     ...
+                from itertools import chain
+                for dep in chain.from_iterable(
+                        dep_tracker.gen_dependencies_with_target_at(insn)
+                        for insn in loop_head):
+                    append_barrier_or_raise_error(result, dep, verify_only)
+                    # This barrier gets inserted outside the loop, hence it is
+                    # executed unconditionally and so kills all sources before
+                    # the loop.
+                    dep_tracker.discard_all_sources()
+                    break
+
+                result.extend(subloop)
+
+                # Handle dependencies with sources not killed inside the loop:
+                #
+                # for i
+                #     ...
+                #     barrier()
+                #     b[i] = ...  <= source
+                # end for
+                # ... = f(b)      <= target
+                for item in loop_tail:
+                    dep_tracker.add_source(item)
+
+                i = new_i
+
+            elif isinstance(sched_item, Barrier):
+                result.append(sched_item)
+                if barrier_kind_more_or_equally_global(sched_item.kind, kind):
+                    dep_tracker.discard_all_sources()
+                i += 1
+
+            elif isinstance(sched_item, RunInstruction):
+                for dep in dep_tracker.gen_dependencies_with_target_at(
+                        sched_item.insn_id):
+                    append_barrier_or_raise_error(result, dep, verify_only)
+                    dep_tracker.discard_all_sources()
+                    break
+                result.append(sched_item)
+                dep_tracker.add_source(sched_item.insn_id)
+                i += 1
+
+            elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
+                result.append(sched_item)
+                i += 1
+
+            else:
+                raise ValueError("unexpected schedule item type '%s'"
+                        % type(sched_item).__name__)
+
+        return result
+
+    # }}}
+
+    # {{{ recursively insert barriers in loops
+
     result = []
-
-    # In straight-line code, we have only 'b depends on a'-type 'forward'
-    # dependencies. But a loop of the type
-    #
-    # for i in range(10):
-    #     A
-    #     B
-    #
-    # effectively glues multiple copies of 'A;B' one after the other:
-    #
-    # A
-    # B
-    # A
-    # B
-    # ...
-    #
-    # Now, if B depends on (i.e. is required to be textually before) A in a way
-    # requiring a barrier, then we will assume that the reverse dependency exists
-    # as well, i.e. a barrier between the tail end fo execution of B and the next
-    # beginning of A is also needed.
-
-    if level == 0 and reverse:
-        # The global schedule is in no loop, therefore not repeated, and
-        # therefore reverse dependencies don't need to be added.
-        return schedule
-
-    # a list of instruction IDs that could lead to barrier-needing dependencies.
-    if reverse:
-        candidates = set(get_tail_starting_at_last_barrier(schedule, kind))
-    else:
-        candidates = set()
-
-    past_first_barrier = [False]
-
-    def seen_barrier():
-        past_first_barrier[0] = True
-
-        # We've just gone across a barrier, so anything that needed
-        # one from above just got one.
-
-        candidates.clear()
-
-    def issue_barrier(dep):
-        seen_barrier()
-
-        comment = None
-        if dep is not None:
-            comment = "for %s (%s)" % (
-                    dep.variable, dep.dep_descr.format(
-                        tgt=dep.target.id, src=dep.source.id))
-
-        result.append(Barrier(comment=comment, kind=dep.var_kind))
-
     i = 0
     while i < len(schedule):
         sched_item = schedule[i]
 
         if isinstance(sched_item, EnterLoop):
-            # {{{ recurse for nested loop
-
             subloop, new_i = gather_schedule_block(schedule, i)
+            new_subloop = insert_barriers(
+                    kernel, subloop[1:-1], kind, verify_only, level + 1)
+            result.append(subloop[0])
+            result.extend(new_subloop)
+            result.append(subloop[-1])
             i = new_i
 
-            # Run barrier insertion for inner loop
-            subresult = subloop[1:-1]
-            for sub_reverse in [False, True]:
-                subresult = insert_barriers(
-                        kernel, subresult,
-                        reverse=sub_reverse, kind=kind,
-                        verify_only=verify_only,
-                        level=level+1)
-
-            # {{{ find barriers in loop body
-
-            first_barrier_index = None
-            last_barrier_index = None
-
-            for j, sub_sched_item in enumerate(subresult):
-                if (isinstance(sub_sched_item, Barrier) and
-                        barrier_kind_more_or_equally_global(
-                            sub_sched_item.kind, kind)):
-
-                    seen_barrier()
-                    last_barrier_index = j
-                    if first_barrier_index is None:
-                        first_barrier_index = j
-
-            # }}}
-
-            # {{{ check if a barrier is needed before the loop
-
-            # (for leading (before-first-barrier) bit of loop body)
-            for insn_id in insn_ids_from_schedule(subresult[:first_barrier_index]):
-                search_set = sorted(candidates)
-
-                for dep_src_insn_id in search_set:
-                    dep = get_barrier_needing_dependency(
-                            kernel,
-                            target=insn_id,
-                            source=dep_src_insn_id,
-                            reverse=reverse, var_kind=kind)
-                    if dep:
-                        if verify_only:
-                            from loopy.diagnostic import MissingBarrierError
-                            raise MissingBarrierError(
-                                    "Dependency '%s' (for variable '%s') "
-                                    "requires synchronization "
-                                    "by a %s barrier (add a 'no_sync_with' "
-                                    "instruction option to state that no"
-                                    "synchronization is needed)"
-                                    % (
-                                        dep.dep_descr.format(
-                                            tgt=dep.target.id, src=dep.source.id),
-                                        dep.variable,
-                                        kind))
-                        else:
-                            issue_barrier(dep=dep)
-                            break
-
-            # }}}
-
-            # add trailing end (past-last-barrier) of loop body to candidates
-            if last_barrier_index is None:
-                candidates.update(insn_ids_from_schedule(subresult))
-            else:
-                candidates.update(
-                        insn_ids_from_schedule(
-                            subresult[last_barrier_index+1:]))
-
-            result.append(subloop[0])
-            result.extend(subresult)
-            result.append(subloop[-1])
-
-            # }}}
-
-        elif isinstance(sched_item, Barrier):
-            i += 1
-
-            if barrier_kind_more_or_equally_global(sched_item.kind, kind):
-                seen_barrier()
-
-            result.append(sched_item)
-
-        elif isinstance(sched_item, RunInstruction):
-            i += 1
-
-            search_set = sorted(candidates)
-
-            for dep_src_insn_id in search_set:
-                dep = get_barrier_needing_dependency(
-                        kernel,
-                        target=sched_item.insn_id,
-                        source=dep_src_insn_id,
-                        reverse=reverse, var_kind=kind)
-                if dep:
-                    if verify_only:
-                        from loopy.diagnostic import MissingBarrierError
-                        raise MissingBarrierError(
-                                "Dependency '%s' (for variable '%s') "
-                                "requires synchronization "
-                                "by a %s barrier (add a 'no_sync_with' "
-                                "instruction option to state that no "
-                                "synchronization is needed)"
-                                % (
-                                    dep.dep_descr.format(
-                                        tgt=dep.target.id, src=dep.source.id),
-                                    dep.variable,
-                                    kind))
-
-                    else:
-                        issue_barrier(dep=dep)
-                        break
-
-            result.append(sched_item)
-            candidates.add(sched_item.insn_id)
-
-        elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
+        elif isinstance(sched_item,
+                (Barrier, RunInstruction, CallKernel, ReturnFromKernel)):
             result.append(sched_item)
             i += 1
 
@@ -1742,13 +1755,13 @@ def insert_barriers(kernel, schedule, reverse, kind, verify_only, level=0):
             raise ValueError("unexpected schedule item type '%s'"
                     % type(sched_item).__name__)
 
-        if past_first_barrier[0] and reverse:
-            # We can quit here, because we're only trying add
-            # reverse-dep barriers to the beginning of the loop, up to
-            # the first barrier.
+    # }}}
 
-            result.extend(schedule[i:])
-            break
+    result = insert_barriers_at_outer_level(result)
+
+    # When level = 0 there is no loop.
+    if level != 0:
+        result = insert_barriers_at_outer_level(result, reverse=True)
 
     return result
 
@@ -1897,11 +1910,11 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                     if not kernel.options.disable_global_barriers:
                         logger.info("%s: barrier insertion: global" % kernel.name)
                         gen_sched = insert_barriers(kernel, gen_sched,
-                                reverse=False, kind="global", verify_only=True)
+                                kind="global", verify_only=True)
 
                     logger.info("%s: barrier insertion: local" % kernel.name)
-                    gen_sched = insert_barriers(kernel, gen_sched,
-                            reverse=False, kind="local", verify_only=False)
+                    gen_sched = insert_barriers(kernel, gen_sched, kind="local",
+                            verify_only=False)
                     logger.info("%s: barrier insertion: done" % kernel.name)
 
                 new_kernel = kernel.copy(
@@ -1959,7 +1972,7 @@ def get_one_scheduled_kernel(kernel):
 
     if CACHING_ENABLED:
         try:
-            result, ambiguous = schedule_cache[sched_cache_key]
+            result = schedule_cache[sched_cache_key]
 
             logger.debug("%s: schedule cache hit" % kernel.name)
             from_cache = True
@@ -1967,38 +1980,18 @@ def get_one_scheduled_kernel(kernel):
             pass
 
     if not from_cache:
-        ambiguous = False
-
-        kernel_count = 0
-
         from time import time
         start_time = time()
 
         logger.info("%s: schedule start" % kernel.name)
 
-        for scheduled_kernel in generate_loop_schedules(kernel):
-            kernel_count += 1
-
-            if kernel_count == 1:
-                # use the first schedule
-                result = scheduled_kernel
-
-            if kernel_count == 2:
-                ambiguous = True
-                break
+        result = next(iter(generate_loop_schedules(kernel)))
 
         logger.info("%s: scheduling done after %.2f s" % (
             kernel.name, time()-start_time))
 
-    if ambiguous:
-        from warnings import warn
-        from loopy.diagnostic import LoopyWarning
-        warn("scheduling for kernel '%s' was ambiguous--more than one "
-                "schedule found, ignoring" % kernel.name, LoopyWarning,
-                stacklevel=2)
-
     if CACHING_ENABLED and not from_cache:
-        schedule_cache[sched_cache_key] = result, ambiguous
+        schedule_cache[sched_cache_key] = result
 
     return result
 

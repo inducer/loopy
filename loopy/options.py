@@ -95,6 +95,11 @@ class Options(ImmutableRecord):
         determining whether an iname duplication is necessary
         for the kernel to be schedulable.
 
+    .. attribute:: check_dep_resolution
+
+        Whether loopy should issue an error if a dependency
+        expression does not match any instructions in the kernel.
+
     .. rubric:: Invocation-related options
 
     .. attribute:: skip_arg_checks
@@ -200,6 +205,7 @@ class Options(ImmutableRecord):
                     allow_terminal_colors_def),
                 disable_global_barriers=kwargs.get("disable_global_barriers",
                     False),
+                check_dep_resolution=kwargs.get("check_dep_resolution", True),
                 )
 
     # {{{ legacy compatibility

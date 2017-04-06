@@ -209,7 +209,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
               oooooooooo
               oooooooooo
 
-        Passing ``fetch_bounding_box=True` gives :mod:`loopy` permission
+        Passing ``fetch_bounding_box=True`` gives :mod:`loopy` permission
         to instead fetch the 'bounding box' of the footprint, i.e.
         this set in the stencil example::
 

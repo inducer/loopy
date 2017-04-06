@@ -222,6 +222,10 @@ class InstructionBase(ImmutableRecord):
         if within_inames_is_final is None:
             within_inames_is_final = False
 
+        if isinstance(depends_on, str):
+            depends_on = frozenset(
+                    s.strip() for s in depends_on.split(",") if s.strip())
+
         if depends_on_is_final is None:
             depends_on_is_final = False
 
@@ -388,10 +392,8 @@ class InstructionBase(ImmutableRecord):
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
         if self.no_sync_with:
-            # TODO: Come up with a syntax to express different kinds of
-            # synchronization scopes.
             result.append("nosync="+":".join(
-                    insn_id for insn_id, _ in self.no_sync_with))
+                    "%s@%s" % entry for entry in self.no_sync_with))
         if self.groups:
             result.append("groups=%s" % ":".join(self.groups))
         if self.conflicts_with_groups:
@@ -440,7 +442,8 @@ class InstructionBase(ImmutableRecord):
 
         from loopy.tools import intern_frozenset_of_ids
 
-        self.id = intern(self.id)
+        if self.id is not None:
+            self.id = intern(self.id)
         self.depends_on = intern_frozenset_of_ids(self.depends_on)
         self.groups = intern_frozenset_of_ids(self.groups)
         self.conflicts_with_groups = (
@@ -452,8 +455,11 @@ class InstructionBase(ImmutableRecord):
 
 
 def _get_assignee_var_name(expr):
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript
+
+    if isinstance(expr, Lookup):
+        expr = expr.aggregate
 
     if isinstance(expr, Variable):
         return expr.name
@@ -474,8 +480,11 @@ def _get_assignee_var_name(expr):
 
 
 def _get_assignee_subscript_deps(expr):
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript, get_dependencies
+
+    if isinstance(expr, Lookup):
+        expr = expr.aggregate
 
     if isinstance(expr, Variable):
         return frozenset()
@@ -767,9 +776,9 @@ class Assignment(MultiAssignmentBase):
         if isinstance(expression, str):
             expression = parse(expression)
 
-        from pymbolic.primitives import Variable, Subscript
+        from pymbolic.primitives import Variable, Subscript, Lookup
         from loopy.symbolic import LinearSubscript
-        if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+        if not isinstance(assignee, (Variable, Subscript, LinearSubscript, Lookup)):
             raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignee = assignee
@@ -990,8 +999,20 @@ class CallInstruction(MultiAssignmentBase):
             if field_name in ["assignees", "expression"]:
                 key_builder.update_for_pymbolic_expression(
                         key_hash, getattr(self, field_name))
+            elif field_name == "predicates":
+                preds = sorted(self.predicates, key=str)
+                for pred in preds:
+                    key_builder.update_for_pymbolic_expression(
+                            key_hash, pred)
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
+
+    @property
+    def atomicity(self):
+        # Function calls can impossibly be atomic, and even the result assignment
+        # is troublesome, especially in the case of multiple results. Avoid the
+        # issue altogether by disallowing atomicity.
+        return ()
 
 # }}}
 
@@ -1287,7 +1308,7 @@ class NoOpInstruction(_DataObliviousInstruction):
 
 class BarrierInstruction(_DataObliviousInstruction):
     """An instruction that requires synchronization with all
-    concurrent work items of :attr:`kind.
+    concurrent work items of :attr:`kind`.
 
     .. attribute:: kind
 

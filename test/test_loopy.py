@@ -102,6 +102,28 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
         assert "double" not in code
 
 
+def test_type_inference_with_type_dependencies():
+    knl = lp.make_kernel(
+            "{[i]: i=0}",
+            """
+            <>a = 99
+            a = a + 1
+            <>b = 0
+            <>c = 1
+            b = b + c + 1.0
+            c = b + c
+            <>d = b + 2 + 1j
+            """,
+            "...")
+    knl = lp.infer_unknown_types(knl)
+
+    from loopy.types import to_loopy_type
+    assert knl.temporary_variables["a"].dtype == to_loopy_type(np.int32)
+    assert knl.temporary_variables["b"].dtype == to_loopy_type(np.float32)
+    assert knl.temporary_variables["c"].dtype == to_loopy_type(np.float32)
+    assert knl.temporary_variables["d"].dtype == to_loopy_type(np.complex128)
+
+
 def test_sized_and_complex_literals(ctx_factory):
     ctx = ctx_factory()
 
@@ -1473,6 +1495,22 @@ def test_call_with_no_returned_value(ctx_factory):
 # }}}
 
 
+# {{{ call with no return values and options
+
+def test_call_with_options():
+    knl = lp.make_kernel(
+        "{:}",
+        "f() {id=init}"
+        )
+
+    from library_for_test import no_ret_f_mangler
+    knl = lp.register_function_manglers(knl, [no_ret_f_mangler])
+
+    print(lp.generate_code_v2(knl).device_code())
+
+# }}}
+
+
 def test_unschedulable_kernel_detection():
     knl = lp.make_kernel(["{[i,j]:0<=i,j<n}"],
                          """
@@ -1910,8 +1948,8 @@ def test_tight_loop_bounds_codegen():
 
     for_loop = \
         "for (int j = " \
-        "(lid(0) == 0 && gid(0) == 0 ? 0 : -2 + 10 * gid(0) + 2 * lid(0)); " \
-        "j <= (lid(0) == 0 && -1 + gid(0) == 0 ? 9 : 2 * lid(0)); ++j)"
+        "(gid(0) == 0 && lid(0) == 0 ? 0 : -2 + 2 * lid(0) + 10 * gid(0)); " \
+        "j <= (-1 + gid(0) == 0 && lid(0) == 0 ? 9 : 2 * lid(0)); ++j)"
 
     assert for_loop in cgr.device_code()
 
@@ -1971,6 +2009,138 @@ def test_integer_reduction(ctx_factory):
             _, (out,) = knl(queue, out_host=True)
 
             assert function(out)
+
+
+def test_nosync_option_parsing():
+    knl = lp.make_kernel(
+        "{[i]: 0 <= i < 10}",
+        """
+        <>t = 1 {id=insn1,nosync=insn1}
+        t = 2   {id=insn2,nosync=insn1:insn2}
+        t = 3   {id=insn3,nosync=insn1@local:insn2@global:insn3@any}
+        t = 4   {id=insn4,nosync_query=id:insn*@local}
+        t = 5   {id=insn5,nosync_query=id:insn1}
+        """,
+        options=lp.Options(allow_terminal_colors=False))
+    kernel_str = str(knl)
+    assert "# insn1,no_sync_with=insn1@any" in kernel_str
+    assert "# insn2,no_sync_with=insn1@any:insn2@any" in kernel_str
+    assert "# insn3,no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
+    assert "# insn4,no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa
+    assert "# insn5,no_sync_with=insn1@any" in kernel_str
+
+
+def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
+    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop)
+    watch_for_barrier = False
+    seen_barrier = False
+    loop_level = 0
+
+    for sched_item in knl.schedule:
+        if isinstance(sched_item, RunInstruction):
+            if sched_item.insn_id == id1:
+                watch_for_barrier = True
+            elif sched_item.insn_id == id2:
+                assert watch_for_barrier
+                assert seen_barrier
+                return
+        elif isinstance(sched_item, Barrier):
+            if watch_for_barrier and loop_level not in ignore_barriers_in_levels:
+                seen_barrier = True
+        elif isinstance(sched_item, EnterLoop):
+            loop_level += 1
+        elif isinstance(sched_item, LeaveLoop):
+            loop_level -= 1
+
+    raise RuntimeError("id2 was not seen")
+
+
+def test_barrier_insertion_near_top_of_loop():
+    knl = lp.make_kernel(
+        "{[i,j]: 0 <= i,j < 10 }",
+        """
+        for i
+         <>a[i] = i  {id=ainit}
+         for j
+          <>t = a[(i + 1) % 10]  {id=tcomp}
+          <>b[i,j] = a[i] + t   {id=bcomp1}
+          b[i,j] = b[i,j] + 1  {id=bcomp2}
+         end
+        end
+        """,
+        seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.set_temporary_scope(knl, "a", "local")
+    knl = lp.set_temporary_scope(knl, "b", "local")
+    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+
+    print(knl)
+
+    assert_barrier_between(knl, "ainit", "tcomp")
+    assert_barrier_between(knl, "tcomp", "bcomp1")
+    assert_barrier_between(knl, "bcomp1", "bcomp2")
+
+
+def test_barrier_insertion_near_bottom_of_loop():
+    knl = lp.make_kernel(
+        ["{[i]: 0 <= i < 10 }",
+         "[jmax] -> {[j]: 0 <= j < jmax}"],
+        """
+        for i
+         <>a[i] = i  {id=ainit}
+         for j
+          <>b[i,j] = a[i] + t   {id=bcomp1}
+          b[i,j] = b[i,j] + 1  {id=bcomp2}
+         end
+         a[i] = i + 1 {id=aupdate}
+        end
+        """,
+        seq_dependencies=True)
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.set_temporary_scope(knl, "a", "local")
+    knl = lp.set_temporary_scope(knl, "b", "local")
+    knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
+
+    print(knl)
+
+    assert_barrier_between(knl, "bcomp1", "bcomp2")
+    assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
+
+
+def test_struct_assignment(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    bbhit = np.dtype([
+        ("tmin", np.float32),
+        ("tmax", np.float32),
+        ("bi", np.int32),
+        ("hit", np.int32)])
+
+    bbhit, bbhit_c_decl = cl.tools.match_dtype_to_c_struct(
+            ctx.devices[0], "bbhit", bbhit)
+    bbhit = cl.tools.get_or_register_dtype('bbhit', bbhit)
+
+    preamble = bbhit_c_decl
+
+    knl = lp.make_kernel(
+        "{ [i]: 0<=i<N }",
+        """
+        for i
+            result[i].hit = i % 2
+            result[i].tmin = i
+            result[i].tmax = i+10
+            result[i].bi = i
+        end
+        """,
+        [
+            lp.GlobalArg("result", shape=("N",), dtype=bbhit),
+            "..."],
+        preambles=[("000", preamble)])
+
+    knl = lp.set_options(knl, write_cl=True)
+    knl(queue, N=200)
 
 
 if __name__ == "__main__":

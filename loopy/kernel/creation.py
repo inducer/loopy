@@ -26,6 +26,8 @@ THE SOFTWARE.
 
 
 import numpy as np
+
+from pymbolic.mapper import CSECachingMapperMixin
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
@@ -165,6 +167,11 @@ def get_default_insn_options_dict():
         }
 
 
+from collections import namedtuple
+
+_NosyncParseResult = namedtuple("_NosyncParseResult", "expr, scope")
+
+
 def parse_insn_options(opt_dict, options_str, assignee_names=None):
     if options_str is None:
         return opt_dict
@@ -172,6 +179,20 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
     is_with_block = assignee_names is None
 
     result = opt_dict.copy()
+
+    def parse_nosync_option(opt_value):
+        if "@" in opt_value:
+            expr, scope = opt_value.split("@")
+        else:
+            expr = opt_value
+            scope = "any"
+        allowable_scopes = ("local", "global", "any")
+        if scope not in allowable_scopes:
+            raise ValueError(
+                "unknown scope for nosync option: '%s' "
+                "(allowable scopes are %s)" %
+                (scope, ', '.join("'%s'" % s for s in allowable_scopes)))
+        return _NosyncParseResult(expr, scope)
 
     for option in options_str.split(","):
         option = option.strip()
@@ -240,23 +261,24 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 raise LoopyError("'nosync' option may not be specified "
                         "in a 'with' block")
 
-            # TODO: Come up with a syntax that allows the user to express
-            # different synchronization scopes.
             result["no_sync_with"] = result["no_sync_with"].union(frozenset(
-                    (intern(dep.strip()), "any")
-                    for dep in opt_value.split(":") if dep.strip()))
+                    (option.expr.strip(), option.scope)
+                    for option in (
+                            parse_nosync_option(entry)
+                            for entry in opt_value.split(":"))
+                    if option.expr.strip()))
 
         elif opt_key == "nosync_query" and opt_value is not None:
             if is_with_block:
                 raise LoopyError("'nosync' option may not be specified "
                         "in a 'with' block")
 
+            match_expr, scope = parse_nosync_option(opt_value)
+
             from loopy.match import parse_match
-            match = parse_match(opt_value)
-            # TODO: Come up with a syntax that allows the user to express
-            # different synchronization scopes.
+            match = parse_match(match_expr)
             result["no_sync_with"] = result["no_sync_with"].union(
-                    frozenset([(match, "any")]))
+                    frozenset([(match, scope)]))
 
         elif opt_key == "groups" and opt_value is not None:
             result["groups"] = frozenset(
@@ -372,7 +394,7 @@ ELSE_RE = re.compile("^\s*else\s*$")
 INSN_RE = re.compile(
         "^"
         "\s*"
-        "(?P<lhs>.+?)"
+        "(?P<lhs>[^{]+?)"
         "\s*(?<!\:)=\s*"
         "(?P<rhs>.+?)"
         "\s*?"
@@ -426,7 +448,7 @@ def parse_insn(groups, insn_options):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import TypeAnnotation
 
     if not isinstance(lhs, tuple):
@@ -447,11 +469,15 @@ def parse_insn(groups, insn_options):
         else:
             temp_var_types.append(None)
 
+        inner_lhs_i = lhs_i
+        if isinstance(inner_lhs_i, Lookup):
+            inner_lhs_i = inner_lhs_i.aggregate
+
         from loopy.symbolic import LinearSubscript
-        if isinstance(lhs_i, Variable):
-            assignee_names.append(lhs_i.name)
-        elif isinstance(lhs_i, (Subscript, LinearSubscript)):
-            assignee_names.append(lhs_i.aggregate.name)
+        if isinstance(inner_lhs_i, Variable):
+            assignee_names.append(inner_lhs_i.name)
+        elif isinstance(inner_lhs_i, (Subscript, LinearSubscript)):
+            assignee_names.append(inner_lhs_i.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
                     "be variable or subscript" % (lhs_i,))
@@ -995,7 +1021,7 @@ def parse_domains(domains, defines):
 
 # {{{ guess kernel args (if requested)
 
-class IndexRankFinder(WalkMapper):
+class IndexRankFinder(CSECachingMapperMixin, WalkMapper):
     def __init__(self, arg_name):
         self.arg_name = arg_name
         self.index_ranks = []
@@ -1011,6 +1037,13 @@ class IndexRankFinder(WalkMapper):
                 self.index_ranks.append(1)
             else:
                 self.index_ranks.append(len(expr.index))
+
+    def map_common_subexpression_uncached(self, expr):
+        if not self.visit(expr):
+            return
+
+        self.rec(expr.child)
+        self.post_visit(expr)
 
 
 class ArgumentGuesser:
@@ -1392,11 +1425,11 @@ def create_temporaries(knl, default_order):
 
 # {{{ determine shapes of temporaries
 
-def find_var_shape(knl, var_name, feed_expression):
-    from loopy.symbolic import AccessRangeMapper, SubstitutionRuleExpander
+def find_shapes_of_vars(knl, var_names, feed_expression):
+    from loopy.symbolic import BatchedAccessRangeMapper, SubstitutionRuleExpander
     submap = SubstitutionRuleExpander(knl.substitutions)
 
-    armap = AccessRangeMapper(knl, var_name)
+    armap = BatchedAccessRangeMapper(knl, var_names)
 
     def run_through_armap(expr, inames):
         armap(submap(expr), inames)
@@ -1404,61 +1437,105 @@ def find_var_shape(knl, var_name, feed_expression):
 
     feed_expression(run_through_armap)
 
-    if armap.access_range is not None:
-        base_indices, shape = list(zip(*[
-                knl.cache_manager.base_index_and_length(
-                    armap.access_range, i)
-                for i in range(armap.access_range.dim(dim_type.set))]))
-    else:
-        if armap.bad_subscripts:
-            raise RuntimeError("cannot determine access range for '%s': "
-                    "undetermined index in subscript(s) '%s'"
-                    % (var_name, ", ".join(
-                            str(i) for i in armap.bad_subscripts)))
+    var_to_base_indices = {}
+    var_to_shape = {}
+    var_to_error = {}
 
-        # no subscripts found, let's call it a scalar
-        base_indices = ()
-        shape = ()
+    from loopy.diagnostic import StaticValueFindingError
 
-    return base_indices, shape
+    for var_name in var_names:
+        access_range = armap.access_ranges[var_name]
+        bad_subscripts = armap.bad_subscripts[var_name]
+
+        if access_range is not None:
+            try:
+                base_indices, shape = list(zip(*[
+                        knl.cache_manager.base_index_and_length(
+                            access_range, i)
+                        for i in range(access_range.dim(dim_type.set))]))
+            except StaticValueFindingError as e:
+                var_to_error[var_name] = str(e)
+                continue
+
+        else:
+            if bad_subscripts:
+                raise RuntimeError("cannot determine access range for '%s': "
+                        "undetermined index in subscript(s) '%s'"
+                        % (var_name, ", ".join(
+                                str(i) for i in bad_subscripts)))
+
+            # no subscripts found, let's call it a scalar
+            base_indices = ()
+            shape = ()
+
+        var_to_base_indices[var_name] = base_indices
+        var_to_shape[var_name] = shape
+
+    return var_to_base_indices, var_to_shape, var_to_error
 
 
 def determine_shapes_of_temporaries(knl):
     new_temp_vars = knl.temporary_variables.copy()
 
     import loopy as lp
-    from loopy.diagnostic import StaticValueFindingError
 
-    new_temp_vars = {}
+    vars_needing_shape_inference = set()
+
     for tv in six.itervalues(knl.temporary_variables):
         if tv.shape is lp.auto or tv.base_indices is lp.auto:
-            def feed_all_expressions(receiver):
-                for insn in knl.instructions:
-                    insn.with_transformed_expressions(
-                            lambda expr: receiver(expr, knl.insn_inames(insn)))
+            vars_needing_shape_inference.add(tv.name)
 
-            def feed_assignee_of_instruction(receiver):
-                for insn in knl.instructions:
-                    for assignee in insn.assignees:
-                        receiver(assignee, knl.insn_inames(insn))
+    def feed_all_expressions(receiver):
+        for insn in knl.instructions:
+            insn.with_transformed_expressions(
+                lambda expr: receiver(expr, knl.insn_inames(insn)))
 
-            try:
-                base_indices, shape = find_var_shape(
-                        knl, tv.name, feed_all_expressions)
-            except StaticValueFindingError as e:
-                warn_with_kernel(knl, "temp_shape_fallback",
-                        "Had to fall back to legacy method of determining "
-                        "shape of temporary '%s' because: %s"
-                        % (tv.name, str(e)))
+    var_to_base_indices, var_to_shape, var_to_error = (
+        find_shapes_of_vars(
+                knl, vars_needing_shape_inference, feed_all_expressions))
 
-                base_indices, shape = find_var_shape(
-                        knl, tv.name, feed_assignee_of_instruction)
+    # {{{ fall back to legacy method
 
-            if tv.base_indices is lp.auto:
-                tv = tv.copy(base_indices=base_indices)
-            if tv.shape is lp.auto:
-                tv = tv.copy(shape=shape)
+    if len(var_to_error) > 0:
+        vars_needing_shape_inference = set(var_to_error.keys())
 
+        from six import iteritems
+        for varname, err in iteritems(var_to_error):
+            warn_with_kernel(knl, "temp_shape_fallback",
+                             "Had to fall back to legacy method of determining "
+                             "shape of temporary '%s' because: %s"
+                             % (varname, err))
+
+        def feed_assignee_of_instruction(receiver):
+            for insn in knl.instructions:
+                for assignee in insn.assignees:
+                    receiver(assignee, knl.insn_inames(insn))
+
+        var_to_base_indices_fallback, var_to_shape_fallback, var_to_error = (
+            find_shapes_of_vars(
+                    knl, vars_needing_shape_inference, feed_assignee_of_instruction))
+
+        if len(var_to_error) > 0:
+            # No way around errors: propagate an exception upward.
+            formatted_errors = (
+                "\n\n".join("'%s': %s" % (varname, var_to_error[varname])
+                for varname in sorted(var_to_error.keys())))
+
+            raise LoopyError("got the following exception(s) trying to find the "
+                    "shape of temporary variables: %s" % formatted_errors)
+
+        var_to_base_indices.update(var_to_base_indices_fallback)
+        var_to_shape.update(var_to_shape_fallback)
+
+    # }}}
+
+    new_temp_vars = {}
+
+    for tv in six.itervalues(knl.temporary_variables):
+        if tv.base_indices is lp.auto:
+            tv = tv.copy(base_indices=var_to_base_indices[tv.name])
+        if tv.shape is lp.auto:
+            tv = tv.copy(shape=var_to_shape[tv.name])
         new_temp_vars[tv.name] = tv
 
     return knl.copy(temporary_variables=new_temp_vars)
@@ -1551,15 +1628,30 @@ def _resolve_dependencies(knl, insn, deps):
     new_deps = []
 
     for dep in deps:
+        found_any = False
+
         if isinstance(dep, MatchExpressionBase):
             for new_dep in find_instructions(knl, dep):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
+                    found_any = True
         else:
             from fnmatch import fnmatchcase
             for other_insn in knl.instructions:
                 if fnmatchcase(other_insn.id, dep):
                     new_deps.append(other_insn.id)
+                    found_any = True
+
+        if not found_any and knl.options.check_dep_resolution:
+            raise LoopyError("instruction '%s' declared a depency on '%s', "
+                    "which did not resolve to any instruction present in the "
+                    "kernel '%s'. Set the kernel option 'check_dep_resolution'"
+                    "to False to disable this check." % (insn.id, dep, knl.name))
+
+    for dep_id in new_deps:
+        if dep_id not in knl.id_to_insn:
+            raise LoopyError("instruction '%s' depends on instruction id '%s', "
+                    "which was not found" % (insn.id, dep_id))
 
     return frozenset(new_deps)
 
@@ -1574,7 +1666,7 @@ def resolve_dependencies(knl):
                         (resolved_insn_id, nosync_scope)
                         for nosync_dep, nosync_scope in insn.no_sync_with
                         for resolved_insn_id in
-                        _resolve_dependencies(knl, insn, nosync_dep)),
+                        _resolve_dependencies(knl, insn, (nosync_dep,))),
                     ))
 
     return knl.copy(instructions=new_insns)

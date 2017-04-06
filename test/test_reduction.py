@@ -181,7 +181,7 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
     # FIXME: Actually test functionality.
 
 
-@pytest.mark.parametrize("size", [128, 5, 113, 67])
+@pytest.mark.parametrize("size", [128, 5, 113, 67, 1])
 def test_local_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
 
@@ -391,6 +391,18 @@ def test_double_sum_made_unique(ctx_factory):
     ref = sum(i*j for i in range(n) for j in range(n))
     assert a.get() == ref
     assert b.get() == ref
+
+
+def test_parallel_multi_output_reduction():
+    knl = lp.make_kernel(
+                "{[i]: 0<=i<128}",
+                """
+                max_val, max_indices = argmax(i, fabs(a[i]))
+                """)
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.realize_reduction(knl)
+    print(knl)
+    # TODO: Add functional test
 
 
 if __name__ == "__main__":

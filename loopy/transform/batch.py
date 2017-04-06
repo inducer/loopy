@@ -63,7 +63,7 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
         if not self.needs_batch_subscript(expr.aggregate.name):
             return super(_BatchVariableChanger, self).map_subscript(expr, expn_state)
 
-        idx = expr.index
+        idx = self.rec(expr.index, expn_state)
         if not isinstance(idx, tuple):
             idx = (idx,)
 
@@ -73,7 +73,7 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
         if not self.needs_batch_subscript(expr.name):
             return super(_BatchVariableChanger, self).map_variable(expr, expn_state)
 
-        return expr.aggregate[self.batch_iname_expr]
+        return expr[self.batch_iname_expr]
 
 
 def _add_unique_dim_name(name, dim_names):

@@ -38,6 +38,7 @@ from pymbolic.mapper import (
         IdentityMapper as IdentityMapperBase,
         WalkMapper as WalkMapperBase,
         CallbackMapper as CallbackMapperBase,
+        CSECachingMapperMixin,
         )
 from pymbolic.mapper.evaluator import \
         EvaluationMapper as EvaluationMapperBase
@@ -113,9 +114,13 @@ class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
 
 
-class PartialEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
+class PartialEvaluationMapper(
+        EvaluationMapperBase, CSECachingMapperMixin, IdentityMapperMixin):
     def map_variable(self, expr):
         return expr
+
+    def map_common_subexpression_uncached(self, expr):
+        return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
 
 class WalkMapper(WalkMapperBase):
@@ -162,8 +167,10 @@ class CombineMapper(CombineMapperBase):
     map_linear_subscript = CombineMapperBase.map_subscript
 
 
-class SubstitutionMapper(SubstitutionMapperBase, IdentityMapperMixin):
-    pass
+class SubstitutionMapper(
+        CSECachingMapperMixin, SubstitutionMapperBase, IdentityMapperMixin):
+    def map_common_subexpression_uncached(self, expr):
+        return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
 
 
 class ConstantFoldingMapper(ConstantFoldingMapperBase,
@@ -1471,12 +1478,13 @@ def get_access_range(domain, subscript, assumptions):
 
 # {{{ access range mapper
 
-class AccessRangeMapper(WalkMapper):
-    def __init__(self, kernel, arg_name):
+class BatchedAccessRangeMapper(WalkMapper):
+
+    def __init__(self, kernel, arg_names):
         self.kernel = kernel
-        self.arg_name = arg_name
-        self.access_range = None
-        self.bad_subscripts = []
+        self.arg_names = set(arg_names)
+        self.access_ranges = dict((arg, None) for arg in arg_names)
+        self.bad_subscripts = dict((arg, []) for arg in arg_names)
 
     def map_subscript(self, expr, inames):
         domain = self.kernel.get_inames_domain(inames)
@@ -1484,37 +1492,57 @@ class AccessRangeMapper(WalkMapper):
 
         assert isinstance(expr.aggregate, p.Variable)
 
-        if expr.aggregate.name != self.arg_name:
+        if expr.aggregate.name not in self.arg_names:
             return
 
+        arg_name = expr.aggregate.name
         subscript = expr.index_tuple
 
         if not get_dependencies(subscript) <= set(domain.get_var_dict()):
-            self.bad_subscripts.append(expr)
+            self.bad_subscripts[arg_name].append(expr)
             return
 
         access_range = get_access_range(domain, subscript, self.kernel.assumptions)
 
-        if self.access_range is None:
-            self.access_range = access_range
+        if self.access_ranges[arg_name] is None:
+            self.access_ranges[arg_name] = access_range
         else:
-            if (self.access_range.dim(dim_type.set)
+            if (self.access_ranges[arg_name].dim(dim_type.set)
                     != access_range.dim(dim_type.set)):
                 raise RuntimeError(
                         "error while determining shape of argument '%s': "
                         "varying number of indices encountered"
-                        % self.arg_name)
+                        % arg_name)
 
-            self.access_range = self.access_range | access_range
+            self.access_ranges[arg_name] = (
+                    self.access_ranges[arg_name] | access_range)
 
     def map_linear_subscript(self, expr, inames):
         self.rec(expr.index, inames)
 
-        if expr.aggregate.name == self.arg_name:
-            self.bad_subscripts.append(expr)
+        if expr.aggregate.name in self.arg_names:
+            self.bad_subscripts[expr.aggregate.name].append(expr)
 
     def map_reduction(self, expr, inames):
         return WalkMapper.map_reduction(self, expr, inames | set(expr.inames))
+
+
+class AccessRangeMapper(object):
+
+    def __init__(self, kernel, arg_name):
+        self.arg_name = arg_name
+        self.inner_mapper = BatchedAccessRangeMapper(kernel, [arg_name])
+
+    def __call__(self, expr, inames):
+        return self.inner_mapper(expr, inames)
+
+    @property
+    def access_range(self):
+        return self.inner_mapper.access_ranges[self.arg_name]
+
+    @property
+    def bad_subscripts(self):
+        return self.inner_mapper.bad_subscripts[self.arg_name]
 
 # }}}
 
