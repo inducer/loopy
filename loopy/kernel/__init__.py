@@ -786,6 +786,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             for var_name in insn.read_dependency_names() & admissible_vars:
                 result.setdefault(var_name, set()).add(insn.id)
 
+        return result
+
     @memoize_method
     def writer_map(self):
         """
