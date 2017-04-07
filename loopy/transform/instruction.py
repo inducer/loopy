@@ -34,7 +34,6 @@ def find_instructions(kernel, insn_match):
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
 
-
 # }}}
 
 
@@ -171,6 +170,7 @@ def replace_instruction_ids(kernel, replacements):
     for insn in kernel.instructions:
         changed = False
         new_depends_on = []
+        new_no_sync_with = []
 
         for dep in insn.depends_on:
             if dep in replacements:
@@ -179,8 +179,18 @@ def replace_instruction_ids(kernel, replacements):
             else:
                 new_depends_on.append(dep)
 
+        for insn_id, scope in insn.no_sync_with:
+            if insn_id in replacements:
+                new_no_sync_with.extend(
+                        (repl, scope) for repl in replacements[insn_id])
+                changed = True
+            else:
+                new_no_sync_with.append((insn_id, scope))
+
         new_insns.append(
-                insn.copy(depends_on=frozenset(new_depends_on))
+                insn.copy(
+                    depends_on=frozenset(new_depends_on),
+                    no_sync_with=frozenset(new_no_sync_with))
                 if changed else insn)
 
     return kernel.copy(instructions=new_insns)
