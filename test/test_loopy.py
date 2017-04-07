@@ -2108,6 +2108,50 @@ def test_barrier_insertion_near_bottom_of_loop():
     assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
+def test_global_barrier_order_finding():
+    knl = lp.make_kernel(
+            "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
+            """
+            for i
+                for itrip
+                    ... gbarrier {id=top}
+                    <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
+                    <> v[i] = 11  {id=wr_v,dep=top}
+                    ... gbarrier {dep=wr_z:wr_v,id=yoink}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=yoink}
+                end
+                ... nop {id=nop}
+                ... gbarrier {dep=iupd,id=postloop}
+                z[i] = z[i] - z[i+1] + v[i]  {id=zzzv,dep=postloop}
+            end
+            """)
+
+    assert knl.global_barrier_order == ("top", "yoink", "postloop")
+
+    for insn, barrier in (
+            ("nop", None),
+            ("top", None),
+            ("wr_z", "top"),
+            ("wr_v", "top"),
+            ("yoink", "top"),
+            ("postloop", "yoink"),
+            ("zzzv", "postloop")):
+        assert knl.find_most_recent_global_barrier(insn) == barrier
+
+
+def test_global_barrier_error_if_unordered():
+    # FIXME: Should be illegal to declare this
+    knl = lp.make_kernel("{[i]: 0 <= i < 10}",
+            """
+            ... gbarrier
+            ... gbarrier
+            """)
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        knl.global_barrier_order
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
