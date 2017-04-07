@@ -130,7 +130,7 @@ def remove_instructions(kernel, insn_ids):
     Behavior is undefined for now for chains of dependencies within the
     set of deleted instructions.
 
-    This also updated *no_sync_with* for all instructions.
+    This also updates *no_sync_with* for all instructions.
     """
 
     if not insn_ids:
