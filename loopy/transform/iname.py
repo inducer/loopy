@@ -145,10 +145,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, tuple(new_inames),
-                        (tuple(self.rec(sub_expr, expn_state)
-                               for sub_expr in expr.exprs)
-                         if expr.is_plain_tuple
-                         else self.rec(expr.exprs, expn_state)),
+                        self.rec(expr.exprs, expn_state),
                         expr.allow_simultaneous)
         else:
             return super(_InameSplitter, self).map_reduction(expr, expn_state)
@@ -1194,20 +1191,15 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
             if self.direction == "in":
                 return Reduction(expr.operation, tuple(leftover_inames),
                         Reduction(expr.operation, tuple(self.inames),
-                            (tuple(self.rec(sub_expr, expn_state)
-                                  for sub_expr in expr.exprs)
-                             if expr.is_plain_tuple
-                             else self.rec(expr.exprs, expn_state)),
+                            self.rec(expr.exprs, expn_state),
                             expr.allow_simultaneous),
                         expr.allow_simultaneous)
             elif self.direction == "out":
                 return Reduction(expr.operation, tuple(self.inames),
                         Reduction(expr.operation, tuple(leftover_inames),
-                            (tuple(self.rec(sub_expr, expn_state)
-                                  for sub_expr in expr.exprs)
-                             if expr.is_plain_tuple
-                             else self.rec(expr.exprs, expn_state)),
-                            expr.allow_simultaneous))
+                            self.rec(expr.exprs, expn_state),
+                            expr.allow_simultaneous),
+                        expr.allow_simultaneous)
             else:
                 assert False
         else:
@@ -1598,16 +1590,9 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
 
             from loopy.symbolic import Reduction
             return Reduction(expr.operation, tuple(new_inames),
-                    (tuple(self.rec(
-                            SubstitutionMapper(make_subst_func(subst_dict))(
-                                sub_expr),
-                            expn_state)
-                        for sub_expr in expr.exprs)
-                     if expr.is_plain_tuple
-                     else self.rec(
-                             SubstitutionMapper(make_subst_func(subst_dict))(
-                                 expr.exprs),
-                             expn_state)),
+                    self.rec(
+                        SubstitutionMapper(make_subst_func(subst_dict))(expr.exprs),
+                        expn_state),
                     expr.allow_simultaneous)
         else:
             return super(_ReductionInameUniquifier, self).map_reduction(

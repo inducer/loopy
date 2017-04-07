@@ -59,9 +59,33 @@ def storage_axis_exprs(storage_axis_sources, args):
     return result
 
 
+# {{{ identity mapper
+
+class PrecomputeIdentityMapper(RuleAwareIdentityMapper):
+
+    def map_reduction(self, expr, expn_state):
+        from pymbolic.primitives import Call
+        new_exprs = self.rec(expr.exprs, expn_state)
+
+        # If the substitution rule was replaced, precompute turned it into a
+        # scalar, but since reduction only takes tuple types we turn it into a
+        # tuple here.
+        if isinstance(expr.exprs, Call) and not isinstance(new_exprs, Call):
+            new_exprs = (new_exprs,)
+
+        from loopy.symbolic import Reduction
+        return Reduction(
+                expr.operation,
+                expr.inames,
+                new_exprs,
+                expr.allow_simultaneous)
+
+# }}}
+
+
 # {{{ gather rule invocations
 
-class RuleInvocationGatherer(RuleAwareIdentityMapper):
+class RuleInvocationGatherer(PrecomputeIdentityMapper):
     def __init__(self, rule_mapping_context, kernel, subst_name, subst_tag, within):
         super(RuleInvocationGatherer, self).__init__(rule_mapping_context)
 
@@ -131,7 +155,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
 
 # {{{ replace rule invocation
 
-class RuleInvocationReplacer(RuleAwareIdentityMapper):
+class RuleInvocationReplacer(PrecomputeIdentityMapper):
     def __init__(self, rule_mapping_context, subst_name, subst_tag, within,
             access_descriptors, array_base_map,
             storage_axis_names, storage_axis_sources,

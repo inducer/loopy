@@ -357,10 +357,18 @@ class TypeInferenceMapper(CombineMapper):
             as a tuple type. Otherwise, the number of expressions being reduced over
             must equal 1, and the type of the first expression is returned.
         """
-        if expr.is_plain_tuple:
+        from loopy.symbolic import Reduction
+        from pymbolic.primitives import Call
+
+        if isinstance(expr.exprs, tuple):
             rec_results = [self.rec(sub_expr) for sub_expr in expr.exprs]
+        elif isinstance(expr.exprs, Reduction):
+            rec_results = [self.rec(expr.exprs, return_tuple=True)]
+        elif isinstance(expr.exprs, Call):
+            rec_results = [self.map_call(expr.exprs, return_tuple=return_tuple)]
         else:
-            rec_results = [self.rec(expr.exprs, return_tuple=return_tuple)]
+            raise LoopyError("unknown reduction type: '%s'"
+                             % type(expr.exprs).__name__)
 
         if any(len(rec_result) == 0 for rec_result in rec_results):
             return []
@@ -629,7 +637,12 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
     type_inf_mapper = TypeInferenceMapper(kernel)
     import loopy as lp
 
-    for sub_expr in expr.exprs:
+    if isinstance(expr.exprs, tuple):
+        exprs = expr.exprs
+    else:
+        exprs = (expr.exprs,)
+
+    for sub_expr in exprs:
         try:
             arg_dtype = type_inf_mapper(sub_expr)
         except DependencyTypeInferenceFailure:

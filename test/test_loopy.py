@@ -2108,6 +2108,28 @@ def test_barrier_insertion_near_bottom_of_loop():
     assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
+def test_multi_argument_reduction_type_inference():
+    from loopy.type_inference import TypeInferenceMapper
+    from loopy.library.reduction import SegmentedSumReductionOperation
+    from loopy.types import to_loopy_type
+    op = SegmentedSumReductionOperation()
+
+    knl = lp.make_kernel("{[i]: 0<=i<10}", "")
+
+    int32 = to_loopy_type(np.int32)
+
+    expr = lp.symbolic.Reduction(
+            operation=op,
+            inames=("i",),
+            exprs=op.neutral_element(int32, int32),
+            allow_simultaneous=True)
+
+    t_inf_mapper = TypeInferenceMapper(knl)
+
+    print(t_inf_mapper(expr, return_tuple=True))
+    1/0
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

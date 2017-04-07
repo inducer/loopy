@@ -684,7 +684,8 @@ def set_temporary_scope(kernel, temp_var_names, scope):
 # {{{ reduction_arg_to_subst_rule
 
 def reduction_arg_to_subst_rule(
-        knl, inames, insn_match=None, subst_rule_name=None, arg_number=0):
+        knl, inames, insn_match=None, subst_rule_name=None,
+        strip_if_scalar=False):
     if isinstance(inames, str):
         inames = [s.strip() for s in inames.split(",")]
 
@@ -696,10 +697,7 @@ def reduction_arg_to_subst_rule(
 
     def map_reduction(expr, rec, nresults=1):
         if frozenset(expr.inames) != inames_set:
-            if expr.is_plain_tuple:
-                rec_result = tuple(rec(sub_expr) for sub_expr in expr.exprs)
-            else:
-                rec_result = rec(expr.exprs)
+            rec_result = rec(expr.exprs)
 
             return type(expr)(
                     operation=expr.operation,
@@ -717,27 +715,22 @@ def reduction_arg_to_subst_rule(
             raise LoopyError("substitution rule '%s' already exists"
                     % my_subst_rule_name)
 
-        if not expr.is_plain_tuple:
-            raise NotImplemented("non-tuple reduction arguments not supported")
-
         from loopy.kernel.data import SubstitutionRule
         substs[my_subst_rule_name] = SubstitutionRule(
                 name=my_subst_rule_name,
                 arguments=tuple(inames),
-                expression=expr.exprs[arg_number])
+                expression=(
+                    expr.exprs_stripped_if_scalar
+                    if strip_if_scalar
+                    else expr.exprs))
 
         from pymbolic import var
         iname_vars = [var(iname) for iname in inames]
 
-        new_exprs = tuple(sub_expr
-                if i != arg_number
-                else var(my_subst_rule_name)(*iname_vars)
-                for i, sub_expr in enumerate(expr.exprs))
-
         return type(expr)(
                 operation=expr.operation,
                 inames=expr.inames,
-                exprs=new_exprs,
+                exprs=var(my_subst_rule_name)(*iname_vars),
                 allow_simultaneous=expr.allow_simultaneous)
 
     from loopy.symbolic import ReductionCallbackMapper

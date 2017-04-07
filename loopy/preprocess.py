@@ -97,11 +97,7 @@ def check_reduction_iname_uniqueness(kernel):
     iname_to_nonsimultaneous_reduction_count = {}
 
     def map_reduction(expr, rec):
-        if expr.is_plain_tuple:
-            for sub_expr in expr.exprs:
-                rec(sub_expr)
-        else:
-            rec(expr.exprs)
+        rec(expr.exprs)
 
         for iname in expr.inames:
             iname_to_reduction_count[iname] = (
@@ -493,6 +489,39 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
         else:
             return val
 
+    def expand_inner_reduction(id, expr, nresults, depends_on, within_inames,
+            within_inames_is_final):
+        from pymbolic.primitives import Call
+        from loopy.symbolic import Reduction
+        assert isinstance(expr, (Call, Reduction))
+
+        temp_var_names = [
+                var_name_gen(id + "_arg" + str(i))
+                for i in range(nresults)]
+
+        for name in temp_var_names:
+            from loopy.kernel.data import TemporaryVariable, temp_var_scope
+            new_temporary_variables[name] = TemporaryVariable(
+                    name=name,
+                    shape=(),
+                    dtype=lp.auto,
+                    scope=temp_var_scope.PRIVATE)
+
+        from pymbolic import var
+        temp_vars = tuple(var(n) for n in temp_var_names)
+
+        call_insn = make_assignment(
+                id=id,
+                assignees=temp_vars,
+                expression=expr,
+                depends_on=depends_on,
+                within_inames=within_inames,
+                within_inames_is_final=within_inames_is_final)
+
+        generated_insns.append(call_insn)
+
+        return temp_vars
+
     # }}}
 
     # {{{ sequential
@@ -536,14 +565,32 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
         if insn.within_inames_is_final:
             update_insn_iname_deps = insn.within_inames | set(expr.inames)
 
+        reduction_insn_depends_on = set([init_id])
+
+        if not isinstance(expr.exprs, tuple):
+            get_args_insn_id = insn_id_gen(
+                    "%s_%s_get" % (insn.id, "_".join(expr.inames)))
+
+            reduction_expr = expand_inner_reduction(
+                id=get_args_insn_id,
+                expr=expr.exprs,
+                nresults=nresults,
+                depends_on=insn.depends_on,
+                within_inames=update_insn_iname_deps,
+                within_inames_is_final=insn.within_inames_is_final)
+
+            reduction_insn_depends_on.add(get_args_insn_id)
+        else:
+            reduction_expr = expr.exprs
+
         reduction_insn = make_assignment(
                 id=update_id,
                 assignees=acc_vars,
                 expression=expr.operation(
                     arg_dtypes,
                     _strip_if_scalar(acc_vars, acc_vars),
-                    _strip_if_scalar(acc_vars, expr.exprs)),
-                depends_on=frozenset([init_insn.id]) | insn.depends_on,
+                    _strip_if_scalar(acc_vars, reduction_expr)),
+                depends_on=frozenset(reduction_insn_depends_on) | insn.depends_on,
                 within_inames=update_insn_iname_deps,
                 within_inames_is_final=insn.within_inames_is_final)
 
@@ -670,6 +717,26 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                 depends_on=frozenset())
         generated_insns.append(init_neutral_insn)
 
+        transfer_depends_on = set([init_neutral_id, init_id])
+
+        if not isinstance(expr.exprs, tuple):
+            get_args_insn_id = insn_id_gen(
+                    "%s_%s_get" % (insn.id, red_iname))
+
+            reduction_expr = expand_inner_reduction(
+                    id=get_args_insn_id,
+                    expr=expr.exprs,
+                    nresults=nresults,
+                    depends_on=insn.depends_on,
+                    within_inames=(
+                        (outer_insn_inames - frozenset(expr.inames))
+                        | frozenset([red_iname])),
+                    within_inames_is_final=insn.within_inames_is_final)
+
+            transfer_depends_on.add(get_args_insn_id)
+        else:
+            reduction_expr = expr.exprs
+
         transfer_id = insn_id_gen("%s_%s_transfer" % (insn.id, red_iname))
         transfer_insn = make_assignment(
                 id=transfer_id,
@@ -679,15 +746,16 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                 expression=expr.operation(
                     arg_dtypes,
                     _strip_if_scalar(
-                        expr.exprs,
+                        neutral_var_names,
                         tuple(var(nvn) for nvn in neutral_var_names)),
-                    _strip_if_scalar(expr.exprs, expr.exprs)),
+                    _strip_if_scalar(neutral_var_names, reduction_expr)),
                 within_inames=(
                     (outer_insn_inames - frozenset(expr.inames))
                     | frozenset([red_iname])),
                 within_inames_is_final=insn.within_inames_is_final,
-                depends_on=frozenset([init_id, init_neutral_id]) | insn.depends_on,
-                no_sync_with=frozenset([(init_id, "any")]))
+                depends_on=frozenset(transfer_depends_on) | insn.depends_on,
+                no_sync_with=frozenset(
+                    [(insn_id, "any") for insn_id in transfer_depends_on]))
         generated_insns.append(transfer_insn)
 
         cur_size = 1
@@ -699,7 +767,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
 
         istage = 0
         while cur_size > 1:
-
             new_size = cur_size // 2
             assert new_size * 2 == cur_size
 
@@ -925,6 +992,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
     kernel = lp.replace_instruction_ids(kernel, insn_id_replacements)
 
     kernel = lp.tag_inames(kernel, new_iname_tags)
+
+    print(kernel)
 
     kernel = (
             _hackily_ensure_multi_assignment_return_values_are_scoped_private(
