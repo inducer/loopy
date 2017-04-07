@@ -901,14 +901,20 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         global_barrier_to_ordinal = dict(
                 (b, i) for i, b in enumerate(self.global_barrier_order))
 
-        barriers = set(dep
-                for dep in self.recursive_insn_dep_map()[insn_id]
-                if is_barrier(dep))
+        def get_barrier_ordinal(barrier_id):
+            return (global_barrier_to_ordinal[barrier_id]
+                    if barrier_id is not None
+                    else -1)
 
-        if len(barriers) > 0:
-            return max(barriers, key=lambda b: global_barrier_to_ordinal[b])
+        direct_barrier_dependencies = set(
+                dep for dep in insn.depends_on if is_barrier(dep))
+
+        if len(direct_barrier_dependencies) > 0:
+            return max(direct_barrier_dependencies, key=get_barrier_ordinal)
         else:
-            return None
+            return max((self.find_most_recent_global_barrier(dep)
+                        for dep in insn.depends_on),
+                    key=get_barrier_ordinal)
 
     @property
     @memoize_method
