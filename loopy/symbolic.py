@@ -95,7 +95,10 @@ class IdentityMapperMixin(object):
             new_inames.append(new_sym_iname.name)
 
         return Reduction(
-                expr.operation, tuple(new_inames), self.rec(expr.expr, *args),
+                expr.operation, tuple(new_inames),
+                (tuple(self.rec(e, *args) for e in expr.exprs)
+                    if expr.is_plain_tuple
+                    else self.rec(expr.exprs, *args)),
                 allow_simultaneous=expr.allow_simultaneous)
 
     def map_tagged_variable(self, expr, *args):
@@ -144,7 +147,11 @@ class WalkMapper(WalkMapperBase):
         if not self.visit(expr):
             return
 
-        self.rec(expr.expr, *args)
+        if expr.is_plain_tuple:
+            for sub_expr in expr.exprs:
+                self.rec(sub_expr, *args)
+        else:
+            self.rec(expr.exprs, *args)
 
     map_tagged_variable = WalkMapperBase.map_variable
 
@@ -162,7 +169,10 @@ class CallbackMapper(CallbackMapperBase, IdentityMapper):
 
 class CombineMapper(CombineMapperBase):
     def map_reduction(self, expr):
-        return self.rec(expr.expr)
+        if expr.is_plain_tuple:
+            return self.combine(self.rec(sub_expr) for sub_expr in expr.exprs)
+        else:
+            return self.rec(expr.exprs)
 
     map_linear_subscript = CombineMapperBase.map_subscript
 
@@ -192,9 +202,13 @@ class StringifyMapper(StringifyMapperBase):
         return "loc.%d" % expr.index
 
     def map_reduction(self, expr, prec):
+        from pymbolic.mapper.stringifier import PREC_NONE
         return "%sreduce(%s, [%s], %s)" % (
                 "simul_" if expr.allow_simultaneous else "",
-                expr.operation, ", ".join(expr.inames), expr.expr)
+                expr.operation, ", ".join(expr.inames),
+                (", ".join(self.rec(e, PREC_NONE) for e in expr.exprs)
+                    if expr.is_plain_tuple
+                    else self.rec(expr.exprs, PREC_NONE)))
 
     def map_tagged_variable(self, expr, prec):
         return "%s$%s" % (expr.name, expr.tag)
@@ -224,8 +238,17 @@ class UnidirectionalUnifier(UnidirectionalUnifierBase):
                 or type(expr.operation) != type(other.operation)  # noqa
                 ):
             return []
+        if expr.is_plain_tuple != other.is_plain_tuple:
+            return []
 
-        return self.rec(expr.expr, other.expr, unis)
+        if expr.is_plain_tuple:
+            for sub_expr_l, sub_expr_r in zip(expr.exprs, other.exprs):
+                unis = self.rec(sub_expr_l, sub_expr_r, unis)
+                if not unis:
+                    break
+            return unis
+
+        return self.rec(expr.exprs, other.exprs, unis)
 
     def map_tagged_variable(self, expr, other, urecs):
         new_uni_record = self.unification_record_from_equation(
@@ -258,8 +281,11 @@ class DependencyMapper(DependencyMapperBase):
                 self.rec(child, *args) for child in expr.parameters)
 
     def map_reduction(self, expr):
-        return (self.rec(expr.expr)
-                - set(p.Variable(iname) for iname in expr.inames))
+        if expr.is_plain_tuple:
+            deps = self.combine(self.rec(sub_expr) for sub_expr in expr.exprs)
+        else:
+            deps = self.rec(expr.exprs)
+        return deps - set(p.Variable(iname) for iname in expr.inames)
 
     def map_tagged_variable(self, expr):
         return set([expr])
@@ -428,7 +454,7 @@ class TaggedVariable(p.Variable):
 
 
 class Reduction(p.Expression):
-    """Represents a reduction operation on :attr:`expr`
+    """Represents a reduction operation on :attr:`exprs`
     across :attr:`inames`.
 
     .. attribute:: operation
@@ -440,10 +466,12 @@ class Reduction(p.Expression):
         a list of inames across which reduction on :attr:`expr` is being
         carried out.
 
-    .. attribute:: expr
+    .. attribute:: exprs
 
-        The expression (as a :class:`pymbolic.primitives.Expression`)
-        on which reduction is performed.
+        A (tuple-typed) expression which currently may be one of
+         * a :class:`tuple` of :class:`pymbolic.primitives.Expression`, or
+         * a :class:`loopy.symbolic.Reduction`, or
+         * a substitution rule invocation.
 
     .. attribute:: allow_simultaneous
 
@@ -451,9 +479,9 @@ class Reduction(p.Expression):
         in precisely one reduction, to avoid mis-nesting errors.
     """
 
-    init_arg_names = ("operation", "inames", "expr", "allow_simultaneous")
+    init_arg_names = ("operation", "inames", "exprs", "allow_simultaneous")
 
-    def __init__(self, operation, inames, expr, allow_simultaneous=False):
+    def __init__(self, operation, inames, exprs, allow_simultaneous=False):
         if isinstance(inames, str):
             inames = tuple(iname.strip() for iname in inames.split(","))
 
@@ -475,29 +503,39 @@ class Reduction(p.Expression):
             from loopy.library.reduction import parse_reduction_op
             operation = parse_reduction_op(operation)
 
+        if not isinstance(exprs, tuple):
+            exprs = (exprs,)
+
         from loopy.library.reduction import ReductionOperation
         assert isinstance(operation, ReductionOperation)
 
         self.operation = operation
         self.inames = inames
-        self.expr = expr
+        self.exprs = exprs
         self.allow_simultaneous = allow_simultaneous
 
     def __getinitargs__(self):
-        return (self.operation, self.inames, self.expr, self.allow_simultaneous)
+        return (self.operation, self.inames, self.exprs, self.allow_simultaneous)
 
     def get_hash(self):
-        return hash((self.__class__, self.operation, self.inames,
-            self.expr))
+        return hash((self.__class__, self.operation, self.inames, self.exprs))
 
     def is_equal(self, other):
         return (other.__class__ == self.__class__
                 and other.operation == self.operation
                 and other.inames == self.inames
-                and other.expr == self.expr)
+                and other.exprs == self.exprs)
 
     def stringifier(self):
         return StringifyMapper
+
+    @property
+    def is_plain_tuple(self):
+        """
+        :return: True if the reduction expression is a tuple, False if otherwise
+            (the inner expression will still have a tuple type)
+        """
+        return isinstance(self.exprs, tuple)
 
     @property
     @memoize_method
@@ -924,7 +962,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
     turns those into the actual pymbolic primitives used for that.
     """
 
-    def _parse_reduction(self, operation, inames, red_expr,
+    def _parse_reduction(self, operation, inames, red_exprs,
             allow_simultaneous=False):
         if isinstance(inames, p.Variable):
             inames = (inames,)
@@ -941,7 +979,7 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
             processed_inames.append(iname.name)
 
-        return Reduction(operation, tuple(processed_inames), red_expr,
+        return Reduction(operation, tuple(processed_inames), red_exprs,
                 allow_simultaneous=allow_simultaneous)
 
     def map_call(self, expr):
@@ -966,15 +1004,13 @@ class FunctionToPrimitiveMapper(IdentityMapper):
                 raise TypeError("cse takes two arguments")
 
         elif name in ["reduce", "simul_reduce"]:
-            if len(expr.parameters) == 3:
-                operation, inames, red_expr = expr.parameters
+            if len(expr.parameters) >= 3:
+                operation, inames = expr.parameters[:2]
+                red_exprs = expr.parameters[2:]
 
-                if not isinstance(operation, p.Variable):
-                    raise TypeError("operation argument to reduce() "
-                            "must be a symbol")
-
-                operation = parse_reduction_op(operation.name)
-                return self._parse_reduction(operation, inames, self.rec(red_expr),
+                operation = parse_reduction_op(str(operation))
+                return self._parse_reduction(operation, inames,
+                        tuple(self.rec(red_expr) for red_expr in red_exprs),
                         allow_simultaneous=(name == "simul_reduce"))
             else:
                 raise TypeError("invalid 'reduce' calling sequence")
@@ -991,12 +1027,17 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
             operation = parse_reduction_op(name)
             if operation:
-                if len(expr.parameters) != 2:
+                # arg_count counts arguments but not inames
+                if len(expr.parameters) != 1 + operation.arg_count:
                     raise RuntimeError("invalid invocation of "
-                            "reduction operation '%s'" % expr.function.name)
+                            "reduction operation '%s': expected %d arguments, "
+                            "got %d instead" % (expr.function.name,
+                                                1 + operation.arg_count,
+                                                len(expr.parameters)))
 
-                inames, red_expr = expr.parameters
-                return self._parse_reduction(operation, inames, self.rec(red_expr))
+                inames = expr.parameters[0]
+                red_exprs = tuple(self.rec(param) for param in expr.parameters[1:])
+                return self._parse_reduction(operation, inames, red_exprs)
 
             else:
                 return IdentityMapper.map_call(self, expr)
@@ -1385,7 +1426,10 @@ class IndexVariableFinder(CombineMapper):
         return result
 
     def map_reduction(self, expr):
-        result = self.rec(expr.expr)
+        if expr.is_plain_tuple:
+            result = self.combine(self.rec(sub_expr) for sub_expr in expr.exprs)
+        else:
+            result = self.rec(expr.exprs)
 
         if not (expr.inames_set & result):
             raise RuntimeError("reduction '%s' does not depend on "

@@ -352,28 +352,30 @@ class TypeInferenceMapper(CombineMapper):
         return [self.kernel.index_dtype]
 
     def map_reduction(self, expr, return_tuple=False):
-        rec_result = self.rec(expr.expr)
+        """
+        :arg return_tuple: If *True*, treat the type of the reduction expression
+            as a tuple type. Otherwise, the number of expressions being reduced over
+            must equal 1, and the type of the first expression is returned.
+        """
+        rec_results = tuple(self.rec(sub_expr) for sub_expr in expr.exprs)
 
-        if rec_result:
-            rec_result, = rec_result
-            result = expr.operation.result_dtypes(
-                    self.kernel, rec_result, expr.inames)
-        else:
-            result = expr.operation.result_dtypes(
-                    self.kernel, None, expr.inames)
-
-        if result is None:
+        if any(len(rec_result) == 0 for rec_result in rec_results):
             return []
 
         if return_tuple:
-            return [result]
+            from itertools import product
+            return list(
+                    expr.operation.result_dtypes(self.kernel, *product_element)
+                    for product_element in product(*rec_results))
 
         else:
-            if len(result) != 1 and not return_tuple:
+            if len(rec_results) != 1:
                 raise LoopyError("reductions with more or fewer than one "
                         "return value may only be used in direct assignments")
 
-            return [result[0]]
+            return list(
+                    expr.operation.result_dtypes(self.kernel, rec_result)[0]
+                    for rec_result in rec_results[0])
 
 # }}}
 
@@ -614,6 +616,40 @@ def infer_unknown_types(kernel, expect_completion=False):
             temporary_variables=new_temp_vars,
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
+
+# }}}
+
+
+# {{{ reduction expression helper
+
+def infer_arg_and_reduction_dtypes_for_reduction_expression(
+        kernel, expr, unknown_types_ok):
+    arg_dtypes = []
+
+    type_inf_mapper = TypeInferenceMapper(kernel)
+    import loopy as lp
+
+    for sub_expr in expr.exprs:
+        try:
+            arg_dtype = type_inf_mapper(sub_expr)
+        except DependencyTypeInferenceFailure:
+            if unknown_types_ok:
+                arg_dtype = lp.auto
+            else:
+                raise LoopyError("failed to determine type of accumulator for "
+                        "reduction sub-expression '%s'" % sub_expr)
+        else:
+            arg_dtype = arg_dtype.with_target(kernel.target)
+
+        arg_dtypes.append(arg_dtype)
+
+    reduction_dtypes = expr.operation.result_dtypes(kernel, *arg_dtypes)
+    reduction_dtypes = tuple(
+            dt.with_target(kernel.target)
+            if dt is not lp.auto else dt
+            for dt in reduction_dtypes)
+
+    return tuple(arg_dtypes), reduction_dtypes
 
 # }}}
 
