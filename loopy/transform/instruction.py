@@ -129,6 +129,8 @@ def remove_instructions(kernel, insn_ids):
     Dependencies across (one, for now) deleted isntructions are propagated.
     Behavior is undefined for now for chains of dependencies within the
     set of deleted instructions.
+
+    This also updated *no_sync_with* for all instructions.
     """
 
     if not insn_ids:
@@ -228,7 +230,7 @@ def tag_instructions(kernel, new_tag, within=None):
 
 def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
     """Add a *no_sync_with* directive between *source* and *sink*.
-    *no_sync_with* is only added if a (syntactic) dependency edge
+    *no_sync_with* is only added if an (execution) dependency
     is present or if the instruction pair is in a conflicting group
     (this does not check for memory dependencies).
 
