@@ -277,6 +277,191 @@ def find_temporary_scope(kernel):
 
 # {{{ rewrite reduction to imperative form
 
+
+# {{{ reduction utils
+
+def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
+    """
+    Multi assignment function calls are currently lowered into OpenCL so that
+    the function call::
+
+       a, b = segmented_sum(x, y, z, w)
+
+    becomes::
+
+       a = segmented_sum_mangled(x, y, z, w, &b).
+
+    For OpenCL, the scope of "b" is significant, and the preamble generation
+    currently assumes the scope is always private. This function forces that to
+    be the case by introducing temporary assignments into the kernel.
+    """
+
+    insn_id_gen = kernel.get_instruction_id_generator()
+    var_name_gen = kernel.get_var_name_generator()
+
+    new_or_updated_instructions = {}
+    new_temporaries = {}
+
+    dep_map = dict(
+            (insn.id, insn.depends_on) for insn in kernel.instructions)
+
+    inverse_dep_map = dict((insn.id, set()) for insn in kernel.instructions)
+
+    import six
+    for insn_id, deps in six.iteritems(dep_map):
+        for dep in deps:
+            inverse_dep_map[dep].add(insn_id)
+
+    del dep_map
+
+    # {{{ utils
+
+    def _add_to_no_sync_with(insn_id, new_no_sync_with_params):
+        insn = kernel.id_to_insn.get(insn_id)
+        insn = new_or_updated_instructions.get(insn_id, insn)
+        new_or_updated_instructions[insn_id] = (
+                insn.copy(
+                    no_sync_with=(
+                        insn.no_sync_with | frozenset(new_no_sync_with_params))))
+
+    def _add_to_depends_on(insn_id, new_depends_on_params):
+        insn = kernel.id_to_insn.get(insn_id)
+        insn = new_or_updated_instructions.get(insn_id, insn)
+        new_or_updated_instructions[insn_id] = (
+                insn.copy(
+                    depends_on=insn.depends_on | frozenset(new_depends_on_params)))
+
+    # }}}
+
+    from loopy.kernel.instruction import CallInstruction
+    for insn in kernel.instructions:
+        if not isinstance(insn, CallInstruction):
+            continue
+
+        if len(insn.assignees) <= 1:
+            continue
+
+        assignees = insn.assignees
+        assignee_var_names = insn.assignee_var_names()
+
+        new_assignees = [assignees[0]]
+        newly_added_assignments_ids = set()
+        needs_replacement = False
+
+        last_added_insn_id = insn.id
+
+        from loopy.kernel.data import temp_var_scope, TemporaryVariable
+
+        FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa
+
+        for assignee_nr, assignee_var_name, assignee in zip(
+                range(FIRST_POINTER_ASSIGNEE_IDX, len(assignees)),
+                assignee_var_names[FIRST_POINTER_ASSIGNEE_IDX:],
+                assignees[FIRST_POINTER_ASSIGNEE_IDX:]):
+
+            if (
+                    assignee_var_name in kernel.temporary_variables
+                    and
+                    (kernel.temporary_variables[assignee_var_name].scope
+                         == temp_var_scope.PRIVATE)):
+                new_assignees.append(assignee)
+                continue
+
+            needs_replacement = True
+
+            # {{{ generate a new assignent instruction
+
+            new_assignee_name = var_name_gen(
+                    "{insn_id}_retval_{assignee_nr}"
+                    .format(insn_id=insn.id, assignee_nr=assignee_nr))
+
+            new_assignment_id = insn_id_gen(
+                    "{insn_id}_assign_retval_{assignee_nr}"
+                    .format(insn_id=insn.id, assignee_nr=assignee_nr))
+
+            newly_added_assignments_ids.add(new_assignment_id)
+
+            import loopy as lp
+            new_temporaries[new_assignee_name] = (
+                    TemporaryVariable(
+                        name=new_assignee_name,
+                        dtype=lp.auto,
+                        scope=temp_var_scope.PRIVATE))
+
+            from pymbolic import var
+            new_assignee = var(new_assignee_name)
+            new_assignees.append(new_assignee)
+
+            new_or_updated_instructions[new_assignment_id] = (
+                    make_assignment(
+                        assignees=(assignee,),
+                        expression=new_assignee,
+                        id=new_assignment_id,
+                        depends_on=frozenset([last_added_insn_id]),
+                        depends_on_is_final=True,
+                        no_sync_with=(
+                            insn.no_sync_with | frozenset([(insn.id, "any")])),
+                        predicates=insn.predicates,
+                        within_inames=insn.within_inames))
+
+            last_added_insn_id = new_assignment_id
+
+            # }}}
+
+        if not needs_replacement:
+            continue
+
+        # {{{ update originating instruction
+
+        orig_insn = new_or_updated_instructions.get(insn.id, insn)
+
+        new_or_updated_instructions[insn.id] = (
+                orig_insn.copy(assignees=tuple(new_assignees)))
+
+        _add_to_no_sync_with(insn.id,
+                [(id, "any") for id in newly_added_assignments_ids])
+
+        # }}}
+
+        # {{{ squash spurious memory dependencies amongst new assignments
+
+        for new_insn_id in newly_added_assignments_ids:
+            _add_to_no_sync_with(new_insn_id,
+                    [(id, "any")
+                     for id in newly_added_assignments_ids
+                     if id != new_insn_id])
+
+        # }}}
+
+        # {{{ update instructions that depend on the originating instruction
+
+        for inverse_dep in inverse_dep_map[insn.id]:
+            _add_to_depends_on(inverse_dep, newly_added_assignments_ids)
+
+            for insn_id, scope in (
+                    new_or_updated_instructions[inverse_dep].no_sync_with):
+                if insn_id == insn.id:
+                    _add_to_no_sync_with(
+                            inverse_dep,
+                            [(id, scope) for id in newly_added_assignments_ids])
+
+        # }}}
+
+    new_temporary_variables = kernel.temporary_variables.copy()
+    new_temporary_variables.update(new_temporaries)
+
+    new_instructions = (
+            list(new_or_updated_instructions.values())
+            + list(insn
+                for insn in kernel.instructions
+                if insn.id not in new_or_updated_instructions))
+
+    return kernel.copy(temporary_variables=new_temporary_variables,
+                       instructions=new_instructions)
+
+# }}}
+
+
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
     """Rewrites reductions into their imperative form. With *insn_id_filter*
     specified, operate only on the instruction with an instruction id matching
@@ -740,6 +925,10 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
     kernel = lp.replace_instruction_ids(kernel, insn_id_replacements)
 
     kernel = lp.tag_inames(kernel, new_iname_tags)
+
+    kernel = (
+            _hackily_ensure_multi_assignment_return_values_are_scoped_private(
+                kernel))
 
     return kernel
 
