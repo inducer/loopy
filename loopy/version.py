@@ -32,4 +32,4 @@ except ImportError:
 else:
     _islpy_version = islpy.version.VERSION_TEXT
 
-DATA_MODEL_VERSION = "v59-islpy%s" % _islpy_version
+DATA_MODEL_VERSION = "v60-islpy%s" % _islpy_version

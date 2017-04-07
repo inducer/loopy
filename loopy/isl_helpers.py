@@ -142,6 +142,55 @@ def iname_rel_aff(space, iname, rel, aff):
         raise ValueError("unknown value of 'rel': %s" % rel)
 
 
+# {{{ simplify_pw_aff
+
+def simplify_pw_aff(pw_aff, context=None):
+    if context is not None:
+        pw_aff = pw_aff.gist_params(context)
+
+    old_pw_aff = pw_aff
+
+    while True:
+        restart = False
+        did_something = False
+
+        pieces = pw_aff.get_pieces()
+        for i, (dom_i, aff_i) in enumerate(pieces):
+            for j, (dom_j, aff_j) in enumerate(pieces):
+                if i == j:
+                    continue
+
+                if aff_i.gist(dom_j).is_equal(aff_j):
+                    # aff_i is sufficient to conver aff_j, eliminate aff_j
+                    new_pieces = pieces[:]
+                    if i < j:
+                        new_pieces.pop(j)
+                        new_pieces.pop(i)
+                    else:
+                        new_pieces.pop(i)
+                        new_pieces.pop(j)
+
+                    pw_aff = isl.PwAff.alloc(dom_i | dom_j, aff_i)
+                    for dom, aff in new_pieces:
+                        pw_aff = pw_aff.union_max(isl.PwAff.alloc(dom, aff))
+
+                    restart = True
+                    did_something = True
+                    break
+
+            if restart:
+                break
+
+        if not did_something:
+            break
+
+    assert pw_aff.get_aggregate_domain() <= pw_aff.eq_set(old_pw_aff)
+
+    return pw_aff
+
+# }}}
+
+
 # {{{ static_*_of_pw_aff
 
 def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context):

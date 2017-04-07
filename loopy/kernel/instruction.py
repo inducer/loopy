@@ -455,8 +455,11 @@ class InstructionBase(ImmutableRecord):
 
 
 def _get_assignee_var_name(expr):
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript
+
+    if isinstance(expr, Lookup):
+        expr = expr.aggregate
 
     if isinstance(expr, Variable):
         return expr.name
@@ -477,8 +480,11 @@ def _get_assignee_var_name(expr):
 
 
 def _get_assignee_subscript_deps(expr):
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript, get_dependencies
+
+    if isinstance(expr, Lookup):
+        expr = expr.aggregate
 
     if isinstance(expr, Variable):
         return frozenset()
@@ -770,9 +776,9 @@ class Assignment(MultiAssignmentBase):
         if isinstance(expression, str):
             expression = parse(expression)
 
-        from pymbolic.primitives import Variable, Subscript
+        from pymbolic.primitives import Variable, Subscript, Lookup
         from loopy.symbolic import LinearSubscript
-        if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+        if not isinstance(assignee, (Variable, Subscript, LinearSubscript, Lookup)):
             raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignee = assignee
@@ -993,6 +999,11 @@ class CallInstruction(MultiAssignmentBase):
             if field_name in ["assignees", "expression"]:
                 key_builder.update_for_pymbolic_expression(
                         key_hash, getattr(self, field_name))
+            elif field_name == "predicates":
+                preds = sorted(self.predicates, key=str)
+                for pred in preds:
+                    key_builder.update_for_pymbolic_expression(
+                            key_hash, pred)
             else:
                 key_builder.rec(key_hash, getattr(self, field_name))
 
