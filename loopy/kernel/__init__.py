@@ -899,7 +899,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             return isinstance(insn, BarrierInstruction) and insn.kind == "global"
 
         global_barrier_to_ordinal = dict(
-            (b, i) for i, b in enumerate(self.global_barrier_order))
+                (b, i) for i, b in enumerate(self.global_barrier_order))
 
         def get_barrier_ordinal(barrier_id):
             return (global_barrier_to_ordinal[barrier_id]
