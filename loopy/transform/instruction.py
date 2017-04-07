@@ -154,7 +154,14 @@ def remove_instructions(kernel, insn_ids):
         for dep_id in depends_on & insn_ids:
             new_deps = new_deps | id_to_insn[dep_id].depends_on
 
-        new_insns.append(insn.copy(depends_on=frozenset(new_deps)))
+        # update no_sync_with
+
+        new_no_sync_with = frozenset((insn_id, scope)
+                for insn_id, scope in insn.no_sync_with
+                if insn_id not in insn_ids)
+
+        new_insns.append(
+                insn.copy(depends_on=new_deps, no_sync_with=new_no_sync_with))
 
     return kernel.copy(
             instructions=new_insns)
