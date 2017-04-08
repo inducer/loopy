@@ -115,8 +115,8 @@ def test_generate_c_snippet():
     knl = lp.make_kernel(
         "{[I, k]: 0<=I<nSpace and 0<=k<nQuad}",
         [
-            Instr(f[I], l_sum(k, q_v[k, I]*u)),
-            Instr(df[I], l_sum(k, q_v[k, I])),
+            Instr(f[I], l_sum(k, (q_v[k, I]*u,))),
+            Instr(df[I], l_sum(k, (q_v[k, I],))),
             ],
         [
             lp.GlobalArg("q_v", np.float64, shape="nQuad, nSpace"),
