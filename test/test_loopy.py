@@ -1026,7 +1026,7 @@ def test_within_inames_and_reduction():
 
     from pymbolic.primitives import Subscript, Variable
     i2 = lp.Assignment("a",
-            lp.Reduction("sum", "j", (Subscript(Variable("phi"), Variable("j")),)),
+            lp.Reduction("sum", "j", Subscript(Variable("phi"), Variable("j"))),
             within_inames=frozenset(),
             within_inames_is_final=True)
 
@@ -2123,14 +2123,18 @@ def test_multi_argument_reduction_type_inference():
     from loopy.types import to_loopy_type
     op = SegmentedSumReductionOperation()
 
-    knl = lp.make_kernel("{[i]: 0<=i<10}", "")
+    knl = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
 
     int32 = to_loopy_type(np.int32)
 
     expr = lp.symbolic.Reduction(
             operation=op,
             inames=("i",),
-            exprs=op.neutral_element(int32, int32),
+            expr=lp.symbolic.Reduction(
+                operation=op,
+                inames="j",
+                expr=(1, 2),
+                allow_simultaneous=True),
             allow_simultaneous=True)
 
     t_inf_mapper = TypeInferenceMapper(knl)
@@ -2138,6 +2142,14 @@ def test_multi_argument_reduction_type_inference():
     assert (
             t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
             == [(int32, int32)])
+
+
+def test_multi_argument_reduction_parsing():
+    from loopy.symbolic import parse, Reduction
+
+    assert isinstance(
+            parse("reduce(argmax, i, reduce(argmax, j, i, j))").expr,
+            Reduction)
 
 
 def test_struct_assignment(ctx_factory):

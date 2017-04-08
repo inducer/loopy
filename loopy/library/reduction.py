@@ -65,10 +65,6 @@ class ReductionOperation(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    @property
-    def is_segmented(self):
-        raise NotImplementedError
-
     @staticmethod
     def parse_result_type(target, op_type):
         try:

@@ -97,7 +97,7 @@ def check_reduction_iname_uniqueness(kernel):
     iname_to_nonsimultaneous_reduction_count = {}
 
     def map_reduction(expr, rec):
-        rec(expr.exprs)
+        rec(expr.expr)
 
         for iname in expr.inames:
             iname_to_reduction_count[iname] = (
@@ -567,13 +567,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
 
         reduction_insn_depends_on = set([init_id])
 
-        if not isinstance(expr.exprs, tuple):
+        if nresults > 1 and not isinstance(expr.expr, tuple):
             get_args_insn_id = insn_id_gen(
                     "%s_%s_get" % (insn.id, "_".join(expr.inames)))
 
             reduction_expr = expand_inner_reduction(
                 id=get_args_insn_id,
-                expr=expr.exprs,
+                expr=expr.expr,
                 nresults=nresults,
                 depends_on=insn.depends_on,
                 within_inames=update_insn_iname_deps,
@@ -581,7 +581,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
 
             reduction_insn_depends_on.add(get_args_insn_id)
         else:
-            reduction_expr = expr.exprs
+            reduction_expr = expr.expr
 
         reduction_insn = make_assignment(
                 id=update_id,
@@ -589,7 +589,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                 expression=expr.operation(
                     arg_dtypes,
                     _strip_if_scalar(acc_vars, acc_vars),
-                    _strip_if_scalar(acc_vars, reduction_expr)),
+                    reduction_expr),
                 depends_on=frozenset(reduction_insn_depends_on) | insn.depends_on,
                 within_inames=update_insn_iname_deps,
                 within_inames_is_final=insn.within_inames_is_final)
@@ -624,14 +624,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                 v[0].le_set(v[iname])
                 &
                 v[iname].lt_set(v[0] + size)).get_basic_sets()
-        return bs
-
-    def _make_slab_set_from_range(iname, lbound, ubound):
-        v = isl.make_zero_and_vars([iname])
-        bs, = (
-                v[iname].ge_set(v[0] + lbound)
-                &
-                v[iname].lt_set(v[0] + ubound)).get_basic_sets()
         return bs
 
     def map_reduction_local(expr, rec, nresults, arg_dtypes,
@@ -719,13 +711,13 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
 
         transfer_depends_on = set([init_neutral_id, init_id])
 
-        if not isinstance(expr.exprs, tuple):
+        if nresults > 1 and not isinstance(expr.expr, tuple):
             get_args_insn_id = insn_id_gen(
                     "%s_%s_get" % (insn.id, red_iname))
 
             reduction_expr = expand_inner_reduction(
                     id=get_args_insn_id,
-                    expr=expr.exprs,
+                    expr=expr.expr,
                     nresults=nresults,
                     depends_on=insn.depends_on,
                     within_inames=(
@@ -735,7 +727,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
 
             transfer_depends_on.add(get_args_insn_id)
         else:
-            reduction_expr = expr.exprs
+            reduction_expr = expr.expr
 
         transfer_id = insn_id_gen("%s_%s_transfer" % (insn.id, red_iname))
         transfer_insn = make_assignment(
@@ -748,7 +740,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
                     _strip_if_scalar(
                         neutral_var_names,
                         tuple(var(nvn) for nvn in neutral_var_names)),
-                    _strip_if_scalar(neutral_var_names, reduction_expr)),
+                    reduction_expr),
                 within_inames=(
                     (outer_insn_inames - frozenset(expr.inames))
                     | frozenset([red_iname])),
@@ -992,8 +984,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True):
     kernel = lp.replace_instruction_ids(kernel, insn_id_replacements)
 
     kernel = lp.tag_inames(kernel, new_iname_tags)
-
-    print(kernel)
 
     kernel = (
             _hackily_ensure_multi_assignment_return_values_are_scoped_private(
