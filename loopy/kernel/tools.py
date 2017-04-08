@@ -1508,6 +1508,11 @@ def find_most_recent_global_barrier(kernel, insn_id):
 
 @memoize_on_first_arg
 def get_subkernels(kernel):
+    """Return a :class:`tuple` of the names of the subkernels in the kernel. The
+    kernel must be scheduled.
+
+    See also :class:`loopy.schedule.CallKernel`.
+    """
     from loopy.kernel import kernel_state
     if kernel.state != kernel_state.SCHEDULED:
         raise LoopyError("Kernel must be scheduled")
@@ -1521,6 +1526,10 @@ def get_subkernels(kernel):
 
 @memoize_on_first_arg
 def get_subkernel_to_insn_id_map(kernel):
+    """Return a :class:`dict` mapping subkernel names to a :class:`frozenset`
+    consisting of the instruction ids scheduled within the subkernel. The
+    kernel must be scheduled.
+    """
     from loopy.kernel import kernel_state
     if kernel.state != kernel_state.SCHEDULED:
         raise LoopyError("Kernel must be scheduled")
