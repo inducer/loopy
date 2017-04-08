@@ -970,8 +970,6 @@ class FunctionToPrimitiveMapper(IdentityMapper):
         if len(red_exprs) == 1:
             red_exprs = red_exprs[0]
 
-        print("RED EXPRS ARE", red_exprs)
-
         return Reduction(operation, tuple(processed_inames), red_exprs,
                 allow_simultaneous=allow_simultaneous)
 
