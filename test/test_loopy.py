@@ -2126,7 +2126,7 @@ def test_global_barrier_order_finding():
             end
             """)
 
-    assert knl.global_barrier_order == ("top", "yoink", "postloop")
+    assert lp.get_global_barrier_order(knl) == ("top", "yoink", "postloop")
 
     for insn, barrier in (
             ("nop", None),
@@ -2136,7 +2136,7 @@ def test_global_barrier_order_finding():
             ("yoink", "top"),
             ("postloop", "yoink"),
             ("zzzv", "postloop")):
-        assert knl.find_most_recent_global_barrier(insn) == barrier
+        assert lp.find_most_recent_global_barrier(knl, insn) == barrier
 
 
 def test_global_barrier_error_if_unordered():
@@ -2149,7 +2149,7 @@ def test_global_barrier_error_if_unordered():
 
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
-        knl.global_barrier_order
+        lp.get_global_barrier_order(knl)
 
 
 def test_struct_assignment(ctx_factory):
