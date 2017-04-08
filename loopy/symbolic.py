@@ -450,7 +450,7 @@ class Reduction(p.Expression):
         type, it must be one of the following:
          * a :class:`tuple` of :class:`pymbolic.primitives.Expression`, or
          * a :class:`loopy.symbolic.Reduction`, or
-         * a substitution rule invocation.
+         * a function call or substitution rule invocation.
 
     .. attribute:: allow_simultaneous
 
@@ -492,8 +492,8 @@ class Reduction(p.Expression):
 
             if not isinstance(expr, (tuple, Reduction, Call)):
                 raise LoopyError("reduction argument must be one of "
-                                 "a tuple, reduction, or substitution rule "
-                                 "invocation, got '%s'" % type(expr).__name__)
+                                 "a tuple, reduction, or call; "
+                                 "got '%s'" % type(expr).__name__)
         else:
             # Sanity checks
             if isinstance(expr, tuple):
