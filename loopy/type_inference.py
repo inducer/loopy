@@ -362,28 +362,28 @@ class TypeInferenceMapper(CombineMapper):
 
         if isinstance(expr.exprs, tuple):
             rec_results = [self.rec(sub_expr) for sub_expr in expr.exprs]
+            if return_tuple:
+                from itertools import product
+                rec_results = product(*rec_results)
+            else:
+                rec_results = rec_results[0]
         elif isinstance(expr.exprs, Reduction):
-            rec_results = [self.rec(expr.exprs, return_tuple=True)]
+            rec_results = self.rec(expr.exprs, return_tuple=return_tuple)
         elif isinstance(expr.exprs, Call):
-            rec_results = [self.map_call(expr.exprs, return_tuple=return_tuple)]
+            rec_results = self.map_call(expr.exprs, return_tuple=return_tuple)
         else:
             raise LoopyError("unknown reduction type: '%s'"
                              % type(expr.exprs).__name__)
 
-        if any(len(rec_result) == 0 for rec_result in rec_results):
-            return []
+        if not return_tuple:
+            if any(isinstance(rec_result, tuple) for rec_result in rec_results):
+                raise LoopyError("reductions with more or fewer than one "
+                                 "return value may only be used in direct assignments")
+            return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
+                for rec_result in rec_results]
 
-        if return_tuple:
-            from itertools import product
-            return [expr.operation.result_dtypes(self.kernel, *product_element)
-                    for product_element in product(*rec_results)]
-
-        if len(rec_results) != 1:
-            raise LoopyError("reductions with more or fewer than one "
-                    "return value may only be used in direct assignments")
-
-        return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
-                for rec_result in rec_results[0]]
+        return [expr.operation.result_dtypes(self.kernel, *rec_result)
+            for rec_result in rec_results]
 
 # }}}
 

@@ -1026,7 +1026,7 @@ def test_within_inames_and_reduction():
 
     from pymbolic.primitives import Subscript, Variable
     i2 = lp.Assignment("a",
-            lp.Reduction("sum", "j", Subscript(Variable("phi"), Variable("j"))),
+            lp.Reduction("sum", "j", (Subscript(Variable("phi"), Variable("j")),)),
             within_inames=frozenset(),
             within_inames_is_final=True)
 
@@ -2135,8 +2135,9 @@ def test_multi_argument_reduction_type_inference():
 
     t_inf_mapper = TypeInferenceMapper(knl)
 
-    print(t_inf_mapper(expr, return_tuple=True))
-    1/0
+    assert (
+            t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
+            == [(int32, int32)])
 
 
 if __name__ == "__main__":
