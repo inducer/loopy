@@ -825,6 +825,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return result
 
+    # }}}
+
     # {{{ argument wrangling
 
     @property
