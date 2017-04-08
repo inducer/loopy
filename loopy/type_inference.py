@@ -637,7 +637,8 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
     import loopy as lp
 
     if expr.is_tuple_typed:
-        arg_dtypes_result = type_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
+        arg_dtypes_result = type_inf_mapper(
+                expr, return_tuple=True, return_dtype_set=True)
 
         if len(arg_dtypes_result) == 1:
             arg_dtypes = arg_dtypes_result[0]

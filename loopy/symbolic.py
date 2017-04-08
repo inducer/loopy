@@ -998,7 +998,6 @@ class FunctionToPrimitiveMapper(IdentityMapper):
 
         elif name in ["reduce", "simul_reduce"]:
 
-
             if len(expr.parameters) >= 3:
                 operation, inames = expr.parameters[:2]
                 red_exprs = expr.parameters[2:]
