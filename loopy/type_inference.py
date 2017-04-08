@@ -378,7 +378,8 @@ class TypeInferenceMapper(CombineMapper):
         if not return_tuple:
             if any(isinstance(rec_result, tuple) for rec_result in rec_results):
                 raise LoopyError("reductions with more or fewer than one "
-                                 "return value may only be used in direct assignments")
+                                 "return value may only be used in direct "
+                                 "assignments")
             return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
                 for rec_result in rec_results]
 
