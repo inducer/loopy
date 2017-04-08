@@ -181,7 +181,7 @@ def test_recursive_nested_dependent_reduction(ctx_factory):
     # FIXME: Actually test functionality.
 
 
-@pytest.mark.parametrize("size", [128, 5, 113, 67])
+@pytest.mark.parametrize("size", [128, 5, 113, 67, 1])
 def test_local_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()
 

@@ -465,12 +465,17 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         else:
             inner_ast = inner.current_ast(codegen_state)
+
+            from loopy.isl_helpers import simplify_pw_aff
+
             result.append(
                 inner.with_new_ast(
                     codegen_state,
                     astb.emit_sequential_loop(
                         codegen_state, loop_iname, kernel.index_dtype,
-                        pw_aff_to_expr(lbound), pw_aff_to_expr(ubound), inner_ast)))
+                        pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions)),
+                        pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
+                        inner_ast)))
 
     return merge_codegen_results(codegen_state, result)
 

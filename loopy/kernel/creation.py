@@ -448,7 +448,7 @@ def parse_insn(groups, insn_options):
                 "the following error occurred:" % groups["rhs"])
         raise
 
-    from pymbolic.primitives import Variable, Subscript
+    from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import TypeAnnotation
 
     if not isinstance(lhs, tuple):
@@ -469,11 +469,15 @@ def parse_insn(groups, insn_options):
         else:
             temp_var_types.append(None)
 
+        inner_lhs_i = lhs_i
+        if isinstance(inner_lhs_i, Lookup):
+            inner_lhs_i = inner_lhs_i.aggregate
+
         from loopy.symbolic import LinearSubscript
-        if isinstance(lhs_i, Variable):
-            assignee_names.append(lhs_i.name)
-        elif isinstance(lhs_i, (Subscript, LinearSubscript)):
-            assignee_names.append(lhs_i.aggregate.name)
+        if isinstance(inner_lhs_i, Variable):
+            assignee_names.append(inner_lhs_i.name)
+        elif isinstance(inner_lhs_i, (Subscript, LinearSubscript)):
+            assignee_names.append(inner_lhs_i.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
                     "be variable or subscript" % (lhs_i,))
@@ -1638,11 +1642,11 @@ def _resolve_dependencies(knl, insn, deps):
                     new_deps.append(other_insn.id)
                     found_any = True
 
-        if not found_any:
+        if not found_any and knl.options.check_dep_resolution:
             raise LoopyError("instruction '%s' declared a depency on '%s', "
                     "which did not resolve to any instruction present in the "
-                    "kernel '%s'"
-                    % (insn.id, dep, knl.name))
+                    "kernel '%s'. Set the kernel option 'check_dep_resolution'"
+                    "to False to disable this check." % (insn.id, dep, knl.name))
 
     for dep_id in new_deps:
         if dep_id not in knl.id_to_insn:
