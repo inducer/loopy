@@ -34,7 +34,6 @@ def find_instructions(kernel, insn_match):
     match = parse_match(insn_match)
     return [insn for insn in kernel.instructions if match(kernel, insn)]
 
-
 # }}}
 
 
@@ -130,6 +129,8 @@ def remove_instructions(kernel, insn_ids):
     Dependencies across (one, for now) deleted isntructions are propagated.
     Behavior is undefined for now for chains of dependencies within the
     set of deleted instructions.
+
+    This also updates *no_sync_with* for all instructions.
     """
 
     if not insn_ids:
@@ -155,7 +156,14 @@ def remove_instructions(kernel, insn_ids):
         for dep_id in depends_on & insn_ids:
             new_deps = new_deps | id_to_insn[dep_id].depends_on
 
-        new_insns.append(insn.copy(depends_on=frozenset(new_deps)))
+        # update no_sync_with
+
+        new_no_sync_with = frozenset((insn_id, scope)
+                for insn_id, scope in insn.no_sync_with
+                if insn_id not in insn_ids)
+
+        new_insns.append(
+                insn.copy(depends_on=new_deps, no_sync_with=new_no_sync_with))
 
     return kernel.copy(
             instructions=new_insns)
@@ -171,6 +179,7 @@ def replace_instruction_ids(kernel, replacements):
     for insn in kernel.instructions:
         changed = False
         new_depends_on = []
+        new_no_sync_with = []
 
         for dep in insn.depends_on:
             if dep in replacements:
@@ -179,8 +188,18 @@ def replace_instruction_ids(kernel, replacements):
             else:
                 new_depends_on.append(dep)
 
+        for insn_id, scope in insn.no_sync_with:
+            if insn_id in replacements:
+                new_no_sync_with.extend(
+                        (repl, scope) for repl in replacements[insn_id])
+                changed = True
+            else:
+                new_no_sync_with.append((insn_id, scope))
+
         new_insns.append(
-                insn.copy(depends_on=frozenset(new_depends_on))
+                insn.copy(
+                    depends_on=frozenset(new_depends_on),
+                    no_sync_with=frozenset(new_no_sync_with))
                 if changed else insn)
 
     return kernel.copy(instructions=new_insns)
@@ -203,6 +222,81 @@ def tag_instructions(kernel, new_tag, within=None):
             new_insns.append(insn)
 
     return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
+# {{{ add nosync
+
+def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
+    """Add a *no_sync_with* directive between *source* and *sink*.
+    *no_sync_with* is only added if *sink* depends on *source* or
+    if the instruction pair is in a conflicting group.
+
+    This function does not check for the presence of a memory dependency.
+
+    :arg kernel: The kernel
+    :arg source: Either a single instruction id, or any instruction id
+        match understood by :func:`loopy.match.parse_match`.
+    :arg sink: Either a single instruction id, or any instruction id
+        match understood by :func:`loopy.match.parse_match`.
+    :arg scope: A valid *no_sync_with* scope. See
+        :attr:`loopy.InstructionBase.no_sync_with` for allowable scopes.
+    :arg bidirectional: A :class:`bool`. If *True*, add a *no_sync_with*
+        to both the source and sink instructions, otherwise the directive
+        is only added to the sink instructions.
+    :arg force: A :class:`bool`. If *True*, add a *no_sync_with* directive
+        even without the presence of a dependency edge or conflicting
+        instruction group.
+
+    :return: The updated kernel
+    """
+
+    if isinstance(source, str) and source in kernel.id_to_insn:
+        sources = frozenset([source])
+    else:
+        sources = frozenset(
+                source.id for source in find_instructions(kernel, source))
+
+    if isinstance(sink, str) and sink in kernel.id_to_insn:
+        sinks = frozenset([sink])
+    else:
+        sinks = frozenset(
+                sink.id for sink in find_instructions(kernel, sink))
+
+    def insns_in_conflicting_groups(insn1_id, insn2_id):
+        insn1 = kernel.id_to_insn[insn1_id]
+        insn2 = kernel.id_to_insn[insn2_id]
+        return (
+                bool(insn1.groups & insn2.conflicts_with_groups)
+                or
+                bool(insn2.groups & insn1.conflicts_with_groups))
+
+    from collections import defaultdict
+    nosync_to_add = defaultdict(set)
+
+    for sink in sinks:
+        for source in sources:
+
+            needs_nosync = force or (
+                    source in kernel.recursive_insn_dep_map()[sink]
+                    or insns_in_conflicting_groups(source, sink))
+
+            if not needs_nosync:
+                continue
+
+            nosync_to_add[sink].add((source, scope))
+            if bidirectional:
+                nosync_to_add[source].add((sink, scope))
+
+    new_instructions = list(kernel.instructions)
+
+    for i, insn in enumerate(new_instructions):
+        if insn.id in nosync_to_add:
+            new_instructions[i] = insn.copy(no_sync_with=insn.no_sync_with
+                    | frozenset(nosync_to_add[insn.id]))
+
+    return kernel.copy(instructions=new_instructions)
 
 # }}}
 

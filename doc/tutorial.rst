@@ -1479,6 +1479,8 @@ Barriers
 :mod:`loopy` may infer the need for a barrier when it is not necessary. The
 ``no_sync_with`` instruction attribute can be used to resolve this.
 
+See also :func:`loopy.add_nosync`.
+
 TODO
 
 .. }}}
