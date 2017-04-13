@@ -230,22 +230,24 @@ def tag_instructions(kernel, new_tag, within=None):
 
 def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
     """Add a *no_sync_with* directive between *source* and *sink*.
-    *no_sync_with* is only added if an (execution) dependency
-    is present or if the instruction pair is in a conflicting group
-    (this does not check for memory dependencies).
+    *no_sync_with* is only added if *sink* depends on *source* or
+    if the instruction pair is in a conflicting group.
 
-    :arg kernel:
+    This function does not check for the presence of a memory dependency.
+
+    :arg kernel: The kernel
     :arg source: Either a single instruction id, or any instruction id
         match understood by :func:`loopy.match.parse_match`.
     :arg sink: Either a single instruction id, or any instruction id
         match understood by :func:`loopy.match.parse_match`.
-    :arg scope: A string which is a valid *no_sync_with* scope.
+    :arg scope: A valid *no_sync_with* scope. See
+        :attr:`loopy.InstructionBase.no_sync_with` for allowable scopes.
     :arg bidirectional: A :class:`bool`. If *True*, add a *no_sync_with*
         to both the source and sink instructions, otherwise the directive
         is only added to the sink instructions.
-    :arg force: A :class:`bool`. If *True*, will add a *no_sync_with*
-        even without the presence of a syntactic dependency edge/
-        conflicting instruction group.
+    :arg force: A :class:`bool`. If *True*, add a *no_sync_with* directive
+        even without the presence of a dependency edge or conflicting
+        instruction group.
 
     :return: The updated kernel
     """
