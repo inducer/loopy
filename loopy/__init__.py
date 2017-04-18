@@ -54,7 +54,11 @@ from loopy.kernel.tools import (
         get_dot_dependency_graph,
         show_dependency_graph,
         add_dtypes,
-        add_and_infer_dtypes)
+        add_and_infer_dtypes,
+        get_global_barrier_order,
+        find_most_recent_global_barrier,
+        get_subkernels,
+        get_subkernel_to_insn_id_map)
 from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 
@@ -217,6 +221,10 @@ __all__ = [
         "show_dependency_graph",
         "add_dtypes",
         "add_and_infer_dtypes",
+        "get_global_barrier_order",
+        "find_most_recent_global_barrier",
+        "get_subkernels",
+        "get_subkernel_to_insn_id_map",
 
         "infer_unknown_types",
 
