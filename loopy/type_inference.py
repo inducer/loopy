@@ -352,28 +352,39 @@ class TypeInferenceMapper(CombineMapper):
         return [self.kernel.index_dtype]
 
     def map_reduction(self, expr, return_tuple=False):
-        rec_result = self.rec(expr.expr)
+        """
+        :arg return_tuple: If *True*, treat the reduction as having tuple type.
+        Otherwise, if *False*, the reduction must have scalar type.
+        """
+        from loopy.symbolic import Reduction
+        from pymbolic.primitives import Call
 
-        if rec_result:
-            rec_result, = rec_result
-            result = expr.operation.result_dtypes(
-                    self.kernel, rec_result, expr.inames)
+        if not return_tuple and expr.is_tuple_typed:
+            raise LoopyError("reductions with more or fewer than one "
+                             "return value may only be used in direct "
+                             "assignments")
+
+        if isinstance(expr.expr, tuple):
+            rec_results = [self.rec(sub_expr) for sub_expr in expr.expr]
+            from itertools import product
+            rec_results = product(*rec_results)
+        elif isinstance(expr.expr, Reduction):
+            rec_results = self.rec(expr.expr, return_tuple=return_tuple)
+        elif isinstance(expr.expr, Call):
+            rec_results = self.map_call(expr.expr, return_tuple=return_tuple)
         else:
-            result = expr.operation.result_dtypes(
-                    self.kernel, None, expr.inames)
-
-        if result is None:
-            return []
+            if return_tuple:
+                raise LoopyError("unknown reduction type for tuple reduction: '%s'"
+                        % type(expr.expr).__name__)
+            else:
+                rec_results = self.rec(expr.expr)
 
         if return_tuple:
-            return [result]
-
+            return [expr.operation.result_dtypes(self.kernel, *rec_result)
+                    for rec_result in rec_results]
         else:
-            if len(result) != 1 and not return_tuple:
-                raise LoopyError("reductions with more or fewer than one "
-                        "return value may only be used in direct assignments")
-
-            return [result[0]]
+            return [expr.operation.result_dtypes(self.kernel, rec_result)[0]
+                    for rec_result in rec_results]
 
 # }}}
 
@@ -614,6 +625,46 @@ def infer_unknown_types(kernel, expect_completion=False):
             temporary_variables=new_temp_vars,
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
+
+# }}}
+
+
+# {{{ reduction expression helper
+
+def infer_arg_and_reduction_dtypes_for_reduction_expression(
+        kernel, expr, unknown_types_ok):
+    type_inf_mapper = TypeInferenceMapper(kernel)
+    import loopy as lp
+
+    if expr.is_tuple_typed:
+        arg_dtypes_result = type_inf_mapper(
+                expr, return_tuple=True, return_dtype_set=True)
+
+        if len(arg_dtypes_result) == 1:
+            arg_dtypes = arg_dtypes_result[0]
+        else:
+            if unknown_types_ok:
+                arg_dtypes = [lp.auto] * expr.operation.arg_count
+            else:
+                raise LoopyError("failed to determine types of accumulators for "
+                        "reduction '%s'" % expr)
+    else:
+        try:
+            arg_dtypes = [type_inf_mapper(expr)]
+        except DependencyTypeInferenceFailure:
+            if unknown_types_ok:
+                arg_dtypes = [lp.auto]
+            else:
+                raise LoopyError("failed to determine type of accumulator for "
+                        "reduction '%s'" % expr)
+
+    reduction_dtypes = expr.operation.result_dtypes(kernel, *arg_dtypes)
+    reduction_dtypes = tuple(
+            dt.with_target(kernel.target)
+            if dt is not lp.auto else dt
+            for dt in reduction_dtypes)
+
+    return tuple(arg_dtypes), reduction_dtypes
 
 # }}}
 
