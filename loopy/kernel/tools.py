@@ -316,10 +316,16 @@ class SetOperationCacheManager:
         return result
 
     def dim_min(self, set, *args):
+        if set.plain_is_empty():
+            raise LoopyError("domain '%s' is empty" % set)
+
         from loopy.isl_helpers import dim_min_with_elimination
         return self.op(set, "dim_min", dim_min_with_elimination, args)
 
     def dim_max(self, set, *args):
+        if set.plain_is_empty():
+            raise LoopyError("domain '%s' is empty" % set)
+
         from loopy.isl_helpers import dim_max_with_elimination
         return self.op(set, "dim_max", dim_max_with_elimination, args)
 
