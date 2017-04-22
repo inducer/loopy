@@ -297,7 +297,7 @@ def test_argmax(ctx_factory):
     knl = lp.make_kernel(
             "{[i]: 0<=i<%d}" % n,
             """
-            max_val, max_idx = argmax(i, fabs(a[i]))
+            max_val, max_idx = argmax(i, fabs(a[i]), i)
             """)
 
     knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
@@ -393,16 +393,24 @@ def test_double_sum_made_unique(ctx_factory):
     assert b.get() == ref
 
 
-def test_parallel_multi_output_reduction():
+def test_parallel_multi_output_reduction(ctx_factory):
     knl = lp.make_kernel(
                 "{[i]: 0<=i<128}",
                 """
-                max_val, max_indices = argmax(i, fabs(a[i]))
+                max_val, max_indices = argmax(i, fabs(a[i]), i)
                 """)
     knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.add_dtypes(knl, dict(a=np.float64))
     knl = lp.realize_reduction(knl)
-    print(knl)
-    # TODO: Add functional test
+
+    ctx = ctx_factory()
+
+    with cl.CommandQueue(ctx) as queue:
+        a = np.random.rand(128)
+        out, (max_index, max_val) = knl(queue, a=a)
+
+        assert max_val == np.max(a)
+        assert max_index == np.argmax(np.abs(a))
 
 
 if __name__ == "__main__":
