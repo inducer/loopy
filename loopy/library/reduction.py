@@ -455,9 +455,9 @@ def parse_reduction_op(name):
 
 def reduction_function_mangler(kernel, func_id, arg_dtypes):
     if isinstance(func_id, ArgExtFunction) and func_id.name == "init":
-        from loopy.target.opencl import OpenCLTarget
-        if not isinstance(kernel.target, OpenCLTarget):
-            raise LoopyError("only OpenCL supported for now")
+        from loopy.target.opencl import CTarget
+        if not isinstance(kernel.target, CTarget):
+            raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
 
@@ -471,9 +471,9 @@ def reduction_function_mangler(kernel, func_id, arg_dtypes):
                 )
 
     elif isinstance(func_id, ArgExtFunction) and func_id.name == "update":
-        from loopy.target.opencl import OpenCLTarget
-        if not isinstance(kernel.target, OpenCLTarget):
-            raise LoopyError("only OpenCL supported for now")
+        from loopy.target.opencl import CTarget
+        if not isinstance(kernel.target, CTarget):
+            raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
 
@@ -491,9 +491,9 @@ def reduction_function_mangler(kernel, func_id, arg_dtypes):
                 )
 
     elif isinstance(func_id, SegmentedFunction) and func_id.name == "init":
-        from loopy.target.opencl import OpenCLTarget
-        if not isinstance(kernel.target, OpenCLTarget):
-            raise LoopyError("only OpenCL supported for now")
+        from loopy.target.opencl import CTarget
+        if not isinstance(kernel.target, CTarget):
+            raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
 
@@ -507,9 +507,9 @@ def reduction_function_mangler(kernel, func_id, arg_dtypes):
                 )
 
     elif isinstance(func_id, SegmentedFunction) and func_id.name == "update":
-        from loopy.target.opencl import OpenCLTarget
-        if not isinstance(kernel.target, OpenCLTarget):
-            raise LoopyError("only OpenCL supported for now")
+        from loopy.target.opencl import CTarget
+        if not isinstance(kernel.target, CTarget):
+            raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
 
