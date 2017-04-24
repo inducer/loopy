@@ -1247,8 +1247,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         prev_id = transfer_id
         bound = size
 
-        stage_exec_iname = None
-
         istage = 0
         while cur_size > 1:
 
