@@ -694,13 +694,6 @@ def _create_domain_for_sweep_tracking(orig_domain,
     return subd
 
 
-def _strip_if_scalar(reference_exprs, expr):
-    if len(reference_exprs) == 1:
-        return expr[0]
-    else:
-        return expr
-
-
 def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
     """
     Multi assignment function calls are currently lowered into OpenCL so that
@@ -928,6 +921,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     var_name_gen = kernel.get_var_name_generator()
     new_temporary_variables = kernel.temporary_variables.copy()
+    inames_added_for_scan = set()
+    inames_to_remove = set()
 
     # {{{ helpers
 
@@ -937,8 +932,44 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         else:
             return val
 
+    def preprocess_scan_arguments(
+                insn, expr, nresults, scan_iname, track_iname,
+                newly_generated_insn_id_set):
+        """Does iname substitution within scan arguments and returns a set of values
+        suitable to be passed to the binary op. Returns a tuple."""
+
+        if nresults > 1:
+            inner_expr = expr
+
+            # In the case of a multi-argument scan, we need a name for each of
+            # the arguments in order to pass them to the binary op - so we expand
+            # items that are not "plain" tuples here.
+            if not isinstance(inner_expr, tuple):
+                get_args_insn_id = insn_id_gen(
+                        "%s_%s_get" % (insn.id, "_".join(expr.inames)))
+
+                inner_expr = expand_inner_reduction(
+                        id=get_args_insn_id,
+                        expr=inner_expr,
+                        nresults=nresults,
+                        depends_on=insn.depends_on,
+                        within_inames=insn.within_inames | expr.inames,
+                        within_inames_is_final=insn.within_inames_is_final)
+
+                newly_generated_insn_id_set.add(get_args_insn_id)
+
+            updated_inner_exprs = tuple(
+                    replace_var_within_expr(sub_expr, scan_iname, track_iname)
+                    for sub_expr in inner_expr)
+        else:
+            updated_inner_exprs = (
+                    replace_var_within_expr(expr, scan_iname, track_iname),)
+
+        return updated_inner_exprs
+
     def expand_inner_reduction(id, expr, nresults, depends_on, within_inames,
             within_inames_is_final):
+        # FIXME: use make_temporaries
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
         assert isinstance(expr, (Call, Reduction))
@@ -988,7 +1019,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = frozenset()
 
-        global_barrier = temp_kernel.find_most_recent_global_barrier(insn.id)
+        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
         if global_barrier is not None:
             init_insn_depends_on |= frozenset([global_barrier])
@@ -1018,17 +1049,20 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         reduction_insn_depends_on = set([init_id])
 
+        # In the case of a multi-argument reduction, we need a name for each of
+        # the arguments in order to pass them to the binary op - so we expand
+        # items that are not "plain" tuples here.
         if nresults > 1 and not isinstance(expr.expr, tuple):
             get_args_insn_id = insn_id_gen(
                     "%s_%s_get" % (insn.id, "_".join(expr.inames)))
 
             reduction_expr = expand_inner_reduction(
-                id=get_args_insn_id,
-                expr=expr.expr,
-                nresults=nresults,
-                depends_on=insn.depends_on,
-                within_inames=update_insn_iname_deps,
-                within_inames_is_final=insn.within_inames_is_final)
+                    id=get_args_insn_id,
+                    expr=expr.expr,
+                    nresults=nresults,
+                    depends_on=insn.depends_on,
+                    within_inames=update_insn_iname_deps,
+                    within_inames_is_final=insn.within_inames_is_final)
 
             reduction_insn_depends_on.add(get_args_insn_id)
         else:
@@ -1165,6 +1199,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         transfer_depends_on = set([init_neutral_id, init_id])
 
+        # In the case of a multi-argument reduction, we need a name for each of
+        # the arguments in order to pass them to the binary op - so we expand
+        # items that are not "plain" tuples here.
         if nresults > 1 and not isinstance(expr.expr, tuple):
             get_args_insn_id = insn_id_gen(
                     "%s_%s_get" % (insn.id, red_iname))
@@ -1192,9 +1229,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 expression=expr.operation(
                     arg_dtypes,
                     _strip_if_scalar(
-                        expr.exprs,
+                        neutral_var_names,
                         tuple(var(nvn) for nvn in neutral_var_names)),
-                    _strip_if_scalar(expr.exprs, expr.exprs)),
+                    reduction_expr),
                 within_inames=(
                     (outer_insn_inames - frozenset(expr.inames))
                     | frozenset([red_iname])),
@@ -1262,6 +1299,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
     # }}}
 
     # {{{ utils (stateful)
+
+    from pytools import memoize
 
     @memoize
     def get_or_add_sweep_tracking_iname_and_domain(
@@ -1345,7 +1384,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = frozenset()
 
-        global_barrier = temp_kernel.find_most_recent_global_barrier(insn.id)
+        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
         if global_barrier is not None:
             init_insn_depends_on |= frozenset([global_barrier])
@@ -1361,9 +1400,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         generated_insns.append(init_insn)
 
-        updated_inner_exprs = tuple(
-                replace_var_within_expr(sub_expr, scan_iname, track_iname)
-                for sub_expr in expr.exprs)
+        update_insn_depends_on = set([init_insn.id]) | insn.depends_on
+
+        updated_inner_exprs = (
+                preprocess_scan_arguments(insn, expr.expr, nresults,
+                    scan_iname, track_iname, update_insn_depends_on))
 
         update_id = insn_id_gen(
                 based_on="%s_%s_update" % (insn.id, "_".join(expr.inames)))
@@ -1379,7 +1420,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     arg_dtypes,
                     _strip_if_scalar(acc_vars, acc_vars),
                     _strip_if_scalar(acc_vars, updated_inner_exprs)),
-                depends_on=frozenset([init_insn.id]) | insn.depends_on,
+                depends_on=frozenset(update_insn_depends_on),
                 within_inames=update_insn_iname_deps,
                 no_sync_with=insn.no_sync_with,
                 within_inames_is_final=insn.within_inames_is_final)
@@ -1474,7 +1515,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         init_insn_depends_on = insn.depends_on
 
-        global_barrier = temp_kernel.find_most_recent_global_barrier(insn.id)
+        global_barrier = lp.find_most_recent_global_barrier(temp_kernel, insn.id)
 
         if global_barrier is not None:
             init_insn_depends_on |= frozenset([global_barrier])
@@ -1491,9 +1532,11 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 depends_on=init_insn_depends_on)
         generated_insns.append(init_insn)
 
-        updated_inner_exprs = tuple(
-                replace_var_within_expr(sub_expr, scan_iname, track_iname)
-                for sub_expr in expr.exprs)
+        transfer_insn_depends_on = set([init_insn.id]) | insn.depends_on
+
+        updated_inner_exprs = (
+                preprocess_scan_arguments(insn, expr.expr, nresults,
+                    scan_iname, track_iname, transfer_insn_depends_on))
 
         from loopy.symbolic import Reduction
 
@@ -1510,21 +1553,15 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 expression=Reduction(
                     operation=expr.operation,
                     inames=(track_iname,),
-                    exprs=updated_inner_exprs,
+                    expr=_strip_if_scalar(acc_vars, updated_inner_exprs),
                     allow_simultaneous=False,
                     ),
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
-                depends_on=frozenset([init_id]) | insn.depends_on,
+                depends_on=frozenset(transfer_insn_depends_on),
                 no_sync_with=frozenset([(init_id, "any")]) | insn.no_sync_with)
 
         generated_insns.append(transfer_insn)
-
-        def _strip_if_scalar(c):
-            if len(acc_vars) == 1:
-                return c[0]
-            else:
-                return c
 
         prev_id = transfer_id
 
@@ -1574,8 +1611,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         for acc_var in acc_vars),
                     expression=expr.operation(
                         arg_dtypes,
-                        _strip_if_scalar(read_vars),
-                        _strip_if_scalar(tuple(
+                        _strip_if_scalar(acc_vars, read_vars),
+                        _strip_if_scalar(acc_vars, tuple(
                             acc_var[
                                 outer_local_iname_vars + (var(stage_exec_iname),)]
                             for acc_var in acc_vars))
@@ -1631,7 +1668,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         n_nonlocal_par = len(iname_classes.nonlocal_parallel)
 
         really_force_scan = force_scan and (
-            len(expr.inames) != 1 or expr.inames[0] not in inames_added_for_scan)
+                len(expr.inames) != 1 or expr.inames[0] not in inames_added_for_scan)
 
         def _error_if_force_scan_on(cls, msg):
             if really_force_scan:
