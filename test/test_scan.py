@@ -121,7 +121,7 @@ def test_automatic_scan_detection():
         )
 
     cgr = lp.generate_code_v2(knl)
-    assert "scan" in cgr.device_code()
+    assert "scan" not in cgr.device_code()
 
 
 def test_selective_scan_realization():

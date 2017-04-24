@@ -887,7 +887,7 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 
 
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
-                      automagic_scans_ok=True, force_scan=False,
+                      automagic_scans_ok=False, force_scan=False,
                       force_outer_iname_for_scan=None):
     """Rewrites reductions into their imperative form. With *insn_id_filter*
     specified, operate only on the instruction with an instruction id matching
