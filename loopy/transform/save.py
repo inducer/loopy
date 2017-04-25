@@ -135,7 +135,7 @@ class LivenessAnalysis(object):
 
     @memoize_method
     def liveness(self):
-        logging.info("running liveness analysis")
+        logger.info("running liveness analysis")
         successors = self.get_successor_relation()
         gen, kill = self.get_gen_and_kill_sets()
 
@@ -152,7 +152,7 @@ class LivenessAnalysis(object):
                     lr[idx].live_out.update(lr[succ].live_in)
                 lr[idx].live_in = gen[idx] | (lr[idx].live_out - kill[idx])
 
-        logging.info("done running liveness analysis")
+        logger.info("done running liveness analysis")
 
         return lr
 
