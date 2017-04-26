@@ -493,8 +493,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                             pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
                             inner_ast))))
 
-    res = merge_codegen_results(codegen_state, result)
-    return res
+    return merge_codegen_results(codegen_state, result)
 
 # }}}
 
