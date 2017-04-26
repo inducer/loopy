@@ -410,17 +410,21 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         # {{{ find implemented loop, build inner code
 
-        from loopy.symbolic import pw_aff_to_pw_aff_implemented_by_expr
-        impl_lbound = pw_aff_to_pw_aff_implemented_by_expr(lbound)
-        impl_ubound = pw_aff_to_pw_aff_implemented_by_expr(ubound)
+        loop_nonempty_params = lbound.params() & ubound.params()
+        has_nonempty_check = False
+
+        if not loop_nonempty_params.plain_is_universe():
+            has_nonempty_check = True
+            from loopy.symbolic import set_to_cond_expr
+            loop_nonempty_cond = set_to_cond_expr(loop_nonempty_params)
 
         # impl_loop may be overapproximated
         from loopy.isl_helpers import make_loop_bounds_from_pwaffs
         impl_loop = make_loop_bounds_from_pwaffs(
                 dom_and_slab.space,
                 loop_iname,
-                impl_lbound,
-                impl_ubound)
+                lbound,
+                ubound)
 
         for moved_iname in moved_inames:
             # move moved_iname to 'set' dim_type in impl_loop
@@ -446,6 +450,16 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         from loopy.symbolic import pw_aff_to_expr
 
+        def add_nonempty_check_maybe(result):
+            if has_nonempty_check:
+                from loopy.codegen.result import wrap_in_if
+                return wrap_in_if(
+                        codegen_state,
+                        [loop_nonempty_cond],
+                        result)
+            else:
+                return result
+
         if ubound.is_equal(lbound):
             # single-trip, generate just a variable assignment, not a loop
             inner = merge_codegen_results(codegen_state, [
@@ -458,10 +472,11 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                 inner,
                 ])
             result.append(
+                add_nonempty_check_maybe(
                     inner.with_new_ast(
                         codegen_state,
                         astb.ast_block_scope_class(
-                            inner.current_ast(codegen_state))))
+                            inner.current_ast(codegen_state)))))
 
         else:
             inner_ast = inner.current_ast(codegen_state)
@@ -469,15 +484,17 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
             from loopy.isl_helpers import simplify_pw_aff
 
             result.append(
-                inner.with_new_ast(
-                    codegen_state,
-                    astb.emit_sequential_loop(
-                        codegen_state, loop_iname, kernel.index_dtype,
-                        pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions)),
-                        pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
-                        inner_ast)))
+                add_nonempty_check_maybe(
+                    inner.with_new_ast(
+                        codegen_state,
+                        astb.emit_sequential_loop(
+                            codegen_state, loop_iname, kernel.index_dtype,
+                            pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions)),
+                            pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
+                            inner_ast))))
 
-    return merge_codegen_results(codegen_state, result)
+    res = merge_codegen_results(codegen_state, result)
+    return res
 
 # }}}
 
