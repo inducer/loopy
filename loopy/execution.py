@@ -126,7 +126,10 @@ class ExecutionWrapperGeneratorBase(object):
         self.system_args = system_args[:]
 
     def python_dtype_str(self, dtype):
-        if dtype.isbuiltin:
+        # TODO: figure out why isbuiltin isn't working in test (requiring second
+        # line)
+        if dtype.isbuiltin or \
+                np.dtype(str(dtype)).isbuiltin:
             return "_lpy_np."+dtype.name
         raise Exception('dtype: {} not recognized'.format(dtype))
 
@@ -329,7 +332,7 @@ class ExecutionWrapperGeneratorBase(object):
     # {{{ handle non numpy arguements
 
     def handle_non_numpy_arg(self, gen, arg):
-        raise Exception('Non-numpy args are not allowed for C-execution')
+        pass
 
     # }}}
 
@@ -345,32 +348,45 @@ class ExecutionWrapperGeneratorBase(object):
         for i in range(num_axes):
             gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
 
-        sym_order = var('_lpy_order')
-        gen("%s = %s" % (strify(sym_order), arg.order))
+        itemsize = kernel_arg.dtype.numpy_dtype.itemsize
+        for i in range(num_axes):
+            gen("_lpy_strides_%d = %s" % (i, strify(
+                itemsize*arg.unvec_strides[i])))
+
+        if not skip_arg_checks:
+            for i in range(num_axes):
+                gen("assert _lpy_strides_%d > 0, "
+                        "\"'%s' has negative stride in axis %d\""
+                        % (i, arg.name, i))
+
+        sym_strides = tuple(
+                var("_lpy_strides_%d" % i)
+                for i in range(num_axes))
 
         sym_shape = tuple(
                 var("_lpy_shape_%d" % i)
                 for i in range(num_axes))
 
-        if not skip_arg_checks:
-            for i in range(num_axes):
-                gen("assert _lpy_shape_%d > 0, "
-                        "\"'%s' has negative shape in axis %d\""
-                        % (i, arg.name, i))
-
         gen("%(name)s = _lpy_np.empty(%(shape)s, "
-                "%(dtype)s, order=%(order)s)"
+                "%(dtype)s)"
                 % dict(
                     name=arg.name,
                     shape=strify(sym_shape),
-                    order=strify(sym_order),
                     dtype=self.python_dtype_str(
                         kernel_arg.dtype.numpy_dtype)))
+
+        #check strides
+        gen("%(name)s = _lpy_strided(%(name)s, %(shape)s, "
+                "%(strides)s)"
+                % dict(
+                    name=arg.name,
+                    shape=strify(sym_shape),
+                    strides=strify(sym_strides)))
 
         if not skip_arg_checks:
             for i in range(num_axes):
                 gen("del _lpy_shape_%d" % i)
-            gen("del %s" % strify(sym_order))
+                gen("del _lpy_strides_%d" % i)
             gen("")
 
     # }}}
@@ -548,7 +564,8 @@ class ExecutionWrapperGeneratorBase(object):
                                     % (arg.name, arg.name, strify(sym_strides)))
 
                     if not arg.allows_offset:
-                        gen("if %s.offset:" % arg.name)
+                        gen("if hasattr(%s, 'offset') and %s.offset:" % (
+                                arg.name, arg.name))
                         with Indentation(gen):
                             gen("raise ValueError(\"Argument '%s' does not "
                                     "allow arrays with offsets. Try passing "
@@ -584,7 +601,8 @@ class ExecutionWrapperGeneratorBase(object):
         Add default C-imports to preamble
         """
         gen.add_to_preamble("import numpy as _lpy_np")
-        gen.add_to_preamble("import loopy.target.c_execution as _lpy_c")
+        gen.add_to_preamble("from loopy.target.c.compyte.array"
+                            " import as_strided as _lpy_strided")
 
     def intialize_system_args(self, gen):
         """
@@ -690,10 +708,11 @@ class ExecutionWrapperGeneratorBase(object):
         args = self.generate_arg_setup(
             gen, kernel, implemented_data_info, options)
 
-        self.generate_invocation(codegen_result.host_program.name, args)
+        self.generate_invocation(gen, codegen_result.host_program.name, args)
 
         self.generate_output_handler(gen, options, kernel, implemented_data_info)
 
+        import pdb; pdb.set_trace()
         if options.write_wrapper:
             output = gen.get()
             if options.highlight_wrapper:

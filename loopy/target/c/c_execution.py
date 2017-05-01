@@ -27,8 +27,6 @@ import cgen
 import os
 import subprocess
 
-from loopy.target.c import CTarget, generate_header
-from loopy.codegen import generate_code
 from loopy.execution import (KernelExecutorBase, _Kernels,
                              _KernelInfo, ExecutionWrapperGeneratorBase)
 from pytools import memoize_method
@@ -104,21 +102,28 @@ class CppCompiler(CCompiler):
     default_compile_flags = '-g -O3'.split()
 
 
-class CompiledKernel(object):
+class CompiledCKernel(object):
     """
-    A CompiledKernel wraps a loopy kernel, compiling it and loading the
+    A CompiledCKernel wraps a loopy kernel, compiling it and loading the
     result as a shared library, and provides access to the kernel as a
     ctypes function object, wrapped by the __call__ method, which attempts
     to automatically map argument types.
     """
 
-    def __init__(self, knl, comp=None):
-        assert isinstance(knl.target, CTarget)
+    def __init__(self, knl, target, comp=None):
+        from loopy.target.c import CTarget
+        assert isinstance(target, CTarget)
+        self.target = target
         self.knl = knl
-        self.code, _ = generate_code(knl)
+        # get code and build
+        self.code = str(knl.ast)
         self.comp = comp or CCompiler()
         self.dll = self.comp.build(self.code)
-        self.func_decl, = generate_header(knl)
+        # get the function declaration for interface with ctypes
+        from loopy.target.c import CFunctionDeclExtractor
+        self.func_decl = CFunctionDeclExtractor()
+        self.func_decl(knl.ast)
+        self.func_decl = self.func_decl.decls[0]
         self._arg_info = []
         # TODO knl.args[:].dtype is sufficient
         self._visit_func_decl(self.func_decl)
@@ -165,7 +170,7 @@ class CompiledKernel(object):
             self._append_arg(pod.name, pod.dtype)
 
     def _visit_pointer(self, node):
-        "Visit pointer argument of kernel."
+        """Visit pointer argument of kernel."""
         pod = node.subdecl  # type: cgen.POD
         self._append_arg(pod.name, pod.dtype, pointer=True)
 
@@ -181,7 +186,7 @@ class CompiledKernel(object):
 
     def _dtype_to_ctype(self, dtype, pointer=False):
         """Map NumPy dtype to equivalent ctypes type."""
-        target = self.knl.target  # type: CTarget
+        target = self.target  # type: CTarget
         registry = target.get_dtype_registry().wrapped_registry
         typename = registry.dtype_to_ctype(dtype)
         typename = {'unsigned': 'uint'}.get(typename, typename)
@@ -236,7 +241,9 @@ class CKernelExecutor(KernelExecutorBase):
 
         c_kernels = _Kernels()
         for dp in codegen_result.device_programs:
-            setattr(c_kernels, dp.name, CompiledKernel(dp, self.compiler))
+            setattr(c_kernels, dp.name, CompiledCKernel(dp,
+                                                       self.kernel.target,
+                                                       self.compiler))
 
         return _KernelInfo(
                 kernel=kernel,
@@ -246,7 +253,7 @@ class CKernelExecutor(KernelExecutorBase):
 
     # }}}
 
-    def __call__(self, **kwargs):
+    def __call__(self, *args, **kwargs):
         """
         :returns: ``(None, output)`` the output is a tuple of output arguments
             (arguments that are written as part of the kernel). The order is given
@@ -262,4 +269,4 @@ class CKernelExecutor(KernelExecutorBase):
         kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
 
         return kernel_info.invoker(
-                kernel_info.c_kernels, **kwargs)
+                kernel_info.c_kernels, *args, **kwargs)

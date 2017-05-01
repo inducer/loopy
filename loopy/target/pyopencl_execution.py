@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 from six.moves import range, zip
 
-from pytools import ImmutableRecord, memoize_method
+from pytools import memoize_method
 from pytools.py_codegen import Indentation
 from loopy.execution import (KernelExecutorBase, ExecutionWrapperGeneratorBase,
                              _KernelInfo, _Kernels)
@@ -309,7 +309,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
         kwargs = self.packing_controller.unpack(kwargs)
 
-        kernel_info = self.cl_kernel_info(self.arg_to_dtype_set(kwargs))
+        kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
 
         return kernel_info.invoker(
                 kernel_info.cl_kernels, queue, allocator, wait_for,

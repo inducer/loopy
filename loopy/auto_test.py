@@ -403,7 +403,7 @@ def auto_test_vs_ref(
             raise LoopyError("ref_knl and test_knl argument lists disagree at index "
                     "%d (1-based)" % (i+1))
 
-    from loopy.compiled import CompiledKernel, get_highlighted_cl_code
+    from loopy.compiled import CompiledKernel, get_highlighted_code
 
     if isinstance(op_count, (int, float)):
         warn("op_count should be a list", stacklevel=2)
@@ -448,7 +448,7 @@ def auto_test_vs_ref(
             print(75*"-")
             print("Reference Code:")
             print(75*"-")
-            print(get_highlighted_cl_code(ref_compiled.get_code()))
+            print(get_highlighted_code(ref_compiled.get_code()))
             print(75*"-")
 
         ref_cl_kernel_info = ref_compiled.cl_kernel_info(frozenset())
