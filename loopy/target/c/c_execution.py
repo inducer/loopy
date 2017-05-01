@@ -138,11 +138,10 @@ class CompiledCKernel(object):
         self._fn.argtypes = [ctype for name, ctype in self._arg_info]
         self._prepared_call_cache = weakref.WeakKeyDictionary()
 
-    def __call__(self, **kwargs):
+    def __call__(self, *args):
         """Execute kernel with given args mapped to ctypes equivalents."""
         args_ = []
-        for knl_arg, arg_t in zip(self.knl.args, self._fn.argtypes):
-            arg = kwargs[knl_arg.name]
+        for arg, arg_t in zip(args, self._fn.argtypes):
             if hasattr(arg, 'ctypes'):
                 if arg.size == 0:
                     # TODO eliminate unused arguments from kernel
@@ -239,11 +238,9 @@ class CKernelExecutor(KernelExecutorBase):
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.cl")
 
-        c_kernels = _Kernels()
+        c_kernels = []
         for dp in codegen_result.device_programs:
-            setattr(c_kernels, dp.name, CompiledCKernel(dp,
-                                                       self.kernel.target,
-                                                       self.compiler))
+            c_kernels.append(CompiledCKernel(dp, self.kernel.target, self.compiler))
 
         return _KernelInfo(
                 kernel=kernel,

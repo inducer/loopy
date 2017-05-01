@@ -391,6 +391,9 @@ class ExecutionWrapperGeneratorBase(object):
 
     # }}}
 
+    def get_arg_pass(self, arg):
+        return arg.name
+
     # {{{ arg setup
 
     def generate_arg_setup(
@@ -580,7 +583,7 @@ class ExecutionWrapperGeneratorBase(object):
                 gen("")
 
             if arg.arg_class in [lp.GlobalArg, lp.ConstantArg]:
-                args.append("%s.base_data" % arg.name)
+                args.append(self.get_arg_pass(arg))
             else:
                 args.append("%s" % arg.name)
 
@@ -604,7 +607,7 @@ class ExecutionWrapperGeneratorBase(object):
         gen.add_to_preamble("from loopy.target.c.compyte.array"
                             " import as_strided as _lpy_strided")
 
-    def intialize_system_args(self, gen):
+    def initialize_system_args(self, gen):
         """
         Override to intialize any default system args
         """
@@ -615,10 +618,8 @@ class ExecutionWrapperGeneratorBase(object):
     def generate_invocation(self, gen, kernel_name, args):
         gen("for knl in _lpy_c_kernels:")
         with Indentation(gen):
-            gen("{kernel_name}({args})"
-                    .format(
-                        kernel_name='knl.name',
-                        args=", ".join(args)))
+            gen('knl({args})'.format(
+                args=", ".join(args)))
 
     # }}}
 
@@ -628,21 +629,6 @@ class ExecutionWrapperGeneratorBase(object):
             self, gen, options, kernel, implemented_data_info):
 
         from loopy.kernel.data import KernelArgument
-
-        if not options.no_numpy:
-            gen("if out_host is None and (_lpy_encountered_numpy "
-                    "and not _lpy_encountered_dev):")
-            with Indentation(gen):
-                gen("out_host = True")
-
-            gen("if out_host:")
-            with Indentation(gen):
-                gen("pass")  # if no outputs (?!)
-                for arg in implemented_data_info:
-                    if not issubclass(arg.arg_class, KernelArgument):
-                        continue
-
-            gen("")
 
         if options.return_dict:
             gen("return None, {%s}"
@@ -662,6 +648,9 @@ class ExecutionWrapperGeneratorBase(object):
                 gen("return None, ()")
 
     # }}}
+
+    def generate_host_code(self, gen, codegen_result):
+        pass
 
     def __call__(self, kernel, codegen_result):
         """
@@ -694,7 +683,7 @@ class ExecutionWrapperGeneratorBase(object):
         gen.add_to_preamble(host_code)
         gen.add_to_preamble("")
 
-        self.intialize_system_args(gen)
+        self.initialize_system_args(gen)
 
         self.generate_integer_arg_finding_from_shapes(
             gen, kernel, implemented_data_info)
@@ -712,7 +701,6 @@ class ExecutionWrapperGeneratorBase(object):
 
         self.generate_output_handler(gen, options, kernel, implemented_data_info)
 
-        import pdb; pdb.set_trace()
         if options.write_wrapper:
             output = gen.get()
             if options.highlight_wrapper:
@@ -849,43 +837,7 @@ class KernelExecutorBase(object):
         raise NotImplementedError()
 
     def __call__(self, queue, **kwargs):
-        """
-        :arg allocator: a callable passed a byte count and returning
-            a :class:`pyopencl.Buffer`. A :class:`pyopencl` allocator
-            maybe.
-        :arg wait_for: A list of :class:`pyopencl.Event` instances
-            for which to wait.
-        :arg out_host: :class:`bool`
-            Decides whether output arguments (i.e. arguments
-            written by the kernel) are to be returned as
-            :mod:`numpy` arrays. *True* for yes, *False* for no.
-
-            For the default value of *None*, if all (input) array
-            arguments are :mod:`numpy` arrays, defaults to
-            returning :mod:`numpy` arrays as well.
-
-        :returns: ``(evt, output)`` where *evt* is a :class:`pyopencl.Event`
-            associated with the execution of the kernel, and
-            output is a tuple of output arguments (arguments that
-            are written as part of the kernel). The order is given
-            by the order of kernel arguments. If this order is unspecified
-            (such as when kernel arguments are inferred automatically),
-            enable :attr:`loopy.Options.return_dict` to make *output* a
-            :class:`dict` instead, with keys of argument names and values
-            of the returned arrays.
-        """
-
-        allocator = kwargs.pop("allocator", None)
-        wait_for = kwargs.pop("wait_for", None)
-        out_host = kwargs.pop("out_host", None)
-
-        kwargs = self.packing_controller.unpack(kwargs)
-
-        kernel_info = self.cl_kernel_info(self.arg_to_dtype_set(kwargs))
-
-        return kernel_info.invoker(
-                kernel_info.cl_kernels, queue, allocator, wait_for,
-                out_host, **kwargs)
+        raise NotImplementedError()
 
     # }}}
 

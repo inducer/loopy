@@ -150,15 +150,13 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     # {{{ generate invocation
 
     def generate_invocation(self, gen, kernel_name, args):
-        gen("for knl in _lpy_cl_kernels:")
-        with Indentation(gen):
-            gen("_lpy_evt = {kernel_name}({args})"
-            .format(
-                kernel_name=kernel_name,
-                args=", ".join(
-                    ["_lpy_cl_kernels", "queue"]
-                    + args
-                    + ["wait_for=wait_for"])))
+        gen("_lpy_evt = {kernel_name}({args})"
+        .format(
+            kernel_name=kernel_name,
+            args=", ".join(
+                ["_lpy_cl_kernels", "queue"]
+                + args
+                + ["wait_for=wait_for"])))
 
     # }}}
 
@@ -185,7 +183,7 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             gen("")
 
         if options.return_dict:
-            gen("return None, {%s}"
+            gen("return _lpy_evt, {%s}"
                     % ", ".join("\"%s\": %s" % (arg.name, arg.name)
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
@@ -196,12 +194,18 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                         if issubclass(arg.arg_class, KernelArgument)
                     if arg.base_name in kernel.get_written_variables()]
             if out_args:
-                gen("return None, (%s,)"
+                gen("return _lpy_evt, (%s,)"
                         % ", ".join(arg.name for arg in out_args))
             else:
-                gen("return None, ()")
+                gen("return _lpy_evt, ()")
 
     # }}}
+
+    def generate_host_code(self, gen, codegen_result):
+        gen.add_to_preamble(codegen_result.host_code())
+
+    def get_arg_pass(self, arg):
+        return "%s.base_data" % arg.name
 
 # }}}
 
