@@ -260,8 +260,9 @@ class CTarget(TargetBase):
     hash_fields = TargetBase.hash_fields + ("fortran_abi",)
     comparison_fields = TargetBase.comparison_fields + ("fortran_abi",)
 
-    def __init__(self, fortran_abi=False):
+    def __init__(self, fortran_abi=False, compiler=None):
         self.fortran_abi = fortran_abi
+        self.compiler = compiler
         super(CTarget, self).__init__()
 
     def split_kernel_at_global_barriers(self):
@@ -297,6 +298,13 @@ class CTarget(TargetBase):
     def dtype_to_typename(self, dtype):
         # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
+
+    def get_kernel_executor_cache_key(self, *args, **kwargs):
+        return self.compiler
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy.target.c import CKernelExecutor
+        return CKernelExecutor(knl, self.compiler)
 
     # }}}
 

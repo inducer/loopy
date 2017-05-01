@@ -27,6 +27,8 @@ import six
 import numpy as np
 from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
+from pytools.py_codegen import (
+        Indentation, PythonFunctionGenerator)
 
 
 # {{{ object array argument packing
@@ -111,7 +113,613 @@ class SeparateArrayPackingController(object):
 # }}}
 
 
-# {{{ KernelExecutorBase
+# {{{ ExecutionWrapperGeneratorBase
+
+class ExecutionWrapperGeneratorBase(object):
+    """
+    A set of common methods for generating a wrapper
+    for execution of C-based languages
+
+    """
+
+    def __init__(self, system_args=["_lpy_c_kernels"]):
+        self.system_args = system_args[:]
+
+    def python_dtype_str(self, dtype):
+        if dtype.isbuiltin:
+            return "_lpy_np."+dtype.name
+        raise Exception('dtype: {} not recognized'.format(dtype))
+
+    # {{{ invoker generation
+
+    # /!\ This code runs in a namespace controlled by the user.
+    # Prefix all auxiliary variables with "_lpy".
+
+    # {{{ integer arg finding from shapes
+
+    def generate_integer_arg_finding_from_shapes(
+            self, gen, kernel, implemented_data_info):
+        # a mapping from integer argument names to a list of tuples
+        # (arg_name, expression), where expression is a
+        # unary function of kernel.arg_dict[arg_name]
+        # returning the desired integer argument.
+        iarg_to_sources = {}
+
+        from loopy.kernel.data import GlobalArg
+        from loopy.symbolic import DependencyMapper, StringifyMapper
+        from loopy.diagnostic import ParameterFinderWarning
+        dep_map = DependencyMapper()
+
+        from pymbolic import var
+        for arg in implemented_data_info:
+            if arg.arg_class is GlobalArg:
+                sym_shape = var(arg.name).attr("shape")
+                for axis_nr, shape_i in enumerate(arg.shape):
+                    if shape_i is None:
+                        continue
+
+                    deps = dep_map(shape_i)
+
+                    if len(deps) == 1:
+                        integer_arg_var, = deps
+
+                        if kernel.arg_dict[integer_arg_var.name].dtype.is_integral():
+                            from pymbolic.algorithm import solve_affine_equations_for
+                            try:
+                                # friggin' overkill :)
+                                iarg_expr = solve_affine_equations_for(
+                                        [integer_arg_var.name],
+                                        [(shape_i, sym_shape.index(axis_nr))]
+                                        )[integer_arg_var]
+                            except Exception as e:
+                                #from traceback import print_exc
+                                #print_exc()
+
+                                # went wrong? oh well
+                                from warnings import warn
+                                warn("Unable to generate code to automatically "
+                                        "find '%s' from the shape of '%s':\n%s"
+                                        % (integer_arg_var.name, arg.name, str(e)),
+                                        ParameterFinderWarning)
+                            else:
+                                iarg_to_sources.setdefault(integer_arg_var.name, [])\
+                                        .append((arg.name, iarg_expr))
+
+        gen("# {{{ find integer arguments from shapes")
+        gen("")
+
+        for iarg_name, sources in six.iteritems(iarg_to_sources):
+            gen("if %s is None:" % iarg_name)
+            with Indentation(gen):
+                if_stmt = "if"
+                for arg_name, value_expr in sources:
+                    gen("%s %s is not None:" % (if_stmt, arg_name))
+                    with Indentation(gen):
+                        gen("%s = %s"
+                                % (iarg_name, StringifyMapper()(value_expr)))
+
+                    if_stmt = "elif"
+
+            gen("")
+
+        gen("# }}}")
+        gen("")
+
+    # }}}
+
+    # {{{ integer arg finding from offsets
+
+    def generate_integer_arg_finding_from_offsets(self, gen, kernel,
+                                                  implemented_data_info):
+        options = kernel.options
+
+        gen("# {{{ find integer arguments from offsets")
+        gen("")
+
+        for arg in implemented_data_info:
+            impl_array_name = arg.offset_for_name
+            if impl_array_name is not None:
+                gen("if %s is None:" % arg.name)
+                with Indentation(gen):
+                    gen("if %s is None:" % impl_array_name)
+                    with Indentation(gen):
+                        gen("# Output variable, we'll be allocating "
+                                "it, with zero offset.")
+                        gen("%s = 0" % arg.name)
+                    gen("else:")
+                    with Indentation(gen):
+                        if not options.no_numpy:
+                            gen("_lpy_offset = getattr(%s, \"offset\", 0)"
+                                    % impl_array_name)
+                        else:
+                            gen("_lpy_offset = %s.offset" % impl_array_name)
+
+                        base_arg = kernel.impl_arg_to_arg[impl_array_name]
+
+                        if not options.skip_arg_checks:
+                            gen("%s, _lpy_remdr = divmod(_lpy_offset, %d)"
+                                    % (arg.name, base_arg.dtype.itemsize))
+
+                            gen("assert _lpy_remdr == 0, \"Offset of array '%s' is "
+                                    "not divisible by its dtype itemsize\""
+                                    % impl_array_name)
+                            gen("del _lpy_remdr")
+                        else:
+                            gen("%s = _lpy_offset // %d"
+                                    % (arg.name, base_arg.dtype.itemsize))
+
+                        if not options.skip_arg_checks:
+                            gen("del _lpy_offset")
+
+        gen("# }}}")
+        gen("")
+
+    # }}}
+
+    # {{{ integer arg finding from strides
+
+    def generate_integer_arg_finding_from_strides(
+            self, gen, kernel, implemented_data_info):
+        options = kernel.options
+
+        gen("# {{{ find integer arguments from strides")
+        gen("")
+
+        for arg in implemented_data_info:
+            if arg.stride_for_name_and_axis is not None:
+                impl_array_name, stride_impl_axis = arg.stride_for_name_and_axis
+
+                gen("if %s is None:" % arg.name)
+                with Indentation(gen):
+                    if not options.skip_arg_checks:
+                        gen("if %s is None:" % impl_array_name)
+                        with Indentation(gen):
+                            gen("raise RuntimeError(\"required stride '%s' for "
+                                    "argument '%s' not given or deducible from "
+                                    "passed array\")"
+                                    % (arg.name, impl_array_name))
+
+                        base_arg = kernel.impl_arg_to_arg[impl_array_name]
+
+                        if not options.skip_arg_checks:
+                            gen("%s, _lpy_remdr = divmod(%s.strides[%d], %d)"
+                                    % (arg.name, impl_array_name, stride_impl_axis,
+                                        base_arg.dtype.dtype.itemsize))
+
+                            gen("assert _lpy_remdr == 0, \"Stride %d of array '%s' "
+                                    " is not divisible by its dtype itemsize\""
+                                    % (stride_impl_axis, impl_array_name))
+                            gen("del _lpy_remdr")
+                        else:
+                            gen("%s = _lpy_offset // %d"
+                                    % (arg.name, base_arg.dtype.itemsize))
+
+        gen("# }}}")
+        gen("")
+
+    # }}}
+
+    # {{{ check that value args are present
+
+    def generate_value_arg_check(
+            self, gen, kernel, implemented_data_info):
+        if kernel.options.skip_arg_checks:
+            return
+
+        from loopy.kernel.data import ValueArg
+
+        gen("# {{{ check that value args are present")
+        gen("")
+
+        for arg in implemented_data_info:
+            if not issubclass(arg.arg_class, ValueArg):
+                continue
+
+            gen("if %s is None:" % arg.name)
+            with Indentation(gen):
+                gen("raise TypeError(\"value argument '%s' "
+                        "was not given and could not be automatically "
+                        "determined\")" % arg.name)
+
+        gen("# }}}")
+        gen("")
+
+    # }}}
+
+    # {{{ handle non numpy arguements
+
+    def handle_non_numpy_arg(self, gen, arg):
+        raise Exception('Non-numpy args are not allowed for C-execution')
+
+    # }}}
+
+    # {{{ handle allocation of unspecified arguements
+
+    def handle_alloc(self, gen, arg, kernel_arg, strify, skip_arg_checks):
+        """
+        Handle allocation of non-specified arguements for C-execution
+        """
+        from pymbolic import var
+
+        num_axes = len(arg.unvec_shape)
+        for i in range(num_axes):
+            gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
+
+        sym_order = var('_lpy_order')
+        gen("%s = %s" % (strify(sym_order), arg.order))
+
+        sym_shape = tuple(
+                var("_lpy_shape_%d" % i)
+                for i in range(num_axes))
+
+        if not skip_arg_checks:
+            for i in range(num_axes):
+                gen("assert _lpy_shape_%d > 0, "
+                        "\"'%s' has negative shape in axis %d\""
+                        % (i, arg.name, i))
+
+        gen("%(name)s = _lpy_np.empty(%(shape)s, "
+                "%(dtype)s, order=%(order)s)"
+                % dict(
+                    name=arg.name,
+                    shape=strify(sym_shape),
+                    order=strify(sym_order),
+                    dtype=self.python_dtype_str(
+                        kernel_arg.dtype.numpy_dtype)))
+
+        if not skip_arg_checks:
+            for i in range(num_axes):
+                gen("del _lpy_shape_%d" % i)
+            gen("del %s" % strify(sym_order))
+            gen("")
+
+    # }}}
+
+    # {{{ arg setup
+
+    def generate_arg_setup(
+            self, gen, kernel, implemented_data_info, options):
+        import loopy as lp
+
+        from loopy.kernel.data import KernelArgument
+        from loopy.kernel.array import ArrayBase
+        from loopy.symbolic import StringifyMapper
+        from loopy.types import NumpyType
+
+        gen("# {{{ set up array arguments")
+        gen("")
+
+        if not options.no_numpy:
+            gen("_lpy_encountered_numpy = False")
+            gen("_lpy_encountered_dev = False")
+            gen("")
+
+        args = []
+
+        strify = StringifyMapper()
+
+        expect_no_more_arguments = False
+
+        for arg_idx, arg in enumerate(implemented_data_info):
+            is_written = arg.base_name in kernel.get_written_variables()
+            kernel_arg = kernel.impl_arg_to_arg.get(arg.name)
+
+            if not issubclass(arg.arg_class, KernelArgument):
+                expect_no_more_arguments = True
+                continue
+
+            if expect_no_more_arguments:
+                raise LoopyError("Further arguments encountered after arg info "
+                        "describing a global temporary variable")
+
+            if not issubclass(arg.arg_class, ArrayBase):
+                args.append(arg.name)
+                continue
+
+            gen("# {{{ process %s" % arg.name)
+            gen("")
+
+            if not options.no_numpy:
+                self.handle_non_numpy_arg(gen, arg)
+
+            if not options.skip_arg_checks and not is_written:
+                gen("if %s is None:" % arg.name)
+                with Indentation(gen):
+                    gen("raise RuntimeError(\"input argument '%s' must "
+                            "be supplied\")" % arg.name)
+                    gen("")
+
+            if (is_written
+                    and arg.arg_class is lp.ImageArg
+                    and not options.skip_arg_checks):
+                gen("if %s is None:" % arg.name)
+                with Indentation(gen):
+                    gen("raise RuntimeError(\"written image '%s' must "
+                            "be supplied\")" % arg.name)
+                    gen("")
+
+            if is_written and arg.shape is None and not options.skip_arg_checks:
+                gen("if %s is None:" % arg.name)
+                with Indentation(gen):
+                    gen("raise RuntimeError(\"written argument '%s' has "
+                            "unknown shape and must be supplied\")" % arg.name)
+                    gen("")
+
+            possibly_made_by_loopy = False
+
+            # {{{ allocate written arrays, if needed
+
+            if is_written and arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
+                    and arg.shape is not None:
+
+                if not isinstance(arg.dtype, NumpyType):
+                    raise LoopyError("do not know how to pass arg of type '%s'"
+                            % arg.dtype)
+
+                possibly_made_by_loopy = True
+                gen("_lpy_made_by_loopy = False")
+                gen("")
+
+                gen("if %s is None:" % arg.name)
+                with Indentation(gen):
+                    self.handle_alloc(
+                        gen, arg, kernel_arg, strify, options.skip_arg_checks)
+                    gen("_lpy_made_by_loopy = True")
+                    gen("")
+
+            # }}}
+
+            # {{{ argument checking
+
+            if arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
+                    and not options.skip_arg_checks:
+                if possibly_made_by_loopy:
+                    gen("if not _lpy_made_by_loopy:")
+                else:
+                    gen("if True:")
+
+                with Indentation(gen):
+                    gen("if %s.dtype != %s:"
+                            % (arg.name, self.python_dtype_str(
+                                kernel_arg.dtype.numpy_dtype)))
+                    with Indentation(gen):
+                        gen("raise TypeError(\"dtype mismatch on argument '%s' "
+                                "(got: %%s, expected: %s)\" %% %s.dtype)"
+                                % (arg.name, arg.dtype, arg.name))
+
+                    # {{{ generate shape checking code
+
+                    def strify_allowing_none(shape_axis):
+                        if shape_axis is None:
+                            return "None"
+                        else:
+                            return strify(shape_axis)
+
+                    def strify_tuple(t):
+                        if len(t) == 0:
+                            return "()"
+                        else:
+                            return "(%s,)" % ", ".join(
+                                    strify_allowing_none(sa)
+                                    for sa in t)
+
+                    shape_mismatch_msg = (
+                            "raise TypeError(\"shape mismatch on argument '%s' "
+                            "(got: %%s, expected: %%s)\" "
+                            "%% (%s.shape, %s))"
+                            % (arg.name, arg.name, strify_tuple(arg.unvec_shape)))
+
+                    if kernel_arg.shape is None:
+                        pass
+
+                    elif any(shape_axis is None for shape_axis in kernel_arg.shape):
+                        gen("if len(%s.shape) != %s:"
+                                % (arg.name, len(arg.unvec_shape)))
+                        with Indentation(gen):
+                            gen(shape_mismatch_msg)
+
+                        for i, shape_axis in enumerate(arg.unvec_shape):
+                            if shape_axis is None:
+                                continue
+
+                            gen("if %s.shape[%d] != %s:"
+                                    % (arg.name, i, strify(shape_axis)))
+                            with Indentation(gen):
+                                gen(shape_mismatch_msg)
+
+                    else:  # not None, no Nones in tuple
+                        gen("if %s.shape != %s:"
+                                % (arg.name, strify(arg.unvec_shape)))
+                        with Indentation(gen):
+                            gen(shape_mismatch_msg)
+
+                    # }}}
+
+                    if arg.unvec_strides and kernel_arg.dim_tags:
+                        itemsize = kernel_arg.dtype.numpy_dtype.itemsize
+                        sym_strides = tuple(
+                                itemsize*s_i for s_i in arg.unvec_strides)
+                        gen("if %s.strides != %s:"
+                                % (arg.name, strify(sym_strides)))
+                        with Indentation(gen):
+                            gen("raise TypeError(\"strides mismatch on "
+                                    "argument '%s' (got: %%s, expected: %%s)\" "
+                                    "%% (%s.strides, %s))"
+                                    % (arg.name, arg.name, strify(sym_strides)))
+
+                    if not arg.allows_offset:
+                        gen("if %s.offset:" % arg.name)
+                        with Indentation(gen):
+                            gen("raise ValueError(\"Argument '%s' does not "
+                                    "allow arrays with offsets. Try passing "
+                                    "default_offset=loopy.auto to make_kernel()."
+                                    "\")" % arg.name)
+                            gen("")
+
+            # }}}
+
+            if possibly_made_by_loopy and not options.skip_arg_checks:
+                gen("del _lpy_made_by_loopy")
+                gen("")
+
+            if arg.arg_class in [lp.GlobalArg, lp.ConstantArg]:
+                args.append("%s.base_data" % arg.name)
+            else:
+                args.append("%s" % arg.name)
+
+            gen("")
+
+            gen("# }}}")
+            gen("")
+
+        gen("# }}}")
+        gen("")
+
+        return args
+
+    # }}}
+
+    def target_specific_preamble(self, gen):
+        """
+        Add default C-imports to preamble
+        """
+        gen.add_to_preamble("import numpy as _lpy_np")
+        gen.add_to_preamble("import loopy.target.c_execution as _lpy_c")
+
+    def intialize_system_args(self, gen):
+        """
+        Override to intialize any default system args
+        """
+        pass
+
+    # {{{ generate invocation
+
+    def generate_invocation(self, gen, kernel_name, args):
+        gen("for knl in _lpy_c_kernels:")
+        with Indentation(gen):
+            gen("{kernel_name}({args})"
+                    .format(
+                        kernel_name='knl.name',
+                        args=", ".join(args)))
+
+    # }}}
+
+    # {{{ output
+
+    def generate_output_handler(
+            self, gen, options, kernel, implemented_data_info):
+
+        from loopy.kernel.data import KernelArgument
+
+        if not options.no_numpy:
+            gen("if out_host is None and (_lpy_encountered_numpy "
+                    "and not _lpy_encountered_dev):")
+            with Indentation(gen):
+                gen("out_host = True")
+
+            gen("if out_host:")
+            with Indentation(gen):
+                gen("pass")  # if no outputs (?!)
+                for arg in implemented_data_info:
+                    if not issubclass(arg.arg_class, KernelArgument):
+                        continue
+
+            gen("")
+
+        if options.return_dict:
+            gen("return None, {%s}"
+                    % ", ".join("\"%s\": %s" % (arg.name, arg.name)
+                        for arg in implemented_data_info
+                        if issubclass(arg.arg_class, KernelArgument)
+                        if arg.base_name in kernel.get_written_variables()))
+        else:
+            out_args = [arg
+                    for arg in implemented_data_info
+                        if issubclass(arg.arg_class, KernelArgument)
+                    if arg.base_name in kernel.get_written_variables()]
+            if out_args:
+                gen("return None, (%s,)"
+                        % ", ".join(arg.name for arg in out_args))
+            else:
+                gen("return None, ()")
+
+    # }}}
+
+    def __call__(self, kernel, codegen_result):
+        """
+        Generates the wrapping python invoker for this execution target
+
+        :arg kernel: the loopy :class:`LoopKernel`(s) to be executued
+        :codegen_result: the loopy :class:`CodeGenerationResult` created
+        by code generation
+
+        :returns: py_func, a python function that handles excution of this
+        kernel
+        """
+        options = kernel.options
+        implemented_data_info = codegen_result.implemented_data_info
+        host_code = codegen_result.host_code()
+
+        from loopy.kernel.data import KernelArgument
+        gen = PythonFunctionGenerator(
+                "invoke_%s_loopy_kernel" % kernel.name,
+                self.system_args + [
+                    "%s=None" % idi.name
+                    for idi in implemented_data_info
+                    if issubclass(idi.arg_class, KernelArgument)
+                    ])
+
+        gen.add_to_preamble("from __future__ import division")
+        gen.add_to_preamble("")
+        self.target_specific_preamble(gen)
+        gen.add_to_preamble("")
+        gen.add_to_preamble(host_code)
+        gen.add_to_preamble("")
+
+        self.intialize_system_args(gen)
+
+        self.generate_integer_arg_finding_from_shapes(
+            gen, kernel, implemented_data_info)
+        self.generate_integer_arg_finding_from_offsets(
+            gen, kernel, implemented_data_info)
+        self.generate_integer_arg_finding_from_strides(
+            gen, kernel, implemented_data_info)
+        self.generate_value_arg_check(
+            gen, kernel, implemented_data_info)
+
+        args = self.generate_arg_setup(
+            gen, kernel, implemented_data_info, options)
+
+        self.generate_invocation(codegen_result.host_program.name, args)
+
+        self.generate_output_handler(gen, options, kernel, implemented_data_info)
+
+        if options.write_wrapper:
+            output = gen.get()
+            if options.highlight_wrapper:
+                output = get_highlighted_python_code(output)
+
+            if options.write_wrapper is True:
+                print(output)
+            else:
+                with open(options.write_wrapper, "w") as outf:
+                    outf.write(output)
+
+        return gen.get_function()
+
+
+# }}}
+
+
+class _KernelInfo(ImmutableRecord):
+    pass
+
+
+class _Kernels(object):
+    pass
+
+
+# {{{ kernel executor
 
 class KernelExecutorBase(object):
     """An object connecting a kernel to a :class:`pyopencl.Context`
@@ -121,7 +729,7 @@ class KernelExecutorBase(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, kernel):
+    def __init__(self, kernel, invoker=ExecutionWrapperGeneratorBase()):
         """
         :arg kernel: a loopy.LoopKernel
         """
@@ -136,6 +744,8 @@ class KernelExecutorBase(object):
         self.has_runtime_typed_args = any(
                 arg.dtype is None
                 for arg in kernel.args)
+
+        self.invoker = invoker
 
     @memoize_method
     def get_typed_and_scheduled_kernel(self, var_to_dtype_set):
@@ -194,6 +804,99 @@ class KernelExecutorBase(object):
                     arg_to_dtype[arg_name] = dtype
 
         return frozenset(six.iteritems(arg_to_dtype))
+
+    # {{{ debugging aids
+
+    def get_highlighted_code(self, arg_to_dtype=None):
+        return get_highlighted_code(
+                self.get_code(arg_to_dtype))
+
+    def get_code(self, arg_to_dtype=None):
+        if arg_to_dtype is not None:
+            arg_to_dtype = frozenset(six.iteritems(arg_to_dtype))
+
+        kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
+
+        from loopy.codegen import generate_code_v2
+        code = generate_code_v2(kernel)
+        return code.device_code()
+
+    # }}}
+
+    # {{{ call and info generator
+
+    @memoize_method
+    def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
+        raise NotImplementedError()
+
+    def __call__(self, queue, **kwargs):
+        """
+        :arg allocator: a callable passed a byte count and returning
+            a :class:`pyopencl.Buffer`. A :class:`pyopencl` allocator
+            maybe.
+        :arg wait_for: A list of :class:`pyopencl.Event` instances
+            for which to wait.
+        :arg out_host: :class:`bool`
+            Decides whether output arguments (i.e. arguments
+            written by the kernel) are to be returned as
+            :mod:`numpy` arrays. *True* for yes, *False* for no.
+
+            For the default value of *None*, if all (input) array
+            arguments are :mod:`numpy` arrays, defaults to
+            returning :mod:`numpy` arrays as well.
+
+        :returns: ``(evt, output)`` where *evt* is a :class:`pyopencl.Event`
+            associated with the execution of the kernel, and
+            output is a tuple of output arguments (arguments that
+            are written as part of the kernel). The order is given
+            by the order of kernel arguments. If this order is unspecified
+            (such as when kernel arguments are inferred automatically),
+            enable :attr:`loopy.Options.return_dict` to make *output* a
+            :class:`dict` instead, with keys of argument names and values
+            of the returned arrays.
+        """
+
+        allocator = kwargs.pop("allocator", None)
+        wait_for = kwargs.pop("wait_for", None)
+        out_host = kwargs.pop("out_host", None)
+
+        kwargs = self.packing_controller.unpack(kwargs)
+
+        kernel_info = self.cl_kernel_info(self.arg_to_dtype_set(kwargs))
+
+        return kernel_info.invoker(
+                kernel_info.cl_kernels, queue, allocator, wait_for,
+                out_host, **kwargs)
+
+    # }}}
+
+# }}}
+
+# {{{ code highlighers
+
+
+def get_highlighted_python_code(text):
+    try:
+        from pygments import highlight
+    except ImportError:
+        return text
+    else:
+        from pygments.lexers import PythonLexer
+        from pygments.formatters import TerminalFormatter
+
+        return highlight(text, PythonLexer(), TerminalFormatter())
+
+
+def get_highlighted_code(text):
+    try:
+        from pygments import highlight
+    except ImportError:
+        return text
+    else:
+        from pygments.lexers import CLexer
+        from pygments.formatters import TerminalFormatter
+
+        return highlight(text, CLexer(), TerminalFormatter())
 
 # }}}
 
