@@ -36,15 +36,19 @@ class ReductionOperation(object):
     equality-comparable.
     """
 
-    def result_dtypes(self, target, arg_dtype, inames):
+    def result_dtypes(self, target, *arg_dtypes):
         """
-        :arg arg_dtype: may be None if not known
+        :arg arg_dtypes: may be None if not known
         :returns: None if not known, otherwise the returned type
         """
 
         raise NotImplementedError
 
-    def neutral_element(self, dtype, inames):
+    @property
+    def arg_count(self):
+        raise NotImplementedError
+
+    def neutral_element(self, *dtypes):
         raise NotImplementedError
 
     def __hash__(self):
@@ -55,7 +59,7 @@ class ReductionOperation(object):
         # Force subclasses to override
         raise NotImplementedError
 
-    def __call__(self, dtype, operand1, operand2, inames):
+    def __call__(self, dtype, operand1, operand2):
         raise NotImplementedError
 
     def __ne__(self, other):
@@ -87,7 +91,11 @@ class ScalarReductionOperation(ReductionOperation):
         """
         self.forced_result_type = forced_result_type
 
-    def result_dtypes(self, kernel, arg_dtype, inames):
+    @property
+    def arg_count(self):
+        return 1
+
+    def result_dtypes(self, kernel, arg_dtype):
         if self.forced_result_type is not None:
             return (self.parse_result_type(
                     kernel.target, self.forced_result_type),)
@@ -114,18 +122,18 @@ class ScalarReductionOperation(ReductionOperation):
 
 
 class SumReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, inames):
+    def neutral_element(self, dtype):
         return 0
 
-    def __call__(self, dtype, operand1, operand2, inames):
+    def __call__(self, dtype, operand1, operand2):
         return operand1 + operand2
 
 
 class ProductReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, inames):
+    def neutral_element(self, dtype):
         return 1
 
-    def __call__(self, dtype, operand1, operand2, inames):
+    def __call__(self, dtype, operand1, operand2):
         return operand1 * operand2
 
 
@@ -166,32 +174,45 @@ def get_ge_neutral(dtype):
 
 
 class MaxReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, inames):
+    def neutral_element(self, dtype):
         return get_ge_neutral(dtype)
 
-    def __call__(self, dtype, operand1, operand2, inames):
+    def __call__(self, dtype, operand1, operand2):
         return var("max")(operand1, operand2)
 
 
 class MinReductionOperation(ScalarReductionOperation):
-    def neutral_element(self, dtype, inames):
+    def neutral_element(self, dtype):
         return get_le_neutral(dtype)
 
-    def __call__(self, dtype, operand1, operand2, inames):
+    def __call__(self, dtype, operand1, operand2):
         return var("min")(operand1, operand2)
 
 
-# {{{ argmin/argmax
+# {{{ segmented reduction
 
-class _ArgExtremumReductionOperation(ReductionOperation):
-    def prefix(self, dtype):
-        return "loopy_arg%s_%s" % (self.which, dtype.numpy_dtype.type.__name__)
+class _SegmentedScalarReductionOperation(ReductionOperation):
+    def __init__(self, **kwargs):
+        self.inner_reduction = self.base_reduction_class(**kwargs)
 
-    def result_dtypes(self, kernel, dtype, inames):
-        return (dtype, kernel.index_dtype)
+    @property
+    def arg_count(self):
+        return 2
 
-    def neutral_element(self, dtype, inames):
-        return ArgExtFunction(self, dtype, "init", inames)()
+    def prefix(self, scalar_dtype, segment_flag_dtype):
+        return "loopy_segmented_%s_%s_%s" % (self.which,
+                scalar_dtype.numpy_dtype.type.__name__,
+                segment_flag_dtype.numpy_dtype.type.__name__)
+
+    def neutral_element(self, scalar_dtype, segment_flag_dtype):
+        return SegmentedFunction(self, (scalar_dtype, segment_flag_dtype), "init")()
+
+    def result_dtypes(self, kernel, scalar_dtype, segment_flag_dtype):
+        return (self.inner_reduction.result_dtypes(kernel, scalar_dtype)
+                + (segment_flag_dtype,))
+
+    def __str__(self):
+        return "segmented(%s)" % self.which
 
     def __hash__(self):
         return hash(type(self))
@@ -199,11 +220,111 @@ class _ArgExtremumReductionOperation(ReductionOperation):
     def __eq__(self, other):
         return type(self) == type(other)
 
-    def __call__(self, dtype, operand1, operand2, inames):
-        iname, = inames
+    def __call__(self, dtypes, operand1, operand2):
+        return SegmentedFunction(self, dtypes, "update")(*(operand1 + operand2))
 
-        return ArgExtFunction(self, dtype, "update", inames)(
-                *(operand1 + (operand2, var(iname))))
+
+class SegmentedSumReductionOperation(_SegmentedScalarReductionOperation):
+    base_reduction_class = SumReductionOperation
+    which = "sum"
+    op = "((%s) + (%s))"
+
+
+class SegmentedProductReductionOperation(_SegmentedScalarReductionOperation):
+    base_reduction_class = ProductReductionOperation
+    op = "((%s) * (%s))"
+    which = "product"
+
+
+class SegmentedFunction(FunctionIdentifier):
+    init_arg_names = ("reduction_op", "dtypes", "name")
+
+    def __init__(self, reduction_op, dtypes, name):
+        """
+        :arg dtypes: A :class:`tuple` of `(scalar_dtype, segment_flag_dtype)`
+        """
+        self.reduction_op = reduction_op
+        self.dtypes = dtypes
+        self.name = name
+
+    @property
+    def scalar_dtype(self):
+        return self.dtypes[0]
+
+    @property
+    def segment_flag_dtype(self):
+        return self.dtypes[1]
+
+    def __getinitargs__(self):
+        return (self.reduction_op, self.dtypes, self.name)
+
+
+def get_segmented_function_preamble(kernel, func_id):
+    op = func_id.reduction_op
+    prefix = op.prefix(func_id.scalar_dtype, func_id.segment_flag_dtype)
+
+    from pymbolic.mapper.c_code import CCodeMapper
+
+    c_code_mapper = CCodeMapper()
+
+    return (prefix, """
+    inline %(scalar_t)s %(prefix)s_init(%(segment_flag_t)s *segment_flag_out)
+    {
+        *segment_flag_out = 0;
+        return %(neutral)s;
+    }
+
+    inline %(scalar_t)s %(prefix)s_update(
+        %(scalar_t)s op1, %(segment_flag_t)s segment_flag1,
+        %(scalar_t)s op2, %(segment_flag_t)s segment_flag2,
+        %(segment_flag_t)s *segment_flag_out)
+    {
+        *segment_flag_out = segment_flag1 | segment_flag2;
+        return segment_flag2 ? op2 : %(combined)s;
+    }
+    """ % dict(
+            scalar_t=kernel.target.dtype_to_typename(func_id.scalar_dtype),
+            prefix=prefix,
+            segment_flag_t=kernel.target.dtype_to_typename(
+                    func_id.segment_flag_dtype),
+            neutral=c_code_mapper(
+                    op.inner_reduction.neutral_element(func_id.scalar_dtype)),
+            combined=op.op % ("op1", "op2"),
+            ))
+
+
+# }}}
+
+
+# {{{ argmin/argmax
+
+class _ArgExtremumReductionOperation(ReductionOperation):
+    def prefix(self, scalar_dtype, index_dtype):
+        return "loopy_arg%s_%s_%s" % (self.which,
+                index_dtype.numpy_dtype.type.__name__,
+                scalar_dtype.numpy_dtype.type.__name__)
+
+    def result_dtypes(self, kernel, scalar_dtype, index_dtype):
+        return (scalar_dtype, index_dtype)
+
+    def neutral_element(self, scalar_dtype, index_dtype):
+        return ArgExtFunction(self, (scalar_dtype, index_dtype), "init")()
+
+    def __str__(self):
+        return self.which
+
+    def __hash__(self):
+        return hash(type(self))
+
+    def __eq__(self, other):
+        return type(self) == type(other)
+
+    @property
+    def arg_count(self):
+        return 2
+
+    def __call__(self, dtypes, operand1, operand2):
+        return ArgExtFunction(self, dtypes, "update")(*(operand1 + operand2))
 
 
 class ArgMaxReductionOperation(_ArgExtremumReductionOperation):
@@ -219,21 +340,28 @@ class ArgMinReductionOperation(_ArgExtremumReductionOperation):
 
 
 class ArgExtFunction(FunctionIdentifier):
-    init_arg_names = ("reduction_op", "scalar_dtype", "name", "inames")
+    init_arg_names = ("reduction_op", "dtypes", "name")
 
-    def __init__(self, reduction_op, scalar_dtype, name, inames):
+    def __init__(self, reduction_op, dtypes, name):
         self.reduction_op = reduction_op
-        self.scalar_dtype = scalar_dtype
+        self.dtypes = dtypes
         self.name = name
-        self.inames = inames
+
+    @property
+    def scalar_dtype(self):
+        return self.dtypes[0]
+
+    @property
+    def index_dtype(self):
+        return self.dtypes[1]
 
     def __getinitargs__(self):
-        return (self.reduction_op, self.scalar_dtype, self.name, self.inames)
+        return (self.reduction_op, self.dtypes, self.name)
 
 
 def get_argext_preamble(kernel, func_id):
     op = func_id.reduction_op
-    prefix = op.prefix(func_id.scalar_dtype)
+    prefix = op.prefix(func_id.scalar_dtype, func_id.index_dtype)
 
     from pymbolic.mapper.c_code import CCodeMapper
 
@@ -267,7 +395,7 @@ def get_argext_preamble(kernel, func_id):
     """ % dict(
             scalar_t=kernel.target.dtype_to_typename(func_id.scalar_dtype),
             prefix=prefix,
-            index_t=kernel.target.dtype_to_typename(kernel.index_dtype),
+            index_t=kernel.target.dtype_to_typename(func_id.index_dtype),
             neutral=c_code_mapper(neutral(func_id.scalar_dtype)),
             comp=op.update_comparison,
             ))
@@ -284,6 +412,8 @@ _REDUCTION_OPS = {
         "min": MinReductionOperation,
         "argmax": ArgMaxReductionOperation,
         "argmin": ArgMinReductionOperation,
+        "segmented(sum)": SegmentedSumReductionOperation,
+        "segmented(product)": SegmentedProductReductionOperation,
         }
 
 _REDUCTION_OP_PARSERS = [
@@ -325,37 +455,75 @@ def parse_reduction_op(name):
 
 def reduction_function_mangler(kernel, func_id, arg_dtypes):
     if isinstance(func_id, ArgExtFunction) and func_id.name == "init":
-        from loopy.target.opencl import OpenCLTarget
-        if not isinstance(kernel.target, OpenCLTarget):
-            raise LoopyError("only OpenCL supported for now")
+        from loopy.target.opencl import CTarget
+        if not isinstance(kernel.target, CTarget):
+            raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
 
         from loopy.kernel.data import CallMangleInfo
         return CallMangleInfo(
-                target_name="%s_init" % op.prefix(func_id.scalar_dtype),
+                target_name="%s_init" % op.prefix(
+                    func_id.scalar_dtype, func_id.index_dtype),
                 result_dtypes=op.result_dtypes(
-                    kernel, func_id.scalar_dtype, func_id.inames),
+                    kernel, func_id.scalar_dtype, func_id.index_dtype),
                 arg_dtypes=(),
                 )
 
     elif isinstance(func_id, ArgExtFunction) and func_id.name == "update":
-        from loopy.target.opencl import OpenCLTarget
-        if not isinstance(kernel.target, OpenCLTarget):
-            raise LoopyError("only OpenCL supported for now")
+        from loopy.target.opencl import CTarget
+        if not isinstance(kernel.target, CTarget):
+            raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
 
         from loopy.kernel.data import CallMangleInfo
         return CallMangleInfo(
-                target_name="%s_update" % op.prefix(func_id.scalar_dtype),
+                target_name="%s_update" % op.prefix(
+                    func_id.scalar_dtype, func_id.index_dtype),
                 result_dtypes=op.result_dtypes(
-                    kernel, func_id.scalar_dtype, func_id.inames),
+                    kernel, func_id.scalar_dtype, func_id.index_dtype),
                 arg_dtypes=(
                     func_id.scalar_dtype,
                     kernel.index_dtype,
                     func_id.scalar_dtype,
                     kernel.index_dtype),
+                )
+
+    elif isinstance(func_id, SegmentedFunction) and func_id.name == "init":
+        from loopy.target.opencl import CTarget
+        if not isinstance(kernel.target, CTarget):
+            raise LoopyError("%s: only C-like targets supported for now" % func_id)
+
+        op = func_id.reduction_op
+
+        from loopy.kernel.data import CallMangleInfo
+        return CallMangleInfo(
+                target_name="%s_init" % op.prefix(
+                    func_id.scalar_dtype, func_id.segment_flag_dtype),
+                result_dtypes=op.result_dtypes(
+                    kernel, func_id.scalar_dtype, func_id.segment_flag_dtype),
+                arg_dtypes=(),
+                )
+
+    elif isinstance(func_id, SegmentedFunction) and func_id.name == "update":
+        from loopy.target.opencl import CTarget
+        if not isinstance(kernel.target, CTarget):
+            raise LoopyError("%s: only C-like targets supported for now" % func_id)
+
+        op = func_id.reduction_op
+
+        from loopy.kernel.data import CallMangleInfo
+        return CallMangleInfo(
+                target_name="%s_update" % op.prefix(
+                    func_id.scalar_dtype, func_id.segment_flag_dtype),
+                result_dtypes=op.result_dtypes(
+                    kernel, func_id.scalar_dtype, func_id.segment_flag_dtype),
+                arg_dtypes=(
+                    func_id.scalar_dtype,
+                    func_id.segment_flag_dtype,
+                    func_id.scalar_dtype,
+                    func_id.segment_flag_dtype),
                 )
 
     return None
@@ -370,5 +538,11 @@ def reduction_preamble_generator(preamble_info):
                 raise LoopyError("only OpenCL supported for now")
 
             yield get_argext_preamble(preamble_info.kernel, func.name)
+
+        elif isinstance(func.name, SegmentedFunction):
+            if not isinstance(preamble_info.kernel.target, OpenCLTarget):
+                raise LoopyError("only OpenCL supported for now")
+
+            yield get_segmented_function_preamble(preamble_info.kernel, func.name)
 
 # vim: fdm=marker

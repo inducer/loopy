@@ -1987,19 +1987,28 @@ def test_integer_reduction(ctx_factory):
                                    dtype=to_loopy_type(vtype),
                                    shape=lp.auto)
 
-        reductions = [('max', lambda x: x == np.max(var_int)),
-                      ('min', lambda x: x == np.min(var_int)),
-                      ('sum', lambda x: x == np.sum(var_int)),
-                      ('product', lambda x: x == np.prod(var_int)),
-                      ('argmax', lambda x: (x[0] == np.max(var_int) and
-                        var_int[out[1]] == np.max(var_int))),
-                      ('argmin', lambda x: (x[0] == np.min(var_int) and
-                        var_int[out[1]] == np.min(var_int)))]
+        from collections import namedtuple
+        ReductionTest = namedtuple('ReductionTest', 'kind, check, args')
 
-        for reduction, function in reductions:
+        reductions = [
+            ReductionTest('max', lambda x: x == np.max(var_int), args='var[k]'),
+            ReductionTest('min', lambda x: x == np.min(var_int), args='var[k]'),
+            ReductionTest('sum', lambda x: x == np.sum(var_int), args='var[k]'),
+            ReductionTest('product', lambda x: x == np.prod(var_int), args='var[k]'),
+            ReductionTest('argmax',
+                lambda x: (
+                    x[0] == np.max(var_int) and var_int[out[1]] == np.max(var_int)),
+                args='var[k], k'),
+            ReductionTest('argmin',
+                lambda x: (
+                    x[0] == np.min(var_int) and var_int[out[1]] == np.min(var_int)),
+                args='var[k], k')
+        ]
+
+        for reduction, function, args in reductions:
             kstr = ("out" if 'arg' not in reduction
                         else "out[0], out[1]")
-            kstr += ' = {0}(k, var[k])'.format(reduction)
+            kstr += ' = {0}(k, {1})'.format(reduction, args)
             knl = lp.make_kernel('{[k]: 0<=k<n}',
                                 kstr,
                                 [var_lp, '...'])
@@ -2150,6 +2159,41 @@ def test_global_barrier_error_if_unordered():
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
         lp.get_global_barrier_order(knl)
+
+
+def test_multi_argument_reduction_type_inference():
+    from loopy.type_inference import TypeInferenceMapper
+    from loopy.library.reduction import SegmentedSumReductionOperation
+    from loopy.types import to_loopy_type
+    op = SegmentedSumReductionOperation()
+
+    knl = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
+
+    int32 = to_loopy_type(np.int32)
+
+    expr = lp.symbolic.Reduction(
+            operation=op,
+            inames=("i",),
+            expr=lp.symbolic.Reduction(
+                operation=op,
+                inames="j",
+                expr=(1, 2),
+                allow_simultaneous=True),
+            allow_simultaneous=True)
+
+    t_inf_mapper = TypeInferenceMapper(knl)
+
+    assert (
+            t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
+            == [(int32, int32)])
+
+
+def test_multi_argument_reduction_parsing():
+    from loopy.symbolic import parse, Reduction
+
+    assert isinstance(
+            parse("reduce(argmax, i, reduce(argmax, j, i, j))").expr,
+            Reduction)
 
 
 def test_struct_assignment(ctx_factory):
