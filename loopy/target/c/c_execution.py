@@ -60,15 +60,15 @@ class CCompiler(object):
         self.exe = cc if cc else self.default_exe
         self.cflags = cflags or self.default_compile_flags[:]
         self.ldflags = ldflags or self.default_link_flags[:]
-        self.tempdir = tempfile.TemporaryDirectory()
+        self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
 
     def _tempname(self, name):
         """Build temporary filename path in tempdir."""
-        return os.path.join(self.tempdir.name, name)
+        return os.path.join(self.tempdir, name)
 
     def _call(self, args, **kwargs):
         """Invoke compiler with arguments."""
-        cwd = self.tempdir.name
+        cwd = self.tempdir
         args_ = [self.exe] + args
         logger.debug(args_)
         subprocess.check_call(args_, cwd=cwd, **kwargs)
