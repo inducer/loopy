@@ -22,12 +22,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-import sys
 import numpy as np
 import loopy as lp
 import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
-import pytest
 
 import logging
 logger = logging.getLogger(__name__)
@@ -71,7 +69,6 @@ def test_c_target_strides():
                     ],
                 target=CTarget())
 
-
     # test with C-order
     knl = __get_kernel('C')
     a_np = np.reshape(np.arange(16 * 16, dtype=np.float32), (16, -1),
@@ -79,7 +76,6 @@ def test_c_target_strides():
 
     assert np.allclose(knl(a=a_np)[1],
                 2 * a_np)
-
 
     # test with F-order
     knl = __get_kernel('F')

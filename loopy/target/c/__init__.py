@@ -300,7 +300,7 @@ class CTarget(TargetBase):
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
     def get_kernel_executor_cache_key(self, *args, **kwargs):
-        return self.compiler
+        return None  # TODO: ???
 
     def get_kernel_executor(self, knl, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
