@@ -595,7 +595,7 @@ def test_vector_ilp_with_prefetch(ctx_factory):
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
 
     cknl = lp.CompiledKernel(ctx, knl)
-    cknl.cl_kernel_info()
+    cknl.kernel_info()
 
     import re
     code = cknl.get_code()

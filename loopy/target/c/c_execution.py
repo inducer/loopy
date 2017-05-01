@@ -27,8 +27,7 @@ import cgen
 import os
 import subprocess
 
-from loopy.execution import (KernelExecutorBase, _Kernels,
-                             _KernelInfo, ExecutionWrapperGeneratorBase)
+from loopy.execution import (KernelExecutorBase, _KernelInfo)
 from pytools import memoize_method
 import weakref
 

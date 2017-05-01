@@ -451,12 +451,12 @@ def auto_test_vs_ref(
             print(get_highlighted_code(ref_compiled.get_code()))
             print(75*"-")
 
-        ref_cl_kernel_info = ref_compiled.cl_kernel_info(frozenset())
+        ref_kernel_info = ref_compiled.kernel_info(frozenset())
 
         try:
             ref_args, ref_arg_data = \
                     make_ref_args(ref_sched_kernel,
-                            ref_cl_kernel_info.implemented_data_info,
+                            ref_kernel_info.implemented_data_info,
                             ref_queue, parameters)
             ref_args["out_host"] = False
         except cl.RuntimeError as e:
@@ -541,10 +541,10 @@ def auto_test_vs_ref(
         compiled = CompiledKernel(ctx, kernel)
 
         if args is None:
-            cl_kernel_info = compiled.cl_kernel_info(frozenset())
+            kernel_info = compiled.kernel_info(frozenset())
 
             args = make_args(kernel,
-                    cl_kernel_info.implemented_data_info,
+                    kernel_info.implemented_data_info,
                     queue, ref_arg_data, parameters)
         args["out_host"] = False
 
