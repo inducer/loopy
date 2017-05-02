@@ -731,7 +731,7 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 print(79*"-")
                 print("CODE:")
                 print(79*"-")
-                from loopy.compiled import get_highlighted_code
+                from loopy.execution import get_highlighted_code
                 print(get_highlighted_code(code))
                 print(79*"-")
 
