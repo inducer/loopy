@@ -180,6 +180,10 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                     if not issubclass(arg.arg_class, KernelArgument):
                         continue
 
+                    is_written = arg.base_name in kernel.get_written_variables()
+                    if is_written:
+                        gen("%s = %s.get(queue=queue)" % (arg.name, arg.name))
+
             gen("")
 
         if options.return_dict:
