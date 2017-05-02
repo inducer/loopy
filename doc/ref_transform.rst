@@ -72,6 +72,8 @@ Manipulating Instructions
 
 .. autofunction:: tag_instructions
 
+.. autofunction:: add_nosync
+
 Registering Library Routines
 ----------------------------
 

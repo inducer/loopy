@@ -402,6 +402,42 @@ def test_precompute_with_preexisting_inames_fail():
                 precompute_inames="ii,jj")
 
 
+def test_add_nosync():
+    orig_knl = lp.make_kernel("{[i]: 0<=i<10}",
+        """
+        <>tmp[i] = 10 {id=insn1}
+        <>tmp2[i] = 10 {id=insn2}
+
+        <>tmp3[2*i] = 0 {id=insn3}
+        <>tmp4 = 1 + tmp3[2*i] {id=insn4}
+
+        <>tmp5[i] = 0 {id=insn5,groups=g1}
+        tmp5[i] = 1 {id=insn6,conflicts=g1}
+        """)
+
+    orig_knl = lp.set_temporary_scope(orig_knl, "tmp3", "local")
+    orig_knl = lp.set_temporary_scope(orig_knl, "tmp5", "local")
+
+    # No dependency present - don't add nosync
+    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2")
+    assert frozenset() == knl.id_to_insn["insn2"].no_sync_with
+
+    # Dependency present
+    knl = lp.add_nosync(orig_knl, "local", "writes:tmp3", "reads:tmp3")
+    assert frozenset() == knl.id_to_insn["insn3"].no_sync_with
+    assert frozenset([("insn3", "local")]) == knl.id_to_insn["insn4"].no_sync_with
+
+    # Bidirectional
+    knl = lp.add_nosync(
+            orig_knl, "local", "writes:tmp3", "reads:tmp3", bidirectional=True)
+    assert frozenset([("insn4", "local")]) == knl.id_to_insn["insn3"].no_sync_with
+    assert frozenset([("insn3", "local")]) == knl.id_to_insn["insn4"].no_sync_with
+
+    # Groups
+    knl = lp.add_nosync(orig_knl, "local", "insn5", "insn6")
+    assert frozenset([("insn5", "local")]) == knl.id_to_insn["insn6"].no_sync_with
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

@@ -34,6 +34,8 @@ import numpy as np
 import islpy as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
+from pytools import memoize_on_first_arg
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -316,10 +318,16 @@ class SetOperationCacheManager:
         return result
 
     def dim_min(self, set, *args):
+        if set.plain_is_empty():
+            raise LoopyError("domain '%s' is empty" % set)
+
         from loopy.isl_helpers import dim_min_with_elimination
         return self.op(set, "dim_min", dim_min_with_elimination, args)
 
     def dim_max(self, set, *args):
+        if set.plain_is_empty():
+            raise LoopyError("domain '%s' is empty" % set)
+
         from loopy.isl_helpers import dim_max_with_elimination
         return self.op(set, "dim_max", dim_max_with_elimination, args)
 
@@ -1366,5 +1374,196 @@ def draw_dependencies_as_unicode_arrows(
     return rows
 
 # }}}
+
+
+# {{{ global barrier order finding
+
+@memoize_on_first_arg
+def get_global_barrier_order(kernel):
+    """Return a :class:`tuple` of the listing the ids of global barrier instructions
+    as they appear in order in the kernel.
+
+    See also :class:`loopy.instruction.BarrierInstruction`.
+    """
+    barriers = []
+    visiting = set()
+    visited = set()
+
+    unvisited = set(insn.id for insn in kernel.instructions)
+
+    def is_barrier(my_insn_id):
+        insn = kernel.id_to_insn[my_insn_id]
+        from loopy.kernel.instruction import BarrierInstruction
+        return isinstance(insn, BarrierInstruction) and insn.kind == "global"
+
+    while unvisited:
+        stack = [unvisited.pop()]
+
+        while stack:
+            top = stack[-1]
+
+            if top in visiting:
+                visiting.remove(top)
+                if is_barrier(top):
+                    barriers.append(top)
+
+            if top in visited:
+                stack.pop()
+                continue
+
+            visited.add(top)
+            visiting.add(top)
+
+            for child in kernel.id_to_insn[top].depends_on:
+                # Check for no cycles.
+                assert child not in visiting
+                stack.append(child)
+
+    # Ensure this is the only possible order.
+    #
+    # We do this by looking at the barriers in order.
+    # We check for each adjacent pair (a,b) in the order if a < b,
+    # i.e. if a is reachable by a chain of dependencies from b.
+
+    visiting.clear()
+    visited.clear()
+
+    for prev_barrier, barrier in zip(barriers, barriers[1:]):
+        # Check if prev_barrier is reachable from barrier.
+        stack = [barrier]
+        visited.discard(prev_barrier)
+
+        while stack:
+            top = stack[-1]
+
+            if top in visiting:
+                visiting.remove(top)
+
+            if top in visited:
+                stack.pop()
+                continue
+
+            visited.add(top)
+            visiting.add(top)
+
+            if top == prev_barrier:
+                visiting.clear()
+                break
+
+            for child in kernel.id_to_insn[top].depends_on:
+                stack.append(child)
+        else:
+            # Search exhausted and we did not find prev_barrier.
+            raise LoopyError("barriers '%s' and '%s' are not ordered"
+                             % (prev_barrier, barrier))
+
+    return tuple(barriers)
+
+# }}}
+
+
+# {{{ find most recent global barrier
+
+@memoize_on_first_arg
+def find_most_recent_global_barrier(kernel, insn_id):
+    """Return the id of the latest occuring global barrier which the
+    given instruction (indirectly or directly) depends on, or *None* if this
+    instruction does not depend on a global barrier.
+
+    The return value is guaranteed to be unique because global barriers are
+    totally ordered within the kernel.
+    """
+
+    global_barrier_order = get_global_barrier_order(kernel)
+
+    if len(global_barrier_order) == 0:
+        return None
+
+    insn = kernel.id_to_insn[insn_id]
+
+    if len(insn.depends_on) == 0:
+        return None
+
+    def is_barrier(my_insn_id):
+        insn = kernel.id_to_insn[my_insn_id]
+        from loopy.kernel.instruction import BarrierInstruction
+        return isinstance(insn, BarrierInstruction) and insn.kind == "global"
+
+    global_barrier_to_ordinal = dict(
+            (b, i) for i, b in enumerate(global_barrier_order))
+
+    def get_barrier_ordinal(barrier_id):
+        return (global_barrier_to_ordinal[barrier_id]
+                if barrier_id is not None
+                else -1)
+
+    direct_barrier_dependencies = set(
+            dep for dep in insn.depends_on if is_barrier(dep))
+
+    if len(direct_barrier_dependencies) > 0:
+        return max(direct_barrier_dependencies, key=get_barrier_ordinal)
+    else:
+        return max((find_most_recent_global_barrier(kernel, dep)
+                    for dep in insn.depends_on),
+                key=get_barrier_ordinal)
+
+# }}}
+
+
+# {{{ subkernel tools
+
+@memoize_on_first_arg
+def get_subkernels(kernel):
+    """Return a :class:`tuple` of the names of the subkernels in the kernel. The
+    kernel must be scheduled.
+
+    See also :class:`loopy.schedule.CallKernel`.
+    """
+    from loopy.kernel import kernel_state
+    if kernel.state != kernel_state.SCHEDULED:
+        raise LoopyError("Kernel must be scheduled")
+
+    from loopy.schedule import CallKernel
+
+    return tuple(sched_item.kernel_name
+            for sched_item in kernel.schedule
+            if isinstance(sched_item, CallKernel))
+
+
+@memoize_on_first_arg
+def get_subkernel_to_insn_id_map(kernel):
+    """Return a :class:`dict` mapping subkernel names to a :class:`frozenset`
+    consisting of the instruction ids scheduled within the subkernel. The
+    kernel must be scheduled.
+    """
+    from loopy.kernel import kernel_state
+    if kernel.state != kernel_state.SCHEDULED:
+        raise LoopyError("Kernel must be scheduled")
+
+    from loopy.schedule import (
+            sched_item_to_insn_id, CallKernel, ReturnFromKernel)
+
+    subkernel = None
+    result = {}
+
+    for sched_item in kernel.schedule:
+        if isinstance(sched_item, CallKernel):
+            subkernel = sched_item.kernel_name
+            result[subkernel] = set()
+
+        if isinstance(sched_item, ReturnFromKernel):
+            subkernel = None
+
+        if subkernel is not None:
+            for insn_id in sched_item_to_insn_id(sched_item):
+                result[subkernel].add(insn_id)
+
+    for subkernel in result:
+        result[subkernel] = frozenset(result[subkernel])
+
+    return result
+
+# }}}
+
 
 # vim: foldmethod=marker
