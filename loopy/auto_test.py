@@ -403,7 +403,8 @@ def auto_test_vs_ref(
             raise LoopyError("ref_knl and test_knl argument lists disagree at index "
                     "%d (1-based)" % (i+1))
 
-    from loopy.compiled import CompiledKernel, get_highlighted_code
+    from loopy.compiled import CompiledKernel
+    from loopy.execution import get_highlighted_code
 
     if isinstance(op_count, (int, float)):
         warn("op_count should be a list", stacklevel=2)
