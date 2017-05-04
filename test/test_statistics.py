@@ -802,6 +802,23 @@ def test_summations_and_filters():
     assert s1f64l == 2*n*m
 
 
+def test_count():
+    from loopy.statistics import count
+    import islpy as isl
+
+    knl = lp.make_kernel("[] -> {[]: }", [""" """])
+
+    s = isl.Set("[n] -> { [i0, i1] : 96*floor((n)/96) = n and n > 0 "
+                "and i0 >= 0 and i1 >= 0 and 16*floor((i0)/16) <= -16 + n "
+                "and 16*floor((i1)/16) <= -16 + n }")
+    ct = count(knl, s)
+
+    expected = isl.PwQPolynomial("[n] -> { (225 + -30 * n + n^2) : "
+                                 "96*floor((n)/96) = n and n >= 16 }")
+
+    assert ct.plain_is_equal(expected)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
