@@ -109,13 +109,13 @@ class CompiledCKernel(object):
     to automatically map argument types.
     """
 
-    def __init__(self, knl, target, comp=None):
+    def __init__(self, knl, dev_code, target, comp=None):
         from loopy.target.c import CTarget
         assert isinstance(target, CTarget)
         self.target = target
         self.knl = knl
         # get code and build
-        self.code = str(knl.ast)
+        self.code = dev_code
         self.comp = comp or CCompiler()
         self.dll = self.comp.build(self.code)
         # get the function declaration for interface with ctypes
@@ -235,11 +235,12 @@ class CKernelExecutor(KernelExecutorBase):
 
         if self.kernel.options.edit_cl:
             from pytools import invoke_editor
-            dev_code = invoke_editor(dev_code, "code.cl")
+            dev_code = invoke_editor(dev_code, "code.c")
 
         c_kernels = []
         for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(dp, self.kernel.target, self.compiler))
+            c_kernels.append(CompiledCKernel(dp, dev_code, self.kernel.target,
+                                             self.compiler))
 
         return _KernelInfo(
                 kernel=kernel,
