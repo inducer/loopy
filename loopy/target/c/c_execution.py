@@ -117,7 +117,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         #check strides
         if not skip_arg_checks:
-            gen("assert '%(strides)s == %(name)s.strides', "
+            gen("assert %(strides)s == %(name)s.strides, "
                     "'Strides of loopy created array %(name)s, "
                     "do not match expected.'" %
                     dict(name=arg.name,
