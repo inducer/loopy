@@ -84,3 +84,49 @@ def test_c_target_strides():
 
     assert np.allclose(knl(a=a_np)[1],
                 2 * a_np)
+
+
+def test_c_target_strides_nonsquare():
+    from loopy.target.c import CTarget
+
+    def __get_kernel(order='C'):
+        indicies = ['i', 'j', 'k']
+        sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
+        # create domain strings
+        domain_template = '{{ [{iname}]: 0 <= {iname} < {size} }}'
+        domains = []
+        for idx, size in zip(indicies, sizes):
+            domains.append(domain_template.format(
+                iname=idx,
+                size=size))
+        statement = 'out[{indexed}] = 2 * a[{indexed}]'.format(
+            indexed=', '.join(indicies))
+        return lp.make_kernel(
+                domains,
+                statement,
+                [
+                    lp.GlobalArg("out", np.float32, shape=sizes, order=order),
+                    lp.GlobalArg("a", np.float32, shape=sizes, order=order),
+                    "..."
+                    ],
+                target=CTarget())
+
+    # test with C-order
+    knl = __get_kernel('C')
+    a_lp = next(x for x in knl.args if x.name == 'a')
+    a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
+                      a_lp.shape,
+                      order='C')
+
+    assert np.allclose(knl(a=a_np)[1],
+                2 * a_np)
+
+    # test with F-order
+    knl = __get_kernel('F')
+    a_lp = next(x for x in knl.args if x.name == 'a')
+    a_np = np.reshape(np.arange(np.product(a_lp.shape), dtype=np.float32),
+                      a_lp.shape,
+                      order='F')
+
+    assert np.allclose(knl(a=a_np)[1],
+                2 * a_np)
