@@ -664,7 +664,7 @@ class KernelExecutorBase(object):
     .. automethod:: __call__
     """
 
-    def __init__(self, kernel, invoker=ExecutionWrapperGeneratorBase()):
+    def __init__(self, kernel, invoker):
         """
         :arg kernel: a loopy.LoopKernel
         """

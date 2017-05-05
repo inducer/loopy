@@ -30,8 +30,7 @@ import subprocess
 from loopy.execution import (KernelExecutorBase, _KernelInfo,
                              ExecutionWrapperGeneratorBase)
 from pytools import memoize_method
-from pytools.py_codegen import (
-        Indentation, PythonFunctionGenerator)
+from pytools.py_codegen import (Indentation)
 
 import weakref
 
@@ -50,7 +49,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     def __init__(self):
         system_args = ["_lpy_c_kernels"]
-        super(ExecutionWrapperGeneratorBase, self).__init__(system_args)
+        super(CExecutionWrapperGenerator, self).__init__(system_args)
 
     def python_dtype_str(self, dtype):
         # TODO: figure out why isbuiltin isn't working in test (requiring second
@@ -351,7 +350,8 @@ class CKernelExecutor(KernelExecutorBase):
         """
 
         self.compiler = compiler if compiler else CCompiler()
-        super(CKernelExecutor, self).__init__(kernel)
+        super(CKernelExecutor, self).__init__(kernel,
+                                              CExecutionWrapperGenerator())
 
     @memoize_method
     def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
