@@ -118,20 +118,15 @@ class SeparateArrayPackingController(object):
 class ExecutionWrapperGeneratorBase(object):
     """
     A set of common methods for generating a wrapper
-    for execution of C-based languages
+    for execution
 
     """
 
-    def __init__(self, system_args=["_lpy_c_kernels"]):
+    def __init__(self, system_args):
         self.system_args = system_args[:]
 
     def python_dtype_str(self, dtype):
-        # TODO: figure out why isbuiltin isn't working in test (requiring second
-        # line)
-        if dtype.isbuiltin or \
-                np.dtype(str(dtype)).isbuiltin:
-            return "_lpy_np."+dtype.name
-        raise Exception('dtype: {} not recognized'.format(dtype))
+        raise NotImplementedError()
 
     # {{{ invoker generation
 
@@ -332,7 +327,7 @@ class ExecutionWrapperGeneratorBase(object):
     # {{{ handle non numpy arguements
 
     def handle_non_numpy_arg(self, gen, arg):
-        pass
+        raise NotImplementedError()
 
     # }}}
 
@@ -342,57 +337,12 @@ class ExecutionWrapperGeneratorBase(object):
         """
         Handle allocation of non-specified arguements for C-execution
         """
-        from pymbolic import var
-
-        num_axes = len(arg.unvec_shape)
-        for i in range(num_axes):
-            gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
-
-        itemsize = kernel_arg.dtype.numpy_dtype.itemsize
-        for i in range(num_axes):
-            gen("_lpy_strides_%d = %s" % (i, strify(
-                itemsize*arg.unvec_strides[i])))
-
-        if not skip_arg_checks:
-            for i in range(num_axes):
-                gen("assert _lpy_strides_%d > 0, "
-                        "\"'%s' has negative stride in axis %d\""
-                        % (i, arg.name, i))
-
-        sym_strides = tuple(
-                var("_lpy_strides_%d" % i)
-                for i in range(num_axes))
-
-        sym_shape = tuple(
-                var("_lpy_shape_%d" % i)
-                for i in range(num_axes))
-
-        gen("%(name)s = _lpy_np.empty(%(shape)s, "
-                "%(dtype)s)"
-                % dict(
-                    name=arg.name,
-                    shape=strify(sym_shape),
-                    dtype=self.python_dtype_str(
-                        kernel_arg.dtype.numpy_dtype)))
-
-        #check strides
-        gen("%(name)s = _lpy_strided(%(name)s, %(shape)s, "
-                "%(strides)s)"
-                % dict(
-                    name=arg.name,
-                    shape=strify(sym_shape),
-                    strides=strify(sym_strides)))
-
-        if not skip_arg_checks:
-            for i in range(num_axes):
-                gen("del _lpy_shape_%d" % i)
-                gen("del _lpy_strides_%d" % i)
-            gen("")
+        raise NotImplementedError()
 
     # }}}
 
     def get_arg_pass(self, arg):
-        return arg.name
+        raise NotImplementedError()
 
     # {{{ arg setup
 
@@ -601,25 +551,20 @@ class ExecutionWrapperGeneratorBase(object):
 
     def target_specific_preamble(self, gen):
         """
-        Add default C-imports to preamble
+        Add target specific imports to preamble
         """
-        gen.add_to_preamble("import numpy as _lpy_np")
-        gen.add_to_preamble("from loopy.target.c.compyte.array"
-                            " import as_strided as _lpy_strided")
+        raise NotImplementedError()
 
     def initialize_system_args(self, gen):
         """
         Override to intialize any default system args
         """
-        pass
+        raise NotImplementedError()
 
     # {{{ generate invocation
 
     def generate_invocation(self, gen, kernel_name, args):
-        gen("for knl in _lpy_c_kernels:")
-        with Indentation(gen):
-            gen('knl({args})'.format(
-                args=", ".join(args)))
+        raise NotImplementedError()
 
     # }}}
 
@@ -628,29 +573,12 @@ class ExecutionWrapperGeneratorBase(object):
     def generate_output_handler(
             self, gen, options, kernel, implemented_data_info):
 
-        from loopy.kernel.data import KernelArgument
-
-        if options.return_dict:
-            gen("return None, {%s}"
-                    % ", ".join("\"%s\": %s" % (arg.name, arg.name)
-                        for arg in implemented_data_info
-                        if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in kernel.get_written_variables()))
-        else:
-            out_args = [arg
-                    for arg in implemented_data_info
-                        if issubclass(arg.arg_class, KernelArgument)
-                    if arg.base_name in kernel.get_written_variables()]
-            if out_args:
-                gen("return None, (%s,)"
-                        % ", ".join(arg.name for arg in out_args))
-            else:
-                gen("return None, ()")
+        raise NotImplementedError()
 
     # }}}
 
     def generate_host_code(self, gen, codegen_result):
-        pass
+        raise NotImplementedError()
 
     def __call__(self, kernel, codegen_result):
         """

@@ -27,14 +27,154 @@ import cgen
 import os
 import subprocess
 
-from loopy.execution import (KernelExecutorBase, _KernelInfo)
+from loopy.execution import (KernelExecutorBase, _KernelInfo,
+                             ExecutionWrapperGeneratorBase)
 from pytools import memoize_method
+from pytools.py_codegen import (
+        Indentation, PythonFunctionGenerator)
+
 import weakref
 
 import ctypes
+import numpy as np
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
+    """
+    Specialized form of the :class:`ExecutionWrapperGeneratorBase` for
+    pyopencl execution
+    """
+
+    def __init__(self):
+        system_args = ["_lpy_c_kernels"]
+        super(ExecutionWrapperGeneratorBase, self).__init__(system_args)
+
+    def python_dtype_str(self, dtype):
+        # TODO: figure out why isbuiltin isn't working in test (requiring second
+        # line)
+        if dtype.isbuiltin or \
+                np.dtype(str(dtype)).isbuiltin:
+            return "_lpy_np."+dtype.name
+        raise Exception('dtype: {} not recognized'.format(dtype))
+
+    # {{{ handle non numpy arguements
+
+    def handle_non_numpy_arg(self, gen, arg):
+        pass
+
+    # }}}
+
+    # {{{ handle allocation of unspecified arguements
+
+    def handle_alloc(self, gen, arg, kernel_arg, strify, skip_arg_checks):
+        """
+        Handle allocation of non-specified arguements for C-execution
+        """
+        from pymbolic import var
+
+        num_axes = len(arg.unvec_shape)
+        for i in range(num_axes):
+            gen("_lpy_shape_%d = %s" % (i, strify(arg.unvec_shape[i])))
+
+        itemsize = kernel_arg.dtype.numpy_dtype.itemsize
+        for i in range(num_axes):
+            gen("_lpy_strides_%d = %s" % (i, strify(
+                itemsize*arg.unvec_strides[i])))
+
+        if not skip_arg_checks:
+            for i in range(num_axes):
+                gen("assert _lpy_strides_%d > 0, "
+                        "\"'%s' has negative stride in axis %d\""
+                        % (i, arg.name, i))
+
+        sym_strides = tuple(
+                var("_lpy_strides_%d" % i)
+                for i in range(num_axes))
+
+        sym_shape = tuple(
+                var("_lpy_shape_%d" % i)
+                for i in range(num_axes))
+
+        gen("%(name)s = _lpy_np.empty(%(shape)s, "
+                "%(dtype)s)"
+                % dict(
+                    name=arg.name,
+                    shape=strify(sym_shape),
+                    dtype=self.python_dtype_str(
+                        kernel_arg.dtype.numpy_dtype)))
+
+        #check strides
+        gen("%(name)s = _lpy_strided(%(name)s, %(shape)s, "
+                "%(strides)s)"
+                % dict(
+                    name=arg.name,
+                    shape=strify(sym_shape),
+                    strides=strify(sym_strides)))
+
+        if not skip_arg_checks:
+            for i in range(num_axes):
+                gen("del _lpy_shape_%d" % i)
+                gen("del _lpy_strides_%d" % i)
+            gen("")
+
+    # }}}
+
+    def target_specific_preamble(self, gen):
+        """
+        Add default C-imports to preamble
+        """
+        gen.add_to_preamble("import numpy as _lpy_np")
+
+    def initialize_system_args(self, gen):
+        """
+        Initializes possibly empty system arguements
+        """
+        pass
+
+    # {{{ generate invocation
+
+    def generate_invocation(self, gen, kernel_name, args):
+        gen("for knl in _lpy_c_kernels:")
+        with Indentation(gen):
+            gen('knl({args})'.format(
+                args=", ".join(args)))
+    # }}}
+
+    # {{{
+
+    def generate_output_handler(
+            self, gen, options, kernel, implemented_data_info):
+
+        from loopy.kernel.data import KernelArgument
+
+        if options.return_dict:
+            gen("return None, {%s}"
+                    % ", ".join("\"%s\": %s" % (arg.name, arg.name)
+                        for arg in implemented_data_info
+                        if issubclass(arg.arg_class, KernelArgument)
+                        if arg.base_name in kernel.get_written_variables()))
+        else:
+            out_args = [arg
+                    for arg in implemented_data_info
+                        if issubclass(arg.arg_class, KernelArgument)
+                    if arg.base_name in kernel.get_written_variables()]
+            if out_args:
+                gen("return None, (%s,)"
+                        % ", ".join(arg.name for arg in out_args))
+            else:
+                gen("return None, ()")
+
+    # }}}
+
+    def generate_host_code(self, gen, codegen_result):
+        pass
+
+    def get_arg_pass(self, arg):
+        return arg.name
+
 
 """
 The compiler module handles invocation of compilers to generate a shared lib
