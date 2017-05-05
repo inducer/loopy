@@ -97,23 +97,31 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 var("_lpy_shape_%d" % i)
                 for i in range(num_axes))
 
+        # find order of array
+        order = "'C'"
+        if num_axes > 1:
+            ldim = arg.unvec_strides[1]
+            if ldim == arg.unvec_shape[0]:
+                order = "'F'"
+            else:
+                order = "'C'"
+
         gen("%(name)s = _lpy_np.empty(%(shape)s, "
-                "%(dtype)s)"
+                "%(dtype)s, order=%(order)s)"
                 % dict(
                     name=arg.name,
                     shape=strify(sym_shape),
                     dtype=self.python_dtype_str(
-                        kernel_arg.dtype.numpy_dtype)))
+                        kernel_arg.dtype.numpy_dtype),
+                    order=order))
 
         #check strides
-        gen("%(name)s = _lpy_strided(%(name)s, %(shape)s, "
-                "%(strides)s)"
-                % dict(
-                    name=arg.name,
-                    shape=strify(sym_shape),
-                    strides=strify(sym_strides)))
-
         if not skip_arg_checks:
+            gen("assert '%(strides)s == %(name)s.strides', "
+                    "'Strides of loopy created array %(name)s, "
+                    "do not match expected.'" %
+                    dict(name=arg.name,
+                         strides=strify(sym_strides)))
             for i in range(num_axes):
                 gen("del _lpy_shape_%d" % i)
                 gen("del _lpy_strides_%d" % i)
