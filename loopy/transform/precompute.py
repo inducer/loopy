@@ -684,7 +684,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         def add_assumptions(d):
             assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
             assumptions, domain = isl.align_two(assumption_non_param, d)
-            return d & assumptions
+            return assumptions & domain
 
         # {{{ check that we got the desired domain
 
