@@ -214,8 +214,12 @@ class TemporarySaver(object):
             non-hardware dimensions
         """
 
-        __slots__ = ["name", "orig_temporary_name", "hw_dims", "hw_tags",
-                "non_hw_dims"]
+        __slots__ = """
+                name
+                orig_temporary_name
+                hw_dims
+                hw_tags
+                non_hw_dims""".split()
 
         def as_kernel_temporary(self, kernel):
             temporary = kernel.temporary_variables[self.orig_temporary_name]
@@ -430,7 +434,7 @@ class TemporarySaver(object):
             non_hw_dims = (1,)
 
         backing_temporary = self.PromotedTemporary(
-            name=self.var_name_gen(temporary.name + "__save_slot"),
+            name=self.var_name_gen(temporary.name + "_save_slot"),
             orig_temporary_name=temporary.name,
             hw_dims=hw_dims,
             hw_tags=hw_tags,
