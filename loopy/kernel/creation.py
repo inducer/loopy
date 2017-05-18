@@ -942,7 +942,10 @@ def parse_instructions(instructions, defines):
 
 # {{{ domain parsing
 
-EMPTY_SET_DIMS_RE = re.compile(r"^\s*\{\s*\:")
+EMPTY_SET_DIMS_RE = re.compile(
+        r"^\s*\{\s*"
+        r"(?:\[\])?"
+        r"\s*\:")
 SET_DIMS_RE = re.compile(r"^\s*\{\s*\[([a-zA-Z0-9_, ]+)\]\s*\:")
 
 
