@@ -29,9 +29,11 @@ from pyopencl.tools import (  # noqa
         as pytest_generate_tests)
 import loopy as lp
 from loopy.types import to_loopy_type
+from loopy.diagnostic import LoopyError
 import numpy as np
 
 from pymbolic.primitives import Variable
+import pytest
 
 
 def test_op_counter_basic():
@@ -704,7 +706,7 @@ def test_gather_access_footprint():
     fp = gather_access_footprints(knl)
 
     for key, footprint in six.iteritems(fp):
-        print(key, count(knl, footprint))
+        print(key, count(footprint, kernel=knl))
 
 
 def test_gather_access_footprint_2():
@@ -719,8 +721,8 @@ def test_gather_access_footprint_2():
 
     params = {"n": 200}
     for key, footprint in six.iteritems(fp):
-        assert count(knl, footprint).eval_with_dict(params) == 200
-        print(key, count(knl, footprint))
+        assert count(footprint, kernel=knl).eval_with_dict(params) == 200
+        print(key, count(footprint, kernel=knl))
 
 
 def test_summations_and_filters():

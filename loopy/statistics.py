@@ -940,7 +940,11 @@ class AccessFootprintGatherer(CombineMapper):
 
 # {{{ count
 
-def count(kernel, set):
+def count(set, kernel=None, sloppy=False):
+    """
+    :arg kernel: only used for error reporting, may be *None*
+    """
+
     try:
         return set.card()
     except AttributeError:
@@ -1003,6 +1007,8 @@ def count(kernel, set):
 
             # }}}
 
+        # end for (i)
+
         if bset_count is not None:
             count += bset_count
 
@@ -1011,23 +1017,37 @@ def count(kernel, set):
 
         if not (is_subset and is_superset):
             if is_subset:
-                warn_with_kernel(kernel, "count_overestimate",
-                        "Barvinok wrappers are not installed. "
-                        "Counting routines have overestimated the "
+                warn_tp = "count_overestimate"
+                msg = ("Fallback counting routines have overestimated the "
                         "number of integer points in your loop "
                         "domain.")
             elif is_superset:
-                warn_with_kernel(kernel, "count_underestimate",
-                        "Barvinok wrappers are not installed. "
-                        "Counting routines have underestimated the "
+                warn_tp = "count_underestimate"
+                msg = ("Fallback counting routines have underestimated the "
                         "number of integer points in your loop "
                         "domain.")
             else:
-                warn_with_kernel(kernel, "count_misestimate",
-                        "Barvinok wrappers are not installed. "
-                        "Counting routines have misestimated the "
+                warn_tp = "count_misestimate",
+                msg = ("Fallback counting routines have misestimated the "
                         "number of integer points in your loop "
                         "domain.")
+            msg = (msg +
+                    " Correct estimates in all cases can be obtained "
+                    "by compiling islpy with Barvinok wrappers. This "
+                    "will automatically stop using the (simple-minded) "
+                    "fallback counting routines.")
+
+            if sloppy:
+                if kernel is not None:
+                    warn_with_kernel(kernel, warn_tp, msg)
+                else:
+                    from warnings import warn
+                    warn(msg)
+            else:
+                raise LoopyError(msg
+                    + " You may ignore this error "
+                    "(at your own peril--you'll get incorrect results) "
+                    "by passing sloppy=True.")
 
     return count
 
@@ -1097,7 +1117,7 @@ def get_op_map(knl, numpy_types=True):
         domain = (inames_domain.project_out_except(
                                         insn_inames, [dim_type.set]))
         ops = op_counter(insn.assignee) + op_counter(insn.expression)
-        op_map = op_map + ops*count(knl, domain)
+        op_map = op_map + ops*count(domain, kernel=knl)
 
     if numpy_types:
         op_map.count_map = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
@@ -1225,7 +1245,7 @@ def get_mem_access_map(knl, numpy_types=True):
         inames_domain = knl.get_inames_domain(insn_inames)
         domain = (inames_domain.project_out_except(
                                 insn_inames, [dim_type.set]))
-        return count(knl, domain)
+        return count(domain, kernel=knl)
 
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
@@ -1348,10 +1368,10 @@ def get_synchronization_map(knl):
 
     def get_count_poly(iname_list):
         if iname_list:  # (if iname_list is not empty)
-            ct = (count(knl, (
-                            knl.get_inames_domain(iname_list).
-                            project_out_except(iname_list, [dim_type.set])
-                            )), )
+            ct = (count(
+                            knl.get_inames_domain(iname_list)
+                            .project_out_except(iname_list, [dim_type.set]),
+                            kernel=knl), )
             return reduce(mul, ct)
         else:
             return one
@@ -1467,7 +1487,7 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
         var_descr = kernel.get_var_descriptor(vname)
         bytes_transferred = (
                 int(var_descr.dtype.numpy_dtype.itemsize)
-                * count(kernel, var_fp))
+                * count(var_fp, kernel=kernel))
         if key in result:
             result[key] += bytes_transferred
         else:
