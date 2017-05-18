@@ -583,6 +583,14 @@ def dim_max_with_elimination(obj, idx):
 
 # {{{ get_simple_strides
 
+def get_dim_idx_and_coeff(dts, aff_like):
+    return [
+            (dt, dim_idx, aff_like.get_coefficient_val(dt, dim_idx))
+            for dt in dts
+            for dim_idx in range(aff_like.dim(dt))
+            if not aff_like.get_coefficient_val(dt, dim_idx).is_zero()]
+
+
 def get_simple_strides(bset, key_by="name"):
     """Return a dictionary from inames to strides in bset. Each stride is
     returned as a :class:`islpy.Val`. If no stride can be determined, the
@@ -598,50 +606,84 @@ def get_simple_strides(bset, key_by="name"):
     assert len(comp_div_set_pieces) == 1
     bset, = comp_div_set_pieces
 
-    lspace = bset.get_local_space()
-    for idiv in range(lspace.dim(dim_type.div)):
-        div = lspace.get_div(idiv)
-
-        # check for sub-divs
-        supported = True
-        for dim_idx in range(div.dim(dim_type.div)):
-            coeff_val = div.get_coefficient_val(dim_type.div, dim_idx)
-            if not coeff_val.is_zero():
-                # sub-divs not supported
-                supported = False
-                break
-
-        if not supported:
+    for constr in bset.get_constraints():
+        if not constr.is_equality():
             continue
 
-        denom = div.get_denominator_val().to_python()
+        # Pick apart constraints of the form
+        # Constraint("[n] -> { [i] : 2*floor((i)/2) + -1*i = 0 }")
+        # (and only those)
 
-        inames_and_coeffs = []
-        for dt in [dim_type.param, dim_type.in_]:
-            for dim_idx in range(div.dim(dt)):
-                coeff_val = div.get_coefficient_val(dt, dim_idx) * denom
-                if not coeff_val.is_zero():
-                    inames_and_coeffs.append((dt, dim_idx, coeff_val))
+        aff = constr.get_aff()
 
-        if len(inames_and_coeffs) != 1:
+        relevant_div_indices = get_dim_idx_and_coeff([dim_type.div], aff)
+
+        if aff.get_denominator_val().to_python() != 1:
+            # not supported
             continue
 
-        (dt, dim_idx, coeff), = inames_and_coeffs
+        if len(relevant_div_indices) == 0:
+            # won't cause striding
+            continue
 
-        if coeff != 1:
+        if len(relevant_div_indices) > 1:
+            # not supported
+            continue
+
+        (_, div_idx, div_coeff), = relevant_div_indices
+        div_coeff = div_coeff.to_python()
+        div = aff.get_div(div_idx)
+
+        if get_dim_idx_and_coeff([dim_type.div], div):
+            # sub-divs not supported
+            continue
+
+        in_div_denom = div.get_denominator_val().to_python()
+
+        in_div_inames_and_coeffs = get_dim_idx_and_coeff(
+                [dim_type.param, dim_type.in_], div)
+
+        if len(in_div_inames_and_coeffs) != 1:
+            continue
+
+        (in_div_dt, in_div_dim_idx, in_div_coeff), = in_div_inames_and_coeffs
+        in_div_coeff = (in_div_coeff * in_div_denom).to_python()
+
+        if in_div_coeff != 1:
+            # not supported
+            continue
+        if div_coeff != in_div_denom:
+            # not supported
+            continue
+        if in_div_dt == dim_type.param:
+            # not a stride, don't care
+            continue
+        assert in_div_dt == dim_type.in_
+
+        aff_inames_and_coeffs = get_dim_idx_and_coeff(
+                [dim_type.param, dim_type.in_], aff)
+
+        if len(aff_inames_and_coeffs) != 1:
+            # not supported
+            continue
+
+        (aff_dt, aff_dim_idx, aff_coeff), = aff_inames_and_coeffs
+
+        if not (aff_coeff + 1).is_zero():  # must be -1
+            # not supported
+            continue
+        if (aff_dt, aff_dim_idx) != (dim_type.in_, in_div_dim_idx):
             # not supported
             continue
 
         if key_by == "name":
-            key = bset.get_dim_name(dt, dim_idx)
+            key = bset.get_dim_name(in_div_dt, in_div_dim_idx)
         elif key_by == "index":
-            key_dt = dt if dt != dim_type.in_ else dim_type.set
-
-            key = (key_dt, dim_idx)
+            key = (dim_type.set, in_div_dim_idx)
         else:
             raise ValueError("invalid value of 'key_by")
 
-        result[key] = denom
+        result[key] = in_div_denom
 
     return result
 
