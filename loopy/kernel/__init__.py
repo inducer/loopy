@@ -76,6 +76,9 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
         # names by appending '_s<NUMBER>'. Make sure that no
         # conflicts can arise from these names.
 
+        # Case 1: a_s0 is already a name, we are trying to insert a
+        # Case 2: a is already a name, we are trying to insert a_s0
+
         if name in self.array_prefixes:
             return True
 
