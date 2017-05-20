@@ -44,33 +44,46 @@ from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 
 # {{{ unique var names
 
-def _is_var_name_conflicting_with_longer(name_a, name_b):
-    # Array dimensions implemented as separate arrays generate
-    # names by appending '_s<NUMBER>'. Make sure that no
-    # conflicts can arise from these names.
-
-    # Only deal with the case of b longer than a.
-    if not name_b.startswith(name_a):
-        return False
-
-    return re.match("^%s_s[0-9]+" % re.escape(name_b), name_a) is not None
-
-
-def _is_var_name_conflicting(name_a, name_b):
-    if name_a == name_b:
-        return True
-
-    return (
-            _is_var_name_conflicting_with_longer(name_a, name_b)
-            or _is_var_name_conflicting_with_longer(name_b, name_a))
-
-
 class _UniqueVarNameGenerator(UniqueNameGenerator):
+
+    def __init__(self, existing_names=set(), forced_prefix=""):
+        super(_UniqueVarNameGenerator, self).__init__(existing_names, forced_prefix)
+        array_prefix_pattern = re.compile("(.*)_s[0-9]+$")
+
+        array_prefixes = set()
+        for name in existing_names:
+            match = array_prefix_pattern.match(name)
+            if match is None:
+                continue
+
+            array_prefixes.add(match.group(1))
+
+        self.array_prefixes = array_prefixes
+        self.array_prefix_pattern = array_prefix_pattern
+
+    def _name_added(self, name):
+        match = self.array_prefix_pattern.match(name)
+        if match is None:
+            return
+
+        self.array_prefixes.add(match.group(1))
+
     def is_name_conflicting(self, name):
-        from pytools import any
-        return any(
-                _is_var_name_conflicting(name, other_name)
-                for other_name in self.existing_names)
+        if name in self.existing_names:
+            return True
+
+        # Array dimensions implemented as separate arrays generate
+        # names by appending '_s<NUMBER>'. Make sure that no
+        # conflicts can arise from these names.
+
+        if name in self.array_prefixes:
+            return True
+
+        match = self.array_prefix_pattern.match(name)
+        if match is None:
+            return False
+
+        return match.group(1) in self.existing_names
 
 # }}}
 
