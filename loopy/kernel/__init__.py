@@ -58,7 +58,7 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
 
             array_prefixes.add(match.group(1))
 
-        self.array_prefixes = array_prefixes
+        self.conflicting_array_prefixes = array_prefixes
         self.array_prefix_pattern = array_prefix_pattern
 
     def _name_added(self, name):
@@ -66,7 +66,7 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
         if match is None:
             return
 
-        self.array_prefixes.add(match.group(1))
+        self.conflicting_array_prefixes.add(match.group(1))
 
     def is_name_conflicting(self, name):
         if name in self.existing_names:
@@ -76,10 +76,10 @@ class _UniqueVarNameGenerator(UniqueNameGenerator):
         # names by appending '_s<NUMBER>'. Make sure that no
         # conflicts can arise from these names.
 
-        # Case 1: a_s0 is already a name, we are trying to insert a
-        # Case 2: a is already a name, we are trying to insert a_s0
+        # Case 1: a_s0 is already a name; we are trying to insert a
+        # Case 2: a is already a name; we are trying to insert a_s0
 
-        if name in self.array_prefixes:
+        if name in self.conflicting_array_prefixes:
             return True
 
         match = self.array_prefix_pattern.match(name)
