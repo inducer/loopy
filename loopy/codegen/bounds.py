@@ -70,7 +70,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
     for prev_sched_index, sched_item in enumerate(kernel.schedule):
         if prev_sched_index == sched_index:
             if not within_subkernel:
-                # Outside all subkernels - use only inames available to device.
+                # Outside all subkernels - use only inames available to host.
                 return frozenset(result)
 
         from loopy.schedule import CallKernel, ReturnFromKernel
