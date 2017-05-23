@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 import loopy as lp
+import six
 
 from loopy.kernel.data import auto, temp_var_scope
 from pytools import memoize_method, Record
@@ -267,6 +268,49 @@ class TemporarySaver(object):
                             arg.name for arg in kernel.args
                             if isinstance(arg, ValueArg)))))
 
+    def find_accessing_instructions_in_subkernel(self, temporary, subkernel):
+        # Find all accessing instructions in the subkernel. If base_storage is
+        # present, this includes instructions that access aliasing memory.
+
+        aliasing_names = set([temporary])
+        base_storage = self.kernel.temporary_variables[temporary].base_storage
+
+        if base_storage is not None:
+            aliasing_names |= self.base_storage_to_temporary_map[base_storage]
+
+        from loopy.kernel.tools import get_subkernel_to_insn_id_map
+        accessing_insns_in_subkernel = set()
+        subkernel_insns = get_subkernel_to_insn_id_map(self.kernel)[subkernel]
+
+        for name in aliasing_names:
+            try:
+                accessing_insns_in_subkernel |= (
+                        self.kernel.reader_map()[name] & subkernel_insns)
+            except KeyError:
+                pass
+
+            try:
+                accessing_insns_in_subkernel |= (
+                        self.kernel.writer_map()[name] & subkernel_insns)
+            except KeyError:
+                pass
+
+        return frozenset(accessing_insns_in_subkernel)
+
+    @property
+    @memoize_method
+    def base_storage_to_temporary_map(self):
+        from collections import defaultdict
+
+        result = defaultdict(set)
+
+        for temporary in six.itervalues(self.kernel.temporary_variables):
+            if temporary.base_storage is None:
+                continue
+            result[temporary.base_storage].add(temporary.name)
+
+        return result
+
     @property
     @memoize_method
     def subkernel_to_slice_indices(self):
@@ -488,11 +532,8 @@ class TemporarySaver(object):
         if mode == "save":
             args = reversed(args)
 
-        from loopy.kernel.tools import get_subkernel_to_insn_id_map
-        accessing_insns_in_subkernel = (frozenset(
-                self.kernel.reader_map()[temporary]
-                | self.kernel.writer_map()[temporary])
-            & get_subkernel_to_insn_id_map(self.kernel)[subkernel])
+        accessing_insns_in_subkernel = self.find_accessing_instructions_in_subkernel(
+                temporary, subkernel)
 
         if mode == "save":
             depends_on = accessing_insns_in_subkernel

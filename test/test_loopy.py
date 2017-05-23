@@ -1146,7 +1146,7 @@ def save_and_reload_temporaries_test(queue, knl, out_expect, debug=False):
         1/0
 
     _, (out,) = knl(queue, out_host=True)
-    assert (out == out_expect).all()
+    assert (out == out_expect).all(), (out, out_expect)
 
 
 @pytest.mark.parametrize("hw_loop", [True, False])
@@ -1336,6 +1336,31 @@ def test_save_local_multidim_array(ctx_factory, debug=False):
     knl = lp.tag_inames(knl, dict(j="l.0", i="g.0"))
 
     save_and_reload_temporaries_test(queue, knl, 1, debug)
+
+
+def test_save_with_base_storage(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+            <>a[i] = 0
+            <>b[i] = i
+            ... gbarrier
+            out[i] = a[i]
+            """,
+            "...",
+            seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.set_temporary_scope(knl, "a", "local")
+    knl = lp.set_temporary_scope(knl, "b", "local")
+
+    knl = lp.alias_temporaries(knl, ["a", "b"],
+            synchronize_for_exclusive_use=False)
+
+    save_and_reload_temporaries_test(queue, knl, np.arange(10), debug)
 
 
 def test_missing_temporary_definition_detection():
