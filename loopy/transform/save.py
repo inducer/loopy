@@ -409,7 +409,7 @@ class TemporarySaver(object):
                 elif isinstance(tag, LocalIndexTag):
                     my_local_tags.append(tag)
                 elif isinstance(tag, ParallelTag):
-                    raise ValueError(
+                    raise LoopyError(
                         "iname '%s' is tagged with '%s' - only "
                         "group and local tags are supported for "
                         "auto save/reload of temporaries" %
@@ -423,7 +423,7 @@ class TemporarySaver(object):
             if (
                     group_tags != _sortedtags(my_group_tags)
                     or local_tags != _sortedtags(my_local_tags)):
-                raise ValueError(
+                raise LoopyError(
                     "inconsistent parallel tags across instructions that access "
                     "'%s' (specifically, instruction '%s' has tags '%s' but "
                     "instruction '%s' has tags '%s')"
