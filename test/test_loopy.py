@@ -2231,6 +2231,29 @@ def test_struct_assignment(ctx_factory):
     knl(queue, N=200)
 
 
+def test_inames_conditional_generation(ctx_factory):
+    ctx = ctx_factory()
+    knl = lp.make_kernel(
+            "{[i,j,k]: 0 < k < i and 0 < j < 10 and 0 < i < 10}",
+            """
+            for k
+                ... gbarrier
+                <>tmp1 = 0
+            end
+            for j
+                ... gbarrier
+                <>tmp2 = i
+            end
+            """,
+            "...",
+            seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, dict(i="g.0"))
+
+    with cl.CommandQueue(ctx) as queue:
+        knl(queue)
+
+
 def test_kernel_var_name_generator():
     knl = lp.make_kernel(
             "{[i]: 0 <= i <= 10}",
