@@ -473,8 +473,8 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
                     codegen_state,
                     astb.emit_sequential_loop(
                         codegen_state, loop_iname, kernel.index_dtype,
-                        pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions)),
-                        pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions)),
+                        pw_aff_to_expr(simplify_pw_aff(lbound, kernel.assumptions), default_val=1),
+                        pw_aff_to_expr(simplify_pw_aff(ubound, kernel.assumptions), default_val=0),
                         inner_ast)))
 
     return merge_codegen_results(codegen_state, result)

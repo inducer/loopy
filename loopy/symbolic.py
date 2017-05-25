@@ -1169,7 +1169,7 @@ def aff_to_expr(aff):
     return result // denom
 
 
-def pw_aff_to_expr(pw_aff, int_ok=False):
+def pw_aff_to_expr(pw_aff, default_val=None, int_ok=False):
     if isinstance(pw_aff, int):
         if not int_ok:
             from warnings import warn
@@ -1183,8 +1183,12 @@ def pw_aff_to_expr(pw_aff, int_ok=False):
     pairs = [(set_to_cond_expr(constr_set), aff_to_expr(aff))
              for constr_set, aff in pieces[:-1]]
 
+    if default_val is not None and not pieces[-1][0].plain_is_universe():
+        pairs.append((set_to_cond_expr(pieces[-1][0]), last_expr))
+
     from pymbolic.primitives import If
-    expr = last_expr
+
+    expr = last_expr if default_val is None else default_val
     for condition, then_expr in reversed(pairs):
         expr = If(condition, then_expr, expr)
 
