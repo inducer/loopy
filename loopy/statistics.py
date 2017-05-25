@@ -66,16 +66,17 @@ class ToCountMap(object):
 
     """
 
-    def __init__(self, init_dict=None):
+    def __init__(self, init_dict=None, val_type=isl.PwQPolynomial):
         if init_dict is None:
             init_dict = {}
         self.count_map = init_dict
+        self.val_type = val_type
 
     def __add__(self, other):
         result = self.count_map.copy()
         for k, v in six.iteritems(other.count_map):
             result[k] = self.count_map.get(k, 0) + v
-        return ToCountMap(result)
+        return ToCountMap(result, self.val_type)
 
     def __radd__(self, other):
         if other != 0:
@@ -101,7 +102,11 @@ class ToCountMap(object):
         try:
             return self.count_map[index]
         except KeyError:
-            return isl.PwQPolynomial('{ 0 }')
+            #TODO what is the best way to handle this?
+            if self.val_type is isl.PwQPolynomial:
+                return isl.PwQPolynomial('{ 0 }')
+            else:
+                return 0
 
     def __setitem__(self, index, value):
         self.count_map[index] = value
@@ -111,6 +116,9 @@ class ToCountMap(object):
 
     def __len__(self):
         return len(self.count_map)
+
+    def get(self, key, default=None):
+        return self.count_map.get(key, default)
 
     def items(self):
         return self.count_map.items()
@@ -122,7 +130,7 @@ class ToCountMap(object):
         return self.count_map.pop(item)
 
     def copy(self):
-        return ToCountMap(dict(self.count_map))
+        return ToCountMap(dict(self.count_map), self.val_type)
 
     def filter_by(self, **kwargs):
         """Remove items without specified key fields.
@@ -149,7 +157,7 @@ class ToCountMap(object):
 
         """
 
-        result_map = ToCountMap()
+        result_map = ToCountMap(val_type=self.val_type)
 
         from loopy.types import to_loopy_type
         if 'dtype' in kwargs.keys():
@@ -197,7 +205,7 @@ class ToCountMap(object):
 
         """
 
-        result_map = ToCountMap()
+        result_map = ToCountMap(val_type=self.val_type)
 
         # for each item in self.count_map, call func on the key
         for self_key, self_val in self.items():
@@ -252,7 +260,7 @@ class ToCountMap(object):
 
         """
 
-        result_map = ToCountMap()
+        result_map = ToCountMap(val_type=self.val_type)
 
         # make sure all item keys have same type
         if self.count_map:
@@ -315,22 +323,35 @@ class ToCountMap(object):
             bytes_processed = int(key.dtype.itemsize) * val
             result[key] = bytes_processed
 
+        #TODO again, is this okay?
+        result.val_type = int
+
         return result
 
     def sum(self):
         """Add all counts in ToCountMap.
 
-        :return: A :class:`islpy.PwQPolynomial` containing the sum of counts.
+        :return: A :class:`islpy.PwQPolynomial` or :class:`int` containing the sum of
+                 counts.
 
         """
-        total = isl.PwQPolynomial('{ 0 }')
+
+        if self.val_type is isl.PwQPolynomial:
+            total = isl.PwQPolynomial('{ 0 }')
+        else:
+            total = 0
+
         for k, v in self.items():
-            if not isinstance(v, isl.PwQPolynomial):
-                raise ValueError("ToCountMap: sum() encountered type {0} but "
-                                 "may only be used on PwQPolynomials."
-                                 .format(type(v)))
             total += v
         return total
+
+    #TODO test and document
+    def eval(self, params):
+        result = self.copy()
+        for key, val in self.items():
+            result[key] = val.eval_with_dict(params)
+        result.val_type = int
+        return result
 
     def eval_and_sum(self, params):
         """Add all counts in :class:`ToCountMap` and evaluate with provided
