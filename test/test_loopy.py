@@ -2254,6 +2254,20 @@ def test_inames_conditional_generation(ctx_factory):
         knl(queue)
 
 
+def test_kernel_var_name_generator():
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i <= 10}",
+            """
+            <>a = 0
+            <>b_s0 = 0
+            """)
+
+    vng = knl.get_var_name_generator()
+
+    assert vng("a_s0") != "a_s0"
+    assert vng("b") != "b"
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
