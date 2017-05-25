@@ -63,22 +63,20 @@ def get_usable_inames_for_conditional(kernel, sched_index):
     result = find_active_inames_at(kernel, sched_index)
     crosses_barrier = has_barrier_within(kernel, sched_index)
 
-    # Find our containing subkernel, grab inames for all insns from there.
-
+    # Find our containing subkernel. Grab inames for all insns from there.
     within_subkernel = False
 
-    for prev_sched_index, sched_item in enumerate(kernel.schedule):
-        if prev_sched_index == sched_index:
-            if not within_subkernel:
-                # Outside all subkernels - use only inames available to host.
-                return frozenset(result)
-
+    for sched_item_index, sched_item in enumerate(kernel.schedule[:sched_index+1]):
         from loopy.schedule import CallKernel, ReturnFromKernel
         if isinstance(sched_item, CallKernel):
             within_subkernel = True
-            subkernel_index = prev_sched_index
+            subkernel_index = sched_item_index
         elif isinstance(sched_item, ReturnFromKernel):
             within_subkernel = False
+
+    if not within_subkernel:
+        # Outside all subkernels - use only inames available to host.
+        return frozenset(result)
 
     insn_ids_for_subkernel = get_insn_ids_for_block_at(
         kernel.schedule, subkernel_index)
