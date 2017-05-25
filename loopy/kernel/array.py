@@ -1208,10 +1208,9 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
 
         if ary.offset:
             if ary.offset is lp.auto:
-                offset_name = array_name+"_offset"
+                return var(array_name+"_offset") + sub
             elif isinstance(ary.offset, str):
-                offset_name = ary.offset
-                return var(offset_name) + sub
+                return var(ary.offset) + sub
             else:
                 # assume it's an expression
                 return ary.offset + sub
