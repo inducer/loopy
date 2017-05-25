@@ -1036,7 +1036,9 @@ class ArrayBase(ImmutableRecord):
 
                             is_written=is_written)
 
-                if self.offset:
+                import loopy as lp
+
+                if self.offset is lp.auto:
                     offset_name = full_name+"_offset"
                     yield ImplementedDataInfo(
                                 target=target,
@@ -1202,12 +1204,17 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
         return result
 
     def apply_offset(sub):
-        if ary.offset:
-            offset_name = ary.offset
-            if offset_name is lp.auto:
-                offset_name = array_name+"_offset"
+        import loopy as lp
 
-            return var(offset_name) + sub
+        if ary.offset:
+            if ary.offset is lp.auto:
+                offset_name = array_name+"_offset"
+            elif isinstance(ary.offset, str):
+                offset_name = ary.offset
+                return var(offset_name) + sub
+            else:
+                # assume it's an expression
+                return ary.offset + sub
         else:
             return sub
 
