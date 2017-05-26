@@ -594,6 +594,10 @@ def get_simple_strides(bset, key_by="name"):
     """
     result = {}
 
+    comp_div_set_pieces = convexify(bset.compute_divs()).get_basic_sets()
+    assert len(comp_div_set_pieces) == 1
+    bset, = comp_div_set_pieces
+
     lspace = bset.get_local_space()
     for idiv in range(lspace.dim(dim_type.div)):
         div = lspace.get_div(idiv)
