@@ -615,8 +615,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 # nothin' new
                 continue
 
-            domain_parents = [home_domain_index] + ppd[home_domain_index]
-            current_root = domain_parents[-1]
+            domain_path_to_root = [home_domain_index] + ppd[home_domain_index]
+            current_root = domain_path_to_root[-1]
             previous_leaf = root_to_leaf.get(current_root)
 
             if previous_leaf is not None:
@@ -626,8 +626,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 # it can introduce artificial restrictions on variables
                 # further up the tree.
 
-                prev_parents = set(ppd[previous_leaf])
-                if not prev_parents <= set(domain_parents):
+                prev_path_to_root = set([previous_leaf] + ppd[previous_leaf])
+                if not prev_path_to_root <= set(domain_path_to_root):
                     raise CannotBranchDomainTree("iname set '%s' requires "
                             "branch in domain tree (when adding '%s')"
                             % (", ".join(inames), iname))
@@ -636,7 +636,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 pass
 
             root_to_leaf[current_root] = home_domain_index
-            domain_indices.update(domain_parents)
+            domain_indices.update(domain_path_to_root)
 
         return list(root_to_leaf.values())
 
