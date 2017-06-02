@@ -363,14 +363,14 @@ class PyOpenCLTarget(OpenCLTarget):
             raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
 
     def is_vector_dtype(self, dtype):
-        from pyopencl.array import vec
+        import pyopencl.cltypes as cltypes
         return (isinstance(dtype, NumpyType)
-                and dtype.numpy_dtype in list(vec.types.values()))
+                and dtype.numpy_dtype in list(cltypes.vec_types.values()))
 
     def vector_dtype(self, base, count):
-        from pyopencl.array import vec
+        import pyopencl.cltypes as cltypes
         return NumpyType(
-                vec.types[base.numpy_dtype, count],
+                cltypes.vec_types[base.numpy_dtype, count],
                 target=self)
 
     def alignment_requirement(self, type_decl):
