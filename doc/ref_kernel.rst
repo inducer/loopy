@@ -5,8 +5,8 @@ Reference: Loopy's Model of a Kernel
 
 .. _domain-tree:
 
-Loop Domain Tree
-----------------
+Loop Domain Forest
+------------------
 
 .. {{{
 
@@ -29,9 +29,28 @@ Note that *n* in the example is not an iname. It is a
 :ref:`domain-parameters` that is passed to the kernel by the user.
 
 To accommodate some data-dependent control flow, there is not actually
-a single loop domain, but rather a *tree of loop domains*,
-allowing more deeply nested domains to depend on inames
+a single loop domain, but rather a *forest of loop domains* (a collection
+of trees) allowing more deeply nested domains to depend on inames
 introduced by domains closer to the root.
+
+Here is an example::
+
+    { [l] : 0 <= l <= 2 }
+      { [i] : start <= i < end }
+      { [j] : start <= j < end }
+
+The i and j domains are "children" of the l domain (visible from indentation).
+This is also how :mod:`loopy` prints the domain forest, to make the parent/child
+relationship visible.  In the example, the parameters start/end might be read
+inside of the 'l' loop.
+
+The idea is that domains form a forest (a collection of trees), and a
+"sub-forest" is extracted that covers all the inames for each
+instruction. Each individual sub-tree is then checked for branching,
+which is ill-formed. It is declared ill-formed because intersecting, in
+the above case, the l, i, and j domains could result in restrictions from the
+i domain affecting the j domain by way of how i affects l--which would
+be counterintuitive to say the least.)
 
 .. _inames:
 
