@@ -30,6 +30,10 @@ import numpy as np
 from loopy.tools import is_integer
 from loopy.types import NumpyType
 
+from pytools.persistent_dict import PersistentDict
+from loopy.tools import LoopyKeyBuilder
+from loopy.version import DATA_MODEL_VERSION
+
 from loopy.diagnostic import (
         LoopyError,
         TypeInferenceFailure, DependencyTypeInferenceFailure)
@@ -480,10 +484,13 @@ class _DictUnionView:
         raise KeyError(key)
 
 
-# {{{ infer_unknown_types
+# {{{ get_inferred_types (uncached)
 
-def infer_unknown_types(kernel, expect_completion=False):
+def get_inferred_types_uncached(kernel, expect_completion=None):
     """Infer types on temporaries and arguments."""
+
+    if expect_completion is None:
+        expect_completion = False
 
     logger.debug("%s: infer types" % kernel.name)
 
@@ -493,7 +500,6 @@ def infer_unknown_types(kernel, expect_completion=False):
     import time
     start_time = time.time()
 
-    unexpanded_kernel = kernel
     if kernel.substitutions:
         from loopy.transform.subst import expand_subst
         kernel = expand_subst(kernel)
@@ -551,6 +557,8 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     from loopy.kernel.data import TemporaryVariable, KernelArgument
 
+    names_with_inferred_types = set()
+
     for var_chain in sccs:
         changed_during_last_queue_run = False
         queue = var_chain[:]
@@ -586,6 +594,7 @@ def infer_unknown_types(kernel, expect_completion=False):
                     debug("     changed from: %s", item.dtype)
                     changed_during_last_queue_run = True
 
+                    names_with_inferred_types.add(name)
                     if isinstance(item, TemporaryVariable):
                         new_temp_vars[name] = item.copy(dtype=new_dtype)
                     elif isinstance(item, KernelArgument):
@@ -634,10 +643,63 @@ def infer_unknown_types(kernel, expect_completion=False):
     logger.debug("type inference took {dur:.2f} seconds".format(
             dur=end_time - start_time))
 
-    return unexpanded_kernel.copy(
-            temporary_variables=new_temp_vars,
-            args=[new_arg_dict[arg.name] for arg in kernel.args],
-            )
+    return dict(
+            (name, item_lookup[name].dtype.with_target(kernel.target))
+            for name in names_with_inferred_types)
+
+# }}}
+
+
+# {{{ get_inferred_types
+
+type_inference_cache = PersistentDict(
+        "loopy-type-inference-cache-v1-"+DATA_MODEL_VERSION,
+        key_builder=LoopyKeyBuilder())
+
+
+def get_inferred_types(kernel, expect_completion=None,
+        prepared_for_caching=False):
+    if not prepared_for_caching:
+        from loopy.preprocess import prepare_for_caching
+        kernel = prepare_for_caching(kernel)
+
+    from loopy import CACHING_ENABLED
+
+    cache_key = (kernel, expect_completion)
+    from_cache = False
+
+    if CACHING_ENABLED:
+        try:
+            result = type_inference_cache[cache_key]
+
+            logger.debug("%s: type inference cache hit" % kernel.name)
+            from_cache = True
+        except KeyError:
+            pass
+
+    if not from_cache:
+        result = get_inferred_types_uncached(
+                kernel, expect_completion=expect_completion)
+
+    if CACHING_ENABLED and not from_cache:
+        type_inference_cache[cache_key] = result
+
+    return result
+
+# }}}
+
+
+# {{{ infer_unknown_types
+
+def infer_unknown_types(kernel, expect_completion=None,
+        prepared_for_caching=False):
+    """Infer types on temporaries and arguments."""
+
+    inferred_types = get_inferred_types(kernel, expect_completion,
+            prepared_for_caching)
+
+    from loopy.kernel.tools import add_dtypes
+    return add_dtypes(kernel, inferred_types)
 
 # }}}
 

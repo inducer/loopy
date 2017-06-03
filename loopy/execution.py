@@ -114,8 +114,9 @@ class SeparateArrayPackingController(object):
 # {{{ KernelExecutorBase
 
 class KernelExecutorBase(object):
-    """An object connecting a kernel to a :class:`pyopencl.Context`
-    for execution.
+    """An object maintaining information needed to execute a :mod:`loopy`
+    kernel. Holds on to a partially-type-inferred and unscheduled
+    :class:`LoopKernel` instance.
 
     .. automethod:: __init__
     .. automethod:: __call__
@@ -161,7 +162,8 @@ class KernelExecutorBase(object):
             kernel = add_dtypes(kernel, var_to_dtype)
 
             from loopy.type_inference import infer_unknown_types
-            kernel = infer_unknown_types(kernel, expect_completion=True)
+            kernel = infer_unknown_types(kernel, expect_completion=True,
+                    prepared_for_caching=True)
 
         if kernel.schedule is None:
             from loopy.preprocess import preprocess_kernel
@@ -185,9 +187,10 @@ class KernelExecutorBase(object):
                 # offsets, strides and such
                 continue
 
+            from loopy.types import NumpyType
             if arg.dtype is None and val is not None:
                 try:
-                    dtype = val.dtype
+                    dtype = NumpyType(val.dtype, self.kernel.target)
                 except AttributeError:
                     pass
                 else:
