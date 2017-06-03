@@ -28,6 +28,13 @@ import numpy as np
 from pytools import ImmutableRecord, memoize_method
 from loopy.diagnostic import LoopyError
 
+import logging
+logger = logging.getLogger(__name__)
+
+from pytools.persistent_dict import PersistentDict
+from loopy.tools import LoopyKeyBuilder
+from loopy.version import DATA_MODEL_VERSION
+
 
 # {{{ object array argument packing
 
@@ -113,6 +120,11 @@ class SeparateArrayPackingController(object):
 
 # {{{ KernelExecutorBase
 
+typed_and_scheduled_cache = PersistentDict(
+        "loopy-typed-and-scheduled-cache-v1-"+DATA_MODEL_VERSION,
+        key_builder=LoopyKeyBuilder())
+
+
 class KernelExecutorBase(object):
     """An object connecting a kernel to a :class:`pyopencl.Context`
     for execution.
@@ -137,15 +149,14 @@ class KernelExecutorBase(object):
                 arg.dtype is None
                 for arg in kernel.args)
 
-    @memoize_method
-    def get_typed_and_scheduled_kernel(self, var_to_dtype_set):
-        kernel = self.kernel
-
+    def get_typed_and_scheduled_kernel_uncached(self, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
 
-        if var_to_dtype_set:
+        kernel = self.kernel
+
+        if arg_to_dtype_set:
             var_to_dtype = {}
-            for var, dtype in var_to_dtype_set:
+            for var, dtype in arg_to_dtype_set:
                 try:
                     dest_name = kernel.impl_arg_to_arg[var].name
                 except KeyError:
@@ -172,9 +183,32 @@ class KernelExecutorBase(object):
 
         return kernel
 
+    @memoize_method
+    def get_typed_and_scheduled_kernel(self, arg_to_dtype_set):
+        from loopy import CACHING_ENABLED
+
+        cache_key = (type(self).__name__, self.kernel, arg_to_dtype_set)
+        if CACHING_ENABLED:
+            try:
+                return typed_and_scheduled_cache[cache_key]
+            except KeyError:
+                pass
+
+        logger.debug("%s: typed-and-scheduled cache miss" % self.kernel.name)
+
+        kernel = self.get_typed_and_scheduled_kernel_uncached(arg_to_dtype_set)
+
+        if CACHING_ENABLED:
+            typed_and_scheduled_cache[cache_key] = kernel
+
+        return kernel
+
     def arg_to_dtype_set(self, kwargs):
         if not self.has_runtime_typed_args:
             return None
+
+        from loopy.types import NumpyType
+        target = self.kernel.target
 
         impl_arg_to_arg = self.kernel.impl_arg_to_arg
         arg_to_dtype = {}
@@ -191,7 +225,7 @@ class KernelExecutorBase(object):
                 except AttributeError:
                     pass
                 else:
-                    arg_to_dtype[arg_name] = dtype
+                    arg_to_dtype[arg_name] = NumpyType(dtype, target)
 
         return frozenset(six.iteritems(arg_to_dtype))
 

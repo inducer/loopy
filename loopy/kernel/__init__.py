@@ -1400,16 +1400,34 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         result.pop("cache_manager", None)
 
-        return result
+        # make sure that kernels are pickled with a cached hash key in place
+        from loopy.tools import LoopyKeyBuilder
+        LoopyKeyBuilder()(self)
+
+        return (result, self._pytools_persistent_hash_digest)
 
     def __setstate__(self, state):
+        attribs, p_hash_digest = state
+
         new_fields = set()
 
-        for k, v in six.iteritems(state):
+        for k, v in six.iteritems(attribs):
             setattr(self, k, v)
             new_fields.add(k)
 
         self.register_fields(new_fields)
+
+        if 0:
+            # {{{ check that 'reconstituted' object has same hash
+
+            from loopy.tools import LoopyKeyBuilder
+            LoopyKeyBuilder()(self)
+
+            assert p_hash_digest == self._pytools_persistent_hash_digest
+
+            # }}}
+        else:
+            self._pytools_persistent_hash_digest = p_hash_digest
 
         from loopy.kernel.tools import SetOperationCacheManager
         self.cache_manager = SetOperationCacheManager()
