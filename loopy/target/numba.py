@@ -103,6 +103,16 @@ class NumbaTarget(TargetBase):
     def get_device_ast_builder(self):
         return NumbaJITASTBuilder(self)
 
+    def get_kernel_executor_cache_key(self, *args, **kwargs):
+        return 'default'
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy import generate_code
+        code, _ = generate_code(knl)
+        ns = {}
+        exec(code, ns)
+        return ns[knl.name]
+
     # {{{ types
 
     @memoize_method
