@@ -32,6 +32,7 @@ from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
 from pymbolic import var
 import pymbolic.primitives as p
+from loopy.kernel.data import temp_var_scope
 from pymbolic.mapper.stringifier import PREC_NONE
 
 from pytools import memoize_method
@@ -81,7 +82,6 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
     def map_variable(self, expr, type_context):
         tv = self.kernel.temporary_variables.get(expr.name)
 
-        from loopy.kernel.data import temp_var_scope
         if tv is not None and tv.scope == temp_var_scope.PRIVATE:
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
@@ -101,7 +101,10 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
 
         ary = self.find_array(expr)
 
-        if isinstance(ary, TemporaryVariable):
+        if (isinstance(ary, TemporaryVariable)
+                and ary.scope == temp_var_scope.PRIVATE):
+            # generate access code for acccess to private-index temporaries
+
             gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
             if lsize:
                 lsize, = lsize
@@ -305,7 +308,6 @@ class ISPCASTBuilder(CASTBuilder):
 
         shape = decl_info.shape
 
-        from loopy.kernel.data import temp_var_scope
         if temp_var.scope == temp_var_scope.PRIVATE:
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
