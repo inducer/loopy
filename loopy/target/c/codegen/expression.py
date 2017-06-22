@@ -167,6 +167,13 @@ class ExpressionToCExpressionMapper(IdentityMapper):
         def base_impl(expr, type_context):
             return self.rec(expr.aggregate, type_context)[self.rec(expr.index, 'i')]
 
+        def make_var(name):
+            from loopy import TaggedVariable
+            if isinstance(expr.aggregate, TaggedVariable):
+                return TaggedVariable(name, expr.aggregate.tag)
+            else:
+                return var(name)
+
         from pymbolic.primitives import Variable
         if not isinstance(expr.aggregate, Variable):
             return base_impl(expr, type_context)
@@ -224,16 +231,16 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                         (isinstance(ary, (ConstantArg, GlobalArg)) or
                          (isinstance(ary, TemporaryVariable) and ary.base_storage))):
                     # unsubscripted global args are pointers
-                    result = var(access_info.array_name)[0]
+                    result = make_var(access_info.array_name)[0]
 
                 else:
                     # unsubscripted temp vars are scalars
                     # (unless they use base_storage)
-                    result = var(access_info.array_name)
+                    result = make_var(access_info.array_name)
 
             else:
                 subscript, = access_info.subscripts
-                result = var(access_info.array_name)[self.rec(subscript, 'i')]
+                result = make_var(access_info.array_name)[self.rec(subscript, 'i')]
 
             if access_info.vector_index is not None:
                 return self.codegen_state.ast_builder.add_vector_access(
