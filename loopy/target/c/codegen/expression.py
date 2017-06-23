@@ -723,6 +723,8 @@ class CExpressionToCodeMapper(RecursiveMapper):
     def map_variable(self, expr, enclosing_prec):
         return expr.name
 
+    map_tagged_variable = map_variable
+
     def map_lookup(self, expr, enclosing_prec):
         return self.parenthesize_if_needed(
                 "%s.%s" % (
