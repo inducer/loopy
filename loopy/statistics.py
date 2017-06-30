@@ -1043,8 +1043,8 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
 
     def mult_grid_factor(used_axes, size):
         result = 1
-        for used, size in zip(used_axes, size):
-            if not used:
+        for iaxis, size in enumerate(size):
+            if iaxis not in used_axes:
                 result = result * size
 
         if not isinstance(result, int):
@@ -1337,7 +1337,6 @@ def get_synchronization_map(knl):
             raise LoopyError("unexpected schedule item: %s"
                     % type(sched_item).__name__)
 
-    #return result.count_map #TODO is this change okay?
     return result
 
 # }}}
