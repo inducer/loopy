@@ -1045,13 +1045,13 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
         result = 1
         for iaxis, size in enumerate(size):
             if iaxis not in used_axes:
+                if not isinstance(size, int):
+                    if space is not None:
+                        size = size.align_params(space)
+
+                    size = isl.PwQPolynomial.from_pw_aff(size)
+
                 result = result * size
-
-        if not isinstance(result, int):
-            if space is not None:
-                result = result.align_params(space)
-
-            result = isl.PwQPolynomial.from_pw_aff(result)
 
         return result
 
