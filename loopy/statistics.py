@@ -1061,7 +1061,7 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
         return mult_grid_factor(g_used, gsize) * mult_grid_factor(l_used, lsize)
 
 
-def count_insn_runs(knl, insn, disregard_local_axes=False):
+def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False):
     insn_inames = knl.insn_inames(insn)
 
     if disregard_local_axes:
@@ -1077,17 +1077,21 @@ def count_insn_runs(knl, insn, disregard_local_axes=False):
             set=[], params=knl.outer_params())
 
     c = count(knl, domain, space=space)
-    unused_fac = get_unused_hw_axes_factor(knl, insn,
-                    disregard_local_axes=disregard_local_axes,
-                    space=space)
-    return c * unused_fac
+
+    if count_redundant_work:
+        unused_fac = get_unused_hw_axes_factor(knl, insn,
+                        disregard_local_axes=disregard_local_axes,
+                        space=space)
+        return c * unused_fac
+    else:
+        return c
 
 # }}}
 
 
 # {{{ get_op_map
 
-def get_op_map(knl, numpy_types=True):
+def get_op_map(knl, numpy_types=True, count_redundant_work=False):
 
     """Count the number of operations in a loopy kernel.
 
@@ -1096,6 +1100,12 @@ def get_op_map(knl, numpy_types=True):
     :arg numpy_types: A :class:`bool` specifying whether the types
          in the returned mapping should be numpy types
          instead of :class:`loopy.LoopyType`.
+
+    :arg count_redundant_work: Based on usage of hardware axes or other
+        specifics, a kernel may perform work redundantly. This :class:`bool`
+        flag indicates whether this work should be included in the count.
+        (Likely desirable for performance modeling, but undesirable for
+        code optimization.)
 
     :return: A :class:`ToCountMap` of **{** :class:`Op` **:**
         :class:`islpy.PwQPolynomial` **}**.
@@ -1128,7 +1138,9 @@ def get_op_map(knl, numpy_types=True):
     op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
         ops = op_counter(insn.assignee) + op_counter(insn.expression)
-        op_map = op_map + ops*count_insn_runs(knl, insn)
+        op_map = op_map + ops*count_insn_runs(
+                knl, insn,
+                count_redundant_work=count_redundant_work)
 
     if numpy_types:
         op_map.count_map = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
@@ -1142,7 +1154,7 @@ def get_op_map(knl, numpy_types=True):
 
 # {{{ get_mem_access_map
 
-def get_mem_access_map(knl, numpy_types=True):
+def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
     """Count the number of memory accesses in a loopy kernel.
 
     :arg knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
@@ -1152,6 +1164,11 @@ def get_mem_access_map(knl, numpy_types=True):
         in the returned mapping should be numpy types
         instead of :class:`loopy.LoopyType`.
 
+    :arg count_redundant_work: Based on usage of hardware axes or other
+        specifics, a kernel may perform work redundantly. This :class:`bool`
+        flag indicates whether this work should be included in the count.
+        (Likely desirable for performance modeling, but undesirable for
+        code optimization.)
 
     :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
         :class:`islpy.PwQPolynomial` **}**.
@@ -1208,7 +1225,9 @@ def get_mem_access_map(knl, numpy_types=True):
     @memoize_in(cache_holder, "insn_count")
     def get_insn_count(knl, insn_id, uniform=False):
         insn = knl.id_to_insn[insn_id]
-        return count_insn_runs(knl, insn, disregard_local_axes=uniform)
+        return count_insn_runs(
+                knl, insn, disregard_local_axes=uniform,
+                count_redundant_work=count_redundant_work)
 
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
