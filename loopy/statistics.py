@@ -141,9 +141,9 @@ class ToCountMap(object):
     def filter_by(self, **kwargs):
         """Remove items without specified key fields.
 
-        :parameter \*\*kwargs: Keyword arguments matching fields in the keys of
-                             the :class:`ToCountMap`, each given a list of
-                             allowable values for that key field.
+        :arg kwargs: Keyword arguments matching fields in the keys of
+                 the :class:`ToCountMap`, each given a list of
+                 allowable values for that key field.
 
         :return: A :class:`ToCountMap` containing the subset of the items in
                  the original :class:`ToCountMap` that match the field values
@@ -189,10 +189,10 @@ class ToCountMap(object):
     def filter_by_func(self, func):
         """Keep items that pass a test.
 
-        :parameter func: A function that takes a map key a parameter and
-                         returns a :class:`bool`.
+        :arg func: A function that takes a map key a parameter and
+             returns a :class:`bool`.
 
-        :return: A :class:`ToCountMap` containing the subset of the items in
+        :arg: A :class:`ToCountMap` containing the subset of the items in
                  the original :class:`ToCountMap` for which func(key) is true.
 
         Example usage::
@@ -224,7 +224,7 @@ class ToCountMap(object):
         """Group map items together, distinguishing by only the key fields
            passed in args.
 
-        :parameter \*args: Zero or more :class:`str` fields of map keys.
+        :arg args: Zero or more :class:`str` fields of map keys.
 
         :return: A :class:`ToCountMap` containing the same total counts
                  grouped together by new keys that only contain the fields
@@ -1091,21 +1091,21 @@ def get_op_map(knl, numpy_types=True):
 
     """Count the number of operations in a loopy kernel.
 
-    :parameter knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
+    :arg knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
-    :parameter numpy_types: A :class:`bool` specifying whether the types
-                            in the returned mapping should be numpy types
-                            instead of :class:`loopy.LoopyType`.
+    :arg numpy_types: A :class:`bool` specifying whether the types
+         in the returned mapping should be numpy types
+         instead of :class:`loopy.LoopyType`.
 
     :return: A :class:`ToCountMap` of **{** :class:`Op` **:**
-             :class:`islpy.PwQPolynomial` **}**.
+        :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`Op` specifies the characteristics of the arithmetic
-               operation.
+        - The :class:`Op` specifies the characteristics of the arithmetic
+          operation.
 
-             - The :class:`islpy.PwQPolynomial` holds the number of operations of
-               the kind specified in the key (in terms of the
-               :class:`loopy.LoopKernel` parameter *inames*).
+        - The :class:`islpy.PwQPolynomial` holds the number of operations of
+          the kind specified in the key (in terms of the
+          :class:`loopy.LoopKernel` parameter *inames*).
 
     Example usage::
 
@@ -1145,22 +1145,23 @@ def get_op_map(knl, numpy_types=True):
 def get_mem_access_map(knl, numpy_types=True):
     """Count the number of memory accesses in a loopy kernel.
 
-    :parameter knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
-                    counted.
+    :arg knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
+        counted.
 
-    :parameter numpy_types: A :class:`bool` specifying whether the types
-                            in the returned mapping should be numpy types
-                            instead of :class:`loopy.LoopyType`.
+    :arg numpy_types: A :class:`bool` specifying whether the types
+        in the returned mapping should be numpy types
+        instead of :class:`loopy.LoopyType`.
+
 
     :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
-             :class:`islpy.PwQPolynomial` **}**.
+        :class:`islpy.PwQPolynomial` **}**.
 
-             - The :class:`MemAccess` specifies the characteristics of the
-               memory access.
+        - The :class:`MemAccess` specifies the characteristics of the
+          memory access.
 
-             - The :class:`islpy.PwQPolynomial` holds the number of memory
-               accesses with the characteristics specified in the key (in terms
-               of the :class:`loopy.LoopKernel` *inames*).
+        - The :class:`islpy.PwQPolynomial` holds the number of memory
+          accesses with the characteristics specified in the key (in terms
+          of the :class:`loopy.LoopKernel` *inames*).
 
     Example usage::
 
@@ -1270,7 +1271,7 @@ def get_synchronization_map(knl):
     """Count the number of synchronization events each thread encounters in a
     loopy kernel.
 
-    :parameter knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
+    :arg knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
     :return: A dictionary mapping each type of synchronization event to a
             :class:`islpy.PwQPolynomial` holding the number of events per
