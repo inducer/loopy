@@ -133,15 +133,17 @@ class ExpressionToPythonMapper(StringifyMapper):
     def map_if(self, expr, enclosing_prec):
         # Synthesize PREC_IFTHENELSE, make sure it is in the right place in the
         # operator precedence hierarchy (right above "or").
-        from pymbolic.mapper.stringifier import PREC_LOGICAL_OR, PREC_NONE
+        from pymbolic.mapper.stringifier import PREC_LOGICAL_OR
         PREC_IFTHENELSE = PREC_LOGICAL_OR - 1  # noqa
 
         return self.parenthesize_if_needed(
             "{then} if {cond} else {else_}".format(
-                then=self.rec(expr.then, PREC_IFTHENELSE),
-                cond=self.rec(expr.condition, PREC_IFTHENELSE),
-                else_=self.rec(expr.else_, PREC_IFTHENELSE)),
-            enclosing_prec, PREC_NONE)
+                # "1 if 0 if 1 else 2 else 3" is not valid Python.
+                # So force parens by using an artificially higher precedence.
+                then=self.rec(expr.then, PREC_LOGICAL_OR),
+                cond=self.rec(expr.condition, PREC_LOGICAL_OR),
+                else_=self.rec(expr.else_, PREC_LOGICAL_OR)),
+            enclosing_prec, PREC_IFTHENELSE)
 
 # }}}
 
@@ -265,7 +267,7 @@ class PythonASTBuilderBase(ASTBuilderBase):
                 "range(%s, %s + 1)"
                 % (
                     ecm(lbound, PREC_NONE, "i"),
-                    ecm(ubound, PREC_NONE, "i"),
+                    ecm(ubound, PREC_SUM, "i"),
                     ),
                 inner)
 
