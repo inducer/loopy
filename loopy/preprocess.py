@@ -48,20 +48,22 @@ def prepare_for_caching(kernel):
     import loopy as lp
     new_args = []
 
+    tgt = kernel.target
+
     for arg in kernel.args:
         dtype = arg.dtype
-        if dtype is not None and dtype is not lp.auto:
-            dtype = dtype.with_target(kernel.target)
+        if dtype is not None and dtype is not lp.auto and dtype.target is not tgt:
+            arg = arg.copy(dtype=dtype.with_target(kernel.target))
 
-        new_args.append(arg.copy(dtype=dtype))
+        new_args.append(arg)
 
     new_temporary_variables = {}
     for name, temp in six.iteritems(kernel.temporary_variables):
         dtype = temp.dtype
-        if dtype is not None and dtype is not lp.auto:
-            dtype = dtype.with_target(kernel.target)
+        if dtype is not None and dtype is not lp.auto and dtype.target is not tgt:
+            temp = temp.copy(dtype=dtype.with_target(tgt))
 
-        new_temporary_variables[name] = temp.copy(dtype=dtype)
+        new_temporary_variables[name] = temp
 
     kernel = kernel.copy(
             args=new_args,
