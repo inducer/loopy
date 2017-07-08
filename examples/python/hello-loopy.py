@@ -26,5 +26,5 @@ knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
 evt, (out,) = knl(queue, a=a)
 # ENDEXAMPLE
 
-cknl = lp.CompiledKernel(ctx, knl)
-print(cknl.get_highlighted_code({"a": np.float32}))
+knl = lp.add_and_infer_dtypes(knl, {"a": np.dtype(np.float32)})
+print(lp.generate_code_v2(knl).device_code())
