@@ -442,7 +442,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
                         result_i = comp_dtype_set
                         break
 
-                assert found
+                assert found, var_name
                 if result_i is not None:
                     result.append(result_i)
 

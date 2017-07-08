@@ -25,8 +25,9 @@ THE SOFTWARE.
 
 def default_function_mangler(kernel, name, arg_dtypes):
     from loopy.library.reduction import reduction_function_mangler
+    from loopy.library.tuple import tuple_function_mangler
 
-    manglers = [reduction_function_mangler]
+    manglers = [reduction_function_mangler, tuple_function_mangler]
     for mangler in manglers:
         result = mangler(kernel, name, arg_dtypes)
         if result is not None:

@@ -176,6 +176,19 @@ def test_random123(ctx_factory, tp):
     assert (0 <= out).all()
 
 
+def test_tuple():
+    knl = lp.make_kernel(
+            "{ [i]: 0 <= i < 10 }",
+            """
+            a, b = make_tuple(1, 2)
+            """)
+
+    print(
+            lp.generate_code(
+                lp.get_one_scheduled_kernel(
+                    lp.preprocess_kernel(knl)))[0])
+
+
 def test_clamp(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
