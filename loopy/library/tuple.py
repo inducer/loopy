@@ -42,7 +42,6 @@ def tuple_function_name(dtype0, dtype1):
 
 
 def get_tuple_preamble(kernel, func_id, arg_dtypes):
-    print("arg dtypes are", arg_dtypes)
     name = tuple_function_name(*arg_dtypes)
     return (name, """
     inline %(t0)s %(name)s(%(t0)s i0, %(t1)s i1, %(t1)s *o1)
