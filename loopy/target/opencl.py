@@ -390,10 +390,13 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     def preamble_generators(self):
         from loopy.library.reduction import reduction_preamble_generator
+        from loopy.library.tuple import tuple_preamble_generator
+
         return (
                 super(OpenCLCASTBuilder, self).preamble_generators() + [
                     opencl_preamble_generator,
-                    reduction_preamble_generator
+                    reduction_preamble_generator,
+                    tuple_preamble_generator
                     ])
 
     # }}}

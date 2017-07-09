@@ -176,17 +176,20 @@ def test_random123(ctx_factory, tp):
     assert (0 <= out).all()
 
 
-def test_tuple():
+def test_tuple(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
     knl = lp.make_kernel(
-            "{ [i]: 0 <= i < 10 }",
+            "{ [i]: 0 = i }",
             """
-            a, b = make_tuple(1, 2)
+            a, b = make_tuple(1, 2.)
             """)
 
-    print(
-            lp.generate_code(
-                lp.get_one_scheduled_kernel(
-                    lp.preprocess_kernel(knl)))[0])
+    evt, (a,b) = knl(queue)
+
+    assert a.get() == 1
+    assert b.get() == 2.
 
 
 def test_clamp(ctx_factory):

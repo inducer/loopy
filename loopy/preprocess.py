@@ -331,6 +331,9 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
     # }}}
 
+    from loopy.type_inference import TypeInferenceMapper
+    type_inf_mapper = TypeInferenceMapper(kernel)
+
     from loopy.kernel.instruction import CallInstruction
     for insn in kernel.instructions:
         if not isinstance(insn, CallInstruction):
@@ -351,6 +354,9 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
         from loopy.kernel.data import temp_var_scope, TemporaryVariable
 
         FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa
+
+        assignee_dtypes, = type_inf_mapper(
+                insn.expression, return_tuple=True, return_dtype_set=True)
 
         for assignee_nr, assignee_var_name, assignee in zip(
                 range(FIRST_POINTER_ASSIGNEE_IDX, len(assignees)),
@@ -383,7 +389,7 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
             new_temporaries[new_assignee_name] = (
                     TemporaryVariable(
                         name=new_assignee_name,
-                        dtype=lp.auto,
+                        dtype=assignee_dtypes[assignee_nr],
                         scope=temp_var_scope.PRIVATE))
 
             from pymbolic import var
