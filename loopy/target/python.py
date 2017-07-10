@@ -259,7 +259,7 @@ class PythonASTBuilderBase(ASTBuilderBase):
             lbound, ubound, inner):
         ecm = codegen_state.expression_to_code_mapper
 
-        from pymbolic.mapper.stringifier import PREC_NONE
+        from pymbolic.mapper.stringifier import PREC_NONE, PREC_SUM
         from genpy import For
 
         return For(
