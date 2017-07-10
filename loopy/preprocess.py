@@ -385,7 +385,6 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
             newly_added_assignments_ids.add(new_assignment_id)
 
-            import loopy as lp
             new_temporaries[new_assignee_name] = (
                     TemporaryVariable(
                         name=new_assignee_name,

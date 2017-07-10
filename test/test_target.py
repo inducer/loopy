@@ -186,7 +186,7 @@ def test_tuple(ctx_factory):
             a, b = make_tuple(1, 2.)
             """)
 
-    evt, (a,b) = knl(queue)
+    evt, (a, b) = knl(queue)
 
     assert a.get() == 1
     assert b.get() == 2.
