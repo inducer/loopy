@@ -688,7 +688,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
 
     def get_code(self, arg_to_dtype=None):
         def process_dtype(dtype):
-            if issubclass(dtype, np.generic):
+            if isinstance(dtype, type) and issubclass(dtype, np.generic):
                 dtype = np.dtype(dtype)
             if isinstance(dtype, np.dtype):
                 dtype = NumpyType(dtype, self.kernel.target)
