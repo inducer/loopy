@@ -104,6 +104,12 @@ class GuardedPwQPolynomial(object):
         p = isl.PwQPolynomial('{ 0 }')
         return GuardedPwQPolynomial(p, isl.Set.universe(p.domain().space))
 
+    def __str__(self):
+        return str(self.pwqpolynomial)
+
+    def __repr__(self):
+        return repr(self.pwqpolynomial)
+
 # }}}
 
 
