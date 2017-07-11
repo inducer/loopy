@@ -354,7 +354,7 @@ def check_has_schedulable_iname_nesting(kernel):
 
 def pre_schedule_checks(kernel):
     try:
-        logger.info("%s: pre-schedule check: start" % kernel.name)
+        logger.debug("%s: pre-schedule check: start" % kernel.name)
 
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
@@ -367,7 +367,7 @@ def pre_schedule_checks(kernel):
         check_write_destinations(kernel)
         check_has_schedulable_iname_nesting(kernel)
 
-        logger.info("%s: pre-schedule check: done" % kernel.name)
+        logger.debug("%s: pre-schedule check: done" % kernel.name)
     except KeyboardInterrupt:
         raise
     except:
@@ -618,7 +618,7 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 
 def pre_codegen_checks(kernel):
     try:
-        logger.info("pre-codegen check %s: start" % kernel.name)
+        logger.debug("pre-codegen check %s: start" % kernel.name)
 
         check_for_unused_hw_axes_in_insns(kernel)
         check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
@@ -627,7 +627,7 @@ def pre_codegen_checks(kernel):
         kernel.target.pre_codegen_check(kernel)
         check_that_shapes_and_strides_are_arguments(kernel)
 
-        logger.info("pre-codegen check %s: done" % kernel.name)
+        logger.debug("pre-codegen check %s: done" % kernel.name)
     except:
         print(75*"=")
         print("failing kernel during pre-schedule check:")
