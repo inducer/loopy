@@ -1730,7 +1730,10 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     "Empty reduction found (no inames to reduce over). "
                     "Eliminating.")
 
-            # FIXME: return a neutral element.
+            # We're not supposed to reduce/sum at all. (Note how this is distinct
+            # from an empty reduction--there is an element here, just no inames
+            # to reduce over. It's rather similar to an array with () shape in
+            # numpy.)
 
             return expr.expr
 
