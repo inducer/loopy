@@ -200,7 +200,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
                     "(%s).y" % lhs_code])
 
         if printf_args:
-            printf_args_str = ", " + ", ".join(printf_args)
+            printf_args_str = ", " + ", ".join(str(v) for v in printf_args)
         else:
             printf_args_str = ""
 

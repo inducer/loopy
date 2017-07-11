@@ -714,7 +714,7 @@ class Assignment(MultiAssignmentBase):
 
                 z[i] = z[i+1-1] + a {atomic}
 
-        :mod:`loopy` may to evaluate the right-hand side *multiple times*
+        :mod:`loopy` may choose to evaluate the right-hand side *multiple times*
         as part of a single assignment. It is up to the user to ensure that
         this retains correct semantics.
 
