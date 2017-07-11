@@ -332,7 +332,20 @@ class TypeInferenceMapper(CombineMapper):
         if not agg_result:
             return agg_result
 
-        field = agg_result[0].numpy_dtype.fields[expr.name]
+        numpy_dtype = agg_result[0].numpy_dtype
+        fields = numpy_dtype.fields
+        if fields is None:
+            raise LoopyError("cannot look up attribute '%s' in "
+                    "non-aggregate expression '%s'"
+                    % (expr.aggregate, expr.name))
+
+        try:
+            field = fields[expr.name]
+        except KeyError:
+            raise LoopyError("cannot look up attribute '%s' in "
+                    "aggregate expression '%s' of dtype '%s'"
+                    % (expr.aggregate, expr.name, numpy_dtype))
+
         dtype = field[0]
         return [NumpyType(dtype)]
 

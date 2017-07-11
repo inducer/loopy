@@ -25,6 +25,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 import loopy as lp
+import six
 
 from loopy.kernel.data import auto, temp_var_scope
 from pytools import memoize_method, Record
@@ -32,7 +33,7 @@ from loopy.schedule import (
             EnterLoop, LeaveLoop, RunInstruction,
             CallKernel, ReturnFromKernel, Barrier)
 
-from loopy.schedule.tools import (get_block_boundaries, InstructionQuery)
+from loopy.schedule.tools import get_block_boundaries
 
 
 import logging
@@ -135,7 +136,7 @@ class LivenessAnalysis(object):
 
     @memoize_method
     def liveness(self):
-        logging.info("running liveness analysis")
+        logger.info("running liveness analysis")
         successors = self.get_successor_relation()
         gen, kill = self.get_gen_and_kill_sets()
 
@@ -152,7 +153,7 @@ class LivenessAnalysis(object):
                     lr[idx].live_out.update(lr[succ].live_in)
                 lr[idx].live_in = gen[idx] | (lr[idx].live_out - kill[idx])
 
-        logging.info("done running liveness analysis")
+        logger.info("done running liveness analysis")
 
         return lr
 
@@ -193,19 +194,19 @@ class TemporarySaver(object):
 
             The name of the new temporary.
 
-        .. attribute:: orig_temporary
+        .. attribute:: orig_temporary_name
 
-            The original temporary variable object.
-
-        .. attribute:: hw_inames
-
-            The common list of hw axes that define the original object.
+            The name of original temporary variable object.
 
         .. attribute:: hw_dims
 
             A list of expressions, to be added in front of the shape
             of the promoted temporary value, corresponding to
             hardware dimensions
+
+        .. attribute:: hw_tags
+
+            The tags for the inames associated with hw_dims
 
         .. attribute:: non_hw_dims
 
@@ -214,9 +215,15 @@ class TemporarySaver(object):
             non-hardware dimensions
         """
 
-        @memoize_method
-        def as_variable(self):
-            temporary = self.orig_temporary
+        __slots__ = """
+                name
+                orig_temporary_name
+                hw_dims
+                hw_tags
+                non_hw_dims""".split()
+
+        def as_kernel_temporary(self, kernel):
+            temporary = kernel.temporary_variables[self.orig_temporary_name]
             from loopy.kernel.data import TemporaryVariable
             return TemporaryVariable(
                 name=self.name,
@@ -230,16 +237,215 @@ class TemporarySaver(object):
 
     def __init__(self, kernel):
         self.kernel = kernel
-        self.insn_query = InstructionQuery(kernel)
         self.var_name_gen = kernel.get_var_name_generator()
         self.insn_name_gen = kernel.get_instruction_id_generator()
+
         # These fields keep track of updates to the kernel.
         self.insns_to_insert = []
         self.insns_to_update = {}
         self.extra_args_to_add = {}
         self.updated_iname_to_tag = {}
         self.updated_temporary_variables = {}
-        self.saves_or_reloads_added = {}
+
+        # temporary name -> save or reload insn ids
+        from collections import defaultdict
+        self.temporary_to_save_ids = defaultdict(set)
+        self.temporary_to_reload_ids = defaultdict(set)
+        self.subkernel_to_newly_added_insn_ids = defaultdict(set)
+
+        # Maps names of base_storage to the name of the temporary
+        # representative chosen for saves/reloads
+        self.base_storage_to_representative = {}
+
+        from loopy.kernel.data import ValueArg
+        import islpy as isl
+        self.new_subdomain = (
+                isl.BasicSet.universe(
+                    isl.Space.create_from_names(
+                        isl.DEFAULT_CONTEXT,
+                        set=[],
+                        params=set(
+                            arg.name for arg in kernel.args
+                            if isinstance(arg, ValueArg)))))
+
+    def find_accessing_instructions_in_subkernel(self, temporary, subkernel):
+        # Find all accessing instructions in the subkernel. If base_storage is
+        # present, this includes instructions that access aliasing memory.
+
+        aliasing_names = set([temporary])
+        base_storage = self.kernel.temporary_variables[temporary].base_storage
+
+        if base_storage is not None:
+            aliasing_names |= self.base_storage_to_temporary_map[base_storage]
+
+        from loopy.kernel.tools import get_subkernel_to_insn_id_map
+        accessing_insns_in_subkernel = set()
+        subkernel_insns = get_subkernel_to_insn_id_map(self.kernel)[subkernel]
+
+        for name in aliasing_names:
+            try:
+                accessing_insns_in_subkernel |= (
+                        self.kernel.reader_map()[name] & subkernel_insns)
+            except KeyError:
+                pass
+
+            try:
+                accessing_insns_in_subkernel |= (
+                        self.kernel.writer_map()[name] & subkernel_insns)
+            except KeyError:
+                pass
+
+        return frozenset(accessing_insns_in_subkernel)
+
+    @property
+    @memoize_method
+    def base_storage_to_temporary_map(self):
+        from collections import defaultdict
+
+        result = defaultdict(set)
+
+        for temporary in six.itervalues(self.kernel.temporary_variables):
+            if temporary.base_storage is None:
+                continue
+            result[temporary.base_storage].add(temporary.name)
+
+        return result
+
+    @property
+    @memoize_method
+    def subkernel_to_slice_indices(self):
+        result = {}
+
+        for sched_item_idx, sched_item in enumerate(self.kernel.schedule):
+            if isinstance(sched_item, CallKernel):
+                start_idx = sched_item_idx
+            elif isinstance(sched_item, ReturnFromKernel):
+                result[sched_item.kernel_name] = (start_idx, 1 + sched_item_idx)
+
+        return result
+
+    @property
+    @memoize_method
+    def subkernel_to_surrounding_inames(self):
+        current_outer_inames = set()
+        within_subkernel = False
+        result = {}
+
+        for sched_item_idx, sched_item in enumerate(self.kernel.schedule):
+            if isinstance(sched_item, CallKernel):
+                within_subkernel = True
+                result[sched_item.kernel_name] = frozenset(current_outer_inames)
+            elif isinstance(sched_item, ReturnFromKernel):
+                within_subkernel = False
+            elif isinstance(sched_item, EnterLoop):
+                if not within_subkernel:
+                    current_outer_inames.add(sched_item.iname)
+            elif isinstance(sched_item, LeaveLoop):
+                current_outer_inames.discard(sched_item.iname)
+
+        return result
+
+    @memoize_method
+    def get_enclosing_global_barrier_pair(self, subkernel):
+        subkernel_start, subkernel_end = (
+            self.subkernel_to_slice_indices[subkernel])
+
+        def is_global_barrier(item):
+            return isinstance(item, Barrier) and item.kind == "global"
+
+        try:
+            pre_barrier = next(item for item in
+                self.kernel.schedule[subkernel_start::-1]
+                if is_global_barrier(item)).originating_insn_id
+        except StopIteration:
+            pre_barrier = None
+
+        try:
+            post_barrier = next(item for item in
+                self.kernel.schedule[subkernel_end:]
+                if is_global_barrier(item)).originating_insn_id
+        except StopIteration:
+            post_barrier = None
+
+        return (pre_barrier, post_barrier)
+
+    def get_hw_axis_sizes_and_tags_for_save_slot(self, temporary):
+        """
+        This is used for determining the amount of global storage needed for saving
+        and restoring the temporary across kernel calls, due to hardware
+        parallel inames (the inferred axes get prefixed to the number of
+        dimensions in the temporary).
+
+        In the case of local temporaries, inames that are tagged
+        hw-local do not contribute to the global storage shape.
+        """
+        accessor_insn_ids = frozenset(
+            self.kernel.reader_map()[temporary.name]
+            | self.kernel.writer_map()[temporary.name])
+
+        group_tags = None
+        local_tags = None
+
+        def _sortedtags(tags):
+            return sorted(tags, key=lambda tag: tag.axis)
+
+        for insn_id in accessor_insn_ids:
+            insn = self.kernel.id_to_insn[insn_id]
+
+            my_group_tags = []
+            my_local_tags = []
+
+            for iname in insn.within_inames:
+                tag = self.kernel.iname_to_tag.get(iname)
+
+                if tag is None:
+                    continue
+
+                from loopy.kernel.data import (
+                    GroupIndexTag, LocalIndexTag, ParallelTag)
+
+                if isinstance(tag, GroupIndexTag):
+                    my_group_tags.append(tag)
+                elif isinstance(tag, LocalIndexTag):
+                    my_local_tags.append(tag)
+                elif isinstance(tag, ParallelTag):
+                    raise LoopyError(
+                        "iname '%s' is tagged with '%s' - only "
+                        "group and local tags are supported for "
+                        "auto save/reload of temporaries" %
+                        (iname, tag))
+
+            if group_tags is None:
+                group_tags = _sortedtags(my_group_tags)
+                local_tags = _sortedtags(my_local_tags)
+                group_tags_originating_insn_id = insn_id
+
+            if (
+                    group_tags != _sortedtags(my_group_tags)
+                    or local_tags != _sortedtags(my_local_tags)):
+                raise LoopyError(
+                    "inconsistent parallel tags across instructions that access "
+                    "'%s' (specifically, instruction '%s' has tags '%s' but "
+                    "instruction '%s' has tags '%s')"
+                    % (temporary.name,
+                       group_tags_originating_insn_id, group_tags + local_tags,
+                       insn_id, my_group_tags + my_local_tags))
+
+        if group_tags is None:
+            assert local_tags is None
+            return (), ()
+
+        group_sizes, local_sizes = (
+            self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids))
+
+        if temporary.scope == lp.temp_var_scope.LOCAL:
+            # Elide local axes in the save slot for local temporaries.
+            del local_tags[:]
+            local_sizes = ()
+
+        # We set hw_dims to be arranged according to the order:
+        #    g.0 < g.1 < ... < l.0 < l.1 < ...
+        return (group_sizes + local_sizes), tuple(group_tags + local_tags)
 
     @memoize_method
     def auto_promote_temporary(self, temporary_name):
@@ -255,52 +461,16 @@ class TemporarySaver(object):
             assert temporary.read_only
             return None
 
-        if temporary.base_storage is not None:
-            raise ValueError(
-                "Cannot promote temporaries with base_storage to global")
+        base_storage_conflict = (
+            self.base_storage_to_representative.get(
+                temporary.base_storage, temporary) is not temporary)
 
-        # `hw_inames`: The set of hw-parallel tagged inames that this temporary
-        # is associated with. This is used for determining the shape of the
-        # global storage needed for saving and restoring the temporary across
-        # kernel calls.
-        #
-        # TODO: Make a policy decision about which dimensions to use. Currently,
-        # the code looks at each instruction that defines or uses the temporary,
-        # and takes the common set of hw-parallel tagged inames associated with
-        # these instructions.
-        #
-        # Furthermore, in the case of local temporaries, inames that are tagged
-        # hw-local do not contribute to the global storage shape.
-        hw_inames = self.insn_query.common_hw_inames(
-            self.insn_query.insns_reading_or_writing(temporary.name))
+        if base_storage_conflict:
+            raise NotImplementedError(
+                "tried to save/reload multiple temporaries with the "
+                "same base_storage; this is currently not supported")
 
-        # We want hw_inames to be arranged according to the order:
-        #    g.0 < g.1 < ... < l.0 < l.1 < ...
-        # Sorting lexicographically accomplishes this.
-        hw_inames = sorted(hw_inames,
-            key=lambda iname: str(self.kernel.iname_to_tag[iname]))
-
-        # Calculate the sizes of the dimensions that get added in front for
-        # the global storage of the temporary.
-        hw_dims = []
-
-        backing_hw_inames = []
-
-        for iname in hw_inames:
-            tag = self.kernel.iname_to_tag[iname]
-            from loopy.kernel.data import LocalIndexTag
-            is_local_iname = isinstance(tag, LocalIndexTag)
-            if is_local_iname and temporary.scope == temp_var_scope.LOCAL:
-                # Restrict shape to that of group inames for locals.
-                continue
-            backing_hw_inames.append(iname)
-            from loopy.isl_helpers import static_max_of_pw_aff
-            from loopy.symbolic import aff_to_expr
-            hw_dims.append(
-                aff_to_expr(
-                    static_max_of_pw_aff(
-                        self.kernel.get_iname_bounds(iname).size, False)))
-
+        hw_dims, hw_tags = self.get_hw_axis_sizes_and_tags_for_save_slot(temporary)
         non_hw_dims = temporary.shape
 
         if len(non_hw_dims) == 0 and len(hw_dims) == 0:
@@ -309,10 +479,14 @@ class TemporarySaver(object):
 
         backing_temporary = self.PromotedTemporary(
             name=self.var_name_gen(temporary.name + "_save_slot"),
-            orig_temporary=temporary,
-            hw_dims=tuple(hw_dims),
-            non_hw_dims=non_hw_dims,
-            hw_inames=backing_hw_inames)
+            orig_temporary_name=temporary.name,
+            hw_dims=hw_dims,
+            hw_tags=hw_tags,
+            non_hw_dims=non_hw_dims)
+
+        if temporary.base_storage is not None:
+            self.base_storage_to_representative[temporary.base_storage] = (
+                    backing_temporary)
 
         return backing_temporary
 
@@ -326,23 +500,16 @@ class TemporarySaver(object):
         if promoted_temporary is None:
             return
 
-        from loopy.kernel.tools import DomainChanger
-        dchg = DomainChanger(
-            self.kernel,
-            frozenset(
-                self.insn_query.inames_in_subkernel(subkernel) |
-                set(promoted_temporary.hw_inames)))
-
-        domain, hw_inames, dim_inames, iname_to_tag = \
+        new_subdomain, hw_inames, dim_inames, iname_to_tag = (
             self.augment_domain_for_save_or_reload(
-                dchg.domain, promoted_temporary, mode, subkernel)
+                self.new_subdomain, promoted_temporary, mode, subkernel))
 
-        self.kernel = dchg.get_kernel_with(domain)
+        self.new_subdomain = new_subdomain
 
         save_or_load_insn_id = self.insn_name_gen(
             "{name}.{mode}".format(name=temporary, mode=mode))
 
-        def subscript_or_var(agg, subscript=()):
+        def add_subscript_if_subscript_nonempty(agg, subscript=()):
             from pymbolic.primitives import Subscript, Variable
             if len(subscript) == 0:
                 return Variable(agg)
@@ -351,20 +518,22 @@ class TemporarySaver(object):
                     Variable(agg),
                     tuple(map(Variable, subscript)))
 
-        dim_inames_trunc = dim_inames[:len(promoted_temporary.orig_temporary.shape)]
+        orig_temporary = (
+            self.kernel.temporary_variables[
+                promoted_temporary.orig_temporary_name])
+        dim_inames_trunc = dim_inames[:len(orig_temporary.shape)]
 
         args = (
-            subscript_or_var(
-                temporary, dim_inames_trunc),
-            subscript_or_var(
-                promoted_temporary.name, hw_inames + dim_inames))
+            add_subscript_if_subscript_nonempty(
+                temporary, subscript=dim_inames_trunc),
+            add_subscript_if_subscript_nonempty(
+                promoted_temporary.name, subscript=hw_inames + dim_inames))
 
         if mode == "save":
             args = reversed(args)
 
-        accessing_insns_in_subkernel = (
-            self.insn_query.insns_reading_or_writing(temporary) &
-            self.insn_query.insns_in_subkernel(subkernel))
+        accessing_insns_in_subkernel = self.find_accessing_instructions_in_subkernel(
+                temporary, subkernel)
 
         if mode == "save":
             depends_on = accessing_insns_in_subkernel
@@ -373,7 +542,7 @@ class TemporarySaver(object):
             depends_on = frozenset()
             update_deps = accessing_insns_in_subkernel
 
-        pre_barrier, post_barrier = self.insn_query.pre_and_post_barriers(subkernel)
+        pre_barrier, post_barrier = self.get_enclosing_global_barrier_pair(subkernel)
 
         if pre_barrier is not None:
             depends_on |= set([pre_barrier])
@@ -387,16 +556,19 @@ class TemporarySaver(object):
             *args,
             id=save_or_load_insn_id,
             within_inames=(
-                self.insn_query.inames_in_subkernel(subkernel) |
-                frozenset(hw_inames + dim_inames)),
+                self.subkernel_to_surrounding_inames[subkernel]
+                | frozenset(hw_inames + dim_inames)),
             within_inames_is_final=True,
             depends_on=depends_on,
             boostable=False,
             boostable_into=frozenset())
 
-        if temporary not in self.saves_or_reloads_added:
-            self.saves_or_reloads_added[temporary] = set()
-        self.saves_or_reloads_added[temporary].add(save_or_load_insn_id)
+        if mode == "save":
+            self.temporary_to_save_ids[temporary].add(save_or_load_insn_id)
+        else:
+            self.temporary_to_reload_ids[temporary].add(save_or_load_insn_id)
+
+        self.subkernel_to_newly_added_insn_ids[subkernel].add(save_or_load_insn_id)
 
         self.insns_to_insert.append(save_or_load_insn)
 
@@ -405,8 +577,8 @@ class TemporarySaver(object):
             self.insns_to_update[insn_id] = insn.copy(
                 depends_on=insn.depends_on | frozenset([save_or_load_insn_id]))
 
-        self.updated_temporary_variables[promoted_temporary.name] = \
-            promoted_temporary.as_variable()
+        self.updated_temporary_variables[promoted_temporary.name] = (
+            promoted_temporary.as_kernel_temporary(self.kernel))
 
         self.updated_iname_to_tag.update(iname_to_tag)
 
@@ -415,15 +587,6 @@ class TemporarySaver(object):
         new_instructions = []
 
         insns_to_insert = dict((insn.id, insn) for insn in self.insns_to_insert)
-
-        # Add global no_sync_with between any added reloads and saves
-        from six import iteritems
-        for temporary, added_insns in iteritems(self.saves_or_reloads_added):
-            for insn_id in added_insns:
-                insn = insns_to_insert[insn_id]
-                insns_to_insert[insn_id] = insn.copy(
-                    no_sync_with=frozenset(
-                        (added_insn, "global") for added_insn in added_insns))
 
         for orig_insn in self.kernel.instructions:
             if orig_insn.id in self.insns_to_update:
@@ -436,11 +599,30 @@ class TemporarySaver(object):
         self.updated_iname_to_tag.update(self.kernel.iname_to_tag)
         self.updated_temporary_variables.update(self.kernel.temporary_variables)
 
+        new_domains = list(self.kernel.domains)
+        import islpy as isl
+        if self.new_subdomain.dim(isl.dim_type.set) > 0:
+            new_domains.append(self.new_subdomain)
+
         kernel = self.kernel.copy(
+            domains=new_domains,
             instructions=new_instructions,
             iname_to_tag=self.updated_iname_to_tag,
             temporary_variables=self.updated_temporary_variables,
             overridden_get_grid_sizes_for_insn_ids=None)
+
+        # Add nosync directives to any saves or reloads that were added with a
+        # potential dependency chain.
+        from loopy.kernel.tools import get_subkernels
+        for subkernel in get_subkernels(kernel):
+            relevant_insns = self.subkernel_to_newly_added_insn_ids[subkernel]
+
+            from itertools import product
+            for temporary in self.temporary_to_reload_ids:
+                for source, sink in product(
+                        relevant_insns & self.temporary_to_reload_ids[temporary],
+                        relevant_insns & self.temporary_to_save_ids[temporary]):
+                    kernel = lp.add_nosync(kernel, "global", source, sink)
 
         from loopy.kernel.tools import assign_automatic_axes
         return assign_automatic_axes(kernel)
@@ -456,22 +638,28 @@ class TemporarySaver(object):
         """
         Add new axes to the domain corresponding to the dimensions of
         `promoted_temporary`. These axes will be used in the save/
-        reload stage.
+        reload stage. These get prefixed onto the already existing axes.
         """
         assert mode in ("save", "reload")
         import islpy as isl
 
-        orig_temporary = promoted_temporary.orig_temporary
+        orig_temporary = (
+                self.kernel.temporary_variables[
+                    promoted_temporary.orig_temporary_name])
         orig_dim = domain.dim(isl.dim_type.set)
 
         # Tags for newly added inames
         iname_to_tag = {}
 
+        from loopy.symbolic import aff_from_expr
+
         # FIXME: Restrict size of new inames to access footprint.
 
         # Add dimension-dependent inames.
         dim_inames = []
-        domain = domain.add(isl.dim_type.set, len(promoted_temporary.non_hw_dims))
+        domain = domain.add(isl.dim_type.set,
+                            len(promoted_temporary.non_hw_dims)
+                            + len(promoted_temporary.hw_dims))
 
         for dim_idx, dim_size in enumerate(promoted_temporary.non_hw_dims):
             new_iname = self.insn_name_gen("{name}_{mode}_axis_{dim}_{sk}".
@@ -493,25 +681,31 @@ class TemporarySaver(object):
             # Add size information.
             aff = isl.affs_from_space(domain.space)
             domain &= aff[0].le_set(aff[new_iname])
-            from loopy.symbolic import aff_from_expr
             domain &= aff[new_iname].lt_set(aff_from_expr(domain.space, dim_size))
 
-        # FIXME: Use promoted_temporary.hw_inames
-        hw_inames = []
+        dim_offset = orig_dim + len(promoted_temporary.non_hw_dims)
 
-        # Add hardware inames duplicates.
-        for t_idx, hw_iname in enumerate(promoted_temporary.hw_inames):
+        hw_inames = []
+        # Add hardware dims.
+        for hw_iname_idx, (hw_tag, dim) in enumerate(
+                zip(promoted_temporary.hw_tags, promoted_temporary.hw_dims)):
             new_iname = self.insn_name_gen("{name}_{mode}_hw_dim_{dim}_{sk}".
                 format(name=orig_temporary.name,
                        mode=mode,
-                       dim=t_idx,
+                       dim=hw_iname_idx,
                        sk=subkernel))
-            hw_inames.append(new_iname)
-            iname_to_tag[new_iname] = self.kernel.iname_to_tag[hw_iname]
+            domain = domain.set_dim_name(
+                isl.dim_type.set, dim_offset + hw_iname_idx, new_iname)
 
-        from loopy.isl_helpers import duplicate_axes
-        domain = duplicate_axes(
-            domain, promoted_temporary.hw_inames, hw_inames)
+            aff = isl.affs_from_space(domain.space)
+            domain = (domain
+                &
+                aff[0].le_set(aff[new_iname])
+                &
+                aff[new_iname].lt_set(aff_from_expr(domain.space, dim)))
+
+            self.updated_iname_to_tag[new_iname] = hw_tag
+            hw_inames.append(new_iname)
 
         # The operations on the domain above return a Set object, but the
         # underlying domain should be expressible as a single BasicSet.
@@ -551,7 +745,8 @@ def save_and_reload_temporaries(knl):
     liveness = LivenessAnalysis(knl)
     saver = TemporarySaver(knl)
 
-    insn_query = InstructionQuery(knl)
+    from loopy.schedule.tools import (
+        temporaries_read_in_subkernel, temporaries_written_in_subkernel)
 
     for sched_idx, sched_item in enumerate(knl.schedule):
 
@@ -562,9 +757,10 @@ def save_and_reload_temporaries(knl):
                 # Kernel entry: nothing live
                 interesting_temporaries = set()
             else:
+                subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    insn_query.temporaries_read_or_written_in_subkernel(
-                        sched_item.kernel_name))
+                    temporaries_read_in_subkernel(knl, subkernel)
+                    | temporaries_written_in_subkernel(knl, subkernel))
 
             for temporary in liveness[sched_idx].live_out & interesting_temporaries:
                 logger.info("reloading {0} at entry of {1}"
@@ -576,9 +772,9 @@ def save_and_reload_temporaries(knl):
                 # Kernel exit: nothing live
                 interesting_temporaries = set()
             else:
+                subkernel = sched_item.kernel_name
                 interesting_temporaries = (
-                    insn_query.temporaries_written_in_subkernel(
-                        sched_item.kernel_name))
+                    temporaries_written_in_subkernel(knl, subkernel))
 
             for temporary in liveness[sched_idx].live_in & interesting_temporaries:
                 logger.info("saving {0} before return of {1}"

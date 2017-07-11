@@ -594,37 +594,67 @@ def get_simple_strides(bset, key_by="name"):
     """
     result = {}
 
-    lspace = bset.get_local_space()
-    for idiv in range(lspace.dim(dim_type.div)):
-        div = lspace.get_div(idiv)
+    comp_div_set_pieces = convexify(bset.compute_divs()).get_basic_sets()
+    assert len(comp_div_set_pieces) == 1
+    bset, = comp_div_set_pieces
+
+    def _get_indices_and_coeffs(obj, dts):
+        result = []
+        for dt in dts:
+            for dim_idx in range(obj.dim(dt)):
+                coeff_val = obj.get_coefficient_val(dt, dim_idx)
+                if not coeff_val.is_zero():
+                    result.append((dt, dim_idx, coeff_val))
+
+        return result
+
+    for cns in bset.get_constraints():
+        if not cns.is_equality():
+            continue
+        aff = cns.get_aff()
+
+        # recognizes constraints of the form
+        #  -i0 + 2*floor((i0)/2) == 0
+
+        if aff.dim(dim_type.div) != 1:
+            continue
+
+        idiv = 0
+        div = aff.get_div(idiv)
 
         # check for sub-divs
-        supported = True
-        for dim_idx in range(div.dim(dim_type.div)):
-            coeff_val = div.get_coefficient_val(dim_type.div, dim_idx)
-            if not coeff_val.is_zero():
-                # sub-divs not supported
-                supported = False
-                break
-
-        if not supported:
+        if _get_indices_and_coeffs(div, [dim_type.div]):
+            # found one -> not supported
             continue
 
         denom = div.get_denominator_val().to_python()
 
-        inames_and_coeffs = []
-        for dt in [dim_type.param, dim_type.in_]:
-            for dim_idx in range(div.dim(dt)):
-                coeff_val = div.get_coefficient_val(dt, dim_idx) * denom
-                if not coeff_val.is_zero():
-                    inames_and_coeffs.append((dt, dim_idx, coeff_val))
+        # if the coefficient in front of the div is not the same as the denominator
+        if not aff.get_coefficient_val(dim_type.div, idiv).div(denom).is_one():
+            # not supported
+            continue
+
+        inames_and_coeffs = _get_indices_and_coeffs(
+                div, [dim_type.param, dim_type.in_])
 
         if len(inames_and_coeffs) != 1:
             continue
 
         (dt, dim_idx, coeff), = inames_and_coeffs
 
-        if coeff != 1:
+        if not (coeff * denom).is_one():
+            # not supported
+            continue
+
+        inames_and_coeffs = _get_indices_and_coeffs(
+                aff, [dim_type.param, dim_type.in_])
+
+        if len(inames_and_coeffs) != 1:
+            continue
+
+        (outer_dt, outer_dim_idx, outer_coeff), = inames_and_coeffs
+        if (not outer_coeff.neg().is_one()
+                or (outer_dt, outer_dim_idx) != (dt, dim_idx)):
             # not supported
             continue
 

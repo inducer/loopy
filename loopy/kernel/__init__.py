@@ -44,33 +44,49 @@ from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 
 # {{{ unique var names
 
-def _is_var_name_conflicting_with_longer(name_a, name_b):
-    # Array dimensions implemented as separate arrays generate
-    # names by appending '_s<NUMBER>'. Make sure that no
-    # conflicts can arise from these names.
-
-    # Only deal with the case of b longer than a.
-    if not name_b.startswith(name_a):
-        return False
-
-    return re.match("^%s_s[0-9]+" % re.escape(name_b), name_a) is not None
-
-
-def _is_var_name_conflicting(name_a, name_b):
-    if name_a == name_b:
-        return True
-
-    return (
-            _is_var_name_conflicting_with_longer(name_a, name_b)
-            or _is_var_name_conflicting_with_longer(name_b, name_a))
-
-
 class _UniqueVarNameGenerator(UniqueNameGenerator):
+
+    def __init__(self, existing_names=set(), forced_prefix=""):
+        super(_UniqueVarNameGenerator, self).__init__(existing_names, forced_prefix)
+        array_prefix_pattern = re.compile("(.*)_s[0-9]+$")
+
+        array_prefixes = set()
+        for name in existing_names:
+            match = array_prefix_pattern.match(name)
+            if match is None:
+                continue
+
+            array_prefixes.add(match.group(1))
+
+        self.conflicting_array_prefixes = array_prefixes
+        self.array_prefix_pattern = array_prefix_pattern
+
+    def _name_added(self, name):
+        match = self.array_prefix_pattern.match(name)
+        if match is None:
+            return
+
+        self.conflicting_array_prefixes.add(match.group(1))
+
     def is_name_conflicting(self, name):
-        from pytools import any
-        return any(
-                _is_var_name_conflicting(name, other_name)
-                for other_name in self.existing_names)
+        if name in self.existing_names:
+            return True
+
+        # Array dimensions implemented as separate arrays generate
+        # names by appending '_s<NUMBER>'. Make sure that no
+        # conflicts can arise from these names.
+
+        # Case 1: a_s0 is already a name; we are trying to insert a
+        # Case 2: a is already a name; we are trying to insert a_s0
+
+        if name in self.conflicting_array_prefixes:
+            return True
+
+        match = self.array_prefix_pattern.match(name)
+        if match is None:
+            return False
+
+        return match.group(1) in self.existing_names
 
 # }}}
 
@@ -599,8 +615,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 # nothin' new
                 continue
 
-            domain_parents = [home_domain_index] + ppd[home_domain_index]
-            current_root = domain_parents[-1]
+            domain_path_to_root = [home_domain_index] + ppd[home_domain_index]
+            current_root = domain_path_to_root[-1]
             previous_leaf = root_to_leaf.get(current_root)
 
             if previous_leaf is not None:
@@ -610,8 +626,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 # it can introduce artificial restrictions on variables
                 # further up the tree.
 
-                prev_parents = set(ppd[previous_leaf])
-                if not prev_parents <= set(domain_parents):
+                prev_path_to_root = set([previous_leaf] + ppd[previous_leaf])
+                if not prev_path_to_root <= set(domain_path_to_root):
                     raise CannotBranchDomainTree("iname set '%s' requires "
                             "branch in domain tree (when adding '%s')"
                             % (", ".join(inames), iname))
@@ -620,7 +636,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 pass
 
             root_to_leaf[current_root] = home_domain_index
-            domain_indices.update(domain_parents)
+            domain_indices.update(domain_path_to_root)
 
         return list(root_to_leaf.values())
 
@@ -1095,7 +1111,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return embedding
 
-    def stringify(self, what=None, with_dependencies=False):
+    def stringify(self, what=None, with_dependencies=False, use_separators=True,
+            show_labels=True):
         all_what = set([
             "name",
             "arguments",
@@ -1134,7 +1151,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         kernel = self
 
-        sep = 75*"-"
+        if use_separators:
+            sep = [75*"-"]
+        else:
+            sep = []
 
         def natorder(key):
             # Return natural ordering for strings, as opposed to dictionary order.
@@ -1151,44 +1171,50 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             return sorted(seq, key=lambda y: natorder(key(y)))
 
         if "name" in what:
-            lines.append(sep)
+            lines.extend(sep)
             lines.append("KERNEL: " + kernel.name)
 
         if "arguments" in what:
-            lines.append(sep)
-            lines.append("ARGUMENTS:")
+            lines.extend(sep)
+            if show_labels:
+                lines.append("ARGUMENTS:")
             for arg_name in natsorted(kernel.arg_dict):
                 lines.append(str(kernel.arg_dict[arg_name]))
 
         if "domains" in what:
-            lines.append(sep)
-            lines.append("DOMAINS:")
+            lines.extend(sep)
+            if show_labels:
+                lines.append("DOMAINS:")
             for dom, parents in zip(kernel.domains, kernel.all_parents_per_domain()):
                 lines.append(len(parents)*"  " + str(dom))
 
         if "tags" in what:
-            lines.append(sep)
-            lines.append("INAME IMPLEMENTATION TAGS:")
+            lines.extend(sep)
+            if show_labels:
+                lines.append("INAME IMPLEMENTATION TAGS:")
             for iname in natsorted(kernel.all_inames()):
                 line = "%s: %s" % (iname, kernel.iname_to_tag.get(iname))
                 lines.append(line)
 
         if "variables" in what and kernel.temporary_variables:
-            lines.append(sep)
-            lines.append("TEMPORARIES:")
+            lines.extend(sep)
+            if show_labels:
+                lines.append("TEMPORARIES:")
             for tv in natsorted(six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
                 lines.append(str(tv))
 
         if "rules" in what and kernel.substitutions:
-            lines.append(sep)
-            lines.append("SUBSTIUTION RULES:")
+            lines.extend(sep)
+            if show_labels:
+                lines.append("SUBSTIUTION RULES:")
             for rule_name in natsorted(six.iterkeys(kernel.substitutions)):
                 lines.append(str(kernel.substitutions[rule_name]))
 
         if "instructions" in what:
-            lines.append(sep)
-            lines.append("INSTRUCTIONS:")
+            lines.extend(sep)
+            if show_labels:
+                lines.append("INSTRUCTIONS:")
             loop_list_width = 35
 
             # {{{ topological sort
@@ -1303,18 +1329,20 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 dep_lines.append("%s : %s" % (insn.id, ",".join(insn.depends_on)))
 
         if "Dependencies" in what and dep_lines:
-            lines.append(sep)
-            lines.append("DEPENDENCIES: "
-                    "(use loopy.show_dependency_graph to visualize)")
+            lines.extend(sep)
+            if show_labels:
+                lines.append("DEPENDENCIES: "
+                        "(use loopy.show_dependency_graph to visualize)")
             lines.extend(dep_lines)
 
         if "schedule" in what and kernel.schedule is not None:
-            lines.append(sep)
-            lines.append("SCHEDULE:")
+            lines.extend(sep)
+            if show_labels:
+                lines.append("SCHEDULE:")
             from loopy.schedule import dump_schedule
             lines.append(dump_schedule(kernel, kernel.schedule))
 
-        lines.append(sep)
+        lines.extend(sep)
 
         return "\n".join(lines)
 
@@ -1384,16 +1412,34 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         result.pop("cache_manager", None)
 
-        return result
+        # make sure that kernels are pickled with a cached hash key in place
+        from loopy.tools import LoopyKeyBuilder
+        LoopyKeyBuilder()(self)
+
+        return (result, self._pytools_persistent_hash_digest)
 
     def __setstate__(self, state):
+        attribs, p_hash_digest = state
+
         new_fields = set()
 
-        for k, v in six.iteritems(state):
+        for k, v in six.iteritems(attribs):
             setattr(self, k, v)
             new_fields.add(k)
 
         self.register_fields(new_fields)
+
+        if 0:
+            # {{{ check that 'reconstituted' object has same hash
+
+            from loopy.tools import LoopyKeyBuilder
+            LoopyKeyBuilder()(self)
+
+            assert p_hash_digest == self._pytools_persistent_hash_digest
+
+            # }}}
+        else:
+            self._pytools_persistent_hash_digest = p_hash_digest
 
         from loopy.kernel.tools import SetOperationCacheManager
         self.cache_manager = SetOperationCacheManager()

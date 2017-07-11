@@ -681,12 +681,18 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 dt, dim_idx = var_dict[primed_non1_saxis_names[i]]
                 mod_domain = mod_domain.set_dim_name(dt, dim_idx, saxis)
 
+        def add_assumptions(d):
+            assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
+            assumptions, domain = isl.align_two(assumption_non_param, d)
+            return assumptions & domain
+
         # {{{ check that we got the desired domain
 
-        check_domain = check_domain.project_out_except(
-                primed_non1_saxis_names, [isl.dim_type.set])
+        check_domain = add_assumptions(
+            check_domain.project_out_except(
+                primed_non1_saxis_names, [isl.dim_type.set]))
 
-        mod_check_domain = mod_domain
+        mod_check_domain = add_assumptions(mod_domain)
 
         # re-add the prime from the new variable
         var_dict = mod_check_domain.get_var_dict(isl.dim_type.set)
@@ -716,10 +722,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
         # project out the new names from the modified domain
         orig_domain_inames = list(domch.domain.get_var_dict(isl.dim_type.set))
-        mod_check_domain = mod_domain.project_out_except(
-                orig_domain_inames, [isl.dim_type.set])
+        mod_check_domain = add_assumptions(
+                mod_domain.project_out_except(
+                    orig_domain_inames, [isl.dim_type.set]))
 
-        check_domain = domch.domain
+        check_domain = add_assumptions(domch.domain)
 
         mod_check_domain, check_domain = isl.align_two(
                 mod_check_domain, check_domain)
