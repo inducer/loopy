@@ -335,6 +335,8 @@ class PyOpenCLTarget(OpenCLTarget):
                         % dev_id)
 
     def preprocess(self, kernel):
+        if self.device is not None:
+            kernel = adjust_local_temp_var_storage(kernel, self.device)
         return kernel
 
     def pre_codegen_check(self, kernel):
