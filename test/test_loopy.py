@@ -2184,6 +2184,41 @@ def test_barrier_insertion_near_bottom_of_loop():
     assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
+def test_multi_argument_reduction_type_inference():
+    from loopy.type_inference import TypeInferenceMapper
+    from loopy.library.reduction import SegmentedSumReductionOperation
+    from loopy.types import to_loopy_type
+    op = SegmentedSumReductionOperation()
+
+    knl = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
+
+    int32 = to_loopy_type(np.int32)
+
+    expr = lp.symbolic.Reduction(
+            operation=op,
+            inames=("i",),
+            expr=lp.symbolic.Reduction(
+                operation=op,
+                inames="j",
+                expr=(1, 2),
+                allow_simultaneous=True),
+            allow_simultaneous=True)
+
+    t_inf_mapper = TypeInferenceMapper(knl)
+
+    assert (
+            t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
+            == [(int32, int32)])
+
+
+def test_multi_argument_reduction_parsing():
+    from loopy.symbolic import parse, Reduction
+
+    assert isinstance(
+            parse("reduce(argmax, i, reduce(argmax, j, i, j))").expr,
+            Reduction)
+
+
 def test_global_barrier_order_finding():
     knl = lp.make_kernel(
             "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
@@ -2226,41 +2261,6 @@ def test_global_barrier_error_if_unordered():
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
         lp.get_global_barrier_order(knl)
-
-
-def test_multi_argument_reduction_type_inference():
-    from loopy.type_inference import TypeInferenceMapper
-    from loopy.library.reduction import SegmentedSumReductionOperation
-    from loopy.types import to_loopy_type
-    op = SegmentedSumReductionOperation()
-
-    knl = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
-
-    int32 = to_loopy_type(np.int32)
-
-    expr = lp.symbolic.Reduction(
-            operation=op,
-            inames=("i",),
-            expr=lp.symbolic.Reduction(
-                operation=op,
-                inames="j",
-                expr=(1, 2),
-                allow_simultaneous=True),
-            allow_simultaneous=True)
-
-    t_inf_mapper = TypeInferenceMapper(knl)
-
-    assert (
-            t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
-            == [(int32, int32)])
-
-
-def test_multi_argument_reduction_parsing():
-    from loopy.symbolic import parse, Reduction
-
-    assert isinstance(
-            parse("reduce(argmax, i, reduce(argmax, j, i, j))").expr,
-            Reduction)
 
 
 def test_struct_assignment(ctx_factory):
