@@ -335,6 +335,8 @@ class PyOpenCLTarget(OpenCLTarget):
                         % dev_id)
 
     def preprocess(self, kernel):
+        if self.device is not None:
+            kernel = adjust_local_temp_var_storage(kernel, self.device)
         return kernel
 
     def pre_codegen_check(self, kernel):
@@ -363,14 +365,26 @@ class PyOpenCLTarget(OpenCLTarget):
             raise NotImplementedError("atomics flavor: %s" % self.atomics_flavor)
 
     def is_vector_dtype(self, dtype):
-        from pyopencl.array import vec
+        try:
+            import pyopencl.cltypes as cltypes
+            vec_types = cltypes.vec_types
+        except ImportError:
+            from pyopencl.array import vec
+            vec_types = vec.types
+
         return (isinstance(dtype, NumpyType)
-                and dtype.numpy_dtype in list(vec.types.values()))
+                and dtype.numpy_dtype in list(vec_types.values()))
 
     def vector_dtype(self, base, count):
-        from pyopencl.array import vec
+        try:
+            import pyopencl.cltypes as cltypes
+            vec_types = cltypes.vec_types
+        except ImportError:
+            from pyopencl.array import vec
+            vec_types = vec.types
+
         return NumpyType(
-                vec.types[base.numpy_dtype, count],
+                vec_types[base.numpy_dtype, count],
                 target=self)
 
     def alignment_requirement(self, type_decl):

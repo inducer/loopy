@@ -1146,7 +1146,7 @@ def save_and_reload_temporaries_test(queue, knl, out_expect, debug=False):
         1/0
 
     _, (out,) = knl(queue, out_host=True)
-    assert (out == out_expect).all()
+    assert (out == out_expect).all(), (out, out_expect)
 
 
 @pytest.mark.parametrize("hw_loop", [True, False])
@@ -1336,6 +1336,73 @@ def test_save_local_multidim_array(ctx_factory, debug=False):
     knl = lp.tag_inames(knl, dict(j="l.0", i="g.0"))
 
     save_and_reload_temporaries_test(queue, knl, 1, debug)
+
+
+def test_save_with_base_storage(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+            <>a[i] = 0
+            <>b[i] = i
+            ... gbarrier
+            out[i] = a[i]
+            """,
+            "...",
+            seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.set_temporary_scope(knl, "a", "local")
+    knl = lp.set_temporary_scope(knl, "b", "local")
+
+    knl = lp.alias_temporaries(knl, ["a", "b"],
+            synchronize_for_exclusive_use=False)
+
+    save_and_reload_temporaries_test(queue, knl, np.arange(10), debug)
+
+
+def test_save_ambiguous_storage_requirements():
+    knl = lp.make_kernel(
+            "{[i,j]: 0 <= i < 10 and 0 <= j < 10}",
+            """
+            <>a[j] = j
+            ... gbarrier
+            out[i,j] = a[j]
+            """,
+            seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
+    knl = lp.duplicate_inames(knl, "j", within="writes:out", tags={"j": "l.0"})
+    knl = lp.set_temporary_scope(knl, "a", "local")
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+
+    from loopy.diagnostic import LoopyError
+    with pytest.raises(LoopyError):
+        lp.save_and_reload_temporaries(knl)
+
+
+def test_save_across_inames_with_same_tag(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+            <>a[i] = i
+            ... gbarrier
+            out[i] = a[i]
+            """,
+            "...",
+            seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, dict(i="l.0"))
+    knl = lp.duplicate_inames(knl, "i", within="reads:a", tags={"i": "l.0"})
+
+    save_and_reload_temporaries_test(queue, knl, np.arange(10), debug)
 
 
 def test_missing_temporary_definition_detection():
@@ -2117,6 +2184,41 @@ def test_barrier_insertion_near_bottom_of_loop():
     assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
+def test_multi_argument_reduction_type_inference():
+    from loopy.type_inference import TypeInferenceMapper
+    from loopy.library.reduction import SegmentedSumReductionOperation
+    from loopy.types import to_loopy_type
+    op = SegmentedSumReductionOperation()
+
+    knl = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
+
+    int32 = to_loopy_type(np.int32)
+
+    expr = lp.symbolic.Reduction(
+            operation=op,
+            inames=("i",),
+            expr=lp.symbolic.Reduction(
+                operation=op,
+                inames="j",
+                expr=(1, 2),
+                allow_simultaneous=True),
+            allow_simultaneous=True)
+
+    t_inf_mapper = TypeInferenceMapper(knl)
+
+    assert (
+            t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
+            == [(int32, int32)])
+
+
+def test_multi_argument_reduction_parsing():
+    from loopy.symbolic import parse, Reduction
+
+    assert isinstance(
+            parse("reduce(argmax, i, reduce(argmax, j, i, j))").expr,
+            Reduction)
+
+
 def test_global_barrier_order_finding():
     knl = lp.make_kernel(
             "{[i,itrip]: 0<=i<n and 0<=itrip<ntrips}",
@@ -2161,41 +2263,6 @@ def test_global_barrier_error_if_unordered():
         lp.get_global_barrier_order(knl)
 
 
-def test_multi_argument_reduction_type_inference():
-    from loopy.type_inference import TypeInferenceMapper
-    from loopy.library.reduction import SegmentedSumReductionOperation
-    from loopy.types import to_loopy_type
-    op = SegmentedSumReductionOperation()
-
-    knl = lp.make_kernel("{[i,j]: 0<=i<10 and 0<=j<i}", "")
-
-    int32 = to_loopy_type(np.int32)
-
-    expr = lp.symbolic.Reduction(
-            operation=op,
-            inames=("i",),
-            expr=lp.symbolic.Reduction(
-                operation=op,
-                inames="j",
-                expr=(1, 2),
-                allow_simultaneous=True),
-            allow_simultaneous=True)
-
-    t_inf_mapper = TypeInferenceMapper(knl)
-
-    assert (
-            t_inf_mapper(expr, return_tuple=True, return_dtype_set=True)
-            == [(int32, int32)])
-
-
-def test_multi_argument_reduction_parsing():
-    from loopy.symbolic import parse, Reduction
-
-    assert isinstance(
-            parse("reduce(argmax, i, reduce(argmax, j, i, j))").expr,
-            Reduction)
-
-
 def test_struct_assignment(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -2229,6 +2296,43 @@ def test_struct_assignment(ctx_factory):
 
     knl = lp.set_options(knl, write_cl=True)
     knl(queue, N=200)
+
+
+def test_inames_conditional_generation(ctx_factory):
+    ctx = ctx_factory()
+    knl = lp.make_kernel(
+            "{[i,j,k]: 0 < k < i and 0 < j < 10 and 0 < i < 10}",
+            """
+            for k
+                ... gbarrier
+                <>tmp1 = 0
+            end
+            for j
+                ... gbarrier
+                <>tmp2 = i
+            end
+            """,
+            "...",
+            seq_dependencies=True)
+
+    knl = lp.tag_inames(knl, dict(i="g.0"))
+
+    with cl.CommandQueue(ctx) as queue:
+        knl(queue)
+
+
+def test_kernel_var_name_generator():
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i <= 10}",
+            """
+            <>a = 0
+            <>b_s0 = 0
+            """)
+
+    vng = knl.get_var_name_generator()
+
+    assert vng("a_s0") != "a_s0"
+    assert vng("b") != "b"
 
 
 if __name__ == "__main__":

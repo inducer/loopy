@@ -354,7 +354,7 @@ def check_has_schedulable_iname_nesting(kernel):
 
 def pre_schedule_checks(kernel):
     try:
-        logger.info("%s: pre-schedule check: start" % kernel.name)
+        logger.debug("%s: pre-schedule check: start" % kernel.name)
 
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
@@ -367,7 +367,7 @@ def pre_schedule_checks(kernel):
         check_write_destinations(kernel)
         check_has_schedulable_iname_nesting(kernel)
 
-        logger.info("%s: pre-schedule check: done" % kernel.name)
+        logger.debug("%s: pre-schedule check: done" % kernel.name)
     except KeyboardInterrupt:
         raise
     except:
@@ -505,22 +505,23 @@ def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
 # {{{ check that temporaries are defined in subkernels where used
 
 def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
-    from loopy.schedule.tools import InstructionQuery
     from loopy.kernel.data import temp_var_scope
+    from loopy.kernel.tools import get_subkernels
 
-    insn_query = InstructionQuery(kernel)
-
-    for subkernel in insn_query.subkernels():
+    for subkernel in get_subkernels(kernel):
         defined_base_storage = set()
 
-        for temporary in insn_query.temporaries_written_in_subkernel(subkernel):
+        from loopy.schedule.tools import (
+                temporaries_written_in_subkernel, temporaries_read_in_subkernel)
+
+        for temporary in temporaries_written_in_subkernel(kernel, subkernel):
             tval = kernel.temporary_variables[temporary]
             if tval.base_storage is not None:
                 defined_base_storage.add(tval.base_storage)
 
         for temporary in (
-                insn_query.temporaries_read_in_subkernel(subkernel) -
-                insn_query.temporaries_written_in_subkernel(subkernel)):
+                temporaries_read_in_subkernel(kernel, subkernel) -
+                temporaries_written_in_subkernel(kernel, subkernel)):
             tval = kernel.temporary_variables[temporary]
 
             if tval.initializer is not None:
@@ -530,16 +531,17 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
             if tval.base_storage is not None:
                 if tval.base_storage not in defined_base_storage:
                     from loopy.diagnostic import MissingDefinitionError
-                    raise MissingDefinitionError("temporary variable '%s' gets used "
-                        "in subkernel '%s' and neither it nor its aliases have a "
-                        "definition" % (temporary, subkernel))
+                    raise MissingDefinitionError("temporary variable '%s' gets "
+                            "used in subkernel '%s' and neither it nor its "
+                            "aliases have a definition" % (temporary, subkernel))
                 continue
 
             if tval.scope in (temp_var_scope.PRIVATE, temp_var_scope.LOCAL):
                 from loopy.diagnostic import MissingDefinitionError
-                raise MissingDefinitionError("temporary variable '%s' gets used in "
-                    "subkernel '%s' without a definition (maybe you forgot to call "
-                    "loopy.save_and_reload_temporaries?)" % (temporary, subkernel))
+                raise MissingDefinitionError("temporary variable '%s' gets used "
+                        "in subkernel '%s' without a definition (maybe you forgot "
+                        "to call loopy.save_and_reload_temporaries?)"
+                        % (temporary, subkernel))
 
 # }}}
 
@@ -616,7 +618,7 @@ def check_that_shapes_and_strides_are_arguments(kernel):
 
 def pre_codegen_checks(kernel):
     try:
-        logger.info("pre-codegen check %s: start" % kernel.name)
+        logger.debug("pre-codegen check %s: start" % kernel.name)
 
         check_for_unused_hw_axes_in_insns(kernel)
         check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
@@ -625,7 +627,7 @@ def pre_codegen_checks(kernel):
         kernel.target.pre_codegen_check(kernel)
         check_that_shapes_and_strides_are_arguments(kernel)
 
-        logger.info("pre-codegen check %s: done" % kernel.name)
+        logger.debug("pre-codegen check %s: done" % kernel.name)
     except:
         print(75*"=")
         print("failing kernel during pre-schedule check:")

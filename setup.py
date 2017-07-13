@@ -37,7 +37,7 @@ setup(name="loo.py",
           ],
 
       install_requires=[
-          "pytools>=2016.2.6",
+          "pytools>=2017.3",
           "pymbolic>=2016.2",
           "genpy>=2016.1.2",
           "cgen>=2016.1",

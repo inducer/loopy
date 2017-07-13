@@ -26,8 +26,8 @@ from six.moves import range, zip
 
 from pytools import memoize_method
 from pytools.py_codegen import Indentation
-from loopy.target.execution import (KernelExecutorBase, ExecutionWrapperGeneratorBase,
-                             _KernelInfo, _Kernels)
+from loopy.target.execution import (
+    KernelExecutorBase, ExecutionWrapperGeneratorBase, _KernelInfo, _Kernels)
 import logging
 logger = logging.getLogger(__name__)
 
