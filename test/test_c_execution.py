@@ -157,7 +157,7 @@ def test_c_optimizations():
 
     # test with ILP
     knl, sizes = __get_kernel('C')
-    lp.split_iname(knl, 'i', 4, inner_tag='ilp')
+    knl = lp.split_iname(knl, 'i', 4, inner_tag='ilp')
     a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
                       sizes,
                       order='C')
@@ -166,7 +166,7 @@ def test_c_optimizations():
 
     # test with unrolling
     knl, sizes = __get_kernel('C')
-    lp.split_iname(knl, 'i', 4, inner_tag='unr')
+    knl = lp.split_iname(knl, 'i', 4, inner_tag='unr')
     a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
                       sizes,
                       order='C')
