@@ -774,28 +774,22 @@ class KernelExecutorBase(object):
 # {{{ code highlighers
 
 
+def get_highlighted_code(text, python=False):
+    try:
+        from pygments import highlight
+    except ImportError:
+        return text
+    else:
+        from pygments.lexers import CLexer, PythonLexer
+        from pygments.formatters import TerminalFormatter
+
+        return highlight(text, CLexer() if not python else PythonLexer(),
+                         TerminalFormatter())
+
+
 def get_highlighted_python_code(text):
-    try:
-        from pygments import highlight
-    except ImportError:
-        return text
-    else:
-        from pygments.lexers import PythonLexer
-        from pygments.formatters import TerminalFormatter
+    return get_highlighted_code(text, True)
 
-        return highlight(text, PythonLexer(), TerminalFormatter())
-
-
-def get_highlighted_code(text):
-    try:
-        from pygments import highlight
-    except ImportError:
-        return text
-    else:
-        from pygments.lexers import CLexer
-        from pygments.formatters import TerminalFormatter
-
-        return highlight(text, CLexer(), TerminalFormatter())
 
 # }}}
 
