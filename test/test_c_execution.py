@@ -24,8 +24,6 @@ THE SOFTWARE.
 
 import numpy as np
 import loopy as lp
-import pyopencl.clmath  # noqa
-import pyopencl.clrandom  # noqa
 
 import logging
 logger = logging.getLogger(__name__)

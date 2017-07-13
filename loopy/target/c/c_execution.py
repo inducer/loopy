@@ -27,7 +27,7 @@ import cgen
 import os
 import subprocess
 
-from loopy.execution import (KernelExecutorBase, _KernelInfo,
+from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
                              ExecutionWrapperGeneratorBase)
 from pytools import memoize_method
 from pytools.py_codegen import (Indentation)

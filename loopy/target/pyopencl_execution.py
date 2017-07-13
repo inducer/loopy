@@ -26,7 +26,7 @@ from six.moves import range, zip
 
 from pytools import memoize_method
 from pytools.py_codegen import Indentation
-from loopy.execution import (KernelExecutorBase, ExecutionWrapperGeneratorBase,
+from loopy.target.execution import (KernelExecutorBase, ExecutionWrapperGeneratorBase,
                              _KernelInfo, _Kernels)
 import logging
 logger = logging.getLogger(__name__)
@@ -248,7 +248,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
 
         from loopy.codegen import generate_code_v2
-        from loopy.execution import get_highlighted_code
+        from loopy.target.execution import get_highlighted_code
         codegen_result = generate_code_v2(kernel)
 
         dev_code = codegen_result.device_code()

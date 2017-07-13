@@ -404,7 +404,7 @@ def auto_test_vs_ref(
                     "%d (1-based)" % (i+1))
 
     from loopy.compiled import CompiledKernel
-    from loopy.execution import get_highlighted_code
+    from loopy.target.execution import get_highlighted_code
 
     if isinstance(op_count, (int, float)):
         warn("op_count should be a list", stacklevel=2)
