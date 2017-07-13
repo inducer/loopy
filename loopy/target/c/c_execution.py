@@ -52,10 +52,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         super(CExecutionWrapperGenerator, self).__init__(system_args)
 
     def python_dtype_str(self, dtype):
-        # TODO: figure out why isbuiltin isn't working in test (requiring second
-        # line)
-        if dtype.isbuiltin or \
-                np.dtype(str(dtype)).isbuiltin:
+        if np.dtype(str(dtype)).isbuiltin:
             return "_lpy_np."+dtype.name
         raise Exception('dtype: {} not recognized'.format(dtype))
 
