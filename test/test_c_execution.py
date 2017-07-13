@@ -128,3 +128,47 @@ def test_c_target_strides_nonsquare():
 
     assert np.allclose(knl(a=a_np)[1],
                 2 * a_np)
+
+
+def test_c_optimizations():
+    from loopy.target.c import CTarget
+
+    def __get_kernel(order='C'):
+        indicies = ['i', 'j', 'k']
+        sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
+        # create domain strings
+        domain_template = '{{ [{iname}]: 0 <= {iname} < {size} }}'
+        domains = []
+        for idx, size in zip(indicies, sizes):
+            domains.append(domain_template.format(
+                iname=idx,
+                size=size))
+        statement = 'out[{indexed}] = 2 * a[{indexed}]'.format(
+            indexed=', '.join(indicies))
+        return lp.make_kernel(
+                domains,
+                statement,
+                [
+                    lp.GlobalArg("out", np.float32, shape=sizes, order=order),
+                    lp.GlobalArg("a", np.float32, shape=sizes, order=order),
+                    "..."
+                    ],
+                target=CTarget()), sizes
+
+    # test with ILP
+    knl, sizes = __get_kernel('C')
+    lp.split_iname(knl, 'i', 4, inner_tag='ilp')
+    a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
+                      sizes,
+                      order='C')
+
+    assert np.allclose(knl(a=a_np)[1], 2 * a_np)
+
+    # test with unrolling
+    knl, sizes = __get_kernel('C')
+    lp.split_iname(knl, 'i', 4, inner_tag='unr')
+    a_np = np.reshape(np.arange(np.product(sizes), dtype=np.float32),
+                      sizes,
+                      order='C')
+
+    assert np.allclose(knl(a=a_np)[1], 2 * a_np)
