@@ -187,7 +187,12 @@ class KernelExecutorBase(object):
     def get_typed_and_scheduled_kernel(self, arg_to_dtype_set):
         from loopy import CACHING_ENABLED
 
-        cache_key = (type(self).__name__, self.kernel, arg_to_dtype_set)
+        from loopy.preprocess import prepare_for_caching
+        # prepare_for_caching() gets run by preprocess, but the kernel at this
+        # stage is not guaranteed to be preprocessed.
+        cacheable_kernel = prepare_for_caching(self.kernel)
+        cache_key = (type(self).__name__, cacheable_kernel, arg_to_dtype_set)
+
         if CACHING_ENABLED:
             try:
                 return typed_and_scheduled_cache[cache_key]
