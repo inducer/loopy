@@ -497,7 +497,8 @@ class TemporaryVariable(ArrayBase):
         """
 
         super(TemporaryVariable, self).update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, self.storage_shape)
+        self.update_persistent_hash_for_shape(key_hash, key_builder,
+                self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
 
         initializer = self.initializer
@@ -510,7 +511,7 @@ class TemporaryVariable(ArrayBase):
 # }}}
 
 
-# {{{ subsitution rule
+# {{{ substitution rule
 
 class SubstitutionRule(ImmutableRecord):
     """

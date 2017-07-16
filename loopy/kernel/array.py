@@ -862,6 +862,16 @@ class ArrayBase(ImmutableRecord):
     def __repr__(self):
         return "<%s>" % self.__str__()
 
+    def update_persistent_hash_for_shape(self, key_hash, key_builder, shape):
+        if isinstance(shape, tuple):
+            for shape_i in shape:
+                if shape_i is None:
+                    key_builder.rec(key_hash, shape_i)
+                else:
+                    key_builder.update_for_pymbolic_expression(key_hash, shape_i)
+        else:
+            key_builder.rec(key_hash, shape)
+
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
@@ -869,14 +879,7 @@ class ArrayBase(ImmutableRecord):
 
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
-        if isinstance(self.shape, tuple):
-            for shape_i in self.shape:
-                if shape_i is None:
-                    key_builder.rec(key_hash, shape_i)
-                else:
-                    key_builder.update_for_pymbolic_expression(key_hash, shape_i)
-        else:
-            key_builder.rec(key_hash, self.shape)
+        self.update_persistent_hash_for_shape(key_hash, key_builder, self.shape)
         key_builder.rec(key_hash, self.dim_tags)
         key_builder.rec(key_hash, self.offset)
         key_builder.rec(key_hash, self.dim_names)
