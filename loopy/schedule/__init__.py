@@ -596,7 +596,8 @@ class SchedulerState(ImmutableRecord):
     .. attribute:: preschedule
 
         A sequence of schedule items that must be inserted into the
-        schedule, maintaining the same ordering
+        schedule, maintaining the same relative ordering. Newly scheduled
+        items may interleave this sequence.
 
     .. attribute:: prescheduled_insn_ids
 
