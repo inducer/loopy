@@ -258,7 +258,8 @@ class SegmentedProductReductionOperation(_SegmentedScalarReductionOperation):
 
 def get_segmented_function_preamble(kernel, func_id, arg_dtypes):
     op = func_id.reduction_op
-    scalar_dtype, segment_flag_dtype = arg_dtypes
+    scalar_dtype = arg_dtypes[0]
+    segment_flag_dtype = arg_dtypes[1]
     prefix = op.prefix(scalar_dtype, segment_flag_dtype)
 
     return (prefix, """
@@ -444,7 +445,8 @@ def reduction_function_mangler(kernel, func_id, arg_dtypes):
             raise LoopyError("%s: only C-like targets supported for now" % func_id)
 
         op = func_id.reduction_op
-        scalar_dtype, segment_flag_dtype = arg_dtypes
+        scalar_dtype = arg_dtypes[0]
+        segment_flag_dtype = arg_dtypes[1]
 
         from loopy.kernel.data import CallMangleInfo
         return CallMangleInfo(
