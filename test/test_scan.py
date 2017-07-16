@@ -182,6 +182,7 @@ def test_nested_scan(ctx_factory, i_tag, j_tag):
     knl = lp.fix_parameters(knl, n=10)
     knl = lp.tag_inames(knl, dict(i=i_tag, j=j_tag))
 
+    knl = lp.add_dtypes(knl, dict(tmp=int))
     knl = lp.realize_reduction(knl, force_scan=True)
 
     print(knl)
