@@ -25,7 +25,6 @@ THE SOFTWARE.
 
 def default_function_mangler(kernel, name, arg_dtypes):
     from loopy.library.reduction import reduction_function_mangler
-    from loopy.library.tuple import tuple_function_mangler
 
     manglers = [reduction_function_mangler, tuple_function_mangler]
     for mangler in manglers:
@@ -42,6 +41,17 @@ def single_arg_function_mangler(kernel, name, arg_dtypes):
 
         from loopy.kernel.data import CallMangleInfo
         return CallMangleInfo(name, (dtype,), (dtype,))
+
+    return None
+
+
+def tuple_function_mangler(kernel, name, arg_dtypes):
+    if name == "make_tuple":
+        from loopy.kernel.data import CallMangleInfo
+        return CallMangleInfo(
+                target_name="loopy_make_tuple",
+                result_dtypes=arg_dtypes,
+                arg_dtypes=arg_dtypes)
 
     return None
 
