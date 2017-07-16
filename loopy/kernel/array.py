@@ -872,7 +872,6 @@ class ArrayBase(ImmutableRecord):
         else:
             key_builder.rec(key_hash, shape)
 
-
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
         :class:`pytools.persistent_dict.PersistentDict`.
