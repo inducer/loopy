@@ -29,40 +29,10 @@ def tuple_function_mangler(kernel, name, arg_dtypes):
     if name == "make_tuple":
         from loopy.kernel.data import CallMangleInfo
         return CallMangleInfo(
-                target_name=tuple_function_name(*arg_dtypes),
+                target_name="loopy_make_tuple",
                 result_dtypes=arg_dtypes,
                 arg_dtypes=arg_dtypes)
 
     return None
-
-
-def tuple_function_name(dtype0, dtype1):
-    return "loopy_tuple_%s_%s" % (
-            dtype0.numpy_dtype.type.__name__, dtype1.numpy_dtype.type.__name__)
-
-
-def get_tuple_preamble(kernel, func_id, arg_dtypes):
-    name = tuple_function_name(*arg_dtypes)
-    return (name, """
-    inline %(t0)s %(name)s(%(t0)s i0, %(t1)s i1, %(t1)s *o1)
-    {
-      *o1 = i1;
-      return i0;
-    }
-    """ % dict(name=name,
-            t0=kernel.target.dtype_to_typename(arg_dtypes[0]),
-            t1=kernel.target.dtype_to_typename(arg_dtypes[1])))
-
-
-def tuple_preamble_generator(preamble_info):
-    from loopy.target.opencl import OpenCLTarget
-
-    for func in preamble_info.seen_functions:
-        if func.name == "make_tuple":
-            if not isinstance(preamble_info.kernel.target, OpenCLTarget):
-                raise LoopyError("only OpenCL supported for now")
-
-            yield get_tuple_preamble(preamble_info.kernel, func.name,
-                    func.arg_dtypes)
 
 # vim: fdm=marker

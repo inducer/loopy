@@ -648,6 +648,36 @@ class CASTBuilder(ASTBuilderBase):
             lhs_expr, rhs_expr, lhs_dtype):
         raise NotImplementedError("atomic updates in %s" % type(self).__name__)
 
+    def emit_tuple_assignment(self, codegen_state, insn):
+        ecm = codegen_state.expression_to_code_mapper
+
+        parameters = insn.expression.parameters
+        parameter_dtypes = tuple(ecm.infer_type(par) for par in parameters)
+
+        from cgen import Assign, block_if_necessary
+        assignments = []
+
+        for i, (assignee, tgt_dtype) in enumerate(
+                zip(insn.assignees, parameter_dtypes)):
+            if tgt_dtype != ecm.infer_type(assignee):
+                raise LoopyError("type mismatch in %d'th (0-based) left-hand "
+                        "side of instruction '%s'" % (i, insn.id))
+
+            lhs_code = ecm(assignee, prec=PREC_NONE, type_context=None)
+            assignee_var_name = insn.assignee_var_names()[i]
+            lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
+            lhs_dtype = lhs_var.dtype
+
+            from loopy.expression import dtype_to_type_context
+            rhs_type_context = dtype_to_type_context(
+                    codegen_state.kernel.target, lhs_dtype)
+            rhs_code = ecm(parameters[i], prec=PREC_NONE,
+                           type_context=rhs_type_context, needed_dtype=lhs_dtype)
+
+            assignments.append(Assign(lhs_code, rhs_code))
+
+        return block_if_necessary(assignments)
+
     def emit_multiple_assignment(self, codegen_state, insn):
         ecm = codegen_state.expression_to_code_mapper
 
@@ -673,6 +703,9 @@ class CASTBuilder(ASTBuilderBase):
                     % func_id)
 
         assert mangle_result.arg_dtypes is not None
+
+        if mangle_result.target_name == "loopy_make_tuple":
+            return self.emit_tuple_assignment(codegen_state, insn)
 
         from loopy.expression import dtype_to_type_context
         c_parameters = [
