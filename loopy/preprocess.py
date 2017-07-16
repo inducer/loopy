@@ -1001,7 +1001,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 var_name_gen(id + "_arg" + str(i))
                 for i in range(nresults)]
 
-        from loopy.type_inference import infer_arg_and_reduction_dtypes_for_reduction_expression
+        from loopy.type_inference import (
+                infer_arg_and_reduction_dtypes_for_reduction_expression)
 
         _, reduction_dtypes = (
                 infer_arg_and_reduction_dtypes_for_reduction_expression(
