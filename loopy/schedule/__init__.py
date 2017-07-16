@@ -596,7 +596,8 @@ class SchedulerState(ImmutableRecord):
     .. attribute:: preschedule
 
         A sequence of schedule items that must be inserted into the
-        schedule, maintaining the same ordering
+        schedule, maintaining the same relative ordering. Newly scheduled
+        items may interleave this sequence.
 
     .. attribute:: prescheduled_insn_ids
 
@@ -1071,28 +1072,6 @@ def generate_loop_schedules_internal(
                 if debug_mode:
                     print("scheduling %s prohibited by preschedule constraints"
                           % iname)
-                continue
-
-            if (
-                    not sched_state.within_subkernel
-                    and iname not in sched_state.prescheduled_inames):
-                # Avoid messing up some orderings such as picking:
-                #
-                # EnterLoop(temporary.reload)
-                # CallKernel
-                # ...
-                #
-                # instead of
-                #
-                # CallKernel
-                # EnterLoop(temporary.reload)
-                # ...
-                #
-                # This serves a heuristic to catch some bad decisions early, the
-                # scheduler will not allow the first variant regardless.
-                if debug_mode:
-                    print("scheduling '%s' prohibited because we are outside "
-                          "a subkernel" % iname)
                 continue
 
             currently_accessible_inames = (
