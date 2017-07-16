@@ -671,6 +671,11 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
                 raise LoopyError("failed to determine type of accumulator for "
                         "reduction '%s'" % expr)
 
+    arg_dtypes = tuple(
+            dt.with_target(kernel.target)
+            if dt is not lp.auto else dt
+            for dt in arg_dtypes)
+
     reduction_dtypes = expr.operation.result_dtypes(kernel, *arg_dtypes)
     reduction_dtypes = tuple(
             dt.with_target(kernel.target)
