@@ -363,9 +363,12 @@ def gen_dependencies_except(kernel, insn_id, except_insn_ids):
 def get_priority_tiers(wanted, priorities):
     # Get highest priority tier candidates: These are the first inames
     # of all the given priority constraints
-    candidates = set(next(iter(p for p in prio if p in wanted))
-                     for prio in priorities
-                     )
+    candidates = set()
+    for prio in priorities:
+        for p in prio:
+            if p in wanted:
+                candidates.add(p)
+                break
 
     # Now shrink this set by removing those inames that are prohibited
     # by other constraints
@@ -383,19 +386,19 @@ def get_priority_tiers(wanted, priorities):
     candidates = candidates - set(bad_candidates)
 
     if candidates:
-        # We found a valid priority tier!
+        # We found a valid priority tier
         yield candidates
     else:
-        # If we did not, we stop the generator!
+        # If we did not, stop the generator
         return
 
-    # Now reduce the input data for recursion!
+    # Now reduce the input data for recursion
     priorities = frozenset([tuple(i for i in prio if i not in candidates)
                             for prio in priorities
                             ]) - frozenset([()])
     wanted = wanted - candidates
 
-    # Yield recursively!
+    # Yield recursively
     for tier in get_priority_tiers(wanted, priorities):
         yield tier
 
