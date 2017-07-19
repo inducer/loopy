@@ -232,7 +232,8 @@ class TypeInferenceMapper(CombineMapper):
             # Codegen for complex types depends on exactly correct types.
             # Refuse temptation to guess.
             raise TypeInferenceFailure("Complex constant '%s' needs to "
-                    "be sized for type inference " % expr)
+                    "be sized (i.e. as numpy.complex64/128) for type inference "
+                    % expr)
         else:
             raise TypeInferenceFailure("Cannot deduce type of constant '%s'" % expr)
 

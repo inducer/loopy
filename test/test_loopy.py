@@ -2376,6 +2376,21 @@ def test_kernel_var_name_generator():
     assert vng("b") != "b"
 
 
+def test_execution_backend_can_cache_dtypes(ctx_factory):
+    # When the kernel is invoked, the execution backend uses it as a cache key
+    # for the type inference and scheduling cache. This tests to make sure that
+    # dtypes in the kernel can be cached, even though they may not have a
+    # target.
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel("{[i]: 0 <= i < 10}", "<>tmp[i] = i")
+    knl = lp.add_dtypes(knl, dict(tmp=int))
+
+    knl(queue)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
