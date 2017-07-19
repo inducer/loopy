@@ -749,9 +749,6 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
     # }}}
 
-    from loopy.type_inference import TypeInferenceMapper
-    type_inf_mapper = TypeInferenceMapper(kernel)
-
     from loopy.kernel.instruction import CallInstruction
     for insn in kernel.instructions:
         if not isinstance(insn, CallInstruction):
@@ -772,24 +769,6 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
         from loopy.kernel.data import temp_var_scope, TemporaryVariable
 
         FIRST_POINTER_ASSIGNEE_IDX = 1  # noqa
-
-        param_dtypes = tuple(type_inf_mapper(param)
-                for param in insn.expression.parameters)
-
-        func_id = insn.expression.function
-
-        from pymbolic.primitives import Variable
-        if isinstance(func_id, Variable):
-            func_id = func_id.name
-
-        mangle_result = kernel.mangle_function(func_id, param_dtypes)
-
-        if mangle_result.target_name == "loopy_make_tuple":
-            # Skip loopy_make_tuple. This is lowered without a function call.
-            continue
-
-        assignee_dtypes, = type_inf_mapper(
-                insn.expression, return_tuple=True, return_dtype_set=True)
 
         for assignee_nr, assignee_var_name, assignee in zip(
                 range(FIRST_POINTER_ASSIGNEE_IDX, len(assignees)),
@@ -818,11 +797,11 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
             newly_added_assignments_ids.add(new_assignment_id)
 
+            import loopy as lp
             new_temporaries[new_assignee_name] = (
                     TemporaryVariable(
                         name=new_assignee_name,
-                        dtype=assignee_dtypes[assignee_nr].with_target(
-                            kernel.target),
+                        dtype=lp.auto,
                         scope=temp_var_scope.PRIVATE))
 
             from pymbolic import var
@@ -1001,19 +980,12 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 var_name_gen(id + "_arg" + str(i))
                 for i in range(nresults)]
 
-        from loopy.type_inference import (
-                infer_arg_and_reduction_dtypes_for_reduction_expression)
-
-        _, reduction_dtypes = (
-                infer_arg_and_reduction_dtypes_for_reduction_expression(
-                    temp_kernel, expr, unknown_types_ok=False))
-
-        for name, dtype in zip(temp_var_names, reduction_dtypes):
+        for name in temp_var_names:
             from loopy.kernel.data import TemporaryVariable, temp_var_scope
             new_temporary_variables[name] = TemporaryVariable(
                     name=name,
                     shape=(),
-                    dtype=dtype,
+                    dtype=lp.auto,
                     scope=temp_var_scope.PRIVATE)
 
         from pymbolic import var
