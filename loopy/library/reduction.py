@@ -123,7 +123,8 @@ class ScalarReductionOperation(ReductionOperation):
 
 class SumReductionOperation(ScalarReductionOperation):
     def neutral_element(self, dtype):
-        return dtype.numpy_dtype.type(0)
+        # FIXME: Document that we always use an int here.
+        return 0
 
     def __call__(self, dtype, operand1, operand2):
         return operand1 + operand2
@@ -131,7 +132,8 @@ class SumReductionOperation(ScalarReductionOperation):
 
 class ProductReductionOperation(ScalarReductionOperation):
     def neutral_element(self, dtype):
-        return dtype.numpy_dtype.type(1)
+        # FIXME: Document that we always use an int here.
+        return 1
 
     def __call__(self, dtype, operand1, operand2):
         return operand1 * operand2

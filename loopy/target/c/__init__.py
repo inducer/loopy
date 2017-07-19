@@ -651,18 +651,11 @@ class CASTBuilder(ASTBuilderBase):
     def emit_tuple_assignment(self, codegen_state, insn):
         ecm = codegen_state.expression_to_code_mapper
 
-        parameters = insn.expression.parameters
-        parameter_dtypes = tuple(ecm.infer_type(par) for par in parameters)
-
         from cgen import Assign, block_if_necessary
         assignments = []
 
-        for i, (assignee, tgt_dtype) in enumerate(
-                zip(insn.assignees, parameter_dtypes)):
-            if tgt_dtype != ecm.infer_type(assignee):
-                raise LoopyError("type mismatch in %d'th (0-based) left-hand "
-                        "side of instruction '%s'" % (i, insn.id))
-
+        for i, (assignee, parameter) in enumerate(
+                zip(insn.assignees, insn.expression.parameters)):
             lhs_code = ecm(assignee, prec=PREC_NONE, type_context=None)
             assignee_var_name = insn.assignee_var_names()[i]
             lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
@@ -671,8 +664,8 @@ class CASTBuilder(ASTBuilderBase):
             from loopy.expression import dtype_to_type_context
             rhs_type_context = dtype_to_type_context(
                     codegen_state.kernel.target, lhs_dtype)
-            rhs_code = ecm(parameters[i], prec=PREC_NONE,
-                           type_context=rhs_type_context, needed_dtype=lhs_dtype)
+            rhs_code = ecm(parameter, prec=PREC_NONE,
+                    type_context=rhs_type_context, needed_dtype=lhs_dtype)
 
             assignments.append(Assign(lhs_code, rhs_code))
 
