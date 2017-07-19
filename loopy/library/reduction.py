@@ -202,6 +202,10 @@ class ReductionOpFunction(FunctionIdentifier):
     def __getinitargs__(self):
         return (self.reduction_op,)
 
+    @property
+    def name(self):
+        return self.__class__.__name__
+
 # }}}
 
 
