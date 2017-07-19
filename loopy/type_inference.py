@@ -443,7 +443,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
                         result_i = comp_dtype_set
                         break
 
-                assert found, var_name
+                assert found
                 if result_i is not None:
                     result.append(result_i)
 
@@ -671,11 +671,6 @@ def infer_arg_and_reduction_dtypes_for_reduction_expression(
             else:
                 raise LoopyError("failed to determine type of accumulator for "
                         "reduction '%s'" % expr)
-
-    arg_dtypes = tuple(
-            dt.with_target(kernel.target)
-            if dt is not lp.auto else dt
-            for dt in arg_dtypes)
 
     reduction_dtypes = expr.operation.result_dtypes(kernel, *arg_dtypes)
     reduction_dtypes = tuple(
