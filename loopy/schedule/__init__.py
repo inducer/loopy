@@ -1750,15 +1750,10 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 # {{{ main scheduling entrypoint
 
 def generate_loop_schedules(kernel, debug_args={}):
-    import sys
-    rec_limit = sys.getrecursionlimit()
-    new_limit = max(rec_limit, len(kernel.instructions) * 2)
-    sys.setrecursionlimit(new_limit)
-    try:
+    from pytools import MinRecursionLimit
+    with MinRecursionLimit(len(kernel.instructions) * 2):
         for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
             yield sched
-    finally:
-        sys.setrecursionlimit(rec_limit)
 
 
 def generate_loop_schedules_inner(kernel, debug_args={}):
