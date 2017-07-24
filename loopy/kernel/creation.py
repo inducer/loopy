@@ -366,55 +366,55 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 # {{{ parse one instruction
 
 WITH_OPTIONS_RE = re.compile(
-        "^"
-        "\s*with\s*"
-        "\{(?P<options>.+)\}"
-        "\s*$")
+        r"^"
+        r"\s*with\s*"
+        r"\{(?P<options>.+)\}"
+        r"\s*$")
 
 FOR_RE = re.compile(
-        "^"
-        "\s*(for)\s+"
-        "(?P<inames>[ ,\w]*)"
-        "\s*$")
+        r"^"
+        r"\s*(for)\s+"
+        r"(?P<inames>[ ,\w]*)"
+        r"\s*$")
 
 IF_RE = re.compile(
-        "^"
-        "\s*if\s+"
-        "(?P<predicate>.+)"
-        "\s*$")
+        r"^"
+        r"\s*if\s+"
+        r"(?P<predicate>.+)"
+        r"\s*$")
 
 ELIF_RE = re.compile(
-        "^"
-        "\s*elif\s+"
-        "(?P<predicate>.+)"
-        "\s*$")
+        r"^"
+        r"\s*elif\s+"
+        r"(?P<predicate>.+)"
+        r"\s*$")
 
-ELSE_RE = re.compile("^\s*else\s*$")
+ELSE_RE = re.compile(r"^\s*else\s*$")
 
 INSN_RE = re.compile(
-        "^"
-        "\s*"
-        "(?P<lhs>[^{]+?)"
-        "\s*(?<!\:)=\s*"
-        "(?P<rhs>.+?)"
-        "\s*?"
-        "(?:\{(?P<options>.+)\}\s*)?$")
+        r"^"
+        r"\s*"
+        r"(?P<lhs>[^{]+?)"
+        r"\s*(?<!\:)=\s*"
+        r"(?P<rhs>.+?)"
+        r"\s*?"
+        r"(?:\{(?P<options>.+)\}\s*)?$")
 
 EMPTY_LHS_INSN_RE = re.compile(
-        "^"
-        "\s*"
-        "(?P<rhs>.+?)"
-        "\s*?"
-        "(?:\{(?P<options>.+)\}\s*)?$")
+        r"^"
+        r"\s*"
+        r"(?P<rhs>.+?)"
+        r"\s*?"
+        r"(?:\{(?P<options>.+)\}\s*)?$")
 
 SPECIAL_INSN_RE = re.compile(
-        "^"
-        "\s*"
-        "\.\.\."
-        "\s*"
-        "(?P<kind>[a-z]+?)"
-        "\s*?"
-        "(?:\{(?P<options>.+)\}\s*)?$")
+        r"^"
+        r"\s*"
+        r"\.\.\."
+        r"\s*"
+        r"(?P<kind>[a-z]+?)"
+        r"\s*?"
+        r"(?:\{(?P<options>.+)\}\s*)?$")
 
 SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
