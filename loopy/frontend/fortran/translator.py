@@ -312,7 +312,16 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
     def dtype_from_stmt(self, stmt):
         length, kind = stmt.selector
-        assert not kind
+
+        if kind and not length:
+            length = kind
+        elif length and not kind:
+            pass
+        elif not length and not kind:
+            pass
+        else:
+            raise RuntimeError("both length and kind specified")
+
         return np.dtype(self.TYPE_MAP[(type(stmt).__name__.lower(), length)])
 
     def map_type_decl(self, node):
