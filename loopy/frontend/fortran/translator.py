@@ -212,6 +212,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.instruction_tags = []
         self.conditions = []
+        self.conditions_data = []
 
         self.filename = filename
 
@@ -451,7 +452,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         # node.expr
         # node.content[0]
 
-    def map_IfThen(self, node):
+    def realize_conditional(self, node, context_cond=None):
         scope = self.scope_stack[-1]
 
         cond_name = intern("loopy_cond%d" % self.condition_id_counter)
@@ -466,22 +467,53 @@ class F2LoopyTranslator(FTreeWalkerBase):
         self.add_expression_instruction(
                 cond_var, self.parse_expr(node, node.expr))
 
-        self.conditions.append(cond_name)
+        cond_expr = cond_var
+        if context_cond is not None:
+            from pymbolic.primitives import LogicalAnd
+            cond_expr = LogicalAnd((cond_var, context_cond))
 
+            self.conditions_data.append((context_cond, cond_var))
+        else:
+            self.conditions_data.append((None, cond_var))
+
+        self.conditions.append(cond_expr)
+
+    def map_IfThen(self, node):
         self.block_nest.append("if")
+        self.realize_conditional(node, None)
+
         for c in node.content:
             self.rec(c)
 
+    def construct_else_condition(self):
+        context_cond, prev_cond = self.conditions_data.pop()
+        if prev_cond is None:
+            raise RuntimeError("else if may not follow else")
+
+        self.conditions.pop()
+
+        from pymbolic.primitives import LogicalNot, LogicalAnd
+        else_expr = LogicalNot(prev_cond)
+        if context_cond is not None:
+            else_expr = LogicalAnd((else_expr, context_cond))
+
+        return else_expr
+
     def map_Else(self, node):
-        cond_name = self.conditions.pop()
-        self.conditions.append("!" + cond_name)
+        else_cond = self.construct_else_condition()
+        self.conditions.append(else_cond)
+        self.conditions_data.append((else_cond, None))
+
+    def map_ElseIf(self, node):
+        self.realize_conditional(node, self.construct_else_condition())
 
     def map_EndIfThen(self, node):
         if not self.block_nest:
-            raise TranslationError("no if block started at end do")
+            raise TranslationError("no if block started at end if")
         if self.block_nest.pop() != "if":
             raise TranslationError("mismatched end if")
 
+        self.conditions_data.pop()
         self.conditions.pop()
 
     def map_Do(self, node):
