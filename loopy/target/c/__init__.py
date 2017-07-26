@@ -698,6 +698,7 @@ class CASTBuilder(ASTBuilderBase):
         assert mangle_result.arg_dtypes is not None
 
         if mangle_result.target_name == "loopy_make_tuple":
+            # This shorcut avoids actually having to emit a 'make_tuple' function.
             return self.emit_tuple_assignment(codegen_state, insn)
 
         from loopy.expression import dtype_to_type_context
