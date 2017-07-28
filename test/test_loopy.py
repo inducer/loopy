@@ -1046,6 +1046,24 @@ def test_within_inames_and_reduction():
     print(k.stringify(with_dependencies=True))
 
 
+def test_literal_local_barrier(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            for i
+                ... lbarrier
+            end
+            """, seq_dependencies=True)
+
+    knl = lp.fix_parameters(knl, n=128)
+
+    ref_knl = knl
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
 def test_kernel_splitting(ctx_factory):
     ctx = ctx_factory()
 
