@@ -1606,7 +1606,10 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
         comment = "for %s (%s)" % (
                 dep.variable, dep.dep_descr.format(
                     tgt=dep.target.id, src=dep.source.id))
-        schedule.append(Barrier(comment=comment, kind=dep.var_kind))
+        schedule.append(Barrier(
+            comment=comment,
+            kind=dep.var_kind,
+            originating_insn_id=None))
 
 
 def insert_barriers(kernel, schedule, kind, verify_only, level=0):
