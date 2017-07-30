@@ -1335,6 +1335,28 @@ def test_save_of_local_array(ctx_factory, debug=False):
     save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
 
 
+def test_save_of_local_array_with_explicit_local_barrier(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<8 }",
+        """
+        for i, j
+            <>t[2*j] = j
+            ... lbarrier
+            t[2*j+1] = t[2*j]
+            ... gbarrier
+            out[i] = t[2*i]
+        end
+        """, seq_dependencies=True)
+
+    knl = lp.set_temporary_scope(knl, "t", "local")
+    knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
+
+    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
+
+
 def test_save_local_multidim_array(ctx_factory, debug=False):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
