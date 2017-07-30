@@ -1,8 +1,6 @@
 """Loop nest build top-level control/hoisting."""
 
-from __future__ import division
-from __future__ import absolute_import
-import six
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -26,12 +24,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
-
+import six
 from loopy.codegen.result import merge_codegen_results, wrap_in_if
 import islpy as isl
 from loopy.schedule import (
         EnterLoop, LeaveLoop, RunInstruction, Barrier, CallKernel,
         gather_schedule_block, generate_sub_sched_items)
+from loopy.diagnostic import LoopyError
 
 
 def get_admissible_conditional_inames_for(codegen_state, sched_index):
@@ -150,15 +149,36 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         return func(codegen_state, sched_index)
 
     elif isinstance(sched_item, Barrier):
-        if codegen_state.is_generating_device_code:
-            return codegen_state.ast_builder.emit_barrier(
-                    sched_item.kind, sched_item.comment)
+        # {{{ emit barrier code
+
         from loopy.codegen.result import CodeGenerationResult
-        return CodeGenerationResult(
-                host_program=None,
-                device_programs=[],
-                implemented_domains={},
-                implemented_data_info=codegen_state.implemented_data_info)
+
+        if codegen_state.is_generating_device_code:
+            barrier_ast = codegen_state.ast_builder.emit_barrier(
+                    sched_item.kind, sched_item.comment)
+            if sched_item.originating_insn_id:
+                return CodeGenerationResult.new(
+                        codegen_state,
+                        sched_item.originating_insn_id,
+                        barrier_ast,
+                        codegen_state.implemented_domain)
+            else:
+                return barrier_ast
+        else:
+            # host code
+            if sched_item.kind in ["global", "local"]:
+                # host code is assumed globally and locally synchronous
+                return CodeGenerationResult(
+                        host_program=None,
+                        device_programs=[],
+                        implemented_domains={},
+                        implemented_data_info=codegen_state.implemented_data_info)
+
+            else:
+                raise LoopyError("do not know how to emit code for barrier kind '%s'"
+                        "in host code" % sched_item.kind)
+
+        # }}}
 
     elif isinstance(sched_item, RunInstruction):
         insn = kernel.id_to_insn[sched_item.insn_id]
