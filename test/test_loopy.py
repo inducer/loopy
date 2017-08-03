@@ -1046,6 +1046,24 @@ def test_within_inames_and_reduction():
     print(k.stringify(with_dependencies=True))
 
 
+def test_literal_local_barrier(ctx_factory):
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel(
+            "{ [i]: 0<=i<n }",
+            """
+            for i
+                ... lbarrier
+            end
+            """, seq_dependencies=True)
+
+    knl = lp.fix_parameters(knl, n=128)
+
+    ref_knl = knl
+
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
+
+
 def test_kernel_splitting(ctx_factory):
     ctx = ctx_factory()
 
@@ -1306,6 +1324,28 @@ def test_save_of_local_array(ctx_factory, debug=False):
         for i, j
             <>t[2*j] = j
             t[2*j+1] = j
+            ... gbarrier
+            out[i] = t[2*i]
+        end
+        """, seq_dependencies=True)
+
+    knl = lp.set_temporary_scope(knl, "t", "local")
+    knl = lp.tag_inames(knl, dict(i="g.0", j="l.0"))
+
+    save_and_reload_temporaries_test(queue, knl, np.arange(8), debug)
+
+
+def test_save_of_local_array_with_explicit_local_barrier(ctx_factory, debug=False):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+        "{ [i,j]: 0<=i,j<8 }",
+        """
+        for i, j
+            <>t[2*j] = j
+            ... lbarrier
+            t[2*j+1] = t[2*j]
             ... gbarrier
             out[i] = t[2*i]
         end
@@ -2087,6 +2127,47 @@ def test_integer_reduction(ctx_factory):
             assert function(out)
 
 
+def test_complicated_argmin_reduction(ctx_factory):
+    cl_ctx = ctx_factory()
+    knl = lp.make_kernel(
+            "{[ictr,itgt,idim]: "
+            "0<=itgt<ntargets "
+            "and 0<=ictr<ncenters "
+            "and 0<=idim<ambient_dim}",
+
+            """
+            for itgt
+                for ictr
+                    <> dist_sq = sum(idim,
+                            (tgt[idim,itgt] - center[idim,ictr])**2)
+                    <> in_disk = dist_sq < (radius[ictr]*1.05)**2
+                    <> matches = (
+                            (in_disk
+                                and qbx_forced_limit == 0)
+                            or (in_disk
+                                    and qbx_forced_limit != 0
+                                    and qbx_forced_limit * center_side[ictr] > 0)
+                            )
+
+                    <> post_dist_sq = if(matches, dist_sq, HUGE)
+                end
+                <> min_dist_sq, <> min_ictr = argmin(ictr, ictr, post_dist_sq)
+
+                tgt_to_qbx_center[itgt] = if(min_dist_sq < HUGE, min_ictr, -1)
+            end
+            """)
+
+    knl = lp.fix_parameters(knl, ambient_dim=2)
+    knl = lp.add_and_infer_dtypes(knl, {
+            "tgt,center,radius,HUGE": np.float32,
+            "center_side,qbx_forced_limit": np.int32,
+            })
+
+    lp.auto_test_vs_ref(knl, cl_ctx, knl, parameters={
+            "HUGE": 1e20, "ncenters": 200, "ntargets": 300,
+            "qbx_forced_limit": 1})
+
+
 def test_nosync_option_parsing():
     knl = lp.make_kernel(
         "{[i]: 0 <= i < 10}",
@@ -2333,6 +2414,21 @@ def test_kernel_var_name_generator():
 
     assert vng("a_s0") != "a_s0"
     assert vng("b") != "b"
+
+
+def test_execution_backend_can_cache_dtypes(ctx_factory):
+    # When the kernel is invoked, the execution backend uses it as a cache key
+    # for the type inference and scheduling cache. This tests to make sure that
+    # dtypes in the kernel can be cached, even though they may not have a
+    # target.
+
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel("{[i]: 0 <= i < 10}", "<>tmp[i] = i")
+    knl = lp.add_dtypes(knl, dict(tmp=int))
+
+    knl(queue)
 
 
 if __name__ == "__main__":

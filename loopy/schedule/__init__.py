@@ -363,9 +363,12 @@ def gen_dependencies_except(kernel, insn_id, except_insn_ids):
 def get_priority_tiers(wanted, priorities):
     # Get highest priority tier candidates: These are the first inames
     # of all the given priority constraints
-    candidates = set(next(iter(p for p in prio if p in wanted))
-                     for prio in priorities
-                     )
+    candidates = set()
+    for prio in priorities:
+        for p in prio:
+            if p in wanted:
+                candidates.add(p)
+                break
 
     # Now shrink this set by removing those inames that are prohibited
     # by other constraints
@@ -383,19 +386,19 @@ def get_priority_tiers(wanted, priorities):
     candidates = candidates - set(bad_candidates)
 
     if candidates:
-        # We found a valid priority tier!
+        # We found a valid priority tier
         yield candidates
     else:
-        # If we did not, we stop the generator!
+        # If we did not, stop the generator
         return
 
-    # Now reduce the input data for recursion!
+    # Now reduce the input data for recursion
     priorities = frozenset([tuple(i for i in prio if i not in candidates)
                             for prio in priorities
                             ]) - frozenset([()])
     wanted = wanted - candidates
 
-    # Yield recursively!
+    # Yield recursively
     for tier in get_priority_tiers(wanted, priorities):
         yield tier
 
@@ -596,7 +599,8 @@ class SchedulerState(ImmutableRecord):
     .. attribute:: preschedule
 
         A sequence of schedule items that must be inserted into the
-        schedule, maintaining the same ordering
+        schedule, maintaining the same relative ordering. Newly scheduled
+        items may interleave this sequence.
 
     .. attribute:: prescheduled_insn_ids
 
@@ -728,13 +732,15 @@ def generate_loop_schedules_internal(
 
     # }}}
 
-    # {{{ see if there are pending local barriers in the preschedule
+    # {{{ see if there are pending barriers in the preschedule
 
-    # Local barriers do not have associated instructions, so they need to
-    # be handled separately from instructions.
+    # Barriers that do not have an originating instruction are handled here.
+    # (These are automatically inserted by insert_barriers().) Barriers with
+    # originating instructions are handled as part of normal instruction
+    # scheduling below.
     if (
             isinstance(next_preschedule_item, Barrier)
-            and next_preschedule_item.kind == "local"):
+            and next_preschedule_item.originating_insn_id is None):
         for result in generate_loop_schedules_internal(
                     sched_state.copy(
                         schedule=sched_state.schedule + (next_preschedule_item,),
@@ -810,10 +816,7 @@ def generate_loop_schedules_internal(
         if insn_id in sched_state.prescheduled_insn_ids:
             if isinstance(next_preschedule_item, RunInstruction):
                 next_preschedule_insn_id = next_preschedule_item.insn_id
-            elif (
-                    isinstance(next_preschedule_item, Barrier)
-                    and next_preschedule_item.kind == "global"):
-                assert hasattr(next_preschedule_item, "originating_insn_id")
+            elif isinstance(next_preschedule_item, Barrier):
                 assert next_preschedule_item.originating_insn_id is not None
                 next_preschedule_insn_id = next_preschedule_item.originating_insn_id
             else:
@@ -1071,28 +1074,6 @@ def generate_loop_schedules_internal(
                 if debug_mode:
                     print("scheduling %s prohibited by preschedule constraints"
                           % iname)
-                continue
-
-            if (
-                    not sched_state.within_subkernel
-                    and iname not in sched_state.prescheduled_inames):
-                # Avoid messing up some orderings such as picking:
-                #
-                # EnterLoop(temporary.reload)
-                # CallKernel
-                # ...
-                #
-                # instead of
-                #
-                # CallKernel
-                # EnterLoop(temporary.reload)
-                # ...
-                #
-                # This serves a heuristic to catch some bad decisions early, the
-                # scheduler will not allow the first variant regardless.
-                if debug_mode:
-                    print("scheduling '%s' prohibited because we are outside "
-                          "a subkernel" % iname)
                 continue
 
             currently_accessible_inames = (
@@ -1624,7 +1605,10 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
         comment = "for %s (%s)" % (
                 dep.variable, dep.dep_descr.format(
                     tgt=dep.target.id, src=dep.source.id))
-        schedule.append(Barrier(comment=comment, kind=dep.var_kind))
+        schedule.append(Barrier(
+            comment=comment,
+            kind=dep.var_kind,
+            originating_insn_id=None))
 
 
 def insert_barriers(kernel, schedule, kind, verify_only, level=0):
@@ -1771,15 +1755,10 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 # {{{ main scheduling entrypoint
 
 def generate_loop_schedules(kernel, debug_args={}):
-    import sys
-    rec_limit = sys.getrecursionlimit()
-    new_limit = max(rec_limit, len(kernel.instructions) * 2)
-    sys.setrecursionlimit(new_limit)
-    try:
+    from pytools import MinRecursionLimit
+    with MinRecursionLimit(len(kernel.instructions) * 2):
         for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
             yield sched
-    finally:
-        sys.setrecursionlimit(rec_limit)
 
 
 def generate_loop_schedules_inner(kernel, debug_args={}):
