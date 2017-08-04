@@ -25,16 +25,17 @@ THE SOFTWARE.
 import tempfile
 import cgen
 import os
-import subprocess
 
 from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
                              ExecutionWrapperGeneratorBase)
 from pytools import memoize_method
 from pytools.py_codegen import (Indentation)
-
+from codepy.toolchain import guess_toolchain
+from codepy.jit import compile_from_string
+import six
 import weakref
-
 import ctypes
+
 import numpy as np
 
 import logging
@@ -197,44 +198,47 @@ class CCompiler(object):
     default_compile_flags = '-std=c99 -g -O3 -fPIC'.split()
     default_link_flags = '-shared'.split()
 
-    def __init__(self, cc=None,
-                 cflags=None,
-                 ldflags=None):
-        self.exe = cc if cc else self.default_exe
-        self.cflags = cflags or self.default_compile_flags[:]
-        self.ldflags = ldflags or self.default_link_flags[:]
+    def __init__(self, cc=default_exe, cflags=default_compile_flags,
+                 ldflags=None, libraries=None,
+                 include_dirs=[], library_dirs=[], defines=[]):
+        # try to get a default toolchain
+        self.toolchain = guess_toolchain()
+        # copy in all differing values
+        diff = {'cc': cc,
+                'cflags': cflags,
+                'ldflags': ldflags,
+                'libraries': libraries,
+                'include_dirs': include_dirs,
+                'library_dirs': library_dirs,
+                'defines': defines}
+        # filter empty and those equal to toolchain defaults
+        diff = {k: v for k, v in six.iteritems(diff) if v and
+                getattr(self.toolchain, k) != v}
+        self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
 
     def _tempname(self, name):
         """Build temporary filename path in tempdir."""
         return os.path.join(self.tempdir, name)
 
-    def _call(self, args, **kwargs):
-        """Invoke compiler with arguments."""
-        cwd = self.tempdir
-        args_ = [self.exe] + args
-        logger.debug(args_)
-        subprocess.check_call(args_, cwd=cwd, **kwargs)
-
-    def build(self, code):
+    @memoize_method
+    def build(self, name, code, debug=False, wait_on_error=None,
+                     debug_recompile=True):
         """Compile code, build and load shared library."""
         logger.debug(code)
         c_fname = self._tempname('code.' + self.source_suffix)
-        obj_fname = self._tempname('code.o')
-        dll_fname = self._tempname('code.so')
-        with open(c_fname, 'w') as fd:
-            fd.write(code)
-        self._call(self.compile_args(c_fname))
-        self._call(self.link_args(obj_fname, dll_fname))
-        return ctypes.CDLL(dll_fname)
 
-    def compile_args(self, c_fname):
-        "Construct args for compile command."
-        return self.cflags + ['-c', c_fname]
+        # build object
+        checksum, mod_name, ext_file, recompiled = \
+            compile_from_string(self.toolchain, name, code, c_fname,
+                                self.tempdir, debug, wait_on_error,
+                                debug_recompile, False)
 
-    def link_args(self, obj_fname, dll_fname):
-        "Construct args for link command."
-        return self.ldflags + ['-shared', obj_fname, '-o', dll_fname]
+        if not recompiled:
+            logger.debug('Kernel {} compiled from source'.format(name))
+
+        # and return compiled
+        return checksum, ctypes.CDLL(ext_file)
 
 
 class CppCompiler(CCompiler):
@@ -261,7 +265,9 @@ class CompiledCKernel(object):
         # get code and build
         self.code = dev_code
         self.comp = comp or CCompiler()
-        self.dll = self.comp.build(self.code)
+        self.checksum, self.dll = self.comp.build(
+            self.knl.name, self.code)
+
         # get the function declaration for interface with ctypes
         from loopy.target.c import CFunctionDeclExtractor
         self.func_decl = CFunctionDeclExtractor()
@@ -384,8 +390,8 @@ class CKernelExecutor(KernelExecutorBase):
 
         c_kernels = []
         for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(dp, dev_code, self.kernel.target,
-                                             self.compiler))
+            c_kernels.append(CompiledCKernel(dp, dev_code,
+                                 self.kernel.target, self.compiler))
 
         return _KernelInfo(
                 kernel=kernel,
