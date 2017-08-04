@@ -187,6 +187,13 @@ class ISPCTarget(CTarget):
     def get_device_ast_builder(self):
         return ISPCASTBuilder(self)
 
+    def get_kernel_executor_cache_key(self, *args, **kwargs):
+        return None
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy.target.ispc_execution import ISPCKernelExecutor
+        return ISPCKernelExecutor(knl, self.compiler)
+
     # {{{ types
 
     @memoize_method
