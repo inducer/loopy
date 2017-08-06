@@ -60,6 +60,12 @@ def check_identifiers_in_subst_rules(knl):
 
 # {{{ sanity checks run pre-scheduling
 
+
+# FIXME: Replace with an enum. See
+# https://gitlab.tiker.net/inducer/loopy/issues/85
+VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
+
+
 def check_insn_attributes(kernel):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
@@ -75,6 +81,19 @@ def check_insn_attributes(kernel):
                     "dependencies: %s"
                     % (insn.id, ", ".join(
                         insn.depends_on - all_insn_ids)))
+
+        no_sync_with_insn_ids = set(id for id, scope in insn.no_sync_with)
+        if not no_sync_with_insn_ids <= all_insn_ids:
+            raise LoopyError("insn '%s' has nosync directive with unknown "
+                    "instruction ids: %s"
+                    % (insn.id,
+                       ", ".join(no_sync_with_insn_ids - all_insn_ids)))
+
+        no_sync_with_scopes = set(scope for id, scope in insn.no_sync_with)
+        if not no_sync_with_scopes <= VALID_NOSYNC_SCOPES:
+            raise LoopyError("insn '%s' has invalid nosync scopes: %s"
+                    % (insn.id,
+                       ", ".join(no_sync_with_scopes - VALID_NOSYNC_SCOPES)))
 
 
 def check_loop_priority_inames_known(kernel):
