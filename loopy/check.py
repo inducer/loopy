@@ -93,7 +93,7 @@ def check_insn_attributes(kernel):
         if not no_sync_with_scopes <= VALID_NOSYNC_SCOPES:
             raise LoopyError("insn '%s' has invalid nosync scopes: %s"
                     % (insn.id,
-                       ", ".join(VALID_NOSYNC_SCOPES - no_sync_with_scopes)))
+                       ", ".join(no_sync_with_scopes - VALID_NOSYNC_SCOPES)))
 
 
 def check_loop_priority_inames_known(kernel):
