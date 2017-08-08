@@ -160,12 +160,15 @@ class ISPCTarget(CTarget):
     Intel CPUs with wide vector units.
     """
 
-    def __init__(self, occa_mode=False):
+    def __init__(self, occa_mode=False, compiler=None):
         """
         :arg occa_mode: Whether to modify the generated call signature to
             be compatible with OCCA
+        :compiler: An instance of :class:`ISPCCompiler` or similar that controls
+            compilation for this target
         """
         self.occa_mode = occa_mode
+        self.compiler = compiler
 
         super(ISPCTarget, self).__init__()
 
@@ -192,7 +195,7 @@ class ISPCTarget(CTarget):
 
     def get_kernel_executor(self, knl, *args, **kwargs):
         from loopy.target.ispc_execution import ISPCKernelExecutor
-        return ISPCKernelExecutor(knl, self.compiler)
+        return ISPCKernelExecutor(knl, compiler=self.compiler)
 
     # {{{ types
 
