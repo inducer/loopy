@@ -27,7 +27,7 @@ import cgen
 import os
 
 from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
-                                    ExecutionWrapperGeneratorBase)
+                             ExecutionWrapperGeneratorBase)
 from pytools import memoize_method
 from pytools.py_codegen import (Indentation)
 from codepy.toolchain import guess_toolchain
@@ -43,7 +43,6 @@ logger = logging.getLogger(__name__)
 
 
 class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
-
     """
     Specialized form of the :class:`ExecutionWrapperGeneratorBase` for
     pyopencl execution
@@ -85,16 +84,16 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         if not skip_arg_checks:
             for i in range(num_axes):
                 gen("assert _lpy_strides_%d > 0, "
-                    "\"'%s' has negative stride in axis %d\""
-                    % (i, arg.name, i))
+                        "\"'%s' has negative stride in axis %d\""
+                        % (i, arg.name, i))
 
         sym_strides = tuple(
-            var("_lpy_strides_%d" % i)
-            for i in range(num_axes))
+                var("_lpy_strides_%d" % i)
+                for i in range(num_axes))
 
         sym_shape = tuple(
-            var("_lpy_shape_%d" % i)
-            for i in range(num_axes))
+                var("_lpy_shape_%d" % i)
+                for i in range(num_axes))
 
         # find order of array
         order = "'C'"
@@ -106,21 +105,21 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 order = "'C'"
 
         gen("%(name)s = _lpy_np.empty(%(shape)s, "
-            "%(dtype)s, order=%(order)s)"
-            % dict(
-                name=arg.name,
-                shape=strify(sym_shape),
-                dtype=self.python_dtype_str(
-                    kernel_arg.dtype.numpy_dtype),
-                order=order))
+                "%(dtype)s, order=%(order)s)"
+                % dict(
+                    name=arg.name,
+                    shape=strify(sym_shape),
+                    dtype=self.python_dtype_str(
+                        kernel_arg.dtype.numpy_dtype),
+                    order=order))
 
-        # check strides
+        #check strides
         if not skip_arg_checks:
             gen("assert %(strides)s == %(name)s.strides, "
-                "'Strides of loopy created array %(name)s, "
-                "do not match expected.'" %
-                dict(name=arg.name,
-                     strides=strify(sym_strides)))
+                    "'Strides of loopy created array %(name)s, "
+                    "do not match expected.'" %
+                    dict(name=arg.name,
+                         strides=strify(sym_strides)))
             for i in range(num_axes):
                 gen("del _lpy_shape_%d" % i)
                 gen("del _lpy_strides_%d" % i)
@@ -158,18 +157,18 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         if options.return_dict:
             gen("return None, {%s}"
-                % ", ".join("\"%s\": %s" % (arg.name, arg.name)
-                            for arg in implemented_data_info
-                            if issubclass(arg.arg_class, KernelArgument)
-                            if arg.base_name in kernel.get_written_variables()))
-        else:
-            out_args = [arg
+                    % ", ".join("\"%s\": %s" % (arg.name, arg.name)
                         for arg in implemented_data_info
                         if issubclass(arg.arg_class, KernelArgument)
-                        if arg.base_name in kernel.get_written_variables()]
+                        if arg.base_name in kernel.get_written_variables()))
+        else:
+            out_args = [arg
+                    for arg in implemented_data_info
+                        if issubclass(arg.arg_class, KernelArgument)
+                    if arg.base_name in kernel.get_written_variables()]
             if out_args:
                 gen("return None, (%s,)"
-                    % ", ".join(arg.name for arg in out_args))
+                        % ", ".join(arg.name for arg in out_args))
             else:
                 gen("return None, ()")
 
@@ -189,22 +188,21 @@ which can be loaded via ctypes.
 
 
 class CCompiler(object):
-
     """
     Wraps a C compiler to build and load shared libraries.
     Defaults to gcc
     """
 
-    def __init__(self, toolchain=None,
-                 cc='gcc', cflags='-std=c99 -g -O3 -fPIC'.split(),
-                 ldflags='-shared'.split(), libraries=None,
-                 include_dirs=[], library_dirs=[], defines=[],
-                 source_suffix='c', requires_separate_linkage=False):
+    source_suffix = 'c'
+    default_exe = 'gcc'
+    default_compile_flags = '-std=c99 -g -O3 -fPIC'.split()
+    default_link_flags = '-shared'.split()
+
+    def __init__(self, cc=default_exe, cflags=default_compile_flags,
+                 ldflags=None, libraries=None,
+                 include_dirs=[], library_dirs=[], defines=[]):
         # try to get a default toolchain
-        # or subclass supplied version if available
-        self.toolchain = guess_toolchain() if toolchain is None else toolchain
-        self.requires_separate_linkage = requires_separate_linkage
-        self.source_suffix = source_suffix
+        self.toolchain = guess_toolchain()
         # copy in all differing values
         diff = {'cc': cc,
                 'cflags': cflags,
@@ -224,82 +222,34 @@ class CCompiler(object):
         return os.path.join(self.tempdir, name)
 
     @memoize_method
-    def _build_obj(self, name, code, debug=False, wait_on_error=None,
-                   debug_recompile=True):
-        """Compile code, and build object file"""
+    def build(self, name, code, debug=False, wait_on_error=None,
+                     debug_recompile=True):
+        """Compile code, build and load shared library."""
         logger.debug(code)
         c_fname = self._tempname('code.' + self.source_suffix)
 
         # build object
-        obj_checksum, _, obj_file, recompiled = \
+        checksum, mod_name, ext_file, recompiled = \
             compile_from_string(self.toolchain, name, code, c_fname,
                                 self.tempdir, debug, wait_on_error,
-                                debug_recompile, True)
+                                debug_recompile, False)
+
         if not recompiled:
             logger.debug('Kernel {} compiled from source'.format(name))
-
-        return obj_checksum, obj_file
-
-    @memoize_method
-    def _build_lib(self, name, obj_file, debug=False, wait_on_error=None,
-                   debug_recompile=True):
-        """Build and load shared library from object file"""
-
-        # read obj file into get "source"
-        with open(obj_file, 'rb') as file:
-            obj = file.read()
-
-        from os.path import basename
-        obj_name = basename(obj_file)
-
-        # build object
-        so_checksum, _, so_file, recompiled = \
-            compile_from_string(self.toolchain, name, obj, obj_name,
-                                self.tempdir, debug, wait_on_error,
-                                debug_recompile, object=False,
-                                source_is_binary=True)
-        if not recompiled:
-            logger.debug('Kernel {} compiled from source'.format(name))
-
-        return so_checksum, ctypes.CDLL(so_file)
-
-    def build(self, name, code, debug=False, wait_on_error=None,
-              debug_recompile=True):
-        """Compile code, build and load shared library."""
-
-        # build object
-        _, obj_file = self._build_obj(name, code, debug=debug,
-                                   wait_on_error=wait_on_error,
-                                   debug_recompile=debug_recompile)
-
-        # and create library
-        _, lib = self._build_lib(name, obj_file, debug=debug,
-                              wait_on_error=wait_on_error,
-                              debug_recompile=debug_recompile)
 
         # and return compiled
-        return lib
+        return checksum, ctypes.CDLL(ext_file)
 
 
 class CppCompiler(CCompiler):
-
     """Subclass of Compiler to invoke a C++ compiler.
        Defaults to g++"""
-
-    def __init__(self, *args, **kwargs):
-        defaults = {'cc': 'g++',
-                    'source_suffix': 'cpp',
-                    'cflags': '-g -O3'.split()}
-
-        # update to use any user specified info
-        defaults.update(kwargs)
-
-        # and create
-        super(CppCompiler, self).__init__(*args, **defaults)
+    source_suffix = 'cpp'
+    default_exe = 'g++'
+    default_compile_flags = '-g -O3'.split()
 
 
 class CompiledCKernel(object):
-
     """
     A CompiledCKernel wraps a loopy kernel, compiling it and loading the
     result as a shared library, and provides access to the kernel as a
@@ -315,7 +265,8 @@ class CompiledCKernel(object):
         # get code and build
         self.code = dev_code
         self.comp = comp or CCompiler()
-        self.dll = self.comp.build(self.knl.name, self.code)
+        self.checksum, self.dll = self.comp.build(
+            self.knl.name, self.code)
 
         # get the function declaration for interface with ctypes
         from loopy.target.c import CFunctionDeclExtractor
@@ -394,7 +345,6 @@ class CompiledCKernel(object):
 
 
 class CKernelExecutor(KernelExecutorBase):
-
     """An object connecting a kernel to a :class:`CompiledKernel`
     for execution.
 
@@ -402,8 +352,7 @@ class CKernelExecutor(KernelExecutorBase):
     .. automethod:: __call__
     """
 
-    def __init__(self, kernel, invoker=CExecutionWrapperGenerator(),
-                 compiler=None):
+    def __init__(self, kernel, compiler=None):
         """
         :arg kernel: may be a loopy.LoopKernel, a generator returning kernels
             (a warning will be issued if more than one is returned). If the
@@ -412,7 +361,8 @@ class CKernelExecutor(KernelExecutorBase):
         """
 
         self.compiler = compiler if compiler else CCompiler()
-        super(CKernelExecutor, self).__init__(kernel, invoker=invoker)
+        super(CKernelExecutor, self).__init__(kernel,
+                                              CExecutionWrapperGenerator())
 
     @memoize_method
     def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
@@ -441,13 +391,13 @@ class CKernelExecutor(KernelExecutorBase):
         c_kernels = []
         for dp in codegen_result.device_programs:
             c_kernels.append(CompiledCKernel(dp, dev_code,
-                                             self.kernel.target, self.compiler))
+                                 self.kernel.target, self.compiler))
 
         return _KernelInfo(
-            kernel=kernel,
-            c_kernels=c_kernels,
-            implemented_data_info=codegen_result.implemented_data_info,
-            invoker=self.invoker(kernel, codegen_result))
+                kernel=kernel,
+                c_kernels=c_kernels,
+                implemented_data_info=codegen_result.implemented_data_info,
+                invoker=self.invoker(kernel, codegen_result))
 
     # }}}
 
@@ -467,4 +417,4 @@ class CKernelExecutor(KernelExecutorBase):
         kernel_info = self.kernel_info(self.arg_to_dtype_set(kwargs))
 
         return kernel_info.invoker(
-            kernel_info.c_kernels, *args, **kwargs)
+                kernel_info.c_kernels, *args, **kwargs)
