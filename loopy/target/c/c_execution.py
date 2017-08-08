@@ -212,8 +212,8 @@ class CCompiler(object):
                 'library_dirs': library_dirs,
                 'defines': defines}
         # filter empty and those equal to toolchain defaults
-        diff = {k: v for k, v in six.iteritems(diff) if v and
-                getattr(self.toolchain, k) != v}
+        diff = dict((k, v) for k, v in six.iteritems(diff) if v and
+                getattr(self.toolchain, k) != v)
         self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
 
