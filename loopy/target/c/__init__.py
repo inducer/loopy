@@ -304,7 +304,7 @@ class CTarget(TargetBase):
 
     def get_kernel_executor(self, knl, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
-        return CKernelExecutor(knl, self.compiler)
+        return CKernelExecutor(knl, compiler=self.compiler)
 
     # }}}
 
