@@ -97,13 +97,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             for i in range(num_axes))
 
         # find order of array
-        order = "'C'"
-        if num_axes > 1:
-            ldim = arg.unvec_strides[1]
-            if ldim == arg.unvec_shape[0]:
-                order = "'F'"
-            else:
-                order = "'C'"
+        order = "'C'" if arg.unvec_strides[-1] == 1 else "'F'"
 
         gen("%(name)s = _lpy_np.empty(%(shape)s, "
             "%(dtype)s, order=%(order)s)"
@@ -214,8 +208,8 @@ class CCompiler(object):
                 'library_dirs': library_dirs,
                 'defines': defines}
         # filter empty and those equal to toolchain defaults
-        diff = {k: v for k, v in six.iteritems(diff) if v and
-                getattr(self.toolchain, k) != v}
+        diff = dict((k, v) for k, v in six.iteritems(diff) if v and
+                getattr(self.toolchain, k) != v)
         self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
 
