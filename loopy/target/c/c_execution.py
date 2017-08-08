@@ -96,13 +96,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 for i in range(num_axes))
 
         # find order of array
-        order = "'C'"
-        if num_axes > 1:
-            ldim = arg.unvec_strides[1]
-            if ldim == arg.unvec_shape[0]:
-                order = "'F'"
-            else:
-                order = "'C'"
+        order = "'C'" if arg.unvec_strides[-1] == 1 else "'F'"
 
         gen("%(name)s = _lpy_np.empty(%(shape)s, "
                 "%(dtype)s, order=%(order)s)"
