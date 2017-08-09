@@ -195,14 +195,10 @@ class CCompiler(object):
         :class:`CExecutionWrapperGenerator`
     """
 
-    source_suffix = 'c'
-    default_exe = 'gcc'
-    default_compile_flags = '-std=c99 -g -O3 -fPIC'.split()
-    default_link_flags = '-shared'.split()
-
-    def __init__(self, cc=default_exe, cflags=default_compile_flags,
-                 ldflags=None, libraries=None,
-                 include_dirs=[], library_dirs=[], defines=[]):
+    def __init__(self, cc='gcc', cflags='-std=c99 -g -O3'.split(),
+                 ldflags=[], libraries=[],
+                 include_dirs=[], library_dirs=[], defines=[],
+                 source_suffix='c'):
         # try to get a default toolchain
         self.toolchain = guess_toolchain()
         # copy in all differing values
@@ -218,6 +214,7 @@ class CCompiler(object):
                 getattr(self.toolchain, k) != v)
         self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
+        self.source_suffix = source_suffix
 
     def _tempname(self, name):
         """Build temporary filename path in tempdir."""
@@ -245,9 +242,16 @@ class CCompiler(object):
 
 class CPlusPlusCompiler(CCompiler):
     """Subclass of CCompiler to invoke a C++ compiler."""
-    source_suffix = 'cpp'
-    default_exe = 'g++'
-    default_compile_flags = '-g -O3'.split()
+
+    def __init__(self, cc='g++', cflags='',
+                 ldflags=[], libraries=[],
+                 include_dirs=[], library_dirs=[], defines=[],
+                 source_suffix='cpp'):
+
+        super(CPlusPlusCompiler, self).__init__(
+            cc=cc, cflags=cflags, ldflags=ldflags, libraries=libraries,
+            include_dirs=include_dirs, library_dirs=library_dirs,
+            defines=defines, source_suffix=source_suffix)
 
 
 class CompiledCKernel(object):
