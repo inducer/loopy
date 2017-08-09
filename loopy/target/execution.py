@@ -601,7 +601,7 @@ class ExecutionWrapperGeneratorBase(object):
                     "%s=None" % idi.name
                     for idi in implemented_data_info
                     if issubclass(idi.arg_class, KernelArgument)
-                    ] + ['**kw_args'])
+                    ] + ['**kwargs'])
 
         gen.add_to_preamble("from __future__ import division")
         gen.add_to_preamble("")
