@@ -272,7 +272,7 @@ class CompiledISPCKernel(CompiledCKernel):
         while hasattr(pod, 'subdecl'):
             pod = pod.subdecl
             if isinstance(pod, cgen.ispc.ISPCUniformPointer):
-                self._visit_pointer(pod)
+                return self._visit_pointer(pod)
 
         # if not found, use POD
         self._append_arg(pod.name, pod.dtype)
