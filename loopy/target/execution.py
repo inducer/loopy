@@ -593,7 +593,6 @@ class ExecutionWrapperGeneratorBase(object):
         """
         options = kernel.options
         implemented_data_info = codegen_result.implemented_data_info
-        host_code = codegen_result.host_code()
 
         from loopy.kernel.data import KernelArgument
         gen = PythonFunctionGenerator(
@@ -609,7 +608,6 @@ class ExecutionWrapperGeneratorBase(object):
         self.target_specific_preamble(gen)
         gen.add_to_preamble("")
         self.generate_host_code(gen, codegen_result)
-        gen.add_to_preamble(host_code)
         gen.add_to_preamble("")
 
         self.initialize_system_args(gen)
