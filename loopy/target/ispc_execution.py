@@ -249,6 +249,10 @@ class ISPCKernelExecutor(CKernelExecutor):
 
 class CompiledISPCKernel(CompiledCKernel):
 
+    def _get_linking_name(self):
+        """ return host program name for ISPC-kernel """
+        return self.host_name
+
     def _get_code(self):
         # need to include the launcher
         return '\n'.join([self.dev_code, self.host_code])

@@ -311,13 +311,15 @@ class CompiledCKernel(object):
     to automatically map argument types.
     """
 
-    def __init__(self, knl, dev_code='', host_code='', target=CTarget(), comp=None):
+    def __init__(self, knl, dev_code='', host_code='',
+                 host_name='', target=CTarget(), comp=None):
         assert isinstance(target, CTarget)
         self.target = target
         self.knl = knl
         # get code and build
         self.dev_code = dev_code
         self.host_code = host_code
+        self.host_name = host_name
         self.code = self._get_code()
         self.comp = comp or CCompiler()
         self.dll = self.comp.build(self.knl.name, self.code)
@@ -335,10 +337,14 @@ class CompiledCKernel(object):
             self.restype = None
         else:
             raise ValueError('Unhandled restype %r' % (restype, ))
-        self._fn = getattr(self.dll, self.name)
+        self._fn = getattr(self.dll, self._get_linking_name())
         self._fn.restype = self.restype
         self._fn.argtypes = [ctype for name, ctype in self._arg_info]
         self._prepared_call_cache = weakref.WeakKeyDictionary()
+
+    def _get_linking_name(self):
+        """ return device program name for C-kernel """
+        return self.knl.name
 
     def _get_code(self):
         """ No 'host' for C-only """
@@ -460,6 +466,7 @@ class CKernelExecutor(KernelExecutorBase):
             c_kernels.append(self.get_compiled(
                              dp, dev_code=dev_code,
                              host_code=codegen_result.host_code(),
+                             host_name=codegen_result.host_program.name,
                              target=self.kernel.target,
                              comp=self.compiler))
 
