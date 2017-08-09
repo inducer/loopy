@@ -608,6 +608,7 @@ class ExecutionWrapperGeneratorBase(object):
         gen.add_to_preamble("")
         self.target_specific_preamble(gen)
         gen.add_to_preamble("")
+        self.generate_host_code(gen, codegen_result)
         gen.add_to_preamble(host_code)
         gen.add_to_preamble("")
 
