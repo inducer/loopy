@@ -220,6 +220,8 @@ class ISPCCompiler(CCompiler):
                               wait_on_error=wait_on_error,
                               debug_recompile=debug_recompile)
 
+        return lib
+
 
 class ISPCKernelExecutor(CKernelExecutor):
 
