@@ -150,39 +150,29 @@ class ISPCCompiler(CCompiler):
 
     def __init__(self, use_openmp=True, **kwargs):
         toolchain_defaults = _guess_toolchain_kwargs_from_python_config()
+        cppflags = ['-O3', '-fPIC', ('-fopenmp' if use_openmp else 'pthread')]
         toolchain_kwargs = dict(
             cc='ispc',
             ldflags=[],
-            libraries=toolchain_defaults["libraries"],
-            cflags=toolchain_defaults['cflags'],
+            libraries=['-fopenmp' if use_openmp else 'pthread', 'stdc++'],
+            cflags=['-O3', '--pic'],
             include_dirs=toolchain_defaults["include_dirs"],
             library_dirs=toolchain_defaults["library_dirs"],
             so_ext=toolchain_defaults["so_ext"],
             o_ext=toolchain_defaults["o_ext"],
-            defines=toolchain_defaults["defines"],
+            defines=toolchain_defaults["defines"] + [
+                'ISPC_USE_OMP' if use_openmp else 'ISPC_USE_PTHREADS'],
             undefines=toolchain_defaults["undefines"],
             ld='gcc',
             cpp='g++',
-            cppflags=['-O3', '-fPIC']
+            cppflags=cppflags
         )
         defaults = {'toolchain': ISPCToolchain(**toolchain_kwargs),
                     'source_suffix': 'ispc',
-                    'cc': 'ispc',
-                    'cflags': ['-O3', '--pic'],
-                    'cppflags': ['-O3', '-fPIC',
-                                 ('-fopenmp' if use_openmp else 'pthread')],
-                    'defines': ['ISPC_USE_OMP' if use_openmp else
-                                'ISPC_USE_PTHREADS'],
-                    'libraries': ['-fopenmp' if use_openmp else 'pthread',
-                                  'stdc++']
                     }
 
-        # update to use any user specified info
-        defaults.update(kwargs)
-
         # and create
-        super(ISPCCompiler, self).__init__(
-            requires_separate_linkage=True, **defaults)
+        super(ISPCCompiler, self).__init__(**defaults)
 
     def build(self, name, code, debug=False, wait_on_error=None,
               debug_recompile=True):

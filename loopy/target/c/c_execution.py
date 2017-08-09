@@ -209,20 +209,21 @@ class CCompiler(object):
         # or subclass supplied version if available
         self.toolchain = guess_toolchain() if toolchain is None else toolchain
         self.source_suffix = source_suffix
-        # copy in all differing values
-        diff = {'cc': cc,
-                'cflags': cflags,
-                'ldflags': ldflags,
-                'libraries': libraries,
-                'include_dirs': include_dirs,
-                'library_dirs': library_dirs,
-                'defines': defines}
-        # filter empty and those equal to toolchain defaults
-        diff = dict((k, v) for k, v in six.iteritems(diff)
-                if v and
-                not hasattr(self.toolchain, k) or
-                getattr(self.toolchain, k) != v)
-        self.toolchain = self.toolchain.copy(**diff)
+        if toolchain is None:
+            # copy in all differing values
+            diff = {'cc': cc,
+                    'cflags': cflags,
+                    'ldflags': ldflags,
+                    'libraries': libraries,
+                    'include_dirs': include_dirs,
+                    'library_dirs': library_dirs,
+                    'defines': defines}
+            # filter empty and those equal to toolchain defaults
+            diff = dict((k, v) for k, v in six.iteritems(diff)
+                    if v and
+                    not hasattr(self.toolchain, k) or
+                    getattr(self.toolchain, k) != v)
+            self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
         self.source_suffix = source_suffix
 
