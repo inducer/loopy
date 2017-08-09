@@ -153,7 +153,7 @@ class ISPCCompiler(CCompiler):
         cppflags = ['-O3', '-fPIC', ('-fopenmp' if use_openmp else 'pthread')]
         toolchain_kwargs = dict(
             cc='ispc',
-            ldflags=[],
+            ldflags=['-shared'],
             libraries=['-fopenmp' if use_openmp else 'pthread', 'stdc++'],
             cflags=['-O3', '--pic'],
             include_dirs=toolchain_defaults["include_dirs"],
