@@ -175,16 +175,10 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
         return arg.name
 
 
-"""
-The compiler module handles invocation of compilers to generate a shared lib
-which can be loaded via ctypes.
-"""
-
-
 class CCompiler(object):
     """
-    Wraps a C compiler to build and load shared libraries.
-    Defaults to gcc
+    The compiler module handles invocation of compilers to generate a shared lib
+    using codepy, which can subsequently be loaded via ctypes.
     """
 
     source_suffix = 'c'
