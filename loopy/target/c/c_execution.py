@@ -230,8 +230,7 @@ class CCompiler(object):
 
 
 class CppCompiler(CCompiler):
-    """Subclass of Compiler to invoke a C++ compiler.
-       Defaults to g++"""
+    """Subclass of CCompiler to invoke a C++ compiler."""
     source_suffix = 'cpp'
     default_exe = 'g++'
     default_compile_flags = '-g -O3'.split()
