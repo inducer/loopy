@@ -732,13 +732,15 @@ def generate_loop_schedules_internal(
 
     # }}}
 
-    # {{{ see if there are pending local barriers in the preschedule
+    # {{{ see if there are pending barriers in the preschedule
 
-    # Local barriers do not have associated instructions, so they need to
-    # be handled separately from instructions.
+    # Barriers that do not have an originating instruction are handled here.
+    # (These are automatically inserted by insert_barriers().) Barriers with
+    # originating instructions are handled as part of normal instruction
+    # scheduling below.
     if (
             isinstance(next_preschedule_item, Barrier)
-            and next_preschedule_item.kind == "local"):
+            and next_preschedule_item.originating_insn_id is None):
         for result in generate_loop_schedules_internal(
                     sched_state.copy(
                         schedule=sched_state.schedule + (next_preschedule_item,),
@@ -814,10 +816,7 @@ def generate_loop_schedules_internal(
         if insn_id in sched_state.prescheduled_insn_ids:
             if isinstance(next_preschedule_item, RunInstruction):
                 next_preschedule_insn_id = next_preschedule_item.insn_id
-            elif (
-                    isinstance(next_preschedule_item, Barrier)
-                    and next_preschedule_item.kind == "global"):
-                assert hasattr(next_preschedule_item, "originating_insn_id")
+            elif isinstance(next_preschedule_item, Barrier):
                 assert next_preschedule_item.originating_insn_id is not None
                 next_preschedule_insn_id = next_preschedule_item.originating_insn_id
             else:
@@ -1606,7 +1605,10 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
         comment = "for %s (%s)" % (
                 dep.variable, dep.dep_descr.format(
                     tgt=dep.target.id, src=dep.source.id))
-        schedule.append(Barrier(comment=comment, kind=dep.var_kind))
+        schedule.append(Barrier(
+            comment=comment,
+            kind=dep.var_kind,
+            originating_insn_id=None))
 
 
 def insert_barriers(kernel, schedule, kind, verify_only, level=0):
