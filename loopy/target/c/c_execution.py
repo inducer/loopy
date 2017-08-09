@@ -229,7 +229,7 @@ class CCompiler(object):
         return checksum, ctypes.CDLL(ext_file)
 
 
-class CppCompiler(CCompiler):
+class CPlusPlusCompiler(CCompiler):
     """Subclass of CCompiler to invoke a C++ compiler."""
     source_suffix = 'cpp'
     default_exe = 'g++'
