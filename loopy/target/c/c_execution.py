@@ -28,6 +28,7 @@ import os
 
 from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
                                     ExecutionWrapperGeneratorBase)
+from loopy.target.c import CTarget
 from pytools import memoize_method
 from pytools.py_codegen import (Indentation)
 from codepy.toolchain import guess_toolchain
@@ -191,9 +192,10 @@ class CCompiler(object):
 
     def __init__(self, toolchain=None,
                  cc='gcc', cflags='-std=c99 -g -O3 -fPIC'.split(),
-                 ldflags='-shared'.split(), libraries=None,
+                 ldflags='-shared'.split(), libraries=[],
                  include_dirs=[], library_dirs=[], defines=[],
-                 source_suffix='c', requires_separate_linkage=False):
+                 source_suffix='c', requires_separate_linkage=False,
+                 cppflags='-g -O3 -fPIC'.split()):
         # try to get a default toolchain
         # or subclass supplied version if available
         self.toolchain = guess_toolchain() if toolchain is None else toolchain
@@ -206,9 +208,12 @@ class CCompiler(object):
                 'libraries': libraries,
                 'include_dirs': include_dirs,
                 'library_dirs': library_dirs,
-                'defines': defines}
+                'defines': defines,
+                'cppflags': cppflags}
         # filter empty and those equal to toolchain defaults
-        diff = dict((k, v) for k, v in six.iteritems(diff) if v and
+        diff = dict((k, v) for k, v in six.iteritems(diff)
+                if v and
+                not hasattr(self.toolchain, k) or
                 getattr(self.toolchain, k) != v)
         self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
@@ -218,15 +223,14 @@ class CCompiler(object):
         return os.path.join(self.tempdir, name)
 
     @memoize_method
-    def _build_obj(self, name, code, debug=False, wait_on_error=None,
-                   debug_recompile=True):
+    def _build_obj(self, name, code, source_name,
+                   debug=False, wait_on_error=None, debug_recompile=True):
         """Compile code, and build object file"""
         logger.debug(code)
-        c_fname = self._tempname('code.' + self.source_suffix)
 
         # build object
         obj_checksum, _, obj_file, recompiled = \
-            compile_from_string(self.toolchain, name, code, c_fname,
+            compile_from_string(self.toolchain, name, code, source_name,
                                 self.tempdir, debug, wait_on_error,
                                 debug_recompile, True)
         if not recompiled:
@@ -239,12 +243,17 @@ class CCompiler(object):
                    debug_recompile=True):
         """Build and load shared library from object file"""
 
-        # read obj file into get "source"
-        with open(obj_file, 'rb') as file:
-            obj = file.read()
+        if not isinstance(obj_file, tuple):
+            obj_file = (obj_file,)
 
+        # read obj files in to get "source"
+        obj = []
+        obj_name = []
         from os.path import basename
-        obj_name = basename(obj_file)
+        for o in obj_file:
+            with open(o, 'rb') as file:
+                obj.append(file.read())
+            obj_name.append(basename(o))
 
         # build object
         so_checksum, _, so_file, recompiled = \
@@ -262,9 +271,10 @@ class CCompiler(object):
         """Compile code, build and load shared library."""
 
         # build object
-        _, obj_file = self._build_obj(name, code, debug=debug,
-                                   wait_on_error=wait_on_error,
-                                   debug_recompile=debug_recompile)
+        _, obj_file = self._build_obj(
+            name, code, self._tempname('code.' + self.source_suffix),
+            debug=debug, wait_on_error=wait_on_error,
+            debug_recompile=debug_recompile)
 
         # and create library
         _, lib = self._build_lib(name, obj_file, debug=debug,
@@ -301,19 +311,19 @@ class CompiledCKernel(object):
     to automatically map argument types.
     """
 
-    def __init__(self, knl, dev_code, target, comp=None):
-        from loopy.target.c import CTarget
+    def __init__(self, knl, dev_code='', host_code='', target=CTarget(), comp=None):
         assert isinstance(target, CTarget)
         self.target = target
         self.knl = knl
         # get code and build
-        self.code = dev_code
+        self.dev_code = dev_code
+        self.host_code = host_code
+        self.code = self._get_code()
         self.comp = comp or CCompiler()
         self.dll = self.comp.build(self.knl.name, self.code)
 
         # get the function declaration for interface with ctypes
-        from loopy.target.c import CFunctionDeclExtractor
-        self.func_decl = CFunctionDeclExtractor()
+        self.func_decl = self._get_extractor()
         self.func_decl(knl.ast)
         self.func_decl = self.func_decl.decls[0]
         self._arg_info = []
@@ -329,6 +339,16 @@ class CompiledCKernel(object):
         self._fn.restype = self.restype
         self._fn.argtypes = [ctype for name, ctype in self._arg_info]
         self._prepared_call_cache = weakref.WeakKeyDictionary()
+
+    def _get_code(self):
+        """ No 'host' for C-only """
+        return self.dev_code
+
+    def _get_extractor(self):
+        """ Returns the correct function decl extractor depending on target
+            type"""
+        from loopy.target.c import CFunctionDeclExtractor
+        return CFunctionDeclExtractor()
 
     def __call__(self, *args):
         """Execute kernel with given args mapped to ctypes equivalents."""
@@ -408,6 +428,9 @@ class CKernelExecutor(KernelExecutorBase):
         self.compiler = compiler if compiler else CCompiler()
         super(CKernelExecutor, self).__init__(kernel, invoker=invoker)
 
+    def get_compiled(self, *args, **kwargs):
+        return CompiledCKernel(*args, **kwargs)
+
     @memoize_method
     def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype_set)
@@ -434,8 +457,11 @@ class CKernelExecutor(KernelExecutorBase):
 
         c_kernels = []
         for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(dp, dev_code,
-                                             self.kernel.target, self.compiler))
+            c_kernels.append(self.get_compiled(
+                             dp, dev_code=dev_code,
+                             host_code=codegen_result.host_code(),
+                             target=self.kernel.target,
+                             comp=self.compiler))
 
         return _KernelInfo(
             kernel=kernel,

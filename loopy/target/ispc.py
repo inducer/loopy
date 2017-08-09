@@ -26,7 +26,8 @@ THE SOFTWARE.
 
 
 import numpy as np  # noqa
-from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c import (CTarget, CASTBuilder, CASTIdentityMapper,
+                            CFunctionDeclExtractor)
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
@@ -504,6 +505,19 @@ class ISPCASTBuilder(CASTBuilder):
                 "++%s" % iname,
                 inner)
     # }}}
+
+
+class ISPCCFunctionDeclExtractor(CASTIdentityMapper):
+    def __init__(self):
+        self.decls = []
+
+    def map_expression(self, expr):
+        return expr
+
+    def map_function_decl_wrapper(self, node):
+        self.decls.append(node.subdecl.subdecl)
+        return super(ISPCCFunctionDeclExtractor, self)\
+                .map_function_decl_wrapper(node)
 
 
 # TODO: Generate launch code

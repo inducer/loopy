@@ -23,12 +23,18 @@ THE SOFTWARE.
 """
 
 from loopy.target.c.c_execution import (CKernelExecutor, CCompiler,
-    CExecutionWrapperGenerator)
+                                        CExecutionWrapperGenerator, CompiledCKernel)
+from loopy.target.ispc import ISPCCFunctionDeclExtractor
 from codepy.toolchain import (GCCLikeToolchain, Toolchain,
-                              _guess_toolchain_kwargs_from_python_config)
+                              _guess_toolchain_kwargs_from_python_config,
+                              call_capture_output, CompileError)
+import cgen
+import ctypes
+import os
 
 
 class ISPCToolchain(GCCLikeToolchain):
+
     def get_version_tuple(self):
         ver = self.get_version()
         words = ver.split()
@@ -44,24 +50,80 @@ class ISPCToolchain(GCCLikeToolchain):
 
         return tuple(result)
 
-    def _cmdline(self, files, object=False):
-        if object:
+    def get_cc(self, files, obj=True):
+        if obj and all(f.endswith('.ispc') for f in files) or not files:
+            return self.cc
+        elif all(f.endswith('.cpp') for f in files):
+            return self.cpp
+        else:
+            return self.ld
+
+    def get_dependencies(self, source_files):
+        building_obj = True
+        if all(source.endswith('.o') for source in source_files):
+            # object file
+            building_obj = False
+
+        cc = self.get_cc(source_files, obj=building_obj)
+
+        from codepy.tools import join_continued_lines
+        from tempfile import NamedTemporaryFile
+        with NamedTemporaryFile(prefix='loopy') as tempfile:
+            depends = ['-MMM', tempfile.name] if cc == 'ispc' else ['-M']
+            result, stdout, stderr = call_capture_output(
+                [cc]
+                + depends
+                + ["-D%s" % define for define in self.defines]
+                + ["-U%s" % undefine for undefine in self.undefines]
+                + ["-I%s" % idir for idir in self.include_dirs]
+                + self.cflags
+                + source_files
+            )
+
+            if result != 0:
+                raise CompileError("getting dependencies failed: " + stderr)
+
+            lines = join_continued_lines(tempfile.read().split("\n"))
+
+        from pytools import flatten
+        return set(flatten(
+            line.split()[2:] for line in lines))
+
+    def _cmdline(self, file, obj=False):
+        flags = self.cflags
+        cc = self.get_cc(file, obj=obj)
+        if cc != self.cc:
+            # fix flags
+            flags = self.cppflags + (['-c'] if obj else [])
+
+            # check we don't have mixed extensions
+            def __get_ext(f):
+                return f[f.rindex('.') + 1:]
+
+            ext = __get_ext(file[0])
+            if not all(f.endswith(ext) for f in file):
+                ftypes = set([__get_ext(f) for f in file])
+                raise CompileError("Can't compile mixed filetypes: {}".format(
+                    ', '.join(ftypes)))
+
+        if obj:
             ld_options = []
             link = []
         else:
             ld_options = self.ldflags
             link = ["-L%s" % ldir for ldir in self.library_dirs]
-            link.extend(["-l%s" % lib for lib in self.libraries])
+            link.extend(["-l%s" % lib if not lib == '-fopenmp' else '-fopenmp'
+                         for lib in self.libraries])
         return (
-            [self.cc]
-            + self.cflags
+            [cc]
+            + flags
             + ld_options
             + ["-D%s" % define for define in self.defines]
             + ["-U%s" % undefine for undefine in self.undefines]
             + ["-I%s" % idir for idir in self.include_dirs]
-            + files
+            + file
             + link
-            )
+        )
 
     def abi_id(self):
         return Toolchain.abi_id(self) + [self._cmdline([])]
@@ -83,9 +145,10 @@ class ISPCToolchain(GCCLikeToolchain):
 
 
 class ISPCCompiler(CCompiler):
+
     """Subclass of Compiler to invoke the ispc compiler."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, use_openmp=True, **kwargs):
         toolchain_defaults = _guess_toolchain_kwargs_from_python_config()
         toolchain_kwargs = dict(
             cc='ispc',
@@ -98,11 +161,20 @@ class ISPCCompiler(CCompiler):
             o_ext=toolchain_defaults["o_ext"],
             defines=toolchain_defaults["defines"],
             undefines=toolchain_defaults["undefines"],
-            )
+            ld='gcc',
+            cpp='g++',
+            cppflags=['-O3', '-fPIC']
+        )
         defaults = {'toolchain': ISPCToolchain(**toolchain_kwargs),
                     'source_suffix': 'ispc',
                     'cc': 'ispc',
-                    'cflags': '-O3'
+                    'cflags': ['-O3', '--pic'],
+                    'cppflags': ['-O3', '-fPIC',
+                                 ('-fopenmp' if use_openmp else 'pthread')],
+                    'defines': ['ISPC_USE_OMP' if use_openmp else
+                                'ISPC_USE_PTHREADS'],
+                    'libraries': ['-fopenmp' if use_openmp else 'pthread',
+                                  'stdc++']
                     }
 
         # update to use any user specified info
@@ -110,10 +182,47 @@ class ISPCCompiler(CCompiler):
 
         # and create
         super(ISPCCompiler, self).__init__(
-            *args, requires_separate_linkage=True, **defaults)
+            requires_separate_linkage=True, **defaults)
+
+    def build(self, name, code, debug=False, wait_on_error=None,
+              debug_recompile=True):
+        """Compile code, build and load shared library."""
+
+        # build object
+        _, obj_file = self._build_obj(
+            name, code, self._tempname('code.' + self.source_suffix),
+            debug=debug, wait_on_error=wait_on_error,
+            debug_recompile=debug_recompile)
+
+        # find the task sys
+        result, stdout, stderr = call_capture_output(
+            (['which', 'ispc']))
+        if result != 0:
+            raise CompileError("Could not find ispc executable: " + stderr)
+        tasksys = os.path.realpath(
+            os.path.join(os.path.dirname(stdout), 'examples', 'tasksys.cpp'))
+
+        # build tasksys obj
+        with open(tasksys, 'r') as file:
+            tasksys = file.read()
+
+        _, ts_obj_file = self._build_obj(
+            'tasksys', tasksys, self._tempname('tasksys.cpp'),
+            debug=debug, wait_on_error=wait_on_error,
+            debug_recompile=debug_recompile)
+
+        # now call the regular build method with the tasksys code inserted into
+        # or compilation process
+
+        # and create library
+        _, lib = self._build_lib(name, (obj_file, ts_obj_file),
+                              debug=debug,
+                              wait_on_error=wait_on_error,
+                              debug_recompile=debug_recompile)
 
 
 class ISPCKernelExecutor(CKernelExecutor):
+
     """An object connecting a kernel to a :class:`CompiledKernel`
     for execution.
 
@@ -133,3 +242,52 @@ class ISPCKernelExecutor(CKernelExecutor):
         self.compiler = compiler if compiler else ISPCCompiler()
         super(ISPCKernelExecutor, self).__init__(
             kernel, invoker=invoker, compiler=self.compiler)
+
+    def get_compiled(self, *args, **kwargs):
+        return CompiledISPCKernel(*args, **kwargs)
+
+
+class CompiledISPCKernel(CompiledCKernel):
+
+    def _get_code(self):
+        # need to include the launcher
+        return '\n'.join([self.dev_code, self.host_code])
+
+    def _get_extractor(self):
+        """ Returns the correct function decl extractor depending on target
+            type"""
+        return ISPCCFunctionDeclExtractor()
+
+    def _visit_const(self, node):
+        """Visit const arg of kernel."""
+        # check the entire subdecl for ISPCUniformPointer
+
+        pod = node
+        while hasattr(pod, 'subdecl'):
+            pod = pod.subdecl
+            if isinstance(pod, cgen.ispc.ISPCUniformPointer):
+                self._visit_pointer(pod)
+
+        # if not found, use POD
+        self._append_arg(pod.name, pod.dtype)
+
+    def _visit_func_decl(self, func_decl):
+        """Visit nodes of function declaration of kernel."""
+        for i, arg in enumerate(func_decl.arg_decls):
+            if isinstance(arg, cgen.ispc.ISPCUniform):
+                self._visit_const(arg)
+            elif isinstance(arg, cgen.RestrictPointer):
+                self._visit_pointer(arg)
+            else:
+                raise ValueError('unhandled type for arg %r' % (arg, ))
+
+    def _dtype_to_ctype(self, dtype, pointer=False):
+        """Map NumPy dtype to equivalent ctypes type."""
+        target = self.target  # type: ISPCTarget
+        registry = target.get_dtype_registry()
+        typename = registry.dtype_to_ctype(dtype)
+        typename = {'unsigned': 'uint'}.get(typename, typename)
+        basetype = getattr(ctypes, 'c_' + typename)
+        if pointer:
+            return ctypes.POINTER(basetype)
+        return basetype
