@@ -65,6 +65,7 @@ class ISPCToolchain(GCCLikeToolchain):
             building_obj = False
 
         cc = self.get_cc(source_files, obj=building_obj)
+        cflags = self.cflags if cc == self.cc else self.cppflags
 
         from codepy.tools import join_continued_lines
         from tempfile import NamedTemporaryFile
@@ -76,7 +77,7 @@ class ISPCToolchain(GCCLikeToolchain):
                 + ["-D%s" % define for define in self.defines]
                 + ["-U%s" % undefine for undefine in self.undefines]
                 + ["-I%s" % idir for idir in self.include_dirs]
-                + self.cflags
+                + cflags
                 + source_files
             )
 
@@ -145,17 +146,60 @@ class ISPCToolchain(GCCLikeToolchain):
 
 
 class ISPCCompiler(CCompiler):
-
     """Subclass of Compiler to invoke the ispc compiler."""
 
-    def __init__(self, use_openmp=True, **kwargs):
+    def __init__(self, use_openmp=True, target_name='', vector_width=None,
+                 addressing_width=None, **kwargs):
+        """    An interface for intel's ISPC compiler
+
+        Parameters
+        ---------
+        use_openmp: bool [True]
+            Use openmp to parallelize over cores.  If false, pthreads will be used
+        target_name: ['sse2', 'sse4', 'avx1', 'avx2', 'generic']
+            The vectorization target .  If not supplied the system default will be
+            used
+        vector_width: int [None]
+            The vector width to use for ispc-vectorization.  If not supplied this
+            will use the default vector width as determined by ispc
+        addressing_width: int [32, 64]
+            Select 32- or 64-bit addressing. (Note that 32-bit addressing
+            calculations are done by default, even on 64-bit target architectures.)
+        """
+
+        target_flags = [target_name, vector_width, addressing_width]
+        if not any(target_flags):
+            target_flags = ['--target', 'host']
+        elif any(target_flags):
+            # first find the default system target to fill in gaps
+            if not all(target_flags):
+                import re
+                _, stdout, _ = call_capture_output((['echo', '"test"', '|', 'ispc']))
+                # search output
+                for line in stdout.split('\n'):
+                    match = re.search(
+                        r'Using default system target \"([\w\d]+)-i(\d+)x(\d+)"')
+                    if match:
+                        # find defaults, and construct target
+                        target, addressing, width = match.groups()[1:]
+                        if not target_name:
+                            target_name = target
+                        if not vector_width:
+                            vector_width = width
+                        if not addressing:
+                            addressing_width = addressing
+                    break
+            # and construct the user supplied / default target
+            target_flags = ['--target', '{0}-i{1}x{2}'.format(
+                target_name, addressing_width, vector_width)]
+
         toolchain_defaults = _guess_toolchain_kwargs_from_python_config()
         cppflags = ['-O3', '-fPIC', ('-fopenmp' if use_openmp else 'pthread')]
         toolchain_kwargs = dict(
             cc='ispc',
             ldflags=['-shared'],
             libraries=['-fopenmp' if use_openmp else 'pthread', 'stdc++'],
-            cflags=['-O3', '--pic'],
+            cflags=['-O3', '--pic'] + target_flags,
             include_dirs=toolchain_defaults["include_dirs"],
             library_dirs=toolchain_defaults["library_dirs"],
             so_ext=toolchain_defaults["so_ext"],
@@ -230,6 +274,13 @@ class ISPCKernelExecutor(CKernelExecutor):
             kernel has not yet been loop-scheduled, that is done, too, with no
             specific arguments.
         """
+
+        # find the vector width for the kernel, if applicable
+        from loopy.kernel.data import LocalIndexTag
+        from six import iteritems
+        for iname, tag in iteritems(kernel.iname_to_tag):
+            if isinstance(tag, LocalIndexTag):
+                import pdb; pdb.set_trace()
 
         self.compiler = compiler if compiler else ISPCCompiler()
         super(ISPCKernelExecutor, self).__init__(
