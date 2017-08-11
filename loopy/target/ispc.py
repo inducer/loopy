@@ -382,8 +382,40 @@ class ISPCASTBuilder(CASTBuilder):
         lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
         lhs_dtype = lhs_var.dtype
 
-        if insn.atomicity:
-            raise NotImplementedError("atomic ops in ISPC")
+        if insn.atomicity is not None:
+            lhs_atomicity = [
+                    a for a in insn.atomicity if a.var_name == assignee_var_name]
+            assert len(lhs_atomicity) <= 1
+            if lhs_atomicity:
+                lhs_atomicity, = lhs_atomicity
+            else:
+                lhs_atomicity = None
+        else:
+            lhs_atomicity = None
+
+        from loopy.kernel.data import AtomicInit, AtomicUpdate
+        from loopy.expression import dtype_to_type_context
+
+        from pymbolic.mapper.stringifier import PREC_NONE
+        lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
+        rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
+        if lhs_atomicity is None:
+            from cgen import Assign
+            return Assign(
+                    lhs_code,
+                    ecm(insn.expression, prec=PREC_NONE,
+                        type_context=rhs_type_context,
+                        needed_dtype=lhs_dtype))
+
+        elif isinstance(lhs_atomicity, AtomicInit):
+            raise NotImplementedError("atomic init")
+
+        elif isinstance(lhs_atomicity, AtomicUpdate):
+            codegen_state.seen_atomic_dtypes.add(lhs_dtype)
+            return codegen_state.ast_builder.emit_atomic_update(
+                    codegen_state, lhs_atomicity, lhs_var,
+                    insn.assignee, insn.expression,
+                    lhs_dtype, rhs_type_context)
 
         from loopy.expression import dtype_to_type_context
         from pymbolic.mapper.stringifier import PREC_NONE
@@ -504,6 +536,94 @@ class ISPCASTBuilder(CASTBuilder):
                     PREC_NONE, "i"),
                 "++%s" % iname,
                 inner)
+    # }}}
+
+    # {{{ code generation for atomic update
+
+    def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,
+            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from loopy.types import NumpyType
+
+        # FIXME: Could detect operations, generate atomic_{add,...} when
+        # appropriate.
+
+        if isinstance(lhs_dtype, NumpyType) and lhs_dtype.numpy_dtype in [
+                np.int32, np.int64, np.float32, np.float64]:
+            from cgen import Block, DoWhile, Assign
+            from loopy.target.c import POD
+            old_val_var = codegen_state.var_name_generator("loopy_old_val")
+            new_val_var = codegen_state.var_name_generator("loopy_new_val")
+
+            from loopy.kernel.data import TemporaryVariable
+            ecm = codegen_state.expression_to_code_mapper.with_assignments(
+                    {
+                        old_val_var: TemporaryVariable(old_val_var, lhs_dtype),
+                        new_val_var: TemporaryVariable(new_val_var, lhs_dtype),
+                        })
+
+            lhs_expr_code = ecm(lhs_expr, prec=PREC_NONE, type_context=None)
+
+            from pymbolic.mapper.substitutor import make_subst_func
+            from pymbolic import var
+            from loopy.symbolic import SubstitutionMapper
+
+            subst = SubstitutionMapper(
+                    make_subst_func({lhs_expr: var(old_val_var)}))
+            rhs_expr_code = ecm(subst(rhs_expr), prec=PREC_NONE,
+                    type_context=rhs_type_context,
+                    needed_dtype=lhs_dtype)
+
+            var_kind = '_local'
+            # there must be a better way to do this, but for the moment we compare
+            # (stringwise) and indicies that involve a global tag, and ensure that
+            # they are identical on the left and right hand sides
+            # if they are, this is a local atomic
+            from six import iteritems
+            from loopy.kernel.data import GroupIndexTag
+            import re
+            gtags = set(re.compile(r'\b' + name + r'\b')
+                for name, tag in iteritems(
+                codegen_state.kernel.iname_to_tag)
+                        if isinstance(tag, GroupIndexTag))
+            index_extractor = re.compile(r'\[([^\]]+)\]')
+            lhs_ind = index_extractor.search(str(lhs_expr)).groups()
+            if lhs_ind:
+                lhs_ind = lhs_ind[0]
+                rhs_inds = index_extractor.findall(str(rhs_expr))
+
+                for ind in rhs_inds:
+                    if any(tag.search(ind) for tag in gtags) and ind != lhs_ind:
+                        var_kind = '_global'
+                        break
+
+            func_name = "atomic_swap%s" % var_kind
+
+            return Block([
+                POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                    old_val_var),
+                POD(self, NumpyType(lhs_dtype.dtype, target=self.target),
+                    new_val_var),
+                DoWhile(
+                    "%(func_name)s("
+                    "&%(lhs_expr)s, "
+                    "%(new_val)s"
+                    ") != %(old_val)s"
+                    % {
+                        "func_name": func_name,
+                        "lhs_expr": lhs_expr_code,
+                        "old_val": old_val_var,
+                        "new_val": new_val_var,
+                        },
+                    Block([
+                        Assign(old_val_var, lhs_expr_code),
+                        Assign(new_val_var, rhs_expr_code),
+                        ])
+                    )
+                ])
+        else:
+            raise NotImplementedError("atomic update for '%s'" % lhs_dtype)
+
     # }}}
 
 
