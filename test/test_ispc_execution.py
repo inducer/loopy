@@ -203,9 +203,8 @@ def test_ispc_vector_sizes_and_targets(vec_width, target, n):
     from loopy import LoopyError
     try:
         assert np.allclose(knl(a=a_np)[1], 2 * a_np)
-    except LoopyError as e:
-        assert str(e) == "'out[i]' in instruction 'insn' accesses out-of-bounds \
-                           array element" and n == 10
+    except LoopyError:
+        assert n == 10
 
 
 @pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
