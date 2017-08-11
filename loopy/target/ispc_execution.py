@@ -174,22 +174,24 @@ class ISPCCompiler(CCompiler):
             # first find the default system target to fill in gaps
             if not all(target_flags):
                 import re
-                _, stdout, _ = call_capture_output((['echo', '"test"', '|', 'ispc']))
-                # search output
-                for line in stdout.split('\n'):
-                    match = re.search(
-                        r'Using default system target \"([\w\d]+)-i(\d+)x(\d+)"',
-                        line)
+                from tempfile import NamedTemporaryFile
+                with NamedTemporaryFile(prefix='loopy') as tempfile:
+                    tempfile.write('void test(){} \n')
+                    tempfile.flush()
+                    _, _, stderr = call_capture_output((['ispc', tempfile.name]))
+            # search output
+                for line in stderr.split('\n'):
+                    match = re.search(r'\"([\w\d]+)-i(\d+)x(\d+)\"', line)
                     if match:
                         # find defaults, and construct target
-                        target, addressing, width = match.groups()[1:]
+                        target, addressing, width = match.groups()
                         if not target_name:
                             target_name = target
                         if not vector_width:
                             vector_width = width
-                        if not addressing:
+                        if not addressing_width:
                             addressing_width = addressing
-                    break
+                        break
             # and construct the user supplied / default target
             target_flags = ['--target', '{0}-i{1}x{2}'.format(
                 target_name, addressing_width, vector_width)]
@@ -279,11 +281,15 @@ class ISPCKernelExecutor(CKernelExecutor):
         # find the vector width for the kernel, if applicable
         from loopy.kernel.data import LocalIndexTag
         from six import iteritems
+        lsize = None
         for iname, tag in iteritems(kernel.iname_to_tag):
             if isinstance(tag, LocalIndexTag):
-                import pdb; pdb.set_trace()
+                _, (lsize,) = kernel.get_grid_size_upper_bounds_as_exprs()
 
-        self.compiler = compiler if compiler else ISPCCompiler()
+        if compiler and compiler.vector_width is None:
+            compiler = compiler.copy(vector_width=lsize)
+        self.compiler = compiler if compiler else ISPCCompiler(vector_width=lsize)
+
         super(ISPCKernelExecutor, self).__init__(
             kernel, invoker=invoker, compiler=self.compiler)
 
