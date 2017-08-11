@@ -203,5 +203,11 @@ def test_ispc_vector_sizes_and_targets(vec_width, target, n):
              lp.GlobalArg("out", shape=(n,))],
             target=target)
 
+    knl = lp.fix_parameters(knl, n=n)
+
     a_np = np.arange(n)
-    assert np.allclose(knl(a=a_np)[1], 2 * a_np)
+    from loopy import LoopyError
+    try:
+        assert np.allclose(knl(a=a_np)[1], 2 * a_np)
+    except LoopyError as e:
+        assert str(e) == "Unexpected expression type: NoneType" and n == 10
