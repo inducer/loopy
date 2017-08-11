@@ -24,6 +24,8 @@ THE SOFTWARE.
 
 import numpy as np
 import loopy as lp
+import pytest
+from loopy.target.ispc import ISPCTarget
 
 import logging
 logger = logging.getLogger(__name__)
@@ -36,9 +38,7 @@ else:
     faulthandler.enable()
 
 
-def test_c_target():
-    from loopy.target.ispc import ISPCTarget
-
+def test_ispc_target():
     knl = lp.make_kernel(
             "{ [i]: 0<=i<n }",
             "out[i] = 2*a[i]",
@@ -53,7 +53,7 @@ def test_c_target():
                 2 * np.arange(16, dtype=np.float32))
 
 
-def test_c_target_strides():
+def test_ispc_target_strides():
     from loopy.target.ispc import ISPCTarget
 
     def __get_kernel(order='C'):
@@ -84,9 +84,7 @@ def test_c_target_strides():
                 2 * a_np)
 
 
-def test_c_target_strides_nonsquare():
-    from loopy.target.ispc import ISPCTarget
-
+def test_ispc_target_strides_nonsquare():
     def __get_kernel(order='C'):
         indicies = ['i', 'j', 'k']
         sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
@@ -130,9 +128,7 @@ def test_c_target_strides_nonsquare():
                 2 * a_np)
 
 
-def test_c_optimizations():
-    from loopy.target.ispc import ISPCTarget
-
+def test_ispc_optimizations():
     def __get_kernel(order='C'):
         indicies = ['i', 'j', 'k']
         sizes = tuple(np.random.randint(1, 11, size=len(indicies)))
@@ -181,3 +177,35 @@ def test_c_optimizations():
                       order='C')
 
     assert np.allclose(knl(a=a_np)[1], 2 * a_np)
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
+@pytest.mark.parametrize("atomic_type", ['l.0', 'g.0'])
+def test_atomic(dtype, atomic_type):
+    lp.set_caching_enabled(False)
+    indicies = ['i', 'j']
+    sizes = tuple(np.random.randint(1, 51, size=len(indicies)))
+    # create domain strings
+    domain_template = '{{ [{iname}]: 0 <= {iname} < {size} }}'
+    domains = []
+    for idx, size in zip(indicies, sizes):
+        domains.append(domain_template.format(
+            iname=idx,
+            size=size))
+    statement = 'out[i] = out[i] + 2 * a[i, j]'
+    knl = lp.make_kernel(
+            domains,
+            statement,
+            [
+                lp.GlobalArg("out", dtype, shape=(sizes[0],)),
+                lp.GlobalArg("a", dtype, shape=lp.auto)
+                ],
+            target=ISPCTarget())
+
+    # create base array
+    a = np.reshape(np.arange(np.product(sizes), dtype=dtype), sizes)
+    out = np.sum(2 * a, axis=1, dtype=dtype)
+
+    knl = lp.split_iname(knl, "i", 8, inner_tag=atomic_type)
+    _, test = knl(a=a, out=np.zeros_like(out))
+    assert np.allclose(test[0], out)
