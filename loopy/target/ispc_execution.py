@@ -178,7 +178,8 @@ class ISPCCompiler(CCompiler):
                 # search output
                 for line in stdout.split('\n'):
                     match = re.search(
-                        r'Using default system target \"([\w\d]+)-i(\d+)x(\d+)"')
+                        r'Using default system target \"([\w\d]+)-i(\d+)x(\d+)"',
+                        line)
                     if match:
                         # find defaults, and construct target
                         target, addressing, width = match.groups()[1:]
