@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 import numpy as np
 import loopy as lp
+import pytest
 
 import logging
 logger = logging.getLogger(__name__)
@@ -180,4 +181,26 @@ def test_c_optimizations():
                       sizes,
                       order='C')
 
+    assert np.allclose(knl(a=a_np)[1], 2 * a_np)
+
+
+@pytest.mark.parametrize('vec_width', [4, 8, 16])
+@pytest.mark.parametrize('target', ['sse2', 'sse4', 'avx1', 'av2'])
+def test_ispc_vector_sizes_and_targets(vec_width, target):
+    from loopy.target.ispc import ISPCTarget
+    from loopy.target.ispc_execution import ISPCCompiler
+
+    compiler = ISPCCompiler(vector_width=vec_width, target=target)
+    target = ISPCTarget(compiler=compiler)
+
+    knl = lp.make_kernel(
+            '{[i]: 0<=i<16}',
+            """
+            out[i] = 2 * a[i]
+            """,
+            [lp.GlobalArg("a", shape=(16,)),
+             lp.GlobalArg("out", shape=(16,))],
+            target=target)
+
+    a_np = np.arange(16)
     assert np.allclose(knl(a=a_np)[1], 2 * a_np)
