@@ -25,10 +25,7 @@ THE SOFTWARE.
 import numpy as np
 import loopy as lp
 import pytest
-<<<<<<< HEAD
-=======
 from loopy.target.ispc import ISPCTarget
->>>>>>> better_atomics
 
 import logging
 logger = logging.getLogger(__name__)
@@ -186,7 +183,6 @@ def test_ispc_optimizations():
 @pytest.mark.parametrize('target', ['sse2', 'sse4', 'avx1', 'av2'])
 @pytest.mark.parametrize('n', [10, 100])
 def test_ispc_vector_sizes_and_targets(vec_width, target, n):
-    from loopy.target.ispc import ISPCTarget
     from loopy.target.ispc_execution import ISPCCompiler
 
     compiler = ISPCCompiler(vector_width=vec_width, target=target)
@@ -208,7 +204,8 @@ def test_ispc_vector_sizes_and_targets(vec_width, target, n):
     try:
         assert np.allclose(knl(a=a_np)[1], 2 * a_np)
     except LoopyError as e:
-        assert str(e) == "Unexpected expression type: NoneType" and n == 10
+        assert str(e) == "'out[i]' in instruction 'insn' accesses out-of-bounds \
+                           array element" and n == 10
 
 
 @pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
