@@ -805,6 +805,32 @@ def test_summations_and_filters():
     assert s1f64l == 2*n*m
 
 
+def test_strided_footprint():
+    param_dict = dict(n=2**20)
+    knl = lp.make_kernel(
+        "[n] -> {[i]: 0<=i<n}",
+        [
+            "z[i] = x[3*i]"
+        ], name="s3")
+
+    knl = lp.add_and_infer_dtypes(knl, dict(x=np.float32))
+
+    unr = 4
+    bx = 256
+
+    knl = lp.split_iname(knl, "i", bx*unr, outer_tag="g.0", slabs=(0, 1))
+    knl = lp.split_iname(knl, "i_inner", bx, outer_tag="unr", inner_tag="l.0")
+
+    footprints = lp.gather_access_footprints(knl)
+    x_l_foot = footprints[('x', 'read')]
+
+    from loopy.statistics import count
+    num = count(knl, x_l_foot).eval_with_dict(param_dict)
+    denom = count(knl, x_l_foot.remove_divs()).eval_with_dict(param_dict)
+
+    assert 2*num < denom
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
