@@ -603,7 +603,7 @@ class AtomicInit(VarAtomicity):
                 memory_scope.to_string(self.scope))
 
 
-class AtomicUpdate(VarAtomicity):
+class OrderedAtomic(VarAtomicity):
     """Properties of an atomic operation. A subclass of :class:`VarAtomicity`.
 
     .. attribute:: ordering
@@ -624,7 +624,7 @@ class AtomicUpdate(VarAtomicity):
         """
 
         super(AtomicUpdate, self).update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, "AtomicUpdate")
+        key_builder.rec(key_hash, str(self.__class__.__name__))
         key_builder.rec(key_hash, self.ordering)
         key_builder.rec(key_hash, self.scope)
 
@@ -634,10 +634,39 @@ class AtomicUpdate(VarAtomicity):
                 and self.scope == other.scope)
 
     def __str__(self):
-        return "update[%s]%s/%s" % (
+        return "%s[%s]%s/%s" % (
+                self.op_name,
                 self.var_name,
                 memory_ordering.to_string(self.ordering),
                 memory_scope.to_string(self.scope))
+
+
+class AtomicUpdate(VarAtomicity):
+    """Properties of an atomic update. A subclass of :class:`VarAtomicity`.
+
+    .. attribute:: ordering
+
+        One of the values from :class:`memory_ordering`
+
+    .. attribute:: scope
+
+        One of the values from :class:`memory_scope`
+    """
+    op_name = 'update'
+
+
+class AtomicLoad(VarAtomicity):
+    """Properties of an atomic load. A subclass of :class:`VarAtomicity`.
+
+    .. attribute:: ordering
+
+        One of the values from :class:`memory_ordering`
+
+    .. attribute:: scope
+
+        One of the values from :class:`memory_scope`
+    """
+    op_name = 'load'
 
 # }}}
 

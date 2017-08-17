@@ -2020,6 +2020,48 @@ def limit_boostability(kernel):
 # }}}
 
 
+# {{{ check for loads of atomic variables
+
+def check_atomic_loads(kernel):
+    """Find instances of AtomicInit or AtomicUpdate with use of other atomic
+    variables to update the atomicity
+    """
+
+    logger.debug("%s: check atomic loads" % kernel.name)
+    from loopy.types import AtomicType
+    from loopy.kernel.array import ArrayBase
+    from loopy.kernel.instruction import Assignment, AtomicLoad
+
+    # find atomic variables
+    atomicity_candidates = (
+            set(v.name for v in six.itervalues(kernel.temporary_variables)
+                if isinstance(v.dtype, AtomicType))
+            |
+            set(v.name for v in kernel.args
+                if isinstance(v, ArrayBase)
+                and isinstance(v.dtype, AtomicType)))
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if isinstance(insn, Assignment):
+            # look for atomic variables
+            atomic_accesses = set(a.var_name for a in insn.atomicity)
+            accessed_atomic_vars = insn.dependency_names() & atomicity_candidates
+            if not accessed_atomic_vars <= atomic_accesses:
+                #if we're missing some
+                missed = accessed_atomic_vars - atomic_accesses
+                for x in missed:
+                    if set([x]) & atomicity_candidates:
+                        insn = insn.copy(
+                            atomicity=insn.atomicity + (AtomicLoad(x),))
+
+        new_insns.append(insn)
+
+    return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
 preprocess_cache = PersistentDict("loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
@@ -2103,6 +2145,10 @@ def preprocess_kernel(kernel, device=None):
     # boostability should be removed in 2017.x.
     kernel = find_idempotence(kernel)
     kernel = limit_boostability(kernel)
+
+    # check for atomic loads, much easier to do here now that the dependencies
+    # have been established
+    kernel = check_atomic_loads(kernel)
 
     kernel = kernel.target.preprocess(kernel)
 
