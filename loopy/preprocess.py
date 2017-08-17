@@ -2046,7 +2046,8 @@ def check_atomic_loads(kernel):
         if isinstance(insn, Assignment):
             # look for atomic variables
             atomic_accesses = set(a.var_name for a in insn.atomicity)
-            accessed_atomic_vars = insn.dependency_names() & atomicity_candidates
+            accessed_atomic_vars = (insn.dependency_names() & atomicity_candidates)\
+                - set([insn.assignee_var_names()[0]])
             if not accessed_atomic_vars <= atomic_accesses:
                 #if we're missing some
                 missed = accessed_atomic_vars - atomic_accesses

@@ -493,7 +493,6 @@ def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
 
         accessed_atomic_vars = insn.dependency_names() & atomicity_candidates
         if not accessed_atomic_vars <= atomic_accesses:
-            missed = atomic_accesses - accessed_atomic_vars
             raise LoopyError("atomic variable(s) '%s' in instruction '%s' "
                     "used in non-atomic access"
                     % (

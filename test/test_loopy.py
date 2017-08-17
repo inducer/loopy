@@ -1014,6 +1014,9 @@ def test_atomic(ctx_factory, dtype):
 def test_atomic_load(ctx_factory):
     dtype = np.int32
     ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    from loopy.kernel.data import temp_var_scope as scopes
+    n = 100
 
     if (
             np.dtype(dtype).itemsize == 8
@@ -1027,22 +1030,33 @@ def test_atomic_load(ctx_factory):
         pytest.skip("int64 RNG not supported in PyOpenCL < 2015.2")
 
     knl = lp.make_kernel(
-            "{ [i]: 0<=i<n }",
+            "{ [i,j]: 0<=i,j<100 }",
             """
-            temp[0] = 5 {id=init, atomic}
-            out[i%20] = out[i%20] + temp[0] {dep=init, nosync=init, atomic}
+            for j
+                <> upper = 0
+                <> lower = 0
+                temp[0] = 0 {id=init, atomic}
+                for i
+                    upper = upper + i * a[i] {id=sum0}
+                    lower = lower - b[i] {id=sum1}
+                end
+                ... lbarrier {id=lb1, dep=sum1}
+                temp[0] = temp[0] + lower {id=temp_sum, dep=sum*:lb1:init, atomic}
+                ... lbarrier {id=lb2, dep=temp_sum}
+                out[j] = upper / temp[0] {dep=sum*:temp_sum:lb2, atomic}
+            end
             """,
             [
                 lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
-                lp.GlobalArg('temp', dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.auto),
+                lp.GlobalArg("b", dtype, shape=lp.auto),
+                lp.TemporaryVariable('temp', dtype, for_atomic=True,
+                                     scope=scopes.GLOBAL, shape=(1,)),
                 "..."
-                ],
-            assumptions="n>0")
+                ])
 
-    ref_knl = knl
-    knl = lp.split_iname(knl, "i", 512)
-    knl = lp.split_iname(knl, "i_inner", 128, outer_tag="unr", inner_tag="g.0")
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
+    knl = lp.split_iname(knl, "j", 512, inner_tag="l.0")
+    _, out = knl(queue, a=np.arange(n), b=np.arange(n))
 
 
 def test_within_inames_and_reduction():
