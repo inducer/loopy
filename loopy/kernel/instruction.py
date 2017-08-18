@@ -641,7 +641,7 @@ class OrderedAtomic(VarAtomicity):
                 memory_scope.to_string(self.scope))
 
 
-class AtomicUpdate(VarAtomicity):
+class AtomicUpdate(OrderedAtomic):
     """Properties of an atomic update. A subclass of :class:`VarAtomicity`.
 
     .. attribute:: ordering
@@ -655,7 +655,7 @@ class AtomicUpdate(VarAtomicity):
     op_name = 'update'
 
 
-class AtomicLoad(VarAtomicity):
+class AtomicLoad(OrderedAtomic):
     """Properties of an atomic load. A subclass of :class:`VarAtomicity`.
 
     .. attribute:: ordering
