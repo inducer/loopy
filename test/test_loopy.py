@@ -1017,6 +1017,7 @@ def test_atomic_load(ctx_factory):
     queue = cl.CommandQueue(ctx)
     from loopy.kernel.data import temp_var_scope as scopes
     n = 100
+    vec_width = 4
 
     if (
             np.dtype(dtype).itemsize == 8
@@ -1041,9 +1042,11 @@ def test_atomic_load(ctx_factory):
                     lower = lower - b[i] {id=sum1}
                 end
                 ... lbarrier {id=lb1, dep=sum1}
-                temp[0] = temp[0] + lower {id=temp_sum, dep=sum*:lb1:init, atomic}
+                temp[0] = temp[0] + lower {id=temp_sum, dep=sum*:lb1:init, atomic,\
+                                           nosync=init}
                 ... lbarrier {id=lb2, dep=temp_sum}
-                out[j] = upper / temp[0] {dep=sum*:temp_sum:lb2, atomic}
+                out[j] = upper / temp[0] {id=final, dep=sum*:temp_sum:lb2, atomic,\
+                                           nosync=init:temp_sum}
             end
             """,
             [
@@ -1051,12 +1054,13 @@ def test_atomic_load(ctx_factory):
                 lp.GlobalArg("a", dtype, shape=lp.auto),
                 lp.GlobalArg("b", dtype, shape=lp.auto),
                 lp.TemporaryVariable('temp', dtype, for_atomic=True,
-                                     scope=scopes.GLOBAL, shape=(1,)),
+                                     scope=scopes.LOCAL, shape=(1,)),
                 "..."
                 ])
 
-    knl = lp.split_iname(knl, "j", 512, inner_tag="l.0")
-    _, out = knl(queue, a=np.arange(n), b=np.arange(n))
+    knl = lp.split_iname(knl, "j", vec_width, inner_tag="l.0")
+    _, out = knl(queue, a=np.arange(n, dtype=dtype), b=np.arange(n, dtype=dtype))
+    assert np.allclose(out, np.full_like(out, (-(2 * n - 1) / (3 * vec_width))))
 
 
 def test_within_inames_and_reduction():
