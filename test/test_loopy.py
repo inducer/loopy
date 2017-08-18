@@ -1012,7 +1012,7 @@ def test_atomic(ctx_factory, dtype):
 
 
 def test_atomic_load(ctx_factory):
-    dtype = np.int32
+    dtype = np.float32
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
     from loopy.kernel.data import temp_var_scope as scopes
