@@ -623,13 +623,13 @@ class OrderedAtomic(VarAtomicity):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
-        super(AtomicUpdate, self).update_persistent_hash(key_hash, key_builder)
+        super(OrderedAtomic, self).update_persistent_hash(key_hash, key_builder)
         key_builder.rec(key_hash, str(self.__class__.__name__))
         key_builder.rec(key_hash, self.ordering)
         key_builder.rec(key_hash, self.scope)
 
     def __eq__(self, other):
-        return (super(AtomicUpdate, self).__eq__(other)
+        return (super(OrderedAtomic, self).__eq__(other)
                 and self.ordering == other.ordering
                 and self.scope == other.scope)
 

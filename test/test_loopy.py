@@ -1054,13 +1054,14 @@ def test_atomic_load(ctx_factory):
                 lp.GlobalArg("a", dtype, shape=lp.auto),
                 lp.GlobalArg("b", dtype, shape=lp.auto),
                 lp.TemporaryVariable('temp', dtype, for_atomic=True,
-                                     scope=scopes.LOCAL, shape=(1,)),
+                                     scope=scopes.LOCAL, shape=(vec_width,)),
                 "..."
-                ])
+                ],
+            silenced_warnings=["write_race(init)", "write_race(temp_sum)"])
 
     knl = lp.split_iname(knl, "j", vec_width, inner_tag="l.0")
     _, out = knl(queue, a=np.arange(n, dtype=dtype), b=np.arange(n, dtype=dtype))
-    assert np.allclose(out, np.full_like(out, (-(2 * n - 1) / (3 * vec_width))))
+    assert np.allclose(out, np.full_like(out, (-(2 * n - 1) / float(3 * vec_width))))
 
 
 def test_within_inames_and_reduction():
