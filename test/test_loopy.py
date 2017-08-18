@@ -1041,7 +1041,7 @@ def test_atomic_load(ctx_factory):
                     upper = upper + i * a[i] {id=sum0}
                     lower = lower - b[i] {id=sum1}
                 end
-                ... lbarrier {id=lb1, dep=sum1}
+                ... lbarrier {id=lb1, dep=sum1:init}
                 temp[0] = temp[0] + lower {id=temp_sum, dep=sum*:lb1:init, atomic,\
                                            nosync=init}
                 ... lbarrier {id=lb2, dep=temp_sum}
