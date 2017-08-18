@@ -1064,6 +1064,25 @@ def test_atomic_load(ctx_factory):
     assert np.allclose(out, np.full_like(out, (-(2 * n - 1) / float(3 * vec_width))))
 
 
+def test_atomic_init():
+    dtype = np.float32
+    vec_width = 4
+
+    knl = lp.make_kernel(
+            "{ [i,j]: 0<=i<100 }",
+            """
+            out[i%4] = 0 {id=init, atomic=init}
+            """,
+            [
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                "..."
+                ],
+            silenced_warnings=["write_race(init)"])
+    knl = lp.split_iname(knl, 'i', vec_width, inner_tag='l.0')
+
+    print(lp.generate_code_v2(knl).device_code())
+
+
 def test_within_inames_and_reduction():
     # See https://github.com/inducer/loopy/issues/24
 

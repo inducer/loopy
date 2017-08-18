@@ -507,6 +507,18 @@ class OpenCLCASTBuilder(CASTBuilder):
 
         return CLConstant(arg_decl)
 
+    # {{{
+
+    def emit_atomic_init(self, codegen_state, lhs_atomicity, lhs_var,
+            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context):
+        # for the CL1 flavor, this is as simple as a regular update with whatever
+        # the RHS value is...
+
+        return self.emit_atomic_update(codegen_state, lhs_atomicity, lhs_var,
+            lhs_expr, rhs_expr, lhs_dtype, rhs_type_context)
+
+    # }}}
+
     # {{{ code generation for atomic update
 
     def emit_atomic_update(self, codegen_state, lhs_atomicity, lhs_var,

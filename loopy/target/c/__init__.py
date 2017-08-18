@@ -631,7 +631,11 @@ class CASTBuilder(ASTBuilderBase):
                         needed_dtype=lhs_dtype))
 
         elif isinstance(lhs_atomicity, AtomicInit):
-            raise NotImplementedError("atomic init")
+            codegen_state.seen_atomic_dtypes.add(lhs_dtype)
+            return codegen_state.ast_builder.emit_atomic_init(
+                    codegen_state, lhs_atomicity, lhs_var,
+                    insn.assignee, insn.expression,
+                    lhs_dtype, rhs_type_context)
 
         elif isinstance(lhs_atomicity, AtomicUpdate):
             codegen_state.seen_atomic_dtypes.add(lhs_dtype)
