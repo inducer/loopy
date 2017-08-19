@@ -616,10 +616,12 @@ def get_simple_strides(bset, key_by="name"):
         # recognizes constraints of the form
         #  -i0 + 2*floor((i0)/2) == 0
 
-        if aff.dim(dim_type.div) != 1:
+        divs_with_coeffs = _get_indices_and_coeffs(aff, [dim_type.div])
+        if len(divs_with_coeffs) != 1:
             continue
 
-        idiv = 0
+        (_, idiv, div_coeff), = divs_with_coeffs
+
         div = aff.get_div(idiv)
 
         # check for sub-divs
@@ -630,7 +632,7 @@ def get_simple_strides(bset, key_by="name"):
         denom = div.get_denominator_val().to_python()
 
         # if the coefficient in front of the div is not the same as the denominator
-        if not aff.get_coefficient_val(dim_type.div, idiv).div(denom).is_one():
+        if not div_coeff.div(denom).is_one():
             # not supported
             continue
 
