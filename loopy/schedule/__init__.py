@@ -1756,7 +1756,8 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 
 def generate_loop_schedules(kernel, debug_args={}):
     from pytools import MinRecursionLimit
-    with MinRecursionLimit(max(len(kernel.instructions) * 2, len(kernel.all_inames()) * 4)):
+    with MinRecursionLimit(max(len(kernel.instructions) * 2,
+                               len(kernel.all_inames()) * 4)):
         for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
             yield sched
 
