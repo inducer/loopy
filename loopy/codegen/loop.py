@@ -446,7 +446,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         from loopy.symbolic import pw_aff_to_expr
 
-        if ubound.is_equal(lbound):
+        if impl_ubound.is_equal(impl_lbound):
             # single-trip, generate just a variable assignment, not a loop
             inner = merge_codegen_results(codegen_state, [
                 astb.emit_initializer(
