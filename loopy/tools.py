@@ -344,8 +344,8 @@ def compute_sccs(graph):
 # {{{ pickled container value
 
 class _PickledObject(object):
-    """A class meant to wrap a pickled value (for :class:`LazyDict` and
-    :class:`LazyList`).
+    """A class meant to wrap a pickled value (for :class:`LazilyUnpicklingDict` and
+    :class:`LazilyUnpicklingList`).
     """
 
     def __init__(self, obj):
@@ -390,7 +390,7 @@ class _PickledObjectWithEqAndPersistentHashKeys(_PickledObject):
 
 # {{{ lazily unpickling dictionary
 
-class LazyDict(collections.MutableMapping):
+class LazilyUnpicklingDict(collections.MutableMapping):
     """A dictionary-like object which lazily unpickles its values.
     """
 
@@ -425,7 +425,7 @@ class LazyDict(collections.MutableMapping):
 
 # {{{ lazily unpickling list
 
-class LazyList(collections.MutableSequence):
+class LazilyUnpicklingList(collections.MutableSequence):
     """A list which lazily unpickles its values."""
 
     def __init__(self, *args, **kwargs):
@@ -453,7 +453,7 @@ class LazyList(collections.MutableSequence):
         return {"_list": [_PickledObject(val) for val in self._list]}
 
 
-class LazyListWithEqAndPersistentHashing(LazyList):
+class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
     """A list which lazily unpickles its values, and supports equality comparison
     and persistent hashing without unpickling.
 
@@ -469,7 +469,7 @@ class LazyListWithEqAndPersistentHashing(LazyList):
     def __init__(self, *args, **kwargs):
         self.eq_key_getter = kwargs.pop("eq_key_getter")
         self.persistent_hash_key_getter = kwargs.pop("persistent_hash_key_getter")
-        LazyList.__init__(self, *args, **kwargs)
+        LazilyUnpicklingList.__init__(self, *args, **kwargs)
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.update_for_list(key_hash, self._list)
@@ -485,10 +485,10 @@ class LazyListWithEqAndPersistentHashing(LazyList):
         return self.persistent_hash_key_getter(obj)
 
     def __eq__(self, other):
-        if not isinstance(other, (list, LazyList)):
+        if not isinstance(other, (list, LazilyUnpicklingList)):
             return NotImplemented
 
-        if isinstance(other, LazyList):
+        if isinstance(other, LazilyUnpicklingList):
             other = other._list
 
         if len(self) != len(other):

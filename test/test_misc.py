@@ -108,18 +108,18 @@ class PickleDetector(object):
         self.state = state["state"]
 
 
-class PickleDetectorForLazyDict(PickleDetector):
+class PickleDetectorForLazilyUnpicklingDict(PickleDetector):
     instance_unpickled = False
 
     def __init__(self):
         self.state = None
 
 
-def test_LazyDict():
-    from loopy.tools import LazyDict
+def test_LazilyUnpicklingDict():
+    from loopy.tools import LazilyUnpicklingDict
 
-    cls = PickleDetectorForLazyDict
-    mapping = LazyDict({0: cls()})
+    cls = PickleDetectorForLazilyUnpicklingDict
+    mapping = LazilyUnpicklingDict({0: cls()})
 
     assert not cls.instance_unpickled
 
@@ -156,25 +156,25 @@ def test_LazyDict():
 
     # {{{ test empty map
 
-    mapping = LazyDict({})
+    mapping = LazilyUnpicklingDict({})
     mapping = loads(dumps(mapping))
     assert len(mapping) == 0
 
     # }}}
 
 
-class PickleDetectorForLazyList(PickleDetector):
+class PickleDetectorForLazilyUnpicklingList(PickleDetector):
     instance_unpickled = False
 
     def __init__(self):
         self.state = None
 
 
-def test_LazyList():
-    from loopy.tools import LazyList
+def test_LazilyUnpicklingList():
+    from loopy.tools import LazilyUnpicklingList
 
-    cls = PickleDetectorForLazyList
-    lst = LazyList([cls()])
+    cls = PickleDetectorForLazilyUnpicklingList
+    lst = LazilyUnpicklingList([cls()])
     assert not cls.instance_unpickled
 
     from pickle import loads, dumps
@@ -207,14 +207,15 @@ def test_LazyList():
 
     # {{{ test empty list
 
-    lst = LazyList([])
+    lst = LazilyUnpicklingList([])
     lst = loads(dumps(lst))
     assert len(lst) == 0
 
     # }}}
 
 
-class PickleDetectorForLazyListWithEqAndPersistentHashing(PickleDetector):
+class PickleDetectorForLazilyUnpicklingListWithEqAndPersistentHashing(
+        PickleDetector):
     instance_unpickled = False
 
     def __init__(self, comparison_key):
@@ -227,19 +228,19 @@ class PickleDetectorForLazyListWithEqAndPersistentHashing(PickleDetector):
         key_builder.rec(key_hash, repr(self))
 
 
-def test_LazyListWithEqAndPersistentHashing():
-    from loopy.tools import LazyListWithEqAndPersistentHashing
+def test_LazilyUnpicklingListWithEqAndPersistentHashing():
+    from loopy.tools import LazilyUnpicklingListWithEqAndPersistentHashing
 
-    cls = PickleDetectorForLazyListWithEqAndPersistentHashing
+    cls = PickleDetectorForLazilyUnpicklingListWithEqAndPersistentHashing
     from pickle import loads, dumps
 
     # {{{ test comparison of a pair of lazy lists
 
-    lst0 = LazyListWithEqAndPersistentHashing(
+    lst0 = LazilyUnpicklingListWithEqAndPersistentHashing(
             [cls(0), cls(1)],
             eq_key_getter=repr,
             persistent_hash_key_getter=repr)
-    lst1 = LazyListWithEqAndPersistentHashing(
+    lst1 = LazilyUnpicklingListWithEqAndPersistentHashing(
             [cls(0), cls(1)],
             eq_key_getter=repr,
             persistent_hash_key_getter=repr)
