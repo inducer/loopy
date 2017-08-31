@@ -342,6 +342,11 @@ Here's a Bibtex entry for your convenience::
        doi = "{10.1145/2627373.2627387}",
     }
 
+Getting help
+============
+
+Email the friendly folks on the `loopy mailing list <https://lists.tiker.net/listinfo/loopy>`_.
+
 Acknowledgments
 ===============
 
