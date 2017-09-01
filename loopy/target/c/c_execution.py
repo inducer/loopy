@@ -195,24 +195,30 @@ class CCompiler(object):
         :class:`CExecutionWrapperGenerator`
     """
 
-    def __init__(self, cc='gcc', cflags='-std=c99 -g -O3'.split(),
-                 ldflags=[], libraries=[],
+    def __init__(self, toolchain=None,
+                 cc='gcc', cflags='-std=c99 -g -O3 -fPIC'.split(),
+                 ldflags='-shared'.split(), libraries=[],
                  include_dirs=[], library_dirs=[], defines=[],
                  source_suffix='c'):
         # try to get a default toolchain
-        self.toolchain = guess_toolchain()
-        # copy in all differing values
-        diff = {'cc': cc,
-                'cflags': cflags,
-                'ldflags': ldflags,
-                'libraries': libraries,
-                'include_dirs': include_dirs,
-                'library_dirs': library_dirs,
-                'defines': defines}
-        # filter empty and those equal to toolchain defaults
-        diff = dict((k, v) for k, v in six.iteritems(diff) if v and
-                getattr(self.toolchain, k) != v)
-        self.toolchain = self.toolchain.copy(**diff)
+        # or subclass supplied version if available
+        self.toolchain = guess_toolchain() if toolchain is None else toolchain
+        self.source_suffix = source_suffix
+        if toolchain is None:
+            # copy in all differing values
+            diff = {'cc': cc,
+                    'cflags': cflags,
+                    'ldflags': ldflags,
+                    'libraries': libraries,
+                    'include_dirs': include_dirs,
+                    'library_dirs': library_dirs,
+                    'defines': defines}
+            # filter empty and those equal to toolchain defaults
+            diff = dict((k, v) for k, v in six.iteritems(diff)
+                    if v and
+                    not hasattr(self.toolchain, k) or
+                    getattr(self.toolchain, k) != v)
+            self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
         self.source_suffix = source_suffix
 
