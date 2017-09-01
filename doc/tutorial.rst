@@ -228,7 +228,7 @@ inspect that code, too, using :attr:`loopy.Options.write_wrapper`:
     >>> evt, (out,) = knl(queue, a=x_vec_host)
     from __future__ import division
     ...
-    def invoke_loopy_kernel_loopy_kernel(_lpy_cl_kernels, queue, allocator=None, wait_for=None, out_host=None, a=None, n=None, out=None, **kwargs):
+    def invoke_loopy_kernel_loopy_kernel(_lpy_cl_kernels, queue, allocator=None, wait_for=None, out_host=None, a=None, n=None, out=None):
         if allocator is None:
             allocator = _lpy_cl_tools.DeferredAllocator(queue.context)
     <BLANKLINE>
