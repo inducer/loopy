@@ -1865,7 +1865,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     .. versionchanged:: 2017.2
 
-        *parameters* added.
+        *fixed_parameters* added.
 
     .. versionchanged:: 2016.3
 
