@@ -38,7 +38,6 @@ __doc__ = """
 
 .. currentmodule:: loopy
 
-.. autoclass:: GuardedPwQPolynomial
 .. autoclass:: ToCountMap
 .. autoclass:: Op
 .. autoclass:: MemAccess
@@ -50,6 +49,11 @@ __doc__ = """
 .. autofunction:: gather_access_footprints
 .. autofunction:: gather_access_footprint_bytes
 
+.. currentmodule:: loopy.statistics
+
+.. autoclass:: GuardedPwQPolynomial
+
+.. currentmodule:: loopy
 """
 
 

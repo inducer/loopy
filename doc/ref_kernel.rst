@@ -579,4 +579,15 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
     :members:
     :undoc-members:
 
+Implementation Detail: The Base Array
+-------------------------------------
+
+All array-like data in :mod:`loopy` (such as :class:`GlobalArg` and
+:class:`TemporaryVariable`) derive from single, shared base array type,
+described next.
+
+.. currentmodule:: loopy.kernel.array
+
+.. autoclass:: ArrayBase
+
 .. vim: tw=75:spell:fdm=marker

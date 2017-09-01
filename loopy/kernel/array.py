@@ -567,6 +567,14 @@ class ArrayBase(ImmutableRecord):
         informational/documentational purpose. On occasion, they are used
         to generate more informative names than could be achieved by
         axis numbers.
+
+    .. automethod:: __init__
+    .. automethod:: __eq__
+    .. automethod:: num_user_axes
+    .. automethod:: num_target_axes
+    .. automethod:: vector_size
+
+    (supports persistent hashing)
     """
 
     # Note that order may also wind up in attributes, if the
@@ -579,7 +587,8 @@ class ArrayBase(ImmutableRecord):
             target=None,
             **kwargs):
         """
-        All of the following are optional. Specify either strides or shape.
+        All of the following (except *name*) are optional.
+        Specify either strides or shape.
 
         :arg name: May contain multiple names separated by
             commas, in which case multiple arguments,
