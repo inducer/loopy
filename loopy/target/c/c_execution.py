@@ -196,7 +196,7 @@ class CCompiler(object):
     """
 
     def __init__(self, toolchain=None,
-                 cc='gcc', cflags='-std=c99 -g -O3 -fPIC'.split(),
+                 cc='gcc', cflags='-std=c99 -O3 -fPIC'.split(),
                  ldflags='-shared'.split(), libraries=[],
                  include_dirs=[], library_dirs=[], defines=[],
                  source_suffix='c'):
