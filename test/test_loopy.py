@@ -2416,6 +2416,21 @@ def test_kernel_var_name_generator():
     assert vng("b") != "b"
 
 
+def test_fixed_parameters(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "[n] -> {[i]: 0 <= i < n}",
+            """
+            <>tmp[i] = i
+            tmp[0] = 0
+            """,
+            fixed_parameters=dict(n=1))
+
+    knl(queue)
+
+
 def test_execution_backend_can_cache_dtypes(ctx_factory):
     # When the kernel is invoked, the execution backend uses it as a cache key
     # for the type inference and scheduling cache. This tests to make sure that

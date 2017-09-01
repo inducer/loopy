@@ -1859,6 +1859,13 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg seq_dependencies: If *True*, dependencies that sequentially
         connect the given *instructions* will be added. Defaults to
         *False*.
+    :arg fixed_parameters: A dictionary of *name*/*value* pairs, where *name*
+        will be fixed to *value*. *name* may refer to :ref:`domain-parameters`
+        or :ref:`arguments`. See also :func:`loopy.fix_parameters`.
+
+    .. versionchanged:: 2017.2
+
+        *parameters* added.
 
     .. versionchanged:: 2016.3
 
@@ -1876,6 +1883,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     flags = kwargs.pop("flags", None)
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
+    fixed_parameters = kwargs.pop("fixed_parameters", {})
 
     if defines:
         from warnings import warn
@@ -1996,11 +2004,14 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # -------------------------------------------------------------------------
     # Must create temporaries before inferring inames (because those temporaries
     # mediate dependencies that are then used for iname propagation.)
+    # Must create temporaries before fixing parameters.
     # -------------------------------------------------------------------------
     knl = add_used_inames(knl)
     # NOTE: add_inferred_inames will be phased out and throws warnings if it
     # does something.
     knl = add_inferred_inames(knl)
+    from loopy.transform.parameter import fix_parameters
+    knl = fix_parameters(knl, **fixed_parameters)
     # -------------------------------------------------------------------------
     # Ordering dependency:
     # -------------------------------------------------------------------------
