@@ -643,8 +643,9 @@ class ArrayBase(ImmutableRecord):
         :arg offset: Offset from the beginning of the buffer to the point from
             which the strides are counted. May be one of
 
-            * 0
+            * 0 or None
             * a string (that is interpreted as an argument name).
+            * a pymbolic expression
             * :class:`loopy.auto`, in which case an offset argument
               is added automatically, immediately following this argument.
               :class:`loopy.CompiledKernel` is even smarter in its treatment of
