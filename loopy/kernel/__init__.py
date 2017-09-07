@@ -212,10 +212,16 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             state=kernel_state.INITIAL,
             target=None,
 
-            # When kernels get intersected in slab decomposition,
-            # their grid sizes shouldn't change. This provides
-            # a way to forward sub-kernel grid size requests.
-            overridden_get_grid_sizes_for_insn_ids=None):
+            overridden_get_grid_sizes_for_insn_ids=None,
+            uniquify_instruction_ids=True):
+        """
+        :arg overridden_get_grid_sizes_for_insn_ids: A callable. When kernels get
+            intersected in slab decomposition, their grid sizes shouldn't
+            change. This provides a way to forward sub-kernel grid size requests.
+
+        :arg uniquify_instruction_ids: Ensure all instruction ids are unique.
+            If *False*, does not look at `instructions`.
+        """
 
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
@@ -223,31 +229,32 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         # {{{ make instruction ids unique
 
-        from loopy.kernel.creation import UniqueName
+        if uniquify_instruction_ids:
+            from loopy.kernel.creation import UniqueName
 
-        insn_ids = set()
-        for insn in instructions:
-            if insn.id is not None and not isinstance(insn.id, UniqueName):
-                if insn.id in insn_ids:
-                    raise RuntimeError("duplicate instruction id: %s" % insn.id)
-                insn_ids.add(insn.id)
+            insn_ids = set()
+            for insn in instructions:
+                if insn.id is not None and not isinstance(insn.id, UniqueName):
+                    if insn.id in insn_ids:
+                        raise RuntimeError("duplicate instruction id: %s" % insn.id)
+                    insn_ids.add(insn.id)
 
-        insn_id_gen = UniqueNameGenerator(insn_ids)
+            insn_id_gen = UniqueNameGenerator(insn_ids)
 
-        new_instructions = []
+            new_instructions = []
 
-        for insn in instructions:
-            if insn.id is None:
-                new_instructions.append(
-                        insn.copy(id=insn_id_gen("insn")))
-            elif isinstance(insn.id, UniqueName):
-                new_instructions.append(
-                        insn.copy(id=insn_id_gen(insn.id.name)))
-            else:
-                new_instructions.append(insn)
+            for insn in instructions:
+                if insn.id is None:
+                    new_instructions.append(
+                            insn.copy(id=insn_id_gen("insn")))
+                elif isinstance(insn.id, UniqueName):
+                    new_instructions.append(
+                            insn.copy(id=insn_id_gen(insn.id.name)))
+                else:
+                    new_instructions.append(insn)
 
-        instructions = new_instructions
-        del new_instructions
+            instructions = new_instructions
+            del new_instructions
 
         # }}}
 
