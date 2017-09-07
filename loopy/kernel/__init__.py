@@ -219,7 +219,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             intersected in slab decomposition, their grid sizes shouldn't
             change. This provides a way to forward sub-kernel grid size requests.
 
-        :arg uniquify_instruction_ids: Ensure all instruction ids are unique and
+        :arg uniquify_instruction_ids: Ensure all instruction IDs are unique and
             convert any IDs that are :class:`loopy.UniqueName` or *None* into
             appropriate strings. If *False*, does not look at `instructions`.
         """
