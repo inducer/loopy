@@ -220,8 +220,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             change. This provides a way to forward sub-kernel grid size requests.
 
         :arg uniquify_instruction_ids: Ensure all instruction IDs are unique and
-            convert any IDs that are :class:`loopy.UniqueName` or *None* into
-            appropriate strings. If *False*, does not look at `instructions`.
+            convert any IDs that are :class:`loopy.kernel.creation.UniqueName` or
+            *None* into appropriate strings. If *False*, does not look at
+            `instructions`.
         """
 
         if cache_manager is None:
