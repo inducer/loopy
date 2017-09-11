@@ -55,6 +55,7 @@ class TargetBase(object):
     comparison_fields = ()
 
     def update_persistent_hash(self, key_hash, key_builder):
+        key_hash.update(type(self).__name__.encode())
         for field_name in self.hash_fields:
             key_builder.rec(key_hash, getattr(self, field_name))
 
