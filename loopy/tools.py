@@ -51,7 +51,12 @@ class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
     See also :meth:`LoopyKeyBuilder.update_for_pymbolic_expression`.
     """
 
-    # <empty implementation>
+    def map_reduction(self, expr, *args):
+        if not self.visit(expr):
+            return
+
+        self.key_hash.update(type(expr.operation).__name__.encode("utf-8"))
+        self.rec(expr.expr, *args)
 
 
 class LoopyKeyBuilder(KeyBuilderBase):

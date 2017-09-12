@@ -887,6 +887,7 @@ class ArrayBase(ImmutableRecord):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
+        key_builder.rec(key_hash, type(self).__name__.encode("utf-8"))
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
         self.update_persistent_hash_for_shape(key_hash, key_builder, self.shape)
