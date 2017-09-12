@@ -96,6 +96,15 @@ def check_insn_attributes(kernel):
                        ", ".join(no_sync_with_scopes - VALID_NOSYNC_SCOPES)))
 
 
+def check_for_duplicate_insn_ids(knl):
+    insn_ids = set()
+
+    for insn in knl.instructions:
+        if insn.id in insn_ids:
+            raise LoopyError("duplicate instruction id: '%s'" % insn.id)
+        insn_ids.add(insn.id)
+
+
 def check_loop_priority_inames_known(kernel):
     for prio in kernel.loop_priority:
         for iname in prio:
@@ -375,6 +384,7 @@ def pre_schedule_checks(kernel):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
+        check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
         check_insn_attributes(kernel)
