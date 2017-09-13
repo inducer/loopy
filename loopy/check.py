@@ -100,6 +100,8 @@ def check_for_duplicate_insn_ids(knl):
     insn_ids = set()
 
     for insn in knl.instructions:
+        if not isinstance(insn.id, str):
+            raise LoopyError("instruction id %r is not a string" % insn.id)
         if insn.id in insn_ids:
             raise LoopyError("duplicate instruction id: '%s'" % insn.id)
         insn_ids.add(insn.id)
