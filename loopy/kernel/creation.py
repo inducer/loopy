@@ -1984,6 +1984,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             target=target,
             **kwargs)
 
+    from loopy.transform.instruction import uniquify_instruction_ids
+    knl = uniquify_instruction_ids(knl)
+    from loopy.check import check_for_duplicate_insn_ids
+    check_for_duplicate_insn_ids(knl)
+
     if seq_dependencies:
         knl = add_sequential_dependencies(knl)
 

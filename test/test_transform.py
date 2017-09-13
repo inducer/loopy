@@ -438,6 +438,23 @@ def test_add_nosync():
     assert frozenset([("insn5", "local")]) == knl.id_to_insn["insn6"].no_sync_with
 
 
+def test_uniquify_instruction_ids():
+    i1 = lp.Assignment("b", 1, id=None)
+    i2 = lp.Assignment("b", 1, id=None)
+    i3 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
+    i4 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
+
+    knl = lp.make_kernel("{[i]: i = 1}", []).copy(instructions=[i1, i2, i3, i4])
+
+    from loopy.transform.instruction import uniquify_instruction_ids
+    knl = uniquify_instruction_ids(knl)
+
+    insn_ids = set(insn.id for insn in knl.instructions)
+
+    assert len(insn_ids) == 4
+    assert all(isinstance(id, str) for id in insn_ids)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
