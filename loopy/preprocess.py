@@ -1928,7 +1928,7 @@ def find_idempotence(kernel):
             for insn in kernel.instructions)
 
     from collections import defaultdict
-    dep_graph = defaultdict(lambda: set())
+    dep_graph = defaultdict(set)
 
     for insn in kernel.instructions:
         dep_graph[insn.id] = set(writer_id

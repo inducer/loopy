@@ -1415,8 +1415,8 @@ class DependencyTracker(object):
             raise ValueError("unknown 'var_kind': %s" % var_kind)
 
         from collections import defaultdict
-        self.writer_map = defaultdict(lambda: set())
-        self.reader_map = defaultdict(lambda: set())
+        self.writer_map = defaultdict(set)
+        self.reader_map = defaultdict(set)
         self.temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
 
     def map_to_base_storage(self, var_names):
