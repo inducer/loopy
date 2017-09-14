@@ -119,6 +119,47 @@ class PymbolicExpressionHashWrapper(object):
 # }}}
 
 
+# {{{ eq key builder
+
+class LoopyEqKeyBuilder(object):
+    """Unlike :class:`loopy.tools.LoopyKeyBuilder`, this builds keys for use in
+    equality comparison, such that `key(a) == key(b)` if and only if `a == b`.
+    The types of objects being compared should satisfy structural equality.
+
+    The output is suitable for use with :class:`loopy.tools.LoopyKeyBuilder`
+    provided all fields are persistent hashable.
+
+    As an optimization, top-level pymbolic expression fields are stringified for
+    faster comparisons / hash calculations.
+
+    Usage::
+
+        kb = LoopyEqKeyBuilder()
+        kb.update_for_class(insn.__class__)
+        kb.update_for_field("field", insn.field)
+        ...
+        key = kb.key()
+
+    """
+
+    def __init__(self):
+        self.field_dict = {}
+
+    def update_for_class(self, class_):
+        self.class_ = class_
+
+    def update_for_field(self, field_name, value):
+        self.field_dict[field_name] = value
+
+    def update_for_pymbolic_field(self, field_name, value):
+        self.field_dict[field_name] = str(value)
+
+    def key(self):
+        return (self.class_.__name__, self.field_dict)
+
+# }}}
+
+
 # {{{ remove common indentation
 
 def remove_common_indentation(code, require_leading_newline=True,
