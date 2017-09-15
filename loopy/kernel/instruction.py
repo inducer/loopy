@@ -417,7 +417,7 @@ class InstructionBase(ImmutableRecord):
 
     @property
     @memoize_method
-    def _key(self):
+    def _key_builder(self):
         from loopy.tools import LoopyEqKeyBuilder
         key_builder = LoopyEqKeyBuilder()
         key_builder.update_for_class(self.__class__)
@@ -433,7 +433,7 @@ class InstructionBase(ImmutableRecord):
             else:
                 key_builder.update_for_field(field_name, field_value)
 
-        return key_builder.key()
+        return key_builder
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -442,7 +442,7 @@ class InstructionBase(ImmutableRecord):
         Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
         """
 
-        key_builder.rec(key_hash, self._key)
+        key_builder.rec(key_hash, self._key_builder.hash_key())
 
     # }}}
 
