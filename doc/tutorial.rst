@@ -1133,11 +1133,11 @@ instruction is ``... lbarrier``.
 Saving temporaries across global barriers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When working with global barriers it is necessary to save and reload temporaries
-that are live across global barriers. This section presents an example of how to
-use :func:`loopy.save_and_reload_temporaries` which is helpful for that
-purpose. Consider the following kernel, which attempts to rotate its input to
-the right by 1 in parallel:
+When working with global barriers it is necessary to save and reload non-global
+temporaries that are live across global barriers. This section presents an
+example of how to use :func:`loopy.save_and_reload_temporaries` which is helpful
+for that purpose. Consider the following kernel, which attempts to rotate its
+input to the right by 1 in parallel:
 
 .. doctest::
 
