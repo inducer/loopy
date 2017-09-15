@@ -90,7 +90,7 @@ def get_slab_decomposition(kernel, iname):
                         iname_rel_aff(space,
                             iname, "<=", upper_bound_aff-upper_incr)))
         else:
-            lower_slab = None
+            upper_slab = None
 
         slabs = []
 
