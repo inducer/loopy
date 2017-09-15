@@ -152,10 +152,16 @@ class LoopyEqKeyBuilder(object):
         self.field_dict[field_name] = value
 
     def update_for_pymbolic_field(self, field_name, value):
-        self.field_dict[field_name] = str(value)
+        self.field_dict[field_name] = str(value).encode("utf-8")
 
     def key(self):
-        return (self.class_.__name__, self.field_dict)
+        return (self.class_.__name__.encode("utf-8"), self.field_dict)
+
+    def hash_key(self):
+        """Similar to key(), but excludes field names for faster hashing.
+        """
+        return (self.class_.__name__.encode("utf-8"),) + tuple(
+                self.field_dict[k] for k in sorted(self.field_dict.keys()))
 
 # }}}
 
