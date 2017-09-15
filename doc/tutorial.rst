@@ -1123,21 +1123,12 @@ Barrier insertion
 
 By default, :mod:`loopy` inserts local barriers between two instructions when it
 detects that a dependency involving local memory may occur across work items. To
-see this in action, take a look at the section on :ref:`local_temporaries`. In
-contrast, :mod:`loopy` will *not* insert global barriers automatically.
+see this in action, take a look at the section on :ref:`local_temporaries`.
 
-Barriers may also be inserted manually into the kernel. The syntax for a global
-barrier instruction is ``... gbarrier``. The syntax for a local barrier
-instruction is ``... lbarrier``.
-
-Saving temporaries across global barriers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-When working with global barriers it is necessary to save and reload non-global
-temporaries that are live across global barriers. This section presents an
-example of how to use :func:`loopy.save_and_reload_temporaries` which is helpful
-for that purpose. Consider the following kernel, which attempts to rotate its
-input to the right by 1 in parallel:
+In contrast, :mod:`loopy` will *not* insert global barriers automatically and
+instead will report an error if it detects the need for a global barrier. As an
+example, consider the following kernel, which attempts to rotate its input to
+the right by 1 in parallel:
 
 .. doctest::
 
@@ -1165,8 +1156,22 @@ this, :mod:`loopy` will complain that global barrier needs to be inserted:
    ...
    MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
 
-To address this we add the ``... gbarrier`` instruction between the pair of
-offending instructions.
+The syntax for a inserting a global barrier instruction is
+``... gbarrier``. :mod:`loopy` also supports manually inserting local
+barriers. The syntax for a local barrier instruction is ``... lbarrier``.
+
+Saving temporaries across global barriers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For some platforms (currently only PyOpenCL), :mod:`loopy` implements global
+barriers by splitting the kernel into a host side kernel and multiple
+device-side kernels. On such platforms, it will be necessary to save non-global
+temporaries that are live across kernel calls. This section presents an example
+of how to use :func:`loopy.save_and_reload_temporaries` which is helpful for
+that purpose.
+
+Let us start with an example. Consider the kernel from above with a
+``... gbarrier`` instruction that has already been inserted.
 
 .. doctest::
 
@@ -1194,10 +1199,9 @@ Here is what happens when we try to generate code for the kernel:
    ...
    MissingDefinitionError: temporary variable 'tmp' gets used in subkernel 'rotate_v2_0' without a definition (maybe you forgot to call loopy.save_and_reload_temporaries?)
 
-To understand what is going on, you need to know that :mod:`loopy` implements
-global barriers by splitting the kernel into multiple device-side kernels. The
-splitting happens when the instruction schedule is generated. To see the
-schedule, we must first call :func:`loopy.get_one_scheduled_kernel`:
+This happens due to the kernel splitting done by :mod:`loopy`. The splitting
+happens when the instruction schedule is generated. To see the schedule, we
+should call :func:`loopy.get_one_scheduled_kernel`:
 
    >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
    >>> print(knl)
