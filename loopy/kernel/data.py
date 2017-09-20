@@ -436,6 +436,7 @@ class TemporaryVariable(ArrayBase):
                     "base_storage given!"
                     % name)
 
+        alias = _base_storage_access_may_be_aliasing
         ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
@@ -445,8 +446,7 @@ class TemporaryVariable(ArrayBase):
                 base_storage=base_storage,
                 initializer=initializer,
                 read_only=read_only,
-                _base_storage_access_may_be_aliasing=
-                    _base_storage_access_may_be_aliasing,
+                _base_storage_access_may_be_aliasing=alias,
                 **kwargs)
 
     @property
@@ -509,8 +509,8 @@ class TemporaryVariable(ArrayBase):
                     (self.initializer is None and other.initializer is None)
                     or np.array_equal(self.initializer, other.initializer))
                 and self.read_only == other.read_only
-                and self._base_storage_access_may_be_aliasing
-                    == other._base_storage_access_may_be_aliasing
+                and (self._base_storage_access_may_be_aliasing
+                    == other._base_storage_access_may_be_aliasing)
                 )
 
     def update_persistent_hash(self, key_hash, key_builder):
