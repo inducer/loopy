@@ -347,10 +347,13 @@ class TemporaryVariable(ArrayBase):
         A :class:`bool` indicating whether the variable may be written during
         its lifetime. If *True*, *initializer* must be given.
 
-    .. attribute:: aliases_base_storage
+    .. attribute:: _base_storage_access_may_be_aliasing
 
         Whether the temporary is used to alias the underlying base storage.
-        Defaults to False.
+        Defaults to *False*. If *False*, C-based code generators will declare
+        the temporary as a restricted const pointer to the base storage
+        memory location. If *True*, the restrict part is omitted on this
+        declaration.
     """
 
     min_target_axes = 0
@@ -363,14 +366,14 @@ class TemporaryVariable(ArrayBase):
             "base_storage",
             "initializer",
             "read_only",
-            "aliases_base_storage",
+            "_base_storage_access_may_be_aliasing",
             ]
 
     def __init__(self, name, dtype=None, shape=(), scope=auto,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
             base_storage=None, initializer=None, read_only=False,
-            aliases_base_storage=False, **kwargs):
+            _base_storage_access_may_be_aliasing=False, **kwargs):
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -426,10 +429,10 @@ class TemporaryVariable(ArrayBase):
                     "mutually exclusive"
                     % name)
 
-        if base_storage is None and aliases_base_storage:
+        if base_storage is None and _base_storage_access_may_be_aliasing:
             raise LoopyError(
                     "temporary variable '%s': "
-                    "aliases_base_storage option, but no "
+                    "_base_storage_access_may_be_aliasing option, but no "
                     "base_storage given!"
                     % name)
 
@@ -442,7 +445,8 @@ class TemporaryVariable(ArrayBase):
                 base_storage=base_storage,
                 initializer=initializer,
                 read_only=read_only,
-                aliases_base_storage=aliases_base_storage,
+                _base_storage_access_may_be_aliasing=
+                    _base_storage_access_may_be_aliasing,
                 **kwargs)
 
     @property
@@ -505,7 +509,8 @@ class TemporaryVariable(ArrayBase):
                     (self.initializer is None and other.initializer is None)
                     or np.array_equal(self.initializer, other.initializer))
                 and self.read_only == other.read_only
-                and self.aliases_base_storage == other.aliases_base_storage
+                and self._base_storage_access_may_be_aliasing
+                    == other._base_storage_access_may_be_aliasing
                 )
 
     def update_persistent_hash(self, key_hash, key_builder):

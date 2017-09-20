@@ -468,7 +468,7 @@ class CASTBuilder(ASTBuilderBase):
                     temp_var_decl = self.wrap_temporary_decl(
                             temp_var_decl, tv.scope)
 
-                    if tv.aliases_base_storage:
+                    if tv._base_storage_access_may_be_aliasing:
                         ptrtype = _ConstPointer
                     else:
                         # The 'restrict' part of this is a complete lie--of course
