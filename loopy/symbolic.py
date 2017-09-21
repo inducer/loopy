@@ -1232,6 +1232,9 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         super(PwAffEvaluationMapper, self).__init__(context)
 
     def map_constant(self, expr):
+        if isinstance(expr, np.integer):
+            expr = int(expr)
+
         return self.pw_zero + expr
 
     def map_min(self, expr):
