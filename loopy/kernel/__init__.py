@@ -1474,6 +1474,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return hash(key_hash.digest())
 
     def __eq__(self, other):
+        if self is other:
+            return True
+
         if not isinstance(other, LoopKernel):
             return False
 
