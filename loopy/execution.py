@@ -31,7 +31,7 @@ from loopy.diagnostic import LoopyError
 import logging
 logger = logging.getLogger(__name__)
 
-from pytools.persistent_dict import PersistentDict
+from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -120,7 +120,7 @@ class SeparateArrayPackingController(object):
 
 # {{{ KernelExecutorBase
 
-typed_and_scheduled_cache = PersistentDict(
+typed_and_scheduled_cache = WriteOncePersistentDict(
         "loopy-typed-and-scheduled-cache-v1-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
@@ -204,7 +204,10 @@ class KernelExecutorBase(object):
         kernel = self.get_typed_and_scheduled_kernel_uncached(arg_to_dtype_set)
 
         if CACHING_ENABLED:
-            typed_and_scheduled_cache[cache_key] = kernel
+            try:
+                typed_and_scheduled_cache[cache_key] = kernel
+            except ReadOnlyEntryError:
+                pass
 
         return kernel
 

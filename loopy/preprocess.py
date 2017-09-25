@@ -30,7 +30,7 @@ from loopy.diagnostic import (
 
 import islpy as isl
 
-from pytools.persistent_dict import PersistentDict
+from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
 
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
@@ -2020,7 +2020,8 @@ def limit_boostability(kernel):
 # }}}
 
 
-preprocess_cache = PersistentDict("loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
+preprocess_cache = WriteOncePersistentDict(
+        "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
@@ -2126,7 +2127,10 @@ def preprocess_kernel(kernel, device=None):
     # }}}
 
     if CACHING_ENABLED:
-        preprocess_cache[input_kernel] = kernel
+        try:
+            preprocess_cache[input_kernel] = kernel
+        except ReadOnlyEntryError:
+            pass
 
     return kernel
 
