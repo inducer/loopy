@@ -532,7 +532,8 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     if CACHING_ENABLED:
         from loopy.preprocess import prepare_for_caching
-        buffer_array_cache.store_if_not_present(cache_key, prepare_for_caching(kernel))
+        buffer_array_cache.store_if_not_present(
+                cache_key, prepare_for_caching(kernel))
 
     return kernel
 
