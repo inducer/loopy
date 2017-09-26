@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
+from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -1972,10 +1972,7 @@ def get_one_scheduled_kernel(kernel):
             kernel.name, time()-start_time))
 
     if CACHING_ENABLED and not from_cache:
-        try:
-            schedule_cache[sched_cache_key] = result
-        except ReadOnlyEntryError:
-            pass
+        schedule_cache.store_if_not_present(sched_cache_key, result)
 
     return result
 

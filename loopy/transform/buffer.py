@@ -29,7 +29,7 @@ from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, SubstitutionRuleMappingContext,
         SubstitutionMapper)
 from pymbolic.mapper.substitutor import make_subst_func
-from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
+from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder, PymbolicExpressionHashWrapper
 from loopy.version import DATA_MODEL_VERSION
 from loopy.diagnostic import LoopyError
@@ -532,10 +532,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     if CACHING_ENABLED:
         from loopy.preprocess import prepare_for_caching
-        try:
-            buffer_array_cache[cache_key] = prepare_for_caching(kernel)
-        except ReadOnlyEntryError:
-            pass
+        buffer_array_cache.store_if_not_present(cache_key, prepare_for_caching(kernel))
 
     return kernel
 

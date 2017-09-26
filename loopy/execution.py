@@ -31,7 +31,7 @@ from loopy.diagnostic import LoopyError
 import logging
 logger = logging.getLogger(__name__)
 
-from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
+from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -204,10 +204,7 @@ class KernelExecutorBase(object):
         kernel = self.get_typed_and_scheduled_kernel_uncached(arg_to_dtype_set)
 
         if CACHING_ENABLED:
-            try:
-                typed_and_scheduled_cache[cache_key] = kernel
-            except ReadOnlyEntryError:
-                pass
+            typed_and_scheduled_cache.store_if_not_present(cache_key, kernel)
 
         return kernel
 

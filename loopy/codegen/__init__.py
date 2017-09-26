@@ -28,7 +28,7 @@ from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord
 import islpy as isl
 
-from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
+from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -516,10 +516,7 @@ def generate_code_v2(kernel):
     logger.info("%s: generate code: done" % kernel.name)
 
     if CACHING_ENABLED:
-        try:
-            code_gen_cache[input_kernel] = codegen_result
-        except ReadOnlyEntryError:
-            pass
+        code_gen_cache.store_if_not_present(input_kernel, codegen_result)
 
     return codegen_result
 

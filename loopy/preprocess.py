@@ -30,7 +30,7 @@ from loopy.diagnostic import (
 
 import islpy as isl
 
-from pytools.persistent_dict import WriteOncePersistentDict, ReadOnlyEntryError
+from pytools.persistent_dict import WriteOncePersistentDict
 
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
@@ -2127,10 +2127,7 @@ def preprocess_kernel(kernel, device=None):
     # }}}
 
     if CACHING_ENABLED:
-        try:
-            preprocess_cache[input_kernel] = kernel
-        except ReadOnlyEntryError:
-            pass
+        preprocess_cache.store_if_not_present(input_kernel, kernel)
 
     return kernel
 
