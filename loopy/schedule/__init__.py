@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools.persistent_dict import PersistentDict
+from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -1940,7 +1940,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 # }}}
 
 
-schedule_cache = PersistentDict("loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
+schedule_cache = WriteOncePersistentDict(
+        "loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
@@ -1971,7 +1972,7 @@ def get_one_scheduled_kernel(kernel):
             kernel.name, time()-start_time))
 
     if CACHING_ENABLED and not from_cache:
-        schedule_cache[sched_cache_key] = result
+        schedule_cache.store_if_not_present(sched_cache_key, result)
 
     return result
 
