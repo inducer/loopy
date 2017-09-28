@@ -789,6 +789,10 @@ class CASTBuilder(ASTBuilderBase):
         from cgen import Comment
         return Comment(s)
 
+    @property
+    def can_implement_conditionals(self):
+        return True
+
     def emit_if(self, condition_str, ast):
         from cgen import If
         return If(condition_str, ast)

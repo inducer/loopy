@@ -210,6 +210,10 @@ class ASTBuilderBase(object):
             static_lbound, static_ubound, inner):
         raise NotImplementedError()
 
+    @property
+    def can_implement_conditionals(self):
+        return False
+
     def emit_if(self, condition_str, ast):
         raise NotImplementedError()
 
@@ -282,9 +286,6 @@ class DummyHostASTBuilder(ASTBuilderBase):
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
             static_lbound, static_ubound, inner):
-        return None
-
-    def emit_if(self, condition_str, ast):
         return None
 
     def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
