@@ -418,7 +418,7 @@ def build_loop_nest(codegen_state, schedule_index):
                 # length-1 must always be an option to reach the recursion base
                 # case below
                 if (current_pred_set and not
-                    codegen_state.ast_builder.can_implement_conditionals):
+                        codegen_state.ast_builder.can_implement_conditionals):
                     # Do not try to implement conditionals, if the AST builder
                     # cannot do it, this happens if we are still generating host
                     # code, but the conditional should be implemented in device code
