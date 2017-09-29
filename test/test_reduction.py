@@ -425,9 +425,10 @@ def test_reduction_with_conditional():
                     <>b = sum(i, a[i])
                 end
                 """,
+                [lp.GlobalArg("a", dtype=np.float32, shape=(42,)),
+                 lp.GlobalArg("n", dtype=np.float32, shape=())],
                 target=lp.CTarget())
-    knl = lp.add_dtypes(knl, dict(a=np.float32, n=np.float32))
-    code = lp.generate_code(knl)
+    code = lp.generate_body(knl)
 
     # Check that the if appears before the loop that realizes the reduction.
     assert code.index("if") < code.index("for")
