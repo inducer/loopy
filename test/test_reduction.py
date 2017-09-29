@@ -413,6 +413,26 @@ def test_parallel_multi_output_reduction(ctx_factory):
         assert max_index == np.argmax(np.abs(a))
 
 
+def test_reduction_with_conditional():
+    # Test whether realization of a reduction inherits predicates
+    # of the original instruction. Tested with the CTarget, because
+    # the PyOpenCL target will hoist the conditional into the host
+    # code in this minimal example.
+    knl = lp.make_kernel(
+                "{ [i] : 0<=i<42 }",
+                """
+                if n > 0
+                    <>b = sum(i, a[i])
+                end
+                """,
+                target=lp.CTarget())
+    knl = lp.add_dtypes(knl, dict(a=np.float32, n=np.float32))
+    code = lp.generate_code(knl)
+
+    # Check that the if appears before the loop that realizes the reduction.
+    assert code.index("if") < code.index("for")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
