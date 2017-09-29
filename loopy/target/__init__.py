@@ -257,18 +257,11 @@ class DummyHostASTBuilder(ASTBuilderBase):
             schedule_index, function_decl, function_body):
         return function_body
 
-    def get_function_declaration(self, codegen_state, codegen_result,
-            schedule_index):
-        return None
-
     def get_temporary_decls(self, codegen_state, schedule_index):
         return []
 
     def get_expression_to_code_mapper(self, codegen_state):
         return _DummyExpressionToCodeMapper()
-
-    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
-        return None
 
     @property
     def ast_block_class(self):
@@ -277,25 +270,6 @@ class DummyHostASTBuilder(ASTBuilderBase):
     @property
     def ast_block_scope_class(self):
         return _DummyASTBlock
-
-    def emit_assignment(self, codegen_state, insn):
-        return None
-
-    def emit_multiple_assignment(self, codegen_state, insn):
-        return None
-
-    def emit_sequential_loop(self, codegen_state, iname, iname_dtype,
-            static_lbound, static_ubound, inner):
-        return None
-
-    def emit_initializer(self, codegen_state, dtype, name, val_str, is_const):
-        return None
-
-    def emit_blank_line(self):
-        return None
-
-    def emit_comment(self, s):
-        return None
 
 # }}}
 
