@@ -240,6 +240,15 @@ def build_loop_nest(codegen_state, schedule_index):
 
     kernel = codegen_state.kernel
 
+    # If the AST builder does not implement conditionals, we can save us
+    # some work about hoisting conditionals and directly go into recursion.
+    if not codegen_state.ast_builder.can_implement_conditionals:
+        result = []
+        inner = generate_code_for_sched_index(codegen_state, schedule_index)
+        if inner is not None:
+            result.append(inner)
+        return merge_codegen_results(codegen_state, result)
+
     # {{{ pass 1: pre-scan schedule for my schedule item's siblings' indices
 
     # i.e. go up to the next LeaveLoop, and skip over inner loops.
@@ -417,13 +426,6 @@ def build_loop_nest(codegen_state, schedule_index):
                     or candidate_group_length == 1):
                 # length-1 must always be an option to reach the recursion base
                 # case below
-                if (current_pred_set and not
-                        codegen_state.ast_builder.can_implement_conditionals):
-                    # Do not try to implement conditionals, if the AST builder
-                    # cannot do it, this happens if we are still generating host
-                    # code, but the conditional should be implemented in device code
-                    found_hoists.append((candidate_group_length, bounds_checks, []))
-
                 found_hoists.append((candidate_group_length,
                     bounds_checks, current_pred_set))
 
