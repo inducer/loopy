@@ -263,6 +263,9 @@ class DummyHostASTBuilder(ASTBuilderBase):
     def get_expression_to_code_mapper(self, codegen_state):
         return _DummyExpressionToCodeMapper()
 
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        return None
+
     @property
     def ast_block_class(self):
         return _DummyASTBlock
