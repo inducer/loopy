@@ -283,6 +283,10 @@ class PythonASTBuilderBase(ASTBuilderBase):
         from genpy import Comment
         return Comment(s)
 
+    @property
+    def can_implement_conditionals(self):
+        return True
+
     def emit_if(self, condition_str, ast):
         from genpy import If
         return If(condition_str, ast)
