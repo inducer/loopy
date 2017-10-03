@@ -1070,7 +1070,7 @@ def guess_var_shape(kernel, var_name):
 
             if n_axes == 1:
                 # Leave shape undetermined--we can live with that for 1D.
-                shape = (None,)
+                shape = None
             else:
                 raise LoopyError("cannot determine access range for '%s': "
                         "undetermined index in subscript(s) '%s'"
