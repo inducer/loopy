@@ -1073,9 +1073,7 @@ class ArrayBase(ImmutableRecord):
 
             if isinstance(dim_tag, FixedStrideArrayDimTag):
                 if array_shape is None:
-                    raise LoopyError(
-                            "shape of array '%s' not known during code generation"
-                            % self.name)
+                    new_shape_axis = None
                 else:
                     new_shape_axis = array_shape[user_axis]
 
