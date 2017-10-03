@@ -956,7 +956,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         nresults=nresults,
                         depends_on=insn.depends_on,
                         within_inames=insn.within_inames | expr.inames,
-                        within_inames_is_final=insn.within_inames_is_final)
+                        within_inames_is_final=insn.within_inames_is_final,
+                        predicates=insn.predicates,
+                        )
 
                 newly_generated_insn_id_set.add(get_args_insn_id)
 
@@ -970,7 +972,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
         return updated_inner_exprs
 
     def expand_inner_reduction(id, expr, nresults, depends_on, within_inames,
-            within_inames_is_final):
+            within_inames_is_final, predicates):
         # FIXME: use make_temporaries
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
@@ -997,7 +999,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 expression=expr,
                 depends_on=depends_on,
                 within_inames=within_inames,
-                within_inames_is_final=within_inames_is_final)
+                within_inames_is_final=within_inames_is_final,
+                predicates=predicates)
 
         generated_insns.append(call_insn)
 
@@ -1038,7 +1041,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes))
+                expression=expr.operation.neutral_element(*arg_dtypes),
+                predicates=insn.predicates,)
 
         generated_insns.append(init_insn)
 
@@ -1064,7 +1068,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     nresults=nresults,
                     depends_on=insn.depends_on,
                     within_inames=update_insn_iname_deps,
-                    within_inames_is_final=insn.within_inames_is_final)
+                    within_inames_is_final=insn.within_inames_is_final,
+                    predicates=insn.predicates,
+                    )
 
             reduction_insn_depends_on.add(get_args_insn_id)
         else:
@@ -1079,7 +1085,8 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     reduction_expr),
                 depends_on=frozenset(reduction_insn_depends_on) | insn.depends_on,
                 within_inames=update_insn_iname_deps,
-                within_inames_is_final=insn.within_inames_is_final)
+                within_inames_is_final=insn.within_inames_is_final,
+                predicates=insn.predicates,)
 
         generated_insns.append(reduction_insn)
 
@@ -1186,7 +1193,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 expression=neutral,
                 within_inames=base_iname_deps | frozenset([base_exec_iname]),
                 within_inames_is_final=insn.within_inames_is_final,
-                depends_on=frozenset())
+                depends_on=frozenset(),
+                predicates=insn.predicates,
+                )
         generated_insns.append(init_insn)
 
         init_neutral_id = insn_id_gen("%s_%s_init_neutral" % (insn.id, red_iname))
@@ -1196,7 +1205,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 expression=neutral,
                 within_inames=base_iname_deps | frozenset([base_exec_iname]),
                 within_inames_is_final=insn.within_inames_is_final,
-                depends_on=frozenset())
+                depends_on=frozenset(),
+                predicates=insn.predicates,
+                )
         generated_insns.append(init_neutral_insn)
 
         transfer_depends_on = set([init_neutral_id, init_id])
@@ -1216,7 +1227,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     within_inames=(
                         (outer_insn_inames - frozenset(expr.inames))
                         | frozenset([red_iname])),
-                    within_inames_is_final=insn.within_inames_is_final)
+                    within_inames_is_final=insn.within_inames_is_final,
+                    predicates=insn.predicates,
+                    )
 
             transfer_depends_on.add(get_args_insn_id)
         else:
@@ -1239,7 +1252,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     | frozenset([red_iname])),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset([init_id, init_neutral_id]) | insn.depends_on,
-                no_sync_with=frozenset([(init_id, "any")]))
+                no_sync_with=frozenset([(init_id, "any")]),
+                predicates=insn.predicates,
+                )
         generated_insns.append(transfer_insn)
 
         cur_size = 1
@@ -1280,6 +1295,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=insn.within_inames_is_final,
                     depends_on=frozenset([prev_id]),
+                    predicates=insn.predicates,
                     )
 
             generated_insns.append(stage_insn)
@@ -1398,7 +1414,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                     (sweep_iname,) + expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=init_insn_depends_on,
-                expression=expr.operation.neutral_element(*arg_dtypes))
+                expression=expr.operation.neutral_element(*arg_dtypes),
+                predicates=insn.predicates,
+                )
 
         generated_insns.append(init_insn)
 
@@ -1425,7 +1443,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 depends_on=frozenset(update_insn_depends_on),
                 within_inames=update_insn_iname_deps,
                 no_sync_with=insn.no_sync_with,
-                within_inames_is_final=insn.within_inames_is_final)
+                within_inames_is_final=insn.within_inames_is_final,
+                predicates=insn.predicates,
+                )
 
         generated_insns.append(scan_insn)
 
@@ -1531,7 +1551,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 expression=neutral,
                 within_inames=base_iname_deps | frozenset([base_exec_iname]),
                 within_inames_is_final=insn.within_inames_is_final,
-                depends_on=init_insn_depends_on)
+                depends_on=init_insn_depends_on,
+                predicates=insn.predicates,
+                )
         generated_insns.append(init_insn)
 
         transfer_insn_depends_on = set([init_insn.id]) | insn.depends_on
@@ -1561,7 +1583,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                 within_inames=outer_insn_inames - frozenset(expr.inames),
                 within_inames_is_final=insn.within_inames_is_final,
                 depends_on=frozenset(transfer_insn_depends_on),
-                no_sync_with=frozenset([(init_id, "any")]) | insn.no_sync_with)
+                no_sync_with=frozenset([(init_id, "any")]) | insn.no_sync_with,
+                predicates=insn.predicates,
+                )
 
         generated_insns.append(transfer_insn)
 
@@ -1590,7 +1614,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         within_inames=(
                             base_iname_deps | frozenset([stage_exec_iname])),
                         within_inames_is_final=insn.within_inames_is_final,
-                        depends_on=frozenset([prev_id]))
+                        depends_on=frozenset([prev_id]),
+                        predicates=insn.predicates,
+                        )
 
                 if cur_size == 1:
                     # Performance hack: don't add a barrier here with transfer_insn.
@@ -1623,6 +1649,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         base_iname_deps | frozenset([stage_exec_iname])),
                     within_inames_is_final=insn.within_inames_is_final,
                     depends_on=frozenset([prev_id]),
+                    predicates=insn.predicates,
                     )
 
             generated_insns.append(write_stage_insn)
