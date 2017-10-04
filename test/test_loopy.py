@@ -2265,6 +2265,42 @@ def test_barrier_insertion_near_bottom_of_loop():
     assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
+def test_barrier_in_overridden_get_grid_size_expanded_kernel():
+    from loopy.kernel.data import temp_var_scope as scopes
+
+    # make simple barrier'd kernel
+    knl = lp.make_kernel('{[i]: 0 <= i < 10}',
+                   """
+              for i
+                    a[i] = i {id=a}
+                    ... lbarrier {id=barrier}
+                    b[i + 1] = a[i] {nosync=a}
+              end
+                   """,
+                   [lp.TemporaryVariable("a", np.float32, shape=(10,), order='C',
+                                         scope=scopes.LOCAL),
+                    lp.GlobalArg("b", np.float32, shape=(11,), order='C')],
+               seq_dependencies=True)
+
+    # split into kernel w/ vesize larger than iname domain
+    vecsize = 16
+    knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
+
+    # artifically expand via overridden_get_grid_sizes_for_insn_ids
+    class ggs(object):
+        def __init__(self, clean, vecsize=vecsize):
+            self.clean = clean
+            self.vecsize = vecsize
+
+        def __call__(self, insn_ids, ignore_auto=True):
+            gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
+            return gsize, (self.vecsize,)
+
+    knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=ggs(knl.copy(), vecsize))
+    # make sure we can generate the code
+    lp.generate_code_v2(knl)
+
+
 def test_multi_argument_reduction_type_inference():
     from loopy.type_inference import TypeInferenceMapper
     from loopy.library.reduction import SegmentedSumReductionOperation
