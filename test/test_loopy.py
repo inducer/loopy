@@ -2287,7 +2287,7 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
 
     # artifically expand via overridden_get_grid_sizes_for_insn_ids
-    class ggs(object):
+    class GridOverride(object):
         def __init__(self, clean, vecsize=vecsize):
             self.clean = clean
             self.vecsize = vecsize
@@ -2296,7 +2296,8 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
             gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
             return gsize, (self.vecsize,)
 
-    knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=ggs(knl.copy(), vecsize))
+    knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
+        knl.copy(), vecsize))
     # make sure we can generate the code
     lp.generate_code_v2(knl)
 
