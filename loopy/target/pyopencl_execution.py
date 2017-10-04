@@ -328,7 +328,8 @@ def generate_arg_setup(gen, kernel, implemented_data_info, options):
         # {{{ allocate written arrays, if needed
 
         if is_written and arg.arg_class in [lp.GlobalArg, lp.ConstantArg] \
-                and arg.shape is not None:
+                and arg.shape is not None \
+                and all(si is not None for si in arg.shape):
 
             if not isinstance(arg.dtype, NumpyType):
                 raise LoopyError("do not know how to pass arg of type '%s'"

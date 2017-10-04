@@ -518,6 +518,32 @@ def test_arg_guessing_with_reduction(ctx_factory):
     print(knl)
     print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
+
+def test_unknown_arg_shape(ctx_factory):
+    ctx = ctx_factory()
+    from loopy.target.pyopencl import PyOpenCLTarget
+    from loopy.compiled import CompiledKernel
+    bsize = [256, 0]
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<n and 0<=j<m}",
+        """
+        for i
+            <int32> gid = i/256
+            <int32> start = gid*256
+            for j
+                a[start + j] = a[start + j] + j
+            end
+        end
+        """,
+        seq_dependencies=True,
+        name="uniform_l",
+        target=PyOpenCLTarget(),
+        assumptions="m<=%d and m>=1 and n mod %d = 0" % (bsize[0], bsize[0]))
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    cl_kernel_info = CompiledKernel(ctx, knl).cl_kernel_info(frozenset())  # noqa
+
 # }}}
 
 
