@@ -351,7 +351,7 @@ class TemporaryVariable(ArrayBase):
 
         Whether the temporary is used to alias the underlying base storage.
         Defaults to *False*. If *False*, C-based code generators will declare
-        the temporary as a restricted const pointer to the base storage
+        the temporary as a ``restrict`` const pointer to the base storage
         memory location. If *True*, the restrict part is omitted on this
         declaration.
     """
@@ -436,7 +436,6 @@ class TemporaryVariable(ArrayBase):
                     "base_storage given!"
                     % name)
 
-        alias = _base_storage_access_may_be_aliasing
         ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
@@ -446,7 +445,8 @@ class TemporaryVariable(ArrayBase):
                 base_storage=base_storage,
                 initializer=initializer,
                 read_only=read_only,
-                _base_storage_access_may_be_aliasing=alias,
+                _base_storage_access_may_be_aliasing=(
+                    _base_storage_access_may_be_aliasing),
                 **kwargs)
 
     @property
