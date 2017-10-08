@@ -1000,6 +1000,9 @@ def add_assumptions_guard(kernel, pwqpolynomial):
 
 def count(kernel, set, space=None):
     try:
+        if space is not None:
+            set = set.align_params(space)
+
         return add_assumptions_guard(kernel, set.card())
     except AttributeError:
         pass
