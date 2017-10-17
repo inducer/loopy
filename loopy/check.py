@@ -144,20 +144,20 @@ def check_for_inactive_iname_access(kernel):
 
 def _is_racing_iname_tag(tv, tag):
     from loopy.kernel.data import (temp_var_scope,
-            LocalIndexTagBase, GroupIndexTag, ParallelTag, auto)
+            LocalIndexTagBase, GroupIndexTag, ConcurrentTag, auto)
 
     if tv.scope == temp_var_scope.PRIVATE:
         return (
-                isinstance(tag, ParallelTag)
+                isinstance(tag, ConcurrentTag)
                 and not isinstance(tag, (LocalIndexTagBase, GroupIndexTag)))
 
     elif tv.scope == temp_var_scope.LOCAL:
         return (
-                isinstance(tag, ParallelTag)
+                isinstance(tag, ConcurrentTag)
                 and not isinstance(tag, GroupIndexTag))
 
     elif tv.scope == temp_var_scope.GLOBAL:
-        return isinstance(tag, ParallelTag)
+        return isinstance(tag, ConcurrentTag)
 
     elif tv.scope == auto:
         raise LoopyError("scope of temp var '%s' has not yet been"
@@ -169,7 +169,7 @@ def _is_racing_iname_tag(tv, tag):
 
 
 def check_for_write_races(kernel):
-    from loopy.kernel.data import ParallelTag
+    from loopy.kernel.data import ConcurrentTag
 
     iname_to_tag = kernel.iname_to_tag.get
     for insn in kernel.instructions:
@@ -190,7 +190,7 @@ def check_for_write_races(kernel):
                 raceable_parallel_insn_inames = set(
                         iname
                         for iname in kernel.insn_inames(insn)
-                        if isinstance(iname_to_tag(iname), ParallelTag))
+                        if isinstance(iname_to_tag(iname), ConcurrentTag))
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
@@ -230,13 +230,13 @@ def check_for_orphaned_user_hardware_axes(kernel):
 
 
 def check_for_data_dependent_parallel_bounds(kernel):
-    from loopy.kernel.data import ParallelTag
+    from loopy.kernel.data import ConcurrentTag
 
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
         par_inames = set(iname
                 for iname in dom_inames
-                if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
+                if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
 
         if not par_inames:
             continue

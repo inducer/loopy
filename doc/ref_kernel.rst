@@ -130,6 +130,7 @@ Iname Implementation Tags
 Tag                             Meaning
 =============================== ====================================================
 ``None`` | ``"for"``            Sequential loop
+``"ord"``                       Forced-order sequential loop
 ``"l.N"``                       Local (intra-group) axis N ("local")
 ``"g.N"``                       Group-number axis N ("group")
 ``"unr"``                       Unroll

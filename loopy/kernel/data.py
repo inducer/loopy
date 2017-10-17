@@ -77,12 +77,17 @@ class IndexTag(ImmutableRecord):
         return type(self).__name__
 
 
-class ParallelTag(IndexTag):
+class ConcurrentTag(IndexTag):
     pass
 
 
-class HardwareParallelTag(ParallelTag):
+class HardwareConcurrentTag(ConcurrentTag):
     pass
+
+
+# deprecated aliases
+ParallelTag = ConcurrentTag
+HardwareParallelTag = HardwareConcurrentTag
 
 
 class UniqueTag(IndexTag):
@@ -105,11 +110,11 @@ class AxisTag(UniqueTag):
                 self.print_name, self.axis)
 
 
-class GroupIndexTag(HardwareParallelTag, AxisTag):
+class GroupIndexTag(HardwareConcurrentTag, AxisTag):
     print_name = "g"
 
 
-class LocalIndexTagBase(HardwareParallelTag):
+class LocalIndexTagBase(HardwareConcurrentTag):
     pass
 
 
@@ -130,7 +135,7 @@ class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
 
 # {{{ ilp-like
 
-class IlpBaseTag(ParallelTag):
+class IlpBaseTag(ConcurrentTag):
     pass
 
 
@@ -161,6 +166,11 @@ class ForceSequentialTag(IndexTag):
         return "forceseq"
 
 
+class InOrderSequentialSequentialTag(IndexTag):
+    def __str__(self):
+        return "ord"
+
+
 def parse_tag(tag):
     if tag is None:
         return tag
@@ -173,6 +183,8 @@ def parse_tag(tag):
 
     if tag == "for":
         return None
+    elif tag == "ord":
+        return InOrderSequentialSequentialTag()
     elif tag in ["unr"]:
         return UnrollTag()
     elif tag in ["vec"]:

@@ -206,13 +206,13 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import ParallelTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
     all_nonpar_inames = set([
             iname
             for iname in kernel.all_inames()
             if not isinstance(kernel.iname_to_tag.get(iname),
-                (ParallelTag, IlpBaseTag, VectorizeTag))])
+                (ConcurrentTag, IlpBaseTag, VectorizeTag))])
 
     iname_to_insns = kernel.iname_to_insns()
 
@@ -274,10 +274,10 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
     result = {}
 
-    from loopy.kernel.data import ParallelTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
-            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag):
+            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag):
                 continue
 
             iname_dep = result.setdefault(iname, set())
@@ -308,7 +308,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         continue
 
                     tag = kernel.iname_to_tag.get(dep_insn_iname)
-                    if isinstance(tag, (ParallelTag, IlpBaseTag, VectorizeTag)):
+                    if isinstance(tag, (ConcurrentTag, IlpBaseTag, VectorizeTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
@@ -1787,7 +1787,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
         for item in preschedule
         for insn_id in sched_item_to_insn_id(item))
 
-    from loopy.kernel.data import IlpBaseTag, ParallelTag, VectorizeTag
+    from loopy.kernel.data import IlpBaseTag, ConcurrentTag, VectorizeTag
     ilp_inames = set(
             iname
             for iname in kernel.all_inames()
@@ -1798,7 +1798,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag))
     parallel_inames = set(
             iname for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
+            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
