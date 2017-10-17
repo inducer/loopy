@@ -292,7 +292,7 @@ def _classify_reduction_inames(kernel, inames):
 
     from loopy.kernel.data import (
             LocalIndexTagBase, UnrolledIlpTag, UnrollTag, VectorizeTag,
-            ParallelTag)
+            ConcurrentTag)
 
     for iname in inames:
         iname_tag = kernel.iname_to_tag.get(iname)
@@ -305,7 +305,7 @@ def _classify_reduction_inames(kernel, inames):
         elif isinstance(iname_tag, LocalIndexTagBase):
             local_par.append(iname)
 
-        elif isinstance(iname_tag, (ParallelTag, VectorizeTag)):
+        elif isinstance(iname_tag, (ConcurrentTag, VectorizeTag)):
             nonlocal_par.append(iname)
 
         else:
