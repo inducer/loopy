@@ -1,0 +1,12 @@
+diff --git a/loopy/kernel/__init__.py b/loopy/kernel/__init__.py
+index e71655f..555bb2e 100644
+--- a/loopy/kernel/__init__.py
++++ b/loopy/kernel/__init__.py
+@@ -1093,7 +1093,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+             "variables",
+             "rules",
+             "Statements",
+-            "statements",
+             "Dependencies",
+             "schedule",
+             ])
