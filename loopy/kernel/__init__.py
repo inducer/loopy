@@ -701,12 +701,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         tag_key_uses = {}
 
-        from loopy.kernel.data import HardwareParallelTag
+        from loopy.kernel.data import HardwareConcurrentTag
 
         for iname in cond_inames:
             tag = self.iname_to_tag.get(iname)
 
-            if isinstance(tag, HardwareParallelTag):
+            if isinstance(tag, HardwareConcurrentTag):
                 tag_key_uses.setdefault(tag.key, []).append(iname)
 
         multi_use_keys = set(
@@ -716,7 +716,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         multi_use_inames = set()
         for iname in cond_inames:
             tag = self.iname_to_tag.get(iname)
-            if isinstance(tag, HardwareParallelTag) and tag.key in multi_use_keys:
+            if isinstance(tag, HardwareConcurrentTag) and tag.key in multi_use_keys:
                 multi_use_inames.add(iname)
 
         return frozenset(cond_inames - multi_use_inames)

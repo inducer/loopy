@@ -58,7 +58,7 @@ def get_approximate_convex_bounds_checks(domain, check_inames, implemented_domai
 def get_usable_inames_for_conditional(kernel, sched_index):
     from loopy.schedule import (
         find_active_inames_at, get_insn_ids_for_block_at, has_barrier_within)
-    from loopy.kernel.data import ParallelTag, LocalIndexTagBase, IlpBaseTag
+    from loopy.kernel.data import ConcurrentTag, LocalIndexTagBase, IlpBaseTag
 
     result = find_active_inames_at(kernel, sched_index)
     crosses_barrier = has_barrier_within(kernel, sched_index)
@@ -97,7 +97,7 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         #   at the innermost level of nesting.
 
         if (
-                isinstance(tag, ParallelTag)
+                isinstance(tag, ConcurrentTag)
                 and not (isinstance(tag, LocalIndexTagBase) and crosses_barrier)
                 and not isinstance(tag, IlpBaseTag)
                 ):

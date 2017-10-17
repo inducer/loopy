@@ -402,13 +402,13 @@ class TemporarySaver(object):
                     continue
 
                 from loopy.kernel.data import (
-                    GroupIndexTag, LocalIndexTag, ParallelTag)
+                    GroupIndexTag, LocalIndexTag, ConcurrentTag)
 
                 if isinstance(tag, GroupIndexTag):
                     my_group_tags.append(tag)
                 elif isinstance(tag, LocalIndexTag):
                     my_local_tags.append(tag)
-                elif isinstance(tag, ParallelTag):
+                elif isinstance(tag, ConcurrentTag):
                     raise LoopyError(
                         "iname '%s' is tagged with '%s' - only "
                         "group and local tags are supported for "
