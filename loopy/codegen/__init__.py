@@ -368,6 +368,7 @@ class PreambleInfo(ImmutableRecord):
     .. attribute:: seen_dtypes
     .. attribute:: seen_functions
     .. attribute:: seen_atomic_dtypes
+    .. attribute:: codegen_state
     """
 
 
@@ -496,7 +497,9 @@ def generate_code_v2(kernel):
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
             # a set of LoopyTypes (!)
-            seen_atomic_dtypes=seen_atomic_dtypes)
+            seen_atomic_dtypes=seen_atomic_dtypes,
+            codegen_state=codegen_state
+            )
 
     preamble_generators = (kernel.preamble_generators
             + kernel.target.get_device_ast_builder().preamble_generators())
