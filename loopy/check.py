@@ -708,12 +708,27 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 (insn_impl_domain & assumptions)
                 .project_out_except(insn_inames, [dim_type.set]))
 
+        from loopy.kernel.instruction import BarrierInstruction
+        from loopy.kernel.data import LocalIndexTag
+        if isinstance(insn, BarrierInstruction):
+            # project out local-id-mapped inames, solves #94 on gitlab
+            non_lid_inames = frozenset(
+                [iname for iname in insn_inames if not isinstance(
+                    kernel.iname_to_tag.get(iname), LocalIndexTag)])
+            insn_impl_domain = insn_impl_domain.project_out_except(
+                non_lid_inames, [dim_type.set])
+
         insn_domain = kernel.get_inames_domain(insn_inames)
         insn_parameters = frozenset(insn_domain.get_var_names(dim_type.param))
         assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
         desired_domain = ((insn_domain & assumptions)
             .project_out_except(insn_inames, [dim_type.set])
             .project_out_except(insn_parameters, [dim_type.param]))
+
+        if isinstance(insn, BarrierInstruction):
+            # project out local-id-mapped inames, solves #94 on gitlab
+            desired_domain = desired_domain.project_out_except(
+                non_lid_inames, [dim_type.set])
 
         insn_impl_domain = (insn_impl_domain
                 .project_out_except(insn_parameters, [dim_type.param]))

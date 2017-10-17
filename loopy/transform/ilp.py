@@ -38,6 +38,7 @@ from loopy.symbolic import IdentityMapper
 class ExtraInameIndexInserter(IdentityMapper):
     def __init__(self, var_to_new_inames):
         self.var_to_new_inames = var_to_new_inames
+        self.seen_ilp_inames = set()
 
     def map_subscript(self, expr):
         try:
@@ -50,6 +51,7 @@ class ExtraInameIndexInserter(IdentityMapper):
                 index = (index,)
             index = tuple(self.rec(i) for i in index)
 
+            self.seen_ilp_inames.update(v.name for v in new_idx)
             return expr.aggregate.index(index + new_idx)
 
     def map_variable(self, expr):
@@ -58,6 +60,7 @@ class ExtraInameIndexInserter(IdentityMapper):
         except KeyError:
             return expr
         else:
+            self.seen_ilp_inames.update(v.name for v in new_idx)
             return expr.index(new_idx)
 
 
@@ -160,13 +163,30 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
     # }}}
 
     from pymbolic import var
-    eiii = ExtraInameIndexInserter(
-            dict((var_name, tuple(var(iname) for iname in inames))
-                for var_name, inames in six.iteritems(var_to_new_ilp_inames)))
+    var_to_extra_iname = dict(
+            (var_name, tuple(var(iname) for iname in inames))
+            for var_name, inames in six.iteritems(var_to_new_ilp_inames))
 
-    new_insns = [
-            insn.with_transformed_expressions(eiii)
-            for insn in kernel.instructions]
+    new_insns = []
+
+    for insn in kernel.instructions:
+        eiii = ExtraInameIndexInserter(var_to_extra_iname)
+        new_insn = insn.with_transformed_expressions(eiii)
+        if not eiii.seen_ilp_inames <= insn.within_inames:
+
+            from loopy.diagnostic import warn_with_kernel
+            warn_with_kernel(
+                    kernel,
+                    "implicit_ilp_iname",
+                    "Instruction '%s': touched variable that (for ILP) "
+                    "required iname(s) '%s', but that the instruction was not "
+                    "previously within the iname(s). Previously, this would "
+                    "implicitly promote the instruction, but that behavior is "
+                    "deprecated and will stop working in 2018.1."
+                    % (insn.id, ", ".join(
+                        eiii.seen_ilp_inames - insn.within_inames)))
+
+        new_insns.append(new_insn)
 
     return kernel.copy(
         temporary_variables=new_temp_vars,
