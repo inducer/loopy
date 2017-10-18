@@ -576,4 +576,19 @@ def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
 
 
+def natorder(key):
+    # Return natural ordering for strings, as opposed to dictionary order.
+    # E.g. will result in
+    #  'abc1' < 'abc9' < 'abc10'
+    # rather than
+    #  'abc1' < 'abc10' < 'abc9'
+    # Based on
+    # http://code.activestate.com/recipes/285264-natural-string-sorting/#c7
+    import re
+    return [int(n) if n else s for n, s in re.findall(r'(\d+)|(\D+)', key)]
+
+
+def natsorted(seq, key=lambda x: x):
+    return sorted(seq, key=lambda y: natorder(key(y)))
+
 # vim: foldmethod=marker
