@@ -1,0 +1,100 @@
+diff --git a/loopy/kernel/__init__.py b/loopy/kernel/__init__.py
+index 68fcca1..6d788df 100644
+--- a/loopy/kernel/__init__.py
++++ b/loopy/kernel/__init__.py
+@@ -186,7 +186,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+ 
+     # {{{ constructor
+ 
+-    def __init__(self, domains, statements, args=[], schedule=None,
++    def __init__(self, domains, statements=None, args=[], schedule=None,
+             name="loopy_kernel",
+             preambles=[],
+             preamble_generators=[],
+@@ -213,7 +213,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+             state=kernel_state.INITIAL,
+             target=None,
+ 
+-            overridden_get_grid_sizes_for_stmt_ids=None):
++            overridden_get_grid_sizes_for_stmt_ids=None,
++
++            # compat
++            instructions=None,
++            overridden_get_grid_sizes_for_insn_ids=None,
++            ):
+         """
+         :arg overridden_get_grid_sizes_for_stmt_ids: A callable. When kernels get
+             intersected in slab decomposition, their grid sizes shouldn't
+@@ -224,6 +229,23 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+             from loopy.kernel.tools import SetOperationCacheManager
+             cache_manager = SetOperationCacheManager()
+ 
++        if statements is not None and instructions is not None:
++            raise TypeError("may not specify both instructions and statements")
++        elif statements is None and instructions is None:
++            raise TypeError(
++                    "must specify exactly one of instructions and statements")
++        elif instructions is not None:
++            statements = instructions
++
++        if (overridden_get_grid_sizes_for_stmt_ids is not None
++                and overridden_get_grid_sizes_for_stmt_ids is not None):
++            raise TypeError("may not specify both "
++                    "overridden_get_grid_sizes_for_stmt_ids "
++                    "and overridden_get_grid_sizes_for_insn_ids{")
++        elif overridden_get_grid_sizes_for_insn_ids is not None:
++            overridden_get_grid_sizes_for_stmt_ids = \
++                    overridden_get_grid_sizes_for_insn_ids
++
+         # {{{ process assumptions
+ 
+         if assumptions is None:
+@@ -264,6 +286,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
+         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
+ 
++
+         ImmutableRecordWithoutPickling.__init__(self,
+                 domains=domains,
+                 statements=statements,
+@@ -1094,7 +1117,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+             "tags",
+             "variables",
+             "rules",
+-            "statements",
++            "Statements",
++            "instructions",
+             "Dependencies",
+             "schedule",
+             ])
+@@ -1171,7 +1195,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+             for rule_name in natsorted(six.iterkeys(kernel.substitutions)):
+                 lines.append(str(kernel.substitutions[rule_name]))
+ 
+-        if "statements" in what:
++        if "Statements" in what or "instructions" in what:
+             lines.extend(sep)
+             if show_labels:
+                 lines.append("STATEMENTS:")
+@@ -1387,6 +1411,21 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+ 
+     # }}}
+ 
++    # {{{ "instruction" compat goop
++
++    @property
++    def id_to_insn(self):
++        return self.id_to_stmt
++
++    @property
++    def instructions(self):
++        return self.statements
++
++    def get_instruction_id_generator(self, based_on="insn"):
++        return self.get_statement_id_generator(based_on)
++
++    # }}}
++
+ # }}}
+ 
+ # vim: foldmethod=marker

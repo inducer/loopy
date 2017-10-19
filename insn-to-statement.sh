@@ -7,4 +7,4 @@ sed -i s/insn/stmt/g $(git ls-files | grep -v compyte)
 for d in kernel codegen transform; do
   git mv loopy/$d/instruction.py loopy/$d/statement.py
 done
-patch -p1 < ./0003-fix-stringify.patch
+patch -p1 < ./stmt-compat-fixes.patch
