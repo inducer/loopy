@@ -396,9 +396,6 @@ def make_two_level_scan(
     else:
         var_name_gen.add_name(nonlocal_storage_name)
 
-    local_scan_insn_id = insn_id_gen(
-            "{insn}__l{next_level}".format(**format_kwargs))
-
     nonlocal_scan_insn_id = insn_id_gen(
             "{insn}__l{level}".format(**format_kwargs))
 
@@ -521,7 +518,7 @@ def make_two_level_scan(
 
     from pymbolic import var
 
-    kernel = lp.precompute(kernel,
+    local_precompute_xform_info = lp.precompute(kernel,
             [var(local_subst_name)(
                 var(outer_iname), var(inner_iname))],
             sweep_inames=sweep_inames,
@@ -530,9 +527,16 @@ def make_two_level_scan(
             storage_axis_to_tag=storage_axis_to_tag,
             precompute_outer_inames=precompute_outer_inames | within_inames,
             temporary_name=local_storage_name,
-            compute_insn_id=local_scan_insn_id)
+            temporary_scope=local_storage_scope,
+            return_info_structure=True)
 
-    compute_insn_with_deps = kernel.id_to_insn[local_scan_insn_id]
+    kernel = local_precompute_xform_info.kernel
+    local_scan_dep_id = local_precompute_xform_info.compute_dep_id
+
+    # FIXME: Should make it so that compute_insn just gets created with these
+    # deps in place.
+    compute_insn_with_deps = kernel.id_to_insn[
+            local_precompute_xform_info.compute_insn_id]
     compute_insn_with_deps = compute_insn_with_deps.copy(
             depends_on=compute_insn_with_deps.depends_on | insn.depends_on)
 
@@ -604,7 +608,7 @@ def make_two_level_scan(
             no_sync_with=frozenset([(nonlocal_init_tail_insn_id, "any")]),
             predicates=(var(nonlocal_init_tail_inner_iname).eq(0),
                         var(nonlocal_init_tail_outer_iname).eq(0)),
-            depends_on=frozenset([local_scan_insn_id]))
+            depends_on=frozenset([local_scan_dep_id]))
 
     nonlocal_init_tail = make_assignment(
             id=nonlocal_init_tail_insn_id,
@@ -621,7 +625,7 @@ def make_two_level_scan(
             within_inames=(
                 within_inames | frozenset([nonlocal_init_tail_outer_iname,
                                            nonlocal_init_tail_inner_iname])),
-            depends_on=frozenset([local_scan_insn_id]))
+            depends_on=frozenset([local_scan_dep_id]))
 
     kernel = _update_instructions(
             kernel, (nonlocal_init_head, nonlocal_init_tail), copy=False)
@@ -671,7 +675,7 @@ def make_two_level_scan(
     # {{{ replace scan with local + nonlocal
 
     updated_depends_on = (insn.depends_on
-            | frozenset([nonlocal_scan_insn_id, local_scan_insn_id]))
+            | frozenset([nonlocal_scan_insn_id, local_scan_dep_id]))
 
     if nonlocal_storage_scope == lp.temp_var_scope.GLOBAL:
         barrier_id = insn_id_gen(

@@ -25,6 +25,9 @@ THE SOFTWARE.
 
 import six
 from six.moves import range, zip
+
+from pytools import Record
+
 import islpy as isl
 from loopy.symbolic import (get_dependencies,
         RuleAwareIdentityMapper, RuleAwareSubstitutionMapper,
@@ -37,6 +40,13 @@ from pymbolic import var
 
 from loopy.transform.array_buffer_map import (ArrayToBufferMap, NoOpArrayToBufferMap,
         AccessDescriptor)
+
+__doc__ = """
+
+.. autoclass:: PrecomputeTransformInfo
+
+.. autofunction:: precompute
+"""
 
 
 class RuleAccessDescriptor(AccessDescriptor):
@@ -254,13 +264,33 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
 # }}}
 
 
+class PrecomputeTransformInfo(Record):
+    """
+    .. attribute:: kernel
+
+        The transformed kernel
+
+    .. attribute:: compute_insn_id
+
+        The instruction ID that performs the precomputation.
+
+    .. attribute:: compute_dep_id
+
+        The instruction ID that computations should depend on to
+        make use of the finished state of the precomputation.
+        May be the same as :attr:`compute_insn_id` or a subsequent
+        barrier.
+    """
+
+
 def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axes=None, temporary_name=None, precompute_inames=None,
         precompute_outer_inames=None,
         storage_axis_to_tag={}, default_tag="l.auto", dtype=None,
         fetch_bounding_box=False,
         temporary_scope=None, temporary_is_local=None,
-        compute_insn_id=None):
+        compute_insn_id=None,
+        return_info_structure=False):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -334,6 +364,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     If `storage_axes` is not specified, it defaults to the arrangement
     `<direct sweep axes><arguments>` with the direct sweep axes being the
     slower-varying indices.
+
+    :returns: If *return_info_structure* is True, return an instance
+        of :class:`PrecomputeTransformInfo`. Otherwise, return the
+        transformed kernel.
 
     Trivial storage axes (i.e. axes of length 1 with respect to the sweep) are
     eliminated.
@@ -1001,6 +1035,13 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         from loopy.kernel.tools import assign_automatic_axes
         kernel = assign_automatic_axes(kernel)
 
-    return kernel
+    if return_info_structure:
+        return PrecomputeTransformInfo(
+                kernel=kernel,
+                compute_insn_id=compute_insn_id,
+                compute_dep_id=compute_dep_id)
+
+    else:
+        return kernel
 
 # vim: foldmethod=marker

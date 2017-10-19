@@ -31,7 +31,7 @@ Dealing with Substitution Rules
 Caching, Precomputation and Prefetching
 ---------------------------------------
 
-.. autofunction:: precompute
+.. automodule:: loopy.transform.precompute
 
 .. autofunction:: add_prefetch
 
