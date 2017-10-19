@@ -43,6 +43,7 @@ except ImportError:
 else:
     faulthandler.enable()
 
+from pytools import memoize
 from pyopencl.tools import pytest_generate_tests_for_pyopencl \
         as pytest_generate_tests
 
@@ -362,6 +363,8 @@ def test_argmax(ctx_factory, i_tag):
     assert (max_indices == [np.argmax(np.abs(a[0:i+1])) for i in range(n)]).all()
 
 
+# {{{ segmented scan
+
 def check_segmented_scan_output(arr, segment_boundaries_indices, out):
     class SegmentGrouper(object):
 
@@ -420,6 +423,162 @@ def test_segmented_scan(ctx_factory, n, segment_boundaries_indices, iname_tag):
     (evt, (out,)) = knl(queue, arr=arr, segflag=segment_boundaries)
 
     check_segmented_scan_output(arr, segment_boundaries_indices, out)
+
+# }}}
+
+
+# {{{ two and three level scan getters
+
+@memoize
+def _get_two_level_scan_kernel(g_size):
+    knl = lp.make_kernel(
+        [
+            "[n] -> {[i,j]: 0 <= i < n and 0 <= j <= i}",
+        ],
+        """
+        out[i] = sum(j, a[j]) {id=insn}
+        """,
+        "...",
+        assumptions="n > 0")
+
+    from loopy.transform.reduction import make_two_level_scan
+    knl = make_two_level_scan(
+        knl, "insn", inner_length=g_size,
+        scan_iname="j",
+        sweep_iname="i",
+        local_storage_axes=(("i__l0",)),
+        inner_iname="i__l0",
+        inner_tag="l.0",
+        outer_tag="g.0",
+        local_storage_scope=lp.temp_var_scope.LOCAL,
+        nonlocal_storage_scope=lp.temp_var_scope.GLOBAL,
+        inner_local_tag="l.0",
+        outer_local_tag="g.0")
+
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+    knl = lp.add_nosync(
+            knl,
+            scope="global",
+            source="writes:acc_j__l0",
+            sink="reads:acc_j__l0")
+
+    from loopy.transform.save import save_and_reload_temporaries
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    knl = save_and_reload_temporaries(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+
+    return knl
+
+
+@memoize
+def _get_three_level_scan_kernel(g_size, p_size):
+    knl = lp.make_kernel(
+        [
+            "[n] -> {[i,j]: 0 <= i < n and 0 <= j <= i}",
+        ],
+        """
+        out[i] = sum(j, a[j]) {id=insn}
+        """,
+        "...",
+        assumptions="n > 0")
+
+    from loopy.transform.reduction import make_two_level_scan
+    knl = make_two_level_scan(
+        knl, "insn", inner_length=g_size,
+        scan_iname="j",
+        sweep_iname="i",
+        local_storage_axes=(("i__l0",)),
+        inner_iname="i__l0",
+        inner_tag=None,
+        outer_tag="g.0",
+        local_storage_scope=lp.temp_var_scope.LOCAL,
+        nonlocal_storage_scope=lp.temp_var_scope.GLOBAL,
+        inner_local_tag=None,
+        outer_local_tag="g.0")
+
+    knl = make_two_level_scan(
+        knl, "insn__l1", inner_length=p_size,
+        scan_iname="j__l1",
+        sweep_iname="i__l1",
+        inner_tag="for",
+        outer_tag="l.0",
+        nonlocal_tag="l.0",
+        local_storage_scope=lp.temp_var_scope.LOCAL,
+        nonlocal_storage_scope=lp.temp_var_scope.LOCAL,
+        inner_local_tag="for",
+        outer_local_tag="l.0")
+
+    knl = lp.tag_inames(knl, dict(i__l0="l.0",
+                                  i__l0_nltail_inner="l.0"))
+
+    knl = lp.realize_reduction(knl, force_scan=True)
+
+    knl = lp.add_nosync(
+            knl,
+            scope="global",
+            source="writes:acc_j__l0",
+            sink="reads:acc_j__l0")
+
+    knl = lp.alias_temporaries(knl,
+            ("insn__l1", "insn__l2"),
+            synchronize_for_exclusive_use=False)
+
+    from loopy.transform.save import save_and_reload_temporaries
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+    knl = save_and_reload_temporaries(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+
+    return knl
+
+# }}}
+
+
+# {{{ two and three level scan
+
+# TODO: Test everything from the matrix
+# (l.0, seq) x (l.0, seq)
+@pytest.mark.parametrize("input_len",
+        (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 32))
+@pytest.mark.parametrize("g_size", (16,))
+def test_two_level_scan(ctx_getter, input_len, g_size):
+    knl = _get_two_level_scan_kernel(g_size)
+
+    import numpy as np
+    np.random.seed(0)
+    a = np.random.randint(low=0, high=100, size=input_len)
+
+    c = ctx_getter()
+    q = cl.CommandQueue(c)
+
+    _, (out,) = knl(q, a=a)
+
+    assert (out == np.cumsum(a)).all()
+
+
+@pytest.mark.parametrize("input_len",
+        (1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 32))
+@pytest.mark.parametrize("g_size", (16,))
+@pytest.mark.parametrize("p_size", (4,))
+def test_three_level_scan(ctx_getter, g_size, p_size, input_len):
+    knl = _get_three_level_scan_kernel(g_size, p_size)
+
+    import numpy as np
+    np.random.seed(0)
+    a = np.random.randint(low=0, high=100, size=input_len)
+
+    c = ctx_getter()
+    q = cl.CommandQueue(c)
+
+    _, (out,) = knl(q, a=a)
+
+    assert (out == np.cumsum(a)).all()
+
+# }}}
 
 
 if __name__ == "__main__":
