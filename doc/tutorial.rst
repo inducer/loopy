@@ -122,7 +122,9 @@ always see loopy's view of a kernel by printing it.
     i: None
     ---------------------------------------------------------------------------
     INSTRUCTIONS:
-     [i]                                  out[i] <- 2*a[i]   # insn
+    for i
+      out[i] = 2*a[i]  {id=insn}
+    end i
     ---------------------------------------------------------------------------
 
 You'll likely have noticed that there's quite a bit more information here
