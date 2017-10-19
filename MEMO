@@ -10,7 +10,7 @@ Things to consider
 - Depedencies are pointwise for shared loop dimensions
   and global over non-shared ones (between dependent and ancestor)
 
-- multiple insns could fight over which iname gets local axis 0
+- multiple stmts could fight over which iname gets local axis 0
   -> complicated optimization problem
 
 - Every loop in loopy is opened at most once.
@@ -35,7 +35,7 @@ Things to consider
 - Loopy as a data model for implementing custom rewritings
 
 - We won't generate WAW barrier-needing dependencies
-  from one instruction to itself.
+  from one statement to itself.
 
 - Loopy is semi-interactive.
 
@@ -45,7 +45,7 @@ Things to consider
 
 - Dependency on non-local global writes is ill-formed
 
-- No substitution rules allowed on lhs of insns
+- No substitution rules allowed on lhs of stmts
 
 To-do
 ^^^^^
@@ -78,7 +78,7 @@ Fixes:
   old inames may still be around, so the rewrite may or may not have to be
   applied.
 
-- Group instructions by dependency/inames for scheduling, to
+- Group statements by dependency/inames for scheduling, to
   increase sched. scalability
 
 - What if no universally valid precompute base index expression is found?
@@ -109,7 +109,7 @@ Future ideas
 
 - Check for unordered (no-dependency) writes to the same location
 
-- Vanilla C string instructions?
+- Vanilla C string statements?
 
 - Barriers for data exchanged via global vars?
 
@@ -183,7 +183,7 @@ Dealt with
 
 - Add dependencies after the fact
 
-- Scalar insn priority
+- Scalar stmt priority
 
 - ScalarArg is a bad name
   -> renamed to ValueArg
@@ -209,8 +209,8 @@ Dealt with
   -> pending better prefetch spec
   - Prefetch by sample access
 
-- How is intra-instruction ordering of ILP loops going to be determined?
-  (taking into account that it could vary even per-instruction?)
+- How is intra-statement ordering of ILP loops going to be determined?
+  (taking into account that it could vary even per-statement?)
 
 - Sharing of checks across ILP instances
 
@@ -257,7 +257,7 @@ Dealt with
   property.
 
 - Just touching a variable written to by a non-idempotent
-  instruction makes that instruction also not idempotent
+  statement makes that statement also not idempotent
   -> Idempotent renamed to boostable.
   -> Done.
 
@@ -274,7 +274,7 @@ Dealt with
 - Slab decomposition for ILP
   -> I don't think that's possible.
 
-- It is hard to understand error messages that referred to instructions that
+- It is hard to understand error messages that referred to statements that
   are generated during preprocessing.
 
   -> Expose preprocessing to the user so she can inspect the preprocessed
@@ -314,7 +314,7 @@ Dealt with
 
 - Make syntax for iname dependencies
 
-- make syntax for insn dependencies
+- make syntax for stmt dependencies
 
 - Implement get_problems()
 

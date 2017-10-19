@@ -82,7 +82,7 @@ class Options(ImmutableRecord):
     .. attribute:: trace_assignments
 
         Generate code that uses *printf* in kernels to trace the
-        execution of assignment instructions.
+        execution of assignment statements.
 
     .. attribute:: trace_assignment_values
 
@@ -98,7 +98,7 @@ class Options(ImmutableRecord):
     .. attribute:: check_dep_resolution
 
         Whether loopy should issue an error if a dependency
-        expression does not match any instructions in the kernel.
+        expression does not match any statements in the kernel.
 
     .. rubric:: Invocation-related options
 

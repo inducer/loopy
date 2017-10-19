@@ -74,7 +74,7 @@ class CodeGenerationResult(ImmutableRecord):
 
     .. attribute:: implemented_domains
 
-        A mapping from instruction ID to a list of :class:`islpy.Set`
+        A mapping from statement ID to a list of :class:`islpy.Set`
         objects.
 
     .. attribute:: host_preambles
@@ -91,7 +91,7 @@ class CodeGenerationResult(ImmutableRecord):
     """
 
     @staticmethod
-    def new(codegen_state, insn_id, ast, implemented_domain):
+    def new(codegen_state, stmt_id, ast, implemented_domain):
         prg = GeneratedProgram(
                 name=codegen_state.gen_program_name,
                 is_device_program=codegen_state.is_generating_device_code,
@@ -110,7 +110,7 @@ class CodeGenerationResult(ImmutableRecord):
 
         return CodeGenerationResult(
                 implemented_data_info=codegen_state.implemented_data_info,
-                implemented_domains={insn_id: [implemented_domain]},
+                implemented_domains={stmt_id: [implemented_domain]},
                 **kwargs)
 
     def host_code(self):
@@ -218,8 +218,8 @@ def merge_codegen_results(codegen_state, elements, collapse=True):
                         el.current_program(codegen_state).name
                         == codegen_result.current_program(codegen_state).name)
 
-            for insn_id, idoms in six.iteritems(el.implemented_domains):
-                implemented_domains.setdefault(insn_id, []).extend(idoms)
+            for stmt_id, idoms in six.iteritems(el.implemented_domains):
+                implemented_domains.setdefault(stmt_id, []).extend(idoms)
 
             if not codegen_state.is_generating_device_code:
                 for dp in el.device_programs:

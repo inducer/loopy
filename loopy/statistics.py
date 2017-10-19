@@ -1097,7 +1097,7 @@ def count(kernel, set, space=None):
     return add_assumptions_guard(kernel, count)
 
 
-def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
+def get_unused_hw_axes_factor(knl, stmt, disregard_local_axes, space=None):
     # FIXME: Multi-kernel support
     gsize, lsize = knl.get_grid_size_upper_bounds()
 
@@ -1105,7 +1105,7 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     l_used = set()
 
     from loopy.kernel.data import LocalIndexTag, GroupIndexTag
-    for iname in knl.insn_inames(insn):
+    for iname in knl.stmt_inames(stmt):
         tag = knl.iname_to_tag.get(iname)
 
         if isinstance(tag, LocalIndexTag):
@@ -1135,17 +1135,17 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
     return add_assumptions_guard(knl, result)
 
 
-def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False):
-    insn_inames = knl.insn_inames(insn)
+def count_stmt_runs(knl, stmt, count_redundant_work, disregard_local_axes=False):
+    stmt_inames = knl.stmt_inames(stmt)
 
     if disregard_local_axes:
         from loopy.kernel.data import LocalIndexTag
-        insn_inames = [iname for iname in insn_inames if not
+        stmt_inames = [iname for iname in stmt_inames if not
                        isinstance(knl.iname_to_tag.get(iname), LocalIndexTag)]
 
-    inames_domain = knl.get_inames_domain(insn_inames)
+    inames_domain = knl.get_inames_domain(stmt_inames)
     domain = (inames_domain.project_out_except(
-                            insn_inames, [dim_type.set]))
+                            stmt_inames, [dim_type.set]))
 
     space = isl.Space.create_from_names(isl.DEFAULT_CONTEXT,
             set=[], params=knl.outer_params())
@@ -1153,7 +1153,7 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
     c = count(knl, domain, space=space)
 
     if count_redundant_work:
-        unused_fac = get_unused_hw_axes_factor(knl, insn,
+        unused_fac = get_unused_hw_axes_factor(knl, stmt,
                         disregard_local_axes=disregard_local_axes,
                         space=space)
         return c * unused_fac
@@ -1210,10 +1210,10 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
 
     op_map = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
-    for insn in knl.instructions:
-        ops = op_counter(insn.assignee) + op_counter(insn.expression)
-        op_map = op_map + ops*count_insn_runs(
-                knl, insn,
+    for stmt in knl.statements:
+        ops = op_counter(stmt.assignee) + op_counter(stmt.expression)
+        op_map = op_map + ops*count_stmt_runs(
+                knl, stmt,
                 count_redundant_work=count_redundant_work)
 
     if numpy_types:
@@ -1296,11 +1296,11 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
 
     cache_holder = CacheHolder()
 
-    @memoize_in(cache_holder, "insn_count")
-    def get_insn_count(knl, insn_id, uniform=False):
-        insn = knl.id_to_insn[insn_id]
-        return count_insn_runs(
-                knl, insn, disregard_local_axes=uniform,
+    @memoize_in(cache_holder, "stmt_count")
+    def get_stmt_count(knl, stmt_id, uniform=False):
+        stmt = knl.id_to_stmt[stmt_id]
+        return count_stmt_runs(
+                knl, stmt, disregard_local_axes=uniform,
                 count_redundant_work=count_redundant_work)
 
     knl = infer_unknown_types(knl, expect_completion=True)
@@ -1310,13 +1310,13 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
     access_counter_g = GlobalMemAccessCounter(knl)
     access_counter_l = LocalMemAccessCounter(knl)
 
-    for insn in knl.instructions:
+    for stmt in knl.statements:
         access_expr = (
-                access_counter_g(insn.expression)
-                + access_counter_l(insn.expression)
+                access_counter_g(stmt.expression)
+                + access_counter_l(stmt.expression)
                 ).with_set_attributes(direction="load")
 
-        access_assignee_g = access_counter_g(insn.assignee).with_set_attributes(
+        access_assignee_g = access_counter_g(stmt.assignee).with_set_attributes(
                 direction="store")
 
         # FIXME: (!!!!) for now, don't count writes to local mem
@@ -1329,7 +1329,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
             access_map = (
                     access_map
                     + ToCountMap({key: val})
-                    * get_insn_count(knl, insn.id, is_uniform))
+                    * get_stmt_count(knl, stmt.id, is_uniform))
             #currently not counting stride of local mem access
 
         for key, val in six.iteritems(access_assignee_g.count_map):
@@ -1339,7 +1339,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
             access_map = (
                     access_map
                     + ToCountMap({key: val})
-                    * get_insn_count(knl, insn.id, is_uniform))
+                    * get_stmt_count(knl, stmt.id, is_uniform))
             # for now, don't count writes to local mem
 
     if numpy_types:
@@ -1387,7 +1387,7 @@ def get_synchronization_map(knl):
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
-            CallKernel, ReturnFromKernel, RunInstruction)
+            CallKernel, ReturnFromKernel, RunStatement)
     from operator import mul
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
@@ -1424,7 +1424,7 @@ def get_synchronization_map(knl):
             result = result + ToCountMap(
                     {"kernel_launch": get_count_poly(iname_list)})
 
-        elif isinstance(sched_item, (ReturnFromKernel, RunInstruction)):
+        elif isinstance(sched_item, (ReturnFromKernel, RunStatement)):
             pass
 
         else:
@@ -1459,24 +1459,24 @@ def gather_access_footprints(kernel, ignore_uncountable=False):
     write_footprints = []
     read_footprints = []
 
-    for insn in kernel.instructions:
-        if not isinstance(insn, MultiAssignmentBase):
+    for stmt in kernel.statements:
+        if not isinstance(stmt, MultiAssignmentBase):
             warn_with_kernel(kernel, "count_non_assignment",
-                    "Non-assignment instruction encountered in "
+                    "Non-assignment statement encountered in "
                     "gather_access_footprints, not counted")
             continue
 
-        insn_inames = kernel.insn_inames(insn)
-        inames_domain = kernel.get_inames_domain(insn_inames)
-        domain = (inames_domain.project_out_except(insn_inames,
+        stmt_inames = kernel.stmt_inames(stmt)
+        inames_domain = kernel.get_inames_domain(stmt_inames)
+        domain = (inames_domain.project_out_except(stmt_inames,
                                                    [dim_type.set]))
 
         afg = AccessFootprintGatherer(kernel, domain,
                 ignore_uncountable=ignore_uncountable)
 
-        for assignee in insn.assignees:
-            write_footprints.append(afg(insn.assignees))
-        read_footprints.append(afg(insn.expression))
+        for assignee in stmt.assignees:
+            write_footprints.append(afg(stmt.assignees))
+        read_footprints.append(afg(stmt.expression))
 
     write_footprints = AccessFootprintGatherer.combine(write_footprints)
     read_footprints = AccessFootprintGatherer.combine(read_footprints)

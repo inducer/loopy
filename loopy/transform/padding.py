@@ -83,7 +83,7 @@ def split_array_dim(kernel, arrays_and_axes, count, auto_split_inames=True,
         elif len(rest) == 2:
             return rest
         else:
-            raise RuntimeError("split instruction '%s' not understood" % rest)
+            raise RuntimeError("split statement '%s' not understood" % rest)
 
     if isinstance(arrays_and_axes, tuple):
         arrays_and_axes = [arrays_and_axes]

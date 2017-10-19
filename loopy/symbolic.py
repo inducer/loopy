@@ -595,7 +595,7 @@ def parse_tagged_name(expr):
 class ExpansionState(ImmutableRecord):
     """
     .. attribute:: kernel
-    .. attribute:: instruction
+    .. attribute:: statement
 
     .. attribute:: stack
 
@@ -608,8 +608,8 @@ class ExpansionState(ImmutableRecord):
     """
 
     @property
-    def insn_id(self):
-        return self.instruction.id
+    def stmt_id(self):
+        return self.statement.id
 
     def apply_arg_context(self, expr):
         from pymbolic.mapper.substitutor import make_subst_func
@@ -651,12 +651,12 @@ class SubstitutionRuleRenamer(IdentityMapper):
             return TaggedVariable(new_name, tag)
 
 
-def rename_subst_rules_in_instructions(insns, renames):
+def rename_subst_rules_in_statements(stmts, renames):
     subst_renamer = SubstitutionRuleRenamer(renames)
 
     return [
-            insn.with_transformed_expressions(subst_renamer)
-            for insn in insns]
+            stmt.with_transformed_expressions(subst_renamer)
+            for stmt in stmts]
 
 
 class SubstitutionRuleMappingContext(object):
@@ -766,11 +766,11 @@ class SubstitutionRuleMappingContext(object):
     def finish_kernel(self, kernel):
         new_substs, renames = self._get_new_substitutions_and_renames()
 
-        new_insns = rename_subst_rules_in_instructions(kernel.instructions, renames)
+        new_stmts = rename_subst_rules_in_statements(kernel.statements, renames)
 
         return kernel.copy(
             substitutions=new_substs,
-            instructions=new_insns)
+            statements=new_stmts)
 
 
 class RuleAwareIdentityMapper(IdentityMapper):
@@ -844,30 +844,30 @@ class RuleAwareIdentityMapper(IdentityMapper):
         else:
             return sym
 
-    def __call__(self, expr, kernel, insn):
-        from loopy.kernel.data import InstructionBase
-        assert insn is None or isinstance(insn, InstructionBase)
+    def __call__(self, expr, kernel, stmt):
+        from loopy.kernel.data import StatementBase
+        assert stmt is None or isinstance(stmt, StatementBase)
 
         return IdentityMapper.__call__(self, expr,
                 ExpansionState(
                     kernel=kernel,
-                    instruction=insn,
+                    statement=stmt,
                     stack=(),
                     arg_context={}))
 
-    def map_instruction(self, kernel, insn):
-        return insn
+    def map_statement(self, kernel, stmt):
+        return stmt
 
     def map_kernel(self, kernel):
-        new_insns = [
+        new_stmts = [
                 # While subst rules are not allowed in assignees, the mapper
                 # may perform tasks entirely unrelated to subst rules, so
                 # we must map assignees, too.
-                self.map_instruction(kernel,
-                    insn.with_transformed_expressions(self, kernel, insn))
-                for insn in kernel.instructions]
+                self.map_statement(kernel,
+                    stmt.with_transformed_expressions(self, kernel, stmt))
+                for stmt in kernel.statements]
 
-        return kernel.copy(instructions=new_insns)
+        return kernel.copy(statements=new_stmts)
 
 
 class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
@@ -880,7 +880,7 @@ class RuleAwareSubstitutionMapper(RuleAwareIdentityMapper):
     def map_variable(self, expr, expn_state):
         if (expr.name in expn_state.arg_context
                 or not self.within(
-                    expn_state.kernel, expn_state.instruction, expn_state.stack)):
+                    expn_state.kernel, expn_state.statement, expn_state.stack)):
             return super(RuleAwareSubstitutionMapper, self).map_variable(
                     expr, expn_state)
 
@@ -907,7 +907,7 @@ class RuleAwareSubstitutionRuleExpander(RuleAwareIdentityMapper):
 
         new_stack = expn_state.stack + ((name, tags),)
 
-        if self.within(expn_state.kernel, expn_state.instruction, new_stack):
+        if self.within(expn_state.kernel, expn_state.statement, new_stack):
             # expand
             rule = self.rules[name]
 

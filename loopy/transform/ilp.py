@@ -77,12 +77,12 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
     # {{{ find variables that need extra indices
 
     for tv in six.itervalues(kernel.temporary_variables):
-        for writer_insn_id in wmap.get(tv.name, []):
-            writer_insn = kernel.id_to_insn[writer_insn_id]
+        for writer_stmt_id in wmap.get(tv.name, []):
+            writer_stmt = kernel.id_to_stmt[writer_stmt_id]
 
             if iname is None:
                 ilp_inames = frozenset(iname
-                        for iname in kernel.insn_inames(writer_insn)
+                        for iname in kernel.stmt_inames(writer_stmt)
                         if isinstance(
                             kernel.iname_to_tag.get(iname),
                             (IlpBaseTag, VectorizeTag)))
@@ -97,7 +97,7 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
                 ilp_inames = frozenset([iname])
 
             referenced_ilp_inames = (ilp_inames
-                    & writer_insn.write_dependency_names())
+                    & writer_stmt.write_dependency_names())
 
             new_ilp_inames = ilp_inames - referenced_ilp_inames
 
@@ -106,10 +106,10 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
 
             if tv.name in var_to_new_ilp_inames:
                 if new_ilp_inames != set(var_to_new_ilp_inames[tv.name]):
-                    raise LoopyError("instruction '%s' requires adding "
+                    raise LoopyError("statement '%s' requires adding "
                             "indices for ILP inames '%s' on var '%s', but previous "
-                            "instructions required inames '%s'"
-                            % (writer_insn_id, ", ".join(new_ilp_inames),
+                            "statements required inames '%s'"
+                            % (writer_stmt_id, ", ".join(new_ilp_inames),
                                 ", ".join(var_to_new_ilp_inames[tv.name])))
 
                 continue
@@ -167,30 +167,30 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
             (var_name, tuple(var(iname) for iname in inames))
             for var_name, inames in six.iteritems(var_to_new_ilp_inames))
 
-    new_insns = []
+    new_stmts = []
 
-    for insn in kernel.instructions:
+    for stmt in kernel.statements:
         eiii = ExtraInameIndexInserter(var_to_extra_iname)
-        new_insn = insn.with_transformed_expressions(eiii)
-        if not eiii.seen_ilp_inames <= insn.within_inames:
+        new_stmt = stmt.with_transformed_expressions(eiii)
+        if not eiii.seen_ilp_inames <= stmt.within_inames:
 
             from loopy.diagnostic import warn_with_kernel
             warn_with_kernel(
                     kernel,
                     "implicit_ilp_iname",
-                    "Instruction '%s': touched variable that (for ILP) "
-                    "required iname(s) '%s', but that the instruction was not "
+                    "Statement '%s': touched variable that (for ILP) "
+                    "required iname(s) '%s', but that the statement was not "
                     "previously within the iname(s). Previously, this would "
-                    "implicitly promote the instruction, but that behavior is "
+                    "implicitly promote the statement, but that behavior is "
                     "deprecated and will stop working in 2018.1."
-                    % (insn.id, ", ".join(
-                        eiii.seen_ilp_inames - insn.within_inames)))
+                    % (stmt.id, ", ".join(
+                        eiii.seen_ilp_inames - stmt.within_inames)))
 
-        new_insns.append(new_insn)
+        new_stmts.append(new_stmt)
 
     return kernel.copy(
         temporary_variables=new_temp_vars,
-        instructions=new_insns)
+        statements=new_stmts)
 
 # }}}
 
@@ -198,14 +198,14 @@ def add_axes_to_temporaries_for_ilp_and_vec(kernel, iname=None):
 # {{{ realize_ilp
 
 def realize_ilp(kernel, iname):
-    """Instruction-level parallelism (as realized by the loopy iname
+    """Statement-level parallelism (as realized by the loopy iname
     tag ``"ilp"``) provides the illusion that multiple concurrent
-    program instances execute in lockstep within a single instruction
+    program instances execute in lockstep within a single statement
     stream.
 
-    To do so, storage that is private to each instruction stream needs to be
+    To do so, storage that is private to each statement stream needs to be
     duplicated so that each program instance receives its own copy.  Storage
-    that is written to in an instruction using an ILP iname but whose left-hand
+    that is written to in an statement using an ILP iname but whose left-hand
     side indices do not contain said ILP iname is marked for duplication.
 
     This storage duplication is carried out automatically at code generation

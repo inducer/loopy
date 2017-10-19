@@ -70,7 +70,7 @@ __doc__ = """
 
 .. autofunction:: make_reduction_inames_unique
 
-.. autofunction:: add_inames_to_insn
+.. autofunction:: add_inames_to_stmt
 
 """
 
@@ -137,7 +137,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
                 and self.split_iname not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
+                    expn_state.statement,
                     expn_state.stack)):
             new_inames = list(expr.inames)
             new_inames.remove(self.split_iname)
@@ -155,7 +155,7 @@ class _InameSplitter(RuleAwareIdentityMapper):
                 and self.split_iname not in expn_state.arg_context
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
+                    expn_state.statement,
                     expn_state.stack)):
             return self.replacement_index
         else:
@@ -246,20 +246,20 @@ def _split_iname_backend(kernel, split_iname,
 
     # {{{ update within_inames
 
-    new_insns = []
-    for insn in kernel.instructions:
-        if split_iname in insn.within_inames:
+    new_stmts = []
+    for stmt in kernel.statements:
+        if split_iname in stmt.within_inames:
             new_within_inames = (
-                    (insn.within_inames.copy()
+                    (stmt.within_inames.copy()
                     - frozenset([split_iname]))
                     | frozenset([outer_iname, inner_iname]))
         else:
-            new_within_inames = insn.within_inames
+            new_within_inames = stmt.within_inames
 
-        insn = insn.copy(
+        stmt = stmt.copy(
                 within_inames=new_within_inames)
 
-        new_insns.append(insn)
+        new_stmts.append(stmt)
 
     # }}}
 
@@ -279,7 +279,7 @@ def _split_iname_backend(kernel, split_iname,
     kernel = kernel.copy(
             domains=new_domains,
             iname_slab_increments=iname_slab_increments,
-            instructions=new_insns,
+            statements=new_stmts,
             applied_iname_rewrites=applied_iname_rewrites,
             loop_priority=frozenset(new_priorities))
 
@@ -458,7 +458,7 @@ class _InameJoiner(RuleAwareSubstitutionMapper):
                 - set(expn_state.arg_context))
         if overlap and self.within(
                 expn_state.kernel,
-                expn_state.instruction,
+                expn_state.statement,
                 expn_state.stack):
             if overlap != expr_inames:
                 raise LoopyError(
@@ -563,14 +563,14 @@ def join_inames(kernel, inames, new_iname=None, tag=None, within=None):
 
         return frozenset(result)
 
-    new_insns = [
-            insn.copy(
-                within_inames=subst_within_inames(insn.within_inames))
-            for insn in kernel.instructions]
+    new_stmts = [
+            stmt.copy(
+                within_inames=subst_within_inames(stmt.within_inames))
+            for stmt in kernel.statements]
 
     kernel = (kernel
             .copy(
-                instructions=new_insns,
+                statements=new_stmts,
                 domains=domch.get_domains_with(new_domain),
                 applied_iname_rewrites=kernel.applied_iname_rewrites + [subst_dict]
                 ))
@@ -725,7 +725,7 @@ class _InameDuplicator(RuleAwareIdentityMapper):
         if (set(expr.inames) & self.old_inames_set
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
+                    expn_state.statement,
                     expn_state.stack)):
             new_inames = tuple(
                     self.old_to_new.get(iname, iname)
@@ -747,21 +747,21 @@ class _InameDuplicator(RuleAwareIdentityMapper):
                 or expr.name in expn_state.arg_context
                 or not self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
+                    expn_state.statement,
                     expn_state.stack)):
             return super(_InameDuplicator, self).map_variable(expr, expn_state)
         else:
             from pymbolic import var
             return var(new_name)
 
-    def map_instruction(self, kernel, insn):
-        if not self.within(kernel, insn, ()):
-            return insn
+    def map_statement(self, kernel, stmt):
+        if not self.within(kernel, stmt, ()):
+            return stmt
 
         new_fid = frozenset(
                 self.old_to_new.get(iname, iname)
-                for iname in insn.within_inames)
-        return insn.copy(within_inames=new_fid)
+                for iname in stmt.within_inames)
+        return stmt.copy(within_inames=new_fid)
 
 
 def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
@@ -854,28 +854,28 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 
 # {{{ iname duplication for schedulability
 
-def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
-    # Remove common inames of the current insn_deps, as they are not relevant
+def _get_iname_duplication_options(stmt_deps, old_common_inames=frozenset([])):
+    # Remove common inames of the current stmt_deps, as they are not relevant
     # for splitting.
-    common = frozenset([]).union(*insn_deps).intersection(*insn_deps)
+    common = frozenset([]).union(*stmt_deps).intersection(*stmt_deps)
 
     # If common inames were found, we reduce the problem and go into recursion
     if common:
-        # Remove the common inames from the instruction dependencies
-        insn_deps = (
-            frozenset(dep - common for dep in insn_deps)
+        # Remove the common inames from the statement dependencies
+        stmt_deps = (
+            frozenset(dep - common for dep in stmt_deps)
             -
             frozenset([frozenset([])]))
         # Join the common inames with those previously found
         common = common.union(old_common_inames)
 
         # Go into recursion
-        for option in _get_iname_duplication_options(insn_deps, common):
+        for option in _get_iname_duplication_options(stmt_deps, common):
             yield option
         # Do not yield anything beyond here!
         return
 
-    # Try finding a partitioning of the remaining inames, such that all instructions
+    # Try finding a partitioning of the remaining inames, such that all statements
     # use only inames from one of the disjoint sets from the partitioning.
     def join_sets_if_not_disjoint(sets):
         for s1 in sets:
@@ -888,7 +888,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
 
         return sets, True
 
-    partitioning = insn_deps
+    partitioning = stmt_deps
     stop = False
     while not stop:
         partitioning, stop = join_sets_if_not_disjoint(partitioning)
@@ -897,7 +897,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
     # subproblems
     if len(partitioning) > 1:
         for part in partitioning:
-            working_set = frozenset(s for s in insn_deps if s.issubset(part))
+            working_set = frozenset(s for s in stmt_deps if s.issubset(part))
             for option in _get_iname_duplication_options(working_set,
                                                          old_common_inames):
                 yield option
@@ -907,19 +907,19 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
 
         # There are splitting options for all inames
         for iname in inames:
-            iname_insns = frozenset(
-                    insn for insn in insn_deps if frozenset([iname]).issubset(insn))
+            iname_stmts = frozenset(
+                    stmt for stmt in stmt_deps if frozenset([iname]).issubset(stmt))
 
             import itertools as it
-            # For a given iname, the set of instructions containing this iname
+            # For a given iname, the set of statements containing this iname
             # is inspected.  For each element of the power set without the
             # empty and the full set, one duplication option is generated.
-            for insns_to_dup in it.chain.from_iterable(
-                    it.combinations(iname_insns, l)
-                    for l in range(1, len(iname_insns))):
+            for stmts_to_dup in it.chain.from_iterable(
+                    it.combinations(iname_stmts, l)
+                    for l in range(1, len(iname_stmts))):
                 yield (
                     iname,
-                    tuple(insn.union(old_common_inames) for insn in insns_to_dup))
+                    tuple(stmt.union(old_common_inames) for stmt in stmts_to_dup))
 
     # If partitioning was empty, we have recursed successfully and yield nothing
 
@@ -946,31 +946,31 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
                              \"\"\")
 
     In the example, there are four possibilities to resolve the problem:
-    * duplicating i in instruction i3
-    * duplicating i in instruction i1 and i3
-    * duplicating j in instruction i2
-    * duplicating i in instruction i2 and i3
+    * duplicating i in statement i3
+    * duplicating i in statement i1 and i3
+    * duplicating j in statement i2
+    * duplicating i in statement i2 and i3
 
     Use :func:`has_schedulable_iname_nesting` to decide, whether an iname needs to be
     duplicated in a given kernel.
     """
     # First we extract the minimal necessary information from the kernel
     if use_boostable_into:
-        insn_deps = (
-            frozenset(insn.within_inames.union(
-                insn.boostable_into if insn.boostable_into is not None
+        stmt_deps = (
+            frozenset(stmt.within_inames.union(
+                stmt.boostable_into if stmt.boostable_into is not None
                 else frozenset([]))
-                for insn in knl.instructions)
+                for stmt in knl.statements)
             -
             frozenset([frozenset([])]))
     else:
-        insn_deps = (
-            frozenset(insn.within_inames for insn in knl.instructions)
+        stmt_deps = (
+            frozenset(stmt.within_inames for stmt in knl.statements)
             -
             frozenset([frozenset([])]))
 
     # Get the duplication options as a tuple of iname and a set
-    for iname, insns in _get_iname_duplication_options(insn_deps):
+    for iname, stmts in _get_iname_duplication_options(stmt_deps):
         # Check whether this iname has a parallel tag and discard it if so
         from loopy.kernel.data import ConcurrentTag
         if (iname in knl.iname_to_tag
@@ -987,7 +987,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             from warnings import warn
             from loopy.diagnostic import LoopyWarning
             warn("Kernel '%s' required the deprecated 'boostable_into' "
-                 "instruction attribute in order to be schedulable!" % knl.name,
+                 "statement attribute in order to be schedulable!" % knl.name,
                  LoopyWarning)
 
             # Return to avoid yielding the duplication
@@ -998,10 +998,10 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
         # loopy.duplicate_inames
         from loopy.match import Id, Or
         within = Or(tuple(
-            Id(insn.id) for insn in knl.instructions
-            if insn.within_inames in insns))
+            Id(stmt.id) for stmt in knl.statements
+            if stmt.within_inames in stmts))
 
-        # Only yield the result if an instruction matched. With
+        # Only yield the result if an statement matched. With
         # use_boostable_into=True this is not always true.
 
         if within.children:
@@ -1085,18 +1085,18 @@ def rename_iname(knl, old_iname, new_iname, existing_ok=False, within=None):
         knl = rule_mapping_context.finish_kernel(
                 smap.map_kernel(knl))
 
-        new_instructions = []
-        for insn in knl.instructions:
-            if (old_iname in insn.within_inames
-                    and within(knl, insn, ())):
-                insn = insn.copy(
+        new_statements = []
+        for stmt in knl.statements:
+            if (old_iname in stmt.within_inames
+                    and within(knl, stmt, ())):
+                stmt = stmt.copy(
                         within_inames=(
-                            (insn.within_inames - frozenset([old_iname]))
+                            (stmt.within_inames - frozenset([old_iname]))
                             | frozenset([new_iname])))
 
-            new_instructions.append(insn)
+            new_statements.append(stmt)
 
-        knl = knl.copy(instructions=new_instructions)
+        knl = knl.copy(statements=new_statements)
 
     else:
         knl = duplicate_inames(
@@ -1136,10 +1136,10 @@ def remove_unused_inames(knl, inames=None):
 
     inames = set(inames)
     used_inames = set()
-    for insn in exp_knl.instructions:
+    for stmt in exp_knl.statements:
         used_inames.update(
-                exp_knl.insn_inames(insn.id)
-                | insn.reduction_inames())
+                exp_knl.stmt_inames(stmt.id)
+                | stmt.reduction_inames())
 
     unused_inames = inames - used_inames
 
@@ -1184,7 +1184,7 @@ class _ReductionSplitter(RuleAwareIdentityMapper):
         if (self.inames <= set(expr.inames)
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
+                    expn_state.statement,
                     expn_state.stack)):
             leftover_inames = set(expr.inames) - self.inames
 
@@ -1451,43 +1451,43 @@ def affine_map_inames(kernel, old_inames, new_inames, equations):
 
     # }}}
 
-    # {{{ switch iname refs in instructions
+    # {{{ switch iname refs in statements
 
-    def fix_iname_set(insn_id, inames):
+    def fix_iname_set(stmt_id, inames):
         if old_inames_set <= inames:
             return (inames - old_inames_set) | new_inames_set
         elif old_inames_set & inames:
-            raise LoopyError("instruction '%s' uses only a part (%s), not all, "
+            raise LoopyError("statement '%s' uses only a part (%s), not all, "
                     "of the old inames"
-                    % (insn_id, ", ".join(old_inames_set & inames)))
+                    % (stmt_id, ", ".join(old_inames_set & inames)))
         else:
             return inames
 
-    new_instructions = [
-            insn.copy(within_inames=fix_iname_set(
-                insn.id, insn.within_inames))
-            for insn in kernel.instructions]
+    new_statements = [
+            stmt.copy(within_inames=fix_iname_set(
+                stmt.id, stmt.within_inames))
+            for stmt in kernel.statements]
 
     # }}}
 
-    return kernel.copy(domains=new_domains, instructions=new_instructions)
+    return kernel.copy(domains=new_domains, statements=new_statements)
 
 # }}}
 
 
 # {{{ find unused axes
 
-def find_unused_axis_tag(kernel, kind, insn_match=None):
+def find_unused_axis_tag(kernel, kind, stmt_match=None):
     """For one of the hardware-parallel execution tags, find an unused
     axis.
 
-    :arg insn_match: An instruction match as understood by
+    :arg stmt_match: An statement match as understood by
         :func:`loopy.match.parse_match`.
     :arg kind: may be "l" or "g", or the corresponding tag class name
 
     :returns: an :class:`GroupIndexTag` or :class:`LocalIndexTag`
-        that is not being used within the instructions matched by
-        *insn_match*.
+        that is not being used within the statements matched by
+        *stmt_match*.
     """
     used_axes = set()
 
@@ -1505,11 +1505,11 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
             raise LoopyError("invlaid tag kind: %s" % kind)
 
     from loopy.match import parse_match
-    match = parse_match(insn_match)
-    insns = [insn for insn in kernel.instructions if match(kernel, insn)]
+    match = parse_match(stmt_match)
+    stmts = [stmt for stmt in kernel.statements if match(kernel, stmt)]
 
-    for insn in insns:
-        for iname in kernel.insn_inames(insn):
+    for stmt in stmts:
+        for iname in kernel.stmt_inames(stmt):
             dim_tag = kernel.iname_to_tag.get(iname)
 
             if isinstance(dim_tag, kind):
@@ -1557,7 +1557,7 @@ class _ReductionInameUniquifier(RuleAwareIdentityMapper):
     def map_reduction(self, expr, expn_state):
         within = self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
+                    expn_state.statement,
                     expn_state.stack)
 
         for iname in expr.inames:
@@ -1645,19 +1645,19 @@ def make_reduction_inames_unique(kernel, inames=None, within=None):
 # }}}
 
 
-# {{{ add_inames_to_insn
+# {{{ add_inames_to_stmt
 
-def add_inames_to_insn(knl, inames, insn_match):
+def add_inames_to_stmt(knl, inames, stmt_match):
     """
     :arg inames: a frozenset of inames that will be added to the
-        instructions matched by *insn_match*, or a comma-separated
+        statements matched by *stmt_match*, or a comma-separated
         string that parses to such a tuple.
-    :arg insn_match: An instruction match as understood by
+    :arg stmt_match: An statement match as understood by
         :func:`loopy.match.parse_match`.
 
     :returns: an :class:`GroupIndexTag` or :class:`LocalIndexTag`
-        that is not being used within the instructions matched by
-        *insn_match*.
+        that is not being used within the statements matched by
+        *stmt_match*.
 
     .. versionadded:: 2016.3
     """
@@ -1669,18 +1669,18 @@ def add_inames_to_insn(knl, inames, insn_match):
         raise TypeError("'inames' must be a frozenset")
 
     from loopy.match import parse_match
-    match = parse_match(insn_match)
+    match = parse_match(stmt_match)
 
-    new_instructions = []
+    new_statements = []
 
-    for insn in knl.instructions:
-        if match(knl, insn):
-            new_instructions.append(
-                    insn.copy(within_inames=insn.within_inames | inames))
+    for stmt in knl.statements:
+        if match(knl, stmt):
+            new_statements.append(
+                    stmt.copy(within_inames=stmt.within_inames | inames))
         else:
-            new_instructions.append(insn)
+            new_statements.append(stmt)
 
-    return knl.copy(instructions=new_instructions)
+    return knl.copy(statements=new_statements)
 
 # }}}
 

@@ -28,7 +28,7 @@ import six
 from loopy.codegen.result import merge_codegen_results, wrap_in_if
 import islpy as isl
 from loopy.schedule import (
-        EnterLoop, LeaveLoop, RunInstruction, Barrier, CallKernel,
+        EnterLoop, LeaveLoop, RunStatement, Barrier, CallKernel,
         gather_schedule_block, generate_sub_sched_items)
 from loopy.diagnostic import LoopyError
 
@@ -96,7 +96,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
     if isinstance(sched_item, CallKernel):
         assert not codegen_state.is_generating_device_code
 
-        from loopy.schedule import (gather_schedule_block, get_insn_ids_for_block_at)
+        from loopy.schedule import (gather_schedule_block, get_stmt_ids_for_block_at)
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
         assert past_end_i <= codegen_state.schedule_index_end
 
@@ -113,8 +113,8 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         codegen_result = generate_host_or_device_program(
                 new_codegen_state, sched_index)
 
-        glob_grid, loc_grid = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+        glob_grid, loc_grid = kernel.get_grid_sizes_for_stmt_ids_as_exprs(
+                get_stmt_ids_for_block_at(kernel.schedule, sched_index))
 
         return merge_codegen_results(codegen_state, [
             codegen_result,
@@ -157,10 +157,10 @@ def generate_code_for_sched_index(codegen_state, sched_index):
         if codegen_state.is_generating_device_code:
             barrier_ast = codegen_state.ast_builder.emit_barrier(
                     sched_item.kind, sched_item.comment)
-            if sched_item.originating_insn_id:
+            if sched_item.originating_stmt_id:
                 return CodeGenerationResult.new(
                         codegen_state,
-                        sched_item.originating_insn_id,
+                        sched_item.originating_stmt_id,
                         barrier_ast,
                         codegen_state.implemented_domain)
             else:
@@ -181,13 +181,13 @@ def generate_code_for_sched_index(codegen_state, sched_index):
 
         # }}}
 
-    elif isinstance(sched_item, RunInstruction):
-        insn = kernel.id_to_insn[sched_item.insn_id]
+    elif isinstance(sched_item, RunStatement):
+        stmt = kernel.id_to_stmt[sched_item.stmt_id]
 
-        from loopy.codegen.instruction import generate_instruction_code
+        from loopy.codegen.statement import generate_statement_code
         return codegen_state.try_vectorized(
-                "instruction %s" % insn.id,
-                lambda inner_cgs: generate_instruction_code(inner_cgs, insn))
+                "statement %s" % stmt.id,
+                lambda inner_cgs: generate_statement_code(inner_cgs, stmt))
 
     else:
         raise RuntimeError("unexpected schedule item type: %s"
@@ -199,8 +199,8 @@ def get_required_predicates(kernel, sched_index):
     for _, sched_item in generate_sub_sched_items(kernel.schedule, sched_index):
         if isinstance(sched_item, Barrier):
             my_preds = frozenset()
-        elif isinstance(sched_item, RunInstruction):
-            my_preds = kernel.id_to_insn[sched_item.insn_id].predicates
+        elif isinstance(sched_item, RunStatement):
+            my_preds = kernel.id_to_stmt[sched_item.stmt_id].predicates
         else:
             raise RuntimeError("unexpected schedule item type: %s"
                     % type(sched_item))
@@ -237,7 +237,7 @@ def group_by(l, key, merge):
 
 def build_loop_nest(codegen_state, schedule_index):
     # Most of the complexity of this function goes towards finding groups of
-    # instructions that can be nested inside a shared conditional.
+    # statements that can be nested inside a shared conditional.
 
     kernel = codegen_state.kernel
 
@@ -273,7 +273,7 @@ def build_loop_nest(codegen_state, schedule_index):
         elif isinstance(sched_item, Barrier):
             i += 1
 
-        elif isinstance(sched_item, RunInstruction):
+        elif isinstance(sched_item, RunStatement):
             i += 1
         else:
             raise RuntimeError("unexpected schedule item type: %s"
@@ -339,12 +339,12 @@ def build_loop_nest(codegen_state, schedule_index):
                     self.kernel.get_inames_domain(check_inames),
                     self.impl_domain, obj_bigger_ok=True)
             from loopy.codegen.bounds import get_approximate_convex_bounds_checks
-            # Each instruction individually gets its bounds checks,
+            # Each statement individually gets its bounds checks,
             # so we can safely overapproximate here.
             return get_approximate_convex_bounds_checks(domain,
                     check_inames, self.impl_domain)
 
-    def build_insn_group(sched_index_info_entries, codegen_state,
+    def build_stmt_group(sched_index_info_entries, codegen_state,
             done_group_lengths=set()):
         """
         :arg done_group_lengths: A set of group lengths (integers) that grows
@@ -355,7 +355,7 @@ def build_loop_nest(codegen_state, schedule_index):
 
         from loopy.symbolic import get_dependencies
 
-        # The rough plan here is that build_insn_group starts out with the
+        # The rough plan here is that build_stmt_group starts out with the
         # entirety of the current schedule item's downward siblings (i.e. all
         # the ones up to the next LeaveLoop). It will then iterate upward to
         # find the largest usable conditional hoist group.
@@ -366,7 +366,7 @@ def build_loop_nest(codegen_state, schedule_index):
         # considered down so that a callee cannot find a *longer* hoist group.)
         #
         # Upon return the hoist is wrapped around the returned code and
-        # build_insn_group calls itself for the remainder of schedule indices
+        # build_stmt_group calls itself for the remainder of schedule indices
         # that were not in the hoist group.
 
         if not sched_index_info_entries:
@@ -484,7 +484,7 @@ def build_loop_nest(codegen_state, schedule_index):
             else:
                 # recurse with a bigger done_group_lengths
                 def gen_code(inner_codegen_state):
-                    return build_insn_group(
+                    return build_stmt_group(
                             sched_index_info_entries[0:group_length],
                             inner_codegen_state,
                             done_group_lengths=(
@@ -534,15 +534,15 @@ def build_loop_nest(codegen_state, schedule_index):
             else:
                 result = gen_code(new_codegen_state)
 
-        return result + build_insn_group(
+        return result + build_stmt_group(
                 sched_index_info_entries[group_length:], codegen_state)
 
     # }}}
 
-    insn_group = build_insn_group(sched_index_info_entries, codegen_state)
+    stmt_group = build_stmt_group(sched_index_info_entries, codegen_state)
     return merge_codegen_results(
             codegen_state,
-            insn_group)
+            stmt_group)
 
 
 # vim: foldmethod=marker

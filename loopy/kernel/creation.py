@@ -31,7 +31,7 @@ from pymbolic.mapper import CSECachingMapperMixin
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
-        InstructionBase,
+        StatementBase,
         MultiAssignmentBase, Assignment,
         SubstitutionRule)
 from loopy.diagnostic import LoopyError, warn_with_kernel
@@ -73,7 +73,7 @@ WORD_RE = re.compile(r"\b([a-zA-Z0-9_]+)\b")
 BRACE_RE = re.compile(r"\$\{([a-zA-Z0-9_]+)\}")
 
 
-def expand_defines(insn, defines, single_valued=True):
+def expand_defines(stmt, defines, single_valued=True):
     replacements = [()]
 
     processed_defines = set()
@@ -83,7 +83,7 @@ def expand_defines(insn, defines, single_valued=True):
             (WORD_RE, r"\b%s\b"),
             ]:
 
-        for match in find_regexp.finditer(insn):
+        for match in find_regexp.finditer(stmt):
             define_name = match.group(1)
 
             # {{{ don't process the same define multiple times
@@ -118,7 +118,7 @@ def expand_defines(insn, defines, single_valued=True):
                         for rep in replacements]
 
     for rep in replacements:
-        rep_value = insn
+        rep_value = stmt
         for pattern, val in rep:
             rep_value = re.sub(pattern, str(val), rep_value)
 
@@ -147,16 +147,16 @@ def expand_defines_in_expr(expr, defines):
 # }}}
 
 
-# {{{ instruction options
+# {{{ statement options
 
-def get_default_insn_options_dict():
+def get_default_stmt_options_dict():
     return {
         "depends_on": frozenset(),
         "depends_on_is_final": False,
         "no_sync_with": frozenset(),
         "groups": frozenset(),
         "conflicts_with_groups": frozenset(),
-        "insn_id": None,
+        "stmt_id": None,
         "inames_to_dup": [],
         "priority": 0,
         "within_inames_is_final": False,
@@ -172,7 +172,7 @@ from collections import namedtuple
 _NosyncParseResult = namedtuple("_NosyncParseResult", "expr, scope")
 
 
-def parse_insn_options(opt_dict, options_str, assignee_names=None):
+def parse_stmt_options(opt_dict, options_str, assignee_names=None):
     if options_str is None:
         return opt_dict
 
@@ -212,10 +212,10 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                 raise LoopyError("'id' option may not be specified "
                         "in a 'with' block")
 
-            result["insn_id"] = intern(opt_value)
+            result["stmt_id"] = intern(opt_value)
 
         elif opt_key == "id_prefix" and opt_value is not None:
-            result["insn_id"] = UniqueName(opt_value)
+            result["stmt_id"] = UniqueName(opt_value)
 
         elif opt_key == "priority" and opt_value is not None:
             if is_with_block:
@@ -354,7 +354,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 
         else:
             raise ValueError(
-                    "unrecognized instruction option '%s' "
+                    "unrecognized statement option '%s' "
                     "(maybe a missing/extraneous =value?)"
                     % opt_key)
 
@@ -363,7 +363,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
 # }}}
 
 
-# {{{ parse one instruction
+# {{{ parse one statement
 
 WITH_OPTIONS_RE = re.compile(
         r"^"
@@ -420,10 +420,10 @@ SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
 
 
-def parse_insn(groups, insn_options):
+def parse_stmt(groups, stmt_options):
     """
-    :return: a tuple ``(insn, inames_to_dup)``, where insn is a
-        :class:`Assignment`, a :class:`CallInstruction`,
+    :return: a tuple ``(stmt, inames_to_dup)``, where stmt is a
+        :class:`Assignment`, a :class:`CallStatement`,
         or a :class:`SubstitutionRule`
         and *inames_to_dup* is None or a list of tuples `(old, new)`.
     """
@@ -488,22 +488,22 @@ def parse_insn(groups, insn_options):
     temp_var_types = tuple(temp_var_types)
     del new_lhs
 
-    insn_options = parse_insn_options(
-            insn_options.copy(),
+    stmt_options = parse_stmt_options(
+            stmt_options.copy(),
             groups["options"],
             assignee_names=assignee_names)
 
-    insn_id = insn_options.pop("insn_id", None)
-    inames_to_dup = insn_options.pop("inames_to_dup", [])
+    stmt_id = stmt_options.pop("stmt_id", None)
+    inames_to_dup = stmt_options.pop("inames_to_dup", [])
 
     kwargs = dict(
                 id=(
-                    intern(insn_id)
-                    if isinstance(insn_id, str)
-                    else insn_id),
-                **insn_options)
+                    intern(stmt_id)
+                    if isinstance(stmt_id, str)
+                    else stmt_id),
+                **stmt_options)
 
-    from loopy.kernel.instruction import make_assignment
+    from loopy.kernel.statement import make_assignment
     return make_assignment(
             lhs, rhs, temp_var_types, **kwargs
             ), inames_to_dup
@@ -556,47 +556,47 @@ def parse_subst_rule(groups):
 # }}}
 
 
-# {{{ parse_special_insn
+# {{{ parse_special_stmt
 
-def parse_special_insn(groups, insn_options):
-    insn_options = parse_insn_options(
-            insn_options.copy(),
+def parse_special_stmt(groups, stmt_options):
+    stmt_options = parse_stmt_options(
+            stmt_options.copy(),
             groups["options"],
             assignee_names=())
 
-    del insn_options["atomicity"]
+    del stmt_options["atomicity"]
 
-    insn_id = insn_options.pop("insn_id", None)
-    inames_to_dup = insn_options.pop("inames_to_dup", [])
+    stmt_id = stmt_options.pop("stmt_id", None)
+    inames_to_dup = stmt_options.pop("inames_to_dup", [])
 
     kwargs = dict(
                 id=(
-                    intern(insn_id)
-                    if isinstance(insn_id, str)
-                    else insn_id),
-                **insn_options)
+                    intern(stmt_id)
+                    if isinstance(stmt_id, str)
+                    else stmt_id),
+                **stmt_options)
 
-    from loopy.kernel.instruction import NoOpInstruction, BarrierInstruction
-    special_insn_kind = groups["kind"]
+    from loopy.kernel.statement import NoOpStatement, BarrierStatement
+    special_stmt_kind = groups["kind"]
 
-    if special_insn_kind == "gbarrier":
-        cls = BarrierInstruction
+    if special_stmt_kind == "gbarrier":
+        cls = BarrierStatement
         kwargs["kind"] = "global"
-    elif special_insn_kind == "lbarrier":
-        cls = BarrierInstruction
+    elif special_stmt_kind == "lbarrier":
+        cls = BarrierStatement
         kwargs["kind"] = "local"
-    elif special_insn_kind == "nop":
-        cls = NoOpInstruction
+    elif special_stmt_kind == "nop":
+        cls = NoOpStatement
     else:
         raise LoopyError(
-            "invalid kind of special instruction: '%s'" % special_insn_kind)
+            "invalid kind of special statement: '%s'" % special_stmt_kind)
 
     return cls(**kwargs), inames_to_dup
 
 # }}}
 
 
-# {{{ parse_instructions
+# {{{ parse_statements
 
 _PAREN_PAIRS = {
         "(": (+1, "("),
@@ -619,184 +619,184 @@ def _count_open_paren_symbols(s):
     return result
 
 
-def parse_instructions(instructions, defines):
-    if isinstance(instructions, str):
-        instructions = [instructions]
+def parse_statements(statements, defines):
+    if isinstance(statements, str):
+        statements = [statements]
 
     substitutions = {}
 
-    new_instructions = []
+    new_statements = []
 
     # {{{ pass 1: interning, comments, whitespace
 
-    for insn in instructions:
-        if isinstance(insn, SubstitutionRule):
-            substitutions[insn.name] = insn
+    for stmt in statements:
+        if isinstance(stmt, SubstitutionRule):
+            substitutions[stmt.name] = stmt
             continue
 
-        elif isinstance(insn, InstructionBase):
+        elif isinstance(stmt, StatementBase):
             def intern_if_str(s):
                 if isinstance(s, str):
                     return intern(s)
                 else:
                     return s
 
-            new_instructions.append(
-                    insn.copy(
-                        id=intern(insn.id) if isinstance(insn.id, str) else insn.id,
+            new_statements.append(
+                    stmt.copy(
+                        id=intern(stmt.id) if isinstance(stmt.id, str) else stmt.id,
                         depends_on=frozenset(intern_if_str(dep)
-                            for dep in insn.depends_on),
-                        groups=frozenset(intern(grp) for grp in insn.groups),
+                            for dep in stmt.depends_on),
+                        groups=frozenset(intern(grp) for grp in stmt.groups),
                         conflicts_with_groups=frozenset(
-                            intern(grp) for grp in insn.conflicts_with_groups),
+                            intern(grp) for grp in stmt.conflicts_with_groups),
                         within_inames=frozenset(
-                            intern(iname) for iname in insn.within_inames),
+                            intern(iname) for iname in stmt.within_inames),
                         ))
             continue
 
-        elif not isinstance(insn, str):
-            raise TypeError("Instructions must be either an Instruction "
+        elif not isinstance(stmt, str):
+            raise TypeError("Statements must be either an Statement "
                     "instance or a parseable string. got '%s' instead."
-                    % type(insn))
+                    % type(stmt))
 
-        for insn in insn.split("\n"):
-            comment_start = insn.find("#")
+        for stmt in stmt.split("\n"):
+            comment_start = stmt.find("#")
             if comment_start >= 0:
-                insn = insn[:comment_start]
+                stmt = stmt[:comment_start]
 
-            insn = insn.strip()
-            if not insn:
+            stmt = stmt.strip()
+            if not stmt:
                 continue
 
-            new_instructions.append(insn)
+            new_statements.append(stmt)
 
     # }}}
 
-    instructions = new_instructions
-    new_instructions = []
+    statements = new_statements
+    new_statements = []
 
     # {{{ pass 2: join-by-paren
 
-    insn_buffer = None
+    stmt_buffer = None
 
-    for i, insn in enumerate(instructions):
-        if isinstance(insn, InstructionBase):
-            if insn_buffer is not None:
-                raise LoopyError("cannot join instruction lines "
+    for i, stmt in enumerate(statements):
+        if isinstance(stmt, StatementBase):
+            if stmt_buffer is not None:
+                raise LoopyError("cannot join statement lines "
                         "by paren-like delimiters "
-                        "across InstructionBase instance at instructions index %d"
+                        "across StatementBase instance at statements index %d"
                         % i)
 
-            new_instructions.append(insn)
+            new_statements.append(stmt)
         else:
-            if insn_buffer is not None:
-                insn_buffer = insn_buffer + " " + insn
-                if _count_open_paren_symbols(insn_buffer) == 0:
-                    new_instructions.append(insn_buffer)
-                    insn_buffer = None
+            if stmt_buffer is not None:
+                stmt_buffer = stmt_buffer + " " + stmt
+                if _count_open_paren_symbols(stmt_buffer) == 0:
+                    new_statements.append(stmt_buffer)
+                    stmt_buffer = None
 
             else:
-                if _count_open_paren_symbols(insn) == 0:
-                    new_instructions.append(insn)
+                if _count_open_paren_symbols(stmt) == 0:
+                    new_statements.append(stmt)
                 else:
-                    insn_buffer = insn
+                    stmt_buffer = stmt
 
-    if insn_buffer is not None:
-        raise LoopyError("unclosed paren-like delimiter at end of 'instructions' "
+    if stmt_buffer is not None:
+        raise LoopyError("unclosed paren-like delimiter at end of 'statements' "
                 "while attempting to join lines by paren-like delimiters")
 
     # }}}
 
-    instructions = new_instructions
-    new_instructions = []
+    statements = new_statements
+    new_statements = []
 
     # {{{ pass 3: defines
 
-    for insn in instructions:
-        if isinstance(insn, InstructionBase):
-            new_instructions.append(insn)
+    for stmt in statements:
+        if isinstance(stmt, StatementBase):
+            new_statements.append(stmt)
         else:
-            for sub_insn in expand_defines(insn, defines, single_valued=False):
-                new_instructions.append(sub_insn)
+            for sub_stmt in expand_defines(stmt, defines, single_valued=False):
+                new_statements.append(sub_stmt)
 
     # }}}
 
-    instructions = new_instructions
-    new_instructions = []
+    statements = new_statements
+    new_statements = []
 
-    inames_to_dup = []  # one for each parsed_instruction
+    inames_to_dup = []  # one for each parsed_statement
 
     # {{{ pass 4: parsing
 
-    insn_options_stack = [get_default_insn_options_dict()]
+    stmt_options_stack = [get_default_stmt_options_dict()]
     if_predicates_stack = [
             {'predicates': frozenset(),
-                'insn_predicates': frozenset()}]
+                'stmt_predicates': frozenset()}]
 
-    for insn in instructions:
-        if isinstance(insn, InstructionBase):
-            local_w_inames = insn_options_stack[-1]["within_inames"]
+    for stmt in statements:
+        if isinstance(stmt, StatementBase):
+            local_w_inames = stmt_options_stack[-1]["within_inames"]
 
-            if insn.within_inames_is_final:
+            if stmt.within_inames_is_final:
                 if not (
-                        local_w_inames <= insn.within_inames):
-                    raise LoopyError("non-parsed instruction '%s' without "
+                        local_w_inames <= stmt.within_inames):
+                    raise LoopyError("non-parsed statement '%s' without "
                             "inames '%s' (but with final iname dependencies) "
                             "found inside 'for'/'with' block for inames "
                             "'%s'"
-                            % (insn.id,
-                                ", ".join(local_w_inames - insn.within_inames),
-                                insn_options_stack[-1].within_inames))
+                            % (stmt.id,
+                                ", ".join(local_w_inames - stmt.within_inames),
+                                stmt_options_stack[-1].within_inames))
 
             else:
                 # not final, add inames from current scope
                 kwargs = {}
-                if insn.id is None:
-                    kwargs["id"] = insn_options_stack[-1]["insn_id"]
+                if stmt.id is None:
+                    kwargs["id"] = stmt_options_stack[-1]["stmt_id"]
 
-                insn = insn.copy(
-                        within_inames=insn.within_inames | local_w_inames,
+                stmt = stmt.copy(
+                        within_inames=stmt.within_inames | local_w_inames,
                         within_inames_is_final=(
                             # If it's inside a for/with block, then it's
                             # final now.
                             bool(local_w_inames)),
                         depends_on=(
-                            (insn.depends_on
-                                | insn_options_stack[-1]["depends_on"])
-                            if insn_options_stack[-1]["depends_on"] is not None
-                            else insn.depends_on),
+                            (stmt.depends_on
+                                | stmt_options_stack[-1]["depends_on"])
+                            if stmt_options_stack[-1]["depends_on"] is not None
+                            else stmt.depends_on),
                         tags=(
-                            insn.tags
-                            | insn_options_stack[-1]["tags"]),
+                            stmt.tags
+                            | stmt_options_stack[-1]["tags"]),
                         predicates=(
-                            insn.predicates
-                            | insn_options_stack[-1]["predicates"]),
+                            stmt.predicates
+                            | stmt_options_stack[-1]["predicates"]),
                         groups=(
-                            insn.groups
-                            | insn_options_stack[-1]["groups"]),
+                            stmt.groups
+                            | stmt_options_stack[-1]["groups"]),
                         conflicts_with_groups=(
-                            insn.groups
-                            | insn_options_stack[-1]["conflicts_with_groups"]),
+                            stmt.groups
+                            | stmt_options_stack[-1]["conflicts_with_groups"]),
                         **kwargs)
 
-            new_instructions.append(insn)
+            new_statements.append(stmt)
             inames_to_dup.append([])
 
             del local_w_inames
 
             continue
 
-        with_options_match = WITH_OPTIONS_RE.match(insn)
+        with_options_match = WITH_OPTIONS_RE.match(stmt)
         if with_options_match is not None:
-            insn_options_stack.append(
-                    parse_insn_options(
-                        insn_options_stack[-1],
+            stmt_options_stack.append(
+                    parse_stmt_options(
+                        stmt_options_stack[-1],
                         with_options_match.group("options")))
             continue
 
-        for_match = FOR_RE.match(insn)
+        for_match = FOR_RE.match(stmt)
         if for_match is not None:
-            options = insn_options_stack[-1].copy()
+            options = stmt_options_stack[-1].copy()
             added_inames = frozenset(
                     iname.strip()
                     for iname in for_match.group("inames").split(",")
@@ -809,13 +809,13 @@ def parse_instructions(instructions, defines):
                     | added_inames)
             options["within_inames_is_final"] = True
 
-            insn_options_stack.append(options)
+            stmt_options_stack.append(options)
             del options
             continue
 
-        if_match = IF_RE.match(insn)
+        if_match = IF_RE.match(stmt)
         if if_match is not None:
-            options = insn_options_stack[-1].copy()
+            options = stmt_options_stack[-1].copy()
             predicate = if_match.group("predicate")
             if not predicate:
                 raise LoopyError("'if' without predicate encountered")
@@ -827,27 +827,27 @@ def parse_instructions(instructions, defines):
                     options.get("predicates", frozenset())
                     | frozenset([predicate]))
 
-            insn_options_stack.append(options)
+            stmt_options_stack.append(options)
 
             #add to the if_stack
             if_options = options.copy()
-            if_options['insn_predicates'] = options["predicates"]
+            if_options['stmt_predicates'] = options["predicates"]
             if_predicates_stack.append(if_options)
             del options
             del predicate
             continue
 
-        elif_match = ELIF_RE.match(insn)
-        else_match = ELSE_RE.match(insn)
+        elif_match = ELIF_RE.match(stmt)
+        else_match = ELSE_RE.match(stmt)
         if elif_match is not None or else_match is not None:
-            prev_predicates = insn_options_stack[-1].get(
+            prev_predicates = stmt_options_stack[-1].get(
                     "predicates", frozenset())
             last_if_predicates = if_predicates_stack[-1].get(
                     "predicates", frozenset())
-            insn_options_stack.pop()
+            stmt_options_stack.pop()
             if_predicates_stack.pop()
 
-            outer_predicates = insn_options_stack[-1].get(
+            outer_predicates = stmt_options_stack[-1].get(
                     "predicates", frozenset())
             last_if_predicates = last_if_predicates - outer_predicates
 
@@ -867,8 +867,8 @@ def parse_instructions(instructions, defines):
                     raise LoopyError("'else' without 'if'/'elif' encountered")
                 additional_preds = frozenset()
 
-            options = insn_options_stack[-1].copy()
-            if_options = insn_options_stack[-1].copy()
+            options = stmt_options_stack[-1].copy()
+            if_options = stmt_options_stack[-1].copy()
 
             from pymbolic.primitives import LogicalNot
             options["predicates"] = (
@@ -881,9 +881,9 @@ def parse_instructions(instructions, defines):
                     )
             if_options["predicates"] = additional_preds
             #hold on to this for comparison / stack popping later
-            if_options["insn_predicates"] = options["predicates"]
+            if_options["stmt_predicates"] = options["predicates"]
 
-            insn_options_stack.append(options)
+            stmt_options_stack.append(options)
             if_predicates_stack.append(if_options)
 
             del options
@@ -892,53 +892,53 @@ def parse_instructions(instructions, defines):
 
             continue
 
-        if insn == "end":
-            obj = insn_options_stack.pop()
+        if stmt == "end":
+            obj = stmt_options_stack.pop()
             #if this object is the end of an if statement
-            if obj['predicates'] == if_predicates_stack[-1]["insn_predicates"] and\
-                    if_predicates_stack[-1]["insn_predicates"]:
+            if obj['predicates'] == if_predicates_stack[-1]["stmt_predicates"] and\
+                    if_predicates_stack[-1]["stmt_predicates"]:
                 if_predicates_stack.pop()
             continue
 
-        insn_match = SPECIAL_INSN_RE.match(insn)
-        if insn_match is not None:
-            insn, insn_inames_to_dup = parse_special_insn(
-                    insn_match.groupdict(), insn_options_stack[-1])
-            new_instructions.append(insn)
-            inames_to_dup.append(insn_inames_to_dup)
+        stmt_match = SPECIAL_INSN_RE.match(stmt)
+        if stmt_match is not None:
+            stmt, stmt_inames_to_dup = parse_special_stmt(
+                    stmt_match.groupdict(), stmt_options_stack[-1])
+            new_statements.append(stmt)
+            inames_to_dup.append(stmt_inames_to_dup)
             continue
 
-        subst_match = SUBST_RE.match(insn)
+        subst_match = SUBST_RE.match(stmt)
         if subst_match is not None:
             subst = parse_subst_rule(subst_match.groupdict())
             substitutions[subst.name] = subst
             continue
 
-        insn_match = INSN_RE.match(insn)
-        if insn_match is not None:
-            insn, insn_inames_to_dup = parse_insn(
-                    insn_match.groupdict(), insn_options_stack[-1])
-            new_instructions.append(insn)
-            inames_to_dup.append(insn_inames_to_dup)
+        stmt_match = INSN_RE.match(stmt)
+        if stmt_match is not None:
+            stmt, stmt_inames_to_dup = parse_stmt(
+                    stmt_match.groupdict(), stmt_options_stack[-1])
+            new_statements.append(stmt)
+            inames_to_dup.append(stmt_inames_to_dup)
             continue
 
-        insn_match = EMPTY_LHS_INSN_RE.match(insn)
-        if insn_match is not None:
-            insn, insn_inames_to_dup = parse_insn(
-                    insn_match.groupdict(), insn_options_stack[-1])
-            new_instructions.append(insn)
-            inames_to_dup.append(insn_inames_to_dup)
+        stmt_match = EMPTY_LHS_INSN_RE.match(stmt)
+        if stmt_match is not None:
+            stmt, stmt_inames_to_dup = parse_stmt(
+                    stmt_match.groupdict(), stmt_options_stack[-1])
+            new_statements.append(stmt)
+            inames_to_dup.append(stmt_inames_to_dup)
             continue
 
-        raise LoopyError("instruction parse error: %s" % insn)
+        raise LoopyError("statement parse error: %s" % stmt)
 
-    if len(insn_options_stack) != 1:
+    if len(stmt_options_stack) != 1:
         raise LoopyError("unbalanced number of 'for'/'with' and 'end' "
                 "declarations")
 
     # }}}
 
-    return new_instructions, inames_to_dup, substitutions
+    return new_statements, inames_to_dup, substitutions
 
 # }}}
 
@@ -1050,10 +1050,10 @@ class IndexRankFinder(CSECachingMapperMixin, WalkMapper):
 
 
 class ArgumentGuesser:
-    def __init__(self, domains, instructions, temporary_variables,
+    def __init__(self, domains, statements, temporary_variables,
             subst_rules, default_offset):
         self.domains = domains
-        self.instructions = instructions
+        self.statements = statements
         self.temporary_variables = temporary_variables
         self.subst_rules = subst_rules
         self.default_offset = default_offset
@@ -1073,15 +1073,15 @@ class ArgumentGuesser:
         self.all_names = set()
         self.all_written_names = set()
         from loopy.symbolic import get_dependencies
-        for insn in instructions:
-            if isinstance(insn, MultiAssignmentBase):
-                for assignee_var_name in insn.assignee_var_names():
+        for stmt in statements:
+            if isinstance(stmt, MultiAssignmentBase):
+                for assignee_var_name in stmt.assignee_var_names():
                     self.all_written_names.add(assignee_var_name)
 
                 self.all_names.update(get_dependencies(
-                    self.submap(insn.assignees)))
+                    self.submap(stmt.assignees)))
                 self.all_names.update(get_dependencies(
-                    self.submap(insn.expression)))
+                    self.submap(stmt.expression)))
 
     def find_index_rank(self, name):
         irf = IndexRankFinder(name)
@@ -1090,8 +1090,8 @@ class ArgumentGuesser:
             irf(self.submap(expr))
             return expr
 
-        for insn in self.instructions:
-            insn.with_transformed_expressions(run_irf)
+        for stmt in self.statements:
+            stmt.with_transformed_expressions(run_irf)
 
         if not irf.index_ranks:
             return 0
@@ -1145,11 +1145,11 @@ class ArgumentGuesser:
 
         temp_var_names = set(six.iterkeys(self.temporary_variables))
 
-        for insn in self.instructions:
-            if isinstance(insn, MultiAssignmentBase):
+        for stmt in self.statements:
+            if isinstance(stmt, MultiAssignmentBase):
                 for assignee_var_name, temp_var_type in zip(
-                        insn.assignee_var_names(),
-                        insn.temp_var_types):
+                        stmt.assignee_var_names(),
+                        stmt.temp_var_types):
                     if temp_var_type is not None:
                         temp_var_names.add(assignee_var_name)
 
@@ -1206,14 +1206,14 @@ def check_for_duplicate_names(knl):
 
 
 def check_for_nonexistent_iname_deps(knl):
-    for insn in knl.instructions:
-        if not set(insn.within_inames) <= knl.all_inames():
-            raise ValueError("In instruction '%s': "
+    for stmt in knl.statements:
+        if not set(stmt.within_inames) <= knl.all_inames():
+            raise ValueError("In statement '%s': "
                     "cannot force dependency on inames '%s'--"
                     "they don't exist" % (
-                        insn.id,
+                        stmt.id,
                         ",".join(
-                            set(insn.within_inames)-knl.all_inames())))
+                            set(stmt.within_inames)-knl.all_inames())))
 
 
 def check_for_multiple_writes_to_loop_bounds(knl):
@@ -1240,8 +1240,8 @@ def check_written_variable_names(knl):
             set(arg.name for arg in knl.args)
             | set(six.iterkeys(knl.temporary_variables)))
 
-    for insn in knl.instructions:
-        for var_name in insn.assignee_var_names():
+    for stmt in knl.statements:
+        for var_name in stmt.assignee_var_names():
             if var_name not in admissible_vars:
                 raise RuntimeError("variable '%s' not declared or not "
                         "allowed for writing" % var_name)
@@ -1284,7 +1284,7 @@ class CSEToAssignmentMapper(IdentityMapper):
             return var
 
 
-def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
+def expand_cses(statements, inames_to_dup, cse_prefix="cse_expr"):
     def add_assignment(base_name, expr, dtype, additional_inames):
         if base_name is None:
             base_name = "var"
@@ -1305,47 +1305,47 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
                 shape=()))
 
         from pymbolic.primitives import Variable
-        new_insn = Assignment(
+        new_stmt = Assignment(
                 id=None,
                 assignee=Variable(new_var_name),
                 expression=expr,
-                predicates=insn.predicates,
-                within_inames=insn.within_inames | additional_inames,
-                within_inames_is_final=insn.within_inames_is_final,
+                predicates=stmt.predicates,
+                within_inames=stmt.within_inames | additional_inames,
+                within_inames_is_final=stmt.within_inames_is_final,
                 )
-        newly_created_insn_ids.add(new_insn.id)
-        new_insns.append(new_insn)
-        if insn_inames_to_dup:
+        newly_created_stmt_ids.add(new_stmt.id)
+        new_stmts.append(new_stmt)
+        if stmt_inames_to_dup:
             raise LoopyError("in-line iname duplication not allowed in "
-                    "an instruction containing a tagged common "
-                    "subexpression (found in instruction '%s')"
-                    % insn)
+                    "an statement containing a tagged common "
+                    "subexpression (found in statement '%s')"
+                    % stmt)
 
-        new_inames_to_dup.append(insn_inames_to_dup)
+        new_inames_to_dup.append(stmt_inames_to_dup)
 
         return new_var_name
 
     cseam = CSEToAssignmentMapper(add_assignment=add_assignment)
 
-    new_insns = []
+    new_stmts = []
     new_inames_to_dup = []
 
     from pytools import UniqueNameGenerator
     var_name_gen = UniqueNameGenerator(forced_prefix=cse_prefix)
 
-    newly_created_insn_ids = set()
+    newly_created_stmt_ids = set()
     new_temp_vars = []
 
-    for insn, insn_inames_to_dup in zip(instructions, inames_to_dup):
-        if isinstance(insn, MultiAssignmentBase):
-            new_insns.append(insn.copy(
-                expression=cseam(insn.expression, frozenset())))
-            new_inames_to_dup.append(insn_inames_to_dup)
+    for stmt, stmt_inames_to_dup in zip(statements, inames_to_dup):
+        if isinstance(stmt, MultiAssignmentBase):
+            new_stmts.append(stmt.copy(
+                expression=cseam(stmt.expression, frozenset())))
+            new_inames_to_dup.append(stmt_inames_to_dup)
         else:
-            new_insns.append(insn)
-            new_inames_to_dup.append(insn_inames_to_dup)
+            new_stmts.append(stmt)
+            new_inames_to_dup.append(stmt_inames_to_dup)
 
-    return new_insns, new_inames_to_dup, new_temp_vars
+    return new_stmts, new_inames_to_dup, new_temp_vars
 
 # }}}
 
@@ -1353,25 +1353,25 @@ def expand_cses(instructions, inames_to_dup, cse_prefix="cse_expr"):
 # {{{ add_sequential_dependencies
 
 def add_sequential_dependencies(knl):
-    new_insns = []
-    prev_insn = None
-    for insn in knl.instructions:
-        depon = insn.depends_on
+    new_stmts = []
+    prev_stmt = None
+    for stmt in knl.statements:
+        depon = stmt.depends_on
         if depon is None:
             depon = frozenset()
 
-        if prev_insn is not None:
-            depon = depon | frozenset((prev_insn.id,))
+        if prev_stmt is not None:
+            depon = depon | frozenset((prev_stmt.id,))
 
-        insn = insn.copy(
+        stmt = stmt.copy(
                 depends_on=depon,
                 depends_on_is_final=True)
 
-        new_insns.append(insn)
+        new_stmts.append(stmt)
 
-        prev_insn = insn
+        prev_stmt = stmt
 
-    return knl.copy(instructions=new_insns)
+    return knl.copy(statements=new_stmts)
 
 # }}}
 
@@ -1379,16 +1379,16 @@ def add_sequential_dependencies(knl):
 # {{{ temporary variable creation
 
 def create_temporaries(knl, default_order):
-    new_insns = []
+    new_stmts = []
     new_temp_vars = knl.temporary_variables.copy()
 
     import loopy as lp
 
-    for insn in knl.instructions:
-        if isinstance(insn, MultiAssignmentBase):
+    for stmt in knl.statements:
+        if isinstance(stmt, MultiAssignmentBase):
             for assignee_name, temp_var_type in zip(
-                    insn.assignee_var_names(),
-                    insn.temp_var_types):
+                    stmt.assignee_var_names(),
+                    stmt.temp_var_types):
 
                 if temp_var_type is None:
                     continue
@@ -1412,15 +1412,15 @@ def create_temporaries(knl, default_order):
                         order=default_order,
                         target=knl.target)
 
-                if isinstance(insn, Assignment):
-                    insn = insn.copy(temp_var_type=None)
+                if isinstance(stmt, Assignment):
+                    stmt = stmt.copy(temp_var_type=None)
                 else:
-                    insn = insn.copy(temp_var_types=None)
+                    stmt = stmt.copy(temp_var_types=None)
 
-        new_insns.append(insn)
+        new_stmts.append(stmt)
 
     return knl.copy(
-            instructions=new_insns,
+            statements=new_stmts,
             temporary_variables=new_temp_vars)
 
 # }}}
@@ -1489,9 +1489,9 @@ def determine_shapes_of_temporaries(knl):
             vars_needing_shape_inference.add(tv.name)
 
     def feed_all_expressions(receiver):
-        for insn in knl.instructions:
-            insn.with_transformed_expressions(
-                lambda expr: receiver(expr, knl.insn_inames(insn)))
+        for stmt in knl.statements:
+            stmt.with_transformed_expressions(
+                lambda expr: receiver(expr, knl.stmt_inames(stmt)))
 
     var_to_base_indices, var_to_shape, var_to_error = (
         find_shapes_of_vars(
@@ -1509,14 +1509,14 @@ def determine_shapes_of_temporaries(knl):
                              "shape of temporary '%s' because: %s"
                              % (varname, err))
 
-        def feed_assignee_of_instruction(receiver):
-            for insn in knl.instructions:
-                for assignee in insn.assignees:
-                    receiver(assignee, knl.insn_inames(insn))
+        def feed_assignee_of_statement(receiver):
+            for stmt in knl.statements:
+                for assignee in stmt.assignees:
+                    receiver(assignee, knl.stmt_inames(stmt))
 
         var_to_base_indices_fallback, var_to_shape_fallback, var_to_error = (
             find_shapes_of_vars(
-                    knl, vars_needing_shape_inference, feed_assignee_of_instruction))
+                    knl, vars_needing_shape_inference, feed_assignee_of_statement))
 
         if len(var_to_error) > 0:
             # No way around errors: propagate an exception upward.
@@ -1622,10 +1622,10 @@ def apply_default_order_to_args(kernel, default_order):
 # }}}
 
 
-# {{{ resolve instruction dependencies
+# {{{ resolve statement dependencies
 
-def _resolve_dependencies(knl, insn, deps):
-    from loopy import find_instructions
+def _resolve_dependencies(knl, stmt, deps):
+    from loopy import find_statements
     from loopy.match import MatchExpressionBase
 
     new_deps = []
@@ -1634,45 +1634,45 @@ def _resolve_dependencies(knl, insn, deps):
         found_any = False
 
         if isinstance(dep, MatchExpressionBase):
-            for new_dep in find_instructions(knl, dep):
-                if new_dep.id != insn.id:
+            for new_dep in find_statements(knl, dep):
+                if new_dep.id != stmt.id:
                     new_deps.append(new_dep.id)
                     found_any = True
         else:
             from fnmatch import fnmatchcase
-            for other_insn in knl.instructions:
-                if fnmatchcase(other_insn.id, dep):
-                    new_deps.append(other_insn.id)
+            for other_stmt in knl.statements:
+                if fnmatchcase(other_stmt.id, dep):
+                    new_deps.append(other_stmt.id)
                     found_any = True
 
         if not found_any and knl.options.check_dep_resolution:
-            raise LoopyError("instruction '%s' declared a depency on '%s', "
-                    "which did not resolve to any instruction present in the "
+            raise LoopyError("statement '%s' declared a depency on '%s', "
+                    "which did not resolve to any statement present in the "
                     "kernel '%s'. Set the kernel option 'check_dep_resolution'"
-                    "to False to disable this check." % (insn.id, dep, knl.name))
+                    "to False to disable this check." % (stmt.id, dep, knl.name))
 
     for dep_id in new_deps:
-        if dep_id not in knl.id_to_insn:
-            raise LoopyError("instruction '%s' depends on instruction id '%s', "
-                    "which was not found" % (insn.id, dep_id))
+        if dep_id not in knl.id_to_stmt:
+            raise LoopyError("statement '%s' depends on statement id '%s', "
+                    "which was not found" % (stmt.id, dep_id))
 
     return frozenset(new_deps)
 
 
 def resolve_dependencies(knl):
-    new_insns = []
+    new_stmts = []
 
-    for insn in knl.instructions:
-        new_insns.append(insn.copy(
-                    depends_on=_resolve_dependencies(knl, insn, insn.depends_on),
+    for stmt in knl.statements:
+        new_stmts.append(stmt.copy(
+                    depends_on=_resolve_dependencies(knl, stmt, stmt.depends_on),
                     no_sync_with=frozenset(
-                        (resolved_insn_id, nosync_scope)
-                        for nosync_dep, nosync_scope in insn.no_sync_with
-                        for resolved_insn_id in
-                        _resolve_dependencies(knl, insn, (nosync_dep,))),
+                        (resolved_stmt_id, nosync_scope)
+                        for nosync_dep, nosync_scope in stmt.no_sync_with
+                        for resolved_stmt_id in
+                        _resolve_dependencies(knl, stmt, (nosync_dep,))),
                     ))
 
-    return knl.copy(instructions=new_insns)
+    return knl.copy(statements=new_stmts)
 
 # }}}
 
@@ -1680,20 +1680,20 @@ def resolve_dependencies(knl):
 # {{{ add used inames deps
 
 def add_used_inames(knl):
-    new_insns = []
+    new_stmts = []
 
-    for insn in knl.instructions:
-        deps = insn.read_dependency_names() | insn.write_dependency_names()
+    for stmt in knl.statements:
+        deps = stmt.read_dependency_names() | stmt.write_dependency_names()
         iname_deps = deps & knl.all_inames()
 
-        new_within_inames = insn.within_inames | iname_deps
+        new_within_inames = stmt.within_inames | iname_deps
 
-        if new_within_inames != insn.within_inames:
-            insn = insn.copy(within_inames=new_within_inames)
+        if new_within_inames != stmt.within_inames:
+            stmt = stmt.copy(within_inames=new_within_inames)
 
-        new_insns.append(insn)
+        new_stmts.append(stmt)
 
-    return knl.copy(instructions=new_insns)
+    return knl.copy(statements=new_stmts)
 
 # }}}
 
@@ -1701,12 +1701,12 @@ def add_used_inames(knl):
 # {{{ add inferred iname deps
 
 def add_inferred_inames(knl):
-    from loopy.kernel.tools import find_all_insn_inames
-    insn_inames = find_all_insn_inames(knl)
+    from loopy.kernel.tools import find_all_stmt_inames
+    stmt_inames = find_all_stmt_inames(knl)
 
-    return knl.copy(instructions=[
-            insn.copy(within_inames=insn_inames[insn.id])
-            for insn in knl.instructions])
+    return knl.copy(statements=[
+            stmt.copy(within_inames=stmt_inames[stmt.id])
+            for stmt in knl.statements])
 
 # }}}
 
@@ -1726,18 +1726,18 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
     var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
 
     dep_map = dict(
-            (insn.id, insn.read_dependency_names() & var_names)
-            for insn in expanded_kernel.instructions)
+            (stmt.id, stmt.read_dependency_names() & var_names)
+            for stmt in expanded_kernel.statements)
 
-    new_insns = []
-    for insn in kernel.instructions:
-        if not insn.depends_on_is_final:
+    new_stmts = []
+    for stmt in kernel.statements:
+        if not stmt.depends_on_is_final:
             auto_deps = set()
 
             # {{{ add automatic dependencies
 
             all_my_var_writers = set()
-            for var in dep_map[insn.id]:
+            for var in dep_map[stmt.id]:
                 var_writers = writer_map.get(var, set())
                 all_my_var_writers |= var_writers
 
@@ -1751,11 +1751,11 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
                 if len(var_writers) == 1:
                     auto_deps.update(
                             var_writers
-                            - set([insn.id]))
+                            - set([stmt.id]))
 
             # }}}
 
-            depends_on = insn.depends_on
+            depends_on = stmt.depends_on
             if depends_on is None:
                 depends_on = frozenset()
 
@@ -1764,26 +1764,26 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
             if warn_if_used and new_deps != depends_on:
                 warn_with_kernel(kernel, "single_writer_after_creation",
                         "The single-writer dependency heuristic added dependencies "
-                        "on instruction ID(s) '%s' to instruction ID '%s' after "
+                        "on statement ID(s) '%s' to statement ID '%s' after "
                         "kernel creation is complete. This is deprecated and "
                         "may stop working in the future. "
-                        "To fix this, ensure that instruction dependencies "
+                        "To fix this, ensure that statement dependencies "
                         "are added/resolved as soon as possible, ideally at kernel "
                         "creation time."
-                        % (", ".join(new_deps - depends_on), insn.id))
+                        % (", ".join(new_deps - depends_on), stmt.id))
 
-            insn = insn.copy(depends_on=new_deps)
+            stmt = stmt.copy(depends_on=new_deps)
 
-        new_insns.append(insn)
+        new_stmts.append(stmt)
 
-    return kernel.copy(instructions=new_insns)
+    return kernel.copy(statements=new_stmts)
 
 # }}}
 
 
 # {{{ kernel creation top-level
 
-def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
+def make_kernel(domains, statements, kernel_data=["..."], **kwargs):
     """User-facing kernel creation entrypoint.
 
     :arg domains:
@@ -1792,9 +1792,9 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         representing the :ref:`domain-tree`. May also be a list of strings
         which will be parsed into such instances according to :ref:`isl-syntax`.
 
-    :arg instructions:
+    :arg statements:
 
-        A list of :class:`Assignment` (or other :class:`InstructionBase`
+        A list of :class:`Assignment` (or other :class:`StatementBase`
         subclasses), possibly intermixed with instances of
         :class:`SubstitutionRule`. This same list may also contain strings
         which will be parsed into such objects using the
@@ -1857,7 +1857,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg target: an instance of :class:`loopy.TargetBase`, or *None*,
         to use the default target.
     :arg seq_dependencies: If *True*, dependencies that sequentially
-        connect the given *instructions* will be added. Defaults to
+        connect the given *statements* will be added. Defaults to
         *False*.
     :arg fixed_parameters: A dictionary of *name*/*value* pairs, where *name*
         will be fixed to *value*. *name* may refer to :ref:`domain-parameters`
@@ -1948,8 +1948,8 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # }}}
 
-    instructions, inames_to_dup, substitutions = \
-            parse_instructions(instructions, defines)
+    statements, inames_to_dup, substitutions = \
+            parse_statements(statements, defines)
 
     # {{{ find/create isl_context
 
@@ -1959,15 +1959,15 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     # }}}
 
-    instructions, inames_to_dup, cse_temp_vars = expand_cses(
-            instructions, inames_to_dup)
+    statements, inames_to_dup, cse_temp_vars = expand_cses(
+            statements, inames_to_dup)
     for tv in cse_temp_vars:
         temporary_variables[tv.name] = tv
     del cse_temp_vars
 
     domains = parse_domains(domains, defines)
 
-    arg_guesser = ArgumentGuesser(domains, instructions,
+    arg_guesser = ArgumentGuesser(domains, statements,
             temporary_variables, substitutions,
             default_offset)
 
@@ -1977,29 +1977,29 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     kwargs["substitutions"] = substitutions
 
     from loopy.kernel import LoopKernel
-    knl = LoopKernel(domains, instructions, kernel_args,
+    knl = LoopKernel(domains, statements, kernel_args,
             temporary_variables=temporary_variables,
             silenced_warnings=silenced_warnings,
             options=options,
             target=target,
             **kwargs)
 
-    from loopy.transform.instruction import uniquify_instruction_ids
-    knl = uniquify_instruction_ids(knl)
-    from loopy.check import check_for_duplicate_insn_ids
-    check_for_duplicate_insn_ids(knl)
+    from loopy.transform.statement import uniquify_statement_ids
+    knl = uniquify_statement_ids(knl)
+    from loopy.check import check_for_duplicate_stmt_ids
+    check_for_duplicate_stmt_ids(knl)
 
     if seq_dependencies:
         knl = add_sequential_dependencies(knl)
 
-    assert len(knl.instructions) == len(inames_to_dup)
+    assert len(knl.statements) == len(inames_to_dup)
 
     from loopy import duplicate_inames
     from loopy.match import Id
-    for insn, insn_inames_to_dup in zip(knl.instructions, inames_to_dup):
-        for old_iname, new_iname in insn_inames_to_dup:
+    for stmt, stmt_inames_to_dup in zip(knl.statements, inames_to_dup):
+        for old_iname, new_iname in stmt_inames_to_dup:
             knl = duplicate_inames(knl, old_iname,
-                    within=Id(insn.id), new_inames=new_iname)
+                    within=Id(stmt.id), new_inames=new_iname)
 
     check_for_nonexistent_iname_deps(knl)
 

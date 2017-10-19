@@ -233,23 +233,23 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     from loopy.kernel.data import (
             UniqueTag, HardwareConcurrentTag, LocalIndexTag, GroupIndexTag)
 
-    from loopy.schedule import get_insn_ids_for_block_at
-    insn_ids_for_block = get_insn_ids_for_block_at(kernel.schedule, schedule_index)
+    from loopy.schedule import get_stmt_ids_for_block_at
+    stmt_ids_for_block = get_stmt_ids_for_block_at(kernel.schedule, schedule_index)
 
     if hw_inames_left is None:
-        all_inames_by_insns = set()
-        for insn_id in insn_ids_for_block:
-            all_inames_by_insns |= kernel.insn_inames(insn_id)
+        all_inames_by_stmts = set()
+        for stmt_id in stmt_ids_for_block:
+            all_inames_by_stmts |= kernel.stmt_inames(stmt_id)
 
         hw_inames_left = [iname
-                for iname in all_inames_by_insns
+                for iname in all_inames_by_stmts
                 if isinstance(kernel.iname_to_tag.get(iname), HardwareConcurrentTag)]
 
     if not hw_inames_left:
         return next_func(codegen_state)
 
-    global_size, local_size = kernel.get_grid_sizes_for_insn_ids(
-            insn_ids_for_block)
+    global_size, local_size = kernel.get_grid_sizes_for_stmt_ids(
+            stmt_ids_for_block)
 
     hw_inames_left = hw_inames_left[:]
     iname = hw_inames_left.pop()

@@ -28,7 +28,7 @@ It can capture the following types of optimizations:
 * Loopy Unrolling
 * Loop tiling with efficient handling of boundary cases
 * Prefetching/copy optimizations
-* Instruction level parallelism
+* Statement level parallelism
 * and many more
 
 Loopy targets array-type computations, such as the following:

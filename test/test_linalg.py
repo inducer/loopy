@@ -290,7 +290,7 @@ def test_rank_one(ctx_factory):
         knl = lp.add_prefetch(knl, "a")
         knl = lp.add_prefetch(knl, "b")
         knl = lp.prioritize_loops(knl, ["i", "j"])
-        knl = lp.add_inames_to_insn(knl, "i", "writes:b_fetch")
+        knl = lp.add_inames_to_stmt(knl, "i", "writes:b_fetch")
         return knl
 
     def variant_2(knl):

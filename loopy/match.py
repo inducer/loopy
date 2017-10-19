@@ -1,4 +1,4 @@
-"""Matching functionality for instruction ids and subsitution
+"""Matching functionality for statement ids and subsitution
 rule invocations stacks."""
 
 from __future__ import division, absolute_import
@@ -471,11 +471,11 @@ class StackMatch(object):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    def __call__(self, kernel, insn, rule_stack):
+    def __call__(self, kernel, stmt, rule_stack):
         """
         :arg rule_stack: a tuple of (name, tags) rule invocation, outermost first
         """
-        stack_of_matchables = [insn]
+        stack_of_matchables = [stmt]
         for id, tags in rule_stack:
             stack_of_matchables.append(RuleInvocationMatchable(id, tags))
 
@@ -490,8 +490,8 @@ def parse_stack_match(smatch):
     """Syntax example::
 
         ... > outer > ... > next > innermost $
-        insn > next
-        insn > ... > next > innermost $
+        stmt > next
+        stmt > ... > next > innermost $
 
     ``...`` matches an arbitrary number of intervening stack levels.
 

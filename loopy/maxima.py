@@ -42,7 +42,7 @@ class MaximaStringifyMapper(MaximaStringifyMapperBase):
         return res
 
 
-def get_loopy_instructions_as_maxima(kernel, prefix):
+def get_loopy_statements_as_maxima(kernel, prefix):
     """Sample use for code comparison::
 
         load("knl-optFalse.mac");
@@ -60,8 +60,8 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
 
     my_variable_names = (
             avn
-            for insn in kernel.instructions
-            for avn in insn.assignee_var_names()
+            for stmt in kernel.statements
+            for avn in stmt.assignee_var_names()
             )
 
     from pymbolic import var
@@ -75,30 +75,30 @@ def get_loopy_instructions_as_maxima(kernel, prefix):
 
     result = ["ratprint:false;"]
 
-    written_insn_ids = set()
+    written_stmt_ids = set()
 
-    from loopy.kernel import InstructionBase, Assignment
+    from loopy.kernel import StatementBase, Assignment
 
-    def write_insn(insn):
-        if not isinstance(insn, InstructionBase):
-            insn = kernel.id_to_insn[insn]
-        if not isinstance(insn, Assignment):
+    def write_stmt(stmt):
+        if not isinstance(stmt, StatementBase):
+            stmt = kernel.id_to_stmt[stmt]
+        if not isinstance(stmt, Assignment):
             raise RuntimeError("non-single-output assignment not supported "
                     "in maxima export")
 
-        for dep in insn.depends_on:
-            if dep not in written_insn_ids:
-                write_insn(dep)
+        for dep in stmt.depends_on:
+            if dep not in written_stmt_ids:
+                write_stmt(dep)
 
-        aname, = insn.assignee_var_names()
+        aname, = stmt.assignee_var_names()
         result.append("%s%s : %s;" % (
             prefix, aname,
-            mstr(substitute(insn.expression))))
+            mstr(substitute(stmt.expression))))
 
-        written_insn_ids.add(insn.id)
+        written_stmt_ids.add(stmt.id)
 
-    for insn in kernel.instructions:
-        if insn.id not in written_insn_ids:
-            write_insn(insn)
+    for stmt in kernel.statements:
+        if stmt.id not in written_stmt_ids:
+            write_stmt(stmt)
 
     return "\n".join(result)

@@ -59,18 +59,18 @@ Padding Data
 
 .. autofunction:: add_padding
 
-Manipulating Instructions
+Manipulating Statements
 -------------------------
 
-.. autofunction:: set_instruction_priority
+.. autofunction:: set_statement_priority
 
 .. autofunction:: add_dependency
 
-.. autofunction:: remove_instructions
+.. autofunction:: remove_statements
 
-.. autofunction:: replace_instruction_ids
+.. autofunction:: replace_statement_ids
 
-.. autofunction:: tag_instructions
+.. autofunction:: tag_statements
 
 .. autofunction:: add_nosync
 
@@ -135,7 +135,7 @@ Setting options
 Matching contexts
 -----------------
 
-TODO: Matching instruction tags
+TODO: Matching statement tags
 
 .. automodule:: loopy.match
 

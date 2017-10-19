@@ -84,7 +84,7 @@ class RuleInvocationGatherer(RuleAwareIdentityMapper):
 
         process_me = process_me and self.within(
                 expn_state.kernel,
-                expn_state.instruction,
+                expn_state.statement,
                 expn_state.stack)
 
         if not process_me:
@@ -136,7 +136,7 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
             access_descriptors, array_base_map,
             storage_axis_names, storage_axis_sources,
             non1_storage_axis_names,
-            temporary_name, compute_insn_id, compute_dep_id,
+            temporary_name, compute_stmt_id, compute_dep_id,
             compute_read_variables):
         super(RuleInvocationReplacer, self).__init__(rule_mapping_context)
 
@@ -152,18 +152,18 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         self.non1_storage_axis_names = non1_storage_axis_names
 
         self.temporary_name = temporary_name
-        self.compute_insn_id = compute_insn_id
+        self.compute_stmt_id = compute_stmt_id
         self.compute_dep_id = compute_dep_id
 
         self.compute_read_variables = compute_read_variables
-        self.compute_insn_depends_on = set()
+        self.compute_stmt_depends_on = set()
 
     def map_substitution(self, name, tag, arguments, expn_state):
         if not (
                 name == self.subst_name
                 and self.within(
                     expn_state.kernel,
-                    expn_state.instruction,
+                    expn_state.statement,
                     expn_state.stack)
                 and (self.subst_tag is None or self.subst_tag == tag)):
             return super(RuleInvocationReplacer, self).map_substitution(
@@ -222,34 +222,34 @@ class RuleInvocationReplacer(RuleAwareIdentityMapper):
         return new_outer_expr
 
     def map_kernel(self, kernel):
-        new_insns = []
+        new_stmts = []
 
-        excluded_insn_ids = set([self.compute_insn_id, self.compute_dep_id])
+        excluded_stmt_ids = set([self.compute_stmt_id, self.compute_dep_id])
 
-        for insn in kernel.instructions:
+        for stmt in kernel.statements:
             self.replaced_something = False
 
-            insn = insn.with_transformed_expressions(self, kernel, insn)
+            stmt = stmt.with_transformed_expressions(self, kernel, stmt)
 
             if self.replaced_something:
-                insn = insn.copy(
+                stmt = stmt.copy(
                         depends_on=(
-                            insn.depends_on
+                            stmt.depends_on
                             | frozenset([self.compute_dep_id])))
 
-                for dep in insn.depends_on:
-                    if dep in excluded_insn_ids:
+                for dep in stmt.depends_on:
+                    if dep in excluded_stmt_ids:
                         continue
 
-                    dep_insn = kernel.id_to_insn[dep]
-                    if (frozenset(dep_insn.assignee_var_names())
+                    dep_stmt = kernel.id_to_stmt[dep]
+                    if (frozenset(dep_stmt.assignee_var_names())
                             & self.compute_read_variables):
-                        self.compute_insn_depends_on.update(
-                                insn.depends_on - excluded_insn_ids)
+                        self.compute_stmt_depends_on.update(
+                                stmt.depends_on - excluded_stmt_ids)
 
-            new_insns.append(insn)
+            new_stmts.append(stmt)
 
-        return kernel.copy(instructions=new_insns)
+        return kernel.copy(statements=new_stmts)
 
 # }}}
 
@@ -260,7 +260,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         storage_axis_to_tag={}, default_tag="l.auto", dtype=None,
         fetch_bounding_box=False,
         temporary_scope=None, temporary_is_local=None,
-        compute_insn_id=None):
+        compute_stmt_id=None):
     """Precompute the expression described in the substitution rule determined by
     *subst_use* and store it in a temporary array. A precomputation needs two
     things to operate, a list of *sweep_inames* (order irrelevant) and an
@@ -325,10 +325,10 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         May also equivalently be a comma-separated string.
 
     :arg precompute_outer_inames: A :class:`frozenset` of inames within which
-        the compute instruction is nested. If *None*, make an educated guess.
+        the compute statement is nested. If *None*, make an educated guess.
         May also be specified as a comma-separated string.
 
-    :arg compute_insn_id: The ID of the instruction generated to perform the
+    :arg compute_stmt_id: The ID of the statement generated to perform the
         precomputation.
 
     If `storage_axes` is not specified, it defaults to the arrangement
@@ -473,11 +473,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         del rule_mapping_context
 
         import loopy as lp
-        for insn in kernel.instructions:
-            if isinstance(insn, lp.MultiAssignmentBase):
-                for assignee in insn.assignees:
-                    invg(assignee, kernel, insn)
-                invg(insn.expression, kernel, insn)
+        for stmt in kernel.statements:
+            if isinstance(stmt, lp.MultiAssignmentBase):
+                for assignee in stmt.assignees:
+                    invg(assignee, kernel, stmt)
+                invg(stmt.expression, kernel, stmt)
 
         access_descriptors = invg.access_descriptors
         if not access_descriptors:
@@ -754,7 +754,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
 
     kernel = kernel.copy(domains=new_kernel_domains)
 
-    # {{{ set up compute insn
+    # {{{ set up compute stmt
 
     if temporary_name is None:
         temporary_name = var_name_gen(based_on=c_subst_name)
@@ -765,7 +765,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         assignee = assignee[
                 tuple(var(iname) for iname in non1_storage_axis_names)]
 
-    # {{{ process substitutions on compute instruction
+    # {{{ process substitutions on compute statement
 
     storage_axis_subst_dict = {}
 
@@ -792,29 +792,29 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
     # }}}
 
     from loopy.kernel.data import Assignment
-    if compute_insn_id is None:
-        compute_insn_id = kernel.make_unique_instruction_id(based_on=c_subst_name)
+    if compute_stmt_id is None:
+        compute_stmt_id = kernel.make_unique_statement_id(based_on=c_subst_name)
 
-    compute_insn = Assignment(
-            id=compute_insn_id,
+    compute_stmt = Assignment(
+            id=compute_stmt_id,
             assignee=assignee,
             expression=compute_expression,
             # within_inames determined below
             )
-    compute_dep_id = compute_insn_id
-    added_compute_insns = [compute_insn]
+    compute_dep_id = compute_stmt_id
+    added_compute_stmts = [compute_stmt]
 
     if temporary_scope == temp_var_scope.GLOBAL:
-        barrier_insn_id = kernel.make_unique_instruction_id(
+        barrier_stmt_id = kernel.make_unique_statement_id(
                 based_on=c_subst_name+"_barrier")
-        from loopy.kernel.instruction import BarrierInstruction
-        barrier_insn = BarrierInstruction(
-                id=barrier_insn_id,
-                depends_on=frozenset([compute_insn_id]),
+        from loopy.kernel.statement import BarrierStatement
+        barrier_stmt = BarrierStatement(
+                id=barrier_stmt_id,
+                depends_on=frozenset([compute_stmt_id]),
                 kind="global")
-        compute_dep_id = barrier_insn_id
+        compute_dep_id = barrier_stmt_id
 
-        added_compute_insns.append(barrier_insn)
+        added_compute_stmts.append(barrier_stmt)
 
     # }}}
 
@@ -828,58 +828,58 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
             access_descriptors, abm,
             storage_axis_names, storage_axis_sources,
             non1_storage_axis_names,
-            temporary_name, compute_insn_id, compute_dep_id,
+            temporary_name, compute_stmt_id, compute_dep_id,
             compute_read_variables=get_dependencies(expander(compute_expression)))
 
     kernel = invr.map_kernel(kernel)
     kernel = kernel.copy(
-            instructions=added_compute_insns + kernel.instructions)
+            statements=added_compute_stmts + kernel.statements)
     kernel = rule_mapping_context.finish_kernel(kernel)
 
     # }}}
 
-    # {{{ add dependencies to compute insn
+    # {{{ add dependencies to compute stmt
 
     kernel = kernel.copy(
-            instructions=[
-                insn.copy(depends_on=frozenset(invr.compute_insn_depends_on))
-                if insn.id == compute_insn_id
-                else insn
-                for insn in kernel.instructions])
+            statements=[
+                stmt.copy(depends_on=frozenset(invr.compute_stmt_depends_on))
+                if stmt.id == compute_stmt_id
+                else stmt
+                for stmt in kernel.statements])
 
     # }}}
 
-    # {{{ propagate storage iname subst to dependencies of compute instructions
+    # {{{ propagate storage iname subst to dependencies of compute statements
 
     from loopy.kernel.tools import find_recursive_dependencies
     compute_deps = find_recursive_dependencies(
-            kernel, frozenset([compute_insn_id]))
+            kernel, frozenset([compute_stmt_id]))
 
     # FIXME: Need to verify that there are no outside dependencies
     # on compute_deps
 
     prior_storage_axis_names = frozenset(storage_axis_subst_dict)
 
-    new_insns = []
-    for insn in kernel.instructions:
-        if (insn.id in compute_deps
-                and insn.within_inames & prior_storage_axis_names):
-            insn = (insn
+    new_stmts = []
+    for stmt in kernel.statements:
+        if (stmt.id in compute_deps
+                and stmt.within_inames & prior_storage_axis_names):
+            stmt = (stmt
                     .with_transformed_expressions(
-                        lambda expr: expr_subst_map(expr, kernel, insn))
+                        lambda expr: expr_subst_map(expr, kernel, stmt))
                     .copy(within_inames=frozenset(
                         storage_axis_subst_dict.get(iname, var(iname)).name
-                        for iname in insn.within_inames)))
+                        for iname in stmt.within_inames)))
 
-            new_insns.append(insn)
+            new_stmts.append(stmt)
         else:
-            new_insns.append(insn)
+            new_stmts.append(stmt)
 
-    kernel = kernel.copy(instructions=new_insns)
+    kernel = kernel.copy(statements=new_stmts)
 
     # }}}
 
-    # {{{ determine inames for compute insn
+    # {{{ determine inames for compute stmt
 
     if precompute_outer_inames is None:
         from loopy.kernel.tools import guess_iname_deps_based_on_var_use
@@ -888,7 +888,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                     | frozenset(
                         (expanding_usage_arg_deps | value_inames)
                         - sweep_inames_set)
-                    | guess_iname_deps_based_on_var_use(kernel, compute_insn))
+                    | guess_iname_deps_based_on_var_use(kernel, compute_stmt))
     else:
         if not isinstance(precompute_outer_inames, frozenset):
             raise TypeError("precompute_outer_inames must be a frozenset")
@@ -897,11 +897,11 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
                 | frozenset(non1_storage_axis_names)
 
     kernel = kernel.copy(
-            instructions=[
-                insn.copy(within_inames=precompute_outer_inames)
-                if insn.id == compute_insn_id
-                else insn
-                for insn in kernel.instructions])
+            statements=[
+                stmt.copy(within_inames=precompute_outer_inames)
+                if stmt.id == compute_stmt_id
+                else stmt
+                for stmt in kernel.statements])
 
     # }}}
 

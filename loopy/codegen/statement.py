@@ -1,4 +1,4 @@
-"""Code generation for Instruction objects."""
+"""Code generation for Statement objects."""
 
 from __future__ import division, absolute_import
 
@@ -34,7 +34,7 @@ from pymbolic.mapper.stringifier import PREC_NONE
 
 
 def to_codegen_result(
-        codegen_state, insn_id, domain, check_inames, required_preds, ast):
+        codegen_state, stmt_id, domain, check_inames, required_preds, ast):
     # {{{ get bounds check
 
     chk_domain = isl.Set.from_basic_set(domain)
@@ -69,34 +69,34 @@ def to_codegen_result(
                 ast)
 
     return CodeGenerationResult.new(
-            codegen_state, insn_id, ast, new_implemented_domain)
+            codegen_state, stmt_id, ast, new_implemented_domain)
 
 
-def generate_instruction_code(codegen_state, insn):
+def generate_statement_code(codegen_state, stmt):
     kernel = codegen_state.kernel
 
-    from loopy.kernel.instruction import Assignment, CallInstruction, CInstruction
+    from loopy.kernel.statement import Assignment, CallStatement, CStatement
 
-    if isinstance(insn, Assignment):
-        ast = generate_assignment_instruction_code(codegen_state, insn)
-    elif isinstance(insn, CallInstruction):
-        ast = generate_call_code(codegen_state, insn)
-    elif isinstance(insn, CInstruction):
-        ast = generate_c_instruction_code(codegen_state, insn)
+    if isinstance(stmt, Assignment):
+        ast = generate_assignment_statement_code(codegen_state, stmt)
+    elif isinstance(stmt, CallStatement):
+        ast = generate_call_code(codegen_state, stmt)
+    elif isinstance(stmt, CStatement):
+        ast = generate_c_statement_code(codegen_state, stmt)
     else:
-        raise RuntimeError("unexpected instruction type")
+        raise RuntimeError("unexpected statement type")
 
-    insn_inames = kernel.insn_inames(insn)
+    stmt_inames = kernel.stmt_inames(stmt)
 
     return to_codegen_result(
             codegen_state,
-            insn.id,
-            kernel.get_inames_domain(insn_inames), insn_inames,
-            insn.predicates,
+            stmt.id,
+            kernel.get_inames_domain(stmt_inames), stmt_inames,
+            stmt.predicates,
             ast)
 
 
-def generate_assignment_instruction_code(codegen_state, insn):
+def generate_assignment_statement_code(codegen_state, stmt):
     kernel = codegen_state.kernel
 
     ecm = codegen_state.expression_to_code_mapper
@@ -106,14 +106,14 @@ def generate_assignment_instruction_code(codegen_state, insn):
     # {{{ vectorization handling
 
     if codegen_state.vectorization_info:
-        if insn.atomicity:
+        if stmt.atomicity:
             raise Unvectorizable("atomic operation")
 
         vinfo = codegen_state.vectorization_info
         vcheck = VectorizabilityChecker(
                 kernel, vinfo.iname, vinfo.length)
-        lhs_is_vector = vcheck(insn.assignee)
-        rhs_is_vector = vcheck(insn.expression)
+        lhs_is_vector = vcheck(stmt.assignee)
+        rhs_is_vector = vcheck(stmt.expression)
 
         if not lhs_is_vector and rhs_is_vector:
             raise Unvectorizable(
@@ -129,7 +129,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
     from pymbolic.primitives import Variable, Subscript, Lookup
     from loopy.symbolic import LinearSubscript
 
-    lhs = insn.assignee
+    lhs = stmt.assignee
     if isinstance(lhs, Lookup):
         lhs = lhs.aggregate
 
@@ -150,7 +150,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
     del lhs
 
-    result = codegen_state.ast_builder.emit_assignment(codegen_state, insn)
+    result = codegen_state.ast_builder.emit_assignment(codegen_state, stmt)
 
     # {{{ tracing
 
@@ -161,7 +161,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
             raise Unvectorizable("tracing does not support vectorization")
 
         from pymbolic.mapper.stringifier import PREC_NONE
-        lhs_code = codegen_state.expression_to_code_mapper(insn.assignee, PREC_NONE)
+        lhs_code = codegen_state.expression_to_code_mapper(stmt.assignee, PREC_NONE)
 
         from cgen import Statement as S  # noqa
 
@@ -169,7 +169,7 @@ def generate_assignment_instruction_code(codegen_state, insn):
 
         printf_format = "%s.%s[%s][%s]: %s" % (
                 kernel.name,
-                insn.id,
+                stmt.id,
                 ", ".join("gid%d=%%d" % i for i in range(len(gs))),
                 ", ".join("lid%d=%%d" % i for i in range(len(ls))),
                 assignee_var_name)
@@ -204,34 +204,34 @@ def generate_assignment_instruction_code(codegen_state, insn):
         else:
             printf_args_str = ""
 
-        printf_insn = S("printf(\"%s\\n\"%s)" % (
+        printf_stmt = S("printf(\"%s\\n\"%s)" % (
                     printf_format, printf_args_str))
 
         from cgen import Block
         if kernel.options.trace_assignment_values:
-            result = Block([result, printf_insn])
+            result = Block([result, printf_stmt])
         else:
             # print first, execute later -> helps find segfaults
-            result = Block([printf_insn, result])
+            result = Block([printf_stmt, result])
 
     # }}}
 
     return result
 
 
-def generate_call_code(codegen_state, insn):
+def generate_call_code(codegen_state, stmt):
     kernel = codegen_state.kernel
 
     # {{{ vectorization handling
 
     if codegen_state.vectorization_info:
-        if insn.atomicity:
+        if stmt.atomicity:
             raise Unvectorizable("atomic operation")
 
     # }}}
 
     result = codegen_state.ast_builder.emit_multiple_assignment(
-            codegen_state, insn)
+            codegen_state, stmt)
 
     # {{{ tracing
 
@@ -243,11 +243,11 @@ def generate_call_code(codegen_state, insn):
     return result
 
 
-def generate_c_instruction_code(codegen_state, insn):
+def generate_c_statement_code(codegen_state, stmt):
     kernel = codegen_state.kernel
 
     if codegen_state.vectorization_info is not None:
-        raise Unvectorizable("C instructions cannot be vectorized")
+        raise Unvectorizable("C statements cannot be vectorized")
 
     body = []
 
@@ -255,7 +255,7 @@ def generate_c_instruction_code(codegen_state, insn):
     from cgen import Initializer, Block, Line
 
     from pymbolic.primitives import Variable
-    for name, iname_expr in insn.iname_exprs:
+    for name, iname_expr in stmt.iname_exprs:
         if (isinstance(iname_expr, Variable)
                 and name not in codegen_state.var_subst_map):
             # No need, the bare symbol will work
@@ -270,7 +270,7 @@ def generate_c_instruction_code(codegen_state, insn):
     if body:
         body.append(Line())
 
-    body.extend(Line(l) for l in insn.code.split("\n"))
+    body.extend(Line(l) for l in stmt.code.split("\n"))
 
     return Block(body)
 

@@ -362,31 +362,31 @@ class ISPCASTBuilder(CASTBuilder):
         from cgen.ispc import ISPCUniform
         return ISPCUniform(result)
 
-    def emit_assignment(self, codegen_state, insn):
+    def emit_assignment(self, codegen_state, stmt):
         kernel = codegen_state.kernel
         ecm = codegen_state.expression_to_code_mapper
 
-        assignee_var_name, = insn.assignee_var_names()
+        assignee_var_name, = stmt.assignee_var_names()
 
         lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
         lhs_dtype = lhs_var.dtype
 
-        if insn.atomicity:
+        if stmt.atomicity:
             raise NotImplementedError("atomic ops in ISPC")
 
         from loopy.expression import dtype_to_type_context
         from pymbolic.mapper.stringifier import PREC_NONE
 
         rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
-        rhs_code = ecm(insn.expression, prec=PREC_NONE,
+        rhs_code = ecm(stmt.expression, prec=PREC_NONE,
                     type_context=rhs_type_context,
                     needed_dtype=lhs_dtype)
 
-        lhs = insn.assignee
+        lhs = stmt.assignee
 
         # {{{ handle streaming stores
 
-        if "!streaming_store" in insn.tags:
+        if "!streaming_store" in stmt.tags:
             ary = ecm.find_array(lhs)
 
             from loopy.kernel.array import get_access_info
@@ -455,7 +455,7 @@ class ISPCASTBuilder(CASTBuilder):
                     isinstance(
                         kernel.iname_to_tag.get(dep), LocalIndexTag)
                     and kernel.iname_to_tag.get(dep).axis == 0
-                    for dep in get_dependencies(insn.expression))
+                    for dep in get_dependencies(stmt.expression))
 
             if not rhs_has_programindex:
                 rhs_code = "broadcast(%s, 0)" % rhs_code

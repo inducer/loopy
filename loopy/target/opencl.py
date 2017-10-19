@@ -413,9 +413,9 @@ class OpenCLCASTBuilder(CASTBuilder):
         from cgen.opencl import CLKernel, CLRequiredWorkGroupSize
         fdecl = CLKernel(fdecl)
 
-        from loopy.schedule import get_insn_ids_for_block_at
-        _, local_sizes = codegen_state.kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(
+        from loopy.schedule import get_stmt_ids_for_block_at
+        _, local_sizes = codegen_state.kernel.get_grid_sizes_for_stmt_ids_as_exprs(
+                get_stmt_ids_for_block_at(
                     codegen_state.kernel.schedule, schedule_index))
 
         from loopy.symbolic import get_dependencies
@@ -453,7 +453,7 @@ class OpenCLCASTBuilder(CASTBuilder):
     def emit_barrier(self, kind, comment):
         """
         :arg kind: ``"local"`` or ``"global"``
-        :return: a :class:`loopy.codegen.GeneratedInstruction`.
+        :return: a :class:`loopy.codegen.GeneratedStatement`.
         """
         if kind == "local":
             if comment:

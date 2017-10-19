@@ -418,17 +418,17 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
 
     type_inf_mapper = type_inf_mapper.copy()
 
-    for writer_insn_id in kernel.writer_map().get(var_name, []):
-        writer_insn = kernel.id_to_insn[writer_insn_id]
-        if not isinstance(writer_insn, lp.MultiAssignmentBase):
+    for writer_stmt_id in kernel.writer_map().get(var_name, []):
+        writer_stmt = kernel.id_to_stmt[writer_stmt_id]
+        if not isinstance(writer_stmt, lp.MultiAssignmentBase):
             continue
 
-        expr = subst_expander(writer_insn.expression)
+        expr = subst_expander(writer_stmt.expression)
 
         debug("             via expr %s", expr)
-        if isinstance(writer_insn, lp.Assignment):
+        if isinstance(writer_stmt, lp.Assignment):
             result = type_inf_mapper(expr, return_dtype_set=True)
-        elif isinstance(writer_insn, lp.CallInstruction):
+        elif isinstance(writer_stmt, lp.CallStatement):
             return_dtype_set = type_inf_mapper(expr, return_tuple=True,
                     return_dtype_set=True)
 
@@ -437,7 +437,7 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
                 result_i = None
                 found = False
                 for assignee, comp_dtype_set in zip(
-                        writer_insn.assignee_var_names(), return_dtype_set):
+                        writer_stmt.assignee_var_names(), return_dtype_set):
                     if assignee == var_name:
                         found = True
                         result_i = comp_dtype_set
@@ -526,8 +526,8 @@ def infer_unknown_types(kernel, expect_completion=False):
     dep_graph = dict(
             (written_var, set(
                 read_var
-                for insn_id in writer_map.get(written_var, [])
-                for read_var in kernel.id_to_insn[insn_id].read_dependency_names()
+                for stmt_id in writer_map.get(written_var, [])
+                for read_var in kernel.id_to_stmt[stmt_id].read_dependency_names()
                 if read_var in names_for_type_inference))
             for written_var in names_for_type_inference)
 

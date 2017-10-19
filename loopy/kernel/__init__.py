@@ -109,10 +109,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         a list of :class:`islpy.BasicSet` instances
         representing the :ref:`domain-tree`.
 
-    .. attribute:: instructions
+    .. attribute:: statements
 
-        A list of :class:`InstructionBase` instances, e.g.
-        :class:`Assignment`. See :ref:`instructions`.
+        A list of :class:`StatementBase` instances, e.g.
+        :class:`Assignment`. See :ref:`statements`.
 
     .. attribute:: args
 
@@ -186,7 +186,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     # {{{ constructor
 
-    def __init__(self, domains, instructions, args=[], schedule=None,
+    def __init__(self, domains, statements=None, args=[], schedule=None,
             name="loopy_kernel",
             preambles=[],
             preamble_generators=[],
@@ -213,9 +213,14 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             state=kernel_state.INITIAL,
             target=None,
 
-            overridden_get_grid_sizes_for_insn_ids=None):
+            overridden_get_grid_sizes_for_stmt_ids=None,
+
+            # compat
+            statements=None,
+            overridden_get_grid_sizes_for_stmt_ids=None,
+            ):
         """
-        :arg overridden_get_grid_sizes_for_insn_ids: A callable. When kernels get
+        :arg overridden_get_grid_sizes_for_stmt_ids: A callable. When kernels get
             intersected in slab decomposition, their grid sizes shouldn't
             change. This provides a way to forward sub-kernel grid size requests.
         """
@@ -223,6 +228,23 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if cache_manager is None:
             from loopy.kernel.tools import SetOperationCacheManager
             cache_manager = SetOperationCacheManager()
+
+        if statements is not None and statements is not None:
+            raise TypeError("may not specify both statements and statements")
+        elif statements is None and statements is None:
+            raise TypeError(
+                    "must specify exactly one of statements and statements")
+        elif statements is not None:
+            statements = statements
+
+        if (overridden_get_grid_sizes_for_stmt_ids is not None
+                and overridden_get_grid_sizes_for_stmt_ids is not None):
+            raise TypeError("may not specify both "
+                    "overridden_get_grid_sizes_for_stmt_ids "
+                    "and overridden_get_grid_sizes_for_stmt_ids{")
+        elif overridden_get_grid_sizes_for_stmt_ids is not None:
+            overridden_get_grid_sizes_for_stmt_ids = \
+                    overridden_get_grid_sizes_for_stmt_ids
 
         # {{{ process assumptions
 
@@ -266,7 +288,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,
-                instructions=instructions,
+                statements=statements,
                 args=args,
                 schedule=schedule,
                 name=name,
@@ -288,8 +310,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 options=options,
                 state=state,
                 target=target,
-                overridden_get_grid_sizes_for_insn_ids=(
-                    overridden_get_grid_sizes_for_insn_ids))
+                overridden_get_grid_sizes_for_stmt_ids=(
+                    overridden_get_grid_sizes_for_stmt_ids))
 
         self._kernel_executor_cache = {}
 
@@ -375,17 +397,17 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     def get_var_name_generator(self):
         return _UniqueVarNameGenerator(self.all_variable_names())
 
-    def get_instruction_id_generator(self, based_on="insn"):
-        used_ids = set(insn.id for insn in self.instructions)
+    def get_statement_id_generator(self, based_on="stmt"):
+        used_ids = set(stmt.id for stmt in self.statements)
 
         return UniqueNameGenerator(used_ids)
 
-    def make_unique_instruction_id(self, insns=None, based_on="insn",
+    def make_unique_statement_id(self, stmts=None, based_on="stmt",
             extra_used_ids=set()):
-        if insns is None:
-            insns = self.instructions
+        if stmts is None:
+            stmts = self.statements
 
-        used_ids = set(insn.id for insn in insns) | extra_used_ids
+        used_ids = set(stmt.id for stmt in stmts) | extra_used_ids
 
         for id_str in generate_unique_names(based_on):
             if id_str not in used_ids:
@@ -393,9 +415,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     def all_group_names(self):
         result = set()
-        for insn in self.instructions:
-            result.update(insn.groups)
-            result.update(insn.conflicts_with_groups)
+        for stmt in self.statements:
+            result.update(stmt.groups)
+            result.update(stmt.conflicts_with_groups)
 
         return frozenset(result)
 
@@ -417,8 +439,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     @property
     @memoize_method
-    def id_to_insn(self):
-        return dict((insn.id, insn) for insn in self.instructions)
+    def id_to_stmt(self):
+        return dict((stmt.id, stmt) for stmt in self.statements)
 
     # }}}
 
@@ -659,35 +681,35 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return intern_frozenset_of_ids(all_params-all_inames)
 
     @memoize_method
-    def all_insn_inames(self):
-        """Return a mapping from instruction ids to inames inside which
+    def all_stmt_inames(self):
+        """Return a mapping from statement ids to inames inside which
         they should be run.
         """
         result = {}
-        for insn in self.instructions:
-            result[insn.id] = insn.within_inames
+        for stmt in self.statements:
+            result[stmt.id] = stmt.within_inames
 
         return result
 
     @memoize_method
     def all_referenced_inames(self):
         result = set()
-        for inames in six.itervalues(self.all_insn_inames()):
+        for inames in six.itervalues(self.all_stmt_inames()):
             result.update(inames)
         return result
 
-    def insn_inames(self, insn):
-        if isinstance(insn, str):
-            insn = self.id_to_insn[insn]
-        return insn.within_inames
+    def stmt_inames(self, stmt):
+        if isinstance(stmt, str):
+            stmt = self.id_to_stmt[stmt]
+        return stmt.within_inames
 
     @memoize_method
-    def iname_to_insns(self):
+    def iname_to_stmts(self):
         result = dict(
                 (iname, set()) for iname in self.all_inames())
-        for insn in self.instructions:
-            for iname in self.insn_inames(insn):
-                result[iname].add(insn.id)
+        for stmt in self.statements:
+            for iname in self.stmt_inames(stmt):
+                result[iname].add(stmt.id)
 
         return result
 
@@ -727,31 +749,31 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     # {{{ dependency wrangling
 
     @memoize_method
-    def recursive_insn_dep_map(self):
-        """Returns a :class:`dict` mapping an instruction IDs *a*
-        to all instruction IDs it directly or indirectly depends
+    def recursive_stmt_dep_map(self):
+        """Returns a :class:`dict` mapping an statement IDs *a*
+        to all statement IDs it directly or indirectly depends
         on.
         """
 
         result = {}
 
-        def compute_deps(insn_id):
+        def compute_deps(stmt_id):
             try:
-                return result[insn_id]
+                return result[stmt_id]
             except KeyError:
                 pass
 
-            insn = self.id_to_insn[insn_id]
-            insn_result = set(insn.depends_on)
+            stmt = self.id_to_stmt[stmt_id]
+            stmt_result = set(stmt.depends_on)
 
-            for dep in list(insn.depends_on):
-                insn_result.update(compute_deps(dep))
+            for dep in list(stmt.depends_on):
+                stmt_result.update(compute_deps(dep))
 
-            result[insn_id] = frozenset(insn_result)
-            return insn_result
+            result[stmt_id] = frozenset(stmt_result)
+            return stmt_result
 
-        for insn in self.instructions:
-            compute_deps(insn.id)
+        for stmt in self.statements:
+            compute_deps(stmt.id)
 
         return result
 
@@ -762,7 +784,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     @memoize_method
     def reader_map(self):
         """
-        :return: a dict that maps variable names to ids of insns that read that
+        :return: a dict that maps variable names to ids of stmts that read that
           variable.
         """
         result = {}
@@ -771,39 +793,39 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 set(arg.name for arg in self.args)
                 | set(six.iterkeys(self.temporary_variables)))
 
-        for insn in self.instructions:
-            for var_name in insn.read_dependency_names() & admissible_vars:
-                result.setdefault(var_name, set()).add(insn.id)
+        for stmt in self.statements:
+            for var_name in stmt.read_dependency_names() & admissible_vars:
+                result.setdefault(var_name, set()).add(stmt.id)
 
         return result
 
     @memoize_method
     def writer_map(self):
         """
-        :return: a dict that maps variable names to ids of insns that write
+        :return: a dict that maps variable names to ids of stmts that write
             to that variable.
         """
         result = {}
 
-        for insn in self.instructions:
-            for var_name in insn.assignee_var_names():
-                result.setdefault(var_name, set()).add(insn.id)
+        for stmt in self.statements:
+            for var_name in stmt.assignee_var_names():
+                result.setdefault(var_name, set()).add(stmt.id)
 
         return result
 
     @memoize_method
     def get_read_variables(self):
         result = set()
-        for insn in self.instructions:
-            result.update(insn.read_dependency_names())
+        for stmt in self.statements:
+            result.update(stmt.read_dependency_names())
         return result
 
     @memoize_method
     def get_written_variables(self):
         return frozenset(
                 var_name
-                for insn in self.instructions
-                for var_name in insn.assignee_var_names())
+                for stmt in self.statements
+                for var_name in stmt.assignee_var_names())
 
     @memoize_method
     def get_temporary_to_base_storage_map(self):
@@ -902,29 +924,29 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 constants_only=True)))
 
     @memoize_method
-    def get_grid_sizes_for_insn_ids(self, insn_ids, ignore_auto=False):
+    def get_grid_sizes_for_stmt_ids(self, stmt_ids, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
-        could accommodate execution of all instructions whose IDs are given
-        in *insn_ids*.
+        could accommodate execution of all statements whose IDs are given
+        in *stmt_ids*.
 
-        :arg insn_ids: a :class:`frozenset` of instruction IDs
+        :arg stmt_ids: a :class:`frozenset` of statement IDs
 
         *global_size* and *local_size* are :class:`islpy.PwAff` objects.
         """
 
-        if self.overridden_get_grid_sizes_for_insn_ids:
-            return self.overridden_get_grid_sizes_for_insn_ids(
-                    insn_ids,
+        if self.overridden_get_grid_sizes_for_stmt_ids:
+            return self.overridden_get_grid_sizes_for_stmt_ids(
+                    stmt_ids,
                     ignore_auto=ignore_auto)
 
-        all_inames_by_insns = set()
-        for insn_id in insn_ids:
-            all_inames_by_insns |= self.insn_inames(insn_id)
+        all_inames_by_stmts = set()
+        for stmt_id in stmt_ids:
+            all_inames_by_stmts |= self.stmt_inames(stmt_id)
 
-        if not all_inames_by_insns <= self.all_inames():
-            raise RuntimeError("some inames collected from instructions (%s) "
+        if not all_inames_by_stmts <= self.all_inames():
+            raise RuntimeError("some inames collected from statements (%s) "
                     "are not present in domain (%s)"
-                    % (", ".join(sorted(all_inames_by_insns)),
+                    % (", ".join(sorted(all_inames_by_stmts)),
                         ", ".join(sorted(self.all_inames()))))
 
         global_sizes = {}
@@ -934,7 +956,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 GroupIndexTag, LocalIndexTag,
                 AutoLocalIndexTagBase)
 
-        for iname in all_inames_by_insns:
+        for iname in all_inames_by_stmts:
             tag = self.iname_to_tag.get(iname)
 
             if isinstance(tag, GroupIndexTag):
@@ -995,18 +1017,18 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return (to_dim_tuple(global_sizes, "global"),
                 to_dim_tuple(local_sizes, "local", forced_sizes=self.local_sizes))
 
-    def get_grid_sizes_for_insn_ids_as_exprs(self, insn_ids, ignore_auto=False):
+    def get_grid_sizes_for_stmt_ids_as_exprs(self, stmt_ids, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
-        could accommodate execution of all instructions whose IDs are given
-        in *insn_ids*.
+        could accommodate execution of all statements whose IDs are given
+        in *stmt_ids*.
 
-        :arg insn_ids: a :class:`frozenset` of instruction IDs
+        :arg stmt_ids: a :class:`frozenset` of statement IDs
 
         *global_size* and *local_size* are :mod:`pymbolic` expressions
         """
 
-        grid_size, group_size = self.get_grid_sizes_for_insn_ids(
-                insn_ids, ignore_auto)
+        grid_size, group_size = self.get_grid_sizes_for_stmt_ids(
+                stmt_ids, ignore_auto)
 
         def tup_to_exprs(tup):
             from loopy.symbolic import pw_aff_to_expr
@@ -1016,23 +1038,23 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     def get_grid_size_upper_bounds(self, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
-        could accommodate execution of *all* instructions in the kernel.
+        could accommodate execution of *all* statements in the kernel.
 
         *global_size* and *local_size* are :class:`islpy.PwAff` objects.
         """
-        return self.get_grid_sizes_for_insn_ids(
-                frozenset(insn.id for insn in self.instructions),
+        return self.get_grid_sizes_for_stmt_ids(
+                frozenset(stmt.id for stmt in self.statements),
                 ignore_auto=ignore_auto)
 
     def get_grid_size_upper_bounds_as_exprs(self, ignore_auto=False):
         """Return a tuple (global_size, local_size) containing a grid that
-        could accommodate execution of *all* instructions in the kernel.
+        could accommodate execution of *all* statements in the kernel.
 
         *global_size* and *local_size* are :mod:`pymbolic` expressions
         """
 
-        return self.get_grid_sizes_for_insn_ids_as_exprs(
-                frozenset(insn.id for insn in self.instructions),
+        return self.get_grid_sizes_for_stmt_ids_as_exprs(
+                frozenset(stmt.id for stmt in self.statements),
                 ignore_auto=ignore_auto)
 
     # }}}
@@ -1058,12 +1080,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
     # {{{ nosync sets
 
     @memoize_method
-    def get_nosync_set(self, insn_id, scope):
+    def get_nosync_set(self, stmt_id, scope):
         assert scope in ("local", "global")
 
         return frozenset(
-            insn_id
-            for insn_id, nosync_scope in self.id_to_insn[insn_id].no_sync_with
+            stmt_id
+            for stmt_id, nosync_scope in self.id_to_stmt[stmt_id].no_sync_with
             if nosync_scope == scope or nosync_scope == "any")
 
     # }}}
@@ -1094,7 +1116,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "tags",
             "variables",
             "rules",
-            "instructions",
+            "Statements",
+            "statements",
             "Dependencies",
             "schedule",
             ])
@@ -1171,18 +1194,18 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             for rule_name in natsorted(six.iterkeys(kernel.substitutions)):
                 lines.append(str(kernel.substitutions[rule_name]))
 
-        if "instructions" in what:
+        if "Statements" in what or "statements" in what:
             lines.extend(sep)
             if show_labels:
-                lines.append("INSTRUCTIONS:")
+                lines.append("STATEMENTS:")
 
-            from loopy.kernel.tools import stringify_instruction_list
-            lines.extend(stringify_instruction_list(kernel))
+            from loopy.kernel.tools import stringify_statement_list
+            lines.extend(stringify_statement_list(kernel))
 
         dep_lines = []
-        for insn in kernel.instructions:
-            if insn.depends_on:
-                dep_lines.append("%s : %s" % (insn.id, ",".join(insn.depends_on)))
+        for stmt in kernel.statements:
+            if stmt.depends_on:
+                dep_lines.append("%s : %s" % (stmt.id, ",".join(stmt.depends_on)))
 
         if "Dependencies" in what and dep_lines:
             lines.extend(sep)
@@ -1307,7 +1330,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     hash_fields = (
             "domains",
-            "instructions",
+            "statements",
             "args",
             "schedule",
             "name",
@@ -1384,6 +1407,21 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
     def __ne__(self, other):
         return not self.__eq__(other)
+
+    # }}}
+
+    # {{{ "statement" compat goop
+
+    @property
+    def id_to_stmt(self):
+        return self.id_to_stmt
+
+    @property
+    def statements(self):
+        return self.statements
+
+    def get_statement_id_generator(self, based_on="stmt"):
+        return self.get_statement_id_generator(based_on)
 
     # }}}
 

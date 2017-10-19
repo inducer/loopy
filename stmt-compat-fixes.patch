@@ -19,8 +19,8 @@ index 68fcca1..6d788df 100644
 +            overridden_get_grid_sizes_for_stmt_ids=None,
 +
 +            # compat
-+            instructions=None,
-+            overridden_get_grid_sizes_for_insn_ids=None,
++            statements=None,
++            overridden_get_grid_sizes_for_stmt_ids=None,
 +            ):
          """
          :arg overridden_get_grid_sizes_for_stmt_ids: A callable. When kernels get
@@ -29,22 +29,22 @@ index 68fcca1..6d788df 100644
              from loopy.kernel.tools import SetOperationCacheManager
              cache_manager = SetOperationCacheManager()
  
-+        if statements is not None and instructions is not None:
-+            raise TypeError("may not specify both instructions and statements")
-+        elif statements is None and instructions is None:
++        if statements is not None and statements is not None:
++            raise TypeError("may not specify both statements and statements")
++        elif statements is None and statements is None:
 +            raise TypeError(
-+                    "must specify exactly one of instructions and statements")
-+        elif instructions is not None:
-+            statements = instructions
++                    "must specify exactly one of statements and statements")
++        elif statements is not None:
++            statements = statements
 +
 +        if (overridden_get_grid_sizes_for_stmt_ids is not None
 +                and overridden_get_grid_sizes_for_stmt_ids is not None):
 +            raise TypeError("may not specify both "
 +                    "overridden_get_grid_sizes_for_stmt_ids "
-+                    "and overridden_get_grid_sizes_for_insn_ids{")
-+        elif overridden_get_grid_sizes_for_insn_ids is not None:
++                    "and overridden_get_grid_sizes_for_stmt_ids{")
++        elif overridden_get_grid_sizes_for_stmt_ids is not None:
 +            overridden_get_grid_sizes_for_stmt_ids = \
-+                    overridden_get_grid_sizes_for_insn_ids
++                    overridden_get_grid_sizes_for_stmt_ids
 +
          # {{{ process assumptions
  
@@ -55,7 +55,7 @@ index 68fcca1..6d788df 100644
              "rules",
 -            "statements",
 +            "Statements",
-+            "instructions",
++            "statements",
              "Dependencies",
              "schedule",
              ])
@@ -64,7 +64,7 @@ index 68fcca1..6d788df 100644
                  lines.append(str(kernel.substitutions[rule_name]))
  
 -        if "statements" in what:
-+        if "Statements" in what or "instructions" in what:
++        if "Statements" in what or "statements" in what:
              lines.extend(sep)
              if show_labels:
                  lines.append("STATEMENTS:")
@@ -72,17 +72,17 @@ index 68fcca1..6d788df 100644
  
      # }}}
  
-+    # {{{ "instruction" compat goop
++    # {{{ "statement" compat goop
 +
 +    @property
-+    def id_to_insn(self):
++    def id_to_stmt(self):
 +        return self.id_to_stmt
 +
 +    @property
-+    def instructions(self):
++    def statements(self):
 +        return self.statements
 +
-+    def get_instruction_id_generator(self, based_on="insn"):
++    def get_statement_id_generator(self, based_on="stmt"):
 +        return self.get_statement_id_generator(based_on)
 +
 +    # }}}

@@ -628,14 +628,14 @@ def test_vector_ilp_with_prefetch(ctx_factory):
     assert len(list(re.finditer("barrier", code))) == 1
 
 
-def test_c_instruction(ctx_factory):
+def test_c_statement(ctx_factory):
     #logging.basicConfig(level=logging.DEBUG)
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
             "{[i,j]: 0<=i,j<n }",
             [
-                lp.CInstruction("i,j", """
+                lp.CStatement("i,j", """
                     x = sin((float) i*j);
                     """, assignees="x"),
                 "a[i,j] = x",
@@ -653,7 +653,7 @@ def test_c_instruction(ctx_factory):
     print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
 
-def test_dependent_domain_insn_iname_finding(ctx_factory):
+def test_dependent_domain_stmt_iname_finding(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel([
@@ -674,7 +674,7 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
                 "..."])
 
     print(knl)
-    assert "isrc_box" in knl.insn_inames("set_strength")
+    assert "isrc_box" in knl.stmt_inames("set_strength")
 
     print(lp.CompiledKernel(ctx, knl).get_highlighted_code(
             dict(
@@ -700,7 +700,7 @@ def test_inames_deps_from_write_subscript(ctx_factory):
                 "..."])
 
     print(knl)
-    assert "i" in knl.insn_inames("myred")
+    assert "i" in knl.stmt_inames("myred")
 
 
 def test_modulo_indexing(ctx_factory):
@@ -859,7 +859,7 @@ def test_slab_decomposition_does_not_double_execute(ctx_factory):
 
 def test_multiple_writes_to_local_temporary():
     # Loopy would previously only handle barrier insertion correctly if exactly
-    # one instruction wrote to each local temporary. This tests that multiple
+    # one statement wrote to each local temporary. This tests that multiple
     # writes are OK.
 
     knl = lp.make_kernel(
@@ -1042,11 +1042,11 @@ def test_within_inames_and_reduction():
 
     # This is (purposefully) somewhat un-idiomatic, to replicate the conditions
     # under which the above bug was found. If assignees were phi[i], then the
-    # iname propagation heuristic would not assume that dependent instructions
+    # iname propagation heuristic would not assume that dependent statements
     # need to run inside of 'i', and hence the forced_iname_* bits below would not
     # be needed.
 
-    i1 = lp.CInstruction("i",
+    i1 = lp.CStatement("i",
             "doSomethingToGetPhi();",
             assignees="phi")
 
@@ -1068,7 +1068,7 @@ def test_within_inames_and_reduction():
 
     k = lp.preprocess_kernel(k)
 
-    assert 'i' not in k.insn_inames("insn_0_j_update")
+    assert 'i' not in k.stmt_inames("stmt_0_j_update")
     print(k.stringify(with_dependencies=True))
 
 
@@ -1616,7 +1616,7 @@ def test_call_with_no_returned_value(ctx_factory):
 
     knl = lp.make_kernel(
         "{:}",
-        [lp.CallInstruction((), p.Call(p.Variable("f"), ()))]
+        [lp.CallStatement((), p.Call(p.Variable("f"), ()))]
         )
 
     from library_for_test import no_ret_f_mangler, no_ret_f_preamble_gen
@@ -1658,8 +1658,8 @@ def test_unschedulable_kernel_detection():
     assert not lp.has_schedulable_iname_nesting(knl)
     assert len(list(lp.get_iname_duplication_options(knl))) == 4
 
-    for inames, insns in lp.get_iname_duplication_options(knl):
-        fixed_knl = lp.duplicate_inames(knl, inames, insns)
+    for inames, stmts in lp.get_iname_duplication_options(knl):
+        fixed_knl = lp.duplicate_inames(knl, inames, stmts)
         assert lp.has_schedulable_iname_nesting(fixed_knl)
 
     knl = lp.make_kernel(["{[i,j,k,l,m]:0<=i,j,k,l,m<n}"],
@@ -1681,7 +1681,7 @@ def test_regression_no_ret_call_removal(ctx_factory):
             "f(sum(i, x[i]))")
     knl = lp.add_and_infer_dtypes(knl, {"x": np.float32})
     knl = lp.preprocess_kernel(knl)
-    assert len(knl.instructions) == 3
+    assert len(knl.statements) == 3
 
 
 def test_regression_persistent_hash():
@@ -1694,7 +1694,7 @@ def test_regression_persistent_hash():
             "cse_exprvar = d[0]*d[0]")
     from loopy.tools import LoopyKeyBuilder
     lkb = LoopyKeyBuilder()
-    assert lkb(knl1.instructions[0]) != lkb(knl2.instructions[0])
+    assert lkb(knl1.statements[0]) != lkb(knl2.statements[0])
     assert lkb(knl1) != lkb(knl2)
 
 
@@ -2051,7 +2051,7 @@ def test_tight_loop_bounds(ctx_factory):
           end
         end
         """,
-        silenced_warnings="write_race(insn)")
+        silenced_warnings="write_race(stmt)")
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
 
@@ -2071,7 +2071,7 @@ def test_tight_loop_bounds_codegen():
           end
         end
         """,
-        silenced_warnings="write_race(insn)",
+        silenced_warnings="write_race(stmt)",
         target=lp.OpenCLTarget())
 
     knl = lp.split_iname(knl, "i", 5, inner_tag="l.0", outer_tag="g.0")
@@ -2087,20 +2087,20 @@ def test_tight_loop_bounds_codegen():
     assert for_loop in cgr.device_code()
 
 
-def test_unscheduled_insn_detection():
+def test_unscheduled_stmt_detection():
     knl = lp.make_kernel(
         "{ [i]: 0 <= i < 10 }",
         """
-        out[i] = i {id=insn1}
+        out[i] = i {id=stmt1}
         """,
         "...")
 
     knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
-    insn1, = lp.find_instructions(knl, "id:insn1")
-    knl.instructions.append(insn1.copy(id="insn2"))
+    stmt1, = lp.find_statements(knl, "id:stmt1")
+    knl.statements.append(stmt1.copy(id="stmt2"))
 
-    from loopy.diagnostic import UnscheduledInstructionError
-    with pytest.raises(UnscheduledInstructionError):
+    from loopy.diagnostic import UnscheduledStatementError
+    with pytest.raises(UnscheduledStatementError):
         lp.generate_code(knl)
 
 
@@ -2198,33 +2198,33 @@ def test_nosync_option_parsing():
     knl = lp.make_kernel(
         "{[i]: 0 <= i < 10}",
         """
-        <>t = 1 {id=insn1,nosync=insn1}
-        t = 2   {id=insn2,nosync=insn1:insn2}
-        t = 3   {id=insn3,nosync=insn1@local:insn2@global:insn3@any}
-        t = 4   {id=insn4,nosync_query=id:insn*@local}
-        t = 5   {id=insn5,nosync_query=id:insn1}
+        <>t = 1 {id=stmt1,nosync=stmt1}
+        t = 2   {id=stmt2,nosync=stmt1:stmt2}
+        t = 3   {id=stmt3,nosync=stmt1@local:stmt2@global:stmt3@any}
+        t = 4   {id=stmt4,nosync_query=id:stmt*@local}
+        t = 5   {id=stmt5,nosync_query=id:stmt1}
         """,
         options=lp.Options(allow_terminal_colors=False))
     kernel_str = str(knl)
     print(kernel_str)
-    assert "id=insn1, no_sync_with=insn1@any" in kernel_str
-    assert "id=insn2, no_sync_with=insn1@any:insn2@any" in kernel_str
-    assert "id=insn3, no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
-    assert "id=insn4, no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa
-    assert "id=insn5, no_sync_with=insn1@any" in kernel_str
+    assert "id=stmt1, no_sync_with=stmt1@any" in kernel_str
+    assert "id=stmt2, no_sync_with=stmt1@any:stmt2@any" in kernel_str
+    assert "id=stmt3, no_sync_with=stmt1@local:stmt2@global:stmt3@any" in kernel_str
+    assert "id=stmt4, no_sync_with=stmt1@local:stmt2@local:stmt3@local:stmt5@local" in kernel_str  # noqa
+    assert "id=stmt5, no_sync_with=stmt1@any" in kernel_str
 
 
 def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
-    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop)
+    from loopy.schedule import (RunStatement, Barrier, EnterLoop, LeaveLoop)
     watch_for_barrier = False
     seen_barrier = False
     loop_level = 0
 
     for sched_item in knl.schedule:
-        if isinstance(sched_item, RunInstruction):
-            if sched_item.insn_id == id1:
+        if isinstance(sched_item, RunStatement):
+            if sched_item.stmt_id == id1:
                 watch_for_barrier = True
-            elif sched_item.insn_id == id2:
+            elif sched_item.stmt_id == id2:
                 assert watch_for_barrier
                 assert seen_barrier
                 return
@@ -2313,17 +2313,17 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     vecsize = 16
     knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
 
-    # artifically expand via overridden_get_grid_sizes_for_insn_ids
+    # artifically expand via overridden_get_grid_sizes_for_stmt_ids
     class GridOverride(object):
         def __init__(self, clean, vecsize=vecsize):
             self.clean = clean
             self.vecsize = vecsize
 
-        def __call__(self, insn_ids, ignore_auto=True):
-            gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
+        def __call__(self, stmt_ids, ignore_auto=True):
+            gsize, _ = self.clean.get_grid_sizes_for_stmt_ids(stmt_ids, ignore_auto)
             return gsize, (self.vecsize,)
 
-    knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
+    knl = knl.copy(overridden_get_grid_sizes_for_stmt_ids=GridOverride(
         knl.copy(), vecsize))
     # make sure we can generate the code
     lp.generate_code_v2(knl)
@@ -2384,7 +2384,7 @@ def test_global_barrier_order_finding():
 
     assert lp.get_global_barrier_order(knl) == ("top", "yoink", "postloop")
 
-    for insn, barrier in (
+    for stmt, barrier in (
             ("nop", None),
             ("top", None),
             ("wr_z", "top"),
@@ -2392,7 +2392,7 @@ def test_global_barrier_order_finding():
             ("yoink", "top"),
             ("postloop", "yoink"),
             ("zzzv", "postloop")):
-        assert lp.find_most_recent_global_barrier(knl, insn) == barrier
+        assert lp.find_most_recent_global_barrier(knl, stmt) == barrier
 
 
 def test_global_barrier_error_if_unordered():

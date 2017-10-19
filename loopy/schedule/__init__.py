@@ -66,8 +66,8 @@ class LeaveLoop(EndBlockItem):
     hash_fields = __slots__ = ["iname"]
 
 
-class RunInstruction(ScheduleItem):
-    hash_fields = __slots__ = ["insn_id"]
+class RunStatement(ScheduleItem):
+    hash_fields = __slots__ = ["stmt_id"]
 
 
 class CallKernel(BeginBlockItem):
@@ -88,11 +88,11 @@ class Barrier(ScheduleItem):
 
         ``"local"`` or ``"global"``
 
-    .. attribute:: originating_insn_id
+    .. attribute:: originating_stmt_id
     """
 
     hash_fields = ["comment", "kind"]
-    __slots__ = hash_fields + ["originating_insn_id"]
+    __slots__ = hash_fields + ["originating_stmt_id"]
 
 # }}}
 
@@ -143,12 +143,12 @@ def generate_sub_sched_items(schedule, start_idx):
     assert False
 
 
-def get_insn_ids_for_block_at(schedule, start_idx):
+def get_stmt_ids_for_block_at(schedule, start_idx):
     return frozenset(
-            sub_sched_item.insn_id
+            sub_sched_item.stmt_id
             for i, sub_sched_item in generate_sub_sched_items(
                 schedule, start_idx)
-            if isinstance(sub_sched_item, RunInstruction))
+            if isinstance(sub_sched_item, RunStatement))
 
 
 def find_active_inames_at(kernel, sched_index):
@@ -185,17 +185,17 @@ def find_used_inames_within(kernel, sched_index):
     if isinstance(sched_item, BeginBlockItem):
         loop_contents, _ = gather_schedule_block(
                 kernel.schedule, sched_index)
-        run_insns = [subsched_item
+        run_stmts = [subsched_item
                 for subsched_item in loop_contents
-                if isinstance(subsched_item, RunInstruction)]
-    elif isinstance(sched_item, RunInstruction):
-        run_insns = [sched_item]
+                if isinstance(subsched_item, RunStatement)]
+    elif isinstance(sched_item, RunStatement):
+        run_stmts = [sched_item]
     else:
         return set()
 
     result = set()
-    for sched_item in run_insns:
-        result.update(kernel.insn_inames(sched_item.insn_id))
+    for sched_item in run_stmts:
+        result.update(kernel.stmt_inames(sched_item.stmt_id))
 
     return result
 
@@ -214,13 +214,13 @@ def find_loop_nest_with_map(kernel):
             if not isinstance(kernel.iname_to_tag.get(iname),
                 (ConcurrentTag, IlpBaseTag, VectorizeTag))])
 
-    iname_to_insns = kernel.iname_to_insns()
+    iname_to_stmts = kernel.iname_to_stmts()
 
     for iname in all_nonpar_inames:
         result[iname] = set([
             other_iname
-            for insn in iname_to_insns[iname]
-            for other_iname in kernel.insn_inames(insn) & all_nonpar_inames
+            for stmt in iname_to_stmts[iname]
+            for other_iname in kernel.stmt_inames(stmt) & all_nonpar_inames
             ])
 
     return result
@@ -234,7 +234,7 @@ def find_loop_nest_around_map(kernel):
 
     all_inames = kernel.all_inames()
 
-    iname_to_insns = kernel.iname_to_insns()
+    iname_to_stmts = kernel.iname_to_stmts()
 
     # examine pairs of all inames--O(n**2), I know.
     from loopy.kernel.data import IlpBaseTag
@@ -253,7 +253,7 @@ def find_loop_nest_around_map(kernel):
                 # slack here.
                 continue
 
-            if iname_to_insns[inner_iname] < iname_to_insns[outer_iname]:
+            if iname_to_stmts[inner_iname] < iname_to_stmts[outer_iname]:
                 result[inner_iname].add(outer_iname)
 
     for dom_idx, dom in enumerate(kernel.domains):
@@ -267,54 +267,54 @@ def find_loop_nest_around_map(kernel):
     return result
 
 
-def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
-    """Returns a dictionary mapping inames to other instruction ids that need to
+def find_loop_stmt_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
+    """Returns a dictionary mapping inames to other statement ids that need to
     be scheduled before the iname should be eligible for scheduling.
     """
 
     result = {}
 
     from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
-    for insn in kernel.instructions:
-        for iname in kernel.insn_inames(insn):
+    for stmt in kernel.statements:
+        for iname in kernel.stmt_inames(stmt):
             if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag):
                 continue
 
             iname_dep = result.setdefault(iname, set())
 
-            for dep_insn_id in insn.depends_on:
-                if dep_insn_id in iname_dep:
+            for dep_stmt_id in stmt.depends_on:
+                if dep_stmt_id in iname_dep:
                     # already depending, nothing to check
                     continue
 
-                dep_insn = kernel.id_to_insn[dep_insn_id]
-                dep_insn_inames = kernel.insn_inames(dep_insn)
+                dep_stmt = kernel.id_to_stmt[dep_stmt_id]
+                dep_stmt_inames = kernel.stmt_inames(dep_stmt)
 
-                if iname in dep_insn_inames:
+                if iname in dep_stmt_inames:
                     # Nothing to be learned, dependency is in loop over iname
                     # already.
                     continue
 
-                # To make sure dep_insn belongs outside of iname, we must prove
-                # that all inames that dep_insn will be executed in nest
+                # To make sure dep_stmt belongs outside of iname, we must prove
+                # that all inames that dep_stmt will be executed in nest
                 # outside of the loop over *iname*. (i.e. nested around, or
                 # before).
 
                 may_add_to_loop_dep_map = True
-                for dep_insn_iname in dep_insn_inames:
-                    if dep_insn_iname in loop_nest_around_map[iname]:
-                        # dep_insn_iname is guaranteed to nest outside of iname
+                for dep_stmt_iname in dep_stmt_inames:
+                    if dep_stmt_iname in loop_nest_around_map[iname]:
+                        # dep_stmt_iname is guaranteed to nest outside of iname
                         # -> safe.
                         continue
 
-                    tag = kernel.iname_to_tag.get(dep_insn_iname)
+                    tag = kernel.iname_to_tag.get(dep_stmt_iname)
                     if isinstance(tag, (ConcurrentTag, IlpBaseTag, VectorizeTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
 
-                    if dep_insn_iname not in loop_nest_with_map.get(iname, []):
-                        # dep_insn_iname does not nest with iname, so its nest
+                    if dep_stmt_iname not in loop_nest_with_map.get(iname, []):
+                        # dep_stmt_iname does not nest with iname, so its nest
                         # must occur outside.
                         continue
 
@@ -325,38 +325,38 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                     continue
 
                 logger.debug("{knl}: loop dependency map: iname '{iname}' "
-                        "depends on '{dep_insn}' via '{insn}'"
+                        "depends on '{dep_stmt}' via '{stmt}'"
                         .format(
                             knl=kernel.name,
                             iname=iname,
-                            dep_insn=dep_insn_id,
-                            insn=insn.id))
+                            dep_stmt=dep_stmt_id,
+                            stmt=stmt.id))
 
-                iname_dep.add(dep_insn_id)
+                iname_dep.add(dep_stmt_id)
 
     return result
 
 
-def group_insn_counts(kernel):
+def group_stmt_counts(kernel):
     result = {}
 
-    for insn in kernel.instructions:
-        for grp in insn.groups:
+    for stmt in kernel.statements:
+        for grp in stmt.groups:
             result[grp] = result.get(grp, 0) + 1
 
     return result
 
 
-def gen_dependencies_except(kernel, insn_id, except_insn_ids):
-    insn = kernel.id_to_insn[insn_id]
-    for dep_id in insn.depends_on:
+def gen_dependencies_except(kernel, stmt_id, except_stmt_ids):
+    stmt = kernel.id_to_stmt[stmt_id]
+    for dep_id in stmt.depends_on:
 
-        if dep_id in except_insn_ids:
+        if dep_id in except_stmt_ids:
             continue
 
         yield dep_id
 
-        for sub_dep_id in gen_dependencies_except(kernel, dep_id, except_insn_ids):
+        for sub_dep_id in gen_dependencies_except(kernel, dep_id, except_stmt_ids):
             yield sub_dep_id
 
 
@@ -403,50 +403,50 @@ def get_priority_tiers(wanted, priorities):
         yield tier
 
 
-def sched_item_to_insn_id(sched_item):
+def sched_item_to_stmt_id(sched_item):
     # Helper for use in generator expressions, i.e.
-    # (... for insn_id in sched_item_to_insn_id(item) ...)
-    if isinstance(sched_item, RunInstruction):
-        yield sched_item.insn_id
+    # (... for stmt_id in sched_item_to_stmt_id(item) ...)
+    if isinstance(sched_item, RunStatement):
+        yield sched_item.stmt_id
     elif isinstance(sched_item, Barrier):
-        if (hasattr(sched_item, "originating_insn_id")
-                and sched_item.originating_insn_id is not None):
-            yield sched_item.originating_insn_id
+        if (hasattr(sched_item, "originating_stmt_id")
+                and sched_item.originating_stmt_id is not None):
+            yield sched_item.originating_stmt_id
 
 # }}}
 
 
 # {{{ debug help
 
-def format_insn_id(kernel, insn_id):
+def format_stmt_id(kernel, stmt_id):
     Fore = kernel.options._fore  # noqa
     Style = kernel.options._style  # noqa
-    return Fore.GREEN + insn_id + Style.RESET_ALL
+    return Fore.GREEN + stmt_id + Style.RESET_ALL
 
 
-def format_insn(kernel, insn_id):
-    insn = kernel.id_to_insn[insn_id]
+def format_stmt(kernel, stmt_id):
+    stmt = kernel.id_to_stmt[stmt_id]
     Fore = kernel.options._fore  # noqa
     Style = kernel.options._style  # noqa
-    from loopy.kernel.instruction import (
-            MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
-    if isinstance(insn, MultiAssignmentBase):
+    from loopy.kernel.statement import (
+            MultiAssignmentBase, NoOpStatement, BarrierStatement)
+    if isinstance(stmt, MultiAssignmentBase):
         return "%s%s%s = %s%s%s  {id=%s}" % (
-            Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
-            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
-            format_insn_id(kernel, insn_id))
-    elif isinstance(insn, BarrierInstruction):
+            Fore.CYAN, ", ".join(str(a) for a in stmt.assignees), Style.RESET_ALL,
+            Fore.MAGENTA, str(stmt.expression), Style.RESET_ALL,
+            format_stmt_id(kernel, stmt_id))
+    elif isinstance(stmt, BarrierStatement):
         return "[%s] %s... %sbarrier%s" % (
-                format_insn_id(kernel, insn_id),
-                Fore.MAGENTA, insn.kind[0], Style.RESET_ALL)
-    elif isinstance(insn, NoOpInstruction):
+                format_stmt_id(kernel, stmt_id),
+                Fore.MAGENTA, stmt.kind[0], Style.RESET_ALL)
+    elif isinstance(stmt, NoOpStatement):
         return "[%s] %s... nop%s" % (
-                format_insn_id(kernel, insn_id),
+                format_stmt_id(kernel, stmt_id),
                 Fore.MAGENTA, Style.RESET_ALL)
     else:
         return "[%s] %s%s%s" % (
-                format_insn_id(kernel, insn_id),
-                Fore.CYAN, str(insn), Style.RESET_ALL)
+                format_stmt_id(kernel, stmt_id),
+                Fore.CYAN, str(stmt), Style.RESET_ALL)
 
 
 def dump_schedule(kernel, schedule):
@@ -471,13 +471,13 @@ def dump_schedule(kernel, schedule):
         elif isinstance(sched_item, ReturnFromKernel):
             indent = indent[:-4]
             lines.append(indent + "RETURN FROM KERNEL %s" % sched_item.kernel_name)
-        elif isinstance(sched_item, RunInstruction):
-            insn = kernel.id_to_insn[sched_item.insn_id]
-            if isinstance(insn, MultiAssignmentBase):
-                insn_str = format_insn(kernel, sched_item.insn_id)
+        elif isinstance(sched_item, RunStatement):
+            stmt = kernel.id_to_stmt[sched_item.stmt_id]
+            if isinstance(stmt, MultiAssignmentBase):
+                stmt_str = format_stmt(kernel, sched_item.stmt_id)
             else:
-                insn_str = sched_item.insn_id
-            lines.append(indent + insn_str)
+                stmt_str = sched_item.stmt_id
+            lines.append(indent + stmt_str)
         elif isinstance(sched_item, Barrier):
             lines.append(indent + "... %sbarrier" % sched_item.kind[0])
         else:
@@ -592,9 +592,9 @@ class SchedulerState(ImmutableRecord):
 
     .. attribute:: schedule
 
-    .. attribute:: scheduled_insn_ids
+    .. attribute:: scheduled_stmt_ids
 
-    .. attribute:: unscheduled_insn_ids
+    .. attribute:: unscheduled_stmt_ids
 
     .. attribute:: preschedule
 
@@ -602,9 +602,9 @@ class SchedulerState(ImmutableRecord):
         schedule, maintaining the same relative ordering. Newly scheduled
         items may interleave this sequence.
 
-    .. attribute:: prescheduled_insn_ids
+    .. attribute:: prescheduled_stmt_ids
 
-        A :class:`frozenset` of any instruction that started prescheduled
+        A :class:`frozenset` of any statement that started prescheduled
 
     .. attribute:: prescheduled_inames
 
@@ -618,14 +618,14 @@ class SchedulerState(ImmutableRecord):
 
         Whether the scheduler is inside a subkernel
 
-    .. attribute:: group_insn_counts
+    .. attribute:: group_stmt_counts
 
-        A mapping from instruction group names to the number of instructions
+        A mapping from statement group names to the number of statements
         contained in them.
 
     .. attribute:: active_group_counts
 
-        A mapping from instruction group names to the number of instructions
+        A mapping from statement group names to the number of statements
         in them that are left to schedule. If a group name occurs in this
         mapping, that group is considered active.
 
@@ -645,8 +645,8 @@ class SchedulerState(ImmutableRecord):
 
 def generate_loop_schedules_internal(
         sched_state, allow_boost=False, debug=None):
-    # allow_insn is set to False initially and after entering each loop
-    # to give loops containing high-priority instructions a chance.
+    # allow_stmt is set to False initially and after entering each loop
+    # to give loops containing high-priority statements a chance.
 
     kernel = sched_state.kernel
     Fore = kernel.options._fore  # noqa
@@ -734,13 +734,13 @@ def generate_loop_schedules_internal(
 
     # {{{ see if there are pending barriers in the preschedule
 
-    # Barriers that do not have an originating instruction are handled here.
+    # Barriers that do not have an originating statement are handled here.
     # (These are automatically inserted by insert_barriers().) Barriers with
-    # originating instructions are handled as part of normal instruction
+    # originating statements are handled as part of normal statement
     # scheduling below.
     if (
             isinstance(next_preschedule_item, Barrier)
-            and next_preschedule_item.originating_insn_id is None):
+            and next_preschedule_item.originating_stmt_id is None):
         for result in generate_loop_schedules_internal(
                     sched_state.copy(
                         schedule=sched_state.schedule + (next_preschedule_item,),
@@ -751,134 +751,134 @@ def generate_loop_schedules_internal(
 
     # }}}
 
-    # {{{ see if any insns are ready to be scheduled now
+    # {{{ see if any stmts are ready to be scheduled now
 
-    # Also take note of insns that have a chance of being schedulable inside
+    # Also take note of stmts that have a chance of being schedulable inside
     # the current loop nest, in this set:
 
-    reachable_insn_ids = set()
+    reachable_stmt_ids = set()
     active_groups = frozenset(sched_state.active_group_counts)
 
-    def insn_sort_key(insn_id):
-        insn = kernel.id_to_insn[insn_id]
+    def stmt_sort_key(stmt_id):
+        stmt = kernel.id_to_stmt[stmt_id]
 
-        # Sort by insn.id as a last criterion to achieve deterministic
+        # Sort by stmt.id as a last criterion to achieve deterministic
         # schedule generation order.
-        return (insn.priority, len(active_groups & insn.groups), insn.id)
+        return (stmt.priority, len(active_groups & stmt.groups), stmt.id)
 
-    insn_ids_to_try = sorted(
-            # Non-prescheduled instructions go first.
-            sched_state.unscheduled_insn_ids - sched_state.prescheduled_insn_ids,
-            key=insn_sort_key, reverse=True)
+    stmt_ids_to_try = sorted(
+            # Non-prescheduled statements go first.
+            sched_state.unscheduled_stmt_ids - sched_state.prescheduled_stmt_ids,
+            key=stmt_sort_key, reverse=True)
 
-    insn_ids_to_try.extend(
-        insn_id
+    stmt_ids_to_try.extend(
+        stmt_id
         for item in sched_state.preschedule
-        for insn_id in sched_item_to_insn_id(item))
+        for stmt_id in sched_item_to_stmt_id(item))
 
-    for insn_id in insn_ids_to_try:
-        insn = kernel.id_to_insn[insn_id]
+    for stmt_id in stmt_ids_to_try:
+        stmt = kernel.id_to_stmt[stmt_id]
 
-        is_ready = insn.depends_on <= sched_state.scheduled_insn_ids
+        is_ready = stmt.depends_on <= sched_state.scheduled_stmt_ids
 
         if not is_ready:
             if debug_mode:
-                print("instruction '%s' is missing insn depedencies '%s'" % (
-                        format_insn(kernel, insn.id), ",".join(
-                            insn.depends_on - sched_state.scheduled_insn_ids)))
+                print("statement '%s' is missing stmt depedencies '%s'" % (
+                        format_stmt(kernel, stmt.id), ",".join(
+                            stmt.depends_on - sched_state.scheduled_stmt_ids)))
             continue
 
-        want = kernel.insn_inames(insn) - sched_state.parallel_inames
+        want = kernel.stmt_inames(stmt) - sched_state.parallel_inames
         have = active_inames_set - sched_state.parallel_inames
 
-        # If insn is boostable, it may be placed inside a more deeply
+        # If stmt is boostable, it may be placed inside a more deeply
         # nested loop without harm.
 
         orig_have = have
         if allow_boost:
-            # Note that the inames in 'insn.boostable_into' necessarily won't
+            # Note that the inames in 'stmt.boostable_into' necessarily won't
             # be contained in 'want'.
-            have = have - insn.boostable_into
+            have = have - stmt.boostable_into
 
         if want != have:
             is_ready = False
 
             if debug_mode:
                 if want-have:
-                    print("instruction '%s' is missing inames '%s'"
-                            % (format_insn(kernel, insn.id), ",".join(want-have)))
+                    print("statement '%s' is missing inames '%s'"
+                            % (format_stmt(kernel, stmt.id), ",".join(want-have)))
                 if have-want:
-                    print("instruction '%s' won't work under inames '%s'"
-                            % (format_insn(kernel, insn.id), ",".join(have-want)))
+                    print("statement '%s' won't work under inames '%s'"
+                            % (format_stmt(kernel, stmt.id), ",".join(have-want)))
 
-        # {{{ check if scheduling this insn is compatible with preschedule
+        # {{{ check if scheduling this stmt is compatible with preschedule
 
-        if insn_id in sched_state.prescheduled_insn_ids:
-            if isinstance(next_preschedule_item, RunInstruction):
-                next_preschedule_insn_id = next_preschedule_item.insn_id
+        if stmt_id in sched_state.prescheduled_stmt_ids:
+            if isinstance(next_preschedule_item, RunStatement):
+                next_preschedule_stmt_id = next_preschedule_item.stmt_id
             elif isinstance(next_preschedule_item, Barrier):
-                assert next_preschedule_item.originating_insn_id is not None
-                next_preschedule_insn_id = next_preschedule_item.originating_insn_id
+                assert next_preschedule_item.originating_stmt_id is not None
+                next_preschedule_stmt_id = next_preschedule_item.originating_stmt_id
             else:
-                next_preschedule_insn_id = None
+                next_preschedule_stmt_id = None
 
-            if next_preschedule_insn_id != insn_id:
+            if next_preschedule_stmt_id != stmt_id:
                 if debug_mode:
                     print("can't schedule '%s' because another preschedule "
-                          "instruction precedes it" % format_insn(kernel, insn.id))
+                          "statement precedes it" % format_stmt(kernel, stmt.id))
                 is_ready = False
 
         # }}}
 
-        # {{{ check if scheduler state allows insn scheduling
+        # {{{ check if scheduler state allows stmt scheduling
 
-        from loopy.kernel.instruction import BarrierInstruction
-        if isinstance(insn, BarrierInstruction) and insn.kind == "global":
+        from loopy.kernel.statement import BarrierStatement
+        if isinstance(stmt, BarrierStatement) and stmt.kind == "global":
             if not sched_state.may_schedule_global_barriers:
                 if debug_mode:
                     print("can't schedule '%s' because global barriers are "
-                          "not currently allowed" % format_insn(kernel, insn.id))
+                          "not currently allowed" % format_stmt(kernel, stmt.id))
                 is_ready = False
         else:
             if not sched_state.within_subkernel:
                 if debug_mode:
                     print("can't schedule '%s' because not within subkernel"
-                          % format_insn(kernel, insn.id))
+                          % format_stmt(kernel, stmt.id))
                 is_ready = False
 
         # }}}
 
         # {{{ determine group-based readiness
 
-        if insn.conflicts_with_groups & active_groups:
+        if stmt.conflicts_with_groups & active_groups:
             is_ready = False
 
             if debug_mode:
-                print("instruction '%s' conflicts with active group(s) '%s'"
-                        % (insn.id, ",".join(
-                            active_groups & insn.conflicts_with_groups)))
+                print("statement '%s' conflicts with active group(s) '%s'"
+                        % (stmt.id, ",".join(
+                            active_groups & stmt.conflicts_with_groups)))
 
         # }}}
 
         # {{{ determine reachability
 
         if (not is_ready and have <= want):
-            reachable_insn_ids.add(insn_id)
+            reachable_stmt_ids.add(stmt_id)
 
         # }}}
 
         if is_ready and debug_mode:
-            print("ready to schedule '%s'" % format_insn(kernel, insn.id))
+            print("ready to schedule '%s'" % format_stmt(kernel, stmt.id))
 
         if is_ready and not debug_mode:
-            iid_set = frozenset([insn.id])
+            iid_set = frozenset([stmt.id])
 
-            # {{{ update active group counts for added instruction
+            # {{{ update active group counts for added statement
 
-            if insn.groups:
+            if stmt.groups:
                 new_active_group_counts = sched_state.active_group_counts.copy()
 
-                for grp in insn.groups:
+                for grp in stmt.groups:
                     if grp in new_active_group_counts:
                         new_active_group_counts[grp] -= 1
                         if new_active_group_counts[grp] == 0:
@@ -886,7 +886,7 @@ def generate_loop_schedules_internal(
 
                     else:
                         new_active_group_counts[grp] = (
-                                sched_state.group_insn_counts[grp] - 1)
+                                sched_state.group_stmt_counts[grp] - 1)
 
             else:
                 new_active_group_counts = sched_state.active_group_counts
@@ -895,18 +895,18 @@ def generate_loop_schedules_internal(
 
             new_uses_of_boostability = []
             if allow_boost:
-                if orig_have & insn.boostable_into:
+                if orig_have & stmt.boostable_into:
                     new_uses_of_boostability.append(
-                            (insn.id, orig_have & insn.boostable_into))
+                            (stmt.id, orig_have & stmt.boostable_into))
 
             new_sched_state = sched_state.copy(
-                    scheduled_insn_ids=sched_state.scheduled_insn_ids | iid_set,
-                    unscheduled_insn_ids=sched_state.unscheduled_insn_ids - iid_set,
+                    scheduled_stmt_ids=sched_state.scheduled_stmt_ids | iid_set,
+                    unscheduled_stmt_ids=sched_state.unscheduled_stmt_ids - iid_set,
                     schedule=(
-                        sched_state.schedule + (RunInstruction(insn_id=insn.id),)),
+                        sched_state.schedule + (RunStatement(stmt_id=stmt.id),)),
                     preschedule=(
                         sched_state.preschedule
-                        if insn_id not in sched_state.prescheduled_insn_ids
+                        if stmt_id not in sched_state.prescheduled_stmt_ids
                         else sched_state.preschedule[1:]),
                     active_group_counts=new_active_group_counts,
                     uses_of_boostability=(
@@ -923,9 +923,9 @@ def generate_loop_schedules_internal(
                     allow_boost=rec_allow_boost, debug=debug):
                 yield sub_sched
 
-            if not sched_state.group_insn_counts:
+            if not sched_state.group_stmt_counts:
                 # No groups: We won't need to backtrack on scheduling
-                # instructions.
+                # statements.
                 return
 
     # }}}
@@ -949,21 +949,21 @@ def generate_loop_schedules_internal(
             can_leave = False
         elif last_entered_loop not in sched_state.breakable_inames:
             # If the iname is not breakable, then check that we've
-            # scheduled all the instructions that require it.
+            # scheduled all the statements that require it.
 
-            for insn_id in sched_state.unscheduled_insn_ids:
-                insn = kernel.id_to_insn[insn_id]
-                if last_entered_loop in kernel.insn_inames(insn):
+            for stmt_id in sched_state.unscheduled_stmt_ids:
+                stmt = kernel.id_to_stmt[stmt_id]
+                if last_entered_loop in kernel.stmt_inames(stmt):
                     if debug_mode:
                         print("cannot leave '%s' because '%s' still depends on it"
-                                % (last_entered_loop, format_insn(kernel, insn.id)))
+                                % (last_entered_loop, format_stmt(kernel, stmt.id)))
 
-                        # check if there's a dependency of insn that needs to be
+                        # check if there's a dependency of stmt that needs to be
                         # outside of last_entered_loop.
-                        for subdep_id in gen_dependencies_except(kernel, insn_id,
-                                sched_state.scheduled_insn_ids):
-                            subdep = kernel.id_to_insn[insn_id]
-                            want = (kernel.insn_inames(subdep_id)
+                        for subdep_id in gen_dependencies_except(kernel, stmt_id,
+                                sched_state.scheduled_stmt_ids):
+                            subdep = kernel.id_to_stmt[stmt_id]
+                            want = (kernel.stmt_inames(subdep_id)
                                     - sched_state.parallel_inames)
                             if (
                                     last_entered_loop not in want and
@@ -982,10 +982,10 @@ def generate_loop_schedules_internal(
                                         "warn": Fore.RED + Style.BRIGHT,
                                         "reset_all": Style.RESET_ALL,
                                         "iname": last_entered_loop,
-                                        "subdep": format_insn_id(kernel, subdep_id),
-                                        "dep": format_insn_id(kernel, insn_id),
-                                        "subdep_i": format_insn(kernel, subdep_id),
-                                        "dep_i": format_insn(kernel, insn_id),
+                                        "subdep": format_stmt_id(kernel, subdep_id),
+                                        "dep": format_stmt_id(kernel, stmt_id),
+                                        "subdep_i": format_stmt(kernel, subdep_id),
+                                        "dep_i": format_stmt(kernel, stmt_id),
                                         })
 
                     can_leave = False
@@ -994,14 +994,14 @@ def generate_loop_schedules_internal(
         if can_leave:
             can_leave = False
 
-            # We may only leave this loop if we've scheduled an instruction
+            # We may only leave this loop if we've scheduled an statement
             # since entering it.
 
-            seen_an_insn = False
+            seen_an_stmt = False
             ignore_count = 0
             for sched_item in sched_state.schedule[::-1]:
-                if isinstance(sched_item, RunInstruction):
-                    seen_an_insn = True
+                if isinstance(sched_item, RunStatement):
+                    seen_an_stmt = True
                 elif isinstance(sched_item, LeaveLoop):
                     ignore_count += 1
                 elif isinstance(sched_item, EnterLoop):
@@ -1009,7 +1009,7 @@ def generate_loop_schedules_internal(
                         ignore_count -= 1
                     else:
                         assert sched_item.iname == last_entered_loop
-                        if seen_an_insn:
+                        if seen_an_stmt:
                             can_leave = True
                         break
 
@@ -1036,10 +1036,10 @@ def generate_loop_schedules_internal(
 
     # {{{ see if any loop can be entered now
 
-    # Find inames that are being referenced by as yet unscheduled instructions.
+    # Find inames that are being referenced by as yet unscheduled statements.
     needed_inames = set()
-    for insn_id in sched_state.unscheduled_insn_ids:
-        needed_inames.update(kernel.insn_inames(insn_id))
+    for stmt_id in sched_state.unscheduled_stmt_ids:
+        needed_inames.update(kernel.stmt_inames(stmt_id))
 
     needed_inames = (needed_inames
             # There's no notion of 'entering' a parallel loop
@@ -1053,8 +1053,8 @@ def generate_loop_schedules_internal(
         print("inames still needed :", ",".join(needed_inames))
         print("active inames :", ",".join(sched_state.active_inames))
         print("inames entered so far :", ",".join(sched_state.entered_inames))
-        print("reachable insns:", ",".join(reachable_insn_ids))
-        print("active groups (with insn counts):", ",".join(
+        print("reachable stmts:", ",".join(reachable_stmt_ids))
+        print("active groups (with stmt counts):", ",".join(
             "%s: %d" % (grp, c)
             for grp, c in six.iteritems(sched_state.active_group_counts)))
         print(75*"-")
@@ -1086,18 +1086,18 @@ def generate_loop_schedules_internal(
                 continue
 
             if (
-                    not sched_state.loop_insn_dep_map.get(iname, set())
-                    <= sched_state.scheduled_insn_ids):
+                    not sched_state.loop_stmt_dep_map.get(iname, set())
+                    <= sched_state.scheduled_stmt_ids):
                 if debug_mode:
                     print(
                             "scheduling {iname} prohibited by loop dependency map "
-                            "(needs '{needed_insns})'"
+                            "(needs '{needed_stmts})'"
                             .format(
                                 iname=iname,
-                                needed_insns=", ".join(
-                                    sched_state.loop_insn_dep_map.get(iname, set())
+                                needed_stmts=", ".join(
+                                    sched_state.loop_stmt_dep_map.get(iname, set())
                                     -
-                                    sched_state.scheduled_insn_ids)))
+                                    sched_state.scheduled_stmt_ids)))
 
                 continue
 
@@ -1120,8 +1120,8 @@ def generate_loop_schedules_internal(
                     iname_home_domain_params
                     &
                     set(kernel.temporary_variables)):
-                writer_insn, = kernel.writer_map()[domain_par]
-                if writer_insn not in sched_state.scheduled_insn_ids:
+                writer_stmt, = kernel.writer_map()[domain_par]
+                if writer_stmt not in sched_state.scheduled_stmt_ids:
                     data_dep_written = False
                     if debug_mode:
                         print("iname '%s' not scheduled because domain "
@@ -1134,21 +1134,21 @@ def generate_loop_schedules_internal(
 
             # }}}
 
-            # {{{ determine if that gets us closer to being able to schedule an insn
+            # {{{ determine if that gets us closer to being able to schedule an stmt
 
-            usefulness = None  # highest insn priority enabled by iname
+            usefulness = None  # highest stmt priority enabled by iname
 
             hypothetically_active_loops = active_inames_set | set([iname])
-            for insn_id in reachable_insn_ids:
-                insn = kernel.id_to_insn[insn_id]
+            for stmt_id in reachable_stmt_ids:
+                stmt = kernel.id_to_stmt[stmt_id]
 
-                want = kernel.insn_inames(insn) | insn.boostable_into
+                want = kernel.stmt_inames(stmt) | stmt.boostable_into
 
                 if hypothetically_active_loops <= want:
                     if usefulness is None:
-                        usefulness = insn.priority
+                        usefulness = stmt.priority
                     else:
-                        usefulness = max(usefulness, insn.priority)
+                        usefulness = max(usefulness, stmt.priority)
 
             if usefulness is None:
                 if debug_mode:
@@ -1262,18 +1262,18 @@ def generate_loop_schedules_internal(
 
     if (
             not sched_state.active_inames
-            and not sched_state.unscheduled_insn_ids
+            and not sched_state.unscheduled_stmt_ids
             and not sched_state.preschedule):
         # if done, yield result
         debug.log_success(sched_state.schedule)
 
-        for boost_insn_id, boost_inames in sched_state.uses_of_boostability:
+        for boost_stmt_id, boost_inames in sched_state.uses_of_boostability:
             warn_with_kernel(
                     kernel, "used_boostability",
-                    "instruction '%s' was implicitly nested inside "
+                    "statement '%s' was implicitly nested inside "
                     "inames '%s' based on an idempotence heuristic. "
                     "This is deprecated and will stop working in loopy 2017.x."
-                    % (boost_insn_id, ", ".join(boost_inames)),
+                    % (boost_stmt_id, ", ".join(boost_inames)),
                     DeprecationWarning)
 
         yield sched_state.schedule
@@ -1296,31 +1296,31 @@ def generate_loop_schedules_internal(
 # {{{ filter nops from schedule
 
 def filter_nops_from_schedule(kernel, schedule):
-    from loopy.kernel.instruction import NoOpInstruction
+    from loopy.kernel.statement import NoOpStatement
     return [
             sched_item
             for sched_item in schedule
-            if (not isinstance(sched_item, RunInstruction)
-                or not isinstance(kernel.id_to_insn[sched_item.insn_id],
-                    NoOpInstruction))]
+            if (not isinstance(sched_item, RunStatement)
+                or not isinstance(kernel.id_to_stmt[sched_item.stmt_id],
+                    NoOpStatement))]
 
 # }}}
 
 
-# {{{ convert barrier instructions to proper barriers
+# {{{ convert barrier statements to proper barriers
 
-def convert_barrier_instructions_to_barriers(kernel, schedule):
-    from loopy.kernel.instruction import BarrierInstruction
+def convert_barrier_statements_to_barriers(kernel, schedule):
+    from loopy.kernel.statement import BarrierStatement
 
     result = []
     for sched_item in schedule:
-        if isinstance(sched_item, RunInstruction):
-            insn = kernel.id_to_insn[sched_item.insn_id]
-            if isinstance(insn, BarrierInstruction):
+        if isinstance(sched_item, RunStatement):
+            stmt = kernel.id_to_stmt[sched_item.stmt_id]
+            if isinstance(stmt, BarrierStatement):
                 result.append(Barrier(
-                    kind=insn.kind,
-                    originating_insn_id=insn.id,
-                    comment="Barrier inserted due to %s" % insn.id))
+                    kind=stmt.kind,
+                    originating_stmt_id=stmt.id,
+                    comment="Barrier inserted due to %s" % stmt.id))
                 continue
 
         result.append(sched_item)
@@ -1336,16 +1336,16 @@ class DependencyRecord(ImmutableRecord):
     """
     .. attribute:: source
 
-        A :class:`loopy.InstructionBase` instance.
+        A :class:`loopy.StatementBase` instance.
 
     .. attribute:: target
 
-        A :class:`loopy.InstructionBase` instance.
+        A :class:`loopy.StatementBase` instance.
 
     .. attribute:: dep_descr
 
         A string containing a phrase describing the dependency. The variables
-        '{src}' and '{tgt}' will be replaced by their respective instruction IDs.
+        '{src}' and '{tgt}' will be replaced by their respective statement IDs.
 
     .. attribute:: variable
 
@@ -1435,10 +1435,10 @@ class DependencyTracker(object):
 
     def add_source(self, source):
         """
-        Specify that an instruction may be used as the source of a dependency edge.
+        Specify that an statement may be used as the source of a dependency edge.
         """
-        # If source is an insn ID, look up the actual instruction.
-        source = self.kernel.id_to_insn.get(source, source)
+        # If source is an stmt ID, look up the actual statement.
+        source = self.kernel.id_to_stmt.get(source, source)
 
         for written in self.map_to_base_storage(
                 set(source.assignee_var_names()) & self.relevant_vars):
@@ -1451,13 +1451,13 @@ class DependencyTracker(object):
     def gen_dependencies_with_target_at(self, target):
         """
         Generate :class:`DependencyRecord` instances for dependencies edges
-        whose target is the given instruction.
+        whose target is the given statement.
 
-        :arg target: The ID of the instruction for which dependencies
+        :arg target: The ID of the statement for which dependencies
             with conflicting var access should be found.
         """
-        # If target is an insn ID, look up the actual instruction.
-        target = self.kernel.id_to_insn.get(target, target)
+        # If target is an stmt ID, look up the actual statement.
+        target = self.kernel.id_to_stmt.get(target, target)
 
         tgt_write = self.map_to_base_storage(
             set(target.assignee_var_names()) & self.relevant_vars)
@@ -1493,8 +1493,8 @@ class DependencyTracker(object):
                     continue
 
                 yield DependencyRecord(
-                        source=self.kernel.id_to_insn[source],
-                        target=self.kernel.id_to_insn[target],
+                        source=self.kernel.id_to_stmt[source],
+                        target=self.kernel.id_to_stmt[target],
                         dep_descr=dep_descr,
                         variable=var,
                         var_kind=self.var_kind)
@@ -1502,13 +1502,13 @@ class DependencyTracker(object):
     def describe_dependency(self, source, target):
         dep_descr = None
 
-        source = self.kernel.id_to_insn[source]
-        target = self.kernel.id_to_insn[target]
+        source = self.kernel.id_to_stmt[source]
+        target = self.kernel.id_to_stmt[target]
 
         if self.reverse:
             source, target = target, source
 
-        target_deps = self.kernel.recursive_insn_dep_map()[target.id]
+        target_deps = self.kernel.recursive_stmt_dep_map()[target.id]
         if source.id in target_deps:
             if self.reverse:
                 dep_descr = "{tgt} rev-depends on {src}"
@@ -1529,15 +1529,15 @@ def barrier_kind_more_or_equally_global(kind1, kind2):
     return (kind1 == kind2) or (kind1 == "global" and kind2 == "local")
 
 
-def insn_ids_reaching_end_without_intervening_barrier(schedule, kind):
-    return _insn_ids_reaching_end(schedule, kind, reverse=False)
+def stmt_ids_reaching_end_without_intervening_barrier(schedule, kind):
+    return _stmt_ids_reaching_end(schedule, kind, reverse=False)
 
 
-def insn_ids_reachable_from_start_without_intervening_barrier(schedule, kind):
-    return _insn_ids_reaching_end(schedule, kind, reverse=True)
+def stmt_ids_reachable_from_start_without_intervening_barrier(schedule, kind):
+    return _stmt_ids_reaching_end(schedule, kind, reverse=True)
 
 
-def _insn_ids_reaching_end(schedule, kind, reverse):
+def _stmt_ids_reaching_end(schedule, kind, reverse):
     if reverse:
         schedule = reversed(schedule)
         enter_scope_item_kind = LeaveLoop
@@ -1546,45 +1546,45 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
         enter_scope_item_kind = EnterLoop
         leave_scope_item_kind = LeaveLoop
 
-    insn_ids_alive_at_scope = [set()]
+    stmt_ids_alive_at_scope = [set()]
 
     for sched_item in schedule:
         if isinstance(sched_item, enter_scope_item_kind):
-            insn_ids_alive_at_scope.append(set())
+            stmt_ids_alive_at_scope.append(set())
         elif isinstance(sched_item, leave_scope_item_kind):
-            innermost_scope = insn_ids_alive_at_scope.pop()
-            # Instructions in deeper scopes are alive but could be killed by
+            innermost_scope = stmt_ids_alive_at_scope.pop()
+            # Statements in deeper scopes are alive but could be killed by
             # barriers at a shallower level, e.g.:
             #
             # for i
-            #     insn0
+            #     stmt0
             # end
-            # barrier()   <= kills insn0
+            # barrier()   <= kills stmt0
             #
             # Hence we merge this scope into the parent scope.
-            insn_ids_alive_at_scope[-1].update(innermost_scope)
+            stmt_ids_alive_at_scope[-1].update(innermost_scope)
         elif isinstance(sched_item, Barrier):
-            # This barrier kills only the instruction ids that are alive at
+            # This barrier kills only the statement ids that are alive at
             # the current scope (or deeper). Without further analysis, we
-            # can't assume that instructions at shallower scope can be
+            # can't assume that statements at shallower scope can be
             # killed by deeper barriers, since loops might be empty, e.g.:
             #
-            # insn0          <= isn't killed by barrier (i loop could be empty)
+            # stmt0          <= isn't killed by barrier (i loop could be empty)
             # for i
-            #     insn1      <= is killed by barrier
+            #     stmt1      <= is killed by barrier
             #     for j
-            #         insn2  <= is killed by barrier
+            #         stmt2  <= is killed by barrier
             #     end
             #     barrier()
             # end
             if barrier_kind_more_or_equally_global(sched_item.kind, kind):
-                insn_ids_alive_at_scope[-1].clear()
+                stmt_ids_alive_at_scope[-1].clear()
         else:
-            insn_ids_alive_at_scope[-1] |= set(
-                    insn_id for insn_id in sched_item_to_insn_id(sched_item))
+            stmt_ids_alive_at_scope[-1] |= set(
+                    stmt_id for stmt_id in sched_item_to_stmt_id(sched_item))
 
-    assert len(insn_ids_alive_at_scope) == 1
-    return insn_ids_alive_at_scope[-1]
+    assert len(stmt_ids_alive_at_scope) == 1
+    return stmt_ids_alive_at_scope[-1]
 
 
 def append_barrier_or_raise_error(schedule, dep, verify_only):
@@ -1594,7 +1594,7 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
                 "Dependency '%s' (for variable '%s') "
                 "requires synchronization "
                 "by a %s barrier (add a 'no_sync_with' "
-                "instruction option to state that no "
+                "statement option to state that no "
                 "synchronization is needed)"
                 % (
                     dep.dep_descr.format(
@@ -1608,7 +1608,7 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
         schedule.append(Barrier(
             comment=comment,
             kind=dep.var_kind,
-            originating_insn_id=None))
+            originating_stmt_id=None))
 
 
 def insert_barriers(kernel, schedule, kind, verify_only, level=0):
@@ -1629,10 +1629,10 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
         if reverse:
             # Populate the dependency tracker with sources from the tail end of
             # the schedule block.
-            for insn_id in (
-                    insn_ids_reaching_end_without_intervening_barrier(
+            for stmt_id in (
+                    stmt_ids_reaching_end_without_intervening_barrier(
                         schedule, kind)):
-                dep_tracker.add_source(insn_id)
+                dep_tracker.add_source(stmt_id)
 
         result = []
 
@@ -1644,11 +1644,11 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
                 subloop, new_i = gather_schedule_block(schedule, i)
 
                 loop_head = (
-                    insn_ids_reachable_from_start_without_intervening_barrier(
+                    stmt_ids_reachable_from_start_without_intervening_barrier(
                         subloop, kind))
 
                 loop_tail = (
-                    insn_ids_reaching_end_without_intervening_barrier(
+                    stmt_ids_reaching_end_without_intervening_barrier(
                         subloop, kind))
 
                 # Checks if a barrier is needed before the loop. This handles
@@ -1662,8 +1662,8 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
                 #     ...
                 from itertools import chain
                 for dep in chain.from_iterable(
-                        dep_tracker.gen_dependencies_with_target_at(insn)
-                        for insn in loop_head):
+                        dep_tracker.gen_dependencies_with_target_at(stmt)
+                        for stmt in loop_head):
                     append_barrier_or_raise_error(result, dep, verify_only)
                     # This barrier gets inserted outside the loop, hence it is
                     # executed unconditionally and so kills all sources before
@@ -1692,14 +1692,14 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
                     dep_tracker.discard_all_sources()
                 i += 1
 
-            elif isinstance(sched_item, RunInstruction):
+            elif isinstance(sched_item, RunStatement):
                 for dep in dep_tracker.gen_dependencies_with_target_at(
-                        sched_item.insn_id):
+                        sched_item.stmt_id):
                     append_barrier_or_raise_error(result, dep, verify_only)
                     dep_tracker.discard_all_sources()
                     break
                 result.append(sched_item)
-                dep_tracker.add_source(sched_item.insn_id)
+                dep_tracker.add_source(sched_item.stmt_id)
                 i += 1
 
             elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
@@ -1731,7 +1731,7 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
             i = new_i
 
         elif isinstance(sched_item,
-                (Barrier, RunInstruction, CallKernel, ReturnFromKernel)):
+                (Barrier, RunStatement, CallKernel, ReturnFromKernel)):
             result.append(sched_item)
             i += 1
 
@@ -1756,7 +1756,7 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 
 def generate_loop_schedules(kernel, debug_args={}):
     from pytools import MinRecursionLimit
-    with MinRecursionLimit(max(len(kernel.instructions) * 2,
+    with MinRecursionLimit(max(len(kernel.statements) * 2,
                                len(kernel.all_inames()) * 4)):
         for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
             yield sched
@@ -1778,14 +1778,14 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
     preschedule = kernel.schedule if kernel.state == kernel_state.SCHEDULED else ()
 
     prescheduled_inames = set(
-            insn.iname
-            for insn in preschedule
-            if isinstance(insn, EnterLoop))
+            stmt.iname
+            for stmt in preschedule
+            if isinstance(stmt, EnterLoop))
 
-    prescheduled_insn_ids = set(
-        insn_id
+    prescheduled_stmt_ids = set(
+        stmt_id
         for item in preschedule
-        for insn_id in sched_item_to_insn_id(item))
+        for stmt_id in sched_item_to_stmt_id(item))
 
     from loopy.kernel.data import IlpBaseTag, ConcurrentTag, VectorizeTag
     ilp_inames = set(
@@ -1805,7 +1805,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
     sched_state = SchedulerState(
             kernel=kernel,
             loop_nest_around_map=loop_nest_around_map,
-            loop_insn_dep_map=find_loop_insn_dep_map(
+            loop_stmt_dep_map=find_loop_stmt_dep_map(
                 kernel,
                 loop_nest_with_map=loop_nest_with_map,
                 loop_nest_around_map=loop_nest_around_map),
@@ -1814,7 +1814,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             vec_inames=vec_inames,
 
             prescheduled_inames=prescheduled_inames,
-            prescheduled_insn_ids=prescheduled_insn_ids,
+            prescheduled_stmt_ids=prescheduled_stmt_ids,
 
             # time-varying part
             active_inames=(),
@@ -1823,8 +1823,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 
             schedule=(),
 
-            unscheduled_insn_ids=set(insn.id for insn in kernel.instructions),
-            scheduled_insn_ids=frozenset(),
+            unscheduled_stmt_ids=set(stmt.id for stmt in kernel.statements),
+            scheduled_stmt_ids=frozenset(),
             within_subkernel=kernel.state != kernel_state.SCHEDULED,
             may_schedule_global_barriers=True,
 
@@ -1833,7 +1833,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             # ilp and vec are not parallel for the purposes of the scheduler
             parallel_inames=parallel_inames - ilp_inames - vec_inames,
 
-            group_insn_counts=group_insn_counts(kernel),
+            group_stmt_counts=group_stmt_counts(kernel),
             active_group_counts={},
 
             uses_of_boostability=[])
@@ -1881,7 +1881,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                 debug.stop()
 
                 gen_sched = filter_nops_from_schedule(kernel, gen_sched)
-                gen_sched = convert_barrier_instructions_to_barriers(
+                gen_sched = convert_barrier_statements_to_barriers(
                         kernel, gen_sched)
 
                 gsize, lsize = kernel.get_grid_size_upper_bounds()

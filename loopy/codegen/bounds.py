@@ -57,13 +57,13 @@ def get_approximate_convex_bounds_checks(domain, check_inames, implemented_domai
 
 def get_usable_inames_for_conditional(kernel, sched_index):
     from loopy.schedule import (
-        find_active_inames_at, get_insn_ids_for_block_at, has_barrier_within)
+        find_active_inames_at, get_stmt_ids_for_block_at, has_barrier_within)
     from loopy.kernel.data import ConcurrentTag, LocalIndexTagBase, IlpBaseTag
 
     result = find_active_inames_at(kernel, sched_index)
     crosses_barrier = has_barrier_within(kernel, sched_index)
 
-    # Find our containing subkernel. Grab inames for all insns from there.
+    # Find our containing subkernel. Grab inames for all stmts from there.
     within_subkernel = False
 
     for sched_item_index, sched_item in enumerate(kernel.schedule[:sched_index+1]):
@@ -78,13 +78,13 @@ def get_usable_inames_for_conditional(kernel, sched_index):
         # Outside all subkernels - use only inames available to host.
         return frozenset(result)
 
-    insn_ids_for_subkernel = get_insn_ids_for_block_at(
+    stmt_ids_for_subkernel = get_stmt_ids_for_block_at(
         kernel.schedule, subkernel_index)
 
     inames_for_subkernel = (
         iname
-        for insn in insn_ids_for_subkernel
-        for iname in kernel.insn_inames(insn))
+        for stmt in stmt_ids_for_subkernel
+        for iname in kernel.stmt_inames(stmt))
 
     for iname in inames_for_subkernel:
         tag = kernel.iname_to_tag.get(iname)

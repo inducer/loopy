@@ -201,10 +201,10 @@ class ASTBuilderBase(object):
     def get_image_arg_decl(self, name, shape, num_target_axes, dtype, is_written):
         raise NotImplementedError()
 
-    def emit_assignment(self, codegen_state, insn):
+    def emit_assignment(self, codegen_state, stmt):
         raise NotImplementedError()
 
-    def emit_multiple_assignment(self, codegen_state, insn):
+    def emit_multiple_assignment(self, codegen_state, stmt):
         raise NotImplementedError()
 
     def emit_sequential_loop(self, codegen_state, iname, iname_dtype,

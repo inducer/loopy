@@ -6,7 +6,7 @@
 Reference: Creating Kernels
 ===========================
 
-From Loop Domains and Instructions
+From Loop Domains and Statements
 ----------------------------------
 
 .. autofunction:: make_kernel

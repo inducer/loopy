@@ -135,8 +135,8 @@ class LoopyEqKeyBuilder(object):
     Usage::
 
         kb = LoopyEqKeyBuilder()
-        kb.update_for_class(insn.__class__)
-        kb.update_for_field("field", insn.field)
+        kb.update_for_class(stmt.__class__)
+        kb.update_for_field("field", stmt.field)
         ...
         key = kb.key()
 

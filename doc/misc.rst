@@ -138,11 +138,11 @@ This example is included in the :mod:`loopy` distribution as
 What this does is find nearby "centers" satisfying some criteria
 for an array of points ("targets").
 
-Specifying dependencies for groups of instructions is cumbersome. Help?
+Specifying dependencies for groups of statements is cumbersome. Help?
 -----------------------------------------------------------------------
 
-You can now specify instruction ID prefixes and dependencies for groups
-of instructions, like this::
+You can now specify statement ID prefixes and dependencies for groups
+of statements, like this::
 
     with {id_prefix=init_m}
         <> m[0] =   ...
@@ -253,7 +253,7 @@ This list is always growing, but here are a few pointers:
   Separated array axes must have a fixed size. (See either
   :func:`loopy.split_array_axis`.)
 
-* Realization of Instruction-level parallelism
+* Realization of Statement-level parallelism
 
   Use :func:`loopy.tag_inames` with the ``"ilp"`` tag.
   ILP loops must have a fixed size. (See either
@@ -284,7 +284,7 @@ This list is always growing, but here are a few pointers:
 Uh-oh. I got a scheduling error. Any hints?
 -------------------------------------------
 
-* Make sure that dependencies between instructions are as
+* Make sure that dependencies between statements are as
   you intend.
 
   Use :func:`loopy.show_dependency_graph` to check.
@@ -304,7 +304,7 @@ Uh-oh. I got a scheduling error. Any hints?
 
 * Make sure that your loops are correctly nested.
 
-  Print the kernel to make sure all instructions are within
+  Print the kernel to make sure all statements are within
   the set of inames you intend them to be in.
 
 * One iname is one for loop.

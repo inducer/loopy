@@ -30,7 +30,7 @@ import six
 from loopy.kernel.data import auto, temp_var_scope
 from pytools import memoize_method, Record
 from loopy.schedule import (
-            EnterLoop, LeaveLoop, RunInstruction,
+            EnterLoop, LeaveLoop, RunStatement,
             CallKernel, ReturnFromKernel, Barrier)
 
 from loopy.schedule.tools import get_block_boundaries
@@ -51,12 +51,12 @@ __doc__ = """
 
 class LivenessResult(dict):
 
-    class InstructionResult(Record):
+    class StatementResult(Record):
         __slots__ = ["live_in", "live_out"]
 
     @classmethod
     def make_empty(cls, nscheditems):
-        return cls((idx, cls.InstructionResult(live_in=set(), live_out=set()))
+        return cls((idx, cls.StatementResult(live_in=set(), live_out=set()))
                    for idx in range(nscheditems))
 
 
@@ -83,7 +83,7 @@ class LivenessAnalysis(object):
                 # Account for empty loop
                 loop_end = block_bounds[sched_idx + 1]
                 after = successors[loop_end] | set([sched_idx + 1])
-            elif isinstance(next_item, (LeaveLoop, RunInstruction,
+            elif isinstance(next_item, (LeaveLoop, RunStatement,
                     CallKernel, ReturnFromKernel, Barrier)):
                 after = set([sched_idx + 1])
             else:
@@ -95,7 +95,7 @@ class LivenessAnalysis(object):
                 # Account for loop
                 loop_begin = block_bounds[sched_idx]
                 after |= set([loop_begin])
-            elif not isinstance(item, (EnterLoop, RunInstruction,
+            elif not isinstance(item, (EnterLoop, RunStatement,
                     CallKernel, ReturnFromKernel, Barrier)):
                 raise LoopyError("unexpected type of schedule item: {ty}"
                     .format(ty=type(item).__name__))
@@ -109,13 +109,13 @@ class LivenessAnalysis(object):
         kill = dict((idx, set()) for idx in range(len(self.schedule)))
 
         for sched_idx, sched_item in enumerate(self.schedule):
-            if not isinstance(sched_item, RunInstruction):
+            if not isinstance(sched_item, RunStatement):
                 continue
-            insn = self.kernel.id_to_insn[sched_item.insn_id]
-            for var in insn.assignee_var_names():
+            stmt = self.kernel.id_to_stmt[sched_item.stmt_id]
+            for var in stmt.assignee_var_names():
                 if var not in self.kernel.temporary_variables:
                     continue
-                if not insn.predicates:
+                if not stmt.predicates:
                     # Fully kills the liveness only when unconditional.
                     kill[sched_idx].add(var)
                 if len(self.kernel.temporary_variables[var].shape) > 0:
@@ -127,7 +127,7 @@ class LivenessAnalysis(object):
                     # or a full write. Instead, we analyze the access
                     # footprint later on to determine how much to reload/save.
                     gen[sched_idx].add(var)
-            for var in insn.read_dependency_names():
+            for var in stmt.read_dependency_names():
                 if var not in self.kernel.temporary_variables:
                     continue
                 gen[sched_idx].add(var)
@@ -174,10 +174,10 @@ class LivenessAnalysis(object):
 
     def __getitem__(self, sched_idx):
         """
-        :arg insn: An instruction name or instance of
-            :class:`loopy.instruction.InstructionBase`
+        :arg stmt: An statement name or instance of
+            :class:`loopy.statement.StatementBase`
 
-        :returns: A :class:`LivenessResult` associated with `insn`
+        :returns: A :class:`LivenessResult` associated with `stmt`
         """
         return self.liveness()[sched_idx]
 
@@ -238,20 +238,20 @@ class TemporarySaver(object):
     def __init__(self, kernel):
         self.kernel = kernel
         self.var_name_gen = kernel.get_var_name_generator()
-        self.insn_name_gen = kernel.get_instruction_id_generator()
+        self.stmt_name_gen = kernel.get_statement_id_generator()
 
         # These fields keep track of updates to the kernel.
-        self.insns_to_insert = []
-        self.insns_to_update = {}
+        self.stmts_to_insert = []
+        self.stmts_to_update = {}
         self.extra_args_to_add = {}
         self.updated_iname_to_tag = {}
         self.updated_temporary_variables = {}
 
-        # temporary name -> save or reload insn ids
+        # temporary name -> save or reload stmt ids
         from collections import defaultdict
         self.temporary_to_save_ids = defaultdict(set)
         self.temporary_to_reload_ids = defaultdict(set)
-        self.subkernel_to_newly_added_insn_ids = defaultdict(set)
+        self.subkernel_to_newly_added_stmt_ids = defaultdict(set)
 
         # Maps names of base_storage to the name of the temporary
         # representative chosen for saves/reloads
@@ -268,9 +268,9 @@ class TemporarySaver(object):
                             arg.name for arg in kernel.args
                             if isinstance(arg, ValueArg)))))
 
-    def find_accessing_instructions_in_subkernel(self, temporary, subkernel):
-        # Find all accessing instructions in the subkernel. If base_storage is
-        # present, this includes instructions that access aliasing memory.
+    def find_accessing_statements_in_subkernel(self, temporary, subkernel):
+        # Find all accessing statements in the subkernel. If base_storage is
+        # present, this includes statements that access aliasing memory.
 
         aliasing_names = set([temporary])
         base_storage = self.kernel.temporary_variables[temporary].base_storage
@@ -278,24 +278,24 @@ class TemporarySaver(object):
         if base_storage is not None:
             aliasing_names |= self.base_storage_to_temporary_map[base_storage]
 
-        from loopy.kernel.tools import get_subkernel_to_insn_id_map
-        accessing_insns_in_subkernel = set()
-        subkernel_insns = get_subkernel_to_insn_id_map(self.kernel)[subkernel]
+        from loopy.kernel.tools import get_subkernel_to_stmt_id_map
+        accessing_stmts_in_subkernel = set()
+        subkernel_stmts = get_subkernel_to_stmt_id_map(self.kernel)[subkernel]
 
         for name in aliasing_names:
             try:
-                accessing_insns_in_subkernel |= (
-                        self.kernel.reader_map()[name] & subkernel_insns)
+                accessing_stmts_in_subkernel |= (
+                        self.kernel.reader_map()[name] & subkernel_stmts)
             except KeyError:
                 pass
 
             try:
-                accessing_insns_in_subkernel |= (
-                        self.kernel.writer_map()[name] & subkernel_insns)
+                accessing_stmts_in_subkernel |= (
+                        self.kernel.writer_map()[name] & subkernel_stmts)
             except KeyError:
                 pass
 
-        return frozenset(accessing_insns_in_subkernel)
+        return frozenset(accessing_stmts_in_subkernel)
 
     @property
     @memoize_method
@@ -356,14 +356,14 @@ class TemporarySaver(object):
         try:
             pre_barrier = next(item for item in
                 self.kernel.schedule[subkernel_start::-1]
-                if is_global_barrier(item)).originating_insn_id
+                if is_global_barrier(item)).originating_stmt_id
         except StopIteration:
             pre_barrier = None
 
         try:
             post_barrier = next(item for item in
                 self.kernel.schedule[subkernel_end:]
-                if is_global_barrier(item)).originating_insn_id
+                if is_global_barrier(item)).originating_stmt_id
         except StopIteration:
             post_barrier = None
 
@@ -379,7 +379,7 @@ class TemporarySaver(object):
         In the case of local temporaries, inames that are tagged
         hw-local do not contribute to the global storage shape.
         """
-        accessor_insn_ids = frozenset(
+        accessor_stmt_ids = frozenset(
             self.kernel.reader_map()[temporary.name]
             | self.kernel.writer_map()[temporary.name])
 
@@ -389,13 +389,13 @@ class TemporarySaver(object):
         def _sortedtags(tags):
             return sorted(tags, key=lambda tag: tag.axis)
 
-        for insn_id in accessor_insn_ids:
-            insn = self.kernel.id_to_insn[insn_id]
+        for stmt_id in accessor_stmt_ids:
+            stmt = self.kernel.id_to_stmt[stmt_id]
 
             my_group_tags = []
             my_local_tags = []
 
-            for iname in insn.within_inames:
+            for iname in stmt.within_inames:
                 tag = self.kernel.iname_to_tag.get(iname)
 
                 if tag is None:
@@ -418,25 +418,25 @@ class TemporarySaver(object):
             if group_tags is None:
                 group_tags = _sortedtags(my_group_tags)
                 local_tags = _sortedtags(my_local_tags)
-                group_tags_originating_insn_id = insn_id
+                group_tags_originating_stmt_id = stmt_id
 
             if (
                     group_tags != _sortedtags(my_group_tags)
                     or local_tags != _sortedtags(my_local_tags)):
                 raise LoopyError(
-                    "inconsistent parallel tags across instructions that access "
-                    "'%s' (specifically, instruction '%s' has tags '%s' but "
-                    "instruction '%s' has tags '%s')"
+                    "inconsistent parallel tags across statements that access "
+                    "'%s' (specifically, statement '%s' has tags '%s' but "
+                    "statement '%s' has tags '%s')"
                     % (temporary.name,
-                       group_tags_originating_insn_id, group_tags + local_tags,
-                       insn_id, my_group_tags + my_local_tags))
+                       group_tags_originating_stmt_id, group_tags + local_tags,
+                       stmt_id, my_group_tags + my_local_tags))
 
         if group_tags is None:
             assert local_tags is None
             return (), ()
 
         group_sizes, local_sizes = (
-            self.kernel.get_grid_sizes_for_insn_ids_as_exprs(accessor_insn_ids))
+            self.kernel.get_grid_sizes_for_stmt_ids_as_exprs(accessor_stmt_ids))
 
         if temporary.scope == lp.temp_var_scope.LOCAL:
             # Elide local axes in the save slot for local temporaries.
@@ -506,7 +506,7 @@ class TemporarySaver(object):
 
         self.new_subdomain = new_subdomain
 
-        save_or_load_insn_id = self.insn_name_gen(
+        save_or_load_stmt_id = self.stmt_name_gen(
             "{name}.{mode}".format(name=temporary, mode=mode))
 
         def add_subscript_if_subscript_nonempty(agg, subscript=()):
@@ -532,15 +532,15 @@ class TemporarySaver(object):
         if mode == "save":
             args = reversed(args)
 
-        accessing_insns_in_subkernel = self.find_accessing_instructions_in_subkernel(
+        accessing_stmts_in_subkernel = self.find_accessing_statements_in_subkernel(
                 temporary, subkernel)
 
         if mode == "save":
-            depends_on = accessing_insns_in_subkernel
+            depends_on = accessing_stmts_in_subkernel
             update_deps = frozenset()
         elif mode == "reload":
             depends_on = frozenset()
-            update_deps = accessing_insns_in_subkernel
+            update_deps = accessing_stmts_in_subkernel
 
         pre_barrier, post_barrier = self.get_enclosing_global_barrier_pair(subkernel)
 
@@ -550,11 +550,11 @@ class TemporarySaver(object):
         if post_barrier is not None:
             update_deps |= set([post_barrier])
 
-        # Create the load / store instruction.
+        # Create the load / store statement.
         from loopy.kernel.data import Assignment
-        save_or_load_insn = Assignment(
+        save_or_load_stmt = Assignment(
             *args,
-            id=save_or_load_insn_id,
+            id=save_or_load_stmt_id,
             within_inames=(
                 self.subkernel_to_surrounding_inames[subkernel]
                 | frozenset(hw_inames + dim_inames)),
@@ -564,18 +564,18 @@ class TemporarySaver(object):
             boostable_into=frozenset())
 
         if mode == "save":
-            self.temporary_to_save_ids[temporary].add(save_or_load_insn_id)
+            self.temporary_to_save_ids[temporary].add(save_or_load_stmt_id)
         else:
-            self.temporary_to_reload_ids[temporary].add(save_or_load_insn_id)
+            self.temporary_to_reload_ids[temporary].add(save_or_load_stmt_id)
 
-        self.subkernel_to_newly_added_insn_ids[subkernel].add(save_or_load_insn_id)
+        self.subkernel_to_newly_added_stmt_ids[subkernel].add(save_or_load_stmt_id)
 
-        self.insns_to_insert.append(save_or_load_insn)
+        self.stmts_to_insert.append(save_or_load_stmt)
 
-        for insn_id in update_deps:
-            insn = self.insns_to_update.get(insn_id, self.kernel.id_to_insn[insn_id])
-            self.insns_to_update[insn_id] = insn.copy(
-                depends_on=insn.depends_on | frozenset([save_or_load_insn_id]))
+        for stmt_id in update_deps:
+            stmt = self.stmts_to_update.get(stmt_id, self.kernel.id_to_stmt[stmt_id])
+            self.stmts_to_update[stmt_id] = stmt.copy(
+                depends_on=stmt.depends_on | frozenset([save_or_load_stmt_id]))
 
         self.updated_temporary_variables[promoted_temporary.name] = (
             promoted_temporary.as_kernel_temporary(self.kernel))
@@ -584,17 +584,17 @@ class TemporarySaver(object):
 
     @memoize_method
     def finish(self):
-        new_instructions = []
+        new_statements = []
 
-        insns_to_insert = dict((insn.id, insn) for insn in self.insns_to_insert)
+        stmts_to_insert = dict((stmt.id, stmt) for stmt in self.stmts_to_insert)
 
-        for orig_insn in self.kernel.instructions:
-            if orig_insn.id in self.insns_to_update:
-                new_instructions.append(self.insns_to_update[orig_insn.id])
+        for orig_stmt in self.kernel.statements:
+            if orig_stmt.id in self.stmts_to_update:
+                new_statements.append(self.stmts_to_update[orig_stmt.id])
             else:
-                new_instructions.append(orig_insn)
-        new_instructions.extend(
-            sorted(insns_to_insert.values(), key=lambda insn: insn.id))
+                new_statements.append(orig_stmt)
+        new_statements.extend(
+            sorted(stmts_to_insert.values(), key=lambda stmt: stmt.id))
 
         self.updated_iname_to_tag.update(self.kernel.iname_to_tag)
         self.updated_temporary_variables.update(self.kernel.temporary_variables)
@@ -606,22 +606,22 @@ class TemporarySaver(object):
 
         kernel = self.kernel.copy(
             domains=new_domains,
-            instructions=new_instructions,
+            statements=new_statements,
             iname_to_tag=self.updated_iname_to_tag,
             temporary_variables=self.updated_temporary_variables,
-            overridden_get_grid_sizes_for_insn_ids=None)
+            overridden_get_grid_sizes_for_stmt_ids=None)
 
         # Add nosync directives to any saves or reloads that were added with a
         # potential dependency chain.
         from loopy.kernel.tools import get_subkernels
         for subkernel in get_subkernels(kernel):
-            relevant_insns = self.subkernel_to_newly_added_insn_ids[subkernel]
+            relevant_stmts = self.subkernel_to_newly_added_stmt_ids[subkernel]
 
             from itertools import product
             for temporary in self.temporary_to_reload_ids:
                 for source, sink in product(
-                        relevant_insns & self.temporary_to_reload_ids[temporary],
-                        relevant_insns & self.temporary_to_save_ids[temporary]):
+                        relevant_stmts & self.temporary_to_reload_ids[temporary],
+                        relevant_stmts & self.temporary_to_save_ids[temporary]):
                     kernel = lp.add_nosync(kernel, "global", source, sink)
 
         from loopy.kernel.tools import assign_automatic_axes
@@ -662,7 +662,7 @@ class TemporarySaver(object):
                             + len(promoted_temporary.hw_dims))
 
         for dim_idx, dim_size in enumerate(promoted_temporary.non_hw_dims):
-            new_iname = self.insn_name_gen("{name}_{mode}_axis_{dim}_{sk}".
+            new_iname = self.stmt_name_gen("{name}_{mode}_axis_{dim}_{sk}".
                 format(name=orig_temporary.name,
                        mode=mode,
                        dim=dim_idx,
@@ -689,7 +689,7 @@ class TemporarySaver(object):
         # Add hardware dims.
         for hw_iname_idx, (hw_tag, dim) in enumerate(
                 zip(promoted_temporary.hw_tags, promoted_temporary.hw_dims)):
-            new_iname = self.insn_name_gen("{name}_{mode}_hw_dim_{dim}_{sk}".
+            new_iname = self.stmt_name_gen("{name}_{mode}_hw_dim_{dim}_{sk}".
                 format(name=orig_temporary.name,
                        mode=mode,
                        dim=hw_iname_idx,
@@ -721,7 +721,7 @@ class TemporarySaver(object):
 
 def save_and_reload_temporaries(knl):
     """
-    Add instructions to save and reload temporary variables that are live
+    Add statements to save and reload temporary variables that are live
     across kernel calls.
 
     The basic code transformation turns schedule segments::

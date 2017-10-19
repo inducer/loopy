@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExprDescriptor(ImmutableRecord):
-    __slots__ = ["insn", "expr", "unif_var_dict"]
+    __slots__ = ["stmt", "expr", "unif_var_dict"]
 
 
 # {{{ extract_subst
@@ -128,7 +128,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
             expr_descriptors.append(
                     ExprDescriptor(
-                        insn=insn,
+                        stmt=stmt,
                         expr=expr,
                         unif_var_dict=dict((lhs.name, rhs)
                             for lhs, rhs in urec.equations)))
@@ -140,8 +140,8 @@ def extract_subst(kernel, subst_name, template, parameters=()):
             CallbackMapper, WalkMapper, IdentityMapper)
     dfmapper = CallbackMapper(gather_exprs, WalkMapper())
 
-    for insn in kernel.instructions:
-        dfmapper(insn.expression)
+    for stmt in kernel.statements:
+        dfmapper(stmt.expression)
 
     for sr in six.itervalues(kernel.substitutions):
         dfmapper(sr.expression)
@@ -151,7 +151,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     if not expr_descriptors:
         raise RuntimeError("no expressions matching '%s'" % template)
 
-    # {{{ substitute rule into instructions
+    # {{{ substitute rule into statements
 
     def replace_exprs(expr, mapper):
         found = False
@@ -175,11 +175,11 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 
     cbmapper = CallbackMapper(replace_exprs, IdentityMapper())
 
-    new_insns = []
+    new_stmts = []
 
-    for insn in kernel.instructions:
-        new_expr = cbmapper(insn.expression)
-        new_insns.append(insn.copy(expression=new_expr))
+    for stmt in kernel.statements:
+        new_expr = cbmapper(stmt.expression)
+        new_stmts.append(stmt.copy(expression=new_expr))
 
     from loopy.kernel.data import SubstitutionRule
     new_substs = {
@@ -196,7 +196,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     # }}}
 
     return kernel.copy(
-            instructions=new_insns,
+            statements=new_stmts,
             substitutions=new_substs)
 
 # }}}
@@ -205,14 +205,14 @@ def extract_subst(kernel, subst_name, template, parameters=()):
 # {{{ assignment_to_subst
 
 class AssignmentToSubstChanger(RuleAwareIdentityMapper):
-    def __init__(self, rule_mapping_context, lhs_name, definition_insn_ids,
+    def __init__(self, rule_mapping_context, lhs_name, definition_stmt_ids,
             usage_to_definition, extra_arguments, within):
         self.var_name_gen = rule_mapping_context.make_unique_var_name
 
         super(AssignmentToSubstChanger, self).__init__(rule_mapping_context)
 
         self.lhs_name = lhs_name
-        self.definition_insn_ids = definition_insn_ids
+        self.definition_stmt_ids = definition_stmt_ids
         self.usage_to_definition = usage_to_definition
 
         from pymbolic import var
@@ -220,18 +220,18 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
 
         self.within = within
 
-        self.definition_insn_id_to_subst_name = {}
+        self.definition_stmt_id_to_subst_name = {}
 
         self.saw_unmatched_usage_sites = {}
-        for def_id in self.definition_insn_ids:
+        for def_id in self.definition_stmt_ids:
             self.saw_unmatched_usage_sites[def_id] = False
 
-    def get_subst_name(self, def_insn_id):
+    def get_subst_name(self, def_stmt_id):
         try:
-            return self.definition_insn_id_to_subst_name[def_insn_id]
+            return self.definition_stmt_id_to_subst_name[def_stmt_id]
         except KeyError:
             subst_name = self.var_name_gen(self.lhs_name+"_subst")
-            self.definition_insn_id_to_subst_name[def_insn_id] = subst_name
+            self.definition_stmt_id_to_subst_name[def_stmt_id] = subst_name
             return subst_name
 
     def map_variable(self, expr, expn_state):
@@ -255,16 +255,16 @@ class AssignmentToSubstChanger(RuleAwareIdentityMapper):
                 expr, expn_state)
 
     def transform_access(self, index, expn_state):
-        my_insn_id = expn_state.insn_id
+        my_stmt_id = expn_state.stmt_id
 
-        if my_insn_id in self.definition_insn_ids:
+        if my_stmt_id in self.definition_stmt_ids:
             return None
 
-        my_def_id = self.usage_to_definition[my_insn_id]
+        my_def_id = self.usage_to_definition[my_stmt_id]
 
         if not self.within(
                 expn_state.kernel,
-                expn_state.instruction,
+                expn_state.statement,
                 expn_state.stack):
             self.saw_unmatched_usage_sites[my_def_id] = True
             return None
@@ -314,31 +314,31 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     from loopy.kernel.creation import apply_single_writer_depencency_heuristic
     dep_kernel = apply_single_writer_depencency_heuristic(dep_kernel)
 
-    id_to_insn = dep_kernel.id_to_insn
+    id_to_stmt = dep_kernel.id_to_stmt
 
-    def get_relevant_definition_insn_id(usage_insn_id):
-        insn = id_to_insn[usage_insn_id]
+    def get_relevant_definition_stmt_id(usage_stmt_id):
+        stmt = id_to_stmt[usage_stmt_id]
 
         def_id = set()
-        for dep_id in insn.depends_on:
-            dep_insn = id_to_insn[dep_id]
-            if lhs_name in dep_insn.write_dependency_names():
-                if lhs_name in dep_insn.read_dependency_names():
-                    raise LoopyError("instruction '%s' both reads *and* "
+        for dep_id in stmt.depends_on:
+            dep_stmt = id_to_stmt[dep_id]
+            if lhs_name in dep_stmt.write_dependency_names():
+                if lhs_name in dep_stmt.read_dependency_names():
+                    raise LoopyError("statement '%s' both reads *and* "
                             "writes '%s'--cannot transcribe to substitution "
                             "rule" % (dep_id, lhs_name))
 
                 def_id.add(dep_id)
             else:
-                rec_result = get_relevant_definition_insn_id(dep_id)
+                rec_result = get_relevant_definition_stmt_id(dep_id)
                 if rec_result is not None:
                     def_id.add(rec_result)
 
         if len(def_id) > 1:
             raise LoopyError("more than one write to '%s' found in "
                     "depdendencies of '%s'--definition cannot be resolved "
-                    "(writer instructions ids: %s)"
-                    % (lhs_name, usage_insn_id, ", ".join(def_id)))
+                    "(writer statements ids: %s)"
+                    % (lhs_name, usage_stmt_id, ", ".join(def_id)))
 
         if not def_id:
             return None
@@ -349,26 +349,26 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
 
     usage_to_definition = {}
 
-    for insn in dep_kernel.instructions:
-        if lhs_name not in insn.read_dependency_names():
+    for stmt in dep_kernel.statements:
+        if lhs_name not in stmt.read_dependency_names():
             continue
 
-        def_id = get_relevant_definition_insn_id(insn.id)
+        def_id = get_relevant_definition_stmt_id(stmt.id)
         if def_id is None:
             raise LoopyError("no write to '%s' found in dependency tree "
                     "of '%s'--definition cannot be resolved"
-                    % (lhs_name, insn.id))
+                    % (lhs_name, stmt.id))
 
-        usage_to_definition[insn.id] = def_id
+        usage_to_definition[stmt.id] = def_id
 
-    definition_insn_ids = set()
-    for insn in kernel.instructions:
-        if lhs_name in insn.write_dependency_names():
-            definition_insn_ids.add(insn.id)
+    definition_stmt_ids = set()
+    for stmt in kernel.statements:
+        if lhs_name in stmt.write_dependency_names():
+            definition_stmt_ids.add(stmt.id)
 
     # }}}
 
-    if not definition_insn_ids:
+    if not definition_stmt_ids:
         raise LoopyError("no assignments to variable '%s' found"
                 % lhs_name)
 
@@ -378,7 +378,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     rule_mapping_context = SubstitutionRuleMappingContext(
             kernel.substitutions, kernel.get_var_name_generator())
     tts = AssignmentToSubstChanger(rule_mapping_context,
-            lhs_name, definition_insn_ids,
+            lhs_name, definition_stmt_ids,
             usage_to_definition, extra_arguments, within)
 
     kernel = rule_mapping_context.finish_kernel(tts.map_kernel(kernel))
@@ -388,27 +388,27 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     # {{{ create new substitution rules
 
     new_substs = kernel.substitutions.copy()
-    for def_id, subst_name in six.iteritems(tts.definition_insn_id_to_subst_name):
-        def_insn = kernel.id_to_insn[def_id]
+    for def_id, subst_name in six.iteritems(tts.definition_stmt_id_to_subst_name):
+        def_stmt = kernel.id_to_stmt[def_id]
 
         from loopy.kernel.data import Assignment
-        assert isinstance(def_insn, Assignment)
+        assert isinstance(def_stmt, Assignment)
 
         from pymbolic.primitives import Variable, Subscript
-        if isinstance(def_insn.assignee, Subscript):
-            indices = def_insn.assignee.index_tuple
-        elif isinstance(def_insn.assignee, Variable):
+        if isinstance(def_stmt.assignee, Subscript):
+            indices = def_stmt.assignee.index_tuple
+        elif isinstance(def_stmt.assignee, Variable):
             indices = ()
         else:
             raise LoopyError(
                     "Unrecognized LHS type: %s"
-                    % type(def_insn.assignee).__name__)
+                    % type(def_stmt.assignee).__name__)
 
         arguments = []
 
         for i in indices:
             if not isinstance(i, Variable):
-                raise LoopyError("In defining instruction '%s': "
+                raise LoopyError("In defining statement '%s': "
                         "asignee index '%s' is not a plain variable. "
                         "Perhaps use loopy.affine_map_inames() "
                         "to perform substitution." % (def_id, i))
@@ -418,7 +418,7 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
         new_substs[subst_name] = SubstitutionRule(
                 name=subst_name,
                 arguments=tuple(arguments) + extra_arguments,
-                expression=def_insn.expression)
+                expression=def_stmt.expression)
 
     # }}}
 
@@ -450,11 +450,11 @@ def assignment_to_subst(kernel, lhs_name, extra_arguments=(), within=None,
     # }}}
 
     import loopy as lp
-    kernel = lp.remove_instructions(
+    kernel = lp.remove_statements(
             kernel,
             set(
-                insn_id
-                for insn_id, still_used in six.iteritems(
+                stmt_id
+                for stmt_id, still_used in six.iteritems(
                     tts.saw_unmatched_usage_sites)
                 if not still_used))
 

@@ -51,7 +51,7 @@ def test_laplacian_stiffness(ctx_factory):
         # This (mostly) reproduces Figure 3.1.
 
         knl = lp.tag_inames(knl, {"dx_axis": "unr"})
-        return knl, ["K", "i", "j", "q", "ax_b_insn"]
+        return knl, ["K", "i", "j", "q", "ax_b_stmt"]
 
     def variant_pg4(knl):
         # This (mostly) reproduces the unlabeled code snippet on pg. 4.
@@ -60,7 +60,7 @@ def test_laplacian_stiffness(ctx_factory):
         Ncloc = 16
         knl = lp.split_iname(knl, "K", Ncloc,
                 outer_iname="Ko", inner_iname="Kloc")
-        return knl, ["Ko", "Kloc", "i", "j", "q", "ax_b_insn"]
+        return knl, ["Ko", "Kloc", "i", "j", "q", "ax_b_stmt"]
 
     def variant_fig32(knl):
         # This (mostly) reproduces Figure 3.2.
@@ -71,7 +71,7 @@ def test_laplacian_stiffness(ctx_factory):
         knl = lp.precompute(knl, "dPsi", np.float32, ["i", "q", "dx_axis"],
                 default_tag=None)
         knl = lp.tag_inames(knl, {"dx_axis": "unr", "dxi": "unr"})
-        return knl, ["Ko", "Kloc", "dPsi_q", "ij", "i", "j", "q", "ax_b_insn"]
+        return knl, ["Ko", "Kloc", "dPsi_q", "ij", "i", "j", "q", "ax_b_stmt"]
 
     def variant_fig33(knl):
         # This is meant to (mostly) reproduce Figure 3.3.
@@ -97,7 +97,7 @@ def test_laplacian_stiffness(ctx_factory):
                 outer_iname="Ko", inner_iname="Kloc",
                 outer_tag="g.0")
         knl = lp.tag_inames(knl, {"i": "l.1", "j": "l.0"})
-        return knl, ["K", "i", "j", "q", "ax_b_insn"]
+        return knl, ["K", "i", "j", "q", "ax_b_stmt"]
 
     def variant_simple_gpu_prefetch(knl):
         # This adds prefetching to the GPU variant above.
@@ -116,7 +116,7 @@ def test_laplacian_stiffness(ctx_factory):
         knl = lp.add_prefetch(knl, "DPsi", [0, 1, 2])
         knl = lp.add_prefetch(knl, "jacInv", [0, 1, 3])
         knl = lp.add_prefetch(knl, "jacDet", [1])
-        return knl, ["K", "i", "j", "q", "ax_b_insn"]
+        return knl, ["K", "i", "j", "q", "ax_b_stmt"]
 
     # Plug in variant name here
     #                        |

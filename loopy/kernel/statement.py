@@ -28,10 +28,10 @@ from loopy.diagnostic import LoopyError
 from warnings import warn
 
 
-# {{{ instructions: base class
+# {{{ statements: base class
 
-class InstructionBase(ImmutableRecord):
-    """A base class for all types of instruction that can occur in
+class StatementBase(ImmutableRecord):
+    """A base class for all types of statement that can occur in
     a kernel.
 
     .. attribute:: id
@@ -39,26 +39,26 @@ class InstructionBase(ImmutableRecord):
         An (otherwise meaningless) identifier that is unique within
         a :class:`loopy.kernel.LoopKernel`.
 
-    .. rubric:: Instruction ordering
+    .. rubric:: Statement ordering
 
     .. attribute:: depends_on
 
-        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
+        a :class:`frozenset` of :attr:`id` values of :class:`Statement` instances
         that *must* be executed before this one. Note that
         :func:`loopy.preprocess_kernel` (usually invoked automatically)
         augments this by adding dependencies on any writes to temporaries read
-        by this instruction.
+        by this statement.
 
         May be *None* to invoke the default.
 
         There are two extensions to this:
 
         - You may use `*` as a wildcard in the given IDs. This will be expanded
-          to all matching instruction IDs during :func:`loopy.make_kernel`.
-        - Instead of an instruction ID, you may pass an instance of
+          to all matching statement IDs during :func:`loopy.make_kernel`.
+        - Instead of an statement ID, you may pass an instance of
           :class:`loopy.match.MatchExpressionBase` into the :attr:`depends_on`
           :class:`frozenset`. The given expression will be used to add any
-          matching instructions in the kernel to :attr:`depends_on` during
+          matching statements in the kernel to :attr:`depends_on` during
           :func:`loopy.make_kernel`. Note, that this is not meant as a user-facing
           interface.
 
@@ -71,16 +71,16 @@ class InstructionBase(ImmutableRecord):
 
     .. attribute:: groups
 
-        A :class:`frozenset` of strings indicating the names of 'instruction
-        groups' of which this instruction is a part. An instruction group is
-        considered 'active' as long as one (but not all) instructions of the
+        A :class:`frozenset` of strings indicating the names of 'statement
+        groups' of which this statement is a part. An statement group is
+        considered 'active' as long as one (but not all) statements of the
         group have been executed.
 
     .. attribute:: conflicts_with_groups
 
-        A :class:`frozenset` of strings indicating which instruction groups
-        (see :class:`InstructionBase.groups`) may not be active when this
-        instruction is scheduled.
+        A :class:`frozenset` of strings indicating which statement groups
+        (see :class:`StatementBase.groups`) may not be active when this
+        statement is scheduled.
 
     .. attribute:: priority
 
@@ -91,8 +91,8 @@ class InstructionBase(ImmutableRecord):
 
     .. attribute:: no_sync_with
 
-        a :class:`frozenset` of tuples of the form `(insn_id, scope)`, where
-        `insn_id` refers to :attr:`id` of :class:`Instruction` instances
+        a :class:`frozenset` of tuples of the form `(stmt_id, scope)`, where
+        `stmt_id` refers to :attr:`id` of :class:`Statement` instances
         and `scope` is one of the following strings:
 
            - `"local"`
@@ -100,10 +100,10 @@ class InstructionBase(ImmutableRecord):
            - `"any"`.
 
         This indicates no barrier synchronization is necessary with the given
-        instruction using barriers of type `scope`, even given the existence of
+        statement using barriers of type `scope`, even given the existence of
         a dependency chain and apparently conflicting access.
 
-        Note, that :attr:`no_sync_with` allows instruction matching through wildcards
+        Note, that :attr:`no_sync_with` allows statement matching through wildcards
         and match expression, just like :attr:`depends_on`.
 
     .. rubric:: Conditionals
@@ -111,7 +111,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: predicates
 
         a :class:`frozenset` of expressions. The conjunction (logical and) of
-        their truth values (as defined by C) determines whether this instruction
+        their truth values (as defined by C) determines whether this statement
         should be run.
 
     .. rubric:: Iname dependencies
@@ -119,7 +119,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: within_inames
 
         A :class:`frozenset` of inames identifying the loops within which this
-        instruction will be executed.
+        statement will be executed.
 
     .. rubric:: Iname dependencies
 
@@ -128,7 +128,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: tags
 
         A :class:`frozenset` of string identifiers that can be used to
-        identify groups of instructions.
+        identify groups of statements.
 
         Tags starting with exclamation marks (``!``) are reserved and may have
         specific meanings defined by :mod:`loopy` or its targets.
@@ -164,19 +164,19 @@ class InstructionBase(ImmutableRecord):
             within_inames_is_final, within_inames,
             priority,
             boostable, boostable_into, predicates, tags,
-            insn_deps=None, insn_deps_is_final=None,
+            stmt_deps=None, stmt_deps_is_final=None,
             forced_iname_deps=None, forced_iname_deps_is_final=None):
 
         # {{{ backwards compatibility goop
 
-        if depends_on is not None and insn_deps is not None:
-            raise LoopyError("may not specify both insn_deps and depends_on")
-        elif insn_deps is not None:
-            warn("insn_deps is deprecated, use depends_on",
+        if depends_on is not None and stmt_deps is not None:
+            raise LoopyError("may not specify both stmt_deps and depends_on")
+        elif stmt_deps is not None:
+            warn("stmt_deps is deprecated, use depends_on",
                     DeprecationWarning, stacklevel=2)
 
-            depends_on = insn_deps
-            depends_on_is_final = insn_deps_is_final
+            depends_on = stmt_deps
+            depends_on_is_final = stmt_deps_is_final
 
         if forced_iname_deps is not None and within_inames is not None:
             raise LoopyError("may not specify both forced_iname_deps "
@@ -282,16 +282,16 @@ class InstructionBase(ImmutableRecord):
     # {{{ backwards compatibility goop
 
     @property
-    def insn_deps(self):
-        warn("insn_deps is deprecated, use depends_on",
+    def stmt_deps(self):
+        warn("stmt_deps is deprecated, use depends_on",
                 DeprecationWarning, stacklevel=2)
 
         return self.depends_on
 
     # legacy
     @property
-    def insn_deps_is_final(self):
-        warn("insn_deps_is_final is deprecated, use depends_on_is_final",
+    def stmt_deps_is_final(self):
+        warn("stmt_deps_is_final is deprecated, use depends_on_is_final",
                 DeprecationWarning, stacklevel=2)
 
         return self.depends_on_is_final
@@ -349,14 +349,14 @@ class InstructionBase(ImmutableRecord):
     def assignee_name(self):
         """A convenience wrapper around :meth:`assignee_var_names`
         that returns the the name of the variable being assigned.
-        If more than one variable is being modified in the instruction,
+        If more than one variable is being modified in the statement,
         :raise:`ValueError` is raised.
         """
 
         names = self.assignee_var_names()
 
         if len(names) != 1:
-            raise ValueError("expected exactly one assignment in instruction "
+            raise ValueError("expected exactly one assignment in statement "
                     "on which assignee_name is being called, found %d"
                     % len(names))
 
@@ -366,7 +366,7 @@ class InstructionBase(ImmutableRecord):
     @memoize_method
     def write_dependency_names(self):
         """Return a set of dependencies of the left hand side of the
-        assignments performed by this instruction, including written variables
+        assignments performed by this statement, including written variables
         and indices.
         """
 
@@ -393,7 +393,7 @@ class InstructionBase(ImmutableRecord):
         elif self.boostable is None:
             pass
         else:
-            raise RuntimeError("unexpected value for Instruction.boostable")
+            raise RuntimeError("unexpected value for Statement.boostable")
 
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
@@ -447,22 +447,22 @@ class InstructionBase(ImmutableRecord):
     # }}}
 
     def copy(self, **kwargs):
-        if "insn_deps" in kwargs:
-            warn("insn_deps is deprecated, use depends_on",
+        if "stmt_deps" in kwargs:
+            warn("stmt_deps is deprecated, use depends_on",
                     DeprecationWarning, stacklevel=2)
 
-            kwargs["depends_on"] = kwargs.pop("insn_deps")
+            kwargs["depends_on"] = kwargs.pop("stmt_deps")
 
-        if "insn_deps_is_final" in kwargs:
-            warn("insn_deps_is_final is deprecated, use depends_on",
+        if "stmt_deps_is_final" in kwargs:
+            warn("stmt_deps_is_final is deprecated, use depends_on",
                     DeprecationWarning, stacklevel=2)
 
-            kwargs["depends_on_is_final"] = kwargs.pop("insn_deps_is_final")
+            kwargs["depends_on_is_final"] = kwargs.pop("stmt_deps_is_final")
 
-        return super(InstructionBase, self).copy(**kwargs)
+        return super(StatementBase, self).copy(**kwargs)
 
     def __setstate__(self, val):
-        super(InstructionBase, self).__setstate__(val)
+        super(StatementBase, self).__setstate__(val)
 
         from loopy.tools import intern_frozenset_of_ids
 
@@ -666,13 +666,13 @@ class AtomicUpdate(VarAtomicity):
 # }}}
 
 
-# {{{ instruction base class: expression rhs
+# {{{ statement base class: expression rhs
 
-class MultiAssignmentBase(InstructionBase):
-    """An assignment instruction with an expression as a right-hand side."""
+class MultiAssignmentBase(StatementBase):
+    """An assignment statement with an expression as a right-hand side."""
 
-    fields = InstructionBase.fields | set(["expression"])
-    pymbolic_fields = InstructionBase.pymbolic_fields | set(["expression"])
+    fields = StatementBase.fields | set(["expression"])
+    pymbolic_fields = StatementBase.pymbolic_fields | set(["expression"])
 
     @memoize_method
     def read_dependency_names(self):
@@ -704,7 +704,7 @@ class MultiAssignmentBase(InstructionBase):
 # }}}
 
 
-# {{{ instruction: assignment
+# {{{ statement: assignment
 
 class Assignment(MultiAssignmentBase):
     """
@@ -774,7 +774,7 @@ class Assignment(MultiAssignmentBase):
             boostable=None, boostable_into=None, tags=None,
             temp_var_type=None, atomicity=(),
             priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None,
+            stmt_deps=None, stmt_deps_is_final=None,
             forced_iname_deps=None, forced_iname_deps_is_final=None):
 
         super(Assignment, self).__init__(
@@ -791,8 +791,8 @@ class Assignment(MultiAssignmentBase):
                 priority=priority,
                 predicates=predicates,
                 tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
+                stmt_deps=stmt_deps,
+                stmt_deps_is_final=stmt_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 forced_iname_deps_is_final=forced_iname_deps_is_final)
 
@@ -812,7 +812,7 @@ class Assignment(MultiAssignmentBase):
         self.temp_var_type = temp_var_type
         self.atomicity = atomicity
 
-    # {{{ implement InstructionBase interface
+    # {{{ implement StatementBase interface
 
     @memoize_method
     def assignee_var_names(self):
@@ -844,7 +844,7 @@ class Assignment(MultiAssignmentBase):
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
 
-    # {{{ for interface uniformity with CallInstruction
+    # {{{ for interface uniformity with CallStatement
 
     @property
     def temp_var_types(self):
@@ -857,21 +857,21 @@ class Assignment(MultiAssignmentBase):
     # }}}
 
 
-class ExpressionInstruction(Assignment):
+class ExpressionStatement(Assignment):
     def __init__(self, *args, **kwargs):
-        warn("ExpressionInstruction is deprecated. Use Assignment instead",
+        warn("ExpressionStatement is deprecated. Use Assignment instead",
                 DeprecationWarning, stacklevel=2)
 
-        super(ExpressionInstruction, self).__init__(*args, **kwargs)
+        super(ExpressionStatement, self).__init__(*args, **kwargs)
 
 # }}}
 
 
-# {{{ instruction: function call
+# {{{ statement: function call
 
-class CallInstruction(MultiAssignmentBase):
-    """An instruction capturing a function call. Unlike :class:`Assignment`,
-    this instruction supports functions with multiple return values.
+class CallStatement(MultiAssignmentBase):
+    """An statement capturing a function call. Unlike :class:`Assignment`,
+    this statement supports functions with multiple return values.
 
     .. attribute:: assignees
 
@@ -907,11 +907,11 @@ class CallInstruction(MultiAssignmentBase):
             boostable=None, boostable_into=None, tags=None,
             temp_var_types=None,
             priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None,
+            stmt_deps=None, stmt_deps_is_final=None,
             forced_iname_deps=None,
             forced_iname_deps_is_final=None):
 
-        super(CallInstruction, self).__init__(
+        super(CallStatement, self).__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -925,22 +925,22 @@ class CallInstruction(MultiAssignmentBase):
                 priority=priority,
                 predicates=predicates,
                 tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
+                stmt_deps=stmt_deps,
+                stmt_deps_is_final=stmt_deps_is_final,
                 forced_iname_deps=forced_iname_deps,
                 forced_iname_deps_is_final=forced_iname_deps_is_final)
 
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
         if not isinstance(expression, (Call, Reduction)) and expression is not None:
-            raise LoopyError("'expression' argument to CallInstruction "
+            raise LoopyError("'expression' argument to CallStatement "
                     "must be a function call")
 
         from loopy.symbolic import parse
         if isinstance(assignees, str):
             assignees = parse(assignees)
         if not isinstance(assignees, tuple):
-            raise LoopyError("'assignees' argument to CallInstruction "
+            raise LoopyError("'assignees' argument to CallStatement "
                     "must be a tuple or a string parseable to a tuple"
                     "--got '%s'" % type(assignees).__name__)
 
@@ -961,7 +961,7 @@ class CallInstruction(MultiAssignmentBase):
         else:
             self.temp_var_types = temp_var_types
 
-    # {{{ implement InstructionBase interface
+    # {{{ implement StatementBase interface
 
     @memoize_method
     def assignee_var_names(self):
@@ -1017,7 +1017,7 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
             raise LoopyError("right-hand side in multiple assignment must be "
                     "function call or reduction, got: '%s'" % expression)
 
-        return CallInstruction(
+        return CallStatement(
                 assignees=assignees,
                 expression=expression,
                 temp_var_types=temp_var_types,
@@ -1034,14 +1034,14 @@ def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
                 **kwargs)
 
 
-# {{{ c instruction
+# {{{ c statement
 
-class CInstruction(InstructionBase):
+class CStatement(StatementBase):
     """
     .. attribute:: iname_exprs
 
         A list of tuples *(name, expr)* of inames or expressions based on them
-        that the instruction needs access to.
+        that the statement needs access to.
 
     .. attribute:: code
 
@@ -1071,11 +1071,11 @@ class CInstruction(InstructionBase):
         figuring out dependencies.
     """
 
-    fields = InstructionBase.fields | \
+    fields = StatementBase.fields | \
             set("iname_exprs code read_variables assignees".split())
-    pymbolic_fields = InstructionBase.pymbolic_fields | \
+    pymbolic_fields = StatementBase.pymbolic_fields | \
             set("iname_exprs assignees".split())
-    pymbolic_set_fields = InstructionBase.pymbolic_set_fields | \
+    pymbolic_set_fields = StatementBase.pymbolic_set_fields | \
             set(["read_variables"])
 
     def __init__(self,
@@ -1087,7 +1087,7 @@ class CInstruction(InstructionBase):
             within_inames_is_final=None, within_inames=None,
             priority=0, boostable=None, boostable_into=None,
             predicates=frozenset(), tags=None,
-            insn_deps=None, insn_deps_is_final=None):
+            stmt_deps=None, stmt_deps_is_final=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -1098,7 +1098,7 @@ class CInstruction(InstructionBase):
             sequence of strings parseable into the desired format.
         """
 
-        InstructionBase.__init__(self,
+        StatementBase.__init__(self,
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1109,8 +1109,8 @@ class CInstruction(InstructionBase):
                 boostable=boostable,
                 boostable_into=boostable_into,
                 priority=priority, predicates=predicates, tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final)
+                stmt_deps=stmt_deps,
+                stmt_deps_is_final=stmt_deps_is_final)
 
         # {{{ normalize iname_exprs
 
@@ -1153,7 +1153,7 @@ class CInstruction(InstructionBase):
 
     def read_dependency_names(self):
         result = (
-                super(CInstruction, self).read_dependency_names()
+                super(CStatement, self).read_dependency_names()
                 | frozenset(self.read_variables))
 
         from loopy.symbolic import get_dependencies
@@ -1204,7 +1204,7 @@ class CInstruction(InstructionBase):
 # }}}
 
 
-class _DataObliviousInstruction(InstructionBase):
+class _DataObliviousStatement(StatementBase):
     # {{{ abstract interface
 
     # read_dependency_names inherited
@@ -1230,12 +1230,12 @@ class _DataObliviousInstruction(InstructionBase):
         return ()
 
 
-# {{{ barrier instruction
+# {{{ barrier statement
 
-class NoOpInstruction(_DataObliviousInstruction):
-    """An instruction that carries out no operation. It is mainly
+class NoOpStatement(_DataObliviousStatement):
+    """An statement that carries out no operation. It is mainly
     useful as a way to structure dependencies between other
-    instructions.
+    statements.
 
     The textual syntax in a :mod:`loopy` kernel is::
 
@@ -1249,7 +1249,7 @@ class NoOpInstruction(_DataObliviousInstruction):
             priority=None,
             boostable=None, boostable_into=None,
             predicates=None, tags=None):
-        super(NoOpInstruction, self).__init__(
+        super(NoOpStatement, self).__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,
@@ -1276,10 +1276,10 @@ class NoOpInstruction(_DataObliviousInstruction):
 # }}}
 
 
-# {{{ barrier instruction
+# {{{ barrier statement
 
-class BarrierInstruction(_DataObliviousInstruction):
-    """An instruction that requires synchronization with all
+class BarrierStatement(_DataObliviousStatement):
+    """An statement that requires synchronization with all
     concurrent work items of :attr:`kind`.
 
     .. attribute:: kind
@@ -1292,7 +1292,7 @@ class BarrierInstruction(_DataObliviousInstruction):
         ... lbarrier
     """
 
-    fields = _DataObliviousInstruction.fields | set(["kind"])
+    fields = _DataObliviousStatement.fields | set(["kind"])
 
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
@@ -1305,7 +1305,7 @@ class BarrierInstruction(_DataObliviousInstruction):
         if predicates:
             raise LoopyError("conditional barriers are not supported")
 
-        super(BarrierInstruction, self).__init__(
+        super(BarrierStatement, self).__init__(
                 id=id,
                 depends_on=depends_on,
                 depends_on_is_final=depends_on_is_final,

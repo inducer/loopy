@@ -88,7 +88,7 @@ The parts that you see here are the two main components of a loopy kernel:
   passed to the kernel by the user that, in this case, determines the
   length of the vector being multiplied.
 
-* The **instructions** to be executed. These are generally scalar
+* The **statements** to be executed. These are generally scalar
   assignments between array elements, consisting of a left hand
   side and a right hand side. See :ref:`assignments` for the
   full syntax of an assignment.
@@ -121,9 +121,9 @@ always see loopy's view of a kernel by printing it.
     INAME IMPLEMENTATION TAGS:
     i: None
     ---------------------------------------------------------------------------
-    INSTRUCTIONS:
+    STATEMENTS:
     for i
-      out[i] = 2*a[i]  {id=insn}
+      out[i] = 2*a[i]  {id=stmt}
     end i
     ---------------------------------------------------------------------------
 
@@ -132,7 +132,7 @@ than there was in the input. Most of this comes from default values that
 loopy assumes to cover common use cases. These defaults can all be
 overridden.
 
-We've seen the domain and the instructions above, and we'll discuss the
+We've seen the domain and the statements above, and we'll discuss the
 'iname-to-tag-map' in :ref:`implementing-inames`. The remaining big chunk
 of added information is in the 'arguments' section, where we observe the
 following:
@@ -307,13 +307,13 @@ that:
   ``i==17``. Your program is only correct if it produces a valid result
   irrespective of this ordering.
 
-* In addition, there is (by default) no ordering between instructions
-  either. In other words, loopy is free to execute the instructions above
+* In addition, there is (by default) no ordering between statements
+  either. In other words, loopy is free to execute the statements above
   in any order whatsoever.
 
 Reading the above two rules, you'll notice that our transpose-and-multiply
 kernel is incorrect, because it only computes the desired result if the
-first instruction completes before the second one. To fix this, we declare
+first statement completes before the second one. To fix this, we declare
 an explicit dependency:
 
 .. doctest::
@@ -327,8 +327,8 @@ an explicit dependency:
     ...     """)
 
 ``{id=transpose}`` assigns the identifier *transpose* to the first
-instruction, and ``{dep=transpose}`` declares a dependency of the second
-instruction on the first. Looking at loopy's view of this kernel, we see
+statement, and ``{dep=transpose}`` declares a dependency of the second
+statement on the first. Looking at loopy's view of this kernel, we see
 that these dependencies show up there, too:
 
 .. doctest::
@@ -340,14 +340,14 @@ that these dependencies show up there, too:
     ...
     ---------------------------------------------------------------------------
     DEPENDENCIES: (use loopy.show_dependency_graph to visualize)
-    insn : transpose
+    stmt : transpose
     ---------------------------------------------------------------------------
 
 These dependencies are in a ``dependent : prerequisite`` format that should
 be familiar if you have previously dealt with Makefiles. For larger
 kernels, these dependency lists can become quite verbose, and there is an
 increasing risk that required dependencies are missed. To help catch these,
-loopy can also show an instruction dependency graph, using
+loopy can also show an statement dependency graph, using
 :func:`loopy.show_dependency_graph`:
 
 .. image:: images/dep-graph-incorrect.svg
@@ -360,16 +360,16 @@ graph will open in a browser window.
 Since manually notating lots of dependencies is cumbersome, loopy has
 a heuristic:
 
-    If a variable is written by exactly one instruction, then all
-    instructions reading that variable will automatically depend on the
-    writing instruction.
+    If a variable is written by exactly one statement, then all
+    statements reading that variable will automatically depend on the
+    writing statement.
 
 The intent of this heuristic is to cover the common case of a
 precomputed result being stored and used many times. Generally, these
 dependencies are *in addition* to any manual dependencies added via
 ``{dep=...}``.  It is possible (but rare) that the heuristic adds undesired
 dependencies.  In this case, ``{dep=*...}`` (i.e. a leading asterisk) to
-prevent the heuristic from adding dependencies for this instruction.
+prevent the heuristic from adding dependencies for this statement.
 
 Loops and dependencies
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -395,7 +395,7 @@ Let us take a look at the generated code for the above kernel:
         }
     }
 
-While our requested instruction ordering has been obeyed, something is
+While our requested statement ordering has been obeyed, something is
 still not right:
 
 .. doctest::
@@ -404,7 +404,7 @@ still not right:
     False
 
 For the kernel to perform the desired computation, *all
-instances* (loop iterations) of the first instruction need to be completed,
+instances* (loop iterations) of the first statement need to be completed,
 not just the one for the current values of *(i, j)*.
 
     Dependencies in loopy act *within* the largest common set of shared
@@ -960,7 +960,7 @@ Consider the following example:
         a_temp[lid(0)] = a[16 * gid(0) + lid(0)];
         acc_k = 0.0f;
       }
-      barrier(CLK_LOCAL_MEM_FENCE) /* for a_temp (insn_0_k_update depends on insn) */;
+      barrier(CLK_LOCAL_MEM_FENCE) /* for a_temp (stmt_0_k_update depends on stmt) */;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
         for (int k = 0; k <= 15; ++k)
@@ -971,8 +971,8 @@ Consider the following example:
 
 Observe that *a_temp* was automatically placed in local memory, because
 it is written in parallel across values of the group-local iname
-*i_inner*. In addition, :mod:`loopy` has emitted a barrier instruction to
-achieve the :ref:`ordering` specified by the instruction dependencies.
+*i_inner*. In addition, :mod:`loopy` has emitted a barrier statement to
+achieve the :ref:`ordering` specified by the statement dependencies.
 
 (The ``priority=10`` attribute was added to make the output of the test
 deterministic.)
@@ -1045,7 +1045,7 @@ earlier:
         acc_k = 0.0f;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
         a_fetch[lid(0)] = a[16 * gid(0) + lid(0)];
-      barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch (insn_k_update depends on a_fetch_rule) */;
+      barrier(CLK_LOCAL_MEM_FENCE) /* for a_fetch (stmt_k_update depends on a_fetch_rule) */;
       if (-1 + -16 * gid(0) + -1 * lid(0) + n >= 0)
       {
         for (int k = 0; k <= 15; ++k)
@@ -1108,7 +1108,7 @@ work item:
 :mod:`loopy` supports two kinds of barriers:
 
 * *Local barriers* ensure consistency of local memory accesses to items within
-  *the same* work group. This synchronizes with all instructions in the work
+  *the same* work group. This synchronizes with all statements in the work
   group.
 
 * *Global barriers* ensure consistency of global memory accesses
@@ -1123,7 +1123,7 @@ all work items reach the same barrier, the kernel will hang during execution.
 Barrier insertion
 ~~~~~~~~~~~~~~~~~
 
-By default, :mod:`loopy` inserts local barriers between two instructions when it
+By default, :mod:`loopy` inserts local barriers between two statements when it
 detects that a dependency involving local memory may occur across work items. To
 see this in action, take a look at the section on :ref:`local_temporaries`.
 
@@ -1156,11 +1156,11 @@ this, :mod:`loopy` will complain that global barrier needs to be inserted:
    >>> cgr = lp.generate_code_v2(knl)
    Traceback (most recent call last):
    ...
-   MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
+   MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' statement option to state that no synchronization is needed)
 
-The syntax for a inserting a global barrier instruction is
+The syntax for a inserting a global barrier statement is
 ``... gbarrier``. :mod:`loopy` also supports manually inserting local
-barriers. The syntax for a local barrier instruction is ``... lbarrier``.
+barriers. The syntax for a local barrier statement is ``... lbarrier``.
 
 Saving temporaries across global barriers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1173,7 +1173,7 @@ of how to use :func:`loopy.save_and_reload_temporaries` which is helpful for
 that purpose.
 
 Let us start with an example. Consider the kernel from above with a
-``... gbarrier`` instruction that has already been inserted.
+``... gbarrier`` statement that has already been inserted.
 
 .. doctest::
 
@@ -1202,7 +1202,7 @@ Here is what happens when we try to generate code for the kernel:
    MissingDefinitionError: temporary variable 'tmp' gets used in subkernel 'rotate_v2_0' without a definition (maybe you forgot to call loopy.save_and_reload_temporaries?)
 
 This happens due to the kernel splitting done by :mod:`loopy`. The splitting
-happens when the instruction schedule is generated. To see the schedule, we
+happens when the statement schedule is generated. To see the schedule, we
 should call :func:`loopy.get_one_scheduled_kernel`:
 
    >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
@@ -1222,7 +1222,7 @@ should call :func:`loopy.get_one_scheduled_kernel`:
       6: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
-As the error message suggests, taking a look at the generated instruction
+As the error message suggests, taking a look at the generated statement
 schedule will show that while ``tmp`` is assigned in the first kernel, the
 assignment to ``tmp`` is not seen by the second kernel. Because the temporary is
 in private memory, it does not persist across calls to device kernels (the same
@@ -1231,13 +1231,13 @@ goes for local temporaries).
 :mod:`loopy` provides a function called
 :func:`loopy.save_and_reload_temporaries` for the purpose of handling the
 task of saving and restoring temporary values across global barriers. This
-function adds instructions to the kernel without scheduling them. That means
+function adds statements to the kernel without scheduling them. That means
 that :func:`loopy.get_one_scheduled_kernel` needs to be called one more time to
-put those instructions into the schedule.
+put those statements into the schedule.
 
    >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
    >>> knl = lp.save_and_reload_temporaries(knl)
-   >>> knl = lp.get_one_scheduled_kernel(knl)  # Schedule added instructions
+   >>> knl = lp.get_one_scheduled_kernel(knl)  # Schedule added statements
    >>> print(knl)
    ---------------------------------------------------------------------------
    KERNEL: rotate_v2
@@ -1461,7 +1461,7 @@ sign that something is amiss:
     >>> evt, (out,) = knl(queue, a=a_mat_dev)
     Traceback (most recent call last):
     ...
-    WriteRaceConditionWarning: in kernel transpose: instruction 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch_rule)' to silenced_warnings kernel attribute to disable)
+    WriteRaceConditionWarning: in kernel transpose: statement 'a_fetch_rule' looks invalid: it assigns to indices based on local IDs, but its temporary 'a_fetch' cannot be made local because a write race across the iname(s) 'j_inner' would emerge. (Do you need to add an extra iname to your prefetch?) (add 'write_race_local(a_fetch_rule)' to silenced_warnings kernel attribute to disable)
 
 When we ask to see the code, the issue becomes apparent:
 
@@ -1495,7 +1495,7 @@ Barriers
 ~~~~~~~~
 
 :mod:`loopy` may infer the need for a barrier when it is not necessary. The
-``no_sync_with`` instruction attribute can be used to resolve this.
+``no_sync_with`` statement attribute can be used to resolve this.
 
 See also :func:`loopy.add_nosync`.
 
@@ -1868,16 +1868,16 @@ Now to make things more interesting, we'll create a kernel with barriers:
         for (int j = 0; j <= 9; ++j)
           for (int i = 0; i <= 49; ++i)
           {
-            barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn rev-depends on insn_0) */;
+            barrier(CLK_LOCAL_MEM_FENCE) /* for c (stmt rev-depends on stmt_0) */;
             c[990 * i + 99 * j + lid(0) + 1] = 2 * a[980 * i + 98 * j + lid(0) + 1];
-            barrier(CLK_LOCAL_MEM_FENCE) /* for c (insn_0 depends on insn) */;
+            barrier(CLK_LOCAL_MEM_FENCE) /* for c (stmt_0 depends on stmt) */;
             e[980 * i + 98 * j + lid(0) + 1] = c[990 * i + 99 * j + 1 + lid(0) + 1] + c[990 * i + 99 * j + -1 + lid(0) + 1];
           }
       }
     }
 
-In this kernel, when a thread performs the second instruction it uses data
-produced by *different* threads during the first instruction. Because of this,
+In this kernel, when a thread performs the second statement it uses data
+produced by *different* threads during the first statement. Because of this,
 barriers are required for correct execution, so loopy inserts them. Now we'll
 count the barriers using :func:`loopy.get_synchronization_map`:
 

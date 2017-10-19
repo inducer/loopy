@@ -37,7 +37,7 @@ def potential_loop_nest_map(kernel):
     result = {}
 
     all_inames = kernel.all_inames()
-    iname_to_insns = kernel.iname_to_insns()
+    iname_to_stmts = kernel.iname_to_stmts()
 
     # examine pairs of all inames--O(n**2), I know.
     for inner_iname in all_inames:
@@ -46,7 +46,7 @@ def potential_loop_nest_map(kernel):
             if inner_iname == outer_iname:
                 continue
 
-            if iname_to_insns[inner_iname] <= iname_to_insns[outer_iname]:
+            if iname_to_stmts[inner_iname] <= iname_to_stmts[outer_iname]:
                 inner_result.add(outer_iname)
 
         if inner_result:

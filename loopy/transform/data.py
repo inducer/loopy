@@ -227,7 +227,7 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
 
 
     :arg fetch_outer_inames: The inames within which the fetch
-        instruction is nested. If *None*, make an educated guess.
+        statement is nested. If *None*, make an educated guess.
 
     This function internally uses :func:`extract_subst` and :func:`precompute`.
     """
@@ -446,8 +446,8 @@ def remove_unused_arguments(knl):
     exp_knl = lp.expand_subst(knl)
 
     refd_vars = set(knl.all_params())
-    for insn in exp_knl.instructions:
-        refd_vars.update(insn.dependency_names())
+    for stmt in exp_knl.statements:
+        refd_vars.update(stmt.dependency_names())
 
     from loopy.kernel.array import ArrayBase, FixedStrideArrayDimTag
     from loopy.symbolic import get_dependencies
@@ -512,19 +512,19 @@ def alias_temporaries(knl, names, base_name_prefix=None,
     names_set = set(names)
 
     if synchronize_for_exclusive_use:
-        new_insns = []
-        for insn in knl.instructions:
-            temp_deps = insn.dependency_names() & names_set
+        new_stmts = []
+        for stmt in knl.statements:
+            temp_deps = stmt.dependency_names() & names_set
 
             if not temp_deps:
-                new_insns.append(insn)
+                new_stmts.append(stmt)
                 continue
 
             if len(temp_deps) > 1:
-                raise LoopyError("Instruction {insn} refers to multiple of the "
+                raise LoopyError("Statement {stmt} refers to multiple of the "
                         "temporaries being aliased, namely '{temps}'. Cannot alias."
                         .format(
-                            insn=insn.id,
+                            stmt=stmt.id,
                             temps=", ".join(temp_deps)))
 
             temp_name, = temp_deps
@@ -534,13 +534,13 @@ def alias_temporaries(knl, names, base_name_prefix=None,
                     frozenset(group_names[:temp_idx])
                     | frozenset(group_names[temp_idx+1:]))
 
-            new_insns.append(
-                    insn.copy(
-                        groups=insn.groups | frozenset([group_name]),
+            new_stmts.append(
+                    stmt.copy(
+                        groups=stmt.groups | frozenset([group_name]),
                         conflicts_with_groups=(
-                            insn.conflicts_with_groups | other_group_names)))
+                            stmt.conflicts_with_groups | other_group_names)))
     else:
-        new_insns = knl.instructions
+        new_stmts = knl.statements
 
     new_temporary_variables = {}
     for tv in six.itervalues(knl.temporary_variables):
@@ -556,7 +556,7 @@ def alias_temporaries(knl, names, base_name_prefix=None,
             new_temporary_variables[tv.name] = tv
 
     return knl.copy(
-            instructions=new_insns,
+            statements=new_stmts,
             temporary_variables=new_temporary_variables)
 
 # }}}
@@ -624,7 +624,7 @@ def rename_argument(kernel, old_name, new_name, existing_ok=False):
             kernel.substitutions, var_name_gen)
     smap = RuleAwareSubstitutionMapper(rule_mapping_context,
                     make_subst_func(subst_dict),
-                    within=lambda knl, insn, stack: True)
+                    within=lambda knl, stmt, stack: True)
 
     kernel = smap.map_kernel(kernel)
 
@@ -683,7 +683,7 @@ def set_temporary_scope(kernel, temp_var_names, scope):
 
 # {{{ reduction_arg_to_subst_rule
 
-def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=None):
+def reduction_arg_to_subst_rule(knl, inames, stmt_match=None, subst_rule_name=None):
     if isinstance(inames, str):
         inames = [s.strip() for s in inames.split(",")]
 
@@ -731,15 +731,15 @@ def reduction_arg_to_subst_rule(knl, inames, insn_match=None, subst_rule_name=No
 
     from loopy.kernel.data import MultiAssignmentBase
 
-    new_insns = []
-    for insn in knl.instructions:
-        if not isinstance(insn, MultiAssignmentBase):
-            new_insns.append(insn)
+    new_stmts = []
+    for stmt in knl.statements:
+        if not isinstance(stmt, MultiAssignmentBase):
+            new_stmts.append(stmt)
         else:
-            new_insns.append(insn.copy(expression=cb_mapper(insn.expression)))
+            new_stmts.append(stmt.copy(expression=cb_mapper(stmt.expression)))
 
     return knl.copy(
-            instructions=new_insns,
+            statements=new_stmts,
             substitutions=substs)
 
 # }}}

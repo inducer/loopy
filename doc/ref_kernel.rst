@@ -17,7 +17,7 @@ Example::
 A kernel's iteration domain is given by a list of :class:`islpy.BasicSet`
 instances (which parametrically represent multi-dimensional sets of
 tuples of integers).  They define the integer values of the loop variables
-for which instructions (see below) will be executed.
+for which statements (see below) will be executed.
 It is written in :ref:`isl-syntax`.  :mod:`loopy` calls the loop variables
 *inames*. In this case, *i* is the sole iname. The loop
 domain is given as a conjunction of affine equality
@@ -46,7 +46,7 @@ inside of the 'l' loop.
 
 The idea is that domains form a forest (a collection of trees), and a
 "sub-forest" is extracted that covers all the inames for each
-instruction. Each individual sub-tree is then checked for branching,
+statement. Each individual sub-tree is then checked for branching,
 which is ill-formed. It is declared ill-formed because intersecting, in
 the above case, the l, i, and j domains could result in restrictions from the
 i domain affecting the j domain by way of how i affects l--which would
@@ -59,7 +59,7 @@ Inames
 
 Loops are (by default) entered exactly once. This is necessary to preserve
 dependency semantics--otherwise e.g. a fetch could happen inside one loop nest,
-and then the instruction using that fetch could be inside a wholly different
+and then the statement using that fetch could be inside a wholly different
 loop nest.
 
 .. _isl-syntax:
@@ -134,7 +134,7 @@ Tag                             Meaning
 ``"l.N"``                       Local (intra-group) axis N ("local")
 ``"g.N"``                       Group-number axis N ("group")
 ``"unr"``                       Unroll
-``"ilp"`` | ``"ilp.unr"``       Unroll using instruction-level parallelism
+``"ilp"`` | ``"ilp.unr"``       Unroll using statement-level parallelism
 ``"ilp.seq"``                   Realize parallel iname as innermost loop
 ``"like.INAME"``                Can be used when tagging inames to tag like another
 ``"unused.g"`` | ``"unused.l"`` Can be to tag as the next unused group/local axis
@@ -147,18 +147,18 @@ Tag                             Meaning
 * Restricts loops to be innermost
 * Duplicates reduction storage for any reductions nested around ILP usage
 * Causes a loop (unrolled or not) to be opened/generated for each
-  involved instruction
+  involved statement
 
 .. }}}
 
-.. _instructions:
+.. _statements:
 
-Instructions
+Statements
 ------------
 
 .. {{{
 
-.. autoclass:: InstructionBase
+.. autoclass:: StatementBase
 
 .. _assignments:
 
@@ -172,18 +172,18 @@ Assignment objects
 Textual Assignment Syntax
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The general syntax of an instruction is a simple assignment::
+The general syntax of an statement is a simple assignment::
 
     LHS[i,j,k] = EXPRESSION
 
 Several extensions of this syntax are defined, as discussed below.  They
 may be combined freely.
 
-You can also use an instruction to declare a new temporary variable. (See
+You can also use an statement to declare a new temporary variable. (See
 :ref:`temporaries`.) See :ref:`types` for what types are acceptable. If the
 ``LHS`` has a subscript, bounds on the indices are inferred (which must be
 constants at the time of kernel creation) and the declared temporary is
-created as an array. Instructions declaring temporaries have the following
+created as an array. Statements declaring temporaries have the following
 form::
 
     <temp_var_type> LHS[i,j,k] = EXPRESSION
@@ -193,31 +193,31 @@ automatically. This uses the following syntax::
 
     <> LHS[i,j,k] = EXPRESSION
 
-Lastly, each instruction may optionally have a number of attributes
+Lastly, each statement may optionally have a number of attributes
 specified, using the following format::
 
     LHS[i,j,k] = EXPRESSION {attr1,attr2=value1:value2}
 
 These are usually key-value pairs. The following attributes are recognized:
 
-* ``id=value`` sets the instruction's identifier to ``value``. ``value``
+* ``id=value`` sets the statement's identifier to ``value``. ``value``
   must be unique within the kernel. This identifier is used to refer to the
-  instruction after it has been created, such as from ``dep`` attributes
+  statement after it has been created, such as from ``dep`` attributes
   (see below) or from :mod:`context matches <loopy.match>`.
 
-* ``id_prefix=value`` also sets the instruction's identifier, however
+* ``id_prefix=value`` also sets the statement's identifier, however
   uniqueness is ensured by loopy itself, by appending further components
   (often numbers) to the given ``id_prefix``.
 
-* ``inames=i:j:k`` forces the instruction to reside within the loops over
+* ``inames=i:j:k`` forces the statement to reside within the loops over
   :ref:`inames` ``i``, ``j`` and ``k`` (and only those).
 
   .. note::
 
-      The default for the inames that the instruction depends on is
-      the inames used in the instruction itself plus the common
+      The default for the inames that the statement depends on is
+      the inames used in the statement itself plus the common
       subset of inames shared by writers of all variables read by the
-      instruction.
+      statement.
 
       You can add a plus sign ("``+``") to the front of this option
       value to indicate that you would like the inames you specify here
@@ -232,9 +232,9 @@ These are usually key-value pairs. The following attributes are recognized:
   This is a shortcut for calling :func:`loopy.duplicate_inames` later
   (once the kernel is created).
 
-* ``dep=id1:id2`` creates a dependency of this instruction on the
-  instructions with identifiers ``id1`` and ``id2``. The meaning of this
-  dependency is that the code generated for this instruction is required to
+* ``dep=id1:id2`` creates a dependency of this statement on the
+  statements with identifiers ``id1`` and ``id2``. The meaning of this
+  dependency is that the code generated for this statement is required to
   appear textually after all of these dependees' generated code.
 
   Identifiers here are allowed to be wildcards as defined by the Python
@@ -246,14 +246,14 @@ These are usually key-value pairs. The following attributes are recognized:
       Since specifying all possible dependencies is cumbersome and
       error-prone, :mod:`loopy` employs a heuristic to automatically find
       dependencies. Specifically, :mod:`loopy` will automatically add
-      a dependency to an instruction reading a variable if there is
-      exactly one instruction writing that variable. ("Variable" here may
+      a dependency to an statement reading a variable if there is
+      exactly one statement writing that variable. ("Variable" here may
       mean either temporary variable or kernel argument.)
 
       If each variable in a kernel is only written once, then this
       heuristic should be able to compute all required dependencies.
 
-      Conversely, if a variable is written by two different instructions,
+      Conversely, if a variable is written by two different statements,
       all ordering around that variable needs to be specified explicitly.
       It is recommended to use :func:`get_dot_dependency_graph` to
       visualize the dependency graph of possible orderings.
@@ -262,14 +262,14 @@ These are usually key-value pairs. The following attributes are recognized:
       heuristic and indicate that the specified list of dependencies is
       exhaustive.
 
-* ``dep_query=...`` provides an alternative way of specifying instruction
+* ``dep_query=...`` provides an alternative way of specifying statement
   dependencies. The given string is parsed as a match expression object by
   :func:`loopy.match.parse_match`. Upon kernel generation, this match
-  expression is used to match instructions in the kernel and add them as
+  expression is used to match statements in the kernel and add them as
   dependencies.
 
 * ``nosync=id1:id2`` prescribes that no barrier synchronization is necessary
-  for the instructions with identifiers ``id1`` and ``id2``, even if a
+  for the statements with identifiers ``id1`` and ``id2``, even if a
   dependency chain exists and variables are accessed in an apparently racy
   way.
 
@@ -287,8 +287,8 @@ These are usually key-value pairs. The following attributes are recognized:
   * `any`
 
   As an example, ``nosync=id1@local:id2@global`` prescribes that no local
-  synchronization is needed with instruction ``id1`` and no global
-  synchronization is needed with instruction ``id2``.
+  synchronization is needed with statement ``id1`` and no global
+  synchronization is needed with statement ``id2``.
 
   ``nosync=id1@any`` has the same effect as ``nosync=id1``.
 
@@ -296,25 +296,25 @@ These are usually key-value pairs. The following attributes are recognized:
   just like ``dep_query`` and ``dep``. As with ``nosync``, ``nosync_query``
   accepts an optional `@scope` suffix.
 
-* ``priority=integer`` sets the instructions priority to the value
-  ``integer``. Instructions with higher priority will be scheduled sooner,
+* ``priority=integer`` sets the statements priority to the value
+  ``integer``. Statements with higher priority will be scheduled sooner,
   if possible. Note that the scheduler may still schedule a lower-priority
-  instruction ahead of a higher-priority one if loop orders or dependencies
+  statement ahead of a higher-priority one if loop orders or dependencies
   require it.
 
-* ``if=variable1:variable2`` Only execute this instruction if all condition
+* ``if=variable1:variable2`` Only execute this statement if all condition
   variables (which must be scalar variables) evaluate to ``true`` (as
   defined by C).
 
-* ``tags=tag1:tag2`` Apply tags to this instruction that can then be used
+* ``tags=tag1:tag2`` Apply tags to this statement that can then be used
   for :ref:`context-matching`.
 
-* ``groups=group1:group2`` Make this instruction part of the given
-  instruction groups. See :class:`InstructionBase.groups`.
+* ``groups=group1:group2`` Make this statement part of the given
+  statement groups. See :class:`StatementBase.groups`.
 
-* ``conflicts_grp=group1:group2`` Make this instruction conflict with the
-  given instruction groups. See
-  :class:`InstructionBase.conflicts_with_groups`.
+* ``conflicts_grp=group1:group2`` Make this statement conflict with the
+  given statement groups. See
+  :class:`StatementBase.conflicts_with_groups`.
 
 * ``atomic`` The update embodied by the assignment is carried out
   atomically. See :attr:`Assignment.atomicity` for precise semantics.
@@ -340,15 +340,15 @@ Loopy's expressions are a slight superset of the expressions supported by
 TODO: Functions
 TODO: Reductions
 
-Function Call Instructions
+Function Call Statements
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: CallInstruction
+.. autoclass:: CallStatement
 
-C Block Instructions
+C Block Statements
 ^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: CInstruction
+.. autoclass:: CStatement
 
 Atomic Operations
 ^^^^^^^^^^^^^^^^^
@@ -363,15 +363,15 @@ Atomic Operations
 
 .. autoclass:: AtomicUpdate
 
-No-Op Instruction
+No-Op Statement
 ^^^^^^^^^^^^^^^^^
 
-.. autoclass:: NoOpInstruction
+.. autoclass:: NoOpStatement
 
-Barrier Instructions
+Barrier Statements
 ^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: BarrierInstruction
+.. autoclass:: BarrierStatement
 
 .. }}}
 

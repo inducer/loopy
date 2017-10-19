@@ -36,11 +36,11 @@ from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.library.function import (
         default_function_mangler, single_arg_function_mangler)
 
-from loopy.kernel.instruction import (
+from loopy.kernel.statement import (
         memory_ordering, memory_scope, VarAtomicity, AtomicInit, AtomicUpdate,
-        InstructionBase,
-        MultiAssignmentBase, Assignment, ExpressionInstruction,
-        CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
+        StatementBase,
+        MultiAssignmentBase, Assignment, ExpressionStatement,
+        CallStatement, CStatement, NoOpStatement, BarrierStatement)
 from loopy.kernel.data import (
         auto,
         KernelArgument,
@@ -58,7 +58,7 @@ from loopy.kernel.tools import (
         get_global_barrier_order,
         find_most_recent_global_barrier,
         get_subkernels,
-        get_subkernel_to_insn_id_map)
+        get_subkernel_to_stmt_id_map)
 from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 
@@ -72,14 +72,14 @@ from loopy.transform.iname import (
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
         has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn)
+        add_inames_to_stmt)
 
-from loopy.transform.instruction import (
-        find_instructions, map_instructions,
-        set_instruction_priority, add_dependency,
-        remove_instructions,
-        replace_instruction_ids,
-        tag_instructions,
+from loopy.transform.statement import (
+        find_statements, map_statements,
+        set_statement_priority, add_dependency,
+        remove_statements,
+        replace_statement_ids,
+        tag_statements,
         add_nosync)
 
 from loopy.transform.data import (
@@ -153,10 +153,10 @@ __all__ = [
 
         "memory_ordering", "memory_scope", "VarAtomicity",
         "AtomicInit", "AtomicUpdate",
-        "InstructionBase",
-        "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
-        "CallInstruction", "CInstruction", "NoOpInstruction",
-        "BarrierInstruction",
+        "StatementBase",
+        "MultiAssignmentBase", "Assignment", "ExpressionStatement",
+        "CallStatement", "CStatement", "NoOpStatement",
+        "BarrierStatement",
 
         "KernelArgument",
         "ValueArg", "GlobalArg", "ConstantArg", "ImageArg",
@@ -180,7 +180,7 @@ __all__ = [
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
         "has_schedulable_iname_nesting", "get_iname_duplication_options",
-        "add_inames_to_insn",
+        "add_inames_to_stmt",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
@@ -189,11 +189,11 @@ __all__ = [
         "alias_temporaries", "set_argument_order",
         "rename_argument", "set_temporary_scope",
 
-        "find_instructions", "map_instructions",
-        "set_instruction_priority", "add_dependency",
-        "remove_instructions",
-        "replace_instruction_ids",
-        "tag_instructions",
+        "find_statements", "map_statements",
+        "set_statement_priority", "add_dependency",
+        "remove_statements",
+        "replace_statement_ids",
+        "tag_statements",
         "add_nosync",
 
         "extract_subst", "expand_subst", "assignment_to_subst",
@@ -224,7 +224,7 @@ __all__ = [
         "get_global_barrier_order",
         "find_most_recent_global_barrier",
         "get_subkernels",
-        "get_subkernel_to_insn_id_map",
+        "get_subkernel_to_stmt_id_map",
 
         "infer_unknown_types",
 

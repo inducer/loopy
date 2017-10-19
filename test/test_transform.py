@@ -210,8 +210,8 @@ def test_extract_subst(ctx_factory):
 
     from loopy.symbolic import parse
 
-    insn, = knl.instructions
-    assert insn.expression == parse("bsquare(23) + bsquare(25)")
+    stmt, = knl.statements
+    assert stmt.expression == parse("bsquare(23) + bsquare(25)")
 
 
 def test_join_inames(ctx_factory):
@@ -405,14 +405,14 @@ def test_precompute_with_preexisting_inames_fail():
 def test_add_nosync():
     orig_knl = lp.make_kernel("{[i]: 0<=i<10}",
         """
-        <>tmp[i] = 10 {id=insn1}
-        <>tmp2[i] = 10 {id=insn2}
+        <>tmp[i] = 10 {id=stmt1}
+        <>tmp2[i] = 10 {id=stmt2}
 
-        <>tmp3[2*i] = 0 {id=insn3}
-        <>tmp4 = 1 + tmp3[2*i] {id=insn4}
+        <>tmp3[2*i] = 0 {id=stmt3}
+        <>tmp4 = 1 + tmp3[2*i] {id=stmt4}
 
-        <>tmp5[i] = 0 {id=insn5,groups=g1}
-        tmp5[i] = 1 {id=insn6,conflicts=g1}
+        <>tmp5[i] = 0 {id=stmt5,groups=g1}
+        tmp5[i] = 1 {id=stmt6,conflicts=g1}
         """)
 
     orig_knl = lp.set_temporary_scope(orig_knl, "tmp3", "local")
@@ -420,39 +420,39 @@ def test_add_nosync():
 
     # No dependency present - don't add nosync
     knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2")
-    assert frozenset() == knl.id_to_insn["insn2"].no_sync_with
+    assert frozenset() == knl.id_to_stmt["stmt2"].no_sync_with
 
     # Dependency present
     knl = lp.add_nosync(orig_knl, "local", "writes:tmp3", "reads:tmp3")
-    assert frozenset() == knl.id_to_insn["insn3"].no_sync_with
-    assert frozenset([("insn3", "local")]) == knl.id_to_insn["insn4"].no_sync_with
+    assert frozenset() == knl.id_to_stmt["stmt3"].no_sync_with
+    assert frozenset([("stmt3", "local")]) == knl.id_to_stmt["stmt4"].no_sync_with
 
     # Bidirectional
     knl = lp.add_nosync(
             orig_knl, "local", "writes:tmp3", "reads:tmp3", bidirectional=True)
-    assert frozenset([("insn4", "local")]) == knl.id_to_insn["insn3"].no_sync_with
-    assert frozenset([("insn3", "local")]) == knl.id_to_insn["insn4"].no_sync_with
+    assert frozenset([("stmt4", "local")]) == knl.id_to_stmt["stmt3"].no_sync_with
+    assert frozenset([("stmt3", "local")]) == knl.id_to_stmt["stmt4"].no_sync_with
 
     # Groups
-    knl = lp.add_nosync(orig_knl, "local", "insn5", "insn6")
-    assert frozenset([("insn5", "local")]) == knl.id_to_insn["insn6"].no_sync_with
+    knl = lp.add_nosync(orig_knl, "local", "stmt5", "stmt6")
+    assert frozenset([("stmt5", "local")]) == knl.id_to_stmt["stmt6"].no_sync_with
 
 
-def test_uniquify_instruction_ids():
+def test_uniquify_statement_ids():
     i1 = lp.Assignment("b", 1, id=None)
     i2 = lp.Assignment("b", 1, id=None)
     i3 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
     i4 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
 
-    knl = lp.make_kernel("{[i]: i = 1}", []).copy(instructions=[i1, i2, i3, i4])
+    knl = lp.make_kernel("{[i]: i = 1}", []).copy(statements=[i1, i2, i3, i4])
 
-    from loopy.transform.instruction import uniquify_instruction_ids
-    knl = uniquify_instruction_ids(knl)
+    from loopy.transform.statement import uniquify_statement_ids
+    knl = uniquify_statement_ids(knl)
 
-    insn_ids = set(insn.id for insn in knl.instructions)
+    stmt_ids = set(stmt.id for stmt in knl.statements)
 
-    assert len(insn_ids) == 4
-    assert all(isinstance(id, str) for id in insn_ids)
+    assert len(stmt_ids) == 4
+    assert all(isinstance(id, str) for id in stmt_ids)
 
 
 if __name__ == "__main__":

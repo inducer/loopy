@@ -24,7 +24,7 @@ THE SOFTWARE.
 
 from loopy.diagnostic import LoopyError
 from loopy.schedule import (Barrier, CallKernel, EnterLoop, LeaveLoop,
-                            ReturnFromKernel, RunInstruction)
+                            ReturnFromKernel, RunStatement)
 from loopy.schedule.tools import get_block_boundaries
 
 
@@ -72,7 +72,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
         while i <= end_idx:
             sched_item = schedule[i]
 
-            if isinstance(sched_item, RunInstruction):
+            if isinstance(sched_item, RunStatement):
                 current_chunk.append(sched_item)
                 i += 1
 
@@ -145,7 +145,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
             new_schedule +
             [dummy_return.copy()])
 
-    # Assign names, extra_inames to CallKernel / ReturnFromKernel instructions
+    # Assign names, extra_inames to CallKernel / ReturnFromKernel statements
     inames = []
 
     for idx, sched_item in enumerate(new_schedule):

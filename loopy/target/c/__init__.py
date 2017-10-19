@@ -607,18 +607,18 @@ class CASTBuilder(ASTBuilderBase):
 
         return arg_decl
 
-    def emit_assignment(self, codegen_state, insn):
+    def emit_assignment(self, codegen_state, stmt):
         kernel = codegen_state.kernel
         ecm = codegen_state.expression_to_code_mapper
 
-        assignee_var_name, = insn.assignee_var_names()
+        assignee_var_name, = stmt.assignee_var_names()
 
         lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
         lhs_dtype = lhs_var.dtype
 
-        if insn.atomicity is not None:
+        if stmt.atomicity is not None:
             lhs_atomicity = [
-                    a for a in insn.atomicity if a.var_name == assignee_var_name]
+                    a for a in stmt.atomicity if a.var_name == assignee_var_name]
             assert len(lhs_atomicity) <= 1
             if lhs_atomicity:
                 lhs_atomicity, = lhs_atomicity
@@ -630,13 +630,13 @@ class CASTBuilder(ASTBuilderBase):
         from loopy.kernel.data import AtomicInit, AtomicUpdate
         from loopy.expression import dtype_to_type_context
 
-        lhs_code = ecm(insn.assignee, prec=PREC_NONE, type_context=None)
+        lhs_code = ecm(stmt.assignee, prec=PREC_NONE, type_context=None)
         rhs_type_context = dtype_to_type_context(kernel.target, lhs_dtype)
         if lhs_atomicity is None:
             from cgen import Assign
             return Assign(
                     lhs_code,
-                    ecm(insn.expression, prec=PREC_NONE,
+                    ecm(stmt.expression, prec=PREC_NONE,
                         type_context=rhs_type_context,
                         needed_dtype=lhs_dtype))
 
@@ -647,7 +647,7 @@ class CASTBuilder(ASTBuilderBase):
             codegen_state.seen_atomic_dtypes.add(lhs_dtype)
             return codegen_state.ast_builder.emit_atomic_update(
                     codegen_state, lhs_atomicity, lhs_var,
-                    insn.assignee, insn.expression,
+                    stmt.assignee, stmt.expression,
                     lhs_dtype, rhs_type_context)
 
         else:
@@ -658,16 +658,16 @@ class CASTBuilder(ASTBuilderBase):
             lhs_expr, rhs_expr, lhs_dtype):
         raise NotImplementedError("atomic updates in %s" % type(self).__name__)
 
-    def emit_tuple_assignment(self, codegen_state, insn):
+    def emit_tuple_assignment(self, codegen_state, stmt):
         ecm = codegen_state.expression_to_code_mapper
 
         from cgen import Assign, block_if_necessary
         assignments = []
 
         for i, (assignee, parameter) in enumerate(
-                zip(insn.assignees, insn.expression.parameters)):
+                zip(stmt.assignees, stmt.expression.parameters)):
             lhs_code = ecm(assignee, prec=PREC_NONE, type_context=None)
-            assignee_var_name = insn.assignee_var_names()[i]
+            assignee_var_name = stmt.assignee_var_names()[i]
             lhs_var = codegen_state.kernel.get_var_descriptor(assignee_var_name)
             lhs_dtype = lhs_var.dtype
 
@@ -681,21 +681,21 @@ class CASTBuilder(ASTBuilderBase):
 
         return block_if_necessary(assignments)
 
-    def emit_multiple_assignment(self, codegen_state, insn):
+    def emit_multiple_assignment(self, codegen_state, stmt):
         ecm = codegen_state.expression_to_code_mapper
 
         from pymbolic.primitives import Variable
         from pymbolic.mapper.stringifier import PREC_NONE
 
-        func_id = insn.expression.function
-        parameters = insn.expression.parameters
+        func_id = stmt.expression.function
+        parameters = stmt.expression.parameters
 
         if isinstance(func_id, Variable):
             func_id = func_id.name
 
         assignee_var_descriptors = [
                 codegen_state.kernel.get_var_descriptor(a)
-                for a in insn.assignee_var_names()]
+                for a in stmt.assignee_var_names()]
 
         par_dtypes = tuple(ecm.infer_type(par) for par in parameters)
 
@@ -709,7 +709,7 @@ class CASTBuilder(ASTBuilderBase):
 
         if mangle_result.target_name == "loopy_make_tuple":
             # This shorcut avoids actually having to emit a 'make_tuple' function.
-            return self.emit_tuple_assignment(codegen_state, insn)
+            return self.emit_tuple_assignment(codegen_state, stmt)
 
         from loopy.expression import dtype_to_type_context
         c_parameters = [
@@ -727,10 +727,10 @@ class CASTBuilder(ASTBuilderBase):
 
         from pymbolic import var
         for i, (a, tgt_dtype) in enumerate(
-                zip(insn.assignees[1:], mangle_result.result_dtypes[1:])):
+                zip(stmt.assignees[1:], mangle_result.result_dtypes[1:])):
             if tgt_dtype != ecm.infer_type(a):
                 raise LoopyError("type mismatch in %d'th (1-based) left-hand "
-                        "side of instruction '%s'" % (i+1, insn.id))
+                        "side of statement '%s'" % (i+1, stmt.id))
             c_parameters.append(
                         # TODO Yuck: The "where-at function": &(...)
                         var("&")(
@@ -752,7 +752,7 @@ class CASTBuilder(ASTBuilderBase):
                 assignee_var_descriptors[0].dtype,
                 result)
 
-        lhs_code = ecm(insn.assignees[0], prec=PREC_NONE, type_context=None)
+        lhs_code = ecm(stmt.assignees[0], prec=PREC_NONE, type_context=None)
 
         from cgen import Assign
         return Assign(

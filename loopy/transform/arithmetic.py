@@ -34,9 +34,9 @@ def fold_constants(kernel):
     from loopy.symbolic import ConstantFoldingMapper
     cfm = ConstantFoldingMapper()
 
-    new_insns = [
-            insn.with_transformed_expressions(cfm)
-            for insn in kernel.instructions]
+    new_stmts = [
+            stmt.with_transformed_expressions(cfm)
+            for stmt in kernel.statements]
 
     new_substs = dict(
             (sub.name,
@@ -44,7 +44,7 @@ def fold_constants(kernel):
             for sub in six.itervalues(kernel.substitutions))
 
     return kernel.copy(
-            instructions=new_insns,
+            statements=new_stmts,
             substitutions=new_substs)
 
 # }}}
@@ -135,8 +135,8 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
         else:
             raise ValueError("unexpected type of access_expr")
 
-    def is_assignee(insn):
-        return var_name in insn.assignee_var_names()
+    def is_assignee(stmt):
+        return var_name in stmt.assignee_var_names()
 
     def iterate_as(cls, expr):
         if isinstance(expr, cls):
@@ -151,16 +151,16 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
 
     from loopy.kernel.data import Assignment
 
-    for insn in kernel.instructions:
-        if not is_assignee(insn):
+    for stmt in kernel.statements:
+        if not is_assignee(stmt):
             continue
 
-        if not isinstance(insn, Assignment):
+        if not isinstance(stmt, Assignment):
             raise LoopyError("'%s' modified by non-single-assignment"
                     % var_name)
 
-        lhs = insn.assignee
-        rhs = insn.expression
+        lhs = stmt.assignee
+        rhs = stmt.expression
 
         if is_zero(rhs):
             continue
@@ -182,8 +182,8 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
                 for part in iterate_as(Product, term):
                     if var_name in get_dependencies(part):
                         raise LoopyError("unexpected dependency on '%s' "
-                                "in RHS of instruction '%s'"
-                                % (var_name, insn.id))
+                                "in RHS of statement '%s'"
+                                % (var_name, stmt.id))
 
                 product_parts = set(iterate_as(Product, term))
 
@@ -211,8 +211,8 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
                 for part in iterate_as(Product, term):
                     if var_name in get_dependencies(part):
                         raise LoopyError("unexpected dependency on '%s' "
-                                "in RHS of instruction '%s'"
-                                % (var_name, insn.id))
+                                "in RHS of statement '%s'"
+                                % (var_name, stmt.id))
 
                 product_parts = set(iterate_as(Product, term))
 
@@ -235,27 +235,27 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
 
     # {{{ remove common factors
 
-    new_insns = []
+    new_stmts = []
 
-    for insn in kernel.instructions:
-        if not isinstance(insn, Assignment) or not is_assignee(insn):
-            new_insns.append(insn)
+    for stmt in kernel.statements:
+        if not isinstance(stmt, Assignment) or not is_assignee(stmt):
+            new_stmts.append(stmt)
             continue
 
-        index_key = extract_index_key(insn.assignee)
+        index_key = extract_index_key(stmt.assignee)
 
-        lhs = insn.assignee
-        rhs = insn.expression
+        lhs = stmt.assignee
+        rhs = stmt.expression
 
         if is_zero(rhs):
-            new_insns.append(insn)
+            new_stmts.append(stmt)
             continue
 
         index_key = extract_index_key(lhs)
         cf_index, unif_result = find_unifiable_cf_index(index_key)
 
         if cf_index is None:
-            new_insns.append(insn)
+            new_stmts.append(stmt)
             continue
 
         _, my_common_factors = common_factors[cf_index]
@@ -281,8 +281,8 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
                         if part not in mapped_my_common_factors
                         ]))
 
-        new_insns.append(
-                insn.copy(expression=flattened_sum(new_sum_terms)))
+        new_stmts.append(
+                stmt.copy(expression=flattened_sum(new_sum_terms)))
 
     # }}}
 
@@ -314,21 +314,21 @@ def collect_common_factors_on_increment(kernel, var_name, vary_by_axes=()):
         else:
             return expr
 
-    insns = new_insns
-    new_insns = []
+    stmts = new_stmts
+    new_stmts = []
 
     subm = SubstitutionMapper(find_substitution)
 
-    for insn in insns:
-        if not isinstance(insn, Assignment) or is_assignee(insn):
-            new_insns.append(insn)
+    for stmt in stmts:
+        if not isinstance(stmt, Assignment) or is_assignee(stmt):
+            new_stmts.append(stmt)
             continue
 
-        new_insns.append(insn.with_transformed_expressions(subm))
+        new_stmts.append(stmt.with_transformed_expressions(subm))
 
     # }}}
 
-    return kernel.copy(instructions=new_insns)
+    return kernel.copy(statements=new_stmts)
 
 # }}}
 

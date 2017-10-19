@@ -113,12 +113,12 @@ class Scope(object):
 
         self.active_loopy_inames = set()
 
-        self.instructions = []
+        self.statements = []
         self.temporary_variables = []
 
         self.used_names = set()
 
-        self.previous_instruction_id = None
+        self.previous_statement_id = None
 
     def known_names(self):
         return (self.used_names
@@ -205,12 +205,12 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.scope_stack = []
 
-        self.insn_id_counter = 0
+        self.stmt_id_counter = 0
         self.condition_id_counter = 0
 
         self.kernels = []
 
-        self.instruction_tags = []
+        self.statement_tags = []
         self.conditions = []
         self.conditions_data = []
 
@@ -220,23 +220,23 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         self.block_nest = []
 
-    def add_expression_instruction(self, lhs, rhs):
+    def add_expression_statement(self, lhs, rhs):
         scope = self.scope_stack[-1]
 
-        new_id = intern("insn%d" % self.insn_id_counter)
-        self.insn_id_counter += 1
+        new_id = intern("stmt%d" % self.stmt_id_counter)
+        self.stmt_id_counter += 1
 
         from loopy.kernel.data import Assignment
-        insn = Assignment(
+        stmt = Assignment(
                 lhs, rhs,
                 within_inames=frozenset(
                     scope.active_loopy_inames),
                 id=new_id,
                 predicates=frozenset(self.conditions),
-                tags=tuple(self.instruction_tags))
+                tags=tuple(self.statement_tags))
 
-        scope.previous_instruction_id = new_id
-        scope.instructions.append(insn)
+        scope.previous_statement_id = new_id
+        scope.statements.append(stmt)
 
     # {{{ map_XXX functions
 
@@ -413,7 +413,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         rhs = scope.process_expression_for_loopy(self.parse_expr(node, node.expr))
 
-        self.add_expression_instruction(lhs, rhs)
+        self.add_expression_statement(lhs, rhs)
 
     def map_Allocate(self, node):
         raise NotImplementedError("allocate")
@@ -464,7 +464,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
         from pymbolic import var
         cond_var = var(cond_name)
 
-        self.add_expression_instruction(
+        self.add_expression_statement(
                 cond_var, self.parse_expr(node, node.expr))
 
         cond_expr = cond_var
@@ -646,16 +646,16 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
         if begin_tag_match:
             tag = begin_tag_match.group(1)
-            if tag in self.instruction_tags:
+            if tag in self.statement_tags:
                 raise TranslationError("nested begin tag for tag '%s'" % tag)
-            self.instruction_tags.append(tag)
+            self.statement_tags.append(tag)
 
         elif end_tag_match:
             tag = end_tag_match.group(1)
-            if tag not in self.instruction_tags:
+            if tag not in self.statement_tags:
                 raise TranslationError(
                         "end tag without begin tag for tag '%s'" % tag)
-            self.instruction_tags.remove(tag)
+            self.statement_tags.remove(tag)
 
         elif faulty_loopy_pragma_match is not None:
             from warnings import warn
@@ -710,7 +710,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             knl = lp.make_kernel(
                     sub.index_sets,
-                    sub.instructions,
+                    sub.statements,
                     kernel_data,
                     name=sub.subprogram_name,
                     default_order="F",

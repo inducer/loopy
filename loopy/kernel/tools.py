@@ -131,30 +131,30 @@ def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
 # }}}
 
 
-# {{{ find_all_insn_inames fixed point iteration (deprecated)
+# {{{ find_all_stmt_inames fixed point iteration (deprecated)
 
-def guess_iname_deps_based_on_var_use(kernel, insn, insn_id_to_inames=None):
-    # For all variables that insn depends on, find the intersection
-    # of iname deps of all writers, and add those to insn's
+def guess_iname_deps_based_on_var_use(kernel, stmt, stmt_id_to_inames=None):
+    # For all variables that stmt depends on, find the intersection
+    # of iname deps of all writers, and add those to stmt's
     # dependencies.
 
     result = frozenset()
 
     writer_map = kernel.writer_map()
 
-    for tv_name in (insn.read_dependency_names() & kernel.get_written_variables()):
+    for tv_name in (stmt.read_dependency_names() & kernel.get_written_variables()):
         tv_implicit_inames = None
 
         for writer_id in writer_map[tv_name]:
-            writer_insn = kernel.id_to_insn[writer_id]
-            if insn_id_to_inames is None:
-                writer_inames = writer_insn.within_inames
+            writer_stmt = kernel.id_to_stmt[writer_id]
+            if stmt_id_to_inames is None:
+                writer_inames = writer_stmt.within_inames
             else:
-                writer_inames = insn_id_to_inames[writer_id]
+                writer_inames = stmt_id_to_inames[writer_id]
 
             writer_implicit_inames = (
                     writer_inames
-                    - (writer_insn.write_dependency_names() & kernel.all_inames()))
+                    - (writer_stmt.write_dependency_names() & kernel.all_inames()))
             if tv_implicit_inames is None:
                 tv_implicit_inames = writer_implicit_inames
             else:
@@ -164,16 +164,16 @@ def guess_iname_deps_based_on_var_use(kernel, insn, insn_id_to_inames=None):
         if tv_implicit_inames is not None:
             result = result | tv_implicit_inames
 
-    return result - insn.reduction_inames()
+    return result - stmt.reduction_inames()
 
 
-def find_all_insn_inames(kernel):
-    logger.debug("%s: find_all_insn_inames: start" % kernel.name)
+def find_all_stmt_inames(kernel):
+    logger.debug("%s: find_all_stmt_inames: start" % kernel.name)
 
     writer_map = kernel.writer_map()
 
-    insn_id_to_inames = {}
-    insn_assignee_inames = {}
+    stmt_id_to_inames = {}
+    stmt_assignee_inames = {}
 
     all_read_deps = {}
     all_write_deps = {}
@@ -181,30 +181,30 @@ def find_all_insn_inames(kernel):
     from loopy.transform.subst import expand_subst
     kernel = expand_subst(kernel)
 
-    for insn in kernel.instructions:
-        all_read_deps[insn.id] = read_deps = insn.read_dependency_names()
-        all_write_deps[insn.id] = write_deps = insn.write_dependency_names()
+    for stmt in kernel.statements:
+        all_read_deps[stmt.id] = read_deps = stmt.read_dependency_names()
+        all_write_deps[stmt.id] = write_deps = stmt.write_dependency_names()
         deps = read_deps | write_deps
 
-        if insn.within_inames_is_final:
-            iname_deps = insn.within_inames
+        if stmt.within_inames_is_final:
+            iname_deps = stmt.within_inames
         else:
             iname_deps = (
                     deps & kernel.all_inames()
-                    | insn.within_inames)
+                    | stmt.within_inames)
 
-        assert isinstance(read_deps, frozenset), type(insn)
-        assert isinstance(write_deps, frozenset), type(insn)
-        assert isinstance(iname_deps, frozenset), type(insn)
+        assert isinstance(read_deps, frozenset), type(stmt)
+        assert isinstance(write_deps, frozenset), type(stmt)
+        assert isinstance(iname_deps, frozenset), type(stmt)
 
-        logger.debug("%s: find_all_insn_inames: %s (init): %s - "
+        logger.debug("%s: find_all_stmt_inames: %s (init): %s - "
                 "read deps: %s - write deps: %s" % (
-                    kernel.name, insn.id, ", ".join(sorted(iname_deps)),
+                    kernel.name, stmt.id, ", ".join(sorted(iname_deps)),
                     ", ".join(sorted(read_deps)), ", ".join(sorted(write_deps)),
                     ))
 
-        insn_id_to_inames[insn.id] = iname_deps
-        insn_assignee_inames[insn.id] = write_deps & kernel.all_inames()
+        stmt_id_to_inames[stmt.id] = iname_deps
+        stmt_assignee_inames[stmt.id] = write_deps & kernel.all_inames()
 
     # fixed point iteration until all iname dep sets have converged
 
@@ -221,36 +221,36 @@ def find_all_insn_inames(kernel):
 
     while True:
         did_something = False
-        for insn in kernel.instructions:
+        for stmt in kernel.statements:
 
-            if insn.within_inames_is_final:
+            if stmt.within_inames_is_final:
                 continue
 
             # {{{ depdency-based propagation
 
-            inames_old = insn_id_to_inames[insn.id]
+            inames_old = stmt_id_to_inames[stmt.id]
             inames_new = inames_old | guess_iname_deps_based_on_var_use(
-                    kernel, insn, insn_id_to_inames)
+                    kernel, stmt, stmt_id_to_inames)
 
-            insn_id_to_inames[insn.id] = inames_new
+            stmt_id_to_inames[stmt.id] = inames_new
 
             if inames_new != inames_old:
                 did_something = True
 
                 warn_with_kernel(kernel, "inferred_iname",
-                        "The iname(s) '%s' on instruction '%s' "
+                        "The iname(s) '%s' on statement '%s' "
                         "was/were automatically added. "
                         "This is deprecated. Please add the iname "
-                        "to the instruction "
+                        "to the statement "
                         "explicitly, e.g. by adding 'for' loops"
-                        % (", ".join(inames_new-inames_old), insn.id))
+                        % (", ".join(inames_new-inames_old), stmt.id))
 
             # }}}
 
             # {{{ domain-based propagation
 
-            inames_old = insn_id_to_inames[insn.id]
-            inames_new = set(insn_id_to_inames[insn.id])
+            inames_old = stmt_id_to_inames[stmt.id]
+            inames_new = set(stmt_id_to_inames[stmt.id])
 
             for iname in inames_old:
                 home_domain = kernel.domains[kernel.get_home_domain_index(iname)]
@@ -268,31 +268,31 @@ def find_all_insn_inames(kernel):
 
                     if par in kernel.temporary_variables:
                         for writer_id in writer_map.get(par, []):
-                            inames_new.update(insn_id_to_inames[writer_id])
+                            inames_new.update(stmt_id_to_inames[writer_id])
 
             if inames_new != inames_old:
                 did_something = True
-                insn_id_to_inames[insn.id] = frozenset(inames_new)
+                stmt_id_to_inames[stmt.id] = frozenset(inames_new)
 
                 warn_with_kernel(kernel, "inferred_iname",
-                        "The iname(s) '%s' on instruction '%s' was "
+                        "The iname(s) '%s' on statement '%s' was "
                         "automatically added. "
                         "This is deprecated. Please add the iname "
-                        "to the instruction "
+                        "to the statement "
                         "explicitly, e.g. by adding 'for' loops"
-                        % (", ".join(inames_new-inames_old), insn.id))
+                        % (", ".join(inames_new-inames_old), stmt.id))
 
             # }}}
 
         if not did_something:
             break
 
-    logger.debug("%s: find_all_insn_inames: done" % kernel.name)
+    logger.debug("%s: find_all_stmt_inames: done" % kernel.name)
 
-    for v in six.itervalues(insn_id_to_inames):
+    for v in six.itervalues(stmt_id_to_inames):
         assert isinstance(v, frozenset)
 
-    return insn_id_to_inames
+    return stmt_id_to_inames
 
 # }}}
 
@@ -447,17 +447,17 @@ class DomainChanger:
                 # Changing the domain might look like it wants to change grid
                 # sizes. Not true.
                 # (Relevant for 'slab decomposition')
-                overridden_get_grid_sizes_for_insn_ids=(
-                    self.kernel.get_grid_sizes_for_insn_ids))
+                overridden_get_grid_sizes_for_stmt_ids=(
+                    self.kernel.get_grid_sizes_for_stmt_ids))
 
 # }}}
 
 
 # {{{ graphviz / dot export
 
-def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
+def get_dot_dependency_graph(kernel, iname_cluster=True, use_stmt_id=False):
     """Return a string in the `dot <http://graphviz.org/>`_ language depicting
-    dependencies among kernel instructions.
+    dependencies among kernel statements.
     """
 
     # make sure all automatically added stuff shows up
@@ -478,34 +478,34 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
     dep_graph = {}
     lines = []
 
-    from loopy.kernel.data import MultiAssignmentBase, CInstruction
+    from loopy.kernel.data import MultiAssignmentBase, CStatement
 
-    for insn in kernel.instructions:
-        if isinstance(insn, MultiAssignmentBase):
-            op = "%s <- %s" % (insn.assignees, insn.expression)
+    for stmt in kernel.statements:
+        if isinstance(stmt, MultiAssignmentBase):
+            op = "%s <- %s" % (stmt.assignees, stmt.expression)
             if len(op) > 200:
                 op = op[:200] + "..."
 
-        elif isinstance(insn, CInstruction):
-            op = "<C instruction %s>" % insn.id
+        elif isinstance(stmt, CStatement):
+            op = "<C statement %s>" % stmt.id
         else:
-            op = "<instruction %s>" % insn.id
+            op = "<statement %s>" % stmt.id
 
-        if use_insn_id:
-            insn_label = insn.id
+        if use_stmt_id:
+            stmt_label = stmt.id
             tooltip = op
         else:
-            insn_label = op
-            tooltip = insn.id
+            stmt_label = op
+            tooltip = stmt.id
 
         lines.append("\"%s\" [label=\"%s\",shape=\"box\",tooltip=\"%s\"];"
                 % (
-                    insn.id,
-                    repr(insn_label)[1:-1],
+                    stmt.id,
+                    repr(stmt_label)[1:-1],
                     repr(tooltip)[1:-1],
                     ))
-        for dep in insn.depends_on:
-            dep_graph.setdefault(insn.id, set()).add(dep)
+        for dep in stmt.depends_on:
+            dep_graph.setdefault(stmt.id, set()).add(dep)
 
     # {{{ O(n^3) transitive reduction
 
@@ -513,31 +513,31 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
     while True:
         changed_something = False
 
-        for insn_1 in dep_graph:
-            for insn_2 in dep_graph.get(insn_1, set()).copy():
-                for insn_3 in dep_graph.get(insn_2, set()).copy():
-                    if insn_3 not in dep_graph.get(insn_1, set()):
+        for stmt_1 in dep_graph:
+            for stmt_2 in dep_graph.get(stmt_1, set()).copy():
+                for stmt_3 in dep_graph.get(stmt_2, set()).copy():
+                    if stmt_3 not in dep_graph.get(stmt_1, set()):
                         changed_something = True
-                        dep_graph[insn_1].add(insn_3)
+                        dep_graph[stmt_1].add(stmt_3)
 
         if not changed_something:
             break
 
-    for insn_1 in dep_graph:
-        for insn_2 in dep_graph.get(insn_1, set()).copy():
-            for insn_3 in dep_graph.get(insn_2, set()).copy():
-                if insn_3 in dep_graph.get(insn_1, set()):
-                    dep_graph[insn_1].remove(insn_3)
+    for stmt_1 in dep_graph:
+        for stmt_2 in dep_graph.get(stmt_1, set()).copy():
+            for stmt_3 in dep_graph.get(stmt_2, set()).copy():
+                if stmt_3 in dep_graph.get(stmt_1, set()):
+                    dep_graph[stmt_1].remove(stmt_3)
 
     # }}}
 
-    for insn_1 in dep_graph:
-        for insn_2 in dep_graph.get(insn_1, set()):
-            lines.append("%s -> %s" % (insn_2, insn_1))
+    for stmt_1 in dep_graph:
+        for stmt_2 in dep_graph.get(stmt_1, set()):
+            lines.append("%s -> %s" % (stmt_2, stmt_1))
 
     if iname_cluster:
         from loopy.schedule import (
-                EnterLoop, LeaveLoop, RunInstruction, Barrier,
+                EnterLoop, LeaveLoop, RunStatement, Barrier,
                 CallKernel, ReturnFromKernel)
 
         for sched_item in kernel.schedule:
@@ -546,8 +546,8 @@ def get_dot_dependency_graph(kernel, iname_cluster=True, use_insn_id=False):
                         % (sched_item.iname, sched_item.iname))
             elif isinstance(sched_item, LeaveLoop):
                 lines.append("}")
-            elif isinstance(sched_item, RunInstruction):
-                lines.append(sched_item.insn_id)
+            elif isinstance(sched_item, RunStatement):
+                lines.append(sched_item.stmt_id)
             elif isinstance(sched_item, (CallKernel, ReturnFromKernel, Barrier)):
                 pass
             else:
@@ -672,14 +672,14 @@ def is_domain_dependent_on_inames(kernel, domain_index, inames):
 
     for par in dom_parameters:
         if par in kernel.temporary_variables:
-            writer_insns = kernel.writer_map()[par]
+            writer_stmts = kernel.writer_map()[par]
 
-            if len(writer_insns) > 1:
+            if len(writer_stmts) > 1:
                 raise RuntimeError("loop bound '%s' "
                         "may only be written to once" % par)
 
-            writer_insn, = writer_insns
-            writer_inames = kernel.insn_inames(writer_insn)
+            writer_stmt, = writer_stmts
+            writer_inames = kernel.stmt_inames(writer_stmt)
 
             if writer_inames & inames:
                 return True
@@ -695,7 +695,7 @@ def is_domain_dependent_on_inames(kernel, domain_index, inames):
 
 # {{{ rank inames by stride
 
-def get_auto_axis_iname_ranking_by_stride(kernel, insn):
+def get_auto_axis_iname_ranking_by_stride(kernel, stmt):
     from loopy.kernel.data import ImageArg, ValueArg
 
     approximate_arg_values = {}
@@ -707,14 +707,14 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
                 raise LoopyError("No approximate arg value specified for '%s'"
                         % arg.name)
 
-    # {{{ find all array accesses in insn
+    # {{{ find all array accesses in stmt
 
     from loopy.symbolic import ArrayAccessFinder
-    ary_acc_exprs = list(ArrayAccessFinder()(insn.expression))
+    ary_acc_exprs = list(ArrayAccessFinder()(stmt.expression))
 
     from pymbolic.primitives import Subscript
 
-    for assignee in insn.assignees:
+    for assignee in stmt.assignees:
         if isinstance(assignee, Subscript):
             ary_acc_exprs.append(assignee)
 
@@ -742,7 +742,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     from loopy.kernel.data import AutoLocalIndexTagBase
     auto_axis_inames = set(
             iname
-            for iname in kernel.insn_inames(insn)
+            for iname in kernel.stmt_inames(stmt)
             if isinstance(kernel.iname_to_tag.get(iname),
                 AutoLocalIndexTagBase))
 
@@ -802,7 +802,7 @@ def get_auto_axis_iname_ranking_by_stride(kernel, insn):
     if aggregate_strides:
         very_large_stride = int(np.iinfo(np.int32).max)
 
-        return sorted((iname for iname in kernel.insn_inames(insn)),
+        return sorted((iname for iname in kernel.stmt_inames(stmt)),
                 key=lambda iname: (
                     aggregate_strides.get(iname, very_large_stride),
                     iname))
@@ -912,13 +912,13 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
     import loopy as lp
 
-    for insn in kernel.instructions:
-        if not isinstance(insn, lp.MultiAssignmentBase):
+    for stmt in kernel.statements:
+        if not isinstance(stmt, lp.MultiAssignmentBase):
             continue
 
         auto_axis_inames = [
                 iname
-                for iname in kernel.insn_inames(insn)
+                for iname in kernel.stmt_inames(stmt)
                 if isinstance(kernel.iname_to_tag.get(iname),
                     AutoLocalIndexTagBase)]
 
@@ -927,7 +927,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
         assigned_local_axes = set()
 
-        for iname in kernel.insn_inames(insn):
+        for iname in kernel.stmt_inames(stmt):
             tag = kernel.iname_to_tag.get(iname)
             if isinstance(tag, LocalIndexTag):
                 assigned_local_axes.add(tag.axis)
@@ -936,7 +936,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
             # "valid" pass: try to assign a given axis
 
             if axis not in assigned_local_axes:
-                iname_ranking = get_auto_axis_iname_ranking_by_stride(kernel, insn)
+                iname_ranking = get_auto_axis_iname_ranking_by_stride(kernel, stmt)
                 if iname_ranking is not None:
                     for iname in iname_ranking:
                         prev_tag = kernel.iname_to_tag.get(iname)
@@ -963,7 +963,7 @@ def assign_automatic_axes(kernel, axis=0, local_size=None):
 
     # }}}
 
-    # We've seen all instructions and not punted to recursion/restart because
+    # We've seen all statements and not punted to recursion/restart because
     # of a new axis assignment.
 
     if axis >= len(local_size):
@@ -1032,12 +1032,12 @@ def guess_var_shape(kernel, var_name):
     submap = SubstitutionRuleExpander(kernel.substitutions)
 
     def run_through_armap(expr):
-        armap(submap(expr), kernel.insn_inames(insn))
+        armap(submap(expr), kernel.stmt_inames(stmt))
         return expr
 
     try:
-        for insn in kernel.instructions:
-            insn.with_transformed_expressions(run_through_armap)
+        for stmt in kernel.statements:
+            stmt.with_transformed_expressions(run_through_armap)
     except TypeError as e:
         from traceback import print_exc
         print_exc()
@@ -1200,9 +1200,9 @@ def get_visual_iname_order_embedding(kernel):
 
     iname_trie = SetTrie()
 
-    for insn in kernel.instructions:
+    for stmt in kernel.statements:
         within_inames = set(
-            iname for iname in insn.within_inames
+            iname for iname in stmt.within_inames
             if iname not in ilp_inames)
         iname_trie.add_or_update(within_inames)
 
@@ -1225,17 +1225,17 @@ def get_visual_iname_order_embedding(kernel):
 
 # {{{ find_recursive_dependencies
 
-def find_recursive_dependencies(kernel, insn_ids):
-    queue = list(insn_ids)
+def find_recursive_dependencies(kernel, stmt_ids):
+    queue = list(stmt_ids)
 
-    result = set(insn_ids)
+    result = set(stmt_ids)
 
     while queue:
         new_queue = []
 
-        for insn_id in queue:
-            insn = kernel.id_to_insn[insn_id]
-            additionals = insn.depends_on - result
+        for stmt_id in queue:
+            stmt = kernel.id_to_stmt[stmt_id]
+            additionals = stmt.depends_on - result
             result.update(additionals)
             new_queue.extend(additionals)
 
@@ -1248,15 +1248,15 @@ def find_recursive_dependencies(kernel, insn_ids):
 
 # {{{ find_reverse_dependencies
 
-def find_reverse_dependencies(kernel, insn_ids):
-    """Finds a set of IDs of instructions that depend on one of the insn_ids.
+def find_reverse_dependencies(kernel, stmt_ids):
+    """Finds a set of IDs of statements that depend on one of the stmt_ids.
 
-    :arg insn_ids: a set of instruction IDs
+    :arg stmt_ids: a set of statement IDs
     """
     return frozenset(
-            insn.id
-            for insn in kernel.instructions
-            if insn.depends_on & insn_ids)
+            stmt.id
+            for stmt in kernel.statements
+            if stmt.depends_on & stmt_ids)
 
 # }}}
 
@@ -1264,28 +1264,28 @@ def find_reverse_dependencies(kernel, insn_ids):
 # {{{ draw_dependencies_as_unicode_arrows
 
 def draw_dependencies_as_unicode_arrows(
-        instructions, fore, style, flag_downward=True, max_columns=20):
+        statements, fore, style, flag_downward=True, max_columns=20):
     """
-    :arg instructions: an ordered iterable of :class:`loopy.InstructionBase`
+    :arg statements: an ordered iterable of :class:`loopy.StatementBase`
         instances
     :arg fore: if given, will be used like a :mod:`colorama` ``Fore`` object
         to color-code dependencies. (E.g. red for downward edges)
     :returns: A list of tuples (arrows, extender) with Unicode-drawn dependency
-        arrows, one per entry of *instructions*. *extender* can be used to
-        extend arrows below the line of an instruction.
+        arrows, one per entry of *statements*. *extender* can be used to
+        extend arrows below the line of an statement.
     """
     reverse_deps = {}
 
-    for insn in instructions:
-        for dep in insn.depends_on:
-            reverse_deps.setdefault(dep, []).append(insn.id)
+    for stmt in statements:
+        for dep in stmt.depends_on:
+            reverse_deps.setdefault(dep, []).append(stmt.id)
 
     # mapping of (from_id, to_id) tuples to column_index
     dep_to_column = {}
 
     # {{{ find column assignments
 
-    # mapping from column indices to (end_insn_id, updown)
+    # mapping from column indices to (end_stmt_id, updown)
     columns_in_use = {}
 
     n_columns = [0]
@@ -1313,28 +1313,28 @@ def draw_dependencies_as_unicode_arrows(
         return result
 
     rows = []
-    for insn in instructions:
+    for stmt in statements:
         row = make_extender()
 
-        for rdep in reverse_deps.get(insn.id, []):
-            assert rdep != insn.id
+        for rdep in reverse_deps.get(stmt.id, []):
+            assert rdep != stmt.id
 
-            dep_key = (rdep, insn.id)
+            dep_key = (rdep, stmt.id)
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
                 columns_in_use[col] = (rdep, "up")
                 row[col] = u"↱"
 
-        for dep in insn.depends_on:
-            assert dep != insn.id
-            dep_key = (insn.id, dep)
+        for dep in stmt.depends_on:
+            assert dep != stmt.id
+            dep_key = (stmt.id, dep)
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
                 columns_in_use[col] = (dep, "down")
                 row[col] = do_flag_downward(u"┌", "down")
 
         for col, (end, updown) in list(six.iteritems(columns_in_use)):
-            if insn.id == end:
+            if stmt.id == end:
                 del columns_in_use[col]
                 if updown == "up":
                     row[col] = u"└"
@@ -1376,26 +1376,26 @@ def draw_dependencies_as_unicode_arrows(
 # }}}
 
 
-# {{{ stringify_instruction_list
+# {{{ stringify_statement_list
 
-def stringify_instruction_list(kernel):
+def stringify_statement_list(kernel):
     # {{{ topological sort
 
-    printed_insn_ids = set()
-    printed_insn_order = []
+    printed_stmt_ids = set()
+    printed_stmt_order = []
 
-    def insert_insn_into_order(insn):
-        if insn.id in printed_insn_ids:
+    def insert_stmt_into_order(stmt):
+        if stmt.id in printed_stmt_ids:
             return
-        printed_insn_ids.add(insn.id)
+        printed_stmt_ids.add(stmt.id)
 
-        for dep_id in natsorted(insn.depends_on):
-            insert_insn_into_order(kernel.id_to_insn[dep_id])
+        for dep_id in natsorted(stmt.depends_on):
+            insert_stmt_into_order(kernel.id_to_stmt[dep_id])
 
-        printed_insn_order.append(insn)
+        printed_stmt_order.append(stmt)
 
-    for insn in kernel.instructions:
-        insert_insn_into_order(insn)
+    for stmt in kernel.statements:
+        insert_stmt_into_order(stmt)
 
     # }}}
 
@@ -1406,7 +1406,7 @@ def stringify_instruction_list(kernel):
 
     uniform_arrow_length, arrows_and_extenders = \
             draw_dependencies_as_unicode_arrows(
-                    printed_insn_order, fore=Fore, style=Style)
+                    printed_stmt_order, fore=Fore, style=Style)
 
     leader = " " * uniform_arrow_length
     lines = []
@@ -1457,51 +1457,51 @@ def stringify_instruction_list(kernel):
 
         current_inames[0] = new_inames
 
-    for insn, (arrows, extender) in zip(printed_insn_order, arrows_and_extenders):
-        if isinstance(insn, lp.MultiAssignmentBase):
-            lhs = ", ".join(str(a) for a in insn.assignees)
-            rhs = str(insn.expression)
+    for stmt, (arrows, extender) in zip(printed_stmt_order, arrows_and_extenders):
+        if isinstance(stmt, lp.MultiAssignmentBase):
+            lhs = ", ".join(str(a) for a in stmt.assignees)
+            rhs = str(stmt.expression)
             trailing = []
-        elif isinstance(insn, lp.CInstruction):
-            lhs = ", ".join(str(a) for a in insn.assignees)
+        elif isinstance(stmt, lp.CStatement):
+            lhs = ", ".join(str(a) for a in stmt.assignees)
             rhs = "CODE(%s|%s)" % (
-                    ", ".join(str(x) for x in insn.read_variables),
+                    ", ".join(str(x) for x in stmt.read_variables),
                     ", ".join("%s=%s" % (name, expr)
-                        for name, expr in insn.iname_exprs))
+                        for name, expr in stmt.iname_exprs))
 
-            trailing = [l for l in insn.code.split("\n")]
-        elif isinstance(insn, lp.BarrierInstruction):
+            trailing = [l for l in stmt.code.split("\n")]
+        elif isinstance(stmt, lp.BarrierStatement):
             lhs = ""
-            rhs = "... %sbarrier" % insn.kind[0]
+            rhs = "... %sbarrier" % stmt.kind[0]
             trailing = []
 
-        elif isinstance(insn, lp.NoOpInstruction):
+        elif isinstance(stmt, lp.NoOpStatement):
             lhs = ""
             rhs = "... nop"
             trailing = []
 
         else:
-            raise LoopyError("unexpected instruction type: %s"
-                    % type(insn).__name__)
+            raise LoopyError("unexpected statement type: %s"
+                    % type(stmt).__name__)
 
-        adapt_to_new_inames_list(kernel.insn_inames(insn))
+        adapt_to_new_inames_list(kernel.stmt_inames(stmt))
 
-        options = ["id="+Fore.GREEN+insn.id+Style.RESET_ALL]
-        if insn.priority:
-            options.append("priority=%d" % insn.priority)
-        if insn.tags:
-            options.append("tags=%s" % ":".join(insn.tags))
-        if isinstance(insn, lp.Assignment) and insn.atomicity:
+        options = ["id="+Fore.GREEN+stmt.id+Style.RESET_ALL]
+        if stmt.priority:
+            options.append("priority=%d" % stmt.priority)
+        if stmt.tags:
+            options.append("tags=%s" % ":".join(stmt.tags))
+        if isinstance(stmt, lp.Assignment) and stmt.atomicity:
             options.append("atomic=%s" % ":".join(
-                str(a) for a in insn.atomicity))
-        if insn.groups:
-            options.append("groups=%s" % ":".join(insn.groups))
-        if insn.conflicts_with_groups:
+                str(a) for a in stmt.atomicity))
+        if stmt.groups:
+            options.append("groups=%s" % ":".join(stmt.groups))
+        if stmt.conflicts_with_groups:
             options.append(
-                    "conflicts=%s" % ":".join(insn.conflicts_with_groups))
-        if insn.no_sync_with:
+                    "conflicts=%s" % ":".join(stmt.conflicts_with_groups))
+        if stmt.no_sync_with:
             options.append("no_sync_with=%s" % ":".join(
-                "%s@%s" % entry for entry in sorted(insn.no_sync_with)))
+                "%s@%s" % entry for entry in sorted(stmt.no_sync_with)))
 
         if lhs:
             core = "%s = %s" % (
@@ -1513,9 +1513,9 @@ def stringify_instruction_list(kernel):
 
         options_str = "  {%s}" % ", ".join(options)
 
-        if insn.predicates:
+        if stmt.predicates:
             # FIXME: precedence
-            add_pre_line("if %s" % " and ".join([str(x) for x in insn.predicates]))
+            add_pre_line("if %s" % " and ".join([str(x) for x in stmt.predicates]))
             indent_level[0] += indent_increment
 
         add_main_line(core + options_str)
@@ -1523,7 +1523,7 @@ def stringify_instruction_list(kernel):
         for t in trailing:
             add_post_line(t)
 
-        if insn.predicates:
+        if stmt.predicates:
             indent_level[0] -= indent_increment
             add_post_line("end")
 
@@ -1540,21 +1540,21 @@ def stringify_instruction_list(kernel):
 
 @memoize_on_first_arg
 def get_global_barrier_order(kernel):
-    """Return a :class:`tuple` of the listing the ids of global barrier instructions
+    """Return a :class:`tuple` of the listing the ids of global barrier statements
     as they appear in order in the kernel.
 
-    See also :class:`loopy.instruction.BarrierInstruction`.
+    See also :class:`loopy.statement.BarrierStatement`.
     """
     barriers = []
     visiting = set()
     visited = set()
 
-    unvisited = set(insn.id for insn in kernel.instructions)
+    unvisited = set(stmt.id for stmt in kernel.statements)
 
-    def is_barrier(my_insn_id):
-        insn = kernel.id_to_insn[my_insn_id]
-        from loopy.kernel.instruction import BarrierInstruction
-        return isinstance(insn, BarrierInstruction) and insn.kind == "global"
+    def is_barrier(my_stmt_id):
+        stmt = kernel.id_to_stmt[my_stmt_id]
+        from loopy.kernel.statement import BarrierStatement
+        return isinstance(stmt, BarrierStatement) and stmt.kind == "global"
 
     while unvisited:
         stack = [unvisited.pop()]
@@ -1574,7 +1574,7 @@ def get_global_barrier_order(kernel):
             visited.add(top)
             visiting.add(top)
 
-            for child in kernel.id_to_insn[top].depends_on:
+            for child in kernel.id_to_stmt[top].depends_on:
                 # Check for no cycles.
                 assert child not in visiting
                 stack.append(child)
@@ -1610,7 +1610,7 @@ def get_global_barrier_order(kernel):
                 visiting.clear()
                 break
 
-            for child in kernel.id_to_insn[top].depends_on:
+            for child in kernel.id_to_stmt[top].depends_on:
                 stack.append(child)
         else:
             # Search exhausted and we did not find prev_barrier.
@@ -1625,10 +1625,10 @@ def get_global_barrier_order(kernel):
 # {{{ find most recent global barrier
 
 @memoize_on_first_arg
-def find_most_recent_global_barrier(kernel, insn_id):
+def find_most_recent_global_barrier(kernel, stmt_id):
     """Return the id of the latest occuring global barrier which the
-    given instruction (indirectly or directly) depends on, or *None* if this
-    instruction does not depend on a global barrier.
+    given statement (indirectly or directly) depends on, or *None* if this
+    statement does not depend on a global barrier.
 
     The return value is guaranteed to be unique because global barriers are
     totally ordered within the kernel.
@@ -1639,15 +1639,15 @@ def find_most_recent_global_barrier(kernel, insn_id):
     if len(global_barrier_order) == 0:
         return None
 
-    insn = kernel.id_to_insn[insn_id]
+    stmt = kernel.id_to_stmt[stmt_id]
 
-    if len(insn.depends_on) == 0:
+    if len(stmt.depends_on) == 0:
         return None
 
-    def is_barrier(my_insn_id):
-        insn = kernel.id_to_insn[my_insn_id]
-        from loopy.kernel.instruction import BarrierInstruction
-        return isinstance(insn, BarrierInstruction) and insn.kind == "global"
+    def is_barrier(my_stmt_id):
+        stmt = kernel.id_to_stmt[my_stmt_id]
+        from loopy.kernel.statement import BarrierStatement
+        return isinstance(stmt, BarrierStatement) and stmt.kind == "global"
 
     global_barrier_to_ordinal = dict(
             (b, i) for i, b in enumerate(global_barrier_order))
@@ -1658,13 +1658,13 @@ def find_most_recent_global_barrier(kernel, insn_id):
                 else -1)
 
     direct_barrier_dependencies = set(
-            dep for dep in insn.depends_on if is_barrier(dep))
+            dep for dep in stmt.depends_on if is_barrier(dep))
 
     if len(direct_barrier_dependencies) > 0:
         return max(direct_barrier_dependencies, key=get_barrier_ordinal)
     else:
         return max((find_most_recent_global_barrier(kernel, dep)
-                    for dep in insn.depends_on),
+                    for dep in stmt.depends_on),
                 key=get_barrier_ordinal)
 
 # }}}
@@ -1691,9 +1691,9 @@ def get_subkernels(kernel):
 
 
 @memoize_on_first_arg
-def get_subkernel_to_insn_id_map(kernel):
+def get_subkernel_to_stmt_id_map(kernel):
     """Return a :class:`dict` mapping subkernel names to a :class:`frozenset`
-    consisting of the instruction ids scheduled within the subkernel. The
+    consisting of the statement ids scheduled within the subkernel. The
     kernel must be scheduled.
     """
     from loopy.kernel import kernel_state
@@ -1701,7 +1701,7 @@ def get_subkernel_to_insn_id_map(kernel):
         raise LoopyError("Kernel must be scheduled")
 
     from loopy.schedule import (
-            sched_item_to_insn_id, CallKernel, ReturnFromKernel)
+            sched_item_to_stmt_id, CallKernel, ReturnFromKernel)
 
     subkernel = None
     result = {}
@@ -1715,8 +1715,8 @@ def get_subkernel_to_insn_id_map(kernel):
             subkernel = None
 
         if subkernel is not None:
-            for insn_id in sched_item_to_insn_id(sched_item):
-                result[subkernel].add(insn_id)
+            for stmt_id in sched_item_to_stmt_id(sched_item):
+                result[subkernel].add(stmt_id)
 
     for subkernel in result:
         result[subkernel] = frozenset(result[subkernel])

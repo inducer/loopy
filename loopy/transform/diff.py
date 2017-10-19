@@ -168,12 +168,12 @@ class DifferentiationContext(object):
         self.imported_outputs = set()
         self.output_to_diff_output = {}
 
-        self.generate_instruction_id = self.kernel.get_instruction_id_generator()
+        self.generate_statement_id = self.kernel.get_statement_id_generator()
 
         self.new_args = []
         self.new_temporary_variables = {}
-        self.new_instructions = []
-        self.imported_instructions = set()
+        self.new_statements = []
+        self.imported_statements = set()
         self.new_domains = []
 
         self.rule_mapping_context = SubstitutionRuleMappingContext(
@@ -189,7 +189,7 @@ class DifferentiationContext(object):
         knl = knl.copy(
                 args=new_args,
                 temporary_variables=new_temp_vars,
-                instructions=self.new_instructions,
+                statements=self.new_statements,
                 domains=knl.domains + self.new_domains)
 
         del new_args
@@ -226,24 +226,24 @@ class DifferentiationContext(object):
 
     # }}}
 
-    def import_instruction_and_deps(self, insn_id):
-        if insn_id in self.imported_instructions:
+    def import_statement_and_deps(self, stmt_id):
+        if stmt_id in self.imported_statements:
             return
 
-        insn = self.kernel.id_to_insn[insn_id]
-        self.new_instructions.append(insn)
-        self.imported_instructions.add(insn_id)
+        stmt = self.kernel.id_to_stmt[stmt_id]
+        self.new_statements.append(stmt)
+        self.imported_statements.add(stmt_id)
 
         id_map = RuleAwareIdentityMapper(self.rule_mapping_context)
 
-        if isinstance(insn, lp.Assignment):
-            id_map(insn.expression, self.kernel, insn)
+        if isinstance(stmt, lp.Assignment):
+            id_map(stmt.expression, self.kernel, stmt)
         else:
             raise RuntimeError("do not know how to deal with "
-                    "instruction of type %s" % type(insn))
+                    "statement of type %s" % type(stmt))
 
-        for dep in insn.depends_on:
-            self.import_instruction_and_deps(dep)
+        for dep in stmt.depends_on:
+            self.import_statement_and_deps(dep)
 
     def import_output_var(self, var_name):
         writers = self.kernel.writer_map().get(var_name, [])
@@ -255,8 +255,8 @@ class DifferentiationContext(object):
         if not writers:
             return
 
-        insn_id, = writers
-        self.import_instruction_and_deps(insn_id)
+        stmt_id, = writers
+        self.import_statement_and_deps(stmt_id)
 
     def get_diff_var(self, var_name):
         """
@@ -279,7 +279,7 @@ class DifferentiationContext(object):
                     % var_name)
 
         orig_writer_id, = writers
-        orig_writer_insn = self.kernel.id_to_insn[orig_writer_id]
+        orig_writer_stmt = self.kernel.id_to_stmt[orig_writer_id]
 
         diff_inames = self.add_diff_inames()
         diff_iname_exprs = tuple(var(diname) for diname in diff_inames)
@@ -289,32 +289,32 @@ class DifferentiationContext(object):
         diff_mapper = LoopyDiffMapper(self.rule_mapping_context, self,
                 diff_inames)
 
-        diff_expr = diff_mapper(orig_writer_insn.expression,
-                self.kernel, orig_writer_insn)
+        diff_expr = diff_mapper(orig_writer_stmt.expression,
+                self.kernel, orig_writer_stmt)
 
         if not diff_expr:
             return None
 
-        assert isinstance(orig_writer_insn, lp.Assignment)
-        if isinstance(orig_writer_insn.assignee, p.Subscript):
-            lhs_ind = orig_writer_insn.assignee.index_tuple
-        elif isinstance(orig_writer_insn.assignee, p.Variable):
+        assert isinstance(orig_writer_stmt, lp.Assignment)
+        if isinstance(orig_writer_stmt.assignee, p.Subscript):
+            lhs_ind = orig_writer_stmt.assignee.index_tuple
+        elif isinstance(orig_writer_stmt.assignee, p.Variable):
             lhs_ind = ()
         else:
             raise LoopyError(
                     "Unrecognized LHS type in differentiation: %s"
-                    % type(orig_writer_insn.assignee).__name__)
+                    % type(orig_writer_stmt.assignee).__name__)
 
-        new_insn_id = self.generate_instruction_id()
-        insn = lp.Assignment(
-                id=new_insn_id,
+        new_stmt_id = self.generate_statement_id()
+        stmt = lp.Assignment(
+                id=new_stmt_id,
                 assignee=var(new_var_name)[
                     lhs_ind + diff_iname_exprs],
                 expression=diff_expr,
                 within_inames=(
-                    orig_writer_insn.within_inames | frozenset(diff_inames)))
+                    orig_writer_stmt.within_inames | frozenset(diff_inames)))
 
-        self.new_instructions.append(insn)
+        self.new_statements.append(stmt)
 
         # }}}
 
@@ -383,7 +383,7 @@ def diff_kernel(knl, diff_outputs, by, diff_iname_prefix="diff_i",
 
     var_name_gen = knl.get_var_name_generator()
 
-    # {{{ differentiate instructions
+    # {{{ differentiate statements
 
     diff_context = DifferentiationContext(
             knl, var_name_gen, by, diff_iname_prefix=diff_iname_prefix,

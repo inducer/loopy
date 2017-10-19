@@ -59,10 +59,10 @@ def main():
     with open("tasksys.cpp", "r") as ts_file:
         tasksys_source = ts_file.read()
 
-    def make_knl(name, insn, vars):
+    def make_knl(name, stmt, vars):
         knl = lp.make_kernel(
                 "{[i]: 0<=i<n}",
-                insn,
+                stmt,
                 target=lp.ISPCTarget(), index_dtype=INDEX_DTYPE,
                 name="stream_"+name+"_tasks")
 

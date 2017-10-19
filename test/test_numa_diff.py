@@ -59,8 +59,8 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
            knl for knl in lp.parse_fortran(source, filename, auto_dependencies=False)
            if "KernelR" in knl.name or "KernelS" in knl.name
            ]
-    hsv_r = lp.tag_instructions(hsv_r, "rknl")
-    hsv_s = lp.tag_instructions(hsv_s, "sknl")
+    hsv_r = lp.tag_statements(hsv_r, "rknl")
+    hsv_s = lp.tag_statements(hsv_s, "sknl")
     hsv = lp.fuse_kernels([hsv_r, hsv_s], ["_r", "_s"])
     #hsv = hsv_s
 
@@ -92,8 +92,8 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     # turn the first reads into subst rules
     local_prep_var_names = set()
-    for insn in lp.find_instructions(hsv, "tag:local_prep"):
-        assignee, = insn.assignee_var_names()
+    for stmt in lp.find_statements(hsv, "tag:local_prep"):
+        assignee, = stmt.assignee_var_names()
         local_prep_var_names.add(assignee)
         hsv = lp.assignment_to_subst(hsv, assignee)
 
@@ -101,8 +101,8 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     hsv = lp.assignment_to_subst(hsv, "JinvD_r")
     hsv = lp.assignment_to_subst(hsv, "JinvD_s")
 
-    r_fluxes = lp.find_instructions(hsv, "tag:compute_fluxes and tag:rknl")
-    s_fluxes = lp.find_instructions(hsv, "tag:compute_fluxes and tag:sknl")
+    r_fluxes = lp.find_statements(hsv, "tag:compute_fluxes and tag:rknl")
+    s_fluxes = lp.find_statements(hsv, "tag:compute_fluxes and tag:sknl")
 
     if ilp_multiple > 1:
         hsv = lp.split_iname(hsv, "k", 2, inner_tag="ilp")
@@ -117,15 +117,15 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
 
     flux_store_idx = 0
 
-    for rflux_insn, sflux_insn in zip(r_fluxes, s_fluxes):
-        for knl_tag, insn, flux_inames, tmps, flux_precomp_inames in [
-                  ("rknl", rflux_insn, ("j", "n",), rtmps, ("jj", "ii",)),
-                  ("sknl", sflux_insn, ("i", "n",), stmps, ("ii", "jj",)),
+    for rflux_stmt, sflux_stmt in zip(r_fluxes, s_fluxes):
+        for knl_tag, stmt, flux_inames, tmps, flux_precomp_inames in [
+                  ("rknl", rflux_stmt, ("j", "n",), rtmps, ("jj", "ii",)),
+                  ("sknl", sflux_stmt, ("i", "n",), stmps, ("ii", "jj",)),
                   ]:
-            flux_var, = insn.assignee_var_names()
-            print(insn)
+            flux_var, = stmt.assignee_var_names()
+            print(stmt)
 
-            reader, = lp.find_instructions(hsv,
+            reader, = lp.find_statements(hsv,
                   "tag:{knl_tag} and reads:{flux_var}"
                   .format(knl_tag=knl_tag, flux_var=flux_var))
 

@@ -17,9 +17,9 @@
 <polygon fill="none" stroke="black" points="16,-16 16,-93 130,-93 130,-16 16,-16"/>
 <text text-anchor="middle" x="73" y="-76.4" font-family="Times Roman,serif" font-size="14.00">i</text>
 </g>
-<!-- insn -->
-<g id="node1" class="node"><title>insn</title>
-<a xlink:title="insn">
+<!-- stmt -->
+<g id="node1" class="node"><title>stmt</title>
+<a xlink:title="stmt">
 <polygon fill="none" stroke="black" points="122,-60 24,-60 24,-24 122,-24 122,-60"/>
 <text text-anchor="middle" x="73" y="-37.9" font-family="Times Roman,serif" font-size="14.00">a[(i, j)] &lt;&#45; 0</text>
 </a>

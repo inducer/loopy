@@ -66,45 +66,45 @@ def check_identifiers_in_subst_rules(knl):
 VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
 
 
-def check_insn_attributes(kernel):
-    all_insn_ids = set(insn.id for insn in kernel.instructions)
+def check_stmt_attributes(kernel):
+    all_stmt_ids = set(stmt.id for stmt in kernel.statements)
 
-    for insn in kernel.instructions:
-        if not insn.within_inames <= kernel.all_inames():
-            raise LoopyError("insn '%s' has unknown forced iname "
+    for stmt in kernel.statements:
+        if not stmt.within_inames <= kernel.all_inames():
+            raise LoopyError("stmt '%s' has unknown forced iname "
                     "dependencies: %s"
-                    % (insn.id, ", ".join(
-                        insn.within_inames - kernel.all_inames())))
+                    % (stmt.id, ", ".join(
+                        stmt.within_inames - kernel.all_inames())))
 
-        if insn.depends_on is not None and not insn.depends_on <= all_insn_ids:
-            raise LoopyError("insn '%s' has unknown instruction "
+        if stmt.depends_on is not None and not stmt.depends_on <= all_stmt_ids:
+            raise LoopyError("stmt '%s' has unknown statement "
                     "dependencies: %s"
-                    % (insn.id, ", ".join(
-                        insn.depends_on - all_insn_ids)))
+                    % (stmt.id, ", ".join(
+                        stmt.depends_on - all_stmt_ids)))
 
-        no_sync_with_insn_ids = set(id for id, scope in insn.no_sync_with)
-        if not no_sync_with_insn_ids <= all_insn_ids:
-            raise LoopyError("insn '%s' has nosync directive with unknown "
-                    "instruction ids: %s"
-                    % (insn.id,
-                       ", ".join(no_sync_with_insn_ids - all_insn_ids)))
+        no_sync_with_stmt_ids = set(id for id, scope in stmt.no_sync_with)
+        if not no_sync_with_stmt_ids <= all_stmt_ids:
+            raise LoopyError("stmt '%s' has nosync directive with unknown "
+                    "statement ids: %s"
+                    % (stmt.id,
+                       ", ".join(no_sync_with_stmt_ids - all_stmt_ids)))
 
-        no_sync_with_scopes = set(scope for id, scope in insn.no_sync_with)
+        no_sync_with_scopes = set(scope for id, scope in stmt.no_sync_with)
         if not no_sync_with_scopes <= VALID_NOSYNC_SCOPES:
-            raise LoopyError("insn '%s' has invalid nosync scopes: %s"
-                    % (insn.id,
+            raise LoopyError("stmt '%s' has invalid nosync scopes: %s"
+                    % (stmt.id,
                        ", ".join(no_sync_with_scopes - VALID_NOSYNC_SCOPES)))
 
 
-def check_for_duplicate_insn_ids(knl):
-    insn_ids = set()
+def check_for_duplicate_stmt_ids(knl):
+    stmt_ids = set()
 
-    for insn in knl.instructions:
-        if not isinstance(insn.id, str):
-            raise LoopyError("instruction id %r is not a string" % insn.id)
-        if insn.id in insn_ids:
-            raise LoopyError("duplicate instruction id: '%s'" % insn.id)
-        insn_ids.add(insn.id)
+    for stmt in knl.statements:
+        if not isinstance(stmt.id, str):
+            raise LoopyError("statement id %r is not a string" % stmt.id)
+        if stmt.id in stmt_ids:
+            raise LoopyError("duplicate statement id: '%s'" % stmt.id)
+        stmt_ids.add(stmt.id)
 
 
 def check_loop_priority_inames_known(kernel):
@@ -117,29 +117,29 @@ def check_loop_priority_inames_known(kernel):
 def check_for_double_use_of_hw_axes(kernel):
     from loopy.kernel.data import UniqueTag
 
-    for insn in kernel.instructions:
-        insn_tag_keys = set()
-        for iname in kernel.insn_inames(insn):
+    for stmt in kernel.statements:
+        stmt_tag_keys = set()
+        for iname in kernel.stmt_inames(stmt):
             tag = kernel.iname_to_tag.get(iname)
             if isinstance(tag, UniqueTag):
                 key = tag.key
-                if key in insn_tag_keys:
-                    raise LoopyError("instruction '%s' has multiple "
-                            "inames tagged '%s'" % (insn.id, tag))
+                if key in stmt_tag_keys:
+                    raise LoopyError("statement '%s' has multiple "
+                            "inames tagged '%s'" % (stmt.id, tag))
 
-                insn_tag_keys.add(key)
+                stmt_tag_keys.add(key)
 
 
 def check_for_inactive_iname_access(kernel):
-    for insn in kernel.instructions:
-        expression_inames = insn.read_dependency_names() & kernel.all_inames()
+    for stmt in kernel.statements:
+        expression_inames = stmt.read_dependency_names() & kernel.all_inames()
 
-        if not expression_inames <= kernel.insn_inames(insn):
+        if not expression_inames <= kernel.stmt_inames(stmt):
             raise LoopyError(
-                    "instruction '%s' references "
-                    "inames '%s' that the instruction does not depend on"
-                    % (insn.id,
-                        ", ".join(expression_inames - kernel.insn_inames(insn))))
+                    "statement '%s' references "
+                    "inames '%s' that the statement does not depend on"
+                    % (stmt.id,
+                        ", ".join(expression_inames - kernel.stmt_inames(stmt))))
 
 
 def _is_racing_iname_tag(tv, tag):
@@ -172,46 +172,46 @@ def check_for_write_races(kernel):
     from loopy.kernel.data import ConcurrentTag
 
     iname_to_tag = kernel.iname_to_tag.get
-    for insn in kernel.instructions:
+    for stmt in kernel.statements:
         for assignee_name, assignee_indices in zip(
-                insn.assignee_var_names(),
-                insn.assignee_subscript_deps()):
+                stmt.assignee_var_names(),
+                stmt.assignee_subscript_deps()):
             assignee_inames = assignee_indices & kernel.all_inames()
-            if not assignee_inames <= kernel.insn_inames(insn):
+            if not assignee_inames <= kernel.stmt_inames(stmt):
                 raise LoopyError(
                         "assignee of instructiosn '%s' references "
-                        "iname that the instruction does not depend on"
-                        % insn.id)
+                        "iname that the statement does not depend on"
+                        % stmt.id)
 
             if assignee_name in kernel.arg_dict:
                 # Any parallel tags that are not depended upon by the assignee
                 # will cause write races.
 
-                raceable_parallel_insn_inames = set(
+                raceable_parallel_stmt_inames = set(
                         iname
-                        for iname in kernel.insn_inames(insn)
+                        for iname in kernel.stmt_inames(stmt)
                         if isinstance(iname_to_tag(iname), ConcurrentTag))
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
-                raceable_parallel_insn_inames = set(
+                raceable_parallel_stmt_inames = set(
                             iname
-                            for iname in kernel.insn_inames(insn)
+                            for iname in kernel.stmt_inames(stmt)
                             if _is_racing_iname_tag(temp_var, iname_to_tag(iname)))
 
             else:
-                raise LoopyError("invalid assignee name in instruction '%s'"
-                        % insn.id)
+                raise LoopyError("invalid assignee name in statement '%s'"
+                        % stmt.id)
 
             race_inames = \
-                    raceable_parallel_insn_inames - assignee_inames
+                    raceable_parallel_stmt_inames - assignee_inames
 
             if race_inames:
-                warn_with_kernel(kernel, "write_race(%s)" % insn.id,
-                        "instruction '%s' contains a write race: "
-                        "instruction will be run across parallel iname(s) "
+                warn_with_kernel(kernel, "write_race(%s)" % stmt.id,
+                        "statement '%s' contains a write race: "
+                        "statement will be run across parallel iname(s) "
                         "'%s', which is/are not referenced in the lhs index"
-                        % (insn.id, ",".join(race_inames)),
+                        % (stmt.id, ",".join(race_inames)),
                         WriteRaceConditionWarning)
 
 
@@ -251,10 +251,10 @@ def check_for_data_dependent_parallel_bounds(kernel):
 
 
 class _AccessCheckMapper(WalkMapper):
-    def __init__(self, kernel, domain, insn_id):
+    def __init__(self, kernel, domain, stmt_id):
         self.kernel = kernel
         self.domain = domain
-        self.insn_id = insn_id
+        self.stmt_id = stmt_id
 
     def map_subscript(self, expr):
         WalkMapper.map_subscript(self, expr)
@@ -318,44 +318,44 @@ class _AccessCheckMapper(WalkMapper):
                     shape_domain = shape_domain.intersect(slab)
 
             if not access_range.is_subset(shape_domain):
-                raise LoopyError("'%s' in instruction '%s' "
+                raise LoopyError("'%s' in statement '%s' "
                         "accesses out-of-bounds array element"
-                        % (expr, self.insn_id))
+                        % (expr, self.stmt_id))
 
 
 def check_bounds(kernel):
     temp_var_names = set(kernel.temporary_variables)
-    for insn in kernel.instructions:
-        domain = kernel.get_inames_domain(kernel.insn_inames(insn))
+    for stmt in kernel.statements:
+        domain = kernel.get_inames_domain(kernel.stmt_inames(stmt))
 
         # data-dependent bounds? can't do much
         if set(domain.get_var_names(dim_type.param)) & temp_var_names:
             continue
 
-        acm = _AccessCheckMapper(kernel, domain, insn.id)
+        acm = _AccessCheckMapper(kernel, domain, stmt.id)
 
         def run_acm(expr):
             acm(expr)
             return expr
 
-        insn.with_transformed_expressions(run_acm)
+        stmt.with_transformed_expressions(run_acm)
 
 
 def check_write_destinations(kernel):
-    for insn in kernel.instructions:
-        for wvar in insn.assignee_var_names():
+    for stmt in kernel.statements:
+        for wvar in stmt.assignee_var_names():
             if wvar in kernel.all_inames():
                 raise LoopyError("iname '%s' may not be written" % wvar)
 
-            insn_domain = kernel.get_inames_domain(kernel.insn_inames(insn))
-            insn_params = set(insn_domain.get_var_names(dim_type.param))
+            stmt_domain = kernel.get_inames_domain(kernel.stmt_inames(stmt))
+            stmt_params = set(stmt_domain.get_var_names(dim_type.param))
 
             if wvar in kernel.all_params():
                 if wvar not in kernel.temporary_variables:
                     raise LoopyError("domain parameter '%s' may not be written"
                             "--it is not a temporary variable" % wvar)
 
-                if wvar in insn_params:
+                if wvar in stmt_params:
                     raise LoopyError("domain parameter '%s' may not be written "
                             "inside a domain dependent on it" % wvar)
 
@@ -370,7 +370,7 @@ def check_has_schedulable_iname_nesting(kernel):
     if not has_schedulable_iname_nesting(kernel):
         import itertools as it
         opt = get_iname_duplication_options(kernel)
-        opt_str = "\n".join("* Duplicate %s within instructions %s" % (i, w)
+        opt_str = "\n".join("* Duplicate %s within statements %s" % (i, w)
                             for i, w in it.islice(opt, 3))
         raise LoopyError("Kernel does not have a schedulable iname nesting. "
                 "In order for there to exist a feasible loop nesting, you "
@@ -386,10 +386,10 @@ def pre_schedule_checks(kernel):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
-        check_for_duplicate_insn_ids(kernel)
+        check_for_duplicate_stmt_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
-        check_insn_attributes(kernel)
+        check_stmt_attributes(kernel)
         check_loop_priority_inames_known(kernel)
         check_for_inactive_iname_access(kernel)
         check_for_write_races(kernel)
@@ -415,9 +415,9 @@ def pre_schedule_checks(kernel):
 # {{{ check for unused hw axes
 
 def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
-    from loopy.schedule import (CallKernel, RunInstruction,
+    from loopy.schedule import (CallKernel, RunStatement,
             Barrier, EnterLoop, LeaveLoop, ReturnFromKernel,
-            get_insn_ids_for_block_at, gather_schedule_block)
+            get_stmt_ids_for_block_at, gather_schedule_block)
 
     if sched_index is None:
         group_axes = set()
@@ -428,8 +428,8 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     else:
         assert isinstance(kernel.schedule[sched_index], CallKernel)
         _, past_end_i = gather_schedule_block(kernel.schedule, sched_index)
-        group_size, local_size = kernel.get_grid_sizes_for_insn_ids_as_exprs(
-                get_insn_ids_for_block_at(kernel.schedule, sched_index))
+        group_size, local_size = kernel.get_grid_sizes_for_stmt_ids_as_exprs(
+                get_stmt_ids_for_block_at(kernel.schedule, sched_index))
 
         group_axes = set(ax for ax, length in enumerate(group_size))
         local_axes = set(ax for ax, length in enumerate(local_size))
@@ -447,17 +447,17 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
         if isinstance(sched_item, CallKernel):
             i = _check_for_unused_hw_axes_in_kernel_chunk(kernel, i)
 
-        elif isinstance(sched_item, RunInstruction):
-            insn = kernel.id_to_insn[sched_item.insn_id]
+        elif isinstance(sched_item, RunStatement):
+            stmt = kernel.id_to_stmt[sched_item.stmt_id]
             i += 1
 
-            if insn.boostable:
+            if stmt.boostable:
                 continue
 
             group_axes_used = set()
             local_axes_used = set()
 
-            for iname in kernel.insn_inames(insn):
+            for iname in kernel.stmt_inames(stmt):
                 tag = kernel.iname_to_tag.get(iname)
 
                 if isinstance(tag, LocalIndexTag):
@@ -468,15 +468,15 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
                     raise LoopyError("auto local tag encountered")
 
             if group_axes != group_axes_used:
-                raise LoopyError("instruction '%s' does not use all group hw axes "
+                raise LoopyError("statement '%s' does not use all group hw axes "
                         "(available: %s used:%s)"
-                        % (insn.id,
+                        % (stmt.id,
                             ",".join(str(i) for i in group_axes),
                             ",".join(str(i) for i in group_axes_used)))
             if local_axes != local_axes_used:
-                raise LoopyError("instruction '%s' does not use all local hw axes "
+                raise LoopyError("statement '%s' does not use all local hw axes "
                         "(available: %s used:%s)"
-                        % (insn.id,
+                        % (stmt.id,
                             ",".join(str(i) for i in local_axes),
                             ",".join(str(i) for i in local_axes_used)))
 
@@ -491,7 +491,7 @@ def _check_for_unused_hw_axes_in_kernel_chunk(kernel, sched_index=None):
     return past_end_i
 
 
-def check_for_unused_hw_axes_in_insns(kernel):
+def check_for_unused_hw_axes_in_stmts(kernel):
     if kernel.schedule:
         _check_for_unused_hw_axes_in_kernel_chunk(kernel)
 
@@ -511,24 +511,24 @@ def check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel):
                 if isinstance(v, ArrayBase)
                 and isinstance(v.dtype, AtomicType)))
 
-    for insn in kernel.instructions:
-        if not isinstance(insn, Assignment):
+    for stmt in kernel.statements:
+        if not isinstance(stmt, Assignment):
             continue
 
-        atomic_accesses = set(a.var_name for a in insn.atomicity)
+        atomic_accesses = set(a.var_name for a in stmt.atomicity)
         if not atomic_accesses <= atomicity_candidates:
-            raise LoopyError("atomic access in instruction '%s' to "
+            raise LoopyError("atomic access in statement '%s' to "
                     "non-atomic variable(s) '%s'"
-                    % (insn.id,
+                    % (stmt.id,
                         ",".join(atomic_accesses - atomicity_candidates)))
 
-        accessed_atomic_vars = insn.dependency_names() & atomicity_candidates
+        accessed_atomic_vars = stmt.dependency_names() & atomicity_candidates
         if not accessed_atomic_vars <= atomic_accesses:
-            raise LoopyError("atomic variable(s) '%s' in instruction '%s' "
+            raise LoopyError("atomic variable(s) '%s' in statement '%s' "
                     "used in non-atomic access"
                     % (
                         ",".join(accessed_atomic_vars - atomic_accesses),
-                        insn.id))
+                        stmt.id))
 
 # }}}
 
@@ -577,28 +577,28 @@ def check_that_temporaries_are_defined_in_subkernels_where_used(kernel):
 # }}}
 
 
-# {{{ check that all instructions are scheduled
+# {{{ check that all statements are scheduled
 
-def check_that_all_insns_are_scheduled(kernel):
-    from loopy.kernel.instruction import NoOpInstruction
+def check_that_all_stmts_are_scheduled(kernel):
+    from loopy.kernel.statement import NoOpStatement
 
-    all_schedulable_insns = set(
-        insn.id for insn in kernel.instructions
+    all_schedulable_stmts = set(
+        stmt.id for stmt in kernel.statements
         # nops are not schedulable
-        if not isinstance(insn, NoOpInstruction))
-    from loopy.schedule import sched_item_to_insn_id
-    scheduled_insns = set(
-        insn_id
+        if not isinstance(stmt, NoOpStatement))
+    from loopy.schedule import sched_item_to_stmt_id
+    scheduled_stmts = set(
+        stmt_id
         for sched_item in kernel.schedule
-        for insn_id in sched_item_to_insn_id(sched_item))
+        for stmt_id in sched_item_to_stmt_id(sched_item))
 
-    assert scheduled_insns <= all_schedulable_insns
+    assert scheduled_stmts <= all_schedulable_stmts
 
-    if scheduled_insns < all_schedulable_insns:
-        from loopy.diagnostic import UnscheduledInstructionError
-        raise UnscheduledInstructionError(
-            "unscheduled instructions: '%s'"
-            % ', '.join(all_schedulable_insns - scheduled_insns))
+    if scheduled_stmts < all_schedulable_stmts:
+        from loopy.diagnostic import UnscheduledStatementError
+        raise UnscheduledStatementError(
+            "unscheduled statements: '%s'"
+            % ', '.join(all_schedulable_stmts - scheduled_stmts))
 
 # }}}
 
@@ -651,10 +651,10 @@ def pre_codegen_checks(kernel):
     try:
         logger.debug("pre-codegen check %s: start" % kernel.name)
 
-        check_for_unused_hw_axes_in_insns(kernel)
+        check_for_unused_hw_axes_in_stmts(kernel)
         check_that_atomic_ops_are_used_exactly_on_atomic_arrays(kernel)
         check_that_temporaries_are_defined_in_subkernels_where_used(kernel)
-        check_that_all_insns_are_scheduled(kernel)
+        check_that_all_stmts_are_scheduled(kernel)
         kernel.target.pre_codegen_check(kernel)
         check_that_shapes_and_strides_are_arguments(kernel)
 
@@ -670,7 +670,7 @@ def pre_codegen_checks(kernel):
 # }}}
 
 
-# {{{ sanity-check for implemented domains of each instruction
+# {{{ sanity-check for implemented domains of each statement
 
 def check_implemented_domains(kernel, implemented_domains, code=None):
     from islpy import dim_type
@@ -678,77 +678,77 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
     from islpy import align_two
 
     last_idomains = None
-    last_insn_inames = None
+    last_stmt_inames = None
 
-    for insn_id, idomains in six.iteritems(implemented_domains):
-        insn = kernel.id_to_insn[insn_id]
+    for stmt_id, idomains in six.iteritems(implemented_domains):
+        stmt = kernel.id_to_stmt[stmt_id]
 
         assert idomains
 
-        insn_inames = kernel.insn_inames(insn)
+        stmt_inames = kernel.stmt_inames(stmt)
 
         # {{{ if we've checked the same thing before, no need to check it again
 
-        if last_idomains is not None and last_insn_inames is not None:
-            if idomains == last_idomains and insn_inames == last_insn_inames:
+        if last_idomains is not None and last_stmt_inames is not None:
+            if idomains == last_idomains and stmt_inames == last_stmt_inames:
                 continue
 
         last_idomains = idomains
-        last_insn_inames = insn_inames
+        last_stmt_inames = stmt_inames
 
         # }}}
 
-        insn_impl_domain = idomains[0]
+        stmt_impl_domain = idomains[0]
         for idomain in idomains[1:]:
-            insn_impl_domain = insn_impl_domain | idomain
+            stmt_impl_domain = stmt_impl_domain | idomain
         assumption_non_param = isl.BasicSet.from_params(kernel.assumptions)
-        assumptions, insn_impl_domain = align_two(
-                assumption_non_param, insn_impl_domain)
-        insn_impl_domain = (
-                (insn_impl_domain & assumptions)
-                .project_out_except(insn_inames, [dim_type.set]))
+        assumptions, stmt_impl_domain = align_two(
+                assumption_non_param, stmt_impl_domain)
+        stmt_impl_domain = (
+                (stmt_impl_domain & assumptions)
+                .project_out_except(stmt_inames, [dim_type.set]))
 
-        from loopy.kernel.instruction import BarrierInstruction
+        from loopy.kernel.statement import BarrierStatement
         from loopy.kernel.data import LocalIndexTag
-        if isinstance(insn, BarrierInstruction):
+        if isinstance(stmt, BarrierStatement):
             # project out local-id-mapped inames, solves #94 on gitlab
             non_lid_inames = frozenset(
-                [iname for iname in insn_inames if not isinstance(
+                [iname for iname in stmt_inames if not isinstance(
                     kernel.iname_to_tag.get(iname), LocalIndexTag)])
-            insn_impl_domain = insn_impl_domain.project_out_except(
+            stmt_impl_domain = stmt_impl_domain.project_out_except(
                 non_lid_inames, [dim_type.set])
 
-        insn_domain = kernel.get_inames_domain(insn_inames)
-        insn_parameters = frozenset(insn_domain.get_var_names(dim_type.param))
-        assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
-        desired_domain = ((insn_domain & assumptions)
-            .project_out_except(insn_inames, [dim_type.set])
-            .project_out_except(insn_parameters, [dim_type.param]))
+        stmt_domain = kernel.get_inames_domain(stmt_inames)
+        stmt_parameters = frozenset(stmt_domain.get_var_names(dim_type.param))
+        assumptions, stmt_domain = align_two(assumption_non_param, stmt_domain)
+        desired_domain = ((stmt_domain & assumptions)
+            .project_out_except(stmt_inames, [dim_type.set])
+            .project_out_except(stmt_parameters, [dim_type.param]))
 
-        if isinstance(insn, BarrierInstruction):
+        if isinstance(stmt, BarrierStatement):
             # project out local-id-mapped inames, solves #94 on gitlab
             desired_domain = desired_domain.project_out_except(
                 non_lid_inames, [dim_type.set])
 
-        insn_impl_domain = (insn_impl_domain
-                .project_out_except(insn_parameters, [dim_type.param]))
-        insn_impl_domain, desired_domain = align_two(
-                insn_impl_domain, desired_domain)
+        stmt_impl_domain = (stmt_impl_domain
+                .project_out_except(stmt_parameters, [dim_type.param]))
+        stmt_impl_domain, desired_domain = align_two(
+                stmt_impl_domain, desired_domain)
 
-        if insn_impl_domain != desired_domain:
-            i_minus_d = insn_impl_domain - desired_domain
-            d_minus_i = desired_domain - insn_impl_domain
+        if stmt_impl_domain != desired_domain:
+            i_minus_d = stmt_impl_domain - desired_domain
+            d_minus_i = desired_domain - stmt_impl_domain
 
             parameter_inames = set(
-                    insn_domain.get_dim_name(dim_type.param, i)
-                    for i in range(insn_impl_domain.dim(dim_type.param)))
+                    stmt_domain.get_dim_name(dim_type.param, i)
+                    for i in range(stmt_impl_domain.dim(dim_type.param)))
 
             lines = []
             for bigger, smaller, diff_set, gist_domain in [
                     ("implemented", "desired", i_minus_d,
-                        desired_domain.gist(insn_impl_domain)),
+                        desired_domain.gist(stmt_impl_domain)),
                     ("desired", "implemented", d_minus_i,
-                        insn_impl_domain.gist(desired_domain))]:
+                        stmt_impl_domain.gist(desired_domain))]:
 
                 if diff_set.is_empty():
                     continue
@@ -758,12 +758,12 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 assert not pt.is_void()
 
                 #pt_set = isl.Set.from_point(pt)
-                #lines.append("point implemented: %s" % (pt_set <= insn_impl_domain))
+                #lines.append("point implemented: %s" % (pt_set <= stmt_impl_domain))
                 #lines.append("point desired: %s" % (pt_set <= desired_domain))
 
                 iname_to_dim = pt.get_space().get_var_dict()
                 point_axes = []
-                for iname in kernel.insn_inames(insn) | parameter_inames:
+                for iname in kernel.stmt_inames(stmt) | parameter_inames:
                     tp, dim = iname_to_dim[iname]
                     point_axes.append("%s=%d" % (
                         iname, pt.get_coordinate_val(tp, dim).to_python()))
@@ -784,10 +784,10 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 print(79*"-")
 
             raise LoopyError("sanity check failed--implemented and desired "
-                    "domain for instruction '%s' do not match\n\n"
+                    "domain for statement '%s' do not match\n\n"
                     "implemented: %s\n\n"
                     "desired:%s\n\n%s"
-                    % (insn_id, insn_impl_domain, desired_domain, "\n".join(lines)))
+                    % (stmt_id, stmt_impl_domain, desired_domain, "\n".join(lines)))
 
     # placate the assert at the call site
     return True

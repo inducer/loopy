@@ -209,10 +209,10 @@ def _fuse_two_kernels(knla, knlb):
     knlb = _apply_renames_in_exprs(knlb, b_var_renames)
 
     from pymbolic.imperative.transform import \
-            fuse_instruction_streams_with_unique_ids
-    new_instructions, old_b_id_to_new_b_id = \
-            fuse_instruction_streams_with_unique_ids(
-                    knla.instructions, knlb.instructions)
+            fuse_statement_streams_with_unique_ids
+    new_statements, old_b_id_to_new_b_id = \
+            fuse_statement_streams_with_unique_ids(
+                    knla.statements, knlb.statements)
 
     # {{{ fuse assumptions
 
@@ -238,7 +238,7 @@ def _fuse_two_kernels(knla, knlb):
     from loopy.kernel import LoopKernel
     return LoopKernel(
             domains=new_domains,
-            instructions=new_instructions,
+            statements=new_statements,
             args=new_args,
             name="%s_and_%s" % (knla.name, knlb.name),
             preambles=_ordered_merge_lists(knla.preambles, knlb.preambles),
@@ -321,10 +321,10 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
         succeed.
 
     *   Temporaries are automatically renamed to remain uniquely associated
-        with each instruction stream.
+        with each statement stream.
 
-    *   The resulting kernel will contain all instructions from each entry
-        of *kernels*. Clashing instruction IDs will be renamed to ensure
+    *   The resulting kernel will contain all statements from each entry
+        of *kernels*. Clashing statement IDs will be renamed to ensure
         uniqueness.
 
     .. versionchanged:: 2016.2
@@ -368,44 +368,44 @@ def fuse_kernels(kernels, suffixes=None, data_flow=None):
 
         # }}}
 
-    kernel_insn_ids = []
+    kernel_stmt_ids = []
     result = None
 
     for knlb in kernels:
         if result is None:
             result = knlb
-            kernel_insn_ids.append([
-                insn.id for insn in knlb.instructions])
+            kernel_stmt_ids.append([
+                stmt.id for stmt in knlb.statements])
         else:
             result, old_b_id_to_new_b_id = _fuse_two_kernels(
                     knla=result,
                     knlb=knlb)
 
-            kernel_insn_ids.append([
-                old_b_id_to_new_b_id[insn.id]
-                for insn in knlb.instructions])
+            kernel_stmt_ids.append([
+                old_b_id_to_new_b_id[stmt.id]
+                for stmt in knlb.statements])
 
     # {{{ realize data_flow dependencies
 
-    id_to_insn = result.id_to_insn.copy()
+    id_to_stmt = result.id_to_stmt.copy()
 
     for var_name, from_kernel, to_kernel in data_flow:
         from_writer_ids = frozenset(
-                insn_id
-                for insn_id in kernel_insn_ids[from_kernel]
-                if var_name in id_to_insn[insn_id].assignee_var_names())
+                stmt_id
+                for stmt_id in kernel_stmt_ids[from_kernel]
+                if var_name in id_to_stmt[stmt_id].assignee_var_names())
 
-        for insn_id in kernel_insn_ids[to_kernel]:
-            insn = id_to_insn[insn_id]
-            if var_name in insn.read_dependency_names():
-                insn = insn.copy(depends_on=insn.depends_on | from_writer_ids)
+        for stmt_id in kernel_stmt_ids[to_kernel]:
+            stmt = id_to_stmt[stmt_id]
+            if var_name in stmt.read_dependency_names():
+                stmt = stmt.copy(depends_on=stmt.depends_on | from_writer_ids)
 
-            id_to_insn[insn_id] = insn
+            id_to_stmt[stmt_id] = stmt
 
-    result = result.copy(instructions=[
-            id_to_insn[insn_id]
-            for insn_ids in kernel_insn_ids
-            for insn_id in insn_ids])
+    result = result.copy(statements=[
+            id_to_stmt[stmt_id]
+            for stmt_ids in kernel_stmt_ids
+            for stmt_id in stmt_ids])
 
     # }}}
 

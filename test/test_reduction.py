@@ -415,7 +415,7 @@ def test_parallel_multi_output_reduction(ctx_factory):
 
 def test_reduction_with_conditional():
     # Test whether realization of a reduction inherits predicates
-    # of the original instruction. Tested with the CTarget, because
+    # of the original statement. Tested with the CTarget, because
     # the PyOpenCL target will hoist the conditional into the host
     # code in this minimal example.
     knl = lp.make_kernel(

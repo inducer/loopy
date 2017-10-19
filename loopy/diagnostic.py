@@ -100,7 +100,7 @@ class MissingDefinitionError(LoopyError):
     pass
 
 
-class UnscheduledInstructionError(LoopyError):
+class UnscheduledStatementError(LoopyError):
     pass
 
 

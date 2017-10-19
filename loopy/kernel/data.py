@@ -30,8 +30,8 @@ import numpy as np  # noqa
 from pytools import ImmutableRecord
 from loopy.kernel.array import ArrayBase
 from loopy.diagnostic import LoopyError
-from loopy.kernel.instruction import (  # noqa
-        InstructionBase,
+from loopy.kernel.statement import (  # noqa
+        StatementBase,
         memory_ordering,
         memory_scope,
         VarAtomicity,
@@ -39,10 +39,10 @@ from loopy.kernel.instruction import (  # noqa
         AtomicUpdate,
         MultiAssignmentBase,
         Assignment,
-        ExpressionInstruction,
-        CallInstruction,
+        ExpressionStatement,
+        CallStatement,
         make_assignment,
-        CInstruction)
+        CStatement)
 
 
 class auto(object):  # noqa
@@ -70,7 +70,7 @@ class IndexTag(ImmutableRecord):
     @property
     def key(self):
         """Return a hashable, comparable value that is used to ensure
-        per-instruction uniqueness of this unique iname tag.
+        per-statement uniqueness of this unique iname tag.
 
         Also used for persistent hash construction.
         """

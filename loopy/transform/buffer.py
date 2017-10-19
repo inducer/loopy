@@ -52,7 +52,7 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
         self.array_base_map = array_base_map
 
         self.var_name = var_name
-        self.modified_insn_ids = set()
+        self.modified_stmt_ids = set()
 
         self.buf_var = buf_var
 
@@ -60,28 +60,28 @@ class ArrayAccessReplacer(RuleAwareIdentityMapper):
         result = None
         if expr.name == self.var_name and self.within(
                 expn_state.kernel,
-                expn_state.instruction,
+                expn_state.statement,
                 expn_state.stack):
             result = self.map_array_access((), expn_state)
 
         if result is None:
             return super(ArrayAccessReplacer, self).map_variable(expr, expn_state)
         else:
-            self.modified_insn_ids.add(expn_state.insn_id)
+            self.modified_stmt_ids.add(expn_state.stmt_id)
             return result
 
     def map_subscript(self, expr, expn_state):
         result = None
         if expr.aggregate.name == self.var_name and self.within(
                 expn_state.kernel,
-                expn_state.instruction,
+                expn_state.statement,
                 expn_state.stack):
             result = self.map_array_access(expr.index_tuple, expn_state)
 
         if result is None:
             return super(ArrayAccessReplacer, self).map_subscript(expr, expn_state)
         else:
-            self.modified_insn_ids.add(expn_state.insn_id)
+            self.modified_stmt_ids.add(expn_state.stmt_id)
             return result
 
     def map_array_access(self, index, expn_state):
@@ -153,7 +153,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         being buffered).
     :arg store_expression: Either *None*, *False*, or an expression involving
         variables 'base' and 'buffer' (without array indices).
-        (*None* indicates that a default storage instruction should be used,
+        (*None* indicates that a default storage statement should be used,
         *False* indicates that no storing of the temporary should occur
         at all.)
     :arg within: If not None, limit the action of the transformation to
@@ -259,14 +259,14 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     within_inames = set()
 
     access_descriptors = []
-    for insn in kernel.instructions:
-        if not within(kernel, insn.id, ()):
+    for stmt in kernel.statements:
+        if not within(kernel, stmt.id, ()):
             continue
 
         from pymbolic.primitives import Variable, Subscript
         from loopy.symbolic import LinearSubscript
 
-        for assignee in insn.assignees:
+        for assignee in stmt.assignees:
             if isinstance(assignee, Variable):
                 assignee_name = assignee.name
                 index = ()
@@ -289,7 +289,7 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                         - buffer_inames_set)
                 access_descriptors.append(
                         AccessDescriptor(
-                            identifier=insn.id,
+                            identifier=stmt.id,
                             storage_axis_exprs=index))
 
     # {{{ find fetch/store inames
@@ -384,11 +384,11 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     # }}}
 
-    new_insns = []
+    new_stmts = []
 
     buf_var = var(buf_var_name)
 
-    # {{{ generate init instruction
+    # {{{ generate init statement
 
     buf_var_init = buf_var
     if non1_init_inames:
@@ -419,9 +419,9 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
                     "base": init_base,
                     }))(init_expression)
 
-    init_insn_id = kernel.make_unique_instruction_id(based_on="init_"+var_name)
+    init_stmt_id = kernel.make_unique_statement_id(based_on="init_"+var_name)
     from loopy.kernel.data import Assignment
-    init_instruction = Assignment(id=init_insn_id,
+    init_statement = Assignment(id=init_stmt_id,
                 assignee=buf_var_init,
                 expression=init_expression,
                 within_inames=(
@@ -439,14 +439,14 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
     kernel = rule_mapping_context.finish_kernel(aar.map_kernel(kernel))
 
     did_write = False
-    for insn_id in aar.modified_insn_ids:
-        insn = kernel.id_to_insn[insn_id]
-        if buf_var_name in insn.assignee_var_names():
+    for stmt_id in aar.modified_stmt_ids:
+        stmt = kernel.id_to_stmt[stmt_id]
+        if buf_var_name in stmt.assignee_var_names():
             did_write = True
 
-    # {{{ add init_insn_id to depends_on
+    # {{{ add init_stmt_id to depends_on
 
-    new_insns = []
+    new_stmts = []
 
     def none_to_empty_set(s):
         if s is None:
@@ -454,19 +454,19 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
         else:
             return s
 
-    for insn in kernel.instructions:
-        if insn.id in aar.modified_insn_ids:
-            new_insns.append(
-                    insn.copy(
+    for stmt in kernel.statements:
+        if stmt.id in aar.modified_stmt_ids:
+            new_stmts.append(
+                    stmt.copy(
                         depends_on=(
-                            none_to_empty_set(insn.depends_on)
-                            | frozenset([init_insn_id]))))
+                            none_to_empty_set(stmt.depends_on)
+                            | frozenset([init_stmt_id]))))
         else:
-            new_insns.append(insn)
+            new_stmts.append(stmt)
 
     # }}}
 
-    # {{{ generate store instruction
+    # {{{ generate store statement
 
     buf_var_store = buf_var
     if non1_store_inames:
@@ -498,10 +498,10 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     if store_expression is not False:
         from loopy.kernel.data import Assignment
-        store_instruction = Assignment(
-                    id=kernel.make_unique_instruction_id(based_on="store_"+var_name),
-                    depends_on=frozenset(aar.modified_insn_ids),
-                    no_sync_with=frozenset([(init_insn_id, "any")]),
+        store_statement = Assignment(
+                    id=kernel.make_unique_statement_id(based_on="store_"+var_name),
+                    depends_on=frozenset(aar.modified_stmt_ids),
+                    no_sync_with=frozenset([(init_stmt_id, "any")]),
                     assignee=store_target,
                     expression=store_expression,
                     within_inames=(
@@ -512,16 +512,16 @@ def buffer_array(kernel, var_name, buffer_inames, init_expression=None,
 
     # }}}
 
-    new_insns.append(init_instruction)
+    new_stmts.append(init_statement)
     if did_write:
-        new_insns.append(store_instruction)
+        new_stmts.append(store_statement)
     else:
         for iname in store_inames:
             del new_iname_to_tag[iname]
 
     kernel = kernel.copy(
             domains=new_kernel_domains,
-            instructions=new_insns,
+            statements=new_stmts,
             temporary_variables=new_temporary_variables)
 
     from loopy import tag_inames

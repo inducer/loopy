@@ -24,15 +24,15 @@
 <text text-anchor="middle" x="114" y="-109.9" font-family="Times Roman,serif" font-size="14.00">out[(j, i)] &lt;&#45; a[(i, j)]</text>
 </a>
 </g>
-<!-- insn -->
-<g id="node2" class="node"><title>insn</title>
-<a xlink:title="insn">
+<!-- stmt -->
+<g id="node2" class="node"><title>stmt</title>
+<a xlink:title="stmt">
 <polygon fill="none" stroke="black" points="204,-60 24,-60 24,-24 204,-24 204,-60"/>
 <text text-anchor="middle" x="114" y="-37.9" font-family="Times Roman,serif" font-size="14.00">out[(i, j)] &lt;&#45; 2*out[(i, j)]</text>
 </a>
 </g>
-<!-- transpose&#45;&gt;insn -->
-<g id="edge2" class="edge"><title>transpose&#45;&gt;insn</title>
+<!-- transpose&#45;&gt;stmt -->
+<g id="edge2" class="edge"><title>transpose&#45;&gt;stmt</title>
 <path fill="none" stroke="black" d="M114,-95.8314C114,-88.131 114,-78.9743 114,-70.4166"/>
 <polygon fill="black" stroke="black" points="117.5,-70.4132 114,-60.4133 110.5,-70.4133 117.5,-70.4132"/>
 </g>
