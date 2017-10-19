@@ -2582,7 +2582,7 @@ def test_preamble_with_separate_temporaries(ctx_factory):
                 }}
                 return result;
             }}
-            """.format(func_name)
+            """.format(name=func_name)
 
             # generate temporary variable code
             from cgen import Initializer
@@ -2595,7 +2595,7 @@ def test_preamble_with_separate_temporaries(ctx_factory):
             decl_info, = var.decl_info(target, index_dtype=kernel.index_dtype)
             decl = ast_builder.wrap_global_constant(
                     ast_builder.get_temporary_decl(
-                        codegen_state, 1, var.arr,
+                        codegen_state, None, var,
                         decl_info))
             if var.initializer is not None:
                 decl = Initializer(decl, generate_array_literal(
