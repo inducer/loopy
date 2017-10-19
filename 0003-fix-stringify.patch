@@ -1,8 +1,8 @@
 diff --git a/loopy/kernel/__init__.py b/loopy/kernel/__init__.py
-index 481f567..ae94b07 100644
+index 68fcca1..d20dddf 100644
 --- a/loopy/kernel/__init__.py
 +++ b/loopy/kernel/__init__.py
-@@ -1092,7 +1092,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+@@ -1094,7 +1094,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
              "tags",
              "variables",
              "rules",
@@ -12,7 +12,7 @@ index 481f567..ae94b07 100644
              "Dependencies",
              "schedule",
              ])
-@@ -1183,10 +1184,10 @@ class LoopKernel(ImmutableRecordWithoutPickling):
+@@ -1171,7 +1172,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
              for rule_name in natsorted(six.iterkeys(kernel.substitutions)):
                  lines.append(str(kernel.substitutions[rule_name]))
  
@@ -20,8 +20,4 @@ index 481f567..ae94b07 100644
 +        if "Statements" in what or "instructions" in what:
              lines.extend(sep)
              if show_labels:
--                lines.append("INSTRUCTIONS:")
-+                lines.append("STATEMENTS:")
-             loop_list_width = 35
- 
-             # {{{ topological sort
+                 lines.append("STATEMENTS:")
