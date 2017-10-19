@@ -49,14 +49,6 @@ index 68fcca1..6d788df 100644
          # {{{ process assumptions
  
          if assumptions is None:
-@@ -264,6 +286,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
-         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
-         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
- 
-+
-         ImmutableRecordWithoutPickling.__init__(self,
-                 domains=domains,
-                 statements=statements,
 @@ -1094,7 +1117,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
              "tags",
              "variables",
