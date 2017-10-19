@@ -2206,11 +2206,12 @@ def test_nosync_option_parsing():
         """,
         options=lp.Options(allow_terminal_colors=False))
     kernel_str = str(knl)
-    assert "# insn1,no_sync_with=insn1@any" in kernel_str
-    assert "# insn2,no_sync_with=insn1@any:insn2@any" in kernel_str
-    assert "# insn3,no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
-    assert "# insn4,no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa
-    assert "# insn5,no_sync_with=insn1@any" in kernel_str
+    print(kernel_str)
+    assert "id=insn1, no_sync_with=insn1@any" in kernel_str
+    assert "id=insn2, no_sync_with=insn1@any:insn2@any" in kernel_str
+    assert "id=insn3, no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
+    assert "id=insn4, no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa
+    assert "id=insn5, no_sync_with=insn1@any" in kernel_str
 
 
 def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
