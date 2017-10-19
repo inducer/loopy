@@ -431,10 +431,10 @@ def format_insn(kernel, insn_id):
     from loopy.kernel.instruction import (
             MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
     if isinstance(insn, MultiAssignmentBase):
-        return "[%s] %s%s%s <- %s%s%s" % (
-            format_insn_id(kernel, insn_id),
+        return "%s%s%s = %s%s%s  {id=%s}" % (
             Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
-            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
+            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
+            format_insn_id(kernel, insn_id))
     elif isinstance(insn, BarrierInstruction):
         return "[%s] %s... %sbarrier%s" % (
                 format_insn_id(kernel, insn_id),
@@ -456,11 +456,11 @@ def dump_schedule(kernel, schedule):
     from loopy.kernel.data import MultiAssignmentBase
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
-            lines.append(indent + "FOR %s" % sched_item.iname)
+            lines.append(indent + "for %s" % sched_item.iname)
             indent += "    "
         elif isinstance(sched_item, LeaveLoop):
             indent = indent[:-4]
-            lines.append(indent + "END %s" % sched_item.iname)
+            lines.append(indent + "end %s" % sched_item.iname)
         elif isinstance(sched_item, CallKernel):
             lines.append(indent +
                          "CALL KERNEL %s(extra_args=%s, extra_inames=%s)" % (
@@ -479,7 +479,7 @@ def dump_schedule(kernel, schedule):
                 insn_str = sched_item.insn_id
             lines.append(indent + insn_str)
         elif isinstance(sched_item, Barrier):
-            lines.append(indent + "---BARRIER:%s---" % sched_item.kind)
+            lines.append(indent + "... %sbarrier" % sched_item.kind[0])
         else:
             assert False
 
