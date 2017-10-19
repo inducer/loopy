@@ -1404,26 +1404,31 @@ def stringify_instruction_list(kernel):
     Fore = kernel.options._fore  # noqa
     Style = kernel.options._style  # noqa
 
-    uniform_length, arrows_and_extenders = draw_dependencies_as_unicode_arrows(
-            printed_insn_order, fore=Fore, style=Style)
+    uniform_arrow_length, arrows_and_extenders = \
+            draw_dependencies_as_unicode_arrows(
+                    printed_insn_order, fore=Fore, style=Style)
 
-    leader = " " * uniform_length
+    leader = " " * uniform_arrow_length
     lines = []
     current_inames = [set()]
 
-    indent_level = [0]
+    if uniform_arrow_length:
+        indent_level = [1]
+    else:
+        indent_level = [0]
+
     indent_increment = 2
 
     iname_order = kernel._get_iname_order_for_printing()
 
     def add_pre_line(s):
-        lines.append(leader + " " * (indent_level[0] + 1) + s)
+        lines.append(leader + " " * indent_level[0] + s)
 
     def add_main_line(s):
-        lines.append(arrows + " " * (indent_level[0] + 1) + s)
+        lines.append(arrows + " " * indent_level[0] + s)
 
     def add_post_line(s):
-        lines.append(extender + " " * (indent_level[0] + 1) + s)
+        lines.append(extender + " " * indent_level[0] + s)
 
     def adapt_to_new_inames_list(new_inames):
         added = []
