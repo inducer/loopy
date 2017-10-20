@@ -534,6 +534,8 @@ class TemporaryVariable(ArrayBase):
         self.update_persistent_hash_for_shape(key_hash, key_builder,
                 self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
+        key_builder.rec(key_hash, self.scope)
+        key_builder.rec(key_hash, self.base_storage)
 
         initializer = self.initializer
         if initializer is not None:
@@ -541,8 +543,20 @@ class TemporaryVariable(ArrayBase):
         key_builder.rec(key_hash, initializer)
 
         key_builder.rec(key_hash, self.read_only)
+        key_builder.rec(key_hash, self._base_storage_access_may_be_aliasing)
 
 # }}}
+
+
+def iname_tag_to_temp_var_scope(iname_tag):
+    iname_tag = parse_tag(iname_tag)
+
+    if isinstance(iname_tag, GroupIndexTag):
+        return temp_var_scope.GLOBAL
+    elif isinstance(iname_tag, LocalIndexTag):
+        return temp_var_scope.LOCAL
+    else:
+        return temp_var_scope.PRIVATE
 
 
 # {{{ substitution rule
