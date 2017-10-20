@@ -26,6 +26,7 @@ THE SOFTWARE.
 import loopy as lp
 import islpy as isl
 
+from loopy.kernel.data import iname_tag_to_temp_var_scope
 
 import logging
 logger = logging.getLogger(__name__)
@@ -428,10 +429,31 @@ def make_two_level_scan(
 
     # }}}
 
-    # {{{ utils
+    # {{{ parameter processing
+
+    # It seems that local_storage_axes should be determined automatically.
+    auto_local_storage_axes = [
+            iname
+            for iname, tag in [
+                (outer_iname, outer_tag),
+                (inner_iname, inner_tag)]
+
+            # ">" is "more global"
+            # In a way, global inames are automatically part of an access to a
+            # more local array.
+            if iname_tag_to_temp_var_scope(tag) <= local_storage_scope]
 
     if local_storage_axes is None:
-        local_storage_axes = (outer_iname, inner_iname)
+        local_storage_axes = auto_local_storage_axes
+    else:
+        if list(local_storage_axes) != auto_local_storage_axes:
+            raise ValueError("expected local_storage_axes (%s) did not match "
+                    "provided local_storage_axes (%s)"
+                    % (auto_local_storage_axes, local_storage_axes))
+
+    # }}}
+
+    # {{{ utils
 
     def pick_out_relevant_axes(full_indices, strip_scalar=False):
         assert len(full_indices) == 2
