@@ -412,6 +412,9 @@ def make_two_level_scan(
     else:
         var_name_gen.add_name(nonlocal_storage_name)
 
+    local_scan_insn_id = insn_id_gen(
+            "{insn}__l{next_level}".format(**format_kwargs))
+
     nonlocal_scan_insn_id = insn_id_gen(
             "{insn}__l{level}".format(**format_kwargs))
 
@@ -457,7 +460,9 @@ def make_two_level_scan(
     kernel = reduction_arg_to_subst_rule(
             kernel, scan_iname, subst_rule_name=subst_name)
 
-    kernel = _update_instructions(kernel, {insn_id: insn.copy(expression=0)})
+    kernel = _update_instructions(
+            kernel,
+            {insn_id: kernel.id_to_insn[insn_id].copy(expression=0)})
 
     """
     from loopy.kernel.instruction import NoOpInstruction
@@ -528,9 +533,9 @@ def make_two_level_scan(
 
     precompute_outer_inames = (
             frozenset(all_precompute_inames) - frozenset(precompute_inames))
-
-    insn = kernel.id_to_insn[insn_id]
-    within_inames = insn.within_inames - frozenset([outer_iname, inner_iname])
+    within_inames = (
+            kernel.id_to_insn[insn_id].within_inames
+            - frozenset([outer_iname, inner_iname]))
 
     from pymbolic import var
 
@@ -544,6 +549,7 @@ def make_two_level_scan(
             precompute_outer_inames=precompute_outer_inames | within_inames,
             temporary_name=local_storage_name,
             temporary_scope=local_storage_scope,
+            compute_insn_id=local_scan_insn_id,
             return_info_structure=True)
 
     kernel = local_precompute_xform_info.kernel
@@ -554,7 +560,8 @@ def make_two_level_scan(
     compute_insn_with_deps = kernel.id_to_insn[
             local_precompute_xform_info.compute_insn_id]
     compute_insn_with_deps = compute_insn_with_deps.copy(
-            depends_on=compute_insn_with_deps.depends_on | insn.depends_on)
+            depends_on=compute_insn_with_deps.depends_on
+            | kernel.id_to_insn[insn_id].depends_on)
 
     kernel = _update_instructions(kernel, (compute_insn_with_deps,))
 
@@ -667,6 +674,8 @@ def make_two_level_scan(
             + ["write_race(%s)" % nonlocal_init_head_insn_id])
 
     # }}}
+
+    insn = kernel.id_to_insn[insn_id]
 
     # {{{ implement nonlocal scan
 
