@@ -39,6 +39,8 @@ __doc__ = """
 """
 
 
+# {{{ two-level reduction
+
 def make_two_level_reduction(
         kernel, insn_id, inner_length,
         nonlocal_storage_scope=None,
@@ -123,8 +125,15 @@ def make_two_level_reduction(
 
     return kernel
 
+# }}}
+
+
+# {{{ helpers for two-level scan
 
 def _update_instructions(kernel, id_to_new_insn, copy=True):
+    # FIXME: Even if this improves efficiency, this probably should not be
+    # doing in-place updates, to avoid obscure caching bugs
+
     if not isinstance(id_to_new_insn, dict):
         id_to_new_insn = dict((insn.id, insn) for insn in id_to_new_insn)
 
@@ -275,6 +284,10 @@ def _get_base_iname(iname):
 
     return match_result.group(1)
 
+# }}}
+
+
+# {{{ two-level scan
 
 def make_two_level_scan(
         kernel, insn_id,
@@ -309,7 +322,9 @@ def make_two_level_scan(
          [...,i',i''] result = nonlocal[i'] + local[i',i'']
     """
 
-    # {{{ sanity checks
+    # TODO: Test that this works even when doing split scans in a loop
+
+    # {{{ sanity checks/input processing
 
     # FIXME: More sanity checks...
 
@@ -317,6 +332,7 @@ def make_two_level_scan(
     scan = insn.expression
     assert scan.inames[0] == scan_iname
     assert len(scan.inames) == 1
+    del insn
 
     # }}}
 
@@ -473,7 +489,7 @@ def make_two_level_scan(
     from pymbolic import var
 
     # FIXME: This can probably be done using split_reduction_inward()
-    # and will end up looking as less of a mess that way.
+    # and will end up looking like less of a mess that way.
 
     local_scan_expr = _expand_subst_within_expression(kernel,
             var(subst_name)(var(outer_iname) * inner_length +
@@ -546,6 +562,14 @@ def make_two_level_scan(
 
     # }}}
 
+    from loopy.kernel.data import ConcurrentTag
+    if not isinstance(kernel.iname_to_tag[outer_iname], ConcurrentTag):
+        # FIXME
+        raise NotImplementedError("outer iname must currently be concurrent because "
+                "it occurs in the local scan and the final addition and one of "
+                "those would need to be copied/renamed if it is non-concurrent. "
+                "This split is currently unimplemented.")
+
     # {{{ implement local to nonlocal information transfer
 
     from loopy.isl_helpers import static_max_of_pw_aff
@@ -559,6 +583,11 @@ def make_two_level_scan(
             constants_only=False)
 
     # FIXME: this shouldn't have to have an extra element.
+
+    # FIXME: (Related) This information transfer should perhaps be done with a
+    # ternary, but the bounds checker is currently too dumb to recognize that
+    # that's OK.
+
     nonlocal_storage_len = pw_aff_to_expr(1 + nonlocal_storage_len_pw_aff)
 
     nonlocal_tail_inner_subd = _make_slab_set(nonlocal_init_tail_inner_iname, 1)
@@ -703,6 +732,8 @@ def make_two_level_scan(
     # }}}
 
     return kernel
+
+# }}}
 
 
 # vim: foldmethod=marker
