@@ -96,6 +96,13 @@ class TargetBase(object):
         """
         raise NotImplementedError()
 
+    def has_host_side_global_barriers(self):
+        """
+        :returns: a :class:`bool` indicating whether the host target
+            requires a synchronizing global barrier
+        """
+        raise NotImplementedError()
+
     def get_host_ast_builder(self):
         """
         :returns: a class implementing :class:`ASTBuilderBase` for the host code

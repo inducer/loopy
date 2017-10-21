@@ -850,6 +850,17 @@ class CExpressionToCodeMapper(RecursiveMapper):
     def map_array_literal(self, expr, enclosing_prec):
         return "{ %s }" % self.join_rec(", ", expr.children, PREC_NONE)
 
+    def map_new_array(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+                "uniform new uniform %s[%s]" % (
+                    expr.type, self.rec(expr.size, PREC_NONE)),
+                enclosing_prec, PREC_UNARY)
+
+    def map_delete_array(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+                "delete[] %s" % expr.array,
+                enclosing_prec, PREC_UNARY)
+
 # }}}
 
 # vim: fdm=marker

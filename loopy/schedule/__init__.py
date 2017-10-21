@@ -710,7 +710,12 @@ def generate_loop_schedules_internal(
                     schedule=sched_state.schedule + (next_preschedule_item,),
                     preschedule=sched_state.preschedule[1:],
                     within_subkernel=True,
-                    may_schedule_global_barriers=False,
+                    may_schedule_global_barriers=(
+                        not
+                        sched_state
+                        .kernel
+                        .target
+                        .split_kernel_at_global_barriers()),
                     enclosing_subkernel_inames=sched_state.active_inames),
                 allow_boost=rec_allow_boost,
                 debug=debug):

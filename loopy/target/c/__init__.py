@@ -267,6 +267,9 @@ class CTarget(TargetBase):
     def split_kernel_at_global_barriers(self):
         return False
 
+    def has_host_side_global_barriers(self):
+        return False
+
     def get_host_ast_builder(self):
         return DummyHostASTBuilder(self)
 

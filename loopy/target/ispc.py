@@ -26,7 +26,7 @@ THE SOFTWARE.
 
 
 import numpy as np  # noqa
-from loopy.target.c import CTarget, CASTBuilder
+from loopy.target.c import CTarget, CASTBuilder, CExpression
 from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from loopy.diagnostic import LoopyError
 from loopy.symbolic import Literal
@@ -36,6 +36,43 @@ from loopy.kernel.data import temp_var_scope
 from pymbolic.mapper.stringifier import PREC_NONE
 
 from pytools import memoize_method
+
+
+class NewArray(p.Expression):
+    """An expression node for allocating a new array."""
+
+    # Only used in host-side code generation.
+
+    init_arg_names = ("type", "size")
+
+    def __init__(self, type, size):
+        self.type = type
+        self.size = size
+
+    def __getinitargs__(self):
+        return (self.type, self.size)
+
+    init_arg_names = ("type", "size")
+
+    mapper_method = "map_new_array"
+
+
+class DeleteArray(p.Expression):
+    """An expression node for deleting an array."""
+
+    # Only used in host-side code generation.
+
+    init_arg_names = ("array",)
+
+    def __init__(self, array):
+        self.array = array
+
+    def __getinitargs__(self):
+        return (self.array,)
+
+    init_arg_names = ("array",)
+
+    mapper_method = "map_delete_array"
 
 
 # {{{ expression mapper
@@ -172,6 +209,12 @@ class ISPCTarget(CTarget):
     host_program_name_suffix = ""
     device_program_name_suffix = "_inner"
 
+    def split_kernel_at_global_barriers(self):
+        return True
+
+    def has_host_side_global_barriers(self):
+        return True
+
     def pre_codegen_check(self, kernel):
         gsize, lsize = kernel.get_grid_size_upper_bounds_as_exprs()
         if len(lsize) > 1:
@@ -182,7 +225,7 @@ class ISPCTarget(CTarget):
                             "by ISPC" % ls_i)
 
     def get_host_ast_builder(self):
-        return ISPCASTBuilder(self)
+        return ISPCHostASTBuilder(self)
 
     def get_device_ast_builder(self):
         return ISPCASTBuilder(self)
@@ -201,13 +244,14 @@ class ISPCTarget(CTarget):
 
 
 class ISPCASTBuilder(CASTBuilder):
-    def _arg_names_and_decls(self, codegen_state):
+    def _arg_names_and_decls(self, codegen_state, extra_args):
         implemented_data_info = codegen_state.implemented_data_info
-        arg_names = [iai.name for iai in implemented_data_info]
+        all_args = implemented_data_info + extra_args
+        arg_names = [iai.name for iai in all_args]
 
         arg_decls = [
                 self.idi_to_cgen_declarator(codegen_state.kernel, idi)
-                for idi in implemented_data_info]
+                for idi in all_args]
 
         # {{{ occa compatibility hackery
 
@@ -237,7 +281,7 @@ class ISPCASTBuilder(CASTBuilder):
         from cgen import (FunctionDeclaration, Value)
         from cgen.ispc import ISPCExport, ISPCTask
 
-        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+        arg_names, arg_decls = self._arg_names_and_decls(codegen_state, [])
 
         if codegen_state.is_generating_device_code:
             result = ISPCTask(
@@ -267,7 +311,7 @@ class ISPCASTBuilder(CASTBuilder):
                         "assert(programCount == (%s))"
                         % ecm(lsize[0], PREC_NONE)))
 
-        arg_names, arg_decls = self._arg_names_and_decls(codegen_state)
+        arg_names, arg_decls = self._arg_names_and_decls(codegen_state, extra_args)
 
         from cgen.ispc import ISPCLaunch
         result.append(
@@ -495,6 +539,90 @@ class ISPCASTBuilder(CASTBuilder):
                 inner)
     # }}}
 
+
+# {{{ host ast builder
+
+class ISPCHostASTBuilder(ISPCASTBuilder):
+
+    # FIXME: Rather than having to override get_temporary_decls /
+    # get_function_definition, perhaps it makes more sense to have a
+    # get_host_prologue / get_host_epilogue function pair
+
+    def get_function_definition(
+            self, codegen_state, codegen_result, schedule_index, function_decl,
+            function_body):
+        from loopy.kernel.data import temp_var_scope
+        import six
+
+        ecm = self.get_c_expression_to_code_mapper()
+
+        global_temporaries = sorted(
+                (tv for tv in
+                    six.itervalues(codegen_state.kernel.temporary_variables)
+                if tv.scope == temp_var_scope.GLOBAL),
+                key=lambda tv: tv.name)
+
+        # Add deallocation code.
+
+        from cgen import ExpressionStatement, Line
+        # FIXME: Not sure if it's okay to modify the function_body argument.
+        function_body.extend([Line()] +
+                [ExpressionStatement(
+                    CExpression(ecm, DeleteArray(tv.name)))
+                 for tv in global_temporaries])
+
+        return ISPCASTBuilder.get_function_definition(
+                self,
+                codegen_state,
+                codegen_result,
+                schedule_index,
+                function_decl,
+                function_body)
+
+    def get_temporary_decls(self, codegen_state, schedule_state):
+        from loopy.kernel.data import temp_var_scope
+        import six
+
+        global_temporaries = sorted(
+                (tv for tv in
+                    six.itervalues(codegen_state.kernel.temporary_variables)
+                if tv.scope == temp_var_scope.GLOBAL),
+                key=lambda tv: tv.name)
+
+        ecm = self.get_c_expression_to_code_mapper()
+
+        from cgen import Assign, Line, dtype_to_ctype
+        from six.moves import reduce
+        from operator import mul
+
+        assignments = []
+
+        for tv in global_temporaries:
+            decl_info = tv.decl_info(
+                    self.target, index_dtype=codegen_state.kernel.index_dtype)
+
+            # FIXME: I don't know if this inner loop is necessary.
+            for idi in decl_info:
+                from loopy.target.c import POD  # uses the correct complex type
+                from cgen.ispc import ISPCUniformPointer, ISPCUniform
+
+                decl = ISPCUniform(
+                        ISPCUniformPointer(POD(self, idi.dtype, idi.name)))
+
+                assignments.append(decl)
+                assignments.append(
+                        Assign(idi.name,
+                               CExpression(ecm,
+                               NewArray(
+                                   # FIXME: Not sure how to get this properly
+                                   dtype_to_ctype(idi.dtype),
+                                   reduce(mul, idi.shape, 1)
+                               ))))
+                assignments.append(Line())
+
+        return assignments
+
+# }}}
 
 # TODO: Generate launch code
 # TODO: Vector types (element access: done)

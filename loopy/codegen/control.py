@@ -166,18 +166,28 @@ def generate_code_for_sched_index(codegen_state, sched_index):
             else:
                 return barrier_ast
         else:
-            # host code
-            if sched_item.kind in ["global", "local"]:
-                # host code is assumed globally and locally synchronous
+            if sched_item.kind not in ("global", "local"):
+                raise LoopyError("do not know how to emit code for barrier kind '%s'"
+                        "in host code" % sched_item.kind)
+
+            # host code is assumed locally synchronous but possibly needing
+            # global synchronization
+
+            if sched_item.kind == "global" and (
+                    codegen_state.kernel.target.has_host_side_global_barriers()):
+                barrier_ast = codegen_state.ast_builder.emit_barrier(
+                        sched_item.kind, sched_item.comment)
+                return CodeGenerationResult.new(
+                        codegen_state,
+                        sched_item.originating_insn_id,
+                        barrier_ast,
+                        codegen_state.implemented_domain)
+            else:
                 return CodeGenerationResult(
                         host_program=None,
                         device_programs=[],
                         implemented_domains={},
                         implemented_data_info=codegen_state.implemented_data_info)
-
-            else:
-                raise LoopyError("do not know how to emit code for barrier kind '%s'"
-                        "in host code" % sched_item.kind)
 
         # }}}
 
