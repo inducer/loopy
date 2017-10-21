@@ -246,6 +246,33 @@ def test_global_parallel_reduction(ctx_factory, size):
             print_ref_code=True)
 
 
+def test_global_parallel_reduction_2():
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < n }",
+            """
+            # Using z[0] instead of z works around a bug in ancient PyOpenCL.
+            z[0] = sum(i, i/13) {id=reduce}
+            """)
+
+    gsize = 128
+    knl = lp.make_two_level_reduction(knl,
+            "reduce",
+            inner_length=gsize * 20,
+            nonlocal_tag="g.0",
+            nonlocal_storage_scope=lp.temp_var_scope.GLOBAL,
+            outer_tag=None,
+            inner_tag=None)
+
+    print(knl)
+
+    knl = lp.split_iname(knl, "i_inner", gsize, outer_tag="l.0")
+    knl = lp.split_reduction_inward(knl, "i_inner_inner")
+
+    knl = lp.realize_reduction(knl)
+
+    print(knl)
+
+
 @pytest.mark.parametrize("size", [1000])
 def test_global_mc_parallel_reduction(ctx_factory, size):
     ctx = ctx_factory()

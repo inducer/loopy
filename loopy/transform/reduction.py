@@ -299,6 +299,7 @@ def make_two_level_scan(
         local_storage_scope=None,
         local_storage_axes=None,
         nonlocal_storage_name=None,
+        nonlocal_scan_storage_name=None,
         nonlocal_storage_scope=None,
         nonlocal_tag=None,
         outer_local_tag=None,
@@ -416,6 +417,12 @@ def make_two_level_scan(
             "{insn}__l{level}_outer".format(**format_kwargs))
     else:
         var_name_gen.add_name(nonlocal_storage_name)
+
+    if nonlocal_scan_storage_name is None:
+        nonlocal_scan_storage_name = var_name_gen(
+            "{insn}__l{level}_outer_scan".format(**format_kwargs))
+    else:
+        var_name_gen.add_name(nonlocal_scan_storage_name)
 
     local_scan_insn_id = insn_id_gen(
             "{insn}__l{next_level}".format(**format_kwargs))
@@ -642,28 +649,31 @@ def make_two_level_scan(
             nonlocal_init_tail_outer_iname: outer_local_tag,
             nonlocal_init_tail_inner_iname: inner_local_tag})
 
-    if nonlocal_storage_name not in kernel.temporary_variables:
+    for nls_name in [nonlocal_storage_name, nonlocal_scan_storage_name]:
+        if nls_name not in kernel.temporary_variables:
 
-        from loopy.kernel.data import TemporaryVariable
-        new_temporary_variables = kernel.temporary_variables.copy()
+            from loopy.kernel.data import TemporaryVariable
+            new_temporary_variables = kernel.temporary_variables.copy()
 
-        new_temporary_variables[nonlocal_storage_name] = (
-                TemporaryVariable(
-                    nonlocal_storage_name,
-                    shape=(nonlocal_storage_len,),
-                    scope=nonlocal_storage_scope,
-                    base_indices=lp.auto,
-                    dtype=lp.auto))
+            new_temporary_variables[nls_name] = (
+                    TemporaryVariable(
+                        nls_name,
+                        shape=(nonlocal_storage_len,),
+                        scope=nonlocal_storage_scope,
+                        base_indices=lp.auto,
+                        dtype=lp.auto))
 
-        kernel = kernel.copy(temporary_variables=new_temporary_variables)
+            kernel = kernel.copy(temporary_variables=new_temporary_variables)
 
     from loopy.kernel.instruction import make_assignment
 
-    # FIXME: neutral element...
     nonlocal_init_head = make_assignment(
             id=nonlocal_init_head_insn_id,
             assignees=(var(nonlocal_storage_name)[0],),
+
+            # FIXME: should be neutral element...
             expression=0,
+
             within_inames=(
                 within_inames | frozenset([nonlocal_init_tail_outer_iname,
                                            nonlocal_init_tail_inner_iname])),
@@ -715,7 +725,7 @@ def make_two_level_scan(
 
     nonlocal_scan = make_assignment(
             id=nonlocal_scan_insn_id,
-            assignees=(var(nonlocal_storage_name)[var(nonlocal_iname)],),
+            assignees=(var(nonlocal_scan_storage_name)[var(nonlocal_iname)],),
             expression=Reduction(
                 scan.operation,
                 (outer_scan_iname,),
@@ -748,7 +758,7 @@ def make_two_level_scan(
                 source=nonlocal_scan_insn_id, sink=insn_id, barrier_id=barrier_id))
         updated_depends_on |= frozenset([barrier_id])
 
-    nonlocal_part = var(nonlocal_storage_name)[var(outer_iname)]
+    nonlocal_part = var(nonlocal_scan_storage_name)[var(outer_iname)]
 
     local_part = var(local_storage_name)[
             pick_out_relevant_axes(
