@@ -255,7 +255,8 @@ def test_global_parallel_reduction_2():
             """)
 
     gsize = 128
-    knl = lp.make_two_level_reduction(knl,
+    from loopy.transform.reduction import make_two_level_reduction
+    knl = make_two_level_reduction(knl,
             "reduce",
             inner_length=gsize * 20,
             nonlocal_tag="g.0",
