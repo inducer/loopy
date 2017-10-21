@@ -850,6 +850,8 @@ class CExpressionToCodeMapper(RecursiveMapper):
     def map_array_literal(self, expr, enclosing_prec):
         return "{ %s }" % self.join_rec(", ", expr.children, PREC_NONE)
 
+    # new_array and delete_array implement new[] and delete[] in ISPC
+
     def map_new_array(self, expr, enclosing_prec):
         return self.parenthesize_if_needed(
                 "uniform new uniform %s[%s]" % (
