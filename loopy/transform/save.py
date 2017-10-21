@@ -383,53 +383,49 @@ class TemporarySaver(object):
             self.kernel.reader_map()[temporary.name]
             | self.kernel.writer_map()[temporary.name])
 
-        group_tags = None
-        local_tags = None
-
-        def _sortedtags(tags):
-            return sorted(tags, key=lambda tag: tag.axis)
+        group_tags = {}
+        local_tags = {}
 
         for insn_id in accessor_insn_ids:
             insn = self.kernel.id_to_insn[insn_id]
 
-            my_group_tags = []
-            my_local_tags = []
-
             for iname in insn.within_inames:
                 tag = self.kernel.iname_to_tag.get(iname)
 
+                from loopy.kernel.data import (
+                    GroupIndexTag, LocalIndexTag, ConcurrentTag, UnrollTag,
+                    ForceSequentialTag, InOrderSequentialSequentialTag)
+
                 if tag is None:
                     continue
-
-                from loopy.kernel.data import (
-                    GroupIndexTag, LocalIndexTag, ConcurrentTag)
-
                 if isinstance(tag, GroupIndexTag):
-                    my_group_tags.append(tag)
+                    group_tags[tag.key] = tag
                 elif isinstance(tag, LocalIndexTag):
-                    my_local_tags.append(tag)
+                    local_tags[tag.key] = tag
                 elif isinstance(tag, ConcurrentTag):
+                    # FIXME: ILP should really be supported, analogously to the
+                    # group tags
+
                     raise LoopyError(
                         "iname '%s' is tagged with '%s' - only "
                         "group and local tags are supported for "
                         "auto save/reload of temporaries" %
                         (iname, tag))
 
-            if group_tags is None:
-                group_tags = _sortedtags(my_group_tags)
-                local_tags = _sortedtags(my_local_tags)
-                group_tags_originating_insn_id = insn_id
+                elif isinstance(tag,
+                        (ForceSequentialTag, InOrderSequentialSequentialTag,
+                            UnrollTag)):
+                    continue
 
-            if (
-                    group_tags != _sortedtags(my_group_tags)
-                    or local_tags != _sortedtags(my_local_tags)):
-                raise LoopyError(
-                    "inconsistent parallel tags across instructions that access "
-                    "'%s' (specifically, instruction '%s' has tags '%s' but "
-                    "instruction '%s' has tags '%s')"
-                    % (temporary.name,
-                       group_tags_originating_insn_id, group_tags + local_tags,
-                       insn_id, my_group_tags + my_local_tags))
+                else:
+                    raise NotImplementedError(
+                            "unexpected iname tag in save/load: %s" % tag)
+
+        def _sortedtags(tags):
+            return sorted(tags, key=lambda tag: tag.axis)
+
+        group_tags = _sortedtags(group_tags.values())
+        local_tags = _sortedtags(local_tags.values())
 
         if group_tags is None:
             assert local_tags is None
