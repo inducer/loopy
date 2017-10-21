@@ -511,8 +511,7 @@ def _get_three_level_scan_kernel(g_size, p_size):
         inner_local_tag="for",
         outer_local_tag="l.0")
 
-    knl = lp.tag_inames(knl, dict(i__l0="l.0",
-                                  i__l0_nltail_inner="l.0"))
+    knl = lp.tag_inames(knl, dict(i__l0="l.0"))
 
     knl = lp.realize_reduction(knl, force_scan=True)
 
