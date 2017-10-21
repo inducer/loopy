@@ -382,6 +382,9 @@ def make_two_level_scan(
     nonlocal_init_tail_outer_iname = var_name_gen(
             "{sweep}__l{level}_nltail_outer".format(**format_kwargs))
 
+    # FIXME: This iname is not really needed. We should see about getting
+    # rid of it. That would also make the write race warning business below
+    # unnecessary.
     nonlocal_init_tail_inner_iname = var_name_gen(
             "{sweep}__l{level}_nltail_inner".format(**format_kwargs))
 
