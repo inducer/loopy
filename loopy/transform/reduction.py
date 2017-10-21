@@ -382,12 +382,6 @@ def make_two_level_scan(
     nonlocal_init_tail_outer_iname = var_name_gen(
             "{sweep}__l{level}_nltail_outer".format(**format_kwargs))
 
-    # FIXME: This iname is not really needed. We should see about getting
-    # rid of it. That would also make the write race warning business below
-    # unnecessary.
-    nonlocal_init_tail_inner_iname = var_name_gen(
-            "{sweep}__l{level}_nltail_inner".format(**format_kwargs))
-
     nonlocal_iname = var_name_gen(
             "{sweep}__l{level}_nonloc".format(**format_kwargs))
 
@@ -633,8 +627,6 @@ def make_two_level_scan(
 
     nonlocal_storage_len = pw_aff_to_expr(1 + nonlocal_storage_len_pw_aff)
 
-    nonlocal_tail_inner_subd = _make_slab_set(nonlocal_init_tail_inner_iname, 1)
-    kernel = _add_subdomain_to_kernel(kernel, nonlocal_tail_inner_subd)
     nonlocal_tail_outer_subd = _make_slab_set(
             nonlocal_init_tail_outer_iname, nonlocal_storage_len_pw_aff)
     kernel = _add_subdomain_to_kernel(kernel, nonlocal_tail_outer_subd)
@@ -650,7 +642,7 @@ def make_two_level_scan(
             #nonlocal_init_head_outer_iname: outer_local_tag,
             #nonlocal_init_head_inner_iname: inner_local_tag,
             nonlocal_init_tail_outer_iname: outer_local_tag,
-            nonlocal_init_tail_inner_iname: inner_local_tag})
+            })
 
     for nls_name in [nonlocal_storage_name, nonlocal_scan_storage_name]:
         if nls_name not in kernel.temporary_variables:
@@ -678,11 +670,9 @@ def make_two_level_scan(
             expression=0,
 
             within_inames=(
-                within_inames | frozenset([nonlocal_init_tail_outer_iname,
-                                           nonlocal_init_tail_inner_iname])),
+                within_inames | frozenset([nonlocal_init_tail_outer_iname])),
             no_sync_with=frozenset([(nonlocal_init_tail_insn_id, "any")]),
-            predicates=(var(nonlocal_init_tail_inner_iname).eq(0),
-                        var(nonlocal_init_tail_outer_iname).eq(0)),
+            predicates=(var(nonlocal_init_tail_outer_iname).eq(0),),
             depends_on=frozenset([local_scan_dep_id]))
 
     nonlocal_init_tail = make_assignment(
@@ -693,23 +683,19 @@ def make_two_level_scan(
             expression=var(local_storage_name)[
                 pick_out_relevant_axes(
                     (var(nonlocal_init_tail_outer_iname),
-                     var(nonlocal_init_tail_inner_iname)
-                     + local_storage_local_axis_len - 1),
+                     local_storage_local_axis_len - 1),
                     strip_scalar=True)],
             no_sync_with=frozenset([(nonlocal_init_head_insn_id, "any")]),
             within_inames=(
-                within_inames | frozenset([nonlocal_init_tail_outer_iname,
-                                           nonlocal_init_tail_inner_iname])),
+                within_inames | frozenset([nonlocal_init_tail_outer_iname])),
             depends_on=frozenset([local_scan_dep_id]))
 
     kernel = _update_instructions(
             kernel, (nonlocal_init_head, nonlocal_init_tail), copy=False)
 
-    # The write race warnings are spurious - the inner iname is length
-    # 1, so there's really no write race at all here.
+    # The write race warnings are spurious - a predicate prevents the write race.
     kernel = kernel.copy(
             silenced_warnings=kernel.silenced_warnings
-            + ["write_race(%s)" % nonlocal_init_tail_insn_id]
             + ["write_race(%s)" % nonlocal_init_head_insn_id])
 
     # }}}
