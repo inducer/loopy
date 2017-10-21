@@ -381,7 +381,8 @@ class ISPCASTBuilder(CASTBuilder):
         shape = decl_info.shape
 
         if temp_var.scope == temp_var_scope.PRIVATE:
-            if temporary_should_have_extra_local_axis(codegen_state.kernel, temp_var.name):
+            if temporary_should_have_extra_local_axis(
+                    codegen_state.kernel, temp_var.name):
                 # FIXME: This is a pretty coarse way of deciding what
                 # private temporaries get duplicated. Refine? (See also
                 # above in expr to code mapper)
