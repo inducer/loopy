@@ -75,6 +75,35 @@ class DeleteArray(p.Expression):
     mapper_method = "map_delete_array"
 
 
+def temporary_should_have_extra_local_axis(kernel, temporary_name):
+    # This checks if a private temporary variable should be implemented as
+    # having an extra axis or not. If there are no local-parallel tagged writers
+    # on it, then we are safe implementing it without the extra axis.
+    #
+    # Note: this is currently needed as a workaround, because otherwise the
+    # compiler will reject some code as mistyped. The problem is that a
+    # temporary that is accessed with the programIndex variable will have a
+    # varying type. However, the compiler always disallows assignments from
+    # varying type to uniform type, even though in our case they may be
+    # legitimate and race-free.  In order to make sure that compilable code is
+    # always generated, it might be worth trying to case the result of
+    # assignments from varying to uniform when a private temporary is involved.
+    writers = kernel.writer_map()[temporary_name]
+    from loopy.kernel.data import LocalIndexTagBase
+
+    def insn_has_local_tag(id):
+        for iname in kernel.id_to_insn[id].within_inames:
+            if isinstance(kernel.iname_to_tag.get(iname), LocalIndexTagBase):
+                return True
+        return False
+
+    if any(insn_has_local_tag(insn) for insn in writers):
+        _, lsize = kernel.get_grid_size_upper_bounds_as_exprs()
+        return lsize
+
+    return False
+
+
 # {{{ expression mapper
 
 class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
@@ -123,8 +152,7 @@ class ExprToISPCExprMapper(ExpressionToCExpressionMapper):
             # FIXME: This is a pretty coarse way of deciding what
             # private temporaries get duplicated. Refine? (See also
             # below in decl generation)
-            gsize, lsize = self.kernel.get_grid_size_upper_bounds_as_exprs()
-            if lsize:
+            if temporary_should_have_extra_local_axis(self.kernel, tv.name):
                 return expr[var("programIndex")]
             else:
                 return expr
@@ -353,11 +381,12 @@ class ISPCASTBuilder(CASTBuilder):
         shape = decl_info.shape
 
         if temp_var.scope == temp_var_scope.PRIVATE:
-            # FIXME: This is a pretty coarse way of deciding what
-            # private temporaries get duplicated. Refine? (See also
-            # above in expr to code mapper)
-            _, lsize = codegen_state.kernel.get_grid_size_upper_bounds_as_exprs()
-            shape = lsize + shape
+            if temporary_should_have_extra_local_axis(codegen_state.kernel, temp_var.name):
+                # FIXME: This is a pretty coarse way of deciding what
+                # private temporaries get duplicated. Refine? (See also
+                # above in expr to code mapper)
+                _, lsize = codegen_state.kernel.get_grid_size_upper_bounds_as_exprs()
+                shape = lsize + shape
 
         if shape:
             from cgen import ArrayOf
