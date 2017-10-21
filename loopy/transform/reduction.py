@@ -307,8 +307,7 @@ def make_two_level_scan(
         outer_tag=None,
         inner_iname=None,
         outer_iname=None):
-    """
-    Two level scan, mediated through a "local" and "nonlocal" array.
+    """Two level scan, mediated through a "local" and "nonlocal" array.
 
     This turns a scan of the form::
 
@@ -321,6 +320,11 @@ def make_two_level_scan(
          [...,nlinit] nonlocal[nlinit+1] = local[nlinit,-1]
          [...,nl]     <scan into nonlocal>
          [...,i',i''] result = nonlocal[i'] + local[i',i'']
+
+    :arg local_storage_axes: A tuple of inames. For each iname, a corresponding
+        axis will be added to the temporary array that does the local part of
+        the scan (the "local" array). May be *None*, in which case it is
+        automatically inferred from the tags of the inames.
     """
 
     # TODO: Test that this works even when doing split scans in a loop
