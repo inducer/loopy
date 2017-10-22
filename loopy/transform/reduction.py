@@ -302,12 +302,15 @@ def make_two_level_scan(
         nonlocal_scan_storage_name=None,
         nonlocal_storage_scope=None,
         nonlocal_tag=None,
-        outer_local_tag=None,
-        inner_local_tag=None,
-        inner_tag=None,
-        outer_tag=None,
-        inner_sweep_iname=None,
-        outer_sweep_iname=None):
+        # FIXME: Not sure if these two pairs are necessary. It would seem that
+        # only one is necessary.
+        slow_local_tag=None,
+        fast_local_tag=None,
+        slow_tag=None,
+        fast_tag=None,
+        fast_sweep_iname=None,
+        slow_sweep_iname=None,
+        inner_scan_uses_fast_axis=True):
     """Two level scan, mediated through a "local" and "nonlocal" array.
 
     This turns a scan of the form::
@@ -326,7 +329,6 @@ def make_two_level_scan(
         axis will be added to the temporary array that does the local part of
         the scan (the "local" array). May be *None*, in which case it is
         automatically inferred from the tags of the inames.
-    :arg inner_sweep_iname: The sweep (guiding) iname for the innermost scan.
     """
 
     # TODO: Test that this works even when doing split scans in a loop
@@ -360,17 +362,17 @@ def make_two_level_scan(
             "level": level,
             "next_level": level + 1}
 
-    if inner_sweep_iname is None:
-        inner_sweep_iname = var_name_gen(
+    if fast_sweep_iname is None:
+        fast_sweep_iname = var_name_gen(
                 "{sweep}__l{level}".format(**format_kwargs))
     else:
-        var_name_gen.add_name(inner_sweep_iname)
+        var_name_gen.add_name(fast_sweep_iname)
 
-    if outer_sweep_iname is None:
-        outer_sweep_iname = var_name_gen(
+    if slow_sweep_iname is None:
+        slow_sweep_iname = var_name_gen(
                 "{sweep}__l{level}_outer".format(**format_kwargs))
     else:
-        var_name_gen.add_iname(outer_sweep_iname)
+        var_name_gen.add_iname(slow_sweep_iname)
 
     """
     nonlocal_init_head_outer_iname = var_name_gen(
@@ -392,16 +394,16 @@ def make_two_level_scan(
     nonlocal_iname = var_name_gen(
             "{sweep}__l{level}_nonloc".format(**format_kwargs))
 
-    inner_local_iname = var_name_gen(
+    fast_local_iname = var_name_gen(
             "{sweep}__l{next_level}".format(**format_kwargs))
 
-    inner_scan_iname = var_name_gen(
+    fast_scan_iname = var_name_gen(
             "{iname}__l{next_level}".format(**format_kwargs))
 
-    outer_local_iname = var_name_gen(
+    slow_local_iname = var_name_gen(
             "{sweep}__l{next_level}_outer".format(**format_kwargs))
 
-    outer_scan_iname = var_name_gen(
+    slow_scan_iname = var_name_gen(
             "{iname}__l{level}".format(**format_kwargs))
 
     subst_name = var_name_gen(
@@ -450,8 +452,8 @@ def make_two_level_scan(
     auto_local_storage_axes = [
             iname
             for iname, tag in [
-                (outer_sweep_iname, outer_tag),
-                (inner_sweep_iname, inner_tag)]
+                (slow_sweep_iname, slow_tag),
+                (fast_sweep_iname, fast_tag)]
 
             # ">" is "more global"
             # In a way, global inames are automatically part of an access to a
@@ -473,7 +475,7 @@ def make_two_level_scan(
     def pick_out_relevant_axes(full_indices, strip_scalar=False):
         assert len(full_indices) == 2
         iname_to_index = dict(
-                zip((outer_sweep_iname, inner_sweep_iname), full_indices))
+                zip((slow_sweep_iname, fast_sweep_iname), full_indices))
 
         result = []
         for iname in local_storage_axes:
@@ -534,52 +536,62 @@ def make_two_level_scan(
     # FIXME: This can probably be done using split_reduction_inward()
     # and will end up looking like less of a mess that way.
 
+    if inner_scan_uses_fast_axis:
+        subst_expr = var(slow_sweep_iname) * inner_length + var(fast_scan_iname)
+    else:
+        subst_expr = var(fast_scan_iname) * inner_length + var(fast_sweep_iname)
+
     local_scan_expr = _expand_subst_within_expression(kernel,
-            var(subst_name)(var(outer_sweep_iname) * inner_length +
-                            var(inner_scan_iname)))
+            var(subst_name)(subst_expr))
 
     kernel = lp.split_iname(kernel, sweep_iname, inner_length,
-            inner_iname=inner_sweep_iname, outer_iname=outer_sweep_iname,
-            inner_tag=inner_tag, outer_tag=outer_tag)
+            inner_iname=fast_sweep_iname, outer_iname=slow_sweep_iname,
+            inner_tag=fast_tag, outer_tag=slow_tag)
 
     from loopy.kernel.data import SubstitutionRule
     from loopy.symbolic import Reduction
 
+    local_reduction_iname = (
+            fast_scan_iname
+            if inner_scan_uses_fast_axis
+            else slow_scan_iname)
+
     local_subst = SubstitutionRule(
             name=local_subst_name,
-            arguments=(outer_sweep_iname, inner_sweep_iname),
+            arguments=(slow_sweep_iname, fast_sweep_iname),
             expression=Reduction(
-                scan.operation, (inner_scan_iname,), local_scan_expr))
+                scan.operation, (local_reduction_iname,), local_scan_expr))
 
     substitutions = kernel.substitutions.copy()
     substitutions[local_subst_name] = local_subst
 
     kernel = kernel.copy(substitutions=substitutions)
 
-    outer_local_iname = outer_sweep_iname
+    if inner_scan_uses_fast_axis:
+        slow_local_iname = slow_sweep_iname
 
-    all_precompute_inames = (outer_local_iname, inner_local_iname)
+    all_precompute_inames = (slow_local_iname, fast_local_iname)
 
     precompute_inames = pick_out_relevant_axes(all_precompute_inames)
-    sweep_inames = pick_out_relevant_axes((outer_sweep_iname, inner_sweep_iname))
+    sweep_inames = pick_out_relevant_axes((slow_sweep_iname, fast_sweep_iname))
 
     storage_axis_to_tag = {
-            outer_sweep_iname: outer_local_tag,
-            inner_sweep_iname: inner_local_tag,
-            outer_local_iname: outer_local_tag,
-            inner_local_iname: inner_local_tag}
+            slow_sweep_iname: slow_local_tag,
+            fast_sweep_iname: fast_local_tag,
+            slow_local_iname: slow_local_tag,
+            fast_local_iname: fast_local_tag}
 
     precompute_outer_inames = (
             frozenset(all_precompute_inames) - frozenset(precompute_inames))
     within_inames = (
             kernel.id_to_insn[insn_id].within_inames
-            - frozenset([outer_sweep_iname, inner_sweep_iname]))
+            - frozenset([slow_sweep_iname, fast_sweep_iname]))
 
     from pymbolic import var
 
     local_precompute_xform_info = lp.precompute(kernel,
             [var(local_subst_name)(
-                var(outer_sweep_iname), var(inner_sweep_iname))],
+                var(slow_sweep_iname), var(fast_sweep_iname))],
             sweep_inames=sweep_inames,
             precompute_inames=precompute_inames,
             storage_axes=local_storage_axes,
@@ -603,12 +615,12 @@ def make_two_level_scan(
 
     kernel = _update_instructions(kernel, (compute_insn_with_deps,))
 
-    kernel = _add_scan_subdomain(kernel, inner_scan_iname, inner_local_iname)
+    kernel = _add_scan_subdomain(kernel, fast_scan_iname, fast_local_iname)
 
     # }}}
 
     from loopy.kernel.data import ConcurrentTag
-    if not isinstance(kernel.iname_to_tag[outer_sweep_iname], ConcurrentTag):
+    if not isinstance(kernel.iname_to_tag[slow_sweep_iname], ConcurrentTag):
         # FIXME
         raise NotImplementedError("outer iname must currently be concurrent because "
                 "it occurs in the local scan and the final addition and one of "
@@ -624,7 +636,7 @@ def make_two_level_scan(
             kernel.temporary_variables[local_storage_name].shape[-1])
 
     nonlocal_storage_len_pw_aff = static_max_of_pw_aff(
-            kernel.get_iname_bounds(outer_sweep_iname).size,
+            kernel.get_iname_bounds(slow_sweep_iname).size,
             constants_only=False)
 
     # FIXME: this shouldn't have to have an extra element.
@@ -649,10 +661,10 @@ def make_two_level_scan(
     """
 
     kernel = lp.tag_inames(kernel, {
-            #nonlocal_init_head_outer_iname: outer_local_tag,
-            #nonlocal_init_head_inner_iname: inner_local_tag,
-            nonlocal_init_tail_outer_iname: outer_local_tag,
-            nonlocal_init_tail_inner_iname: inner_local_tag})
+            #nonlocal_init_head_outer_iname: slow_local_tag,
+            #nonlocal_init_head_inner_iname: fast_local_tag,
+            nonlocal_init_tail_outer_iname: slow_local_tag,
+            nonlocal_init_tail_inner_iname: fast_local_tag})
 
     for nls_name in [nonlocal_storage_name, nonlocal_scan_storage_name]:
         if nls_name not in kernel.temporary_variables:
@@ -726,15 +738,15 @@ def make_two_level_scan(
     if nonlocal_tag is not None:
         kernel = lp.tag_inames(kernel, {nonlocal_iname: nonlocal_tag})
 
-    kernel = _add_scan_subdomain(kernel, outer_scan_iname, nonlocal_iname)
+    kernel = _add_scan_subdomain(kernel, slow_scan_iname, nonlocal_iname)
 
     nonlocal_scan = make_assignment(
             id=nonlocal_scan_insn_id,
             assignees=(var(nonlocal_scan_storage_name)[var(nonlocal_iname)],),
             expression=Reduction(
                 scan.operation,
-                (outer_scan_iname,),
-                var(nonlocal_storage_name)[var(outer_scan_iname)]),
+                (slow_scan_iname,),
+                var(nonlocal_storage_name)[var(slow_scan_iname)]),
             within_inames=within_inames | frozenset([nonlocal_iname]),
             depends_on=(
                 frozenset([nonlocal_init_tail_insn_id, nonlocal_init_head_insn_id])))
@@ -763,11 +775,11 @@ def make_two_level_scan(
                 source=nonlocal_scan_insn_id, sink=insn_id, barrier_id=barrier_id))
         updated_depends_on |= frozenset([barrier_id])
 
-    nonlocal_part = var(nonlocal_scan_storage_name)[var(outer_sweep_iname)]
+    nonlocal_part = var(nonlocal_scan_storage_name)[var(slow_sweep_iname)]
 
     local_part = var(local_storage_name)[
             pick_out_relevant_axes(
-                (var(outer_sweep_iname), var(inner_sweep_iname)), strip_scalar=True)]
+                (var(slow_sweep_iname), var(fast_sweep_iname)), strip_scalar=True)]
 
     updated_insn = insn.copy(
             no_sync_with=(
