@@ -333,6 +333,11 @@ def make_two_level_scan(
         axis will be added to the temporary array that does the local part of
         the scan (the "local" array). May be *None*, in which case it is
         automatically inferred from the tags of the inames.
+    :arg local_scan_uses_fast_axis: Whether the local scan should be a scan over
+        the fast axis of the split iname or the slow axis. A local scan
+        over the fast axis is a "small" scan, and is typically implemented as a
+        local-parallel scan. A local scan over the slow axis is a "big" scan
+        and is typically implemented as a sequential scan.
     """
 
     # TODO: Test that this works even when doing split scans in a loop
