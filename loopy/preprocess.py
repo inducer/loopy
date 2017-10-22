@@ -1465,6 +1465,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             reduction_dtypes, sweep_iname, scan_iname,
             sweep_min_value, scan_min_value, stride):
 
+        print("sweep and scan inames", sweep_iname, scan_iname)
         scan_size = _get_int_iname_size(sweep_iname)
 
         assert scan_size > 0

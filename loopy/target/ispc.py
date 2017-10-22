@@ -334,9 +334,10 @@ class ISPCASTBuilder(CASTBuilder):
         result = []
         from cgen import Statement as S, Block
         if lsize:
+            # FIXME: not sure
             result.append(
                     S(
-                        "assert(programCount == (%s))"
+                        "assert(programCount >= (%s))"
                         % ecm(lsize[0], PREC_NONE)))
 
         arg_names, arg_decls = self._arg_names_and_decls(codegen_state, extra_args)
