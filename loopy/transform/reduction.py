@@ -206,7 +206,8 @@ def _add_scan_subdomain(
         [sweep_iname] -> {[scan_iname] : 0 <= scan_iname <= sweep_iname }
     """
     sp = (
-            isl.Space.set_alloc(isl.DEFAULT_CONTEXT, 1, 1) .set_dim_name(isl.dim_type.param, 0, sweep_iname)
+            isl.Space.set_alloc(isl.DEFAULT_CONTEXT, 1, 1)
+            .set_dim_name(isl.dim_type.param, 0, sweep_iname)
             .set_dim_name(isl.dim_type.set, 0, scan_iname))
 
     affs = isl.affs_from_space(sp)
@@ -644,7 +645,7 @@ def make_two_level_scan(
     from loopy.isl_helpers import static_max_of_pw_aff
     from loopy.symbolic import pw_aff_to_expr
 
-    # FIXME: Not sure if this works.
+    # FIXME: Not sure if this is the right thing to do.
     local_storage_local_axis_len = (
             kernel.temporary_variables[local_storage_name].shape[-1]
             if local_scan_uses_fast_axis
@@ -675,6 +676,9 @@ def make_two_level_scan(
     kernel = _add_subdomain_to_kernel(kernel, nonlocal_head_outer_subd)
     """
 
+    # FIXME: This was commented out so that the nonlocal init part is
+    # sequential, as a workaround for ISPC. This should just get its own
+    # parameter controlling the tag of the local-to-nonlocal transfer.
     """
     kernel = lp.tag_inames(kernel, {
             #nonlocal_init_head_outer_iname: slow_local_tag,
