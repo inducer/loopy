@@ -306,8 +306,8 @@ def make_two_level_scan(
         inner_local_tag=None,
         inner_tag=None,
         outer_tag=None,
-        inner_iname=None,
-        outer_iname=None):
+        inner_sweep_iname=None,
+        outer_sweep_iname=None):
     """Two level scan, mediated through a "local" and "nonlocal" array.
 
     This turns a scan of the form::
@@ -326,6 +326,7 @@ def make_two_level_scan(
         axis will be added to the temporary array that does the local part of
         the scan (the "local" array). May be *None*, in which case it is
         automatically inferred from the tags of the inames.
+    :arg inner_sweep_iname: The sweep (guiding) iname for the innermost scan.
     """
 
     # TODO: Test that this works even when doing split scans in a loop
@@ -359,17 +360,17 @@ def make_two_level_scan(
             "level": level,
             "next_level": level + 1}
 
-    if inner_iname is None:
-        inner_iname = var_name_gen(
+    if inner_sweep_iname is None:
+        inner_sweep_iname = var_name_gen(
                 "{sweep}__l{level}".format(**format_kwargs))
     else:
-        var_name_gen.add_name(inner_iname)
+        var_name_gen.add_name(inner_sweep_iname)
 
-    if outer_iname is None:
-        outer_iname = var_name_gen(
+    if outer_sweep_iname is None:
+        outer_sweep_iname = var_name_gen(
                 "{sweep}__l{level}_outer".format(**format_kwargs))
     else:
-        var_name_gen.add_iname(outer_iname)
+        var_name_gen.add_iname(outer_sweep_iname)
 
     """
     nonlocal_init_head_outer_iname = var_name_gen(
@@ -449,8 +450,8 @@ def make_two_level_scan(
     auto_local_storage_axes = [
             iname
             for iname, tag in [
-                (outer_iname, outer_tag),
-                (inner_iname, inner_tag)]
+                (outer_sweep_iname, outer_tag),
+                (inner_sweep_iname, inner_tag)]
 
             # ">" is "more global"
             # In a way, global inames are automatically part of an access to a
@@ -471,7 +472,8 @@ def make_two_level_scan(
 
     def pick_out_relevant_axes(full_indices, strip_scalar=False):
         assert len(full_indices) == 2
-        iname_to_index = dict(zip((outer_iname, inner_iname), full_indices))
+        iname_to_index = dict(
+                zip((outer_sweep_iname, inner_sweep_iname), full_indices))
 
         result = []
         for iname in local_storage_axes:
@@ -533,11 +535,11 @@ def make_two_level_scan(
     # and will end up looking like less of a mess that way.
 
     local_scan_expr = _expand_subst_within_expression(kernel,
-            var(subst_name)(var(outer_iname) * inner_length +
+            var(subst_name)(var(outer_sweep_iname) * inner_length +
                             var(inner_scan_iname)))
 
     kernel = lp.split_iname(kernel, sweep_iname, inner_length,
-            inner_iname=inner_iname, outer_iname=outer_iname,
+            inner_iname=inner_sweep_iname, outer_iname=outer_sweep_iname,
             inner_tag=inner_tag, outer_tag=outer_tag)
 
     from loopy.kernel.data import SubstitutionRule
@@ -545,7 +547,7 @@ def make_two_level_scan(
 
     local_subst = SubstitutionRule(
             name=local_subst_name,
-            arguments=(outer_iname, inner_iname),
+            arguments=(outer_sweep_iname, inner_sweep_iname),
             expression=Reduction(
                 scan.operation, (inner_scan_iname,), local_scan_expr))
 
@@ -554,16 +556,16 @@ def make_two_level_scan(
 
     kernel = kernel.copy(substitutions=substitutions)
 
-    outer_local_iname = outer_iname
+    outer_local_iname = outer_sweep_iname
 
     all_precompute_inames = (outer_local_iname, inner_local_iname)
 
     precompute_inames = pick_out_relevant_axes(all_precompute_inames)
-    sweep_inames = pick_out_relevant_axes((outer_iname, inner_iname))
+    sweep_inames = pick_out_relevant_axes((outer_sweep_iname, inner_sweep_iname))
 
     storage_axis_to_tag = {
-            outer_iname: outer_local_tag,
-            inner_iname: inner_local_tag,
+            outer_sweep_iname: outer_local_tag,
+            inner_sweep_iname: inner_local_tag,
             outer_local_iname: outer_local_tag,
             inner_local_iname: inner_local_tag}
 
@@ -571,13 +573,13 @@ def make_two_level_scan(
             frozenset(all_precompute_inames) - frozenset(precompute_inames))
     within_inames = (
             kernel.id_to_insn[insn_id].within_inames
-            - frozenset([outer_iname, inner_iname]))
+            - frozenset([outer_sweep_iname, inner_sweep_iname]))
 
     from pymbolic import var
 
     local_precompute_xform_info = lp.precompute(kernel,
             [var(local_subst_name)(
-                var(outer_iname), var(inner_iname))],
+                var(outer_sweep_iname), var(inner_sweep_iname))],
             sweep_inames=sweep_inames,
             precompute_inames=precompute_inames,
             storage_axes=local_storage_axes,
@@ -606,7 +608,7 @@ def make_two_level_scan(
     # }}}
 
     from loopy.kernel.data import ConcurrentTag
-    if not isinstance(kernel.iname_to_tag[outer_iname], ConcurrentTag):
+    if not isinstance(kernel.iname_to_tag[outer_sweep_iname], ConcurrentTag):
         # FIXME
         raise NotImplementedError("outer iname must currently be concurrent because "
                 "it occurs in the local scan and the final addition and one of "
@@ -622,7 +624,7 @@ def make_two_level_scan(
             kernel.temporary_variables[local_storage_name].shape[-1])
 
     nonlocal_storage_len_pw_aff = static_max_of_pw_aff(
-            kernel.get_iname_bounds(outer_iname).size,
+            kernel.get_iname_bounds(outer_sweep_iname).size,
             constants_only=False)
 
     # FIXME: this shouldn't have to have an extra element.
@@ -761,11 +763,11 @@ def make_two_level_scan(
                 source=nonlocal_scan_insn_id, sink=insn_id, barrier_id=barrier_id))
         updated_depends_on |= frozenset([barrier_id])
 
-    nonlocal_part = var(nonlocal_scan_storage_name)[var(outer_iname)]
+    nonlocal_part = var(nonlocal_scan_storage_name)[var(outer_sweep_iname)]
 
     local_part = var(local_storage_name)[
             pick_out_relevant_axes(
-                (var(outer_iname), var(inner_iname)), strip_scalar=True)]
+                (var(outer_sweep_iname), var(inner_sweep_iname)), strip_scalar=True)]
 
     updated_insn = insn.copy(
             no_sync_with=(
