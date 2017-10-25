@@ -280,7 +280,7 @@ def test_matmul(ctx_factory, buffer_inames):
     fortran_src = """
         subroutine dgemm(m,n,ell,a,b,c)
           implicit none
-          real*8 a(m,ell),b(l,n),c(m,n)
+          real*8 a(m,ell),b(ell,n),c(m,n)
           integer m,n,k,i,j,ell
 
           do j = 1,n
@@ -306,7 +306,7 @@ def test_matmul(ctx_factory, buffer_inames):
     knl = lp.split_iname(knl, "k", 32)
     knl = lp.assume(knl, "n mod 32 = 0")
     knl = lp.assume(knl, "m mod 32 = 0")
-    knl = lp.assume(knl, "l mod 16 = 0")
+    knl = lp.assume(knl, "ell mod 16 = 0")
 
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")

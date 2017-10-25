@@ -641,7 +641,7 @@ def test_all_counters_parallel_matmul():
             ],
             name="matmul", assumptions="n,m,ell >= 1")
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="ell.1")
+    knl = lp.split_iname(knl, "i", bsize, outer_tag="g.0", inner_tag="l.1")
     knl = lp.split_iname(knl, "j", bsize, outer_tag="g.1", inner_tag="l.0")
     knl = lp.split_iname(knl, "k", bsize)
     knl = lp.add_prefetch(knl, "a", ["k_inner", "i_inner"])
