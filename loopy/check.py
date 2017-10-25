@@ -401,7 +401,7 @@ def pre_schedule_checks(kernel):
         logger.debug("%s: pre-schedule check: done" % kernel.name)
     except KeyboardInterrupt:
         raise
-    except:
+    except Exception:
         print(75*"=")
         print("failing kernel during pre-schedule check:")
         print(75*"=")
@@ -659,7 +659,7 @@ def pre_codegen_checks(kernel):
         check_that_shapes_and_strides_are_arguments(kernel)
 
         logger.debug("pre-codegen check %s: done" % kernel.name)
-    except:
+    except Exception:
         print(75*"=")
         print("failing kernel during pre-schedule check:")
         print(75*"=")

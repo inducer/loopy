@@ -620,11 +620,11 @@ class DomainParameterFinder(object):
                         if dep.name in param_names:
                             from pymbolic.algorithm import solve_affine_equations_for
                             try:
-                                # friggin' overkill :)
+                                # overkill :)
                                 param_expr = solve_affine_equations_for(
                                         [dep.name], [(shape_i, var("shape_i"))]
                                         )[dep.name]
-                            except:
+                            except Exception:
                                 # went wrong? oh well
                                 pass
                             else:
@@ -1092,7 +1092,7 @@ def guess_var_shape(kernel, var_name):
                             kernel.cache_manager.dim_max(
                                 armap.access_range, i) + 1,
                             constants_only=False)))
-            except:
+            except Exception:
                 print("While trying to find shape axis %d of "
                         "variable '%s', the following "
                         "exception occurred:" % (i, var_name),
