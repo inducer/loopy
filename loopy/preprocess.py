@@ -610,7 +610,7 @@ def _try_infer_scan_stride(kernel, scan_iname, sweep_iname, sweep_lower_bound):
     if len(coeffs) == 0:
         try:
             scan_iname_aff.get_constant_val()
-        except:
+        except Exception:
             raise ValueError("range for aff isn't constant: '%s'" % scan_iname_aff)
 
         # If this point is reached we're assuming the domain is of the form

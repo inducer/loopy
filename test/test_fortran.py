@@ -278,14 +278,14 @@ def test_matmul(ctx_factory, buffer_inames):
     logging.basicConfig(level=logging.INFO)
 
     fortran_src = """
-        subroutine dgemm(m,n,l,a,b,c)
+        subroutine dgemm(m,n,ell,a,b,c)
           implicit none
-          real*8 a(m,l),b(l,n),c(m,n)
-          integer m,n,k,i,j,l
+          real*8 a(m,ell),b(ell,n),c(m,n)
+          integer m,n,k,i,j,ell
 
           do j = 1,n
             do i = 1,m
-              do k = 1,l
+              do k = 1,ell
                 c(i,j) = c(i,j) + b(k,j)*a(i,k)
               end do
             end do
@@ -306,7 +306,7 @@ def test_matmul(ctx_factory, buffer_inames):
     knl = lp.split_iname(knl, "k", 32)
     knl = lp.assume(knl, "n mod 32 = 0")
     knl = lp.assume(knl, "m mod 32 = 0")
-    knl = lp.assume(knl, "l mod 16 = 0")
+    knl = lp.assume(knl, "ell mod 16 = 0")
 
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
@@ -317,7 +317,7 @@ def test_matmul(ctx_factory, buffer_inames):
             init_expression="0", store_expression="base+buffer")
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, l=128))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, ell=128))
 
 
 @pytest.mark.xfail
@@ -457,14 +457,14 @@ def test_parse_and_fuse_two_kernels():
 
 def test_precompute_some_exist(ctx_factory):
     fortran_src = """
-        subroutine dgemm(m,n,l,a,b,c)
+        subroutine dgemm(m,n,ell,a,b,c)
           implicit none
-          real*8 a(m,l),b(l,n),c(m,n)
-          integer m,n,k,i,j,l
+          real*8 a(m,ell),b(ell,n),c(m,n)
+          integer m,n,k,i,j,ell
 
           do j = 1,n
             do i = 1,m
-              do k = 1,l
+              do k = 1,ell
                 c(i,j) = c(i,j) + b(k,j)*a(i,k)
               end do
             end do
@@ -483,7 +483,7 @@ def test_precompute_some_exist(ctx_factory):
     knl = lp.split_iname(knl, "k", 8)
     knl = lp.assume(knl, "n mod 8 = 0")
     knl = lp.assume(knl, "m mod 8 = 0")
-    knl = lp.assume(knl, "l mod 8 = 0")
+    knl = lp.assume(knl, "ell mod 8 = 0")
 
     knl = lp.extract_subst(knl, "a_acc", "a[i1,i2]", parameters="i1, i2")
     knl = lp.extract_subst(knl, "b_acc", "b[i1,i2]", parameters="i1, i2")
@@ -495,7 +495,7 @@ def test_precompute_some_exist(ctx_factory):
     ref_knl = knl
 
     ctx = ctx_factory()
-    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, l=128))
+    lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=128, m=128, ell=128))
 
 
 if __name__ == "__main__":

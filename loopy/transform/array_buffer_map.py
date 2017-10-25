@@ -239,14 +239,14 @@ class ArrayToBufferMap(object):
         non1_storage_axis_flags = []
         non1_storage_shape = []
 
-        for saxis, bi, l in zip(
+        for saxis, bi, saxis_len in zip(
                 storage_axis_names, storage_base_indices, storage_shape):
-            has_length_non1 = l != 1
+            has_length_non1 = saxis_len != 1
 
             non1_storage_axis_flags.append(has_length_non1)
 
             if has_length_non1:
-                non1_storage_shape.append(l)
+                non1_storage_shape.append(saxis_len)
 
         # }}}
 
