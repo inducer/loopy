@@ -97,22 +97,22 @@ def test_nested_dependent_reduction(ctx_factory):
                 "{[j]: 0<=j<i+sumlen}"
                 ],
             [
-                "<> sumlen = l[i]",
+                "<> sumlen = ell[i]",
                 "a[i] = sum(j, j)",
                 ],
             [
                 lp.ValueArg("n", np.int32),
                 lp.GlobalArg("a", dtype, ("n",)),
-                lp.GlobalArg("l", np.int32, ("n",)),
+                lp.GlobalArg("ell", np.int32, ("n",)),
                 ])
 
     cknl = lp.CompiledKernel(ctx, knl)
 
     n = 330
-    l = np.arange(n, dtype=np.int32)
-    evt, (a,) = cknl(queue, l=l, n=n, out_host=True)
+    ell = np.arange(n, dtype=np.int32)
+    evt, (a,) = cknl(queue, ell=ell, n=n, out_host=True)
 
-    tgt_result = (2*l-1)*2*l/2
+    tgt_result = (2*ell-1)*2*ell/2
     assert (a == tgt_result).all()
 
 
