@@ -2034,6 +2034,37 @@ def test_if_else(ctx_factory):
     out_ref[4::6] = 11
     out_ref[2::6] = 3
 
+    knl = lp.make_kernel(
+            "{ [i,j]: 0<=i,j<50}",
+            """
+            for i
+                if i < 25
+                    for j
+                        if j % 2 == 0
+                            a[i, j] = 1
+                        else
+                            a[i, j] = 0
+                        end
+                    end
+                else
+                    for j
+                        if j % 2 == 0
+                            a[i, j] = 0
+                        else
+                            a[i, j] = 1
+                        end
+                    end
+                end
+            end
+            """
+            )
+
+    evt, (out,) = knl(queue, out_host=True)
+
+    out_ref = np.zeros((50, 50))
+    out_ref[:25, 0::2] = 1
+    out_ref[25:, 1::2] = 1
+
     assert np.array_equal(out_ref, out)
 
 

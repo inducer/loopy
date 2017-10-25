@@ -896,7 +896,8 @@ def parse_instructions(instructions, defines):
             obj = insn_options_stack.pop()
             #if this object is the end of an if statement
             if obj['predicates'] == if_predicates_stack[-1]["insn_predicates"] and\
-                    if_predicates_stack[-1]["insn_predicates"]:
+                    if_predicates_stack[-1]["insn_predicates"] and\
+                    obj['within_inames'] == if_predicates_stack[-1]['within_inames']:
                 if_predicates_stack.pop()
             continue
 
