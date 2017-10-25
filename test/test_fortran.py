@@ -459,7 +459,7 @@ def test_precompute_some_exist(ctx_factory):
     fortran_src = """
         subroutine dgemm(m,n,ell,a,b,c)
           implicit none
-          real*8 a(m,ell),b(,n),c(m,n)
+          real*8 a(m,ell),b(ell,n),c(m,n)
           integer m,n,k,i,j,ell
 
           do j = 1,n
