@@ -1374,7 +1374,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                         return False
 
             elif field_name == "assumptions":
-                if not self.assumptions.plain_is_equal(other.assumptions):
+                if not (
+                        self.assumptions.plain_is_equal(other.assumptions)
+                        or self.assumptions.is_equal(other.assumptions)):
                     return False
 
             elif getattr(self, field_name) != getattr(other, field_name):
