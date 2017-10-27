@@ -1,6 +1,4 @@
-from __future__ import division
-from __future__ import absolute_import
-import six
+from __future__ import division, absolute_import
 
 __copyright__ = "Copyright (C) 2012 Andreas Kloeckner"
 
@@ -24,6 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import six
 
 from loopy.symbolic import (
         get_dependencies, SubstitutionMapper,
@@ -141,6 +140,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     dfmapper = CallbackMapper(gather_exprs, WalkMapper())
 
     for insn in kernel.instructions:
+        dfmapper(insn.assignees)
         dfmapper(insn.expression)
 
     for sr in six.itervalues(kernel.substitutions):
@@ -178,8 +178,7 @@ def extract_subst(kernel, subst_name, template, parameters=()):
     new_insns = []
 
     for insn in kernel.instructions:
-        new_expr = cbmapper(insn.expression)
-        new_insns.append(insn.copy(expression=new_expr))
+        new_insns.append(insn.with_transformed_expressions(cbmapper))
 
     from loopy.kernel.data import SubstitutionRule
     new_substs = {
