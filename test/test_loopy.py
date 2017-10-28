@@ -2692,12 +2692,11 @@ def test_add_prefetch_works_in_lhs_index():
             [
                 lp.GlobalArg("a1,a1_out", None, "ndofs,2"),
                 lp.GlobalArg("a1_map", None, "nelements,3"),
-                ...
+                "..."
             ])
 
     knl = lp.add_prefetch(knl, "a1_map", "k")
 
-    print(knl)
     from loopy.symbolic import get_dependencies
     for insn in knl.instructions:
         assert "a1_map" not in get_dependencies(insn.assignees)
