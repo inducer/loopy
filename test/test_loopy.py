@@ -2678,6 +2678,30 @@ def test_preamble_with_separate_temporaries(ctx_factory):
         queue, data=data.flatten('C'))[1][0], data[offsets[:-1] + 1])
 
 
+def test_add_prefetch_works_in_lhs_index():
+    knl = lp.make_kernel(
+            "{ [n,k,l,k1,l1,k2,l2]: "
+            "start<=n<end and 0<=k,k1,k2<3 and 0<=l,l1,l2<2 }",
+            """
+            for n
+                <> a1_tmp[k,l] = a1[a1_map[n, k],l]
+                a1_tmp[k1,l1] = a1_tmp[k1,l1] + 1
+                a1_out[a1_map[n,k2], l2] = a1_tmp[k2,l2]
+            end
+            """,
+            [
+                lp.GlobalArg("a1,a1_out", None, "ndofs,2"),
+                lp.GlobalArg("a1_map", None, "nelements,3"),
+                "..."
+            ])
+
+    knl = lp.add_prefetch(knl, "a1_map", "k")
+
+    from loopy.symbolic import get_dependencies
+    for insn in knl.instructions:
+        assert "a1_map" not in get_dependencies(insn.assignees)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
