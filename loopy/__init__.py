@@ -215,6 +215,8 @@ __all__ = [
 
         "save_and_reload_temporaries",
 
+        "add_barrier",
+
         # }}}
 
         "get_dot_dependency_graph",
