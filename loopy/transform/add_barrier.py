@@ -45,10 +45,11 @@ __doc__ = """
 def add_barrier(knl, id, insn0_expr, insn1_expr, tags=None, kind='global'):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
-    then adds a barrier in between those 2 instructions.
+    then adds a barrier in between those 2 instructions. See **parse_match()**
+    for the expected format of expression.
 
     :arg id: String which would be the id of the barrier
-    :arg id_insn0: String expression that specifies the first instruction 
+    :arg id_insn0: String expression that specifies the first instruction
     :arg id_insn1: String expression that specifies the second instruction
     :arg tags: The tag of the group to which the barrier must be added
     :arg kind: Specifies whether the barrier is a local or a global one
