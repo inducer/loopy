@@ -104,6 +104,7 @@ def test_to_batched(ctx_factory):
 
     bknl(queue, a=a, x=x)
 
+
 def test_add_barrier(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -117,6 +118,7 @@ def test_add_barrier(ctx_factory):
     new_kernel = lp.add_barrier(kernel, "gb1", "id:transpose", "id:double")
     evt, (out,) = new_kernel(queue, a=a)
     assert (np.linalg.norm(out-2*a.T) < 1e-16)
+
 
 def test_rename_argument(ctx_factory):
     ctx = ctx_factory()
