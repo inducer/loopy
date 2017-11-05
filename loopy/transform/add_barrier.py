@@ -23,15 +23,10 @@ THE SOFTWARE.
 """
 
 
-import six
-
-from loopy.symbolic import (RuleAwareIdentityMapper, SubstitutionRuleMappingContext)
-from loopy.kernel.data import ValueArg, GlobalArg
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
 from loopy.diagnostic import LoopyError
-import islpy as isl
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -61,11 +56,12 @@ def add_barrier(knl, id, insn0_expr, insn1_expr, tags=None, kind='global'):
     insn1_set = [insn for insn in knl.instructions if match1(knl, insn)]
 
     if len(insn0_set)!=1 or len(insn1_set)!=1:
-        raise LoopyError("The instruction expressions should match only 1 instruction.")
+        raise LoopyError("The instruction expressions should match only 1\
+instruction.")
 
     barrier_to_add = BarrierInstruction(depends_on=frozenset(insn0_set),
                                         depends_on_is_final=True,
-                                        id=id,
+                                        id = id,
                                         tags=tags,
                                         kind=kind)
     new_knl = knl.copy(instructions=knl.instructions + [barrier_to_add])
