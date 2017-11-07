@@ -1,6 +1,6 @@
 from __future__ import division, absolute_import
 
-__copyright__ = "Copyright (C) 2017 Andreas Kloeckner"
+__copyright__ = "Copyright (C) 2017 Kaushik Kulkarni"
 
 __license__ = """
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -26,7 +26,6 @@ THE SOFTWARE.
 from loopy.kernel.instruction import BarrierInstruction
 from loopy.match import parse_match
 from loopy.transform.instruction import add_dependency
-from loopy.diagnostic import LoopyError
 
 __doc__ = """
 .. currentmodule:: loopy
@@ -37,38 +36,37 @@ __doc__ = """
 
 # {{{ add_barrier
 
-def add_barrier(knl, id, insn0_expr, insn1_expr, tags=None, kind='global'):
+def add_barrier(knl, id="", insn_before="", insn_after="", tags=None,
+                kind="global"):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
-    then adds a barrier in between those 2 instructions. See **parse_match()**
-    for the expected format of expression.
+    then adds a barrier in between those 2 instructions. The expressions can
+    be any inputs that are understood by :func:`loopy.match.parse_match`.
 
     :arg id: String which would be the id of the barrier
     :arg id_insn0: String expression that specifies the first instruction
     :arg id_insn1: String expression that specifies the second instruction
     :arg tags: The tag of the group to which the barrier must be added
-    :arg kind: Specifies whether the barrier is a local or a global one
+    :arg kind: Kind of barrier to be added. May be "global" or "local".
     """
 
-    match0 = parse_match(insn0_expr)
-    insn0_set = [insn.id for insn in knl.instructions if match0(knl, insn)]
-    match1 = parse_match(insn1_expr)
-    insn1_set = [insn for insn in knl.instructions if match1(knl, insn)]
+    if id == "":
+        id = knl.make_unique_instruction_id(based_on=kind[0]+"_barrier")
 
-    if len(insn0_set) != 1 or len(insn1_set) != 1:
-        raise LoopyError("The instruction expressions should match only 1\
-instruction.")
+    match = parse_match(insn_before)
+    insn_before_list = [insn.id for insn in knl.instructions if match(knl,
+                        insn)]
 
-    barrier_to_add = BarrierInstruction(depends_on=frozenset(insn0_set),
+    barrier_to_add = BarrierInstruction(depends_on=frozenset(insn_before_list),
                                         depends_on_is_final=True,
                                         id=id,
                                         tags=tags,
                                         kind=kind)
+
     new_knl = knl.copy(instructions=knl.instructions + [barrier_to_add])
-    print("id:"+id)
     new_knl = add_dependency(kernel=new_knl,
-                            insn_match=insn1_expr,
-                            depends_on="id:"+id)
+                             insn_match=insn_after,
+                             depends_on="id:"+id)
 
     return new_knl
 
