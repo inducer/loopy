@@ -105,6 +105,27 @@ def test_to_batched(ctx_factory):
     bknl(queue, a=a, x=x)
 
 
+def test_add_barrier(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    knl = lp.make_kernel(
+            "{[i, j, ii, jj]: 0<=i,j, ii, jj<n}",
+            """
+            out[j, i] = a[i, j]{id=transpose}
+            out[ii, jj] = 2*out[ii, jj]{id=double}
+            """)
+    a = np.random.randn(16, 16)
+    knl = lp.add_barrier(knl, "id:transpose", "id:double", "gb1")
+
+    knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "j", 2, outer_tag="g.1", inner_tag="l.1")
+    knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "jj", 2, outer_tag="g.1", inner_tag="l.1")
+
+    evt, (out,) = knl(queue, a=a)
+    assert (np.linalg.norm(out-2*a.T) < 1e-16)
+
+
 def test_rename_argument(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
