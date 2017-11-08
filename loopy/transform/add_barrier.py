@@ -36,22 +36,26 @@ __doc__ = """
 
 # {{{ add_barrier
 
-def add_barrier(knl, id="", insn_before="", insn_after="", tags=None,
-                kind="global"):
+def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
+                tags=None, kind="global"):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
     then adds a barrier in between those 2 instructions. The expressions can
     be any inputs that are understood by :func:`loopy.match.parse_match`.
 
-    :arg id: String which would be the id of the barrier
-    :arg id_insn0: String expression that specifies the first instruction
-    :arg id_insn1: String expression that specifies the second instruction
+    :arg insn_before: String expression that specifies the instruction(s)
+    before the barrier which is to be added
+    :arg insn_after: String expression that specifies the instruction(s) after
+    the barrier which is to be added
+    :arg id: String on which the id of the barrier would be based on.
     :arg tags: The tag of the group to which the barrier must be added
     :arg kind: Kind of barrier to be added. May be "global" or "local".
     """
 
-    if id == "":
+    if id_based_on is None:
         id = knl.make_unique_instruction_id(based_on=kind[0]+"_barrier")
+    else:
+        id = knl.make_unique_instruction_id(based_on=id_based_on)
 
     match = parse_match(insn_before)
     insn_before_list = [insn.id for insn in knl.instructions if match(knl,
