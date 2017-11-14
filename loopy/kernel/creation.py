@@ -592,8 +592,6 @@ def parse_special_insn(groups, insn_options):
         kwargs["kind"] = "global"
     elif special_insn_kind == "lbarrier":
         cls = BarrierInstruction
-        kwargs["mem_kind"] = "local" if "mem_kind" not in insn_options else \
-            insn_options["mem_kind"]
         kwargs["kind"] = "local"
     elif special_insn_kind == "nop":
         cls = NoOpInstruction
