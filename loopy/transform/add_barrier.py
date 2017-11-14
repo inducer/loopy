@@ -37,7 +37,7 @@ __doc__ = """
 # {{{ add_barrier
 
 def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
-                tags=None, sychronization_kind="global", mem_kind="local"):
+                tags=None, sychronization_kind="global", mem_kind=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
     then adds a barrier in between those 2 instructions. The expressions can
@@ -51,8 +51,11 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
     :arg tags: The tag of the group to which the barrier must be added
     :arg sychronization_kind: Kind of barrier to be added. May be "global" or "local"
     :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
-    for "global" bariers
+    for "global" bariers.  If not supplied, defaults to :arg:`sychronization_kind`
     """
+
+    if mem_kind is None:
+        mem_kind = sychronization_kind
 
     if id_based_on is None:
         id = knl.make_unique_instruction_id(
