@@ -37,7 +37,7 @@ __doc__ = """
 # {{{ add_barrier
 
 def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
-                tags=None, sychronization_kind="global", mem_kind=None):
+                tags=None, synchronization_kind="global", mem_kind=None):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
     then adds a barrier in between those 2 instructions. The expressions can
@@ -49,17 +49,17 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
     the barrier which is to be added
     :arg id: String on which the id of the barrier would be based on.
     :arg tags: The tag of the group to which the barrier must be added
-    :arg sychronization_kind: Kind of barrier to be added. May be "global" or "local"
+    :arg synchronization_kind: Kind of barrier to be added. May be "global" or "local"
     :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
-    for "global" bariers.  If not supplied, defaults to :arg:`sychronization_kind`
+    for "global" bariers.  If not supplied, defaults to :arg:`synchronization_kind`
     """
 
     if mem_kind is None:
-        mem_kind = sychronization_kind
+        mem_kind = synchronization_kind
 
     if id_based_on is None:
         id = knl.make_unique_instruction_id(
-            based_on=sychronization_kind[0]+"_barrier")
+            based_on=synchronization_kind[0]+"_barrier")
     else:
         id = knl.make_unique_instruction_id(based_on=id_based_on)
 
@@ -71,7 +71,7 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
                                         depends_on_is_final=True,
                                         id=id,
                                         tags=tags,
-                                        kind=sychronization_kind,
+                                        kind=synchronization_kind,
                                         mem_kind=mem_kind)
 
     new_knl = knl.copy(instructions=knl.instructions + [barrier_to_add])

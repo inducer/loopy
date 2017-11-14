@@ -291,19 +291,19 @@ class CUDACASTBuilder(CASTBuilder):
     def add_vector_access(self, access_expr, index):
         return access_expr.a(self._VEC_AXES[index])
 
-    def emit_barrier(self, sychronization_kind, mem_kind, comment):
+    def emit_barrier(self, synchronization_kind, mem_kind, comment):
         """
         :arg kind: ``"local"`` or ``"global"``
         :arg memkind: unused
         :return: a :class:`loopy.codegen.GeneratedInstruction`.
         """
-        if sychronization_kind == "local":
+        if synchronization_kind == "local":
             if comment:
                 comment = " /* %s */" % comment
 
             from cgen import Statement
             return Statement("__syncthreads()%s" % comment)
-        elif sychronization_kind == "global":
+        elif synchronization_kind == "global":
             raise LoopyError("CUDA does not have global barriers")
         else:
             raise LoopyError("unknown barrier kind")

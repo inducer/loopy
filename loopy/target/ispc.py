@@ -288,15 +288,15 @@ class ISPCASTBuilder(CASTBuilder):
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
 
-    def emit_barrier(self, sychronization_kind, mem_kind, comment):
+    def emit_barrier(self, synchronization_kind, mem_kind, comment):
         from cgen import Comment, Statement
 
         assert comment
 
-        if sychronization_kind == "local":
+        if synchronization_kind == "local":
             return Comment("local barrier: %s" % comment)
 
-        elif sychronization_kind == "global":
+        elif synchronization_kind == "global":
             return Statement("sync; /* %s */" % comment)
 
         else:

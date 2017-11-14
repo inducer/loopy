@@ -1472,7 +1472,7 @@ def stringify_instruction_list(kernel):
             trailing = [l for l in insn.code.split("\n")]
         elif isinstance(insn, lp.BarrierInstruction):
             lhs = ""
-            rhs = "... %sbarrier" % insn.sychronization_kind[0]
+            rhs = "... %sbarrier" % insn.synchronization_kind[0]
             trailing = []
 
         elif isinstance(insn, lp.NoOpInstruction):
@@ -1503,7 +1503,7 @@ def stringify_instruction_list(kernel):
             options.append("no_sync_with=%s" % ":".join(
                 "%s@%s" % entry for entry in sorted(insn.no_sync_with)))
         if isinstance(insn, lp.BarrierInstruction) and \
-                insn.sychronization_kind == 'local':
+                insn.synchronization_kind == 'local':
             options.append('mem_kind=%s' % insn.mem_kind)
 
         if lhs:
@@ -1558,7 +1558,7 @@ def get_global_barrier_order(kernel):
         insn = kernel.id_to_insn[my_insn_id]
         from loopy.kernel.instruction import BarrierInstruction
         return isinstance(insn, BarrierInstruction) and \
-            insn.sychronization_kind == "global"
+            insn.synchronization_kind == "global"
 
     while unvisited:
         stack = [unvisited.pop()]
@@ -1652,7 +1652,7 @@ def find_most_recent_global_barrier(kernel, insn_id):
         insn = kernel.id_to_insn[my_insn_id]
         from loopy.kernel.instruction import BarrierInstruction
         return isinstance(insn, BarrierInstruction) and \
-            insn.sychronization_kind == "global"
+            insn.synchronization_kind == "global"
 
     global_barrier_to_ordinal = dict(
             (b, i) for i, b in enumerate(global_barrier_order))

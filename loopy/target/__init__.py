@@ -189,9 +189,9 @@ class ASTBuilderBase(object):
     def add_vector_access(self, access_expr, index):
         raise NotImplementedError()
 
-    def emit_barrier(self, sychronization_kind, mem_kind, comment):
+    def emit_barrier(self, synchronization_kind, mem_kind, comment):
         """
-        :arg sychronization_kind: ``"local"`` or ``"global"``
+        :arg synchronization_kind: ``"local"`` or ``"global"``
         :arg mem_kind: ``"local"`` or ``"global"``
         """
         raise NotImplementedError()
