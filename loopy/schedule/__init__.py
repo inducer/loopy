@@ -1615,7 +1615,7 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
         schedule.append(Barrier(
             comment=comment,
             kind=dep.var_kind,
-            mem_kind=dep.mem_kind,
+            mem_kind=dep.var_kind,
             originating_insn_id=None))
 
 
