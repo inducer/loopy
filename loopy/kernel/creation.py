@@ -352,6 +352,14 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                                 % v)
             del assignee_name
 
+        elif opt_key == "mem_kind":
+            opt_value = opt_value.lower().strip()
+            if opt_value not in ['local', 'global']:
+                raise LoopyError("Unknown memory synchronization type %s specified"
+                    " expected, 'local' or 'global'."
+                    % opt_value)
+            result["mem_kind"] = opt_value
+
         else:
             raise ValueError(
                     "unrecognized instruction option '%s' "
