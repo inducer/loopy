@@ -1325,7 +1325,7 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
             if isinstance(insn, BarrierInstruction):
                 result.append(Barrier(
                     kind=insn.kind,
-                    mem_kind=insn.kind,
+                    mem_kind=insn.mem_kind,
                     originating_insn_id=insn.id,
                     comment="Barrier inserted due to %s" % insn.id))
                 continue
