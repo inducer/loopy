@@ -589,10 +589,10 @@ def parse_special_insn(groups, insn_options):
 
     if special_insn_kind == "gbarrier":
         cls = BarrierInstruction
-        kwargs["kind"] = "global"
+        kwargs["sychronization_kind"] = "global"
     elif special_insn_kind == "lbarrier":
         cls = BarrierInstruction
-        kwargs["kind"] = "local"
+        kwargs["sychronization_kind"] = "local"
     elif special_insn_kind == "nop":
         cls = NoOpInstruction
     else:

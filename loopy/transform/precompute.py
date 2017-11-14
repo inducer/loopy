@@ -811,7 +811,7 @@ def precompute(kernel, subst_use, sweep_inames=[], within=None,
         barrier_insn = BarrierInstruction(
                 id=barrier_insn_id,
                 depends_on=frozenset([compute_insn_id]),
-                kind="global",
+                sychronization_kind="global",
                 mem_kind="global")
         compute_dep_id = barrier_insn_id
 

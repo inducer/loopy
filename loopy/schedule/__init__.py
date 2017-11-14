@@ -84,7 +84,7 @@ class Barrier(ScheduleItem):
 
         A plain-text comment explaining why the barrier was inserted.
 
-    .. attribute:: kind
+    .. attribute:: sychronization_kind
 
         ``"local"`` or ``"global"``
 
@@ -95,7 +95,7 @@ class Barrier(ScheduleItem):
     .. attribute:: originating_insn_id
     """
 
-    hash_fields = ["comment", "kind", "mem_kind"]
+    hash_fields = ["comment", "sychronization_kind", "mem_kind"]
     __slots__ = hash_fields + ["originating_insn_id"]
 
 # }}}
@@ -440,11 +440,13 @@ def format_insn(kernel, insn_id):
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
             format_insn_id(kernel, insn_id))
     elif isinstance(insn, BarrierInstruction):
-        mem_kind = '{mem_kind=%s}' % insn.mem_kind if insn.kind[0] == 'local' \
-                    else ''
+        mem_kind = ''
+        if insn.sychronization_kind == 'local':
+            mem_kind = '{mem_kind=%s}' % insn.mem_kind
+
         return "[%s] %s... %sbarrier%s%s" % (
                 format_insn_id(kernel, insn_id),
-                Fore.MAGENTA, insn.kind[0], mem_kind, Style.RESET_ALL)
+                Fore.MAGENTA, insn.sychronization_kind[0], mem_kind, Style.RESET_ALL)
     elif isinstance(insn, NoOpInstruction):
         return "[%s] %s... nop%s" % (
                 format_insn_id(kernel, insn_id),
@@ -485,7 +487,8 @@ def dump_schedule(kernel, schedule):
                 insn_str = sched_item.insn_id
             lines.append(indent + insn_str)
         elif isinstance(sched_item, Barrier):
-            lines.append(indent + "... %sbarrier" % sched_item.kind[0])
+            lines.append(indent + "... %sbarrier" %
+                         sched_item.sychronization_kind[0])
         else:
             assert False
 
@@ -839,7 +842,8 @@ def generate_loop_schedules_internal(
         # {{{ check if scheduler state allows insn scheduling
 
         from loopy.kernel.instruction import BarrierInstruction
-        if isinstance(insn, BarrierInstruction) and insn.kind == "global":
+        if isinstance(insn, BarrierInstruction) and \
+                insn.sychronization_kind == "global":
             if not sched_state.may_schedule_global_barriers:
                 if debug_mode:
                     print("can't schedule '%s' because global barriers are "
@@ -1324,7 +1328,7 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
             insn = kernel.id_to_insn[sched_item.insn_id]
             if isinstance(insn, BarrierInstruction):
                 result.append(Barrier(
-                    kind=insn.kind,
+                    sychronization_kind=insn.sychronization_kind,
                     mem_kind=insn.mem_kind,
                     originating_insn_id=insn.id,
                     comment="Barrier inserted due to %s" % insn.id))
@@ -1584,7 +1588,8 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
             #     end
             #     barrier()
             # end
-            if barrier_kind_more_or_equally_global(sched_item.kind, kind):
+            if barrier_kind_more_or_equally_global(
+                    sched_item.sychronization_kind, kind):
                 insn_ids_alive_at_scope[-1].clear()
         else:
             insn_ids_alive_at_scope[-1] |= set(
@@ -1614,16 +1619,17 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
                     tgt=dep.target.id, src=dep.source.id))
         schedule.append(Barrier(
             comment=comment,
-            kind=dep.var_kind,
+            sychronization_kind=dep.var_kind,
             mem_kind=dep.var_kind,
             originating_insn_id=None))
 
 
-def insert_barriers(kernel, schedule, kind, verify_only, level=0):
+def insert_barriers(kernel, schedule, sychronization_kind, verify_only, level=0):
     """
-    :arg kind: "local" or "global". The :attr:`Barrier.kind` to be inserted.
-        Generally, this function will be called once for each kind of barrier
-        at the top level, where more global barriers should be inserted first.
+    :arg sychronization_kind: "local" or "global".
+        The :attr:`Barrier.sychronization_kind` to be inserted. Generally, this
+        function will be called once for each kind of barrier at the top level, where
+        more global barriers should be inserted first.
     :arg verify_only: do not insert barriers, only complain if they are
         missing.
     :arg level: the current level of loop nesting, 0 for outermost.
@@ -1632,14 +1638,15 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
     # {{{ insert barriers at outermost scheduling level
 
     def insert_barriers_at_outer_level(schedule, reverse=False):
-        dep_tracker = DependencyTracker(kernel, var_kind=kind, reverse=reverse)
+        dep_tracker = DependencyTracker(kernel, var_kind=sychronization_kind,
+                                        reverse=reverse)
 
         if reverse:
             # Populate the dependency tracker with sources from the tail end of
             # the schedule block.
             for insn_id in (
                     insn_ids_reaching_end_without_intervening_barrier(
-                        schedule, kind)):
+                        schedule, sychronization_kind)):
                 dep_tracker.add_source(insn_id)
 
         result = []
@@ -1653,11 +1660,11 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 
                 loop_head = (
                     insn_ids_reachable_from_start_without_intervening_barrier(
-                        subloop, kind))
+                        subloop, sychronization_kind))
 
                 loop_tail = (
                     insn_ids_reaching_end_without_intervening_barrier(
-                        subloop, kind))
+                        subloop, sychronization_kind))
 
                 # Checks if a barrier is needed before the loop. This handles
                 # dependencies with targets that can be reached without an
@@ -1696,7 +1703,8 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 
             elif isinstance(sched_item, Barrier):
                 result.append(sched_item)
-                if barrier_kind_more_or_equally_global(sched_item.kind, kind):
+                if barrier_kind_more_or_equally_global(
+                        sched_item.sychronization_kind, sychronization_kind):
                     dep_tracker.discard_all_sources()
                 i += 1
 
@@ -1732,7 +1740,8 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
         if isinstance(sched_item, EnterLoop):
             subloop, new_i = gather_schedule_block(schedule, i)
             new_subloop = insert_barriers(
-                    kernel, subloop[1:-1], kind, verify_only, level + 1)
+                    kernel, subloop[1:-1], sychronization_kind, verify_only,
+                    level + 1)
             result.append(subloop[0])
             result.extend(new_subloop)
             result.append(subloop[-1])

@@ -1280,9 +1280,9 @@ class NoOpInstruction(_DataObliviousInstruction):
 
 class BarrierInstruction(_DataObliviousInstruction):
     """An instruction that requires synchronization with all
-    concurrent work items of :attr:`kind`.
+    concurrent work items of :attr:`sychronization_kind`.
 
-    .. attribute:: kind
+    .. attribute:: sychronization_kind
 
         A string, ``"global"`` or ``"local"``.
 
@@ -1301,7 +1301,8 @@ class BarrierInstruction(_DataObliviousInstruction):
         ... lbarrier {mem_kind=global}
     """
 
-    fields = _DataObliviousInstruction.fields | set(["kind", "mem_kind"])
+    fields = _DataObliviousInstruction.fields | set(["sychronization_kind",
+                                                     "mem_kind"])
 
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
@@ -1309,7 +1310,8 @@ class BarrierInstruction(_DataObliviousInstruction):
             within_inames_is_final=None, within_inames=None,
             priority=None,
             boostable=None, boostable_into=None,
-            predicates=None, tags=None, kind="global", mem_kind="local"):
+            predicates=None, tags=None, sychronization_kind="global",
+            mem_kind="local"):
 
         if predicates:
             raise LoopyError("conditional barriers are not supported")
@@ -1330,20 +1332,26 @@ class BarrierInstruction(_DataObliviousInstruction):
                 tags=tags
                 )
 
-        self.kind = kind
+        self.sychronization_kind = sychronization_kind
         self.mem_kind = mem_kind
 
     def __str__(self):
-        first_line = "%s: ... %sbarrier" % (self.id, self.kind[0])
+        first_line = "%s: ... %sbarrier" % (self.id, self.sychronization_kind[0])
 
         options = self.get_str_options()
-        if self.kind == "local":
+        if self.sychronization_kind == "local":
             # add the memory kind
             options += ['mem_kind={}'.format(self.mem_kind)]
         if options:
             first_line += " {%s}" % (": ".join(options))
 
         return first_line
+
+    @property
+    def kind(self):
+        from warnings import warn
+        warn("BarrierInstruction.kind is deprecated, use sychronization_kind "
+             "instead", DeprecationWarning, stacklevel=2)
 
 # }}}
 

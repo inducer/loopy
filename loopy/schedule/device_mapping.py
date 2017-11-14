@@ -106,7 +106,7 @@ def map_schedule_onto_host_or_device_impl(kernel, device_prog_name_gen):
                         [end_item])
 
             elif isinstance(sched_item, Barrier):
-                if sched_item.kind == "global":
+                if sched_item.sychronization_kind == "global":
                     # Wrap the current chunk into a kernel call.
                     schedule_required_splitting = True
                     if current_chunk:

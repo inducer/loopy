@@ -351,7 +351,7 @@ class TemporarySaver(object):
             self.subkernel_to_slice_indices[subkernel])
 
         def is_global_barrier(item):
-            return isinstance(item, Barrier) and item.kind == "global"
+            return isinstance(item, Barrier) and item.sychronization_kind == "global"
 
         try:
             pre_barrier = next(item for item in
