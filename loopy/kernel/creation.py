@@ -575,7 +575,7 @@ def parse_special_insn(groups, insn_options):
             insn_options.copy(),
             groups["options"],
             assignee_names=(),
-            kind=groups['kind'])
+            insn_kind=groups['kind'])
 
     del insn_options["atomicity"]
 
