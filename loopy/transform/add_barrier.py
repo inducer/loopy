@@ -49,7 +49,8 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
     the barrier which is to be added
     :arg id: String on which the id of the barrier would be based on.
     :arg tags: The tag of the group to which the barrier must be added
-    :arg synchronization_kind: Kind of barrier to be added. May be "global" or "local"
+    :arg synchronization_kind: Kind of barrier to be added. May be "global" or
+    "local"
     :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
     for "global" bariers.  If not supplied, defaults to :arg:`synchronization_kind`
     """

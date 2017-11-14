@@ -446,7 +446,8 @@ def format_insn(kernel, insn_id):
 
         return "[%s] %s... %sbarrier%s%s" % (
                 format_insn_id(kernel, insn_id),
-                Fore.MAGENTA, insn.synchronization_kind[0], mem_kind, Style.RESET_ALL)
+                Fore.MAGENTA, insn.synchronization_kind[0], mem_kind,
+                Style.RESET_ALL)
     elif isinstance(insn, NoOpInstruction):
         return "[%s] %s... nop%s" % (
                 format_insn_id(kernel, insn_id),
