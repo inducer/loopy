@@ -354,7 +354,7 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None,
             del assignee_name
 
         elif opt_key == "mem_kind":
-            if not insn_kind in ['gbarrier', 'lbarrier']:
+            if insn_kind not in ['gbarrier', 'lbarrier']:
                 raise LoopyError("Cannot supply memory synchronization type to "
                     "non-barrier instruction %s" % insn_kind)
             opt_value = opt_value.lower().strip()
