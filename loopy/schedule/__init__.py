@@ -1907,11 +1907,11 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                     if not kernel.options.disable_global_barriers:
                         logger.debug("%s: barrier insertion: global" % kernel.name)
                         gen_sched = insert_barriers(kernel, gen_sched,
-                                kind="global", verify_only=True)
+                                sychronization_kind="global", verify_only=True)
 
                     logger.debug("%s: barrier insertion: local" % kernel.name)
-                    gen_sched = insert_barriers(kernel, gen_sched, kind="local",
-                            verify_only=False)
+                    gen_sched = insert_barriers(kernel, gen_sched,
+                        sychronization_kind="local", verify_only=False)
                     logger.debug("%s: barrier insertion: done" % kernel.name)
 
                 new_kernel = kernel.copy(
