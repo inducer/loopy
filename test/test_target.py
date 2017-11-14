@@ -240,6 +240,26 @@ def test_numba_cuda_target():
     print(lp.generate_code_v2(knl).all_code())
 
 
+def test_sized_integer_c_codegen(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        [lp.Assignment("a[i]", np.int64(1) << var("i"))]
+        )
+
+    knl = lp.set_options(knl, write_code=True)
+    n = 40
+
+    evt, (a,) = knl(queue, n=n)
+
+    a_ref = 1 << np.arange(n, dtype=np.int64)
+
+    assert np.array_equal(a_ref, a.get())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

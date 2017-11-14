@@ -361,16 +361,29 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             return var("%s_new" % cast_type)(expr.real, expr.imag)
         else:
+            def map_integer_literal(expr):
+                if isinstance(expr, np.integer):
+                    # If someone went to the trouble of supplying a sized
+                    # integer, trust them.
+
+                    from loopy.types import NumpyType
+                    return Literal("(%s) (%s)" % (
+                            self.codegen_state.ast_builder.dtype_to_ctype(
+                                NumpyType(type(expr))),
+                            int(expr)))
+                else:
+                    return Literal(str(int(expr)))
+
             from loopy.symbolic import Literal
             if type_context == "f":
                 return Literal(repr(float(expr))+"f")
             elif type_context == "d":
                 return Literal(repr(float(expr)))
             elif type_context == "i":
-                return int(expr)
+                return map_integer_literal(expr)
             else:
                 if is_integer(expr):
-                    return int(expr)
+                    return map_integer_literal(expr)
 
                 raise RuntimeError("don't know how to generate code "
                         "for constant '%s'" % expr)
