@@ -450,7 +450,7 @@ class OpenCLCASTBuilder(CASTBuilder):
         # The 'int' avoids an 'L' suffix for long ints.
         return access_expr.attr("s%s" % hex(int(index))[2:])
 
-    def emit_barrier(self, kind, comment):
+    def emit_barrier(self, kind, mem_kind, comment):
         """
         :arg kind: ``"local"`` or ``"global"``
         :return: a :class:`loopy.codegen.GeneratedInstruction`.
@@ -459,8 +459,10 @@ class OpenCLCASTBuilder(CASTBuilder):
             if comment:
                 comment = " /* %s */" % comment
 
+            mem_kind = mem_kind.upper()
+
             from cgen import Statement
-            return Statement("barrier(CLK_LOCAL_MEM_FENCE)%s" % comment)
+            return Statement("barrier(CLK_%s_MEM_FENCE)%s" % (mem_kind, comment))
         elif kind == "global":
             raise LoopyError("OpenCL does not have global barriers")
         else:

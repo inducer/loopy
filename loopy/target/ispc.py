@@ -288,7 +288,7 @@ class ISPCASTBuilder(CASTBuilder):
     def add_vector_access(self, access_expr, index):
         return access_expr[index]
 
-    def emit_barrier(self, kind, comment):
+    def emit_barrier(self, kind, mem_kind, comment):
         from cgen import Comment, Statement
 
         assert comment

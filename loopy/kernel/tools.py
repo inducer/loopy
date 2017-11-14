@@ -1502,6 +1502,8 @@ def stringify_instruction_list(kernel):
         if insn.no_sync_with:
             options.append("no_sync_with=%s" % ":".join(
                 "%s@%s" % entry for entry in sorted(insn.no_sync_with)))
+        if isinstance(insn, lp.BarrierInstruction) and insn.kind == 'local':
+            options.append('mem_kind=%s' % insn.mem_kind)
 
         if lhs:
             core = "%s = %s" % (

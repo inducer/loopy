@@ -37,7 +37,7 @@ __doc__ = """
 # {{{ add_barrier
 
 def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
-                tags=None, kind="global"):
+                tags=None, kind="global", mem_kind="local"):
     """Takes in a kernel that needs to be added a barrier and returns a kernel
     which has a barrier inserted into it. It takes input of 2 instructions and
     then adds a barrier in between those 2 instructions. The expressions can
@@ -50,6 +50,8 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
     :arg id: String on which the id of the barrier would be based on.
     :arg tags: The tag of the group to which the barrier must be added
     :arg kind: Kind of barrier to be added. May be "global" or "local".
+    :arg kind: Type of memory to be synchronied. May be "global" or "local". Ignored
+    for "global" bariers
     """
 
     if id_based_on is None:
@@ -65,7 +67,8 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
                                         depends_on_is_final=True,
                                         id=id,
                                         tags=tags,
-                                        kind=kind)
+                                        kind=kind,
+                                        mem_kind=mem_kind)
 
     new_knl = knl.copy(instructions=knl.instructions + [barrier_to_add])
     new_knl = add_dependency(kernel=new_knl,

@@ -1286,13 +1286,22 @@ class BarrierInstruction(_DataObliviousInstruction):
 
         A string, ``"global"`` or ``"local"``.
 
+    .. attribute:: mem_kind
+
+        A string, ``"global"`` or ``"local"``. Chooses which memory type to
+        sychronize, for targets that require this (e.g. OpenCL)
+
     The textual syntax in a :mod:`loopy` kernel is::
 
         ... gbarrier
         ... lbarrier
+
+    Note that the memory type :attr:`mem_kind` can be specified for local barriers::
+
+        ... lbarrier {mem_kind=global}
     """
 
-    fields = _DataObliviousInstruction.fields | set(["kind"])
+    fields = _DataObliviousInstruction.fields | set(["kind", "mem_kind"])
 
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
@@ -1300,7 +1309,7 @@ class BarrierInstruction(_DataObliviousInstruction):
             within_inames_is_final=None, within_inames=None,
             priority=None,
             boostable=None, boostable_into=None,
-            predicates=None, tags=None, kind="global"):
+            predicates=None, tags=None, kind="global", mem_kind="local"):
 
         if predicates:
             raise LoopyError("conditional barriers are not supported")
@@ -1318,15 +1327,19 @@ class BarrierInstruction(_DataObliviousInstruction):
                 boostable=boostable,
                 boostable_into=boostable_into,
                 predicates=predicates,
-                tags=tags,
+                tags=tags
                 )
 
         self.kind = kind
+        self.mem_kind = mem_kind
 
     def __str__(self):
         first_line = "%s: ... %sbarrier" % (self.id, self.kind[0])
 
         options = self.get_str_options()
+        if self.kind == "local":
+            # add the memory kind
+            options += ['mem_kind={}'.format(self.mem_kind)]
         if options:
             first_line += " {%s}" % (": ".join(options))
 

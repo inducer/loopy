@@ -88,10 +88,14 @@ class Barrier(ScheduleItem):
 
         ``"local"`` or ``"global"``
 
+    .. attribute:: mem_kind
+
+        ``"local"`` or ``"global"``
+
     .. attribute:: originating_insn_id
     """
 
-    hash_fields = ["comment", "kind"]
+    hash_fields = ["comment", "kind", "mem_kind"]
     __slots__ = hash_fields + ["originating_insn_id"]
 
 # }}}
@@ -436,9 +440,11 @@ def format_insn(kernel, insn_id):
             Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
             format_insn_id(kernel, insn_id))
     elif isinstance(insn, BarrierInstruction):
-        return "[%s] %s... %sbarrier%s" % (
+        mem_kind = '{mem_kind=%s}' % insn.mem_kind if insn.kind[0] == 'local' \
+                    else ''
+        return "[%s] %s... %sbarrier%s%s" % (
                 format_insn_id(kernel, insn_id),
-                Fore.MAGENTA, insn.kind[0], Style.RESET_ALL)
+                Fore.MAGENTA, insn.kind[0], mem_kind, Style.RESET_ALL)
     elif isinstance(insn, NoOpInstruction):
         return "[%s] %s... nop%s" % (
                 format_insn_id(kernel, insn_id),
@@ -1319,6 +1325,7 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
             if isinstance(insn, BarrierInstruction):
                 result.append(Barrier(
                     kind=insn.kind,
+                    mem_kind=insn.kind,
                     originating_insn_id=insn.id,
                     comment="Barrier inserted due to %s" % insn.id))
                 continue
@@ -1608,6 +1615,7 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
         schedule.append(Barrier(
             comment=comment,
             kind=dep.var_kind,
+            mem_kind=dep.mem_kind,
             originating_insn_id=None))
 
 

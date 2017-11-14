@@ -291,9 +291,10 @@ class CUDACASTBuilder(CASTBuilder):
     def add_vector_access(self, access_expr, index):
         return access_expr.a(self._VEC_AXES[index])
 
-    def emit_barrier(self, kind, comment):
+    def emit_barrier(self, kind, mem_kind, comment):
         """
         :arg kind: ``"local"`` or ``"global"``
+        :arg memkind: unused
         :return: a :class:`loopy.codegen.GeneratedInstruction`.
         """
         if kind == "local":

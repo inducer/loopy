@@ -156,7 +156,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
 
         if codegen_state.is_generating_device_code:
             barrier_ast = codegen_state.ast_builder.emit_barrier(
-                    sched_item.kind, sched_item.comment)
+                    sched_item.kind, sched_item.mem_kind, sched_item.comment)
             if sched_item.originating_insn_id:
                 return CodeGenerationResult.new(
                         codegen_state,
