@@ -72,7 +72,7 @@ def add_barrier(knl, insn_before="", insn_after="", id_based_on=None,
                                         depends_on_is_final=True,
                                         id=id,
                                         tags=tags,
-                                        kind=synchronization_kind,
+                                        synchronization_kind=synchronization_kind,
                                         mem_kind=mem_kind)
 
     new_knl = knl.copy(instructions=knl.instructions + [barrier_to_add])
