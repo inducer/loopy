@@ -342,7 +342,14 @@ class CASTBuilder(ASTBuilderBase):
         result = []
 
         from loopy.kernel.data import temp_var_scope
-        if schedule_index == 0:
+        # determining if the global temps are to be written
+        from loopy.schedule import CallKernel
+        globals_to_be_written = True
+        for i in range(schedule_index):
+            if isinstance(kernel.schedule[i], CallKernel):
+                globals_to_be_written = False
+                break
+        if globals_to_be_written:
             for tv in sorted(
                     six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
