@@ -147,6 +147,11 @@ class WalkMapper(WalkMapperBase):
 
         self.rec(expr.expr, *args)
 
+    def map_type_annotation(self, expr, *args):
+        if not self.visit(expr):
+            return
+        self.rec(expr.child, *args)
+
     map_tagged_variable = WalkMapperBase.map_variable
 
     def map_loopy_function_identifier(self, expr, *args):
@@ -219,6 +224,17 @@ class StringifyMapper(StringifyMapperBase):
     def map_rule_argument(self, expr, enclosing_prec):
         return "<arg%d>" % expr.index
 
+    def map_type_annotation(self, expr, enclosing_prec):
+        from pymbolic.mapper.stringifier import PREC_NONE
+        from loopy.types import NumpyType
+        typename = NumpyType(expr.type).dtype.name
+        return "(%s).astype(%s)" % (self.rec(expr.child, PREC_NONE),
+                                    typename)
+
+    def map_type_cast(self, expr, enclosing_prec):
+        from pymbolic.mapper.stringifier import PREC_NONE
+        return "(%s)(%s)" % (expr.ctype, self.rec(expr.child, PREC_NONE))
+
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
@@ -272,6 +288,9 @@ class DependencyMapper(DependencyMapperBase):
         return set()
 
     map_linear_subscript = DependencyMapperBase.map_subscript
+
+    def map_type_annotation(self, expr):
+        return self.rec(expr.child)
 
 
 class SubstitutionRuleExpander(IdentityMapper):
@@ -406,7 +425,25 @@ class TypeAnnotation(p.Expression):
     def __getinitargs__(self):
         return (self.type, self.child)
 
+    def stringifier(self):
+        return StringifyMapper
+
     mapper_method = intern("map_type_annotation")
+
+
+class TypeCast(p.Expression):
+    def __init__(self, ctype, child):
+        super(TypeCast, self).__init__()
+        self.ctype = ctype
+        self.child = child
+
+    def __getinitargs__(self):
+        return (self.ctype, self.child)
+
+    def stringifier(self):
+        return StringifyMapper
+
+    mapper_method = intern("map_type_cast")
 
 
 class TaggedVariable(p.Variable):
@@ -1561,6 +1598,9 @@ class BatchedAccessRangeMapper(WalkMapper):
 
     def map_reduction(self, expr, inames):
         return WalkMapper.map_reduction(self, expr, inames | set(expr.inames))
+
+    def map_type_annotation(self, expr, inames):
+        return self.rec(expr.child, inames)
 
 
 class AccessRangeMapper(object):

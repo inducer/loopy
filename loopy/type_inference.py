@@ -237,6 +237,9 @@ class TypeInferenceMapper(CombineMapper):
         else:
             raise TypeInferenceFailure("Cannot deduce type of constant '%s'" % expr)
 
+    def map_type_annotation(self, expr):
+        return [NumpyType(expr.type)]
+
     def map_subscript(self, expr):
         return self.rec(expr.aggregate)
 

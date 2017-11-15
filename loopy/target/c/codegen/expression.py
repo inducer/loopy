@@ -340,6 +340,14 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     expr.operator,
                     self.rec(expr.right, inner_type_context))
 
+    def map_type_annotation(self, expr, type_context):
+        from loopy.types import NumpyType
+        from loopy.symbolic import TypeCast
+        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+        dtype = NumpyType(expr.type)
+        return TypeCast(registry.dtype_to_ctype(dtype),
+                        self.rec(expr.child, type_context))
+
     def map_constant(self, expr, type_context):
         if isinstance(expr, (complex, np.complexfloating)):
             try:
@@ -700,6 +708,10 @@ class CExpressionToCodeMapper(RecursiveMapper):
         return f % tuple(iterable)
 
     # }}}
+
+    def map_type_cast(self, expr, prec):
+        return "(%s)(%s)" % (expr.ctype,
+            self.rec(expr.child, PREC_NONE))
 
     def map_constant(self, expr, prec):
         return repr(expr)
