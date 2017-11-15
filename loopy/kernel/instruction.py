@@ -1352,6 +1352,7 @@ class BarrierInstruction(_DataObliviousInstruction):
         from warnings import warn
         warn("BarrierInstruction.kind is deprecated, use synchronization_kind "
              "instead", DeprecationWarning, stacklevel=2)
+        return self.synchronization_kind
 
 # }}}
 
