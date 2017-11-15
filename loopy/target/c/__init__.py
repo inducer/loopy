@@ -342,26 +342,26 @@ class CASTBuilder(ASTBuilderBase):
         result = []
 
         from loopy.kernel.data import temp_var_scope
+        if schedule_index == 0:
+            for tv in sorted(
+                    six.itervalues(kernel.temporary_variables),
+                    key=lambda tv: tv.name):
 
-        for tv in sorted(
-                six.itervalues(kernel.temporary_variables),
-                key=lambda tv: tv.name):
+                if tv.scope == temp_var_scope.GLOBAL and tv.initializer is not None:
+                    assert tv.read_only
 
-            if tv.scope == temp_var_scope.GLOBAL and tv.initializer is not None:
-                assert tv.read_only
+                    decl_info, = tv.decl_info(self.target,
+                                    index_dtype=kernel.index_dtype)
+                    decl = self.wrap_global_constant(
+                            self.get_temporary_decl(
+                                codegen_state, schedule_index, tv,
+                                decl_info))
 
-                decl_info, = tv.decl_info(self.target,
-                                index_dtype=kernel.index_dtype)
-                decl = self.wrap_global_constant(
-                        self.get_temporary_decl(
-                            codegen_state, schedule_index, tv,
-                            decl_info))
+                    if tv.initializer is not None:
+                        decl = Initializer(decl, generate_array_literal(
+                            codegen_state, tv, tv.initializer))
 
-                if tv.initializer is not None:
-                    decl = Initializer(decl, generate_array_literal(
-                        codegen_state, tv, tv.initializer))
-
-                result.append(decl)
+                    result.append(decl)
 
         fbody = FunctionBody(function_decl, function_body)
         if not result:
