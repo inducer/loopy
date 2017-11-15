@@ -342,14 +342,16 @@ class CASTBuilder(ASTBuilderBase):
         result = []
 
         from loopy.kernel.data import temp_var_scope
-        # determining if the global temps are to be written
         from loopy.schedule import CallKernel
-        globals_to_be_written = True
+        # We only need to write declarations for global variables with
+        # the first device program. `is_first_dev_prog` determines
+        # whether this is the first device program in the schedule.
+        is_first_dev_prog = True
         for i in range(schedule_index):
             if isinstance(kernel.schedule[i], CallKernel):
-                globals_to_be_written = False
+                is_first_dev_prog = False
                 break
-        if globals_to_be_written:
+        if is_first_dev_prog:
             for tv in sorted(
                     six.itervalues(kernel.temporary_variables),
                     key=lambda tv: tv.name):
