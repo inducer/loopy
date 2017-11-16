@@ -55,6 +55,7 @@ __all__ = [
 def test_globals_decl_once_with_multi_subprogram(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
+    np.random.seed(17)
     a = np.random.randn(16)
     cnst = np.random.randn(16)
     knl = lp.make_kernel(
