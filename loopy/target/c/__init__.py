@@ -440,7 +440,7 @@ class CASTBuilder(ASTBuilderBase):
                 insn = kernel.id_to_insn[kernel.schedule[i].insn_id]
                 sub_prog_temps = sub_prog_temps |\
                                  insn.read_dependency_names() |\
-                                 insn.write_dependency_names()  # noqa
+                                 insn.write_dependency_names()
 
         for tv in sorted(
                 six.itervalues(kernel.temporary_variables),
@@ -450,7 +450,8 @@ class CASTBuilder(ASTBuilderBase):
             if not tv.base_storage:
                 for idi in decl_info:
                     # global temp vars are mapped to arguments or global declarations
-                    if tv.scope != temp_var_scope.GLOBAL and tv.name in sub_prog_temps:
+                    if tv.scope != temp_var_scope.GLOBAL and\
+                       tv.name in sub_prog_temps:
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
                                     codegen_state, schedule_index, tv, idi),
