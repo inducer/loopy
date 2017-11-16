@@ -2431,6 +2431,11 @@ def test_fixed_parameters(ctx_factory):
     knl(queue)
 
 
+def test_parameter_inference():
+    knl = lp.make_kernel("{[i]: 0 <= i < n and i mod 2 = 0}", "")
+    assert knl.all_params() == set(["n"])
+
+
 def test_execution_backend_can_cache_dtypes(ctx_factory):
     # When the kernel is invoked, the execution backend uses it as a cache key
     # for the type inference and scheduling cache. This tests to make sure that
