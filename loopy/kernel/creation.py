@@ -51,9 +51,14 @@ logger = logging.getLogger(__name__)
 
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
+# source: check_keywords() in isl_stream.c, ISL version 0.17
+_ISL_KEYWORDS = frozenset("""
+        exists and or implies not infty infinity NaN min max rat true false ceild
+        floord mod ceil floor""".split())
+
 
 def _gather_isl_identifiers(s):
-    return set(_IDENTIFIER_RE.findall(s)) - set(["and", "or", "exists"])
+    return set(_IDENTIFIER_RE.findall(s)) - _ISL_KEYWORDS
 
 
 class UniqueName:
