@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools.persistent_dict import PersistentDict
+from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -206,13 +206,13 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import ParallelTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
     all_nonpar_inames = set([
             iname
             for iname in kernel.all_inames()
             if not isinstance(kernel.iname_to_tag.get(iname),
-                (ParallelTag, IlpBaseTag, VectorizeTag))])
+                (ConcurrentTag, IlpBaseTag, VectorizeTag))])
 
     iname_to_insns = kernel.iname_to_insns()
 
@@ -274,10 +274,10 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
     result = {}
 
-    from loopy.kernel.data import ParallelTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
-            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag):
+            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag):
                 continue
 
             iname_dep = result.setdefault(iname, set())
@@ -308,7 +308,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         continue
 
                     tag = kernel.iname_to_tag.get(dep_insn_iname)
-                    if isinstance(tag, (ParallelTag, IlpBaseTag, VectorizeTag)):
+                    if isinstance(tag, (ConcurrentTag, IlpBaseTag, VectorizeTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
@@ -431,10 +431,10 @@ def format_insn(kernel, insn_id):
     from loopy.kernel.instruction import (
             MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
     if isinstance(insn, MultiAssignmentBase):
-        return "[%s] %s%s%s <- %s%s%s" % (
-            format_insn_id(kernel, insn_id),
+        return "%s%s%s = %s%s%s  {id=%s}" % (
             Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
-            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
+            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
+            format_insn_id(kernel, insn_id))
     elif isinstance(insn, BarrierInstruction):
         return "[%s] %s... %sbarrier%s" % (
                 format_insn_id(kernel, insn_id),
@@ -456,11 +456,11 @@ def dump_schedule(kernel, schedule):
     from loopy.kernel.data import MultiAssignmentBase
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
-            lines.append(indent + "FOR %s" % sched_item.iname)
+            lines.append(indent + "for %s" % sched_item.iname)
             indent += "    "
         elif isinstance(sched_item, LeaveLoop):
             indent = indent[:-4]
-            lines.append(indent + "END %s" % sched_item.iname)
+            lines.append(indent + "end %s" % sched_item.iname)
         elif isinstance(sched_item, CallKernel):
             lines.append(indent +
                          "CALL KERNEL %s(extra_args=%s, extra_inames=%s)" % (
@@ -479,7 +479,7 @@ def dump_schedule(kernel, schedule):
                 insn_str = sched_item.insn_id
             lines.append(indent + insn_str)
         elif isinstance(sched_item, Barrier):
-            lines.append(indent + "---BARRIER:%s---" % sched_item.kind)
+            lines.append(indent + "... %sbarrier" % sched_item.kind[0])
         else:
             assert False
 
@@ -1787,7 +1787,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
         for item in preschedule
         for insn_id in sched_item_to_insn_id(item))
 
-    from loopy.kernel.data import IlpBaseTag, ParallelTag, VectorizeTag
+    from loopy.kernel.data import IlpBaseTag, ConcurrentTag, VectorizeTag
     ilp_inames = set(
             iname
             for iname in kernel.all_inames()
@@ -1798,7 +1798,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag))
     parallel_inames = set(
             iname for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
+            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
@@ -1940,7 +1940,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 # }}}
 
 
-schedule_cache = PersistentDict("loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
+schedule_cache = WriteOncePersistentDict(
+        "loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
@@ -1971,7 +1972,7 @@ def get_one_scheduled_kernel(kernel):
             kernel.name, time()-start_time))
 
     if CACHING_ENABLED and not from_cache:
-        schedule_cache[sched_cache_key] = result
+        schedule_cache.store_if_not_present(sched_cache_key, result)
 
     return result
 

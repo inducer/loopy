@@ -518,6 +518,32 @@ def test_arg_guessing_with_reduction(ctx_factory):
     print(knl)
     print(lp.CompiledKernel(ctx, knl).get_highlighted_code())
 
+
+def test_unknown_arg_shape(ctx_factory):
+    ctx = ctx_factory()
+    from loopy.target.pyopencl import PyOpenCLTarget
+    from loopy.compiled import CompiledKernel
+    bsize = [256, 0]
+
+    knl = lp.make_kernel(
+        "{[i,j]: 0<=i<n and 0<=j<m}",
+        """
+        for i
+            <int32> gid = i/256
+            <int32> start = gid*256
+            for j
+                a[start + j] = a[start + j] + j
+            end
+        end
+        """,
+        seq_dependencies=True,
+        name="uniform_l",
+        target=PyOpenCLTarget(),
+        assumptions="m<=%d and m>=1 and n mod %d = 0" % (bsize[0], bsize[0]))
+
+    knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
+    cl_kernel_info = CompiledKernel(ctx, knl).cl_kernel_info(frozenset())  # noqa
+
 # }}}
 
 
@@ -2008,6 +2034,37 @@ def test_if_else(ctx_factory):
     out_ref[4::6] = 11
     out_ref[2::6] = 3
 
+    knl = lp.make_kernel(
+            "{ [i,j]: 0<=i,j<50}",
+            """
+            for i
+                if i < 25
+                    for j
+                        if j % 2 == 0
+                            a[i, j] = 1
+                        else
+                            a[i, j] = 0
+                        end
+                    end
+                else
+                    for j
+                        if j % 2 == 0
+                            a[i, j] = 0
+                        else
+                            a[i, j] = 1
+                        end
+                    end
+                end
+            end
+            """
+            )
+
+    evt, (out,) = knl(queue, out_host=True)
+
+    out_ref = np.zeros((50, 50))
+    out_ref[:25, 0::2] = 1
+    out_ref[25:, 1::2] = 1
+
     assert np.array_equal(out_ref, out)
 
 
@@ -2180,11 +2237,12 @@ def test_nosync_option_parsing():
         """,
         options=lp.Options(allow_terminal_colors=False))
     kernel_str = str(knl)
-    assert "# insn1,no_sync_with=insn1@any" in kernel_str
-    assert "# insn2,no_sync_with=insn1@any:insn2@any" in kernel_str
-    assert "# insn3,no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
-    assert "# insn4,no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa
-    assert "# insn5,no_sync_with=insn1@any" in kernel_str
+    print(kernel_str)
+    assert "id=insn1, no_sync_with=insn1@any" in kernel_str
+    assert "id=insn2, no_sync_with=insn1@any:insn2@any" in kernel_str
+    assert "id=insn3, no_sync_with=insn1@local:insn2@global:insn3@any" in kernel_str
+    assert "id=insn4, no_sync_with=insn1@local:insn2@local:insn3@local:insn5@local" in kernel_str  # noqa
+    assert "id=insn5, no_sync_with=insn1@any" in kernel_str
 
 
 def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
@@ -2263,6 +2321,43 @@ def test_barrier_insertion_near_bottom_of_loop():
 
     assert_barrier_between(knl, "bcomp1", "bcomp2")
     assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
+
+
+def test_barrier_in_overridden_get_grid_size_expanded_kernel():
+    from loopy.kernel.data import temp_var_scope as scopes
+
+    # make simple barrier'd kernel
+    knl = lp.make_kernel('{[i]: 0 <= i < 10}',
+                   """
+              for i
+                    a[i] = i {id=a}
+                    ... lbarrier {id=barrier}
+                    b[i + 1] = a[i] {nosync=a}
+              end
+                   """,
+                   [lp.TemporaryVariable("a", np.float32, shape=(10,), order='C',
+                                         scope=scopes.LOCAL),
+                    lp.GlobalArg("b", np.float32, shape=(11,), order='C')],
+               seq_dependencies=True)
+
+    # split into kernel w/ vesize larger than iname domain
+    vecsize = 16
+    knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
+
+    # artifically expand via overridden_get_grid_sizes_for_insn_ids
+    class GridOverride(object):
+        def __init__(self, clean, vecsize=vecsize):
+            self.clean = clean
+            self.vecsize = vecsize
+
+        def __call__(self, insn_ids, ignore_auto=True):
+            gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
+            return gsize, (self.vecsize,)
+
+    knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
+        knl.copy(), vecsize))
+    # make sure we can generate the code
+    lp.generate_code_v2(knl)
 
 
 def test_multi_argument_reduction_type_inference():
@@ -2449,6 +2544,167 @@ def test_execution_backend_can_cache_dtypes(ctx_factory):
     knl = lp.add_dtypes(knl, dict(tmp=int))
 
     knl(queue)
+
+
+def test_preamble_with_separate_temporaries(ctx_factory):
+    from loopy.kernel.data import temp_var_scope as scopes
+    # create a function mangler
+
+    func_name = 'indirect'
+    func_arg_dtypes = (np.int32, np.int32, np.int32)
+    func_result_dtypes = (np.int32,)
+
+    def __indirectmangler(kernel, name, arg_dtypes):
+        """
+        A function that will return a :class:`loopy.kernel.data.CallMangleInfo`
+        to interface with the calling :class:`loopy.LoopKernel`
+        """
+        if name != func_name:
+            return None
+
+        from loopy.types import to_loopy_type
+        from loopy.kernel.data import CallMangleInfo
+
+        def __compare(d1, d2):
+            # compare dtypes ignoring atomic
+            return to_loopy_type(d1, for_atomic=True) == \
+                to_loopy_type(d2, for_atomic=True)
+
+        # check types
+        if len(arg_dtypes) != len(arg_dtypes):
+            raise Exception('Unexpected number of arguments provided to mangler '
+                            '{}, expected {}, got {}'.format(
+                                func_name, len(func_arg_dtypes), len(arg_dtypes)))
+
+        for i, (d1, d2) in enumerate(zip(func_arg_dtypes, arg_dtypes)):
+            if not __compare(d1, d2):
+                raise Exception('Argument at index {} for mangler {} does not '
+                                'match expected dtype.  Expected {}, got {}'.
+                                format(i, func_name, str(d1), str(d2)))
+
+        # get target for creation
+        target = arg_dtypes[0].target
+        return CallMangleInfo(
+            target_name=func_name,
+            result_dtypes=tuple(to_loopy_type(x, target=target) for x in
+                                func_result_dtypes),
+            arg_dtypes=arg_dtypes)
+
+    # create the preamble generator
+    def create_preamble(arr):
+        def __indirectpreamble(preamble_info):
+            # find a function matching our name
+            func_match = next(
+                (x for x in preamble_info.seen_functions
+                 if x.name == func_name), None)
+            desc = 'custom_funcs_indirect'
+            if func_match is not None:
+                from loopy.types import to_loopy_type
+                # check types
+                if tuple(to_loopy_type(x) for x in func_arg_dtypes) == \
+                        func_match.arg_dtypes:
+                    # if match, create our temporary
+                    var = lp.TemporaryVariable(
+                        'lookup', initializer=arr, dtype=arr.dtype, shape=arr.shape,
+                        scope=scopes.GLOBAL, read_only=True)
+                    # and code
+                    code = """
+            int {name}(int start, int end, int match)
+            {{
+                int result = start;
+                for (int i = start + 1; i < end; ++i)
+                {{
+                    if (lookup[i] == match)
+                        result = i;
+                }}
+                return result;
+            }}
+            """.format(name=func_name)
+
+            # generate temporary variable code
+            from cgen import Initializer
+            from loopy.target.c import generate_array_literal
+            codegen_state = preamble_info.codegen_state.copy(
+                is_generating_device_code=True)
+            kernel = preamble_info.kernel
+            ast_builder = codegen_state.ast_builder
+            target = kernel.target
+            decl_info, = var.decl_info(target, index_dtype=kernel.index_dtype)
+            decl = ast_builder.wrap_global_constant(
+                    ast_builder.get_temporary_decl(
+                        codegen_state, None, var,
+                        decl_info))
+            if var.initializer is not None:
+                decl = Initializer(decl, generate_array_literal(
+                    codegen_state, var, var.initializer))
+            # return generated code
+            yield (desc, '\n'.join([str(decl), code]))
+        return __indirectpreamble
+
+    # and finally create a test
+    n = 10
+    # for each entry come up with a random number of data points
+    num_data = np.asarray(np.random.randint(2, 10, size=n), dtype=np.int32)
+    # turn into offsets
+    offsets = np.asarray(np.hstack(([0], np.cumsum(num_data))), dtype=np.int32)
+    # create lookup data
+    lookup = np.empty(0)
+    for i in num_data:
+        lookup = np.hstack((lookup, np.arange(i)))
+    lookup = np.asarray(lookup, dtype=np.int32)
+    # and create data array
+    data = np.random.rand(np.product(num_data))
+
+    # make kernel
+    kernel = lp.make_kernel('{[i]: 0 <= i < n}',
+    """
+    for i
+        <>ind = indirect(offsets[i], offsets[i + 1], 1)
+        out[i] = data[ind]
+    end
+    """,
+    [lp.GlobalArg('out', shape=('n',)),
+     lp.TemporaryVariable(
+        'offsets', shape=(offsets.size,), initializer=offsets, scope=scopes.GLOBAL,
+        read_only=True),
+     lp.GlobalArg('data', shape=(data.size,), dtype=np.float64)],
+    )
+    # fixt params, and add manglers / preamble
+    kernel = lp.fix_parameters(kernel, **{'n': n})
+    kernel = lp.register_preamble_generators(kernel, [create_preamble(lookup)])
+    kernel = lp.register_function_manglers(kernel, [__indirectmangler])
+
+    print(lp.generate_code(kernel)[0])
+    # and call (functionality unimportant, more that it compiles)
+    ctx = cl.create_some_context()
+    queue = cl.CommandQueue(ctx)
+    # check that it actually performs the lookup correctly
+    assert np.allclose(kernel(
+        queue, data=data.flatten('C'))[1][0], data[offsets[:-1] + 1])
+
+
+def test_add_prefetch_works_in_lhs_index():
+    knl = lp.make_kernel(
+            "{ [n,k,l,k1,l1,k2,l2]: "
+            "start<=n<end and 0<=k,k1,k2<3 and 0<=l,l1,l2<2 }",
+            """
+            for n
+                <> a1_tmp[k,l] = a1[a1_map[n, k],l]
+                a1_tmp[k1,l1] = a1_tmp[k1,l1] + 1
+                a1_out[a1_map[n,k2], l2] = a1_tmp[k2,l2]
+            end
+            """,
+            [
+                lp.GlobalArg("a1,a1_out", None, "ndofs,2"),
+                lp.GlobalArg("a1_map", None, "nelements,3"),
+                "..."
+            ])
+
+    knl = lp.add_prefetch(knl, "a1_map", "k")
+
+    from loopy.symbolic import get_dependencies
+    for insn in knl.instructions:
+        assert "a1_map" not in get_dependencies(insn.assignees)
 
 
 if __name__ == "__main__":

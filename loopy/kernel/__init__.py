@@ -40,6 +40,7 @@ from loopy.library.function import (
         single_arg_function_mangler)
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
+from loopy.tools import natsorted
 
 
 # {{{ unique var names
@@ -701,12 +702,12 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         tag_key_uses = {}
 
-        from loopy.kernel.data import HardwareParallelTag
+        from loopy.kernel.data import HardwareConcurrentTag
 
         for iname in cond_inames:
             tag = self.iname_to_tag.get(iname)
 
-            if isinstance(tag, HardwareParallelTag):
+            if isinstance(tag, HardwareConcurrentTag):
                 tag_key_uses.setdefault(tag.key, []).append(iname)
 
         multi_use_keys = set(
@@ -716,7 +717,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         multi_use_inames = set()
         for iname in cond_inames:
             tag = self.iname_to_tag.get(iname)
-            if isinstance(tag, HardwareParallelTag) and tag.key in multi_use_keys:
+            if isinstance(tag, HardwareConcurrentTag) and tag.key in multi_use_keys:
                 multi_use_inames.add(iname)
 
         return frozenset(cond_inames - multi_use_inames)
@@ -958,7 +959,8 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             try:
                 # insist block size is constant
                 size = static_max_of_pw_aff(size,
-                        constants_only=isinstance(tag, LocalIndexTag))
+                        constants_only=isinstance(tag, LocalIndexTag),
+                        context=self.assumptions)
             except ValueError:
                 pass
 
@@ -1128,20 +1130,6 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         else:
             sep = []
 
-        def natorder(key):
-            # Return natural ordering for strings, as opposed to dictionary order.
-            # E.g. will result in
-            #  'abc1' < 'abc9' < 'abc10'
-            # rather than
-            #  'abc1' < 'abc10' < 'abc9'
-            # Based on
-            # http://code.activestate.com/recipes/285264-natural-string-sorting/#c7
-            import re
-            return [int(n) if n else s for n, s in re.findall(r'(\d+)|(\D+)', key)]
-
-        def natsorted(seq, key=lambda x: x):
-            return sorted(seq, key=lambda y: natorder(key(y)))
-
         if "name" in what:
             lines.extend(sep)
             lines.append("KERNEL: " + kernel.name)
@@ -1187,113 +1175,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             lines.extend(sep)
             if show_labels:
                 lines.append("INSTRUCTIONS:")
-            loop_list_width = 35
 
-            # {{{ topological sort
-
-            printed_insn_ids = set()
-            printed_insn_order = []
-
-            def insert_insn_into_order(insn):
-                if insn.id in printed_insn_ids:
-                    return
-                printed_insn_ids.add(insn.id)
-
-                for dep_id in natsorted(insn.depends_on):
-                    insert_insn_into_order(kernel.id_to_insn[dep_id])
-
-                printed_insn_order.append(insn)
-
-            for insn in kernel.instructions:
-                insert_insn_into_order(insn)
-
-            # }}}
-
-            import loopy as lp
-
-            Fore = self.options._fore  # noqa
-            Style = self.options._style  # noqa
-
-            from loopy.kernel.tools import draw_dependencies_as_unicode_arrows
-            for insn, (arrows, extender) in zip(
-                    printed_insn_order,
-                    draw_dependencies_as_unicode_arrows(
-                        printed_insn_order, fore=Fore, style=Style)):
-
-                if isinstance(insn, lp.MultiAssignmentBase):
-                    lhs = ", ".join(str(a) for a in insn.assignees)
-                    rhs = str(insn.expression)
-                    trailing = []
-                elif isinstance(insn, lp.CInstruction):
-                    lhs = ", ".join(str(a) for a in insn.assignees)
-                    rhs = "CODE(%s|%s)" % (
-                            ", ".join(str(x) for x in insn.read_variables),
-                            ", ".join("%s=%s" % (name, expr)
-                                for name, expr in insn.iname_exprs))
-
-                    trailing = ["    "+l for l in insn.code.split("\n")]
-                elif isinstance(insn, lp.BarrierInstruction):
-                    lhs = ""
-                    rhs = "... %sbarrier" % insn.kind[0]
-                    trailing = []
-
-                elif isinstance(insn, lp.NoOpInstruction):
-                    lhs = ""
-                    rhs = "... nop"
-                    trailing = []
-
-                else:
-                    raise LoopyError("unexpected instruction type: %s"
-                            % type(insn).__name__)
-
-                order = self._get_iname_order_for_printing()
-                loop_list = ",".join(
-                    sorted(kernel.insn_inames(insn), key=lambda iname: order[iname]))
-
-                options = [Fore.GREEN+insn.id+Style.RESET_ALL]
-                if insn.priority:
-                    options.append("priority=%d" % insn.priority)
-                if insn.tags:
-                    options.append("tags=%s" % ":".join(insn.tags))
-                if isinstance(insn, lp.Assignment) and insn.atomicity:
-                    options.append("atomic=%s" % ":".join(
-                        str(a) for a in insn.atomicity))
-                if insn.groups:
-                    options.append("groups=%s" % ":".join(insn.groups))
-                if insn.conflicts_with_groups:
-                    options.append(
-                            "conflicts=%s" % ":".join(insn.conflicts_with_groups))
-                if insn.no_sync_with:
-                    options.append("no_sync_with=%s" % ":".join(
-                        "%s@%s" % entry for entry in sorted(insn.no_sync_with)))
-
-                if lhs:
-                    core = "%s <- %s" % (
-                        Fore.CYAN+lhs+Style.RESET_ALL,
-                        Fore.MAGENTA+rhs+Style.RESET_ALL,
-                        )
-                else:
-                    core = Fore.MAGENTA+rhs+Style.RESET_ALL
-
-                if len(loop_list) > loop_list_width:
-                    lines.append("%s [%s]" % (arrows, loop_list))
-                    lines.append("%s %s%s   # %s" % (
-                        extender,
-                        (loop_list_width+2)*" ",
-                        core,
-                        ", ".join(options)))
-                else:
-                    lines.append("%s [%s]%s%s   # %s" % (
-                        arrows,
-                        loop_list, " "*(loop_list_width-len(loop_list)),
-                        core,
-                        ",".join(options)))
-
-                lines.extend(trailing)
-
-                if insn.predicates:
-                    lines.append(10*" " + "if (%s)" % " && ".join(
-                        [str(x) for x in insn.predicates]))
+            from loopy.kernel.tools import stringify_instruction_list
+            lines.extend(stringify_instruction_list(kernel))
 
         dep_lines = []
         for insn in kernel.instructions:
@@ -1474,6 +1358,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         return hash(key_hash.digest())
 
     def __eq__(self, other):
+        if self is other:
+            return True
+
         if not isinstance(other, LoopKernel):
             return False
 
@@ -1487,7 +1374,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                         return False
 
             elif field_name == "assumptions":
-                if not self.assumptions.plain_is_equal(other.assumptions):
+                if not (
+                        self.assumptions.plain_is_equal(other.assumptions)
+                        or self.assumptions.is_equal(other.assumptions)):
                     return False
 
             elif getattr(self, field_name) != getattr(other, field_name):

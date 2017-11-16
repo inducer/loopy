@@ -307,6 +307,12 @@ class _ConstRestrictPointer(Pointer):
         return sub_tp, ("*const __restrict__ %s" % sub_decl)
 
 
+class _ConstPointer(Pointer):
+    def get_decl_pait(self):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+        return sub_tp, ("*const %s" % sub_decl)
+
+
 class CASTBuilder(ASTBuilderBase):
     # {{{ library
 
@@ -462,13 +468,17 @@ class CASTBuilder(ASTBuilderBase):
                     temp_var_decl = self.wrap_temporary_decl(
                             temp_var_decl, tv.scope)
 
-                    # The 'restrict' part of this is a complete lie--of course
-                    # all these temporaries are aliased. But we're promising to
-                    # not use them to shovel data from one representation to the
-                    # other. That counts, right?
+                    if tv._base_storage_access_may_be_aliasing:
+                        ptrtype = _ConstPointer
+                    else:
+                        # The 'restrict' part of this is a complete lie--of course
+                        # all these temporaries are aliased. But we're promising to
+                        # not use them to shovel data from one representation to the
+                        # other. That counts, right?
+                        ptrtype = _ConstRestrictPointer
 
-                    cast_decl = _ConstRestrictPointer(cast_decl)
-                    temp_var_decl = _ConstRestrictPointer(temp_var_decl)
+                    cast_decl = ptrtype(cast_decl)
+                    temp_var_decl = ptrtype(temp_var_decl)
 
                     cast_tp, cast_d = cast_decl.get_decl_pair()
                     temp_var_decl = Initializer(
@@ -788,6 +798,10 @@ class CASTBuilder(ASTBuilderBase):
     def emit_comment(self, s):
         from cgen import Comment
         return Comment(s)
+
+    @property
+    def can_implement_conditionals(self):
+        return True
 
     def emit_if(self, condition_str, ast):
         from cgen import If

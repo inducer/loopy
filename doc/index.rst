@@ -18,12 +18,14 @@ When you run this script, the following kernel is generated, compiled, and execu
 
 (See the full example for how to print the generated code.)
 
+.. _static-binary:
+
 Want to try out loopy?
 ----------------------
 
 There's no need to go through :ref:`installation` if you'd just like to get a
 feel for what loopy is.  Instead, you may
-`download a self-contained Linux binary <https://gitlab.tiker.net/inducer/loopy/builds/1989/artifacts/browse/build-helpers/>`_.
+`download a self-contained Linux binary <https://gitlab.tiker.net/inducer/loopy/builds/36708/artifacts/browse/build-helpers/>`_.
 This is purposefully built on an ancient Linux distribution, so it should work
 on most versions of Linux that are currently out there.
 

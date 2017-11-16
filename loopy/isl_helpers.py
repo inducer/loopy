@@ -329,7 +329,7 @@ def is_nonnegative(expr, over_set):
     from loopy.symbolic import aff_from_expr
     try:
         aff = aff_from_expr(space, -expr-1)
-    except:
+    except Exception:
         return None
     expr_neg_set = isl.BasicSet.universe(space).add_constraint(
             isl.Constraint.inequality_from_aff(aff))

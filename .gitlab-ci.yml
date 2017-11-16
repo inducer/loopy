@@ -69,6 +69,7 @@ Python 2.7 with legacy PyOpenCL:
   - pocl
   except:
   - tags
+  retry: 2
 
 Python 3.6 POCL:
   script:
