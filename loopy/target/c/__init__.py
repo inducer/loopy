@@ -428,6 +428,19 @@ class CASTBuilder(ASTBuilderBase):
         base_storage_to_align_bytes = {}
 
         from cgen import ArrayOf, Initializer, AlignedAttribute, Value, Line
+        # Getting the temporary variables that are needed for the current
+        # sub-program.
+        from loopy.schedule import CallKernel, RunInstruction
+        sub_prog_temps = frozenset()
+
+        for i in range(schedule_index+1, codegen_state.schedule_index_end):
+            if isinstance(kernel.schedule[i], CallKernel):
+                break
+            if isinstance(kernel.schedule[i], RunInstruction):
+                insn = kernel.id_to_insn[kernel.schedule[i].insn_id]
+                sub_prog_temps = sub_prog_temps |\
+                                 insn.read_dependency_names() |\
+                                 insn.write_dependency_names()  # noqa
 
         for tv in sorted(
                 six.itervalues(kernel.temporary_variables),
@@ -437,7 +450,7 @@ class CASTBuilder(ASTBuilderBase):
             if not tv.base_storage:
                 for idi in decl_info:
                     # global temp vars are mapped to arguments or global declarations
-                    if tv.scope != temp_var_scope.GLOBAL:
+                    if tv.scope != temp_var_scope.GLOBAL and tv.name in sub_prog_temps:
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
                                     codegen_state, schedule_index, tv, idi),
