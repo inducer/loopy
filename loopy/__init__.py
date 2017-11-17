@@ -112,7 +112,7 @@ from loopy.transform.ilp import realize_ilp
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
-
+from loopy.transform.add_barrier import add_barrier
 # }}}
 
 from loopy.type_inference import infer_unknown_types
@@ -214,6 +214,8 @@ __all__ = [
         "assume", "fix_parameters",
 
         "save_and_reload_temporaries",
+
+        "add_barrier",
 
         # }}}
 

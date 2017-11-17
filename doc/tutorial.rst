@@ -1107,11 +1107,12 @@ work item:
 
 :mod:`loopy` supports two kinds of barriers:
 
-* *Local barriers* ensure consistency of local memory accesses to items within
+* *Local barriers* ensure consistency of memory accesses to items within
   *the same* work group. This synchronizes with all instructions in the work
-  group.
+  group.  The type of memory (local or global) may be specified by the
+  :attr:`loopy.instruction.BarrierInstruction.mem_kind`
 
-* *Global barriers* ensure consistency of global memory accesses
+* *Global barriers* ensure consistency of memory accesses
   across *all* work groups, i.e. it synchronizes with every work item
   executing the kernel. Note that there is no exact equivalent for
   this kind of barrier in OpenCL. [#global-barrier-note]_

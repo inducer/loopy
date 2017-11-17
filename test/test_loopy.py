@@ -1090,6 +1090,28 @@ def test_literal_local_barrier(ctx_factory):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=5))
 
 
+def test_local_barrier_mem_kind():
+    def __test_type(mtype, expected):
+        insn = '... lbarrier'
+        if mtype:
+            insn += '{mem_kind=%s}' % mtype
+        knl = lp.make_kernel(
+                "{ [i]: 0<=i<n }",
+                """
+                for i
+                    %s
+                end
+                """ % insn, seq_dependencies=True,
+                target=lp.PyOpenCLTarget())
+
+        cgr = lp.generate_code_v2(knl)
+        assert 'barrier(%s)' % expected in cgr.device_code()
+
+    __test_type('', 'CLK_LOCAL_MEM_FENCE')
+    __test_type('global', 'CLK_GLOBAL_MEM_FENCE')
+    __test_type('local', 'CLK_LOCAL_MEM_FENCE')
+
+
 def test_kernel_splitting(ctx_factory):
     ctx = ctx_factory()
 
@@ -2524,6 +2546,11 @@ def test_fixed_parameters(ctx_factory):
             fixed_parameters=dict(n=1))
 
     knl(queue)
+
+
+def test_parameter_inference():
+    knl = lp.make_kernel("{[i]: 0 <= i < n and i mod 2 = 0}", "")
+    assert knl.all_params() == set(["n"])
 
 
 def test_execution_backend_can_cache_dtypes(ctx_factory):

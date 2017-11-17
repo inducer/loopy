@@ -51,9 +51,14 @@ logger = logging.getLogger(__name__)
 
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
+# source: check_keywords() in isl_stream.c, ISL version 0.17
+_ISL_KEYWORDS = frozenset("""
+        exists and or implies not infty infinity NaN min max rat true false ceild
+        floord mod ceil floor""".split())
+
 
 def _gather_isl_identifiers(s):
-    return set(_IDENTIFIER_RE.findall(s)) - set(["and", "or", "exists"])
+    return set(_IDENTIFIER_RE.findall(s)) - _ISL_KEYWORDS
 
 
 class UniqueName:
@@ -352,6 +357,14 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                                 % v)
             del assignee_name
 
+        elif opt_key == "mem_kind":
+            opt_value = opt_value.lower().strip()
+            if opt_value not in ['local', 'global']:
+                raise LoopyError("Unknown memory synchronization type %s specified"
+                    " expected, 'local' or 'global'."
+                    % opt_value)
+            result["mem_kind"] = opt_value
+
         else:
             raise ValueError(
                     "unrecognized instruction option '%s' "
@@ -418,6 +431,17 @@ SPECIAL_INSN_RE = re.compile(
 
 SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
+
+
+def check_illegal_options(insn_options, insn_type):
+    illegal_options = []
+    if insn_type not in ['gbarrier', 'lbarrier']:
+        illegal_options.append('mem_kind')
+
+    bad_options = [x for x in illegal_options if x in insn_options]
+    if bad_options:
+        raise LoopyError("Cannot supply option(s) '%s' to instruction type '%s'" %
+                         ', '.join(bad_options), insn_type)
 
 
 def parse_insn(groups, insn_options):
@@ -492,6 +516,9 @@ def parse_insn(groups, insn_options):
             insn_options.copy(),
             groups["options"],
             assignee_names=assignee_names)
+
+    # check for bad options
+    check_illegal_options(insn_options, 'assignment')
 
     insn_id = insn_options.pop("insn_id", None)
     inames_to_dup = insn_options.pop("inames_to_dup", [])
@@ -578,13 +605,15 @@ def parse_special_insn(groups, insn_options):
 
     from loopy.kernel.instruction import NoOpInstruction, BarrierInstruction
     special_insn_kind = groups["kind"]
+    # check for bad options
+    check_illegal_options(insn_options, special_insn_kind)
 
     if special_insn_kind == "gbarrier":
         cls = BarrierInstruction
-        kwargs["kind"] = "global"
+        kwargs["synchronization_kind"] = "global"
     elif special_insn_kind == "lbarrier":
         cls = BarrierInstruction
-        kwargs["kind"] = "local"
+        kwargs["synchronization_kind"] = "local"
     elif special_insn_kind == "nop":
         cls = NoOpInstruction
     else:
@@ -792,6 +821,8 @@ def parse_instructions(instructions, defines):
                     parse_insn_options(
                         insn_options_stack[-1],
                         with_options_match.group("options")))
+            # check for bad options
+            check_illegal_options(insn_options_stack[-1], 'with-block')
             continue
 
         for_match = FOR_RE.match(insn)

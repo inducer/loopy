@@ -1417,7 +1417,8 @@ def get_synchronization_map(knl):
                 iname_list.pop()
 
         elif isinstance(sched_item, Barrier):
-            result = result + ToCountMap({"barrier_%s" % sched_item.kind:
+            result = result + ToCountMap({"barrier_%s" %
+                                          sched_item.synchronization_kind:
                                           get_count_poly(iname_list)})
 
         elif isinstance(sched_item, CallKernel):
