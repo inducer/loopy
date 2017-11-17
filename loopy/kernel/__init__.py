@@ -1167,7 +1167,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         if "rules" in what and kernel.substitutions:
             lines.extend(sep)
             if show_labels:
-                lines.append("SUBSTIUTION RULES:")
+                lines.append("SUBSTITUTION RULES:")
             for rule_name in natsorted(six.iterkeys(kernel.substitutions)):
                 lines.append(str(kernel.substitutions[rule_name]))
 
