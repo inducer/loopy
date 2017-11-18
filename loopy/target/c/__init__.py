@@ -342,26 +342,35 @@ class CASTBuilder(ASTBuilderBase):
         result = []
 
         from loopy.kernel.data import temp_var_scope
+        from loopy.schedule import CallKernel
+        # We only need to write declarations for global variables with
+        # the first device program. `is_first_dev_prog` determines
+        # whether this is the first device program in the schedule.
+        is_first_dev_prog = True
+        for i in range(schedule_index):
+            if isinstance(kernel.schedule[i], CallKernel):
+                is_first_dev_prog = False
+                break
+        if is_first_dev_prog:
+            for tv in sorted(
+                    six.itervalues(kernel.temporary_variables),
+                    key=lambda tv: tv.name):
 
-        for tv in sorted(
-                six.itervalues(kernel.temporary_variables),
-                key=lambda tv: tv.name):
+                if tv.scope == temp_var_scope.GLOBAL and tv.initializer is not None:
+                    assert tv.read_only
 
-            if tv.scope == temp_var_scope.GLOBAL and tv.initializer is not None:
-                assert tv.read_only
+                    decl_info, = tv.decl_info(self.target,
+                                    index_dtype=kernel.index_dtype)
+                    decl = self.wrap_global_constant(
+                            self.get_temporary_decl(
+                                codegen_state, schedule_index, tv,
+                                decl_info))
 
-                decl_info, = tv.decl_info(self.target,
-                                index_dtype=kernel.index_dtype)
-                decl = self.wrap_global_constant(
-                        self.get_temporary_decl(
-                            codegen_state, schedule_index, tv,
-                            decl_info))
+                    if tv.initializer is not None:
+                        decl = Initializer(decl, generate_array_literal(
+                            codegen_state, tv, tv.initializer))
 
-                if tv.initializer is not None:
-                    decl = Initializer(decl, generate_array_literal(
-                        codegen_state, tv, tv.initializer))
-
-                result.append(decl)
+                    result.append(decl)
 
         fbody = FunctionBody(function_decl, function_body)
         if not result:
@@ -419,6 +428,15 @@ class CASTBuilder(ASTBuilderBase):
         base_storage_to_align_bytes = {}
 
         from cgen import ArrayOf, Initializer, AlignedAttribute, Value, Line
+        # Getting the temporary variables that are needed for the current
+        # sub-kernel.
+        from loopy.schedule.tools import (
+                temporaries_read_in_subkernel,
+                temporaries_written_in_subkernel)
+        subkernel = kernel.schedule[schedule_index].kernel_name
+        sub_knl_temps = (
+                temporaries_read_in_subkernel(kernel, subkernel) |
+                temporaries_written_in_subkernel(kernel, subkernel))
 
         for tv in sorted(
                 six.itervalues(kernel.temporary_variables),
@@ -428,7 +446,8 @@ class CASTBuilder(ASTBuilderBase):
             if not tv.base_storage:
                 for idi in decl_info:
                     # global temp vars are mapped to arguments or global declarations
-                    if tv.scope != temp_var_scope.GLOBAL:
+                    if tv.scope != temp_var_scope.GLOBAL and (
+                            tv.name in sub_knl_temps):
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
                                     codegen_state, schedule_index, tv, idi),

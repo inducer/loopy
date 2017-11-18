@@ -52,6 +52,31 @@ __all__ = [
         ]
 
 
+def test_globals_decl_once_with_multi_subprogram(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    np.random.seed(17)
+    a = np.random.randn(16)
+    cnst = np.random.randn(16)
+    knl = lp.make_kernel(
+            "{[i, ii]: 0<=i, ii<n}",
+            """
+            out[i] = a[i]+cnst[i]{id=first}
+            out[ii] = 2*out[ii]+cnst[ii]{id=second}
+            """,
+            [lp.TemporaryVariable(
+                'cnst', shape=('n'), initializer=cnst,
+                scope=lp.temp_var_scope.GLOBAL,
+                read_only=True), '...'])
+    knl = lp.fix_parameters(knl, n=16)
+    knl = lp.add_barrier(knl, "id:first", "id:second")
+
+    knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
+    evt, (out,) = knl(queue, a=a)
+    assert np.linalg.norm(out-((2*(a+cnst)+cnst))) <= 1e-15
+
+
 def test_complicated_subst(ctx_factory):
     #ctx = ctx_factory()
 
