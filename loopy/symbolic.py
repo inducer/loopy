@@ -228,8 +228,7 @@ class StringifyMapper(StringifyMapperBase):
         from pymbolic.mapper.stringifier import PREC_NONE
         from loopy.types import NumpyType
         typename = NumpyType(expr.type).dtype.name
-        return "(%s).astype(%s)" % (self.rec(expr.child, PREC_NONE),
-                                    typename)
+        return "cast(%s, %s)" % (typename, self.rec(expr.child, PREC_NONE))
 
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
