@@ -260,6 +260,19 @@ def test_sized_integer_c_codegen(ctx_factory):
     assert np.array_equal(a_ref, a.get())
 
 
+def test_invalid_type_annotation():
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        ["<> ctr = make_uint2(0, 0)",
+         lp.Assignment("a[i]", lp.symbolic.TypeAnnotation(np.int64,
+                                                          var("ctr")) << var("i"))]
+        )
+
+    with pytest.raises(lp.LoopyError):
+        knl = lp.preprocess_kernel(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])

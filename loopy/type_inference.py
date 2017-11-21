@@ -242,6 +242,9 @@ class TypeInferenceMapper(CombineMapper):
         if not issubclass(dtype.dtype.type, np.number):
             raise LoopyError("Type annotations only for numeric types, not '%s'" %
                              dtype)
+        subtype, = self.rec(expr.child)
+        if not issubclass(subtype.dtype.type, np.number):
+            raise LoopyError("Can't cast a '%s' to '%s'" % (subtype, dtype))
         return [dtype]
 
     def map_subscript(self, expr):
