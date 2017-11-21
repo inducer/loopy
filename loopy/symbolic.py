@@ -231,10 +231,6 @@ class StringifyMapper(StringifyMapperBase):
         return "(%s).astype(%s)" % (self.rec(expr.child, PREC_NONE),
                                     typename)
 
-    def map_type_cast(self, expr, enclosing_prec):
-        from pymbolic.mapper.stringifier import PREC_NONE
-        return "(%s)(%s)" % (expr.ctype, self.rec(expr.child, PREC_NONE))
-
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
@@ -429,21 +425,6 @@ class TypeAnnotation(p.Expression):
         return StringifyMapper
 
     mapper_method = intern("map_type_annotation")
-
-
-class TypeCast(p.Expression):
-    def __init__(self, ctype, child):
-        super(TypeCast, self).__init__()
-        self.ctype = ctype
-        self.child = child
-
-    def __getinitargs__(self):
-        return (self.ctype, self.child)
-
-    def stringifier(self):
-        return StringifyMapper
-
-    mapper_method = intern("map_type_cast")
 
 
 class TaggedVariable(p.Variable):
