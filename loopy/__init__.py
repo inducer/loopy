@@ -27,7 +27,7 @@ import six
 from six.moves import range, zip
 
 from loopy.symbolic import (
-        TaggedVariable, Reduction, LinearSubscript, )
+        TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
 
 
@@ -145,7 +145,7 @@ from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
 
 __all__ = [
-        "TaggedVariable", "Reduction", "LinearSubscript",
+        "TaggedVariable", "Reduction", "LinearSubscript", "TypeCast",
 
         "auto",
 

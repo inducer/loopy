@@ -237,15 +237,11 @@ class TypeInferenceMapper(CombineMapper):
         else:
             raise TypeInferenceFailure("Cannot deduce type of constant '%s'" % expr)
 
-    def map_type_annotation(self, expr):
-        dtype = NumpyType(expr.type)
-        if not issubclass(dtype.dtype.type, np.number):
-            raise LoopyError("Type annotations only for numeric types, not '%s'" %
-                             dtype)
+    def map_type_cast(self, expr):
         subtype, = self.rec(expr.child)
         if not issubclass(subtype.dtype.type, np.number):
-            raise LoopyError("Can't cast a '%s' to '%s'" % (subtype, dtype))
-        return [dtype]
+            raise LoopyError("Can't cast a '%s' to '%s'" % (subtype, expr.type))
+        return [expr.type]
 
     def map_subscript(self, expr):
         return self.rec(expr.aggregate)

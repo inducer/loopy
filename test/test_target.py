@@ -247,7 +247,7 @@ def test_sized_integer_c_codegen(ctx_factory):
     from pymbolic import var
     knl = lp.make_kernel(
         "{[i]: 0<=i<n}",
-        [lp.Assignment("a[i]", lp.symbolic.TypeAnnotation(np.int64, 1) << var("i"))]
+        [lp.Assignment("a[i]", lp.TypeCast(np.int64, 1) << var("i"))]
         )
 
     knl = lp.set_options(knl, write_code=True)
@@ -265,8 +265,7 @@ def test_invalid_type_annotation():
     knl = lp.make_kernel(
         "{[i]: 0<=i<n}",
         ["<> ctr = make_uint2(0, 0)",
-         lp.Assignment("a[i]", lp.symbolic.TypeAnnotation(np.int64,
-                                                          var("ctr")) << var("i"))]
+         lp.Assignment("a[i]", lp.TypeCast(np.int64, var("ctr")) << var("i"))]
         )
 
     with pytest.raises(lp.LoopyError):
