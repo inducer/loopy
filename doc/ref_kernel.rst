@@ -327,15 +327,25 @@ Expressions
 Loopy's expressions are a slight superset of the expressions supported by
 :mod:`pymbolic`.
 
-* ``if``
-* ``elif`` (following an ``if``)
-* ``else`` (following an ``if`` / ``elif``)
+* ``if(cond, then, else_)``
+
+* ``a[[ 8*i + j ]]``: Linear subscripts.
+  See :class:`loopy.symbolic.LinearSubscript`.
+
 * ``reductions``
-    * duplication of reduction inames
+  See :class:`loopy.symbolic.Reduction`.
+
     * ``reduce`` vs ``simul_reduce``
+
 * complex-valued arithmetic
+
 * tagging of array access and substitution rule use ("$")
+  See :class:`loopy.symbolic.TaggedVariable`.
+
 * ``indexof``, ``indexof_vec``
+* ``cast(type, value)``: No parse syntax currently.
+  See :class:`loopy.symbolic.TypeCast`.
+
 
 TODO: Functions
 TODO: Reductions
