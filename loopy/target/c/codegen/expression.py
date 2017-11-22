@@ -340,6 +340,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     expr.operator,
                     self.rec(expr.right, inner_type_context))
 
+    def map_type_cast(self, expr, type_context):
+        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+        cast = var("(%s)" % registry.dtype_to_ctype(expr.type))
+        return cast(self.rec(expr.child, type_context))
+
     def map_constant(self, expr, type_context):
         if isinstance(expr, (complex, np.complexfloating)):
             try:

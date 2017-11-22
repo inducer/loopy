@@ -104,7 +104,9 @@ class IdentityMapperMixin(object):
         return expr
 
     def map_type_annotation(self, expr, *args):
-        return TypeAnnotation(expr.type, self.rec(expr.child))
+        return type(expr)(expr.type, self.rec(expr.child))
+
+    map_type_cast = map_type_annotation
 
     map_linear_subscript = IdentityMapperBase.map_subscript
 
@@ -146,6 +148,11 @@ class WalkMapper(WalkMapperBase):
             return
 
         self.rec(expr.expr, *args)
+
+    def map_type_cast(self, expr, *args):
+        if not self.visit(expr):
+            return
+        self.rec(expr.child, *args)
 
     map_tagged_variable = WalkMapperBase.map_variable
 
@@ -219,6 +226,10 @@ class StringifyMapper(StringifyMapperBase):
     def map_rule_argument(self, expr, enclosing_prec):
         return "<arg%d>" % expr.index
 
+    def map_type_cast(self, expr, enclosing_prec):
+        from pymbolic.mapper.stringifier import PREC_NONE
+        return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
+
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
     def map_reduction(self, expr, other, unis):
@@ -272,6 +283,9 @@ class DependencyMapper(DependencyMapperBase):
         return set()
 
     map_linear_subscript = DependencyMapperBase.map_subscript
+
+    def map_type_cast(self, expr):
+        return self.rec(expr.child)
 
 
 class SubstitutionRuleExpander(IdentityMapper):
@@ -398,6 +412,10 @@ class TypedCSE(p.CommonSubexpression):
 
 
 class TypeAnnotation(p.Expression):
+    """Undocumented for now. Currently only used internally around LHSs of
+    assignments that create temporaries.
+    """
+
     def __init__(self, type, child):
         super(TypeAnnotation, self).__init__()
         self.type = type
@@ -406,7 +424,53 @@ class TypeAnnotation(p.Expression):
     def __getinitargs__(self):
         return (self.type, self.child)
 
+    def stringifier(self):
+        return StringifyMapper
+
     mapper_method = intern("map_type_annotation")
+
+
+class TypeCast(p.Expression):
+    """Only defined for numerical types with semantics matching
+    :meth:`numpy.ndarray.astype`.
+
+    .. attribute:: child
+
+        The expression to be cast.
+    """
+
+    def __init__(self, type, child):
+        super(TypeCast, self).__init__()
+
+        from loopy.types import to_loopy_type, NumpyType
+        type = to_loopy_type(type)
+
+        if (not isinstance(type, NumpyType)
+                or not issubclass(type.dtype.type, np.number)):
+            from loopy.diagnostic import LoopyError
+            raise LoopyError("TypeCast only supports numerical numpy types, "
+                    "not '%s'" % type)
+
+        # We're storing the type as a name for now to avoid
+        # numpy pickling bug madness. (see loopy.types)
+        self._type_name = type.dtype.name
+        self.child = child
+
+    @property
+    def type(self):
+        from loopy.types import NumpyType
+        return NumpyType(np.dtype(self._type_name))
+
+    # init_arg_names is a misnomer--they're attribute names used for pickling.
+    init_arg_names = ("_type_name", "child")
+
+    def __getinitargs__(self):
+        return (self._type_name, self.child)
+
+    def stringifier(self):
+        return StringifyMapper
+
+    mapper_method = intern("map_type_cast")
 
 
 class TaggedVariable(p.Variable):
@@ -1561,6 +1625,9 @@ class BatchedAccessRangeMapper(WalkMapper):
 
     def map_reduction(self, expr, inames):
         return WalkMapper.map_reduction(self, expr, inames | set(expr.inames))
+
+    def map_type_cast(self, expr, inames):
+        return self.rec(expr.child, inames)
 
 
 class AccessRangeMapper(object):

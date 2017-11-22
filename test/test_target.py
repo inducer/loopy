@@ -240,6 +240,44 @@ def test_numba_cuda_target():
     print(lp.generate_code_v2(knl).all_code())
 
 
+def test_sized_integer_c_codegen(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        [lp.Assignment("a[i]", lp.TypeCast(np.int64, 1) << var("i"))]
+        )
+
+    knl = lp.set_options(knl, write_code=True)
+    n = 40
+
+    evt, (a,) = knl(queue, n=n)
+
+    a_ref = 1 << np.arange(n, dtype=np.int64)
+
+    assert np.array_equal(a_ref, a.get())
+
+
+def test_child_invalid_type_cast():
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        ["<> ctr = make_uint2(0, 0)",
+         lp.Assignment("a[i]", lp.TypeCast(np.int64, var("ctr")) << var("i"))]
+        )
+
+    with pytest.raises(lp.LoopyError):
+        knl = lp.preprocess_kernel(knl)
+
+
+def test_target_invalid_type_cast():
+    dtype = np.dtype([('', '<u4'), ('', '<i4')])
+    with pytest.raises(lp.LoopyError):
+        lp.TypeCast(dtype, 1)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
