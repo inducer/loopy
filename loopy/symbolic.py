@@ -103,8 +103,10 @@ class IdentityMapperMixin(object):
         # leaf, doesn't change
         return expr
 
-    def map_type_cast(self, expr, *args):
+    def map_type_annotation(self, expr, *args):
         return type(expr)(expr.type, self.rec(expr.child))
+
+    map_type_cast = map_type_annotation
 
     map_linear_subscript = IdentityMapperBase.map_subscript
 
