@@ -413,7 +413,7 @@ class TypedCSE(p.CommonSubexpression):
 
 class TypeAnnotation(p.Expression):
     """Undocumented for now. Currently only used internally around LHSs of
-    assignemnts that create temporaries.
+    assignments that create temporaries.
     """
 
     def __init__(self, type, child):
@@ -449,7 +449,7 @@ class TypeCast(p.Expression):
                 or not issubclass(type.dtype.type, np.number)):
             from loopy.diagnostic import LoopyError
             raise LoopyError("TypeCast only supports numerical numpy types, "
-                    "not ''" % type)
+                    "not '%s'" % type)
 
         # We're storing the type as a name for now to avoid
         # numpy pickling bug madness. (see loopy.types)

@@ -260,7 +260,7 @@ def test_sized_integer_c_codegen(ctx_factory):
     assert np.array_equal(a_ref, a.get())
 
 
-def test_invalid_type_annotation():
+def test_child_invalid_type_cast():
     from pymbolic import var
     knl = lp.make_kernel(
         "{[i]: 0<=i<n}",
@@ -270,6 +270,12 @@ def test_invalid_type_annotation():
 
     with pytest.raises(lp.LoopyError):
         knl = lp.preprocess_kernel(knl)
+
+
+def test_target_invalid_type_cast():
+    dtype = np.dtype([('', '<u4'), ('', '<i4')])
+    with pytest.raises(lp.LoopyError):
+        lp.TypeCast(dtype, 1)
 
 
 if __name__ == "__main__":
