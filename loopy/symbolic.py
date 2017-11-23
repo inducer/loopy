@@ -63,7 +63,7 @@ from islpy import dim_type
 import re
 import numpy as np
 
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import UnableToConvertToAffineExpression
 
 
 # {{{ mappers with support for loopy-specific primitives
@@ -1292,7 +1292,8 @@ def pwaff_from_expr(space, expr, vars_to_zero=frozenset()):
     try:
         return eval_mapper(expr)
     except UnknownVariableError as e:
-        raise LoopyError("unable to build (piecewise) affine expression "
+        raise UnableToConvertToAffineExpression(
+                "unable to build (piecewise) affine expression "
                 "in terms of variables '%s' "
                 "for expression '%s' "
                 "because '%s: %s'"
@@ -1311,8 +1312,6 @@ def simplify_using_aff(kernel, expr):
 
     domain = kernel.get_inames_domain(inames)
 
-    from pymbolic.mapper.evaluator import UnknownVariableError
-
     try:
         with isl.SuppressedWarnings(kernel.isl_context):
             aff = aff_from_expr(domain.space, expr)
@@ -1320,7 +1319,7 @@ def simplify_using_aff(kernel, expr):
         return expr
     except TypeError:
         return expr
-    except UnknownVariableError:
+    except UnableToConvertToAffineExpression:
         return expr
 
     # FIXME: Deal with assumptions, too.
