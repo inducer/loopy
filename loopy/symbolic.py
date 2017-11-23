@@ -63,6 +63,8 @@ from islpy import dim_type
 import re
 import numpy as np
 
+from loopy.diagnostic import LoopyError
+
 
 # {{{ mappers with support for loopy-specific primitives
 
@@ -1284,7 +1286,20 @@ def aff_from_expr(space, expr, vars_to_zero=frozenset()):
 
 
 def pwaff_from_expr(space, expr, vars_to_zero=frozenset()):
-    return PwAffEvaluationMapper(space, vars_to_zero)(expr)
+    eval_mapper = PwAffEvaluationMapper(space, vars_to_zero)
+
+    from pymbolic.mapper.evaluator import UnknownVariableError
+    try:
+        return eval_mapper(expr)
+    except UnknownVariableError as e:
+        raise LoopyError("unable to build (piecewise) affine expression "
+                "in terms of variables '%s' "
+                "for expression '%s' "
+                "because '%s: %s'"
+                % (
+                    ", ".join(space.get_var_dict()),
+                    expr,
+                    type(e).__name__, e))
 
 # }}}
 
