@@ -675,7 +675,7 @@ def test_prefetch_through_indirect_access():
         [
             lp.GlobalArg("a", strides=(2, 1), dtype=int),
             lp.GlobalArg("map1", shape=(10, 10), dtype=int),
-            ...
+            "..."
             ],
         target=lp.CTarget())
 
