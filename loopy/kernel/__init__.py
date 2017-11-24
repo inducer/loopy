@@ -43,6 +43,7 @@ from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
 from loopy.diagnostic import StaticValueFindingError
 
+
 # {{{ unique var names
 
 class _UniqueVarNameGenerator(UniqueNameGenerator):
