@@ -203,7 +203,7 @@ def static_extremum_of_pw_aff(pw_aff, constants_only, set_method, what, context)
     if len(pieces) == 1:
         (_, result), = pieces
         if constants_only and not result.is_cst():
-            raise ValueError("a numeric %s was not found for PwAff '%s'"
+            raise StaticValueFindingError("a numeric %s was not found for PwAff '%s'"
                     % (what, pw_aff))
         return result
 
