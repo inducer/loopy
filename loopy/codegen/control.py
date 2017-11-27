@@ -40,7 +40,7 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
 
     kernel = codegen_state.kernel
 
-    from loopy.kernel.data import LocalIndexTag, HardwareParallelTag
+    from loopy.kernel.data import LocalIndexTag, HardwareConcurrentTag
 
     from loopy.schedule import find_active_inames_at, has_barrier_within
     result = find_active_inames_at(kernel, sched_index)
@@ -48,7 +48,7 @@ def get_admissible_conditional_inames_for(codegen_state, sched_index):
     has_barrier = has_barrier_within(kernel, sched_index)
 
     for iname, tag in six.iteritems(kernel.iname_to_tag):
-        if (isinstance(tag, HardwareParallelTag)
+        if (isinstance(tag, HardwareConcurrentTag)
                 and codegen_state.is_generating_device_code):
             if not has_barrier or not isinstance(tag, LocalIndexTag):
                 result.add(iname)
@@ -135,12 +135,13 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 generate_sequential_loop_dim_code)
 
         from loopy.kernel.data import (UnrolledIlpTag, UnrollTag, ForceSequentialTag,
-                LoopedIlpTag, VectorizeTag)
+                LoopedIlpTag, VectorizeTag, InOrderSequentialSequentialTag)
         if isinstance(tag, (UnrollTag, UnrolledIlpTag)):
             func = generate_unroll_loop
         elif isinstance(tag, VectorizeTag):
             func = generate_vectorize_loop
-        elif tag is None or isinstance(tag, (LoopedIlpTag, ForceSequentialTag)):
+        elif tag is None or isinstance(tag, (
+                LoopedIlpTag, ForceSequentialTag, InOrderSequentialSequentialTag)):
             func = generate_sequential_loop_dim_code
         else:
             raise RuntimeError("encountered (invalid) EnterLoop "
@@ -155,7 +156,8 @@ def generate_code_for_sched_index(codegen_state, sched_index):
 
         if codegen_state.is_generating_device_code:
             barrier_ast = codegen_state.ast_builder.emit_barrier(
-                    sched_item.kind, sched_item.comment)
+                    sched_item.synchronization_kind, sched_item.mem_kind,
+                    sched_item.comment)
             if sched_item.originating_insn_id:
                 return CodeGenerationResult.new(
                         codegen_state,
@@ -166,7 +168,7 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                 return barrier_ast
         else:
             # host code
-            if sched_item.kind in ["global", "local"]:
+            if sched_item.synchronization_kind in ["global", "local"]:
                 # host code is assumed globally and locally synchronous
                 return CodeGenerationResult(
                         host_program=None,
@@ -175,8 +177,9 @@ def generate_code_for_sched_index(codegen_state, sched_index):
                         implemented_data_info=codegen_state.implemented_data_info)
 
             else:
-                raise LoopyError("do not know how to emit code for barrier kind '%s'"
-                        "in host code" % sched_item.kind)
+                raise LoopyError("do not know how to emit code for barrier "
+                                 "synchronization kind '%s'" "in host code"
+                                 % sched_item.synchronization_kind)
 
         # }}}
 
@@ -239,6 +242,15 @@ def build_loop_nest(codegen_state, schedule_index):
     # instructions that can be nested inside a shared conditional.
 
     kernel = codegen_state.kernel
+
+    # If the AST builder does not implement conditionals, we can save us
+    # some work about hoisting conditionals and directly go into recursion.
+    if not codegen_state.ast_builder.can_implement_conditionals:
+        result = []
+        inner = generate_code_for_sched_index(codegen_state, schedule_index)
+        if inner is not None:
+            result.append(inner)
+        return merge_codegen_results(codegen_state, result)
 
     # {{{ pass 1: pre-scan schedule for my schedule item's siblings' indices
 

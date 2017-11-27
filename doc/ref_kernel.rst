@@ -130,6 +130,7 @@ Iname Implementation Tags
 Tag                             Meaning
 =============================== ====================================================
 ``None`` | ``"for"``            Sequential loop
+``"ord"``                       Forced-order sequential loop
 ``"l.N"``                       Local (intra-group) axis N ("local")
 ``"g.N"``                       Group-number axis N ("group")
 ``"unr"``                       Unroll
@@ -326,15 +327,25 @@ Expressions
 Loopy's expressions are a slight superset of the expressions supported by
 :mod:`pymbolic`.
 
-* ``if``
-* ``elif`` (following an ``if``)
-* ``else`` (following an ``if`` / ``elif``)
+* ``if(cond, then, else_)``
+
+* ``a[[ 8*i + j ]]``: Linear subscripts.
+  See :class:`loopy.symbolic.LinearSubscript`.
+
 * ``reductions``
-    * duplication of reduction inames
+  See :class:`loopy.symbolic.Reduction`.
+
     * ``reduce`` vs ``simul_reduce``
+
 * complex-valued arithmetic
+
 * tagging of array access and substitution rule use ("$")
+  See :class:`loopy.symbolic.TaggedVariable`.
+
 * ``indexof``, ``indexof_vec``
+* ``cast(type, value)``: No parse syntax currently.
+  See :class:`loopy.symbolic.TypeCast`.
+
 
 TODO: Functions
 TODO: Reductions
@@ -578,5 +589,16 @@ Do not create :class:`LoopKernel` objects directly. Instead, refer to
 .. autoclass:: kernel_state
     :members:
     :undoc-members:
+
+Implementation Detail: The Base Array
+-------------------------------------
+
+All array-like data in :mod:`loopy` (such as :class:`GlobalArg` and
+:class:`TemporaryVariable`) derive from single, shared base array type,
+described next.
+
+.. currentmodule:: loopy.kernel.array
+
+.. autoclass:: ArrayBase
 
 .. vim: tw=75:spell:fdm=marker

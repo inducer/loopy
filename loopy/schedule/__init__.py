@@ -29,7 +29,7 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
-from pytools.persistent_dict import PersistentDict
+from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -84,14 +84,18 @@ class Barrier(ScheduleItem):
 
         A plain-text comment explaining why the barrier was inserted.
 
-    .. attribute:: kind
+    .. attribute:: synchronization_kind
+
+        ``"local"`` or ``"global"``
+
+    .. attribute:: mem_kind
 
         ``"local"`` or ``"global"``
 
     .. attribute:: originating_insn_id
     """
 
-    hash_fields = ["comment", "kind"]
+    hash_fields = ["comment", "synchronization_kind", "mem_kind"]
     __slots__ = hash_fields + ["originating_insn_id"]
 
 # }}}
@@ -206,13 +210,13 @@ def find_loop_nest_with_map(kernel):
     """
     result = {}
 
-    from loopy.kernel.data import ParallelTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
 
     all_nonpar_inames = set([
             iname
             for iname in kernel.all_inames()
             if not isinstance(kernel.iname_to_tag.get(iname),
-                (ParallelTag, IlpBaseTag, VectorizeTag))])
+                (ConcurrentTag, IlpBaseTag, VectorizeTag))])
 
     iname_to_insns = kernel.iname_to_insns()
 
@@ -274,10 +278,10 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
 
     result = {}
 
-    from loopy.kernel.data import ParallelTag, IlpBaseTag, VectorizeTag
+    from loopy.kernel.data import ConcurrentTag, IlpBaseTag, VectorizeTag
     for insn in kernel.instructions:
         for iname in kernel.insn_inames(insn):
-            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag):
+            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag):
                 continue
 
             iname_dep = result.setdefault(iname, set())
@@ -308,7 +312,7 @@ def find_loop_insn_dep_map(kernel, loop_nest_with_map, loop_nest_around_map):
                         continue
 
                     tag = kernel.iname_to_tag.get(dep_insn_iname)
-                    if isinstance(tag, (ParallelTag, IlpBaseTag, VectorizeTag)):
+                    if isinstance(tag, (ConcurrentTag, IlpBaseTag, VectorizeTag)):
                         # Parallel tags don't really nest, so we'll disregard
                         # them here.
                         continue
@@ -431,14 +435,19 @@ def format_insn(kernel, insn_id):
     from loopy.kernel.instruction import (
             MultiAssignmentBase, NoOpInstruction, BarrierInstruction)
     if isinstance(insn, MultiAssignmentBase):
-        return "[%s] %s%s%s <- %s%s%s" % (
-            format_insn_id(kernel, insn_id),
+        return "%s%s%s = %s%s%s  {id=%s}" % (
             Fore.CYAN, ", ".join(str(a) for a in insn.assignees), Style.RESET_ALL,
-            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL)
+            Fore.MAGENTA, str(insn.expression), Style.RESET_ALL,
+            format_insn_id(kernel, insn_id))
     elif isinstance(insn, BarrierInstruction):
-        return "[%s] %s... %sbarrier%s" % (
+        mem_kind = ''
+        if insn.synchronization_kind == 'local':
+            mem_kind = '{mem_kind=%s}' % insn.mem_kind
+
+        return "[%s] %s... %sbarrier%s%s" % (
                 format_insn_id(kernel, insn_id),
-                Fore.MAGENTA, insn.kind[0], Style.RESET_ALL)
+                Fore.MAGENTA, insn.synchronization_kind[0], mem_kind,
+                Style.RESET_ALL)
     elif isinstance(insn, NoOpInstruction):
         return "[%s] %s... nop%s" % (
                 format_insn_id(kernel, insn_id),
@@ -456,11 +465,11 @@ def dump_schedule(kernel, schedule):
     from loopy.kernel.data import MultiAssignmentBase
     for sched_item in schedule:
         if isinstance(sched_item, EnterLoop):
-            lines.append(indent + "FOR %s" % sched_item.iname)
+            lines.append(indent + "for %s" % sched_item.iname)
             indent += "    "
         elif isinstance(sched_item, LeaveLoop):
             indent = indent[:-4]
-            lines.append(indent + "END %s" % sched_item.iname)
+            lines.append(indent + "end %s" % sched_item.iname)
         elif isinstance(sched_item, CallKernel):
             lines.append(indent +
                          "CALL KERNEL %s(extra_args=%s, extra_inames=%s)" % (
@@ -479,7 +488,8 @@ def dump_schedule(kernel, schedule):
                 insn_str = sched_item.insn_id
             lines.append(indent + insn_str)
         elif isinstance(sched_item, Barrier):
-            lines.append(indent + "---BARRIER:%s---" % sched_item.kind)
+            lines.append(indent + "... %sbarrier" %
+                         sched_item.synchronization_kind[0])
         else:
             assert False
 
@@ -833,7 +843,8 @@ def generate_loop_schedules_internal(
         # {{{ check if scheduler state allows insn scheduling
 
         from loopy.kernel.instruction import BarrierInstruction
-        if isinstance(insn, BarrierInstruction) and insn.kind == "global":
+        if isinstance(insn, BarrierInstruction) and \
+                insn.synchronization_kind == "global":
             if not sched_state.may_schedule_global_barriers:
                 if debug_mode:
                     print("can't schedule '%s' because global barriers are "
@@ -1318,7 +1329,8 @@ def convert_barrier_instructions_to_barriers(kernel, schedule):
             insn = kernel.id_to_insn[sched_item.insn_id]
             if isinstance(insn, BarrierInstruction):
                 result.append(Barrier(
-                    kind=insn.kind,
+                    synchronization_kind=insn.synchronization_kind,
+                    mem_kind=insn.mem_kind,
                     originating_insn_id=insn.id,
                     comment="Barrier inserted due to %s" % insn.id))
                 continue
@@ -1415,8 +1427,8 @@ class DependencyTracker(object):
             raise ValueError("unknown 'var_kind': %s" % var_kind)
 
         from collections import defaultdict
-        self.writer_map = defaultdict(lambda: set())
-        self.reader_map = defaultdict(lambda: set())
+        self.writer_map = defaultdict(set)
+        self.reader_map = defaultdict(set)
         self.temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
 
     def map_to_base_storage(self, var_names):
@@ -1577,7 +1589,8 @@ def _insn_ids_reaching_end(schedule, kind, reverse):
             #     end
             #     barrier()
             # end
-            if barrier_kind_more_or_equally_global(sched_item.kind, kind):
+            if barrier_kind_more_or_equally_global(
+                    sched_item.synchronization_kind, kind):
                 insn_ids_alive_at_scope[-1].clear()
         else:
             insn_ids_alive_at_scope[-1] |= set(
@@ -1607,15 +1620,17 @@ def append_barrier_or_raise_error(schedule, dep, verify_only):
                     tgt=dep.target.id, src=dep.source.id))
         schedule.append(Barrier(
             comment=comment,
-            kind=dep.var_kind,
+            synchronization_kind=dep.var_kind,
+            mem_kind=dep.var_kind,
             originating_insn_id=None))
 
 
-def insert_barriers(kernel, schedule, kind, verify_only, level=0):
+def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0):
     """
-    :arg kind: "local" or "global". The :attr:`Barrier.kind` to be inserted.
-        Generally, this function will be called once for each kind of barrier
-        at the top level, where more global barriers should be inserted first.
+    :arg synchronization_kind: "local" or "global".
+        The :attr:`Barrier.synchronization_kind` to be inserted. Generally, this
+        function will be called once for each kind of barrier at the top level, where
+        more global barriers should be inserted first.
     :arg verify_only: do not insert barriers, only complain if they are
         missing.
     :arg level: the current level of loop nesting, 0 for outermost.
@@ -1624,14 +1639,15 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
     # {{{ insert barriers at outermost scheduling level
 
     def insert_barriers_at_outer_level(schedule, reverse=False):
-        dep_tracker = DependencyTracker(kernel, var_kind=kind, reverse=reverse)
+        dep_tracker = DependencyTracker(kernel, var_kind=synchronization_kind,
+                                        reverse=reverse)
 
         if reverse:
             # Populate the dependency tracker with sources from the tail end of
             # the schedule block.
             for insn_id in (
                     insn_ids_reaching_end_without_intervening_barrier(
-                        schedule, kind)):
+                        schedule, synchronization_kind)):
                 dep_tracker.add_source(insn_id)
 
         result = []
@@ -1645,11 +1661,11 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 
                 loop_head = (
                     insn_ids_reachable_from_start_without_intervening_barrier(
-                        subloop, kind))
+                        subloop, synchronization_kind))
 
                 loop_tail = (
                     insn_ids_reaching_end_without_intervening_barrier(
-                        subloop, kind))
+                        subloop, synchronization_kind))
 
                 # Checks if a barrier is needed before the loop. This handles
                 # dependencies with targets that can be reached without an
@@ -1688,7 +1704,8 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 
             elif isinstance(sched_item, Barrier):
                 result.append(sched_item)
-                if barrier_kind_more_or_equally_global(sched_item.kind, kind):
+                if barrier_kind_more_or_equally_global(
+                        sched_item.synchronization_kind, synchronization_kind):
                     dep_tracker.discard_all_sources()
                 i += 1
 
@@ -1724,7 +1741,8 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
         if isinstance(sched_item, EnterLoop):
             subloop, new_i = gather_schedule_block(schedule, i)
             new_subloop = insert_barriers(
-                    kernel, subloop[1:-1], kind, verify_only, level + 1)
+                    kernel, subloop[1:-1], synchronization_kind, verify_only,
+                    level + 1)
             result.append(subloop[0])
             result.extend(new_subloop)
             result.append(subloop[-1])
@@ -1756,7 +1774,8 @@ def insert_barriers(kernel, schedule, kind, verify_only, level=0):
 
 def generate_loop_schedules(kernel, debug_args={}):
     from pytools import MinRecursionLimit
-    with MinRecursionLimit(len(kernel.instructions) * 2):
+    with MinRecursionLimit(max(len(kernel.instructions) * 2,
+                               len(kernel.all_inames()) * 4)):
         for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
             yield sched
 
@@ -1786,7 +1805,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
         for item in preschedule
         for insn_id in sched_item_to_insn_id(item))
 
-    from loopy.kernel.data import IlpBaseTag, ParallelTag, VectorizeTag
+    from loopy.kernel.data import IlpBaseTag, ConcurrentTag, VectorizeTag
     ilp_inames = set(
             iname
             for iname in kernel.all_inames()
@@ -1797,7 +1816,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             if isinstance(kernel.iname_to_tag.get(iname), VectorizeTag))
     parallel_inames = set(
             iname for iname in kernel.all_inames()
-            if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
+            if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
 
     loop_nest_with_map = find_loop_nest_with_map(kernel)
     loop_nest_around_map = find_loop_nest_around_map(kernel)
@@ -1889,11 +1908,11 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
                     if not kernel.options.disable_global_barriers:
                         logger.debug("%s: barrier insertion: global" % kernel.name)
                         gen_sched = insert_barriers(kernel, gen_sched,
-                                kind="global", verify_only=True)
+                                synchronization_kind="global", verify_only=True)
 
                     logger.debug("%s: barrier insertion: local" % kernel.name)
-                    gen_sched = insert_barriers(kernel, gen_sched, kind="local",
-                            verify_only=False)
+                    gen_sched = insert_barriers(kernel, gen_sched,
+                        synchronization_kind="local", verify_only=False)
                     logger.debug("%s: barrier insertion: done" % kernel.name)
 
                 new_kernel = kernel.copy(
@@ -1939,7 +1958,8 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
 # }}}
 
 
-schedule_cache = PersistentDict("loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
+schedule_cache = WriteOncePersistentDict(
+        "loopy-schedule-cache-v4-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
 
 
@@ -1970,7 +1990,7 @@ def get_one_scheduled_kernel(kernel):
             kernel.name, time()-start_time))
 
     if CACHING_ENABLED and not from_cache:
-        schedule_cache[sched_cache_key] = result
+        schedule_cache.store_if_not_present(sched_cache_key, result)
 
     return result
 

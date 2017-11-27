@@ -28,7 +28,7 @@ from loopy.diagnostic import LoopyError, warn
 from pytools import ImmutableRecord
 import islpy as isl
 
-from pytools.persistent_dict import PersistentDict
+from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
 
@@ -357,8 +357,9 @@ class CodeGenerationState(object):
 # }}}
 
 
-code_gen_cache = PersistentDict("loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
-        key_builder=LoopyKeyBuilder())
+code_gen_cache = WriteOncePersistentDict(
+         "loopy-code-gen-cache-v3-"+DATA_MODEL_VERSION,
+         key_builder=LoopyKeyBuilder())
 
 
 class PreambleInfo(ImmutableRecord):
@@ -367,6 +368,7 @@ class PreambleInfo(ImmutableRecord):
     .. attribute:: seen_dtypes
     .. attribute:: seen_functions
     .. attribute:: seen_atomic_dtypes
+    .. attribute:: codegen_state
     """
 
 
@@ -495,7 +497,9 @@ def generate_code_v2(kernel):
             seen_dtypes=seen_dtypes,
             seen_functions=seen_functions,
             # a set of LoopyTypes (!)
-            seen_atomic_dtypes=seen_atomic_dtypes)
+            seen_atomic_dtypes=seen_atomic_dtypes,
+            codegen_state=codegen_state
+            )
 
     preamble_generators = (kernel.preamble_generators
             + kernel.target.get_device_ast_builder().preamble_generators())
@@ -507,15 +511,15 @@ def generate_code_v2(kernel):
     # }}}
 
     # For faster unpickling in the common case when implemented_domains isn't needed.
-    from loopy.tools import LazilyUnpicklingDictionary
+    from loopy.tools import LazilyUnpicklingDict
     codegen_result = codegen_result.copy(
-            implemented_domains=LazilyUnpicklingDictionary(
+            implemented_domains=LazilyUnpicklingDict(
                     codegen_result.implemented_domains))
 
     logger.info("%s: generate code: done" % kernel.name)
 
     if CACHING_ENABLED:
-        code_gen_cache[input_kernel] = codegen_result
+        code_gen_cache.store_if_not_present(input_kernel, codegen_result)
 
     return codegen_result
 

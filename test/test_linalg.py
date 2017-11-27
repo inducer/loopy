@@ -230,14 +230,14 @@ def test_funny_shape_matrix_mul(ctx_factory):
 
     n = get_suitable_size(ctx)
     m = n+12
-    l = m+12
+    ell = m+12
 
     knl = lp.make_kernel(
-            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<l}",
+            "{[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
             [
                 "c[i, j] = sum(k, a[i, k]*b[k, j])"
                 ],
-            name="matmul", assumptions="n,m,l >= 1")
+            name="matmul", assumptions="n,m,ell >= 1")
 
     knl = lp.add_dtypes(knl, {
         "a": np.float32,
@@ -261,7 +261,7 @@ def test_funny_shape_matrix_mul(ctx_factory):
 
     lp.auto_test_vs_ref(ref_knl, ctx, knl,
             op_count=[2*n**3/1e9], op_label=["GFlops"],
-            parameters={"n": n, "m": m, "l": l})
+            parameters={"n": n, "m": m, "ell": ell})
 
 
 def test_rank_one(ctx_factory):

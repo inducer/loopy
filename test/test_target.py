@@ -140,6 +140,32 @@ def test_generate_c_snippet():
     print(lp.generate_body(knl))
 
 
+def test_c_min_max():
+    # Test fmin() fmax() is generated for C backend instead of max() and min()
+    from loopy.target.c import CTarget
+    import pymbolic.primitives as p
+    i = p.Variable("i")
+    xi = p.Subscript(p.Variable("x"), i)
+    yi = p.Subscript(p.Variable("y"), i)
+    zi = p.Subscript(p.Variable("z"), i)
+
+    n = 100
+    domain = "{[i]: 0<=i<%d}" % n
+    data = [lp.GlobalArg("x", np.float64, shape=(n,)),
+            lp.GlobalArg("y", np.float64, shape=(n,)),
+            lp.GlobalArg("z", np.float64, shape=(n,))]
+
+    inst = [lp.Assignment(xi, p.Variable("min")(yi, zi))]
+    knl = lp.make_kernel(domain, inst, data, target=CTarget())
+    code = lp.generate_code_v2(knl).device_code()
+    assert "fmin" in code
+
+    inst = [lp.Assignment(xi, p.Variable("max")(yi, zi))]
+    knl = lp.make_kernel(domain, inst, data, target=CTarget())
+    code = lp.generate_code_v2(knl).device_code()
+    assert "fmax" in code
+
+
 @pytest.mark.parametrize("tp", ["f32", "f64"])
 def test_random123(ctx_factory, tp):
     ctx = ctx_factory()
@@ -238,6 +264,44 @@ def test_numba_cuda_target():
     knl = lp.add_and_infer_dtypes(knl, {"X": np.float32})
 
     print(lp.generate_code_v2(knl).all_code())
+
+
+def test_sized_integer_c_codegen(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        [lp.Assignment("a[i]", lp.TypeCast(np.int64, 1) << var("i"))]
+        )
+
+    knl = lp.set_options(knl, write_code=True)
+    n = 40
+
+    evt, (a,) = knl(queue, n=n)
+
+    a_ref = 1 << np.arange(n, dtype=np.int64)
+
+    assert np.array_equal(a_ref, a.get())
+
+
+def test_child_invalid_type_cast():
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        ["<> ctr = make_uint2(0, 0)",
+         lp.Assignment("a[i]", lp.TypeCast(np.int64, var("ctr")) << var("i"))]
+        )
+
+    with pytest.raises(lp.LoopyError):
+        knl = lp.preprocess_kernel(knl)
+
+
+def test_target_invalid_type_cast():
+    dtype = np.dtype([('', '<u4'), ('', '<i4')])
+    with pytest.raises(lp.LoopyError):
+        lp.TypeCast(dtype, 1)
 
 
 if __name__ == "__main__":

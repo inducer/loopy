@@ -38,7 +38,6 @@ __doc__ = """
 
 .. currentmodule:: loopy
 
-.. autoclass:: GuardedPwQPolynomial
 .. autoclass:: ToCountMap
 .. autoclass:: Op
 .. autoclass:: MemAccess
@@ -50,6 +49,11 @@ __doc__ = """
 .. autofunction:: gather_access_footprints
 .. autofunction:: gather_access_footprint_bytes
 
+.. currentmodule:: loopy.statistics
+
+.. autoclass:: GuardedPwQPolynomial
+
+.. currentmodule:: loopy
 """
 
 
@@ -996,6 +1000,9 @@ def add_assumptions_guard(kernel, pwqpolynomial):
 
 def count(kernel, set, space=None):
     try:
+        if space is not None:
+            set = set.align_params(space)
+
         return add_assumptions_guard(kernel, set.card())
     except AttributeError:
         pass
@@ -1410,7 +1417,8 @@ def get_synchronization_map(knl):
                 iname_list.pop()
 
         elif isinstance(sched_item, Barrier):
-            result = result + ToCountMap({"barrier_%s" % sched_item.kind:
+            result = result + ToCountMap({"barrier_%s" %
+                                          sched_item.synchronization_kind:
                                           get_count_poly(iname_list)})
 
         elif isinstance(sched_item, CallKernel):

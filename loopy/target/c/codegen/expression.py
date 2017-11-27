@@ -29,8 +29,10 @@ import numpy as np
 
 from pymbolic.mapper import RecursiveMapper, IdentityMapper
 from pymbolic.mapper.stringifier import (PREC_NONE, PREC_CALL, PREC_PRODUCT,
-        PREC_POWER,
-        PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND)
+        PREC_POWER, PREC_SHIFT,
+        PREC_UNARY, PREC_LOGICAL_OR, PREC_LOGICAL_AND,
+        PREC_BITWISE_AND, PREC_BITWISE_OR)
+
 import islpy as isl
 import pymbolic.primitives as p
 from pymbolic import var
@@ -337,6 +339,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     self.rec(expr.left, inner_type_context),
                     expr.operator,
                     self.rec(expr.right, inner_type_context))
+
+    def map_type_cast(self, expr, type_context):
+        registry = self.codegen_state.ast_builder.target.get_dtype_registry()
+        cast = var("(%s)" % registry.dtype_to_ctype(expr.type))
+        return cast(self.rec(expr.child, type_context))
 
     def map_constant(self, expr, type_context):
         if isinstance(expr, (complex, np.complexfloating)):
@@ -782,6 +789,16 @@ class CExpressionToCodeMapper(RecursiveMapper):
     def map_literal(self, expr, enclosing_prec):
         return expr.s
 
+    def map_left_shift(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+            self.join_rec(" << ", (expr.shiftee, expr.shift), PREC_SHIFT),
+            enclosing_prec, PREC_SHIFT)
+
+    def map_right_shift(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+            self.join_rec(" >> ", (expr.shiftee, expr.shift), PREC_SHIFT),
+            enclosing_prec, PREC_SHIFT)
+
     def map_logical_not(self, expr, enclosing_prec):
         return self.parenthesize_if_needed(
                 "!" + self.rec(expr.child, PREC_UNARY),
@@ -806,6 +823,21 @@ class CExpressionToCodeMapper(RecursiveMapper):
         if enclosing_prec > PREC_LOGICAL_OR:
             result = "(%s)" % result
         return result
+
+    def map_bitwise_not(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+                "~" + self.rec(expr.child, PREC_UNARY),
+                enclosing_prec, PREC_UNARY)
+
+    def map_bitwise_and(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+                self.join_rec(" & ", expr.children, PREC_BITWISE_AND),
+                enclosing_prec, PREC_BITWISE_AND)
+
+    def map_bitwise_or(self, expr, enclosing_prec):
+        return self.parenthesize_if_needed(
+                self.join_rec(" | ", expr.children, PREC_BITWISE_OR),
+                enclosing_prec, PREC_BITWISE_OR)
 
     def map_sum(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_SUM

@@ -152,6 +152,12 @@ class InstructionBase(ImmutableRecord):
             "within_inames_is_final within_inames "
             "priority boostable boostable_into".split())
 
+    # Names of fields that are pymbolic expressions. Needed for key building
+    pymbolic_fields = set("")
+
+    # Names of fields that are sets of pymbolic expressions. Needed for key building
+    pymbolic_set_fields = set(["predicates"])
+
     def __init__(self, id, depends_on, depends_on_is_final,
             groups, conflicts_with_groups,
             no_sync_with,
@@ -407,7 +413,27 @@ class InstructionBase(ImmutableRecord):
 
         return result
 
-    # {{{ comparison, hashing
+    # {{{ hashing and key building
+
+    @property
+    @memoize_method
+    def _key_builder(self):
+        from loopy.tools import LoopyEqKeyBuilder
+        key_builder = LoopyEqKeyBuilder()
+        key_builder.update_for_class(self.__class__)
+
+        for field_name in self.fields:
+            field_value = getattr(self, field_name)
+            if field_name in self.pymbolic_fields:
+                key_builder.update_for_pymbolic_field(field_name, field_value)
+            elif field_name in self.pymbolic_set_fields:
+                # First sort the fields, as a canonical form
+                items = tuple(sorted(field_value, key=str))
+                key_builder.update_for_pymbolic_field(field_name, items)
+            else:
+                key_builder.update_for_field(field_name, field_value)
+
+        return key_builder
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -416,9 +442,7 @@ class InstructionBase(ImmutableRecord):
         Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
         """
 
-        # Order matters for hash forming--sort the field names
-        for field_name in sorted(self.fields):
-            key_builder.rec(key_hash, getattr(self, field_name))
+        key_builder.rec(key_hash, self._key_builder.hash_key())
 
     # }}}
 
@@ -648,6 +672,7 @@ class MultiAssignmentBase(InstructionBase):
     """An assignment instruction with an expression as a right-hand side."""
 
     fields = InstructionBase.fields | set(["expression"])
+    pymbolic_fields = InstructionBase.pymbolic_fields | set(["expression"])
 
     @memoize_method
     def read_dependency_names(self):
@@ -734,6 +759,7 @@ class Assignment(MultiAssignmentBase):
 
     fields = MultiAssignmentBase.fields | \
             set("assignee temp_var_type atomicity".split())
+    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | set(["assignee"])
 
     def __init__(self,
             assignee, expression,
@@ -818,26 +844,6 @@ class Assignment(MultiAssignmentBase):
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
 
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-
-        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
-        """
-
-        # Order matters for hash forming--sort the fields.
-        for field_name in sorted(self.fields):
-            if field_name in ["assignee", "expression"]:
-                key_builder.update_for_pymbolic_expression(
-                        key_hash, getattr(self, field_name))
-            elif field_name == "predicates":
-                preds = sorted(self.predicates, key=str)
-                for pred in preds:
-                    key_builder.update_for_pymbolic_expression(
-                            key_hash, pred)
-            else:
-                key_builder.rec(key_hash, getattr(self, field_name))
-
     # {{{ for interface uniformity with CallInstruction
 
     @property
@@ -886,6 +892,7 @@ class CallInstruction(MultiAssignmentBase):
 
     fields = MultiAssignmentBase.fields | \
             set("assignees temp_var_types".split())
+    pymbolic_fields = MultiAssignmentBase.pymbolic_fields | set(["assignees"])
 
     def __init__(self,
             assignees, expression,
@@ -987,26 +994,6 @@ class CallInstruction(MultiAssignmentBase):
             result += "\n" + 10*" " + "if (%s)" % " && ".join(self.predicates)
         return result
 
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-
-        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
-        """
-
-        # Order matters for hash forming--sort the fields.
-        for field_name in sorted(self.fields):
-            if field_name in ["assignees", "expression"]:
-                key_builder.update_for_pymbolic_expression(
-                        key_hash, getattr(self, field_name))
-            elif field_name == "predicates":
-                preds = sorted(self.predicates, key=str)
-                for pred in preds:
-                    key_builder.update_for_pymbolic_expression(
-                            key_hash, pred)
-            else:
-                key_builder.rec(key_hash, getattr(self, field_name))
-
     @property
     def atomicity(self):
         # Function calls can impossibly be atomic, and even the result assignment
@@ -1086,6 +1073,10 @@ class CInstruction(InstructionBase):
 
     fields = InstructionBase.fields | \
             set("iname_exprs code read_variables assignees".split())
+    pymbolic_fields = InstructionBase.pymbolic_fields | \
+            set("iname_exprs assignees".split())
+    pymbolic_set_fields = InstructionBase.pymbolic_set_fields | \
+            set(["read_variables"])
 
     def __init__(self,
             iname_exprs, code,
@@ -1210,25 +1201,6 @@ class CInstruction(InstructionBase):
         return first_line + "\n    " + "\n    ".join(
                 self.code.split("\n"))
 
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-
-        Only works in conjunction with :class:`loopy.tools.KeyBuilder`.
-        """
-
-        # Order matters for hash forming--sort the fields.
-        for field_name in sorted(self.fields):
-            if field_name == "assignees":
-                for a in self.assignees:
-                    key_builder.update_for_pymbolic_expression(key_hash, a)
-            elif field_name == "iname_exprs":
-                for name, val in self.iname_exprs:
-                    key_builder.rec(key_hash, name)
-                    key_builder.update_for_pymbolic_expression(key_hash, val)
-            else:
-                key_builder.rec(key_hash, getattr(self, field_name))
-
 # }}}
 
 
@@ -1308,19 +1280,29 @@ class NoOpInstruction(_DataObliviousInstruction):
 
 class BarrierInstruction(_DataObliviousInstruction):
     """An instruction that requires synchronization with all
-    concurrent work items of :attr:`kind`.
+    concurrent work items of :attr:`synchronization_kind`.
 
-    .. attribute:: kind
+    .. attribute:: synchronization_kind
 
         A string, ``"global"`` or ``"local"``.
+
+    .. attribute:: mem_kind
+
+        A string, ``"global"`` or ``"local"``. Chooses which memory type to
+        sychronize, for targets that require this (e.g. OpenCL)
 
     The textual syntax in a :mod:`loopy` kernel is::
 
         ... gbarrier
         ... lbarrier
+
+    Note that the memory type :attr:`mem_kind` can be specified for local barriers::
+
+        ... lbarrier {mem_kind=global}
     """
 
-    fields = _DataObliviousInstruction.fields | set(["kind"])
+    fields = _DataObliviousInstruction.fields | set(["synchronization_kind",
+                                                     "mem_kind"])
 
     def __init__(self, id, depends_on=None, depends_on_is_final=None,
             groups=None, conflicts_with_groups=None,
@@ -1328,7 +1310,8 @@ class BarrierInstruction(_DataObliviousInstruction):
             within_inames_is_final=None, within_inames=None,
             priority=None,
             boostable=None, boostable_into=None,
-            predicates=None, tags=None, kind="global"):
+            predicates=None, tags=None, synchronization_kind="global",
+            mem_kind="local"):
 
         if predicates:
             raise LoopyError("conditional barriers are not supported")
@@ -1346,20 +1329,32 @@ class BarrierInstruction(_DataObliviousInstruction):
                 boostable=boostable,
                 boostable_into=boostable_into,
                 predicates=predicates,
-                tags=tags,
+                tags=tags
                 )
 
-        self.kind = kind
+        self.synchronization_kind = synchronization_kind
+        self.mem_kind = mem_kind
 
     def __str__(self):
-        first_line = "%s: ... %sbarrier" % (self.id, self.kind[0])
+        first_line = "%s: ... %sbarrier" % (self.id, self.synchronization_kind[0])
 
         options = self.get_str_options()
+        if self.synchronization_kind == "local":
+            # add the memory kind
+            options += ['mem_kind={}'.format(self.mem_kind)]
         if options:
             first_line += " {%s}" % (": ".join(options))
 
         return first_line
 
+    @property
+    def kind(self):
+        from warnings import warn
+        warn("BarrierInstruction.kind is deprecated, use synchronization_kind "
+             "instead", DeprecationWarning, stacklevel=2)
+        return self.synchronization_kind
+
 # }}}
+
 
 # vim: foldmethod=marker

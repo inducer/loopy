@@ -90,7 +90,7 @@ def get_slab_decomposition(kernel, iname):
                         iname_rel_aff(space,
                             iname, "<=", upper_bound_aff-upper_incr)))
         else:
-            lower_slab = None
+            upper_slab = None
 
         slabs = []
 
@@ -231,7 +231,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
     kernel = codegen_state.kernel
 
     from loopy.kernel.data import (
-            UniqueTag, HardwareParallelTag, LocalIndexTag, GroupIndexTag)
+            UniqueTag, HardwareConcurrentTag, LocalIndexTag, GroupIndexTag)
 
     from loopy.schedule import get_insn_ids_for_block_at
     insn_ids_for_block = get_insn_ids_for_block_at(kernel.schedule, schedule_index)
@@ -243,7 +243,7 @@ def set_up_hw_parallel_loops(codegen_state, schedule_index, next_func,
 
         hw_inames_left = [iname
                 for iname in all_inames_by_insns
-                if isinstance(kernel.iname_to_tag.get(iname), HardwareParallelTag)]
+                if isinstance(kernel.iname_to_tag.get(iname), HardwareConcurrentTag)]
 
     if not hw_inames_left:
         return next_func(codegen_state)
@@ -446,7 +446,7 @@ def generate_sequential_loop_dim_code(codegen_state, sched_index):
 
         from loopy.symbolic import pw_aff_to_expr
 
-        if ubound.is_equal(lbound):
+        if impl_ubound.is_equal(impl_lbound):
             # single-trip, generate just a variable assignment, not a loop
             inner = merge_codegen_results(codegen_state, [
                 astb.emit_initializer(

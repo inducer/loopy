@@ -35,7 +35,7 @@ import islpy as isl
 from islpy import dim_type
 from loopy.diagnostic import LoopyError, warn_with_kernel
 from pytools import memoize_on_first_arg
-
+from loopy.tools import natsorted
 
 import logging
 logger = logging.getLogger(__name__)
@@ -620,11 +620,11 @@ class DomainParameterFinder(object):
                         if dep.name in param_names:
                             from pymbolic.algorithm import solve_affine_equations_for
                             try:
-                                # friggin' overkill :)
+                                # overkill :)
                                 param_expr = solve_affine_equations_for(
                                         [dep.name], [(shape_i, var("shape_i"))]
                                         )[dep.name]
-                            except:
+                            except Exception:
                                 # went wrong? oh well
                                 pass
                             else:
@@ -1070,7 +1070,7 @@ def guess_var_shape(kernel, var_name):
 
             if n_axes == 1:
                 # Leave shape undetermined--we can live with that for 1D.
-                shape = (None,)
+                shape = None
             else:
                 raise LoopyError("cannot determine access range for '%s': "
                         "undetermined index in subscript(s) '%s'"
@@ -1092,7 +1092,7 @@ def guess_var_shape(kernel, var_name):
                             kernel.cache_manager.dim_max(
                                 armap.access_range, i) + 1,
                             constants_only=False)))
-            except:
+            except Exception:
                 print("While trying to find shape axis %d of "
                         "variable '%s', the following "
                         "exception occurred:" % (i, var_name),
@@ -1371,7 +1371,170 @@ def draw_dependencies_as_unicode_arrows(
                 conform_to_uniform_length(extender))
             for row, extender in rows]
 
-    return rows
+    return uniform_length, rows
+
+# }}}
+
+
+# {{{ stringify_instruction_list
+
+def stringify_instruction_list(kernel):
+    # {{{ topological sort
+
+    printed_insn_ids = set()
+    printed_insn_order = []
+
+    def insert_insn_into_order(insn):
+        if insn.id in printed_insn_ids:
+            return
+        printed_insn_ids.add(insn.id)
+
+        for dep_id in natsorted(insn.depends_on):
+            insert_insn_into_order(kernel.id_to_insn[dep_id])
+
+        printed_insn_order.append(insn)
+
+    for insn in kernel.instructions:
+        insert_insn_into_order(insn)
+
+    # }}}
+
+    import loopy as lp
+
+    Fore = kernel.options._fore  # noqa
+    Style = kernel.options._style  # noqa
+
+    uniform_arrow_length, arrows_and_extenders = \
+            draw_dependencies_as_unicode_arrows(
+                    printed_insn_order, fore=Fore, style=Style)
+
+    leader = " " * uniform_arrow_length
+    lines = []
+    current_inames = [set()]
+
+    if uniform_arrow_length:
+        indent_level = [1]
+    else:
+        indent_level = [0]
+
+    indent_increment = 2
+
+    iname_order = kernel._get_iname_order_for_printing()
+
+    def add_pre_line(s):
+        lines.append(leader + " " * indent_level[0] + s)
+
+    def add_main_line(s):
+        lines.append(arrows + " " * indent_level[0] + s)
+
+    def add_post_line(s):
+        lines.append(extender + " " * indent_level[0] + s)
+
+    def adapt_to_new_inames_list(new_inames):
+        added = []
+        removed = []
+
+        # FIXME: Doesn't respect strict nesting
+        for iname in iname_order:
+            is_in_current = iname in current_inames[0]
+            is_in_new = iname in new_inames
+
+            if is_in_new == is_in_current:
+                pass
+            elif is_in_new and not is_in_current:
+                added.append(iname)
+            elif not is_in_new and is_in_current:
+                removed.append(iname)
+            else:
+                assert False
+
+        if removed:
+            indent_level[0] -= indent_increment * len(removed)
+            add_pre_line("end " + ", ".join(removed))
+        if added:
+            add_pre_line("for " + ", ".join(added))
+            indent_level[0] += indent_increment * len(added)
+
+        current_inames[0] = new_inames
+
+    for insn, (arrows, extender) in zip(printed_insn_order, arrows_and_extenders):
+        if isinstance(insn, lp.MultiAssignmentBase):
+            lhs = ", ".join(str(a) for a in insn.assignees)
+            rhs = str(insn.expression)
+            trailing = []
+        elif isinstance(insn, lp.CInstruction):
+            lhs = ", ".join(str(a) for a in insn.assignees)
+            rhs = "CODE(%s|%s)" % (
+                    ", ".join(str(x) for x in insn.read_variables),
+                    ", ".join("%s=%s" % (name, expr)
+                        for name, expr in insn.iname_exprs))
+
+            trailing = [l for l in insn.code.split("\n")]
+        elif isinstance(insn, lp.BarrierInstruction):
+            lhs = ""
+            rhs = "... %sbarrier" % insn.synchronization_kind[0]
+            trailing = []
+
+        elif isinstance(insn, lp.NoOpInstruction):
+            lhs = ""
+            rhs = "... nop"
+            trailing = []
+
+        else:
+            raise LoopyError("unexpected instruction type: %s"
+                    % type(insn).__name__)
+
+        adapt_to_new_inames_list(kernel.insn_inames(insn))
+
+        options = ["id="+Fore.GREEN+insn.id+Style.RESET_ALL]
+        if insn.priority:
+            options.append("priority=%d" % insn.priority)
+        if insn.tags:
+            options.append("tags=%s" % ":".join(insn.tags))
+        if isinstance(insn, lp.Assignment) and insn.atomicity:
+            options.append("atomic=%s" % ":".join(
+                str(a) for a in insn.atomicity))
+        if insn.groups:
+            options.append("groups=%s" % ":".join(insn.groups))
+        if insn.conflicts_with_groups:
+            options.append(
+                    "conflicts=%s" % ":".join(insn.conflicts_with_groups))
+        if insn.no_sync_with:
+            options.append("no_sync_with=%s" % ":".join(
+                "%s@%s" % entry for entry in sorted(insn.no_sync_with)))
+        if isinstance(insn, lp.BarrierInstruction) and \
+                insn.synchronization_kind == 'local':
+            options.append('mem_kind=%s' % insn.mem_kind)
+
+        if lhs:
+            core = "%s = %s" % (
+                Fore.CYAN+lhs+Style.RESET_ALL,
+                Fore.MAGENTA+rhs+Style.RESET_ALL,
+                )
+        else:
+            core = Fore.MAGENTA+rhs+Style.RESET_ALL
+
+        options_str = "  {%s}" % ", ".join(options)
+
+        if insn.predicates:
+            # FIXME: precedence
+            add_pre_line("if %s" % " and ".join([str(x) for x in insn.predicates]))
+            indent_level[0] += indent_increment
+
+        add_main_line(core + options_str)
+
+        for t in trailing:
+            add_post_line(t)
+
+        if insn.predicates:
+            indent_level[0] -= indent_increment
+            add_post_line("end")
+
+        leader = extender
+
+    adapt_to_new_inames_list([])
+
+    return lines
 
 # }}}
 
@@ -1394,7 +1557,8 @@ def get_global_barrier_order(kernel):
     def is_barrier(my_insn_id):
         insn = kernel.id_to_insn[my_insn_id]
         from loopy.kernel.instruction import BarrierInstruction
-        return isinstance(insn, BarrierInstruction) and insn.kind == "global"
+        return isinstance(insn, BarrierInstruction) and \
+            insn.synchronization_kind == "global"
 
     while unvisited:
         stack = [unvisited.pop()]
@@ -1487,7 +1651,8 @@ def find_most_recent_global_barrier(kernel, insn_id):
     def is_barrier(my_insn_id):
         insn = kernel.id_to_insn[my_insn_id]
         from loopy.kernel.instruction import BarrierInstruction
-        return isinstance(insn, BarrierInstruction) and insn.kind == "global"
+        return isinstance(insn, BarrierInstruction) and \
+            insn.synchronization_kind == "global"
 
     global_barrier_to_ordinal = dict(
             (b, i) for i, b in enumerate(global_barrier_order))

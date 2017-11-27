@@ -27,7 +27,7 @@ import six
 from six.moves import range, zip
 
 from loopy.symbolic import (
-        TaggedVariable, Reduction, LinearSubscript, )
+        TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
 
 
@@ -112,7 +112,7 @@ from loopy.transform.ilp import realize_ilp
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
-
+from loopy.transform.add_barrier import add_barrier
 # }}}
 
 from loopy.type_inference import infer_unknown_types
@@ -145,7 +145,7 @@ from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
 
 __all__ = [
-        "TaggedVariable", "Reduction", "LinearSubscript",
+        "TaggedVariable", "Reduction", "LinearSubscript", "TypeCast",
 
         "auto",
 
@@ -214,6 +214,8 @@ __all__ = [
         "assume", "fix_parameters",
 
         "save_and_reload_temporaries",
+
+        "add_barrier",
 
         # }}}
 

@@ -74,6 +74,8 @@ Manipulating Instructions
 
 .. autofunction:: add_nosync
 
+.. autofunction:: add_barrier
+
 Registering Library Routines
 ----------------------------
 

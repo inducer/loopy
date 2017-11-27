@@ -28,6 +28,7 @@ import pytest
 import loopy as lp
 import pyopencl as cl
 import sys
+import os
 
 pytestmark = pytest.mark.importorskip("fparser")
 
@@ -49,7 +50,7 @@ __all__ = [
 def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     ctx = ctx_factory()
 
-    filename = "strongVolumeKernels.f90"
+    filename = os.path.join(os.path.dirname(__file__), "strongVolumeKernels.f90")
     with open(filename, "r") as sourcef:
         source = sourcef.read()
 
