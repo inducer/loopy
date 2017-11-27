@@ -149,11 +149,11 @@ def test_c_min_max():
     yi = p.Subscript(p.Variable("y"), i)
     zi = p.Subscript(p.Variable("z"), i)
 
-    N = 100
-    domain = "{[i]: 0<=i<%d}" % N
-    data = [lp.GlobalArg("x", np.float64, shape=(N,)),
-            lp.GlobalArg("y", np.float64, shape=(N,)),
-            lp.GlobalArg("z", np.float64, shape=(N,))]
+    n = 100
+    domain = "{[i]: 0<=i<%d}" % n
+    data = [lp.GlobalArg("x", np.float64, shape=(n,)),
+            lp.GlobalArg("y", np.float64, shape=(n,)),
+            lp.GlobalArg("z", np.float64, shape=(n,))]
 
     inst = [lp.Assignment(xi, p.Variable("min")(yi, zi))]
     knl = lp.make_kernel(domain, inst, data, target=CTarget())
