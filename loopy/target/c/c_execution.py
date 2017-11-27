@@ -390,7 +390,7 @@ class CKernelExecutor(KernelExecutorBase):
         all_code = '\n'.join([dev_code, '', host_code])
 
         if self.kernel.options.write_cl:
-            output = dev_code
+            output = all_code
             if self.kernel.options.highlight_cl:
                 output = self.get_highlighted_code(output)
 
