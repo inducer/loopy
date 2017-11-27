@@ -168,9 +168,6 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # }}}
 
-    def generate_host_code(self, gen, codegen_result):
-        pass
-
     def get_arg_pass(self, arg):
         return arg.name
 

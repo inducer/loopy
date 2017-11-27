@@ -205,9 +205,6 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # }}}
 
-    def generate_host_code(self, gen, codegen_result):
-        gen.add_to_preamble(codegen_result.host_code())
-
     def get_arg_pass(self, arg):
         return "%s.base_data" % arg.name
 

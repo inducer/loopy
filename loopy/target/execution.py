@@ -586,7 +586,7 @@ class ExecutionWrapperGeneratorBase(object):
     # }}}
 
     def generate_host_code(self, gen, codegen_result):
-        raise NotImplementedError()
+        gen.add_to_preamble(codegen_result.host_code())
 
     def __call__(self, kernel, codegen_result):
         """
