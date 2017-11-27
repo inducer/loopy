@@ -694,15 +694,14 @@ class KernelExecutorBase(object):
 
         self.invoker = invoker
 
-    @memoize_method
-    def get_typed_and_scheduled_kernel(self, var_to_dtype_set):
-        kernel = self.kernel
-
+    def get_typed_and_scheduled_kernel_uncached(self, arg_to_dtype_set):
         from loopy.kernel.tools import add_dtypes
 
-        if var_to_dtype_set:
+        kernel = self.kernel
+
+        if arg_to_dtype_set:
             var_to_dtype = {}
-            for var, dtype in var_to_dtype_set:
+            for var, dtype in arg_to_dtype_set:
                 try:
                     dest_name = kernel.impl_arg_to_arg[var].name
                 except KeyError:
