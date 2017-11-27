@@ -28,7 +28,7 @@ import six
 
 import numpy as np  # noqa
 from loopy.kernel.data import CallMangleInfo
-from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
+from loopy.target import TargetBase, ASTBuilderBase
 from loopy.diagnostic import LoopyError
 from cgen import Pointer, NestedDeclarator, Block
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
@@ -271,7 +271,7 @@ class CTarget(TargetBase):
         return False
 
     def get_host_ast_builder(self):
-        return DummyHostASTBuilder(self)
+        return CASTBuilder(self)
 
     def get_device_ast_builder(self):
         return CASTBuilder(self)
@@ -482,6 +482,13 @@ class CASTBuilder(ASTBuilderBase):
                     Value("void", name),
                     [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
                         for idi in codegen_state.implemented_data_info]))
+
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        from cgen import Block, Statement
+        implemented_data_info = codegen_state.implemented_data_info
+        arg_names = [iai.name for iai in implemented_data_info]
+
+        return Block([Statement("%s(%s)" % (name, ", ".join(arg_names)))])
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import temp_var_scope

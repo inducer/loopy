@@ -168,6 +168,12 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # }}}
 
+    def generate_host_code(self, gen, codegen_result):
+        # "host" code for C is embedded in the same file as the "device" code
+        # this will enable a logical jumping off point for global barriers for
+        # OpenMP, etc.
+        pass
+
     def get_arg_pass(self, arg):
         return arg.name
 
@@ -380,6 +386,8 @@ class CKernelExecutor(KernelExecutorBase):
         codegen_result = generate_code_v2(kernel)
 
         dev_code = codegen_result.device_code()
+        host_code = codegen_result.host_code()
+        all_code = '\n'.join([dev_code, '', host_code])
 
         if self.kernel.options.write_cl:
             output = dev_code
@@ -396,14 +404,12 @@ class CKernelExecutor(KernelExecutorBase):
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
 
-        c_kernels = []
-        for dp in codegen_result.device_programs:
-            c_kernels.append(CompiledCKernel(dp, dev_code,
-                                 self.kernel.target, self.compiler))
+        c_kernel = CompiledCKernel(codegen_result.host_program, all_code,
+                                   self.kernel.target, self.compiler)
 
         return _KernelInfo(
                 kernel=kernel,
-                c_kernels=c_kernels,
+                c_kernels=[c_kernel],
                 implemented_data_info=codegen_result.implemented_data_info,
                 invoker=self.invoker(kernel, codegen_result))
 
