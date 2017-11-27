@@ -27,7 +27,7 @@ import cgen
 import os
 
 from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
-                             ExecutionWrapperGeneratorBase)
+                             ExecutionWrapperGeneratorBase, get_highlighted_code)
 from pytools import memoize_method
 from pytools.py_codegen import (Indentation)
 from codepy.toolchain import guess_toolchain
@@ -392,7 +392,7 @@ class CKernelExecutor(KernelExecutorBase):
         if self.kernel.options.write_cl:
             output = all_code
             if self.kernel.options.highlight_cl:
-                output = self.get_highlighted_code(output)
+                output = get_highlighted_code(output)
 
             if self.kernel.options.write_cl is True:
                 print(output)

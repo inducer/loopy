@@ -778,10 +778,6 @@ class KernelExecutorBase(object):
 
     # {{{ debugging aids
 
-    def get_highlighted_code(self, arg_to_dtype=None):
-        return get_highlighted_code(
-                self.get_code(arg_to_dtype))
-
     def get_code(self, arg_to_dtype=None):
         if arg_to_dtype is not None:
             arg_to_dtype = frozenset(six.iteritems(arg_to_dtype))
