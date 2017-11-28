@@ -392,7 +392,7 @@ class CKernelExecutor(KernelExecutorBase):
         if self.kernel.options.write_cl:
             output = all_code
             if self.kernel.options.highlight_cl:
-                output = get_highlighted_code(output)
+                output = get_highlighted_code(code=output)
 
             if self.kernel.options.write_cl is True:
                 print(output)
