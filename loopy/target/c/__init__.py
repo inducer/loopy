@@ -27,12 +27,14 @@ THE SOFTWARE.
 import six
 
 import numpy as np  # noqa
+from loopy.kernel.data import CallMangleInfo
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError
 from cgen import Pointer, NestedDeclarator, Block
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.symbolic import IdentityMapper
+from loopy.types import NumpyType
 import pymbolic.primitives as p
 
 from pytools import memoize_method
@@ -313,8 +315,68 @@ class _ConstPointer(Pointer):
         return sub_tp, ("*const %s" % sub_decl)
 
 
+# {{{ symbol mangler
+
+def c_symbol_mangler(kernel, name):
+    # float NAN as defined in C99 standard
+    if name == "NAN":
+        return NumpyType(np.dtype(np.float32)), name
+    return None
+
+# }}}
+
+
+# {{{ function mangler
+
+def c_function_mangler(target, name, arg_dtypes):
+    # convert abs(), min(), max() to fabs(), fmin(), fmax() to comply with
+    # C99 standard
+    if not isinstance(name, str):
+        return None
+
+    if (name == "abs"
+            and len(arg_dtypes) == 1
+            and arg_dtypes[0].numpy_dtype.kind == "f"):
+        return CallMangleInfo(
+                target_name="fabs",
+                result_dtypes=arg_dtypes,
+                arg_dtypes=arg_dtypes)
+
+    if name in ["max", "min"] and len(arg_dtypes) == 2:
+        dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for dtype in arg_dtypes])
+
+        if dtype.kind == "c":
+            raise RuntimeError("min/max do not support complex numbers")
+
+        if dtype.kind == "f":
+            name = "f" + name
+
+        result_dtype = NumpyType(dtype)
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(result_dtype,),
+                arg_dtypes=2*(result_dtype,))
+
+    return None
+
+# }}}
+
+
 class CASTBuilder(ASTBuilderBase):
     # {{{ library
+
+    def function_manglers(self):
+        return (
+                super(CASTBuilder, self).function_manglers() + [
+                    c_function_mangler
+                    ])
+
+    def symbol_manglers(self):
+        return (
+                super(CASTBuilder, self).symbol_manglers() + [
+                    c_symbol_mangler
+                    ])
 
     def preamble_generators(self):
         return (
