@@ -344,14 +344,15 @@ def c_function_mangler(target, name, arg_dtypes):
         if name in ["abs"]:
             name = "f" + name
 
-        if dtype == np.float64:
-            pass  # fabs
-        elif dtype == np.float32:
-            name = name + "f"  # fabsf
-        elif dtype == np.float128:
-            name = name + "l"  # fabsl
-        else:
-            raise RuntimeError("%s does not support type %s" % name, dtype)
+        if isinstance(target.target, CTarget):
+            if dtype == np.float64:
+                pass  # fabs
+            elif dtype == np.float32:
+                name = name + "f"  # fabsf
+            elif dtype == np.float128:
+                name = name + "l"  # fabsl
+            else:
+                raise RuntimeError("%s does not support type %s" % name, dtype)
 
         return CallMangleInfo(
                 target_name=name,
@@ -367,14 +368,15 @@ def c_function_mangler(target, name, arg_dtypes):
         if name in ["max", "min"]:
             name = "f" + name
 
-        if dtype == np.float64:
-            pass  # fmin
-        elif dtype == np.float32:
-            name = name + "f"  # fminf
-        elif dtype == np.float128:
-            name = name + "l"  # fminl
-        else:
-            raise RuntimeError("%s does not support type %s" % name, dtype)
+        if isinstance(target.target, CTarget):
+            if dtype == np.float64:
+                pass  # fmin
+            elif dtype == np.float32:
+                name = name + "f"  # fminf
+            elif dtype == np.float128:
+                name = name + "l"  # fminl
+            else:
+                raise RuntimeError("%s does not support type %s" % name, dtype)
 
         result_dtype = NumpyType(dtype)
         return CallMangleInfo(
