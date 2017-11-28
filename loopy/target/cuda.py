@@ -220,9 +220,9 @@ class CUDACASTBuilder(CASTBuilder):
 
     def function_manglers(self):
         return (
-                super(CUDACASTBuilder, self).function_manglers() + [
+                [
                     cuda_function_mangler
-                    ])
+                ] + super(CUDACASTBuilder, self).function_manglers())
 
     # }}}
 
