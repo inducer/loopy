@@ -567,10 +567,10 @@ class CASTBuilder(ASTBuilderBase):
                     if tv._base_storage_access_may_be_aliasing:
                         ptrtype = _ConstPointer
                     else:
-                    # The 'restrict' part of this is a complete lie--of course
-                    # all these temporaries are aliased. But we're promising to
-                    # not use them to shovel data from one representation to the
-                    # other. That counts, right?
+                        # The 'restrict' part of this is a complete lie--of course
+                        # all these temporaries are aliased. But we're promising to
+                        # not use them to shovel data from one representation to the
+                        # other. That counts, right?
                         ptrtype = _ConstRestrictPointer
 
                     cast_decl = ptrtype(cast_decl)
