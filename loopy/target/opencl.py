@@ -167,23 +167,31 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
 
-    if (name == "abs"
+    if (name in ["abs", "fabs", "acos", "asin", "atan", "cos", "cosh", "sin",
+                 "sinh", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]
             and len(arg_dtypes) == 1
             and arg_dtypes[0].numpy_dtype.kind == "f"):
+
+        if name in ["abs"]:
+            name = "f" + name
+
         return CallMangleInfo(
-                target_name="fabs",
+                target_name=name,
                 result_dtypes=arg_dtypes,
                 arg_dtypes=arg_dtypes)
 
-    if name in ["max", "min"] and len(arg_dtypes) == 2:
+    if (name in ["max", "min", "fmin", "fmax", "exp"]
+            and len(arg_dtypes) == 2
+            and arg_dtypes[0].numpy_dtype.kind == "f"):
+
+        if name in ["max", "min"]:
+            name = "f" + name
+
         dtype = np.find_common_type(
                 [], [dtype.numpy_dtype for dtype in arg_dtypes])
 
         if dtype.kind == "c":
             raise RuntimeError("min/max do not support complex numbers")
-
-        if dtype.kind == "f":
-            name = "f" + name
 
         result_dtype = NumpyType(dtype)
         return CallMangleInfo(
