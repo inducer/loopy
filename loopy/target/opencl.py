@@ -167,6 +167,30 @@ def opencl_function_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
 
+    if (name == "abs"
+            and len(arg_dtypes) == 1
+            and arg_dtypes[0].numpy_dtype.kind == "f"):
+        return CallMangleInfo(
+                target_name="fabs",
+                result_dtypes=arg_dtypes,
+                arg_dtypes=arg_dtypes)
+
+    if name in ["max", "min"] and len(arg_dtypes) == 2:
+        dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for dtype in arg_dtypes])
+
+        if dtype.kind == "c":
+            raise RuntimeError("min/max do not support complex numbers")
+
+        if dtype.kind == "f":
+            name = "f" + name
+
+        result_dtype = NumpyType(dtype)
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=(result_dtype,),
+                arg_dtypes=2*(result_dtype,))
+
     if name == "dot":
         scalar_dtype, offset, field_name = arg_dtypes[0].numpy_dtype.fields["s0"]
         return CallMangleInfo(
@@ -354,15 +378,15 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     def function_manglers(self):
         return (
-                super(OpenCLCASTBuilder, self).function_manglers() + [
+                [
                     opencl_function_mangler
-                    ])
+                ] + super(OpenCLCASTBuilder, self).function_manglers())
 
     def symbol_manglers(self):
         return (
-                super(OpenCLCASTBuilder, self).symbol_manglers() + [
+                [
                     opencl_symbol_mangler
-                    ])
+                ] + super(OpenCLCASTBuilder, self).symbol_manglers())
 
     def preamble_generators(self):
         from loopy.library.reduction import reduction_preamble_generator

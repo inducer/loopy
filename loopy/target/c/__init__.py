@@ -329,28 +329,52 @@ def c_symbol_mangler(kernel, name):
 # {{{ function mangler
 
 def c_function_mangler(target, name, arg_dtypes):
-    # convert abs(), min(), max() to fabs(), fmin(), fmax() to comply with
-    # C99 standard
+    # select maths functions based on argument type
+    # convert abs(), min(), max() to fabs(), fmin(), fmax()
     if not isinstance(name, str):
         return None
 
-    if (name == "abs"
+    if (name in ["abs", "fabs", "acos", "asin", "atan", "cos", "cosh", "sin",
+                 "sinh", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]
             and len(arg_dtypes) == 1
             and arg_dtypes[0].numpy_dtype.kind == "f"):
+
+        dtype = arg_dtypes[0].numpy_dtype
+
+        if name in ["abs"]:
+            name = "f" + name
+
+        if dtype == np.float64:
+            pass  # fabs
+        elif dtype == np.float32:
+            name = name + "f"  # fabsf
+        elif dtype == np.float128:
+            name = name + "l"  # fabsl
+        else:
+            raise RuntimeError("%s does not support type %s" % name, dtype)
+
         return CallMangleInfo(
-                target_name="fabs",
+                target_name=name,
                 result_dtypes=arg_dtypes,
                 arg_dtypes=arg_dtypes)
 
-    if name in ["max", "min"] and len(arg_dtypes) == 2:
+    if (name in ["max", "min", "fmin", "fmax", "exp"]
+            and len(arg_dtypes) == 2
+            and arg_dtypes[0].numpy_dtype.kind == "f"):
+
         dtype = np.find_common_type(
-                [], [dtype.numpy_dtype for dtype in arg_dtypes])
-
-        if dtype.kind == "c":
-            raise RuntimeError("min/max do not support complex numbers")
-
-        if dtype.kind == "f":
+            [], [dtype.numpy_dtype for dtype in arg_dtypes])
+        if name in ["max", "min"]:
             name = "f" + name
+
+        if dtype == np.float64:
+            pass  # fmin
+        elif dtype == np.float32:
+            name = name + "f"  # fminf
+        elif dtype == np.float128:
+            name = name + "l"  # fminl
+        else:
+            raise RuntimeError("%s does not support type %s" % name, dtype)
 
         result_dtype = NumpyType(dtype)
         return CallMangleInfo(
