@@ -794,8 +794,17 @@ class LocalMemAccessCounter(MemAccessCounter):
         sub_map = ToCountMap()
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
-            if array.is_local:
-                sub_map[MemAccess(mtype='local', dtype=dtype)] = 1
+            try:
+                if array.is_local:
+                    sub_map[MemAccess(mtype='local', dtype=dtype)] = 1
+            except LoopyError as e:
+                error_str = str(e)
+                expected = "TemporaryVariable.is_local called on global"
+                "temporaty variable '%s'" % array.name
+                if error_str == expected:
+                    pass
+                else:
+                    LoopyError(error_str)
         return sub_map
 
     def map_variable(self, expr):
@@ -902,7 +911,13 @@ class GlobalMemAccessCounter(MemAccessCounter):
         for idx, axis_tag in zip(index, array.dim_tags):
 
             from loopy.symbolic import simplify_using_aff
-            coeffs = CoefficientCollector()(simplify_using_aff(self.knl, idx))
+            from loopy.diagnostic import ExpressionNotAffineInamesError
+            try:
+                coeffs = CoefficientCollector()(
+                          simplify_using_aff(self.knl, idx))
+            except ExpressionNotAffineInamesError:
+                stride = None
+                continue
             # check if he contains the lid 0 guy
             try:
                 coeff_min_lid = coeffs[Variable(min_lid)]
@@ -1319,37 +1334,47 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
     access_counter_g = GlobalMemAccessCounter(knl)
     access_counter_l = LocalMemAccessCounter(knl)
 
+    from loopy.kernel.instruction import (
+            CallInstruction, CInstruction, Assignment,
+            NoOpInstruction, BarrierInstruction)
+
     for insn in knl.instructions:
-        access_expr = (
-                access_counter_g(insn.expression)
-                + access_counter_l(insn.expression)
-                ).with_set_attributes(direction="load")
+        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+            access_expr = (
+                    access_counter_g(insn.expression)
+                    + access_counter_l(insn.expression)
+                    ).with_set_attributes(direction="load")
 
-        access_assignee_g = access_counter_g(insn.assignee).with_set_attributes(
-                direction="store")
+            access_assignee_g = access_counter_g(insn.assignee).with_set_attributes(
+                    direction="store")
 
-        # FIXME: (!!!!) for now, don't count writes to local mem
+            # FIXME: (!!!!) for now, don't count writes to local mem
 
-        # use count excluding local index tags for uniform accesses
-        for key, val in six.iteritems(access_expr.count_map):
-            is_uniform = (key.mtype == 'global' and
-                    isinstance(key.stride, int) and
-                    key.stride == 0)
-            access_map = (
-                    access_map
-                    + ToCountMap({key: val})
-                    * get_insn_count(knl, insn.id, is_uniform))
-            #currently not counting stride of local mem access
+            # use count excluding local index tags for uniform accesses
+            for key, val in six.iteritems(access_expr.count_map):
+                is_uniform = (key.mtype == 'global' and
+                        isinstance(key.stride, int) and
+                        key.stride == 0)
+                access_map = (
+                        access_map
+                        + ToCountMap({key: val})
+                        * get_insn_count(knl, insn.id, is_uniform))
+                #currently not counting stride of local mem access
 
-        for key, val in six.iteritems(access_assignee_g.count_map):
-            is_uniform = (key.mtype == 'global' and
-                    isinstance(key.stride, int) and
-                    key.stride == 0)
-            access_map = (
-                    access_map
-                    + ToCountMap({key: val})
-                    * get_insn_count(knl, insn.id, is_uniform))
-            # for now, don't count writes to local mem
+            for key, val in six.iteritems(access_assignee_g.count_map):
+                is_uniform = (key.mtype == 'global' and
+                        isinstance(key.stride, int) and
+                        key.stride == 0)
+                access_map = (
+                        access_map
+                        + ToCountMap({key: val})
+                        * get_insn_count(knl, insn.id, is_uniform))
+                # for now, don't count writes to local mem
+        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unexpected instruction item type: '%s'"
+                    % type(insn).__name__)
 
     if numpy_types:
         # FIXME: Don't modify in-place
