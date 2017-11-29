@@ -329,7 +329,7 @@ def c_symbol_mangler(kernel, name):
 # {{{ function mangler
 
 def c_function_mangler(target, name, arg_dtypes):
-    # select maths functions based on argument type
+    # select maths functions based on different floating point types
     # convert abs(), min(), max() to fabs(), fmin(), fmax()
     if not isinstance(name, str):
         return None
@@ -362,7 +362,6 @@ def c_function_mangler(target, name, arg_dtypes):
     if (name in ["max", "min", "fmin", "fmax", "exp"]
             and len(arg_dtypes) == 2
             and arg_dtypes[0].numpy_dtype.kind == "f"):
-
 
         dtype = np.find_common_type(
             [], [dtype.numpy_dtype for dtype in arg_dtypes])
