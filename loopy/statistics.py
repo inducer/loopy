@@ -1205,16 +1205,25 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
     """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    from loopy.kernel.instruction import (
+            CallInstruction, CInstruction, Assignment,
+            NoOpInstruction, BarrierInstruction)
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
     op_map = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
-        ops = op_counter(insn.assignee) + op_counter(insn.expression)
-        op_map = op_map + ops*count_insn_runs(
-                knl, insn,
-                count_redundant_work=count_redundant_work)
+        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+            ops = op_counter(insn.assignee) + op_counter(insn.expression)
+            op_map = op_map + ops*count_insn_runs(
+                    knl, insn,
+                    count_redundant_work=count_redundant_work)
+        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unexpected instruction item type: '%s'"
+                    % type(insn).__name__)
 
     if numpy_types:
         op_map.count_map = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
