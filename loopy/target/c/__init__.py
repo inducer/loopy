@@ -344,7 +344,7 @@ def c_function_mangler(target, name, arg_dtypes):
         if name in ["abs"]:
             name = "f" + name
 
-        if isinstance(target.target, CTarget):
+        if type(target.target) == CTarget:
             if dtype == np.float64:
                 pass  # fabs
             elif dtype == np.float32:
@@ -363,12 +363,13 @@ def c_function_mangler(target, name, arg_dtypes):
             and len(arg_dtypes) == 2
             and arg_dtypes[0].numpy_dtype.kind == "f"):
 
+
         dtype = np.find_common_type(
             [], [dtype.numpy_dtype for dtype in arg_dtypes])
         if name in ["max", "min"]:
             name = "f" + name
 
-        if isinstance(target.target, CTarget):
+        if type(target.target) == CTarget:
             if dtype == np.float64:
                 pass  # fmin
             elif dtype == np.float32:
