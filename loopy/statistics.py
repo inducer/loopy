@@ -1137,6 +1137,9 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
 
 def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False):
     insn_inames = knl.insn_inames(insn)
+    if not insn_inames:
+        p = isl.PwQPolynomial('{ 1 }')
+        return GuardedPwQPolynomial(p, isl.Set.universe(p.domain().space))
 
     if disregard_local_axes:
         from loopy.kernel.data import LocalIndexTag
