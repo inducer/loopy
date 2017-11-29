@@ -1177,7 +1177,8 @@ class CoefficientCollector(CoefficientCollectorBase):
     map_tagged_variable = CoefficientCollectorBase.map_variable
 
     def map_subscript(self, expr):
-        raise RuntimeError("cannot gather coefficients--indirect addressing in use")
+        from loopy.diagnostic import ExpressionNotAffineInamesError
+        raise ExpressionNotAffineInamesError("%s has indirect accesses" % expr)
 
 # }}}
 
@@ -1374,7 +1375,6 @@ def simplify_using_aff(kernel, expr):
 
     # FIXME: Deal with assumptions, too.
     aff = aff.gist(domain)
-
     return aff_to_expr(aff)
 
 # }}}
