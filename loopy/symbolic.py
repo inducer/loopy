@@ -1177,8 +1177,8 @@ class CoefficientCollector(CoefficientCollectorBase):
     map_tagged_variable = CoefficientCollectorBase.map_variable
 
     def map_subscript(self, expr):
-        from loopy.diagnostic import ExpressionNotAffineInamesError
-        raise ExpressionNotAffineInamesError("%s has indirect accesses" % expr)
+        from loopy.diagnostic import ExpressionNotAffineError
+        raise ExpressionNotAffineError("%s has indirect accesses" % expr)
 
 # }}}
 
