@@ -31,7 +31,7 @@ from pytools import memoize_in
 from pymbolic.mapper import CombineMapper
 from functools import reduce
 from loopy.kernel.data import MultiAssignmentBase
-from loopy.diagnostic import warn_with_kernel, LoopyError
+from loopy.diagnostic import warn_with_kernel, LoopyError, GlobalInIsLocalError
 
 
 __doc__ = """
@@ -797,14 +797,8 @@ class LocalMemAccessCounter(MemAccessCounter):
             try:
                 if array.is_local:
                     sub_map[MemAccess(mtype='local', dtype=dtype)] = 1
-            except LoopyError as e:
-                error_str = str(e)
-                expected = "TemporaryVariable.is_local called on global"
-                "temporaty variable '%s'" % array.name
-                if error_str == expected:
-                    pass
-                else:
-                    LoopyError(error_str)
+            except GlobalInIsLocalError:
+                pass
         return sub_map
 
     def map_variable(self, expr):
@@ -911,13 +905,13 @@ class GlobalMemAccessCounter(MemAccessCounter):
         for idx, axis_tag in zip(index, array.dim_tags):
 
             from loopy.symbolic import simplify_using_aff
-            from loopy.diagnostic import ExpressionNotAffineInamesError
+            from loopy.diagnostic import ExpressionNotAffineError
             try:
                 coeffs = CoefficientCollector()(
                           simplify_using_aff(self.knl, idx))
-            except ExpressionNotAffineInamesError:
-                stride = None
-                continue
+            except ExpressionNotAffineError:
+                total_stride = None
+                break
             # check if he contains the lid 0 guy
             try:
                 coeff_min_lid = coeffs[Variable(min_lid)]
