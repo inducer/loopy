@@ -30,8 +30,9 @@ import islpy as isl
 from pytools import memoize_in
 from pymbolic.mapper import CombineMapper
 from functools import reduce
-from loopy.kernel.data import MultiAssignmentBase
-from loopy.diagnostic import warn_with_kernel, LoopyError, GlobalInIsLocalError
+from loopy.kernel.data import (
+        MultiAssignmentBase, TemporaryVariable, temp_var_scope)
+from loopy.diagnostic import warn_with_kernel, LoopyError
 
 
 __doc__ = """
@@ -794,11 +795,9 @@ class LocalMemAccessCounter(MemAccessCounter):
         sub_map = ToCountMap()
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
-            try:
-                if array.is_local:
-                    sub_map[MemAccess(mtype='local', dtype=dtype)] = 1
-            except GlobalInIsLocalError:
-                pass
+            if isinstance(array, TemporaryVariable) and (
+                    array.scope == temp_var_scope.LOCAL):
+                sub_map[MemAccess(mtype='local', dtype=dtype)] = 1
         return sub_map
 
     def map_variable(self, expr):
