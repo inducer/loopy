@@ -29,7 +29,7 @@ import six
 import numpy as np  # noqa
 from loopy.kernel.data import CallMangleInfo
 from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
-from loopy.diagnostic import LoopyError
+from loopy.diagnostic import LoopyError, LoopyTypeError
 from cgen import Pointer, NestedDeclarator, Block
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
@@ -334,14 +334,14 @@ def c_function_mangler(target, name, arg_dtypes):
     if not isinstance(name, str):
         return None
 
-    if (name in ["abs", "fabs", "acos", "asin", "atan", "cos", "cosh", "sin",
-                 "sinh", "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]
+    if (name in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+                 "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]
             and len(arg_dtypes) == 1
             and arg_dtypes[0].numpy_dtype.kind == "f"):
 
         dtype = arg_dtypes[0].numpy_dtype
 
-        if name in ["abs"]:
+        if name == "abs":
             name = "f" + name
 
         if type(target.target) == CTarget:
@@ -352,14 +352,14 @@ def c_function_mangler(target, name, arg_dtypes):
             elif dtype == np.float128:
                 name = name + "l"  # fabsl
             else:
-                raise RuntimeError("%s does not support type %s" % name, dtype)
+                raise LoopyTypeError("%s does not support type %s" % (name, dtype))
 
         return CallMangleInfo(
                 target_name=name,
                 result_dtypes=arg_dtypes,
                 arg_dtypes=arg_dtypes)
 
-    if (name in ["max", "min", "fmin", "fmax", "exp"]
+    if (name in ["max", "min", "exp"]
             and len(arg_dtypes) == 2
             and arg_dtypes[0].numpy_dtype.kind == "f"):
 
@@ -376,7 +376,7 @@ def c_function_mangler(target, name, arg_dtypes):
             elif dtype == np.float128:
                 name = name + "l"  # fminl
             else:
-                raise RuntimeError("%s does not support type %s" % name, dtype)
+                raise LoopyTypeError("%s does not support type %s" % name, dtype)
 
         result_dtype = NumpyType(dtype)
         return CallMangleInfo(

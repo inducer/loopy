@@ -30,6 +30,9 @@ import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
 import pytest
 
+from loopy.target.c import CTarget
+from loopy.target.opencl import OpenCLTarget
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -96,8 +99,6 @@ def test_cuda_target():
 
 
 def test_generate_c_snippet():
-    from loopy.target.c import CTarget
-
     from pymbolic import var
     I = var("I")  # noqa
     f = var("f")
@@ -140,17 +141,12 @@ def test_generate_c_snippet():
     print(lp.generate_body(knl))
 
 
-@pytest.mark.parametrize("backend", ["c", "opencl"])
+@pytest.mark.parametrize("target", [CTarget, OpenCLTarget])
 @pytest.mark.parametrize("tp", ["f32", "f64"])
-def test_math_function(backend, tp):
+def test_math_function(target, tp):
     # Test correct maths functions are generated for C and OpenCL
     # backend instead for different data type
 
-    from loopy.target.c import CTarget
-    from loopy.target.opencl import OpenCLTarget
-
-    target = {"c": CTarget,
-              "opencl": OpenCLTarget}[backend]
     data_type = {"f32": np.float32,
                  "f64": np.float64}[tp]
 
@@ -173,7 +169,7 @@ def test_math_function(backend, tp):
 
     assert "fmin" in code
 
-    if tp == "f32" and backend == "c":
+    if tp == "f32" and target == CTarget:
         assert "fminf" in code
     else:
         assert "fminf" not in code
@@ -184,7 +180,7 @@ def test_math_function(backend, tp):
 
     assert "fmax" in code
 
-    if tp == "f32" and backend == "c":
+    if tp == "f32" and target == CTarget:
         assert "fmaxf" in code
     else:
         assert "fmaxf" not in code
