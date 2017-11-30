@@ -111,9 +111,6 @@ class ReductionIsNotTriangularError(LoopyError):
 class ExpressionNotAffineError(LoopyError):
     pass
 
-
-class GlobalInIsLocalError(LoopyError):
-    pass
 # }}}
 
 
