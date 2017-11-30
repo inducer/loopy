@@ -29,7 +29,7 @@ from six.moves import intern
 import numpy as np  # noqa
 from pytools import ImmutableRecord
 from loopy.kernel.array import ArrayBase
-from loopy.diagnostic import LoopyError, GlobalInIsLocalError
+from loopy.diagnostic import LoopyError
 from loopy.kernel.instruction import (  # noqa
         InstructionBase,
         memory_ordering,
@@ -472,8 +472,8 @@ class TemporaryVariable(ArrayBase):
         elif self.scope == temp_var_scope.PRIVATE:
             return False
         elif self.scope == temp_var_scope.GLOBAL:
-            raise GlobalInIsLocalError("TemporaryVariable.is_local called on "
-                    "global temporary variable '%s'" % self.name)
+            raise LoopyError("TemporaryVariable.is_local called on "
+                             "global temporary variable '%s'" % self.name)
         else:
             raise LoopyError("unexpected value of TemporaryVariable.scope")
 
