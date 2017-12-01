@@ -31,12 +31,14 @@ from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
-from loopy.target.c import DTypeRegistryWrapper
+from loopy.target.c import DTypeRegistryWrapper, c_math_mangler
 from loopy.kernel.data import temp_var_scope, CallMangleInfo
 from pymbolic import var
 
+from functools import partial
 
 # {{{ dtype registry wrappers
+
 
 class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
     def get_or_register_dtype(self, names, dtype=None):
@@ -166,6 +168,18 @@ VECTOR_LITERAL_FUNCS = dict(
 def opencl_function_mangler(kernel, name, arg_dtypes):
     if not isinstance(name, str):
         return None
+
+    # OpenCL has min(), max() for integer types
+    if name in ["max", "min"] and len(arg_dtypes) == 2:
+        dtype = np.find_common_type(
+                [], [dtype.numpy_dtype for dtype in arg_dtypes])
+
+        if dtype.kind == "i":
+            result_dtype = NumpyType(dtype)
+            return CallMangleInfo(
+                    target_name=name,
+                    result_dtypes=(result_dtype,),
+                    arg_dtypes=2*(result_dtype,))
 
     if name == "dot":
         scalar_dtype, offset, field_name = arg_dtypes[0].numpy_dtype.fields["s0"]
@@ -354,9 +368,11 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     def function_manglers(self):
         return (
-                super(OpenCLCASTBuilder, self).function_manglers() + [
-                    opencl_function_mangler
-                    ])
+                [
+                    opencl_function_mangler,
+                    partial(c_math_mangler, modify_name=False)
+                ] +
+                super(OpenCLCASTBuilder, self).function_manglers())
 
     def symbol_manglers(self):
         return (

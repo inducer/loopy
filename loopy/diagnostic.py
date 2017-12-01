@@ -107,6 +107,14 @@ class UnscheduledInstructionError(LoopyError):
 class ReductionIsNotTriangularError(LoopyError):
     pass
 
+
+class LoopyTypeError(LoopyError):
+    pass
+
+
+class ExpressionNotAffineError(LoopyError):
+    pass
+
 # }}}
 
 
