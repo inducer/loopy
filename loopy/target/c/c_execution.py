@@ -33,7 +33,6 @@ from pytools.py_codegen import (Indentation)
 from codepy.toolchain import guess_toolchain
 from codepy.jit import compile_from_string
 import six
-import weakref
 import ctypes
 
 import numpy as np
@@ -263,6 +262,54 @@ class CPlusPlusCompiler(CCompiler):
             defines=defines, source_suffix=source_suffix)
 
 
+class IDIToCDLL(object):
+    """
+    A utility class that extracts arguement and return type info from a
+    :class:`ImplementedDataInfo` in order to create a :class:`ctype.CDLL`
+    """
+    def __init__(self, target):
+        self.target = target
+        self.registry = target.get_dtype_registry().wrapped_registry
+
+    def __call__(self, knl, idi):
+        # grab return type from AST
+        from loopy.target.c import CFunctionDeclExtractor
+        func_decl = CFunctionDeclExtractor()
+        func_decl(knl.ast)
+        assert len(func_decl.decls) == 1, (
+            "Can't extract multiple function declartions")
+        restype = func_decl.decls[0].subdecl.typename
+        if restype == 'void':
+            restype = None
+        else:
+            raise ValueError('Unhandled restype %r' % (restype, ))
+
+        # next loopy through the implemented data info to get the arg data
+        arg_info = []
+        for arg in idi:
+            # check if pointer
+            pointer = arg.shape
+            arg_info.append(self._dtype_to_ctype(arg.dtype, pointer))
+
+        return restype, arg_info
+
+    def _append_arg(self, name, dtype, pointer=False):
+        """Append arg info to current argument list."""
+        self._arg_info.append((
+            name,
+            self._dtype_to_ctype(dtype, pointer=pointer)
+        ))
+
+    def _dtype_to_ctype(self, dtype, pointer=False):
+        """Map NumPy dtype to equivalent ctypes type."""
+        typename = self.registry.dtype_to_ctype(dtype)
+        typename = {'unsigned': 'uint'}.get(typename, typename)
+        basetype = getattr(ctypes, 'c_' + typename)
+        if pointer:
+            return ctypes.POINTER(basetype)
+        return basetype
+
+
 class CompiledCKernel(object):
     """
     A CompiledCKernel wraps a loopy kernel, compiling it and loading the
@@ -271,35 +318,23 @@ class CompiledCKernel(object):
     to automatically map argument types.
     """
 
-    def __init__(self, knl, dev_code, target, comp=None):
+    def __init__(self, knl, idi, dev_code, target, comp=CCompiler()):
         from loopy.target.c import CTarget
         assert isinstance(target, CTarget)
         self.target = target
-        self.knl = knl
+        self.name = knl.name
         # get code and build
         self.code = dev_code
-        self.comp = comp or CCompiler()
+        self.comp = comp
         self.checksum, self.dll = self.comp.build(
-            self.knl.name, self.code)
+            self.name, self.code)
 
         # get the function declaration for interface with ctypes
-        from loopy.target.c import CFunctionDeclExtractor
-        self.func_decl = CFunctionDeclExtractor()
-        self.func_decl(knl.ast)
-        self.func_decl = self.func_decl.decls[0]
-        self._arg_info = []
-        # TODO knl.args[:].dtype is sufficient
-        self._visit_func_decl(self.func_decl)
-        self.name = self.knl.name
-        restype = self.func_decl.subdecl.typename
-        if restype == 'void':
-            self.restype = None
-        else:
-            raise ValueError('Unhandled restype %r' % (restype, ))
+        func_decl = IDIToCDLL(self.target)
+        restype, arg_info = func_decl(knl, idi)
         self._fn = getattr(self.dll, self.name)
-        self._fn.restype = self.restype
-        self._fn.argtypes = [ctype for name, ctype in self._arg_info]
-        self._prepared_call_cache = weakref.WeakKeyDictionary()
+        self._fn.restype = restype
+        self._fn.argtypes = [ctype for ctype in arg_info]
 
     def __call__(self, *args):
         """Execute kernel with given args mapped to ctypes equivalents."""
@@ -315,47 +350,6 @@ class CompiledCKernel(object):
                 arg_ = arg_t(arg)
             args_.append(arg_)
         self._fn(*args_)
-
-    def _append_arg(self, name, dtype, pointer=False):
-        """Append arg info to current argument list."""
-        self._arg_info.append((
-            name,
-            self._dtype_to_ctype(dtype, pointer=pointer)
-        ))
-
-    def _visit_const(self, node):
-        """Visit const arg of kernel."""
-        if isinstance(node.subdecl, cgen.RestrictPointer):
-            self._visit_pointer(node.subdecl)
-        else:
-            pod = node.subdecl  # type: cgen.POD
-            self._append_arg(pod.name, pod.dtype)
-
-    def _visit_pointer(self, node):
-        """Visit pointer argument of kernel."""
-        pod = node.subdecl  # type: cgen.POD
-        self._append_arg(pod.name, pod.dtype, pointer=True)
-
-    def _visit_func_decl(self, func_decl):
-        """Visit nodes of function declaration of kernel."""
-        for i, arg in enumerate(func_decl.arg_decls):
-            if isinstance(arg, cgen.Const):
-                self._visit_const(arg)
-            elif isinstance(arg, cgen.RestrictPointer):
-                self._visit_pointer(arg)
-            else:
-                raise ValueError('unhandled type for arg %r' % (arg, ))
-
-    def _dtype_to_ctype(self, dtype, pointer=False):
-        """Map NumPy dtype to equivalent ctypes type."""
-        target = self.target  # type: CTarget
-        registry = target.get_dtype_registry().wrapped_registry
-        typename = registry.dtype_to_ctype(dtype)
-        typename = {'unsigned': 'uint'}.get(typename, typename)
-        basetype = getattr(ctypes, 'c_' + typename)
-        if pointer:
-            return ctypes.POINTER(basetype)
-        return basetype
 
 
 class CKernelExecutor(KernelExecutorBase):
@@ -404,7 +398,8 @@ class CKernelExecutor(KernelExecutorBase):
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
 
-        c_kernel = CompiledCKernel(codegen_result.host_program, all_code,
+        c_kernel = CompiledCKernel(codegen_result.host_program,
+                                   codegen_result.implemented_data_info, all_code,
                                    self.kernel.target, self.compiler)
 
         return _KernelInfo(
