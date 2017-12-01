@@ -328,23 +328,27 @@ def c_symbol_mangler(kernel, name):
 
 # {{{ function mangler
 
-def c_function_mangler(target, name, arg_dtypes):
-    # select maths functions based on different floating point types
-    # convert abs(), min(), max() to fabs(), fmin(), fmax()
+def c_math_mangler(target, name, arg_dtypes, modify_name=True):
+    # Function mangler for math functions defined in C standard
+    # Convert abs, min, max to fabs, fmin, fmax.
+    # If modify_name is set to True, function names are modified according to
+    # floating point types of the arguments (e.g. cos(double), cosf(float))
+    # This should be set to True for C and Cuda, False for OpenCL
     if not isinstance(name, str):
         return None
 
-    if (name in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+    if name in ["abs", "min", "max"]:
+        name = "f" + name
+
+    # unitary functions
+    if (name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
                  "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]
             and len(arg_dtypes) == 1
             and arg_dtypes[0].numpy_dtype.kind == "f"):
 
         dtype = arg_dtypes[0].numpy_dtype
 
-        if name == "abs":
-            name = "f" + name
-
-        if type(target.target) == CTarget:
+        if modify_name:
             if dtype == np.float64:
                 pass  # fabs
             elif dtype == np.float32:
@@ -359,30 +363,32 @@ def c_function_mangler(target, name, arg_dtypes):
                 result_dtypes=arg_dtypes,
                 arg_dtypes=arg_dtypes)
 
-    if (name in ["max", "min", "exp"]
-            and len(arg_dtypes) == 2
-            and arg_dtypes[0].numpy_dtype.kind == "f"):
+    # binary functions
+    if (name in ["fmax", "fmin"]
+            and len(arg_dtypes) == 2):
 
         dtype = np.find_common_type(
             [], [dtype.numpy_dtype for dtype in arg_dtypes])
-        if name in ["max", "min"]:
-            name = "f" + name
 
-        if type(target.target) == CTarget:
-            if dtype == np.float64:
-                pass  # fmin
-            elif dtype == np.float32:
-                name = name + "f"  # fminf
-            elif dtype == np.float128:
-                name = name + "l"  # fminl
-            else:
-                raise LoopyTypeError("%s does not support type %s" % name, dtype)
+        if dtype.kind == "c":
+            raise LoopyTypeError("%s does not support complex numbers")
 
-        result_dtype = NumpyType(dtype)
-        return CallMangleInfo(
-                target_name=name,
-                result_dtypes=(result_dtype,),
-                arg_dtypes=2*(result_dtype,))
+        elif dtype.kind == "f":
+            if modify_name:
+                if dtype == np.float64:
+                    pass  # fmin
+                elif dtype == np.float32:
+                    name = name + "f"  # fminf
+                elif dtype == np.float128:
+                    name = name + "l"  # fminl
+                else:
+                    raise LoopyTypeError("%s does not support type %s" % (name, dtype))
+
+            result_dtype = NumpyType(dtype)
+            return CallMangleInfo(
+                    target_name=name,
+                    result_dtypes=(result_dtype,),
+                    arg_dtypes=2*(result_dtype,))
 
     return None
 
@@ -395,7 +401,7 @@ class CASTBuilder(ASTBuilderBase):
     def function_manglers(self):
         return (
                 super(CASTBuilder, self).function_manglers() + [
-                    c_function_mangler
+                    c_math_mangler
                     ])
 
     def symbol_manglers(self):

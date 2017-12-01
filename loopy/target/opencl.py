@@ -31,12 +31,14 @@ from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
-from loopy.target.c import DTypeRegistryWrapper
+from loopy.target.c import DTypeRegistryWrapper, c_math_mangler
 from loopy.kernel.data import temp_var_scope, CallMangleInfo
 from pymbolic import var
 
+from functools import partial
 
 # {{{ dtype registry wrappers
+
 
 class DTypeRegistryWrapperWithAtomics(DTypeRegistryWrapper):
     def get_or_register_dtype(self, names, dtype=None):
@@ -366,9 +368,10 @@ class OpenCLCASTBuilder(CASTBuilder):
 
     def function_manglers(self):
         return (
-                super(OpenCLCASTBuilder, self).function_manglers() + [
-                    opencl_function_mangler
-                    ])
+                [
+                    opencl_function_mangler, partial(c_math_mangler, modify_name=False)
+                ] +
+                super(OpenCLCASTBuilder, self).function_manglers())
 
     def symbol_manglers(self):
         return (
