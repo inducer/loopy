@@ -252,7 +252,7 @@ class CCompiler(object):
 class CPlusPlusCompiler(CCompiler):
     """Subclass of CCompiler to invoke a C++ compiler."""
 
-    def __init__(self, cc='g++', cflags='',
+    def __init__(self, cc='g++', cflags='-std=c++98 -O3 -fPIC'.split(),
                  ldflags=[], libraries=[],
                  include_dirs=[], library_dirs=[], defines=[],
                  source_suffix='cpp'):
