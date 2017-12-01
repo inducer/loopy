@@ -397,13 +397,15 @@ class CKernelExecutor(KernelExecutorBase):
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
 
-        c_kernel = CompiledCKernel(codegen_result.host_program,
-                                   codegen_result.implemented_data_info, all_code,
-                                   self.kernel.target, self.compiler)
+        c_kernels = []
+        for dp in codegen_result.device_programs:
+            c_kernels.append(CompiledCKernel(dp,
+                codegen_result.implemented_data_info, all_code, self.kernel.target,
+                self.compiler))
 
         return _KernelInfo(
                 kernel=kernel,
-                c_kernels=[c_kernel],
+                c_kernels=c_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
                 invoker=self.invoker(kernel, codegen_result))
 

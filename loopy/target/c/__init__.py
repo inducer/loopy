@@ -501,11 +501,7 @@ class CASTBuilder(ASTBuilderBase):
                         for idi in codegen_state.implemented_data_info]))
 
     def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
-        from cgen import Block, Statement
-        implemented_data_info = codegen_state.implemented_data_info
-        arg_names = [iai.name for iai in implemented_data_info]
-
-        return Block([Statement("%s(%s)" % (name, ", ".join(arg_names)))])
+        return None
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import temp_var_scope
