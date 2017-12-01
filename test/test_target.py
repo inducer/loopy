@@ -30,6 +30,9 @@ import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
 import pytest
 
+from loopy.target.c import CTarget
+from loopy.target.opencl import OpenCLTarget
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -96,8 +99,6 @@ def test_cuda_target():
 
 
 def test_generate_c_snippet():
-    from loopy.target.c import CTarget
-
     from pymbolic import var
     I = var("I")  # noqa
     f = var("f")
@@ -140,10 +141,17 @@ def test_generate_c_snippet():
     print(lp.generate_body(knl))
 
 
-def test_c_min_max():
-    # Test fmin() fmax() is generated for C backend instead of max() and min()
-    from loopy.target.c import CTarget
+@pytest.mark.parametrize("target", [CTarget, OpenCLTarget])
+@pytest.mark.parametrize("tp", ["f32", "f64"])
+def test_math_function(target, tp):
+    # Test correct maths functions are generated for C and OpenCL
+    # backend instead for different data type
+
+    data_type = {"f32": np.float32,
+                 "f64": np.float64}[tp]
+
     import pymbolic.primitives as p
+
     i = p.Variable("i")
     xi = p.Subscript(p.Variable("x"), i)
     yi = p.Subscript(p.Variable("y"), i)
@@ -151,19 +159,31 @@ def test_c_min_max():
 
     n = 100
     domain = "{[i]: 0<=i<%d}" % n
-    data = [lp.GlobalArg("x", np.float64, shape=(n,)),
-            lp.GlobalArg("y", np.float64, shape=(n,)),
-            lp.GlobalArg("z", np.float64, shape=(n,))]
+    data = [lp.GlobalArg("x", data_type, shape=(n,)),
+            lp.GlobalArg("y", data_type, shape=(n,)),
+            lp.GlobalArg("z", data_type, shape=(n,))]
 
     inst = [lp.Assignment(xi, p.Variable("min")(yi, zi))]
-    knl = lp.make_kernel(domain, inst, data, target=CTarget())
+    knl = lp.make_kernel(domain, inst, data, target=target())
     code = lp.generate_code_v2(knl).device_code()
+
     assert "fmin" in code
 
+    if tp == "f32" and target == CTarget:
+        assert "fminf" in code
+    else:
+        assert "fminf" not in code
+
     inst = [lp.Assignment(xi, p.Variable("max")(yi, zi))]
-    knl = lp.make_kernel(domain, inst, data, target=CTarget())
+    knl = lp.make_kernel(domain, inst, data, target=target())
     code = lp.generate_code_v2(knl).device_code()
+
     assert "fmax" in code
+
+    if tp == "f32" and target == CTarget:
+        assert "fmaxf" in code
+    else:
+        assert "fmaxf" not in code
 
 
 @pytest.mark.parametrize("tp", ["f32", "f64"])
