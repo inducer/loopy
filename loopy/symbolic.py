@@ -1177,7 +1177,9 @@ class CoefficientCollector(CoefficientCollectorBase):
     map_tagged_variable = CoefficientCollectorBase.map_variable
 
     def map_subscript(self, expr):
-        raise RuntimeError("cannot gather coefficients--indirect addressing in use")
+        from loopy.diagnostic import ExpressionNotAffineError
+        raise ExpressionNotAffineError("cannot gather coefficients--"
+                "indirect addressing in use")
 
 # }}}
 
