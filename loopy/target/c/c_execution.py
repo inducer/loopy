@@ -271,26 +271,14 @@ class IDIToCDLL(object):
         self.registry = target.get_dtype_registry().wrapped_registry
 
     def __call__(self, knl, idi):
-        # grab return type from AST
-        from loopy.target.c import CFunctionDeclExtractor
-        func_decl = CFunctionDeclExtractor()
-        func_decl(knl.ast)
-        assert len(func_decl.decls) == 1, (
-            "Can't extract multiple function declarations")
-        restype = func_decl.decls[0].subdecl.typename
-        if restype == 'void':
-            restype = None
-        else:
-            raise ValueError('Unhandled restype %r' % (restype, ))
-
-        # next loopy through the implemented data info to get the arg data
+        # next loop through the implemented data info to get the arg data
         arg_info = []
         for arg in idi:
             # check if pointer
             pointer = arg.shape
             arg_info.append(self._dtype_to_ctype(arg.dtype, pointer))
 
-        return restype, arg_info
+        return arg_info
 
     def _append_arg(self, name, dtype, pointer=False):
         """Append arg info to current argument list."""
@@ -330,9 +318,10 @@ class CompiledCKernel(object):
 
         # get the function declaration for interface with ctypes
         func_decl = IDIToCDLL(self.target)
-        restype, arg_info = func_decl(knl, idi)
+        arg_info = func_decl(knl, idi)
         self._fn = getattr(self.dll, self.name)
-        self._fn.restype = restype
+        # kernels are void by defn.
+        self._fn.restype = None
         self._fn.argtypes = [ctype for ctype in arg_info]
 
     def __call__(self, *args):
