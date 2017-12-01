@@ -59,6 +59,7 @@ from loopy.kernel.tools import (
         find_most_recent_global_barrier,
         get_subkernels,
         get_subkernel_to_insn_id_map)
+from loopy.types import to_loopy_type
 from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 
@@ -227,6 +228,8 @@ __all__ = [
         "find_most_recent_global_barrier",
         "get_subkernels",
         "get_subkernel_to_insn_id_map",
+
+        "to_loopy_type",
 
         "infer_unknown_types",
 

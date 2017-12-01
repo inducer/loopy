@@ -414,21 +414,22 @@ def test_parallel_multi_output_reduction(ctx_factory):
 
 
 def test_reduction_with_conditional():
-    # Test whether realization of a reduction inherits predicates
-    # of the original instruction. Tested with the CTarget, because
-    # the PyOpenCL target will hoist the conditional into the host
-    # code in this minimal example.
+    # The purpose of the 'l' iname is to force the entire kernel (including the
+    # predicate) into device code.
+
     knl = lp.make_kernel(
-                "{ [i] : 0<=i<42 }",
+                "{ [l,i] : 0<=l,i<42 }",
                 """
-                if n > 0
-                    <>b = sum(i, a[i])
+                if l > 0
+                    b[l] = sum(i, l*a[i])
                 end
                 """,
-                [lp.GlobalArg("a", dtype=np.float32, shape=(42,)),
-                 lp.GlobalArg("n", dtype=np.float32, shape=())],
-                target=lp.CTarget())
-    code = lp.generate_body(knl)
+                [lp.ValueArg("n", dtype=np.int32), "..."])
+
+    knl = lp.tag_inames(knl, "l:g.0")
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    code = lp.generate_code_v2(knl).device_code()
+    print(code)
 
     # Check that the if appears before the loop that realizes the reduction.
     assert code.index("if") < code.index("for")
