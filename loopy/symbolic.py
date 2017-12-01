@@ -1178,7 +1178,8 @@ class CoefficientCollector(CoefficientCollectorBase):
 
     def map_subscript(self, expr):
         from loopy.diagnostic import ExpressionNotAffineError
-        raise ExpressionNotAffineError("%s has indirect accesses" % expr)
+        raise ExpressionNotAffineError("cannot gather coefficients--"
+                "indirect addressing in use")
 
 # }}}
 
@@ -1375,6 +1376,7 @@ def simplify_using_aff(kernel, expr):
 
     # FIXME: Deal with assumptions, too.
     aff = aff.gist(domain)
+
     return aff_to_expr(aff)
 
 # }}}
