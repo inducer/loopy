@@ -276,7 +276,7 @@ class IDIToCDLL(object):
         func_decl = CFunctionDeclExtractor()
         func_decl(knl.ast)
         assert len(func_decl.decls) == 1, (
-            "Can't extract multiple function declartions")
+            "Can't extract multiple function declarations")
         restype = func_decl.decls[0].subdecl.typename
         if restype == 'void':
             restype = None
