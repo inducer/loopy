@@ -382,7 +382,8 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 elif dtype == np.float128:
                     name = name + "l"  # fminl
                 else:
-                    raise LoopyTypeError("%s does not support type %s" % (name, dtype))
+                    raise LoopyTypeError("%s does not support type %s"
+                                         % (name, dtype))
 
             result_dtype = NumpyType(dtype)
             return CallMangleInfo(

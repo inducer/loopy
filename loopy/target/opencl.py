@@ -369,7 +369,8 @@ class OpenCLCASTBuilder(CASTBuilder):
     def function_manglers(self):
         return (
                 [
-                    opencl_function_mangler, partial(c_math_mangler, modify_name=False)
+                    opencl_function_mangler,
+                    partial(c_math_mangler, modify_name=False)
                 ] +
                 super(OpenCLCASTBuilder, self).function_manglers())
 
