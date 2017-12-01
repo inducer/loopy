@@ -23,7 +23,6 @@ THE SOFTWARE.
 """
 
 import tempfile
-import cgen
 import os
 
 from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
