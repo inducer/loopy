@@ -262,9 +262,8 @@ class CTarget(TargetBase):
     hash_fields = TargetBase.hash_fields + ("fortran_abi",)
     comparison_fields = TargetBase.comparison_fields + ("fortran_abi",)
 
-    def __init__(self, fortran_abi=False, compiler=None):
+    def __init__(self, fortran_abi=False):
         self.fortran_abi = fortran_abi
-        self.compiler = compiler
         super(CTarget, self).__init__()
 
     def split_kernel_at_global_barriers(self):
@@ -305,10 +304,28 @@ class CTarget(TargetBase):
         return None  # TODO: ???
 
     def get_kernel_executor(self, knl, *args, **kwargs):
+        raise NotImplementedError()
+
+    # }}}
+
+
+# {{{
+
+class ExecutableCTarget(CTarget):
+    """
+    An executable CTarget that uses (by default) JIT compilation of C-code
+    """
+    from .c_execution import CCompiler
+
+    def __init__(self, compiler=CCompiler(), fortran_abi=False):
+        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        self.compiler = compiler
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
         return CKernelExecutor(knl, compiler=self.compiler)
 
-    # }}}
+# }}}
 
 
 class _ConstRestrictPointer(Pointer):
