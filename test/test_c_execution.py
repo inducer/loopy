@@ -172,3 +172,20 @@ def test_c_optimizations():
                       order='C')
 
     assert np.allclose(knl(a=a_np)[1], 2 * a_np)
+
+
+def test_function_decl_extractor():
+    # ensure that we can tell the difference between pointers, constants, etc.
+    # in execution
+    from loopy.target.c import ExecutableCTarget
+
+    knl = lp.make_kernel('{[i]: 0 <= i < 10}',
+        """
+            a[i] = b[i] + v
+        """,
+        [lp.GlobalArg('a', shape=(10,), dtype=np.int32),
+         lp.ConstantArg('b', shape=(10)),
+         lp.ValueArg('v', dtype=np.int32)],
+        target=ExecutableCTarget())
+
+    assert np.allclose(knl(b=np.arange(10), v=-1)[1], np.arange(10) - 1)
