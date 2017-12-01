@@ -473,7 +473,7 @@ class TemporaryVariable(ArrayBase):
             return False
         elif self.scope == temp_var_scope.GLOBAL:
             raise LoopyError("TemporaryVariable.is_local called on "
-                    "global temporary variable '%s'" % self.name)
+                             "global temporary variable '%s'" % self.name)
         else:
             raise LoopyError("unexpected value of TemporaryVariable.scope")
 
