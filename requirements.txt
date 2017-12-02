@@ -4,6 +4,7 @@ git+https://github.com/inducer/cgen.git
 git+https://github.com/inducer/pyopencl.git
 git+https://github.com/inducer/pymbolic.git
 git+https://github.com/inducer/genpy.git
+git+https://github.com/inducer/codepy.git
 
 hg+https://bitbucket.org/inducer/f2py
 

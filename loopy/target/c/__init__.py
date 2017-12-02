@@ -28,7 +28,7 @@ import six
 
 import numpy as np  # noqa
 from loopy.kernel.data import CallMangleInfo
-from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
+from loopy.target import TargetBase, ASTBuilderBase
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from cgen import Pointer, NestedDeclarator, Block
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
@@ -270,7 +270,7 @@ class CTarget(TargetBase):
         return False
 
     def get_host_ast_builder(self):
-        return DummyHostASTBuilder(self)
+        return CASTBuilder(self)
 
     def get_device_ast_builder(self):
         return CASTBuilder(self)
@@ -300,7 +300,32 @@ class CTarget(TargetBase):
         # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
+    def get_kernel_executor_cache_key(self, *args, **kwargs):
+        return None  # TODO: ???
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        raise NotImplementedError()
+
     # }}}
+
+
+# {{{
+
+class ExecutableCTarget(CTarget):
+    """
+    An executable CTarget that uses (by default) JIT compilation of C-code
+    """
+    from .c_execution import CCompiler
+
+    def __init__(self, compiler=CCompiler(), fortran_abi=False):
+        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        self.compiler = compiler
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy.target.c.c_execution import CKernelExecutor
+        return CKernelExecutor(knl, compiler=self.compiler)
+
+# }}}
 
 
 class _ConstRestrictPointer(Pointer):
@@ -507,6 +532,9 @@ class CASTBuilder(ASTBuilderBase):
                     Value("void", name),
                     [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
                         for idi in codegen_state.implemented_data_info]))
+
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        return None
 
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import temp_var_scope

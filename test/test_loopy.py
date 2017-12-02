@@ -567,7 +567,7 @@ def test_unknown_arg_shape(ctx_factory):
         assumptions="m<=%d and m>=1 and n mod %d = 0" % (bsize[0], bsize[0]))
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32))
-    cl_kernel_info = CompiledKernel(ctx, knl).cl_kernel_info(frozenset())  # noqa
+    kernel_info = CompiledKernel(ctx, knl).kernel_info(frozenset())  # noqa
 
 # }}}
 
@@ -646,7 +646,7 @@ def test_vector_ilp_with_prefetch(ctx_factory):
     knl = lp.add_prefetch(knl, "a", ["i_inner", "i_outer_inner"])
 
     cknl = lp.CompiledKernel(ctx, knl)
-    cknl.cl_kernel_info()
+    cknl.kernel_info()
 
     import re
     code = cknl.get_code()
