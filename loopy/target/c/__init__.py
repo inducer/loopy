@@ -315,7 +315,7 @@ class ExecutableCTarget(CTarget):
     """
     An executable CTarget that uses (by default) JIT compilation of C-code
     """
-    from .c_execution import CCompiler
+    from loopy.target.c.c_execution import CCompiler
 
     def __init__(self, compiler=CCompiler(), fortran_abi=False):
         super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
