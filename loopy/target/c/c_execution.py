@@ -306,8 +306,8 @@ class CompiledCKernel(object):
     """
 
     def __init__(self, knl, idi, dev_code, target, comp=CCompiler()):
-        from loopy.target.c import CTarget
-        assert isinstance(target, CTarget)
+        from loopy.target.c import ExecutableCTarget
+        assert isinstance(target, ExecutableCTarget)
         self.target = target
         self.name = knl.name
         # get code and build

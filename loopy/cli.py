@@ -83,8 +83,8 @@ def main():
         from loopy.target.ispc import ISPCTarget
         target = ISPCTarget(occa_mode=True)
     elif args.target == "c":
-        from loopy.target.c import CTarget
-        target = CTarget()
+        from loopy.target.c import ExecutableCTarget
+        target = ExecutableCTarget()
     elif args.target == "c-fortran":
         from loopy.target.c import CTarget
         target = CTarget(fortran_abi=True)
