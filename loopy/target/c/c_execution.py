@@ -280,13 +280,6 @@ class IDIToCDLL(object):
 
         return arg_info
 
-    def _append_arg(self, name, dtype, pointer=False):
-        """Append arg info to current argument list."""
-        self._arg_info.append((
-            name,
-            self._dtype_to_ctype(dtype, pointer=pointer)
-        ))
-
     def _dtype_to_ctype(self, dtype, pointer=False):
         """Map NumPy dtype to equivalent ctypes type."""
         typename = self.registry.dtype_to_ctype(dtype)
