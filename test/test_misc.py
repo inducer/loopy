@@ -92,26 +92,36 @@ def test_SetTrie():
         s.add_or_update(set([1, 4]))
 
 
-class PicklableItem(object):
+class PickleDetector(object):
+    """Contains a class attribute which flags if any instance was unpickled.
+    """
 
-    flags = {"unpickled": False}
+    @classmethod
+    def reset(cls):
+        cls.instance_unpickled = False
 
     def __getstate__(self):
-        return True
+        return {"state": self.state}
 
     def __setstate__(self, state):
-        PicklableItem.flags["unpickled"] = True
+        self.__class__.instance_unpickled = True
+        self.state = state["state"]
 
 
-def test_LazilyUnpicklingDictionary():
-    def is_unpickled():
-        return PicklableItem.flags["unpickled"]
+class PickleDetectorForLazilyUnpicklingDict(PickleDetector):
+    instance_unpickled = False
 
-    from loopy.tools import LazilyUnpicklingDictionary
+    def __init__(self):
+        self.state = None
 
-    mapping = LazilyUnpicklingDictionary({0: PicklableItem()})
 
-    assert not is_unpickled()
+def test_LazilyUnpicklingDict():
+    from loopy.tools import LazilyUnpicklingDict
+
+    cls = PickleDetectorForLazilyUnpicklingDict
+    mapping = LazilyUnpicklingDict({0: cls()})
+
+    assert not cls.instance_unpickled
 
     from pickle import loads, dumps
 
@@ -120,26 +130,156 @@ def test_LazilyUnpicklingDictionary():
     # {{{ test lazy loading
 
     mapping = loads(pickled_mapping)
-    assert not is_unpickled()
+    assert not cls.instance_unpickled
     list(mapping.keys())
-    assert not is_unpickled()
-    assert isinstance(mapping[0], PicklableItem)
-    assert is_unpickled()
+    assert not cls.instance_unpickled
+    assert isinstance(mapping[0], cls)
+    assert cls.instance_unpickled
+
+    # }}}
+
+    # {{{ conversion
+
+    cls.reset()
+    mapping = loads(pickled_mapping)
+    dict(mapping)
+    assert cls.instance_unpickled
 
     # }}}
 
     # {{{ test multi round trip
 
     mapping = loads(dumps(loads(pickled_mapping)))
-    assert isinstance(mapping[0], PicklableItem)
+    assert isinstance(mapping[0], cls)
 
     # }}}
 
     # {{{ test empty map
 
-    mapping = LazilyUnpicklingDictionary({})
+    mapping = LazilyUnpicklingDict({})
     mapping = loads(dumps(mapping))
     assert len(mapping) == 0
+
+    # }}}
+
+
+class PickleDetectorForLazilyUnpicklingList(PickleDetector):
+    instance_unpickled = False
+
+    def __init__(self):
+        self.state = None
+
+
+def test_LazilyUnpicklingList():
+    from loopy.tools import LazilyUnpicklingList
+
+    cls = PickleDetectorForLazilyUnpicklingList
+    lst = LazilyUnpicklingList([cls()])
+    assert not cls.instance_unpickled
+
+    from pickle import loads, dumps
+    pickled_lst = dumps(lst)
+
+    # {{{ test lazy loading
+
+    lst = loads(pickled_lst)
+    assert not cls.instance_unpickled
+    assert isinstance(lst[0], cls)
+    assert cls.instance_unpickled
+
+    # }}}
+
+    # {{{ conversion
+
+    cls.reset()
+    lst = loads(pickled_lst)
+    list(lst)
+    assert cls.instance_unpickled
+
+    # }}}
+
+    # {{{ test multi round trip
+
+    lst = loads(dumps(loads(dumps(lst))))
+    assert isinstance(lst[0], cls)
+
+    # }}}
+
+    # {{{ test empty list
+
+    lst = LazilyUnpicklingList([])
+    lst = loads(dumps(lst))
+    assert len(lst) == 0
+
+    # }}}
+
+
+class PickleDetectorForLazilyUnpicklingListWithEqAndPersistentHashing(
+        PickleDetector):
+    instance_unpickled = False
+
+    def __init__(self, comparison_key):
+        self.state = comparison_key
+
+    def __repr__(self):
+        return repr(self.state)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, repr(self))
+
+
+def test_LazilyUnpicklingListWithEqAndPersistentHashing():
+    from loopy.tools import LazilyUnpicklingListWithEqAndPersistentHashing
+
+    cls = PickleDetectorForLazilyUnpicklingListWithEqAndPersistentHashing
+    from pickle import loads, dumps
+
+    # {{{ test comparison of a pair of lazy lists
+
+    lst0 = LazilyUnpicklingListWithEqAndPersistentHashing(
+            [cls(0), cls(1)],
+            eq_key_getter=repr,
+            persistent_hash_key_getter=repr)
+    lst1 = LazilyUnpicklingListWithEqAndPersistentHashing(
+            [cls(0), cls(1)],
+            eq_key_getter=repr,
+            persistent_hash_key_getter=repr)
+
+    assert not cls.instance_unpickled
+
+    assert lst0 == lst1
+    assert not cls.instance_unpickled
+
+    lst0 = loads(dumps(lst0))
+    lst1 = loads(dumps(lst1))
+
+    assert lst0 == lst1
+    assert not cls.instance_unpickled
+
+    lst0.append(cls(3))
+    lst1.append(cls(2))
+
+    assert lst0 != lst1
+
+    # }}}
+
+    # {{{ comparison with plain lists
+
+    lst = [cls(0), cls(1), cls(3)]
+
+    assert lst == lst0
+    assert lst0 == lst
+    assert not cls.instance_unpickled
+
+    # }}}
+
+    # {{{ persistent hashing
+
+    from loopy.tools import LoopyKeyBuilder
+    kb = LoopyKeyBuilder()
+
+    assert kb(lst0) == kb(lst)
+    assert not cls.instance_unpickled
 
     # }}}
 

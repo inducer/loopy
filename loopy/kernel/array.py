@@ -567,6 +567,14 @@ class ArrayBase(ImmutableRecord):
         informational/documentational purpose. On occasion, they are used
         to generate more informative names than could be achieved by
         axis numbers.
+
+    .. automethod:: __init__
+    .. automethod:: __eq__
+    .. automethod:: num_user_axes
+    .. automethod:: num_target_axes
+    .. automethod:: vector_size
+
+    (supports persistent hashing)
     """
 
     # Note that order may also wind up in attributes, if the
@@ -579,7 +587,8 @@ class ArrayBase(ImmutableRecord):
             target=None,
             **kwargs):
         """
-        All of the following are optional. Specify either strides or shape.
+        All of the following (except *name*) are optional.
+        Specify either strides or shape.
 
         :arg name: May contain multiple names separated by
             commas, in which case multiple arguments,
@@ -643,8 +652,9 @@ class ArrayBase(ImmutableRecord):
         :arg offset: Offset from the beginning of the buffer to the point from
             which the strides are counted. May be one of
 
-            * 0
+            * 0 or None
             * a string (that is interpreted as an argument name).
+            * a pymbolic expression
             * :class:`loopy.auto`, in which case an offset argument
               is added automatically, immediately following this argument.
               :class:`loopy.CompiledKernel` is even smarter in its treatment of
@@ -877,6 +887,7 @@ class ArrayBase(ImmutableRecord):
         :class:`pytools.persistent_dict.PersistentDict`.
         """
 
+        key_builder.rec(key_hash, type(self).__name__.encode("utf-8"))
         key_builder.rec(key_hash, self.name)
         key_builder.rec(key_hash, self.dtype)
         self.update_persistent_hash_for_shape(key_hash, key_builder, self.shape)
@@ -1039,7 +1050,9 @@ class ArrayBase(ImmutableRecord):
 
                             is_written=is_written)
 
-                if self.offset:
+                import loopy as lp
+
+                if self.offset is lp.auto:
                     offset_name = full_name+"_offset"
                     yield ImplementedDataInfo(
                                 target=target,
@@ -1205,12 +1218,16 @@ def get_access_info(target, ary, index, eval_expr, vectorization_info):
         return result
 
     def apply_offset(sub):
-        if ary.offset:
-            offset_name = ary.offset
-            if offset_name is lp.auto:
-                offset_name = array_name+"_offset"
+        import loopy as lp
 
-            return var(offset_name) + sub
+        if ary.offset:
+            if ary.offset is lp.auto:
+                return var(array_name+"_offset") + sub
+            elif isinstance(ary.offset, str):
+                return var(ary.offset) + sub
+            else:
+                # assume it's an expression
+                return ary.offset + sub
         else:
             return sub
 

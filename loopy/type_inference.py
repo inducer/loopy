@@ -237,6 +237,12 @@ class TypeInferenceMapper(CombineMapper):
         else:
             raise TypeInferenceFailure("Cannot deduce type of constant '%s'" % expr)
 
+    def map_type_cast(self, expr):
+        subtype, = self.rec(expr.child)
+        if not issubclass(subtype.dtype.type, np.number):
+            raise LoopyError("Can't cast a '%s' to '%s'" % (subtype, expr.type))
+        return [expr.type]
+
     def map_subscript(self, expr):
         return self.rec(expr.aggregate)
 

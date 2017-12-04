@@ -351,7 +351,8 @@ class TemporarySaver(object):
             self.subkernel_to_slice_indices[subkernel])
 
         def is_global_barrier(item):
-            return isinstance(item, Barrier) and item.kind == "global"
+            return isinstance(item, Barrier) and \
+                item.synchronization_kind == "global"
 
         try:
             pre_barrier = next(item for item in
@@ -402,13 +403,13 @@ class TemporarySaver(object):
                     continue
 
                 from loopy.kernel.data import (
-                    GroupIndexTag, LocalIndexTag, ParallelTag)
+                    GroupIndexTag, LocalIndexTag, ConcurrentTag)
 
                 if isinstance(tag, GroupIndexTag):
                     my_group_tags.append(tag)
                 elif isinstance(tag, LocalIndexTag):
                     my_local_tags.append(tag)
-                elif isinstance(tag, ParallelTag):
+                elif isinstance(tag, ConcurrentTag):
                     raise LoopyError(
                         "iname '%s' is tagged with '%s' - only "
                         "group and local tags are supported for "

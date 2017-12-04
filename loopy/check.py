@@ -60,6 +60,12 @@ def check_identifiers_in_subst_rules(knl):
 
 # {{{ sanity checks run pre-scheduling
 
+
+# FIXME: Replace with an enum. See
+# https://gitlab.tiker.net/inducer/loopy/issues/85
+VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
+
+
 def check_insn_attributes(kernel):
     all_insn_ids = set(insn.id for insn in kernel.instructions)
 
@@ -75,6 +81,30 @@ def check_insn_attributes(kernel):
                     "dependencies: %s"
                     % (insn.id, ", ".join(
                         insn.depends_on - all_insn_ids)))
+
+        no_sync_with_insn_ids = set(id for id, scope in insn.no_sync_with)
+        if not no_sync_with_insn_ids <= all_insn_ids:
+            raise LoopyError("insn '%s' has nosync directive with unknown "
+                    "instruction ids: %s"
+                    % (insn.id,
+                       ", ".join(no_sync_with_insn_ids - all_insn_ids)))
+
+        no_sync_with_scopes = set(scope for id, scope in insn.no_sync_with)
+        if not no_sync_with_scopes <= VALID_NOSYNC_SCOPES:
+            raise LoopyError("insn '%s' has invalid nosync scopes: %s"
+                    % (insn.id,
+                       ", ".join(no_sync_with_scopes - VALID_NOSYNC_SCOPES)))
+
+
+def check_for_duplicate_insn_ids(knl):
+    insn_ids = set()
+
+    for insn in knl.instructions:
+        if not isinstance(insn.id, str):
+            raise LoopyError("instruction id %r is not a string" % insn.id)
+        if insn.id in insn_ids:
+            raise LoopyError("duplicate instruction id: '%s'" % insn.id)
+        insn_ids.add(insn.id)
 
 
 def check_loop_priority_inames_known(kernel):
@@ -114,20 +144,20 @@ def check_for_inactive_iname_access(kernel):
 
 def _is_racing_iname_tag(tv, tag):
     from loopy.kernel.data import (temp_var_scope,
-            LocalIndexTagBase, GroupIndexTag, ParallelTag, auto)
+            LocalIndexTagBase, GroupIndexTag, ConcurrentTag, auto)
 
     if tv.scope == temp_var_scope.PRIVATE:
         return (
-                isinstance(tag, ParallelTag)
+                isinstance(tag, ConcurrentTag)
                 and not isinstance(tag, (LocalIndexTagBase, GroupIndexTag)))
 
     elif tv.scope == temp_var_scope.LOCAL:
         return (
-                isinstance(tag, ParallelTag)
+                isinstance(tag, ConcurrentTag)
                 and not isinstance(tag, GroupIndexTag))
 
     elif tv.scope == temp_var_scope.GLOBAL:
-        return isinstance(tag, ParallelTag)
+        return isinstance(tag, ConcurrentTag)
 
     elif tv.scope == auto:
         raise LoopyError("scope of temp var '%s' has not yet been"
@@ -139,7 +169,7 @@ def _is_racing_iname_tag(tv, tag):
 
 
 def check_for_write_races(kernel):
-    from loopy.kernel.data import ParallelTag
+    from loopy.kernel.data import ConcurrentTag
 
     iname_to_tag = kernel.iname_to_tag.get
     for insn in kernel.instructions:
@@ -160,7 +190,7 @@ def check_for_write_races(kernel):
                 raceable_parallel_insn_inames = set(
                         iname
                         for iname in kernel.insn_inames(insn)
-                        if isinstance(iname_to_tag(iname), ParallelTag))
+                        if isinstance(iname_to_tag(iname), ConcurrentTag))
 
             elif assignee_name in kernel.temporary_variables:
                 temp_var = kernel.temporary_variables[assignee_name]
@@ -200,13 +230,13 @@ def check_for_orphaned_user_hardware_axes(kernel):
 
 
 def check_for_data_dependent_parallel_bounds(kernel):
-    from loopy.kernel.data import ParallelTag
+    from loopy.kernel.data import ConcurrentTag
 
     for i, dom in enumerate(kernel.domains):
         dom_inames = set(dom.get_var_names(dim_type.set))
         par_inames = set(iname
                 for iname in dom_inames
-                if isinstance(kernel.iname_to_tag.get(iname), ParallelTag))
+                if isinstance(kernel.iname_to_tag.get(iname), ConcurrentTag))
 
         if not par_inames:
             continue
@@ -356,6 +386,7 @@ def pre_schedule_checks(kernel):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
 
+        check_for_duplicate_insn_ids(kernel)
         check_for_orphaned_user_hardware_axes(kernel)
         check_for_double_use_of_hw_axes(kernel)
         check_insn_attributes(kernel)
@@ -370,7 +401,7 @@ def pre_schedule_checks(kernel):
         logger.debug("%s: pre-schedule check: done" % kernel.name)
     except KeyboardInterrupt:
         raise
-    except:
+    except Exception:
         print(75*"=")
         print("failing kernel during pre-schedule check:")
         print(75*"=")
@@ -628,7 +659,7 @@ def pre_codegen_checks(kernel):
         check_that_shapes_and_strides_are_arguments(kernel)
 
         logger.debug("pre-codegen check %s: done" % kernel.name)
-    except:
+    except Exception:
         print(75*"=")
         print("failing kernel during pre-schedule check:")
         print(75*"=")
@@ -677,12 +708,27 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 (insn_impl_domain & assumptions)
                 .project_out_except(insn_inames, [dim_type.set]))
 
+        from loopy.kernel.instruction import BarrierInstruction
+        from loopy.kernel.data import LocalIndexTag
+        if isinstance(insn, BarrierInstruction):
+            # project out local-id-mapped inames, solves #94 on gitlab
+            non_lid_inames = frozenset(
+                [iname for iname in insn_inames if not isinstance(
+                    kernel.iname_to_tag.get(iname), LocalIndexTag)])
+            insn_impl_domain = insn_impl_domain.project_out_except(
+                non_lid_inames, [dim_type.set])
+
         insn_domain = kernel.get_inames_domain(insn_inames)
         insn_parameters = frozenset(insn_domain.get_var_names(dim_type.param))
         assumptions, insn_domain = align_two(assumption_non_param, insn_domain)
         desired_domain = ((insn_domain & assumptions)
             .project_out_except(insn_inames, [dim_type.set])
             .project_out_except(insn_parameters, [dim_type.param]))
+
+        if isinstance(insn, BarrierInstruction):
+            # project out local-id-mapped inames, solves #94 on gitlab
+            desired_domain = desired_domain.project_out_except(
+                non_lid_inames, [dim_type.set])
 
         insn_impl_domain = (insn_impl_domain
                 .project_out_except(insn_parameters, [dim_type.param]))
@@ -733,8 +779,8 @@ def check_implemented_domains(kernel, implemented_domains, code=None):
                 print(79*"-")
                 print("CODE:")
                 print(79*"-")
-                from loopy.compiled import get_highlighted_cl_code
-                print(get_highlighted_cl_code(code))
+                from loopy.target.execution import get_highlighted_code
+                print(get_highlighted_code(code))
                 print(79*"-")
 
             raise LoopyError("sanity check failed--implemented and desired "

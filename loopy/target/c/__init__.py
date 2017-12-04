@@ -27,12 +27,14 @@ THE SOFTWARE.
 import six
 
 import numpy as np  # noqa
-from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
-from loopy.diagnostic import LoopyError
+from loopy.kernel.data import CallMangleInfo
+from loopy.target import TargetBase, ASTBuilderBase
+from loopy.diagnostic import LoopyError, LoopyTypeError
 from cgen import Pointer, NestedDeclarator, Block
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
 from pymbolic.mapper.stringifier import PREC_NONE
 from loopy.symbolic import IdentityMapper
+from loopy.types import NumpyType
 import pymbolic.primitives as p
 
 from pytools import memoize_method
@@ -268,7 +270,7 @@ class CTarget(TargetBase):
         return False
 
     def get_host_ast_builder(self):
-        return DummyHostASTBuilder(self)
+        return CASTBuilder(self)
 
     def get_device_ast_builder(self):
         return CASTBuilder(self)
@@ -298,7 +300,32 @@ class CTarget(TargetBase):
         # These kind of shouldn't be here.
         return self.get_dtype_registry().dtype_to_ctype(dtype)
 
+    def get_kernel_executor_cache_key(self, *args, **kwargs):
+        return None  # TODO: ???
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        raise NotImplementedError()
+
     # }}}
+
+
+# {{{
+
+class ExecutableCTarget(CTarget):
+    """
+    An executable CTarget that uses (by default) JIT compilation of C-code
+    """
+    from .c_execution import CCompiler
+
+    def __init__(self, compiler=CCompiler(), fortran_abi=False):
+        super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
+        self.compiler = compiler
+
+    def get_kernel_executor(self, knl, *args, **kwargs):
+        from loopy.target.c.c_execution import CKernelExecutor
+        return CKernelExecutor(knl, compiler=self.compiler)
+
+# }}}
 
 
 class _ConstRestrictPointer(Pointer):
@@ -307,8 +334,107 @@ class _ConstRestrictPointer(Pointer):
         return sub_tp, ("*const __restrict__ %s" % sub_decl)
 
 
+class _ConstPointer(Pointer):
+    def get_decl_pait(self):
+        sub_tp, sub_decl = self.subdecl.get_decl_pair()
+        return sub_tp, ("*const %s" % sub_decl)
+
+
+# {{{ symbol mangler
+
+def c_symbol_mangler(kernel, name):
+    # float NAN as defined in C99 standard
+    if name == "NAN":
+        return NumpyType(np.dtype(np.float32)), name
+    return None
+
+# }}}
+
+
+# {{{ function mangler
+
+def c_math_mangler(target, name, arg_dtypes, modify_name=True):
+    # Function mangler for math functions defined in C standard
+    # Convert abs, min, max to fabs, fmin, fmax.
+    # If modify_name is set to True, function names are modified according to
+    # floating point types of the arguments (e.g. cos(double), cosf(float))
+    # This should be set to True for C and Cuda, False for OpenCL
+    if not isinstance(name, str):
+        return None
+
+    if name in ["abs", "min", "max"]:
+        name = "f" + name
+
+    # unitary functions
+    if (name in ["fabs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+                 "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]
+            and len(arg_dtypes) == 1
+            and arg_dtypes[0].numpy_dtype.kind == "f"):
+
+        dtype = arg_dtypes[0].numpy_dtype
+
+        if modify_name:
+            if dtype == np.float64:
+                pass  # fabs
+            elif dtype == np.float32:
+                name = name + "f"  # fabsf
+            elif dtype == np.float128:
+                name = name + "l"  # fabsl
+            else:
+                raise LoopyTypeError("%s does not support type %s" % (name, dtype))
+
+        return CallMangleInfo(
+                target_name=name,
+                result_dtypes=arg_dtypes,
+                arg_dtypes=arg_dtypes)
+
+    # binary functions
+    if (name in ["fmax", "fmin"]
+            and len(arg_dtypes) == 2):
+
+        dtype = np.find_common_type(
+            [], [dtype.numpy_dtype for dtype in arg_dtypes])
+
+        if dtype.kind == "c":
+            raise LoopyTypeError("%s does not support complex numbers")
+
+        elif dtype.kind == "f":
+            if modify_name:
+                if dtype == np.float64:
+                    pass  # fmin
+                elif dtype == np.float32:
+                    name = name + "f"  # fminf
+                elif dtype == np.float128:
+                    name = name + "l"  # fminl
+                else:
+                    raise LoopyTypeError("%s does not support type %s"
+                                         % (name, dtype))
+
+            result_dtype = NumpyType(dtype)
+            return CallMangleInfo(
+                    target_name=name,
+                    result_dtypes=(result_dtype,),
+                    arg_dtypes=2*(result_dtype,))
+
+    return None
+
+# }}}
+
+
 class CASTBuilder(ASTBuilderBase):
     # {{{ library
+
+    def function_manglers(self):
+        return (
+                super(CASTBuilder, self).function_manglers() + [
+                    c_math_mangler
+                    ])
+
+    def symbol_manglers(self):
+        return (
+                super(CASTBuilder, self).symbol_manglers() + [
+                    c_symbol_mangler
+                    ])
 
     def preamble_generators(self):
         return (
@@ -336,26 +462,35 @@ class CASTBuilder(ASTBuilderBase):
         result = []
 
         from loopy.kernel.data import temp_var_scope
+        from loopy.schedule import CallKernel
+        # We only need to write declarations for global variables with
+        # the first device program. `is_first_dev_prog` determines
+        # whether this is the first device program in the schedule.
+        is_first_dev_prog = True
+        for i in range(schedule_index):
+            if isinstance(kernel.schedule[i], CallKernel):
+                is_first_dev_prog = False
+                break
+        if is_first_dev_prog:
+            for tv in sorted(
+                    six.itervalues(kernel.temporary_variables),
+                    key=lambda tv: tv.name):
 
-        for tv in sorted(
-                six.itervalues(kernel.temporary_variables),
-                key=lambda tv: tv.name):
+                if tv.scope == temp_var_scope.GLOBAL and tv.initializer is not None:
+                    assert tv.read_only
 
-            if tv.scope == temp_var_scope.GLOBAL and tv.initializer is not None:
-                assert tv.read_only
+                    decl_info, = tv.decl_info(self.target,
+                                    index_dtype=kernel.index_dtype)
+                    decl = self.wrap_global_constant(
+                            self.get_temporary_decl(
+                                codegen_state, schedule_index, tv,
+                                decl_info))
 
-                decl_info, = tv.decl_info(self.target,
-                                index_dtype=kernel.index_dtype)
-                decl = self.wrap_global_constant(
-                        self.get_temporary_decl(
-                            codegen_state, schedule_index, tv,
-                            decl_info))
+                    if tv.initializer is not None:
+                        decl = Initializer(decl, generate_array_literal(
+                            codegen_state, tv, tv.initializer))
 
-                if tv.initializer is not None:
-                    decl = Initializer(decl, generate_array_literal(
-                        codegen_state, tv, tv.initializer))
-
-                result.append(decl)
+                    result.append(decl)
 
         fbody = FunctionBody(function_decl, function_body)
         if not result:
@@ -398,6 +533,9 @@ class CASTBuilder(ASTBuilderBase):
                     [self.idi_to_cgen_declarator(codegen_state.kernel, idi)
                         for idi in codegen_state.implemented_data_info]))
 
+    def get_kernel_call(self, codegen_state, name, gsize, lsize, extra_args):
+        return None
+
     def get_temporary_decls(self, codegen_state, schedule_index):
         from loopy.kernel.data import temp_var_scope
 
@@ -413,6 +551,15 @@ class CASTBuilder(ASTBuilderBase):
         base_storage_to_align_bytes = {}
 
         from cgen import ArrayOf, Initializer, AlignedAttribute, Value, Line
+        # Getting the temporary variables that are needed for the current
+        # sub-kernel.
+        from loopy.schedule.tools import (
+                temporaries_read_in_subkernel,
+                temporaries_written_in_subkernel)
+        subkernel = kernel.schedule[schedule_index].kernel_name
+        sub_knl_temps = (
+                temporaries_read_in_subkernel(kernel, subkernel) |
+                temporaries_written_in_subkernel(kernel, subkernel))
 
         for tv in sorted(
                 six.itervalues(kernel.temporary_variables),
@@ -422,7 +569,8 @@ class CASTBuilder(ASTBuilderBase):
             if not tv.base_storage:
                 for idi in decl_info:
                     # global temp vars are mapped to arguments or global declarations
-                    if tv.scope != temp_var_scope.GLOBAL:
+                    if tv.scope != temp_var_scope.GLOBAL and (
+                            tv.name in sub_knl_temps):
                         decl = self.wrap_temporary_decl(
                                 self.get_temporary_decl(
                                     codegen_state, schedule_index, tv, idi),
@@ -462,13 +610,17 @@ class CASTBuilder(ASTBuilderBase):
                     temp_var_decl = self.wrap_temporary_decl(
                             temp_var_decl, tv.scope)
 
-                    # The 'restrict' part of this is a complete lie--of course
-                    # all these temporaries are aliased. But we're promising to
-                    # not use them to shovel data from one representation to the
-                    # other. That counts, right?
+                    if tv._base_storage_access_may_be_aliasing:
+                        ptrtype = _ConstPointer
+                    else:
+                        # The 'restrict' part of this is a complete lie--of course
+                        # all these temporaries are aliased. But we're promising to
+                        # not use them to shovel data from one representation to the
+                        # other. That counts, right?
+                        ptrtype = _ConstRestrictPointer
 
-                    cast_decl = _ConstRestrictPointer(cast_decl)
-                    temp_var_decl = _ConstRestrictPointer(temp_var_decl)
+                    cast_decl = ptrtype(cast_decl)
+                    temp_var_decl = ptrtype(temp_var_decl)
 
                     cast_tp, cast_d = cast_decl.get_decl_pair()
                     temp_var_decl = Initializer(
@@ -792,6 +944,10 @@ class CASTBuilder(ASTBuilderBase):
     def emit_comment(self, s):
         from cgen import Comment
         return Comment(s)
+
+    @property
+    def can_implement_conditionals(self):
+        return True
 
     def emit_if(self, condition_str, ast):
         from cgen import If

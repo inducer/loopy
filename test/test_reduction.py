@@ -97,22 +97,22 @@ def test_nested_dependent_reduction(ctx_factory):
                 "{[j]: 0<=j<i+sumlen}"
                 ],
             [
-                "<> sumlen = l[i]",
+                "<> sumlen = ell[i]",
                 "a[i] = sum(j, j)",
                 ],
             [
                 lp.ValueArg("n", np.int32),
                 lp.GlobalArg("a", dtype, ("n",)),
-                lp.GlobalArg("l", np.int32, ("n",)),
+                lp.GlobalArg("ell", np.int32, ("n",)),
                 ])
 
     cknl = lp.CompiledKernel(ctx, knl)
 
     n = 330
-    l = np.arange(n, dtype=np.int32)
-    evt, (a,) = cknl(queue, l=l, n=n, out_host=True)
+    ell = np.arange(n, dtype=np.int32)
+    evt, (a,) = cknl(queue, ell=ell, n=n, out_host=True)
 
-    tgt_result = (2*l-1)*2*l/2
+    tgt_result = (2*ell-1)*2*ell/2
     assert (a == tgt_result).all()
 
 
@@ -411,6 +411,28 @@ def test_parallel_multi_output_reduction(ctx_factory):
 
         assert max_val == np.max(a)
         assert max_index == np.argmax(np.abs(a))
+
+
+def test_reduction_with_conditional():
+    # The purpose of the 'l' iname is to force the entire kernel (including the
+    # predicate) into device code.
+
+    knl = lp.make_kernel(
+                "{ [l,i] : 0<=l,i<42 }",
+                """
+                if l > 0
+                    b[l] = sum(i, l*a[i])
+                end
+                """,
+                [lp.ValueArg("n", dtype=np.int32), "..."])
+
+    knl = lp.tag_inames(knl, "l:g.0")
+    knl = lp.add_and_infer_dtypes(knl, {"a": np.float32})
+    code = lp.generate_code_v2(knl).device_code()
+    print(code)
+
+    # Check that the if appears before the loop that realizes the reduction.
+    assert code.index("if") < code.index("for")
 
 
 if __name__ == "__main__":

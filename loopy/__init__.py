@@ -27,7 +27,7 @@ import six
 from six.moves import range, zip
 
 from loopy.symbolic import (
-        TaggedVariable, Reduction, LinearSubscript, )
+        TaggedVariable, Reduction, LinearSubscript, TypeCast)
 from loopy.diagnostic import LoopyError, LoopyWarning
 
 
@@ -59,6 +59,7 @@ from loopy.kernel.tools import (
         find_most_recent_global_barrier,
         get_subkernels,
         get_subkernel_to_insn_id_map)
+from loopy.types import to_loopy_type
 from loopy.kernel.creation import make_kernel, UniqueName
 from loopy.library.reduction import register_reduction_parser
 
@@ -112,7 +113,7 @@ from loopy.transform.ilp import realize_ilp
 from loopy.transform.batch import to_batched
 from loopy.transform.parameter import assume, fix_parameters
 from loopy.transform.save import save_and_reload_temporaries
-
+from loopy.transform.add_barrier import add_barrier
 # }}}
 
 from loopy.type_inference import infer_unknown_types
@@ -145,7 +146,7 @@ from loopy.target.numba import NumbaTarget, NumbaCudaTarget
 
 
 __all__ = [
-        "TaggedVariable", "Reduction", "LinearSubscript",
+        "TaggedVariable", "Reduction", "LinearSubscript", "TypeCast",
 
         "auto",
 
@@ -215,6 +216,8 @@ __all__ = [
 
         "save_and_reload_temporaries",
 
+        "add_barrier",
+
         # }}}
 
         "get_dot_dependency_graph",
@@ -225,6 +228,8 @@ __all__ = [
         "find_most_recent_global_barrier",
         "get_subkernels",
         "get_subkernel_to_insn_id_map",
+
+        "to_loopy_type",
 
         "infer_unknown_types",
 

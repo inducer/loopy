@@ -30,7 +30,8 @@ import islpy as isl
 from pytools import memoize_in
 from pymbolic.mapper import CombineMapper
 from functools import reduce
-from loopy.kernel.data import MultiAssignmentBase
+from loopy.kernel.data import (
+        MultiAssignmentBase, TemporaryVariable, temp_var_scope)
 from loopy.diagnostic import warn_with_kernel, LoopyError
 
 
@@ -38,7 +39,6 @@ __doc__ = """
 
 .. currentmodule:: loopy
 
-.. autoclass:: GuardedPwQPolynomial
 .. autoclass:: ToCountMap
 .. autoclass:: Op
 .. autoclass:: MemAccess
@@ -50,6 +50,11 @@ __doc__ = """
 .. autofunction:: gather_access_footprints
 .. autofunction:: gather_access_footprint_bytes
 
+.. currentmodule:: loopy.statistics
+
+.. autoclass:: GuardedPwQPolynomial
+
+.. currentmodule:: loopy
 """
 
 
@@ -790,7 +795,8 @@ class LocalMemAccessCounter(MemAccessCounter):
         sub_map = ToCountMap()
         if name in self.knl.temporary_variables:
             array = self.knl.temporary_variables[name]
-            if array.is_local:
+            if isinstance(array, TemporaryVariable) and (
+                    array.scope == temp_var_scope.LOCAL):
                 sub_map[MemAccess(mtype='local', dtype=dtype)] = 1
         return sub_map
 
@@ -898,7 +904,13 @@ class GlobalMemAccessCounter(MemAccessCounter):
         for idx, axis_tag in zip(index, array.dim_tags):
 
             from loopy.symbolic import simplify_using_aff
-            coeffs = CoefficientCollector()(simplify_using_aff(self.knl, idx))
+            from loopy.diagnostic import ExpressionNotAffineError
+            try:
+                coeffs = CoefficientCollector()(
+                          simplify_using_aff(self.knl, idx))
+            except ExpressionNotAffineError:
+                total_stride = None
+                break
             # check if he contains the lid 0 guy
             try:
                 coeff_min_lid = coeffs[Variable(min_lid)]
@@ -996,6 +1008,9 @@ def add_assumptions_guard(kernel, pwqpolynomial):
 
 def count(kernel, set, space=None):
     try:
+        if space is not None:
+            set = set.align_params(space)
+
         return add_assumptions_guard(kernel, set.card())
     except AttributeError:
         pass
@@ -1198,16 +1213,25 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
     """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
+    from loopy.kernel.instruction import (
+            CallInstruction, CInstruction, Assignment,
+            NoOpInstruction, BarrierInstruction)
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
 
     op_map = ToCountMap()
     op_counter = ExpressionOpCounter(knl)
     for insn in knl.instructions:
-        ops = op_counter(insn.assignee) + op_counter(insn.expression)
-        op_map = op_map + ops*count_insn_runs(
-                knl, insn,
-                count_redundant_work=count_redundant_work)
+        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+            ops = op_counter(insn.assignee) + op_counter(insn.expression)
+            op_map = op_map + ops*count_insn_runs(
+                    knl, insn,
+                    count_redundant_work=count_redundant_work)
+        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unexpected instruction item type: '%s'"
+                    % type(insn).__name__)
 
     if numpy_types:
         op_map.count_map = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
@@ -1303,37 +1327,47 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
     access_counter_g = GlobalMemAccessCounter(knl)
     access_counter_l = LocalMemAccessCounter(knl)
 
+    from loopy.kernel.instruction import (
+            CallInstruction, CInstruction, Assignment,
+            NoOpInstruction, BarrierInstruction)
+
     for insn in knl.instructions:
-        access_expr = (
-                access_counter_g(insn.expression)
-                + access_counter_l(insn.expression)
-                ).with_set_attributes(direction="load")
+        if isinstance(insn, (CallInstruction, CInstruction, Assignment)):
+            access_expr = (
+                    access_counter_g(insn.expression)
+                    + access_counter_l(insn.expression)
+                    ).with_set_attributes(direction="load")
 
-        access_assignee_g = access_counter_g(insn.assignee).with_set_attributes(
-                direction="store")
+            access_assignee_g = access_counter_g(insn.assignee).with_set_attributes(
+                    direction="store")
 
-        # FIXME: (!!!!) for now, don't count writes to local mem
+            # FIXME: (!!!!) for now, don't count writes to local mem
 
-        # use count excluding local index tags for uniform accesses
-        for key, val in six.iteritems(access_expr.count_map):
-            is_uniform = (key.mtype == 'global' and
-                    isinstance(key.stride, int) and
-                    key.stride == 0)
-            access_map = (
-                    access_map
-                    + ToCountMap({key: val})
-                    * get_insn_count(knl, insn.id, is_uniform))
-            #currently not counting stride of local mem access
+            # use count excluding local index tags for uniform accesses
+            for key, val in six.iteritems(access_expr.count_map):
+                is_uniform = (key.mtype == 'global' and
+                        isinstance(key.stride, int) and
+                        key.stride == 0)
+                access_map = (
+                        access_map
+                        + ToCountMap({key: val})
+                        * get_insn_count(knl, insn.id, is_uniform))
+                #currently not counting stride of local mem access
 
-        for key, val in six.iteritems(access_assignee_g.count_map):
-            is_uniform = (key.mtype == 'global' and
-                    isinstance(key.stride, int) and
-                    key.stride == 0)
-            access_map = (
-                    access_map
-                    + ToCountMap({key: val})
-                    * get_insn_count(knl, insn.id, is_uniform))
-            # for now, don't count writes to local mem
+            for key, val in six.iteritems(access_assignee_g.count_map):
+                is_uniform = (key.mtype == 'global' and
+                        isinstance(key.stride, int) and
+                        key.stride == 0)
+                access_map = (
+                        access_map
+                        + ToCountMap({key: val})
+                        * get_insn_count(knl, insn.id, is_uniform))
+                # for now, don't count writes to local mem
+        elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
+            pass
+        else:
+            raise NotImplementedError("unexpected instruction item type: '%s'"
+                    % type(insn).__name__)
 
     if numpy_types:
         # FIXME: Don't modify in-place
@@ -1410,7 +1444,8 @@ def get_synchronization_map(knl):
                 iname_list.pop()
 
         elif isinstance(sched_item, Barrier):
-            result = result + ToCountMap({"barrier_%s" % sched_item.kind:
+            result = result + ToCountMap({"barrier_%s" %
+                                          sched_item.synchronization_kind:
                                           get_count_poly(iname_list)})
 
         elif isinstance(sched_item, CallKernel):

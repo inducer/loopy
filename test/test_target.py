@@ -30,6 +30,9 @@ import pyopencl.clmath  # noqa
 import pyopencl.clrandom  # noqa
 import pytest
 
+from loopy.target.c import CTarget
+from loopy.target.opencl import OpenCLTarget
+
 import logging
 logger = logging.getLogger(__name__)
 
@@ -96,8 +99,6 @@ def test_cuda_target():
 
 
 def test_generate_c_snippet():
-    from loopy.target.c import CTarget
-
     from pymbolic import var
     I = var("I")  # noqa
     f = var("f")
@@ -138,6 +139,51 @@ def test_generate_c_snippet():
     knl = lp.preprocess_kernel(knl)
     knl = lp.get_one_scheduled_kernel(knl)
     print(lp.generate_body(knl))
+
+
+@pytest.mark.parametrize("target", [CTarget, OpenCLTarget])
+@pytest.mark.parametrize("tp", ["f32", "f64"])
+def test_math_function(target, tp):
+    # Test correct maths functions are generated for C and OpenCL
+    # backend instead for different data type
+
+    data_type = {"f32": np.float32,
+                 "f64": np.float64}[tp]
+
+    import pymbolic.primitives as p
+
+    i = p.Variable("i")
+    xi = p.Subscript(p.Variable("x"), i)
+    yi = p.Subscript(p.Variable("y"), i)
+    zi = p.Subscript(p.Variable("z"), i)
+
+    n = 100
+    domain = "{[i]: 0<=i<%d}" % n
+    data = [lp.GlobalArg("x", data_type, shape=(n,)),
+            lp.GlobalArg("y", data_type, shape=(n,)),
+            lp.GlobalArg("z", data_type, shape=(n,))]
+
+    inst = [lp.Assignment(xi, p.Variable("min")(yi, zi))]
+    knl = lp.make_kernel(domain, inst, data, target=target())
+    code = lp.generate_code_v2(knl).device_code()
+
+    assert "fmin" in code
+
+    if tp == "f32" and target == CTarget:
+        assert "fminf" in code
+    else:
+        assert "fminf" not in code
+
+    inst = [lp.Assignment(xi, p.Variable("max")(yi, zi))]
+    knl = lp.make_kernel(domain, inst, data, target=target())
+    code = lp.generate_code_v2(knl).device_code()
+
+    assert "fmax" in code
+
+    if tp == "f32" and target == CTarget:
+        assert "fmaxf" in code
+    else:
+        assert "fmaxf" not in code
 
 
 @pytest.mark.parametrize("tp", ["f32", "f64"])
@@ -238,6 +284,44 @@ def test_numba_cuda_target():
     knl = lp.add_and_infer_dtypes(knl, {"X": np.float32})
 
     print(lp.generate_code_v2(knl).all_code())
+
+
+def test_sized_integer_c_codegen(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        [lp.Assignment("a[i]", lp.TypeCast(np.int64, 1) << var("i"))]
+        )
+
+    knl = lp.set_options(knl, write_code=True)
+    n = 40
+
+    evt, (a,) = knl(queue, n=n)
+
+    a_ref = 1 << np.arange(n, dtype=np.int64)
+
+    assert np.array_equal(a_ref, a.get())
+
+
+def test_child_invalid_type_cast():
+    from pymbolic import var
+    knl = lp.make_kernel(
+        "{[i]: 0<=i<n}",
+        ["<> ctr = make_uint2(0, 0)",
+         lp.Assignment("a[i]", lp.TypeCast(np.int64, var("ctr")) << var("i"))]
+        )
+
+    with pytest.raises(lp.LoopyError):
+        knl = lp.preprocess_kernel(knl)
+
+
+def test_target_invalid_type_cast():
+    dtype = np.dtype([('', '<u4'), ('', '<i4')])
+    with pytest.raises(lp.LoopyError):
+        lp.TypeCast(dtype, 1)
 
 
 if __name__ == "__main__":

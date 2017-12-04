@@ -105,6 +105,27 @@ def test_to_batched(ctx_factory):
     bknl(queue, a=a, x=x)
 
 
+def test_add_barrier(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    knl = lp.make_kernel(
+            "{[i, j, ii, jj]: 0<=i,j, ii, jj<n}",
+            """
+            out[j, i] = a[i, j]{id=transpose}
+            out[ii, jj] = 2*out[ii, jj]{id=double}
+            """)
+    a = np.random.randn(16, 16)
+    knl = lp.add_barrier(knl, "id:transpose", "id:double", "gb1")
+
+    knl = lp.split_iname(knl, "i", 2, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "j", 2, outer_tag="g.1", inner_tag="l.1")
+    knl = lp.split_iname(knl, "ii", 2, outer_tag="g.0", inner_tag="l.0")
+    knl = lp.split_iname(knl, "jj", 2, outer_tag="g.1", inner_tag="l.1")
+
+    evt, (out,) = knl(queue, a=a)
+    assert (np.linalg.norm(out-2*a.T) < 1e-16)
+
+
 def test_rename_argument(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -436,6 +457,23 @@ def test_add_nosync():
     # Groups
     knl = lp.add_nosync(orig_knl, "local", "insn5", "insn6")
     assert frozenset([("insn5", "local")]) == knl.id_to_insn["insn6"].no_sync_with
+
+
+def test_uniquify_instruction_ids():
+    i1 = lp.Assignment("b", 1, id=None)
+    i2 = lp.Assignment("b", 1, id=None)
+    i3 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
+    i4 = lp.Assignment("b", 1, id=lp.UniqueName("b"))
+
+    knl = lp.make_kernel("{[i]: i = 1}", []).copy(instructions=[i1, i2, i3, i4])
+
+    from loopy.transform.instruction import uniquify_instruction_ids
+    knl = uniquify_instruction_ids(knl)
+
+    insn_ids = set(insn.id for insn in knl.instructions)
+
+    assert len(insn_ids) == 4
+    assert all(isinstance(id, str) for id in insn_ids)
 
 
 if __name__ == "__main__":

@@ -51,9 +51,14 @@ logger = logging.getLogger(__name__)
 
 _IDENTIFIER_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b")
 
+# source: check_keywords() in isl_stream.c, ISL version 0.17
+_ISL_KEYWORDS = frozenset("""
+        exists and or implies not infty infinity NaN min max rat true false ceild
+        floord mod ceil floor""".split())
+
 
 def _gather_isl_identifiers(s):
-    return set(_IDENTIFIER_RE.findall(s)) - set(["and", "or", "exists"])
+    return set(_IDENTIFIER_RE.findall(s)) - _ISL_KEYWORDS
 
 
 class UniqueName:
@@ -352,6 +357,14 @@ def parse_insn_options(opt_dict, options_str, assignee_names=None):
                                 % v)
             del assignee_name
 
+        elif opt_key == "mem_kind":
+            opt_value = opt_value.lower().strip()
+            if opt_value not in ['local', 'global']:
+                raise LoopyError("Unknown memory synchronization type %s specified"
+                    " expected, 'local' or 'global'."
+                    % opt_value)
+            result["mem_kind"] = opt_value
+
         else:
             raise ValueError(
                     "unrecognized instruction option '%s' "
@@ -420,6 +433,17 @@ SUBST_RE = re.compile(
         r"^\s*(?P<lhs>.+?)\s*:=\s*(?P<rhs>.+)\s*$")
 
 
+def check_illegal_options(insn_options, insn_type):
+    illegal_options = []
+    if insn_type not in ['gbarrier', 'lbarrier']:
+        illegal_options.append('mem_kind')
+
+    bad_options = [x for x in illegal_options if x in insn_options]
+    if bad_options:
+        raise LoopyError("Cannot supply option(s) '%s' to instruction type '%s'" %
+                         ', '.join(bad_options), insn_type)
+
+
 def parse_insn(groups, insn_options):
     """
     :return: a tuple ``(insn, inames_to_dup)``, where insn is a
@@ -434,7 +458,7 @@ def parse_insn(groups, insn_options):
     if "lhs" in groups:
         try:
             lhs = parse(groups["lhs"])
-        except:
+        except Exception:
             print("While parsing left hand side '%s', "
                     "the following error occurred:" % groups["lhs"])
             raise
@@ -443,7 +467,7 @@ def parse_insn(groups, insn_options):
 
     try:
         rhs = parse(groups["rhs"])
-    except:
+    except Exception:
         print("While parsing right hand side '%s', "
                 "the following error occurred:" % groups["rhs"])
         raise
@@ -493,6 +517,9 @@ def parse_insn(groups, insn_options):
             groups["options"],
             assignee_names=assignee_names)
 
+    # check for bad options
+    check_illegal_options(insn_options, 'assignment')
+
     insn_id = insn_options.pop("insn_id", None)
     inames_to_dup = insn_options.pop("inames_to_dup", [])
 
@@ -517,14 +544,14 @@ def parse_subst_rule(groups):
     from loopy.symbolic import parse
     try:
         lhs = parse(groups["lhs"])
-    except:
+    except Exception:
         print("While parsing left hand side '%s', "
                 "the following error occurred:" % groups["lhs"])
         raise
 
     try:
         rhs = parse(groups["rhs"])
-    except:
+    except Exception:
         print("While parsing right hand side '%s', "
                 "the following error occurred:" % groups["rhs"])
         raise
@@ -578,13 +605,15 @@ def parse_special_insn(groups, insn_options):
 
     from loopy.kernel.instruction import NoOpInstruction, BarrierInstruction
     special_insn_kind = groups["kind"]
+    # check for bad options
+    check_illegal_options(insn_options, special_insn_kind)
 
     if special_insn_kind == "gbarrier":
         cls = BarrierInstruction
-        kwargs["kind"] = "global"
+        kwargs["synchronization_kind"] = "global"
     elif special_insn_kind == "lbarrier":
         cls = BarrierInstruction
-        kwargs["kind"] = "local"
+        kwargs["synchronization_kind"] = "local"
     elif special_insn_kind == "nop":
         cls = NoOpInstruction
     else:
@@ -792,6 +821,8 @@ def parse_instructions(instructions, defines):
                     parse_insn_options(
                         insn_options_stack[-1],
                         with_options_match.group("options")))
+            # check for bad options
+            check_illegal_options(insn_options_stack[-1], 'with-block')
             continue
 
         for_match = FOR_RE.match(insn)
@@ -896,7 +927,8 @@ def parse_instructions(instructions, defines):
             obj = insn_options_stack.pop()
             #if this object is the end of an if statement
             if obj['predicates'] == if_predicates_stack[-1]["insn_predicates"] and\
-                    if_predicates_stack[-1]["insn_predicates"]:
+                    if_predicates_stack[-1]["insn_predicates"] and\
+                    obj['within_inames'] == if_predicates_stack[-1]['within_inames']:
                 if_predicates_stack.pop()
             continue
 
@@ -991,7 +1023,7 @@ def parse_domains(domains, defines):
 
             try:
                 dom = isl.BasicSet.read_from_str(isl.DEFAULT_CONTEXT, dom)
-            except:
+            except Exception:
                 print("failed to parse domain '%s'" % dom)
                 raise
         else:
@@ -1859,6 +1891,13 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     :arg seq_dependencies: If *True*, dependencies that sequentially
         connect the given *instructions* will be added. Defaults to
         *False*.
+    :arg fixed_parameters: A dictionary of *name*/*value* pairs, where *name*
+        will be fixed to *value*. *name* may refer to :ref:`domain-parameters`
+        or :ref:`arguments`. See also :func:`loopy.fix_parameters`.
+
+    .. versionchanged:: 2017.2
+
+        *fixed_parameters* added.
 
     .. versionchanged:: 2016.3
 
@@ -1876,6 +1915,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     flags = kwargs.pop("flags", None)
     target = kwargs.pop("target", None)
     seq_dependencies = kwargs.pop("seq_dependencies", False)
+    fixed_parameters = kwargs.pop("fixed_parameters", {})
 
     if defines:
         from warnings import warn
@@ -1976,6 +2016,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             target=target,
             **kwargs)
 
+    from loopy.transform.instruction import uniquify_instruction_ids
+    knl = uniquify_instruction_ids(knl)
+    from loopy.check import check_for_duplicate_insn_ids
+    check_for_duplicate_insn_ids(knl)
+
     if seq_dependencies:
         knl = add_sequential_dependencies(knl)
 
@@ -1996,11 +2041,14 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     # -------------------------------------------------------------------------
     # Must create temporaries before inferring inames (because those temporaries
     # mediate dependencies that are then used for iname propagation.)
+    # Must create temporaries before fixing parameters.
     # -------------------------------------------------------------------------
     knl = add_used_inames(knl)
     # NOTE: add_inferred_inames will be phased out and throws warnings if it
     # does something.
     knl = add_inferred_inames(knl)
+    from loopy.transform.parameter import fix_parameters
+    knl = fix_parameters(knl, **fixed_parameters)
     # -------------------------------------------------------------------------
     # Ordering dependency:
     # -------------------------------------------------------------------------

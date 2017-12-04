@@ -301,4 +301,39 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
 # }}}
 
 
+# {{{ uniquify_instruction_ids
+
+def uniquify_instruction_ids(kernel):
+    """Converts any ids that are :class:`loopy.UniqueName` or *None* into unique
+    strings.
+
+    This function does *not* deduplicate existing instruction ids.
+    """
+
+    from loopy.kernel.creation import UniqueName
+
+    insn_ids = set(
+            insn.id for insn in kernel.instructions
+            if insn.id is not None and not isinstance(insn.id, UniqueName))
+
+    from pytools import UniqueNameGenerator
+    insn_id_gen = UniqueNameGenerator(insn_ids)
+
+    new_instructions = []
+
+    for insn in kernel.instructions:
+        if insn.id is None:
+            new_instructions.append(
+                    insn.copy(id=insn_id_gen("insn")))
+        elif isinstance(insn.id, UniqueName):
+            new_instructions.append(
+                    insn.copy(id=insn_id_gen(insn.id.name)))
+        else:
+            new_instructions.append(insn)
+
+    return kernel.copy(instructions=new_instructions)
+
+# }}}
+
+
 # vim: foldmethod=marker

@@ -641,7 +641,7 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
 
     iname_to_tag = [(iname, parse_tag(tag)) for iname, tag in iname_to_tag]
 
-    from loopy.kernel.data import (ParallelTag, AutoLocalIndexTagBase,
+    from loopy.kernel.data import (ConcurrentTag, AutoLocalIndexTagBase,
             ForceSequentialTag)
 
     # {{{ globbing
@@ -686,13 +686,13 @@ def tag_inames(kernel, iname_to_tag, force=False, ignore_nonexistent=False):
         if iname not in kernel.all_inames():
             raise ValueError("cannot tag '%s'--not known" % iname)
 
-        if isinstance(new_tag, ParallelTag) \
+        if isinstance(new_tag, ConcurrentTag) \
                 and isinstance(old_tag, ForceSequentialTag):
             raise ValueError("cannot tag '%s' as parallel--"
                     "iname requires sequential execution" % iname)
 
         if isinstance(new_tag, ForceSequentialTag) \
-                and isinstance(old_tag, ParallelTag):
+                and isinstance(old_tag, ConcurrentTag):
             raise ValueError("'%s' is already tagged as parallel, "
                     "but is now prohibited from being parallel "
                     "(likely because of participation in a precompute or "
@@ -972,9 +972,9 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     # Get the duplication options as a tuple of iname and a set
     for iname, insns in _get_iname_duplication_options(insn_deps):
         # Check whether this iname has a parallel tag and discard it if so
-        from loopy.kernel.data import ParallelTag
+        from loopy.kernel.data import ConcurrentTag
         if (iname in knl.iname_to_tag
-                    and isinstance(knl.iname_to_tag[iname], ParallelTag)):
+                    and isinstance(knl.iname_to_tag[iname], ConcurrentTag)):
             continue
 
         # If we find a duplication option and fo not use boostable_into
@@ -1491,7 +1491,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     """
     used_axes = set()
 
-    from looopy.kernel.data import GroupIndexTag, LocalIndexTag
+    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
 
     if isinstance(kind, str):
         found = False

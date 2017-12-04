@@ -23,6 +23,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import collections
 import numpy as np
 from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
 from loopy.symbolic import WalkMapper as LoopyWalkMapper
@@ -50,7 +51,12 @@ class PersistentHashWalkMapper(LoopyWalkMapper, PersistentHashWalkMapperBase):
     See also :meth:`LoopyKeyBuilder.update_for_pymbolic_expression`.
     """
 
-    # <empty implementation>
+    def map_reduction(self, expr, *args):
+        if not self.visit(expr):
+            return
+
+        self.key_hash.update(type(expr.operation).__name__.encode("utf-8"))
+        self.rec(expr.expr, *args)
 
 
 class LoopyKeyBuilder(KeyBuilderBase):
@@ -109,6 +115,53 @@ class PymbolicExpressionHashWrapper(object):
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.update_for_pymbolic_expression(key_hash, self.expression)
+
+# }}}
+
+
+# {{{ eq key builder
+
+class LoopyEqKeyBuilder(object):
+    """Unlike :class:`loopy.tools.LoopyKeyBuilder`, this builds keys for use in
+    equality comparison, such that `key(a) == key(b)` if and only if `a == b`.
+    The types of objects being compared should satisfy structural equality.
+
+    The output is suitable for use with :class:`loopy.tools.LoopyKeyBuilder`
+    provided all fields are persistent hashable.
+
+    As an optimization, top-level pymbolic expression fields are stringified for
+    faster comparisons / hash calculations.
+
+    Usage::
+
+        kb = LoopyEqKeyBuilder()
+        kb.update_for_class(insn.__class__)
+        kb.update_for_field("field", insn.field)
+        ...
+        key = kb.key()
+
+    """
+
+    def __init__(self):
+        self.field_dict = {}
+
+    def update_for_class(self, class_):
+        self.class_ = class_
+
+    def update_for_field(self, field_name, value):
+        self.field_dict[field_name] = value
+
+    def update_for_pymbolic_field(self, field_name, value):
+        self.field_dict[field_name] = str(value).encode("utf-8")
+
+    def key(self):
+        return (self.class_.__name__.encode("utf-8"), self.field_dict)
+
+    def hash_key(self):
+        """Similar to key(), but excludes field names for faster hashing.
+        """
+        return (self.class_.__name__.encode("utf-8"),) + tuple(
+                self.field_dict[k] for k in sorted(self.field_dict.keys()))
 
 # }}}
 
@@ -340,23 +393,19 @@ def compute_sccs(graph):
 # }}}
 
 
-# {{{ lazily unpickling dictionary
+# {{{ pickled container value
 
-
-class _PickledObjectWrapper(object):
+class _PickledObject(object):
+    """A class meant to wrap a pickled value (for :class:`LazilyUnpicklingDict` and
+    :class:`LazilyUnpicklingList`).
     """
-    A class meant to wrap a pickled value (for :class:`LazilyUnpicklingDictionary`).
-    """
 
-    @classmethod
-    def from_object(cls, obj):
-        if isinstance(obj, cls):
-            return obj
-        from pickle import dumps
-        return cls(dumps(obj))
-
-    def __init__(self, objstring):
-        self.objstring = objstring
+    def __init__(self, obj):
+        if isinstance(obj, _PickledObject):
+            self.objstring = obj.objstring
+        else:
+            from pickle import dumps
+            self.objstring = dumps(obj)
 
     def unpickle(self):
         from pickle import loads
@@ -366,12 +415,35 @@ class _PickledObjectWrapper(object):
         return {"objstring": self.objstring}
 
 
-import collections
+class _PickledObjectWithEqAndPersistentHashKeys(_PickledObject):
+    """Like :class:`_PickledObject`, with two additional attributes:
 
+        * `eq_key`
+        * `persistent_hash_key`
 
-class LazilyUnpicklingDictionary(collections.MutableMapping):
+    This allows for comparison and for persistent hashing without unpickling.
     """
-    A dictionary-like object which lazily unpickles its values.
+
+    def __init__(self, obj, eq_key, persistent_hash_key):
+        _PickledObject.__init__(self, obj)
+        self.eq_key = eq_key
+        self.persistent_hash_key = persistent_hash_key
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, self.persistent_hash_key)
+
+    def __getstate__(self):
+        return {"objstring": self.objstring,
+                "eq_key": self.eq_key,
+                "persistent_hash_key": self.persistent_hash_key}
+
+# }}}
+
+
+# {{{ lazily unpickling dictionary
+
+class LazilyUnpicklingDict(collections.MutableMapping):
+    """A dictionary-like object which lazily unpickles its values.
     """
 
     def __init__(self, *args, **kwargs):
@@ -379,7 +451,7 @@ class LazilyUnpicklingDictionary(collections.MutableMapping):
 
     def __getitem__(self, key):
         value = self._map[key]
-        if isinstance(value, _PickledObjectWrapper):
+        if isinstance(value, _PickledObject):
             value = self._map[key] = value.unpickle()
         return value
 
@@ -397,8 +469,101 @@ class LazilyUnpicklingDictionary(collections.MutableMapping):
 
     def __getstate__(self):
         return {"_map": dict(
-            (key, _PickledObjectWrapper.from_object(val))
+            (key, _PickledObject(val))
             for key, val in six.iteritems(self._map))}
+
+# }}}
+
+
+# {{{ lazily unpickling list
+
+class LazilyUnpicklingList(collections.MutableSequence):
+    """A list which lazily unpickles its values."""
+
+    def __init__(self, *args, **kwargs):
+        self._list = list(*args, **kwargs)
+
+    def __getitem__(self, key):
+        item = self._list[key]
+        if isinstance(item, _PickledObject):
+            item = self._list[key] = item.unpickle()
+        return item
+
+    def __setitem__(self, key, value):
+        self._list[key] = value
+
+    def __delitem__(self, key):
+        del self._list[key]
+
+    def __len__(self):
+        return len(self._list)
+
+    def insert(self, key, value):
+        self._list.insert(key, value)
+
+    def __getstate__(self):
+        return {"_list": [_PickledObject(val) for val in self._list]}
+
+
+class LazilyUnpicklingListWithEqAndPersistentHashing(LazilyUnpicklingList):
+    """A list which lazily unpickles its values, and supports equality comparison
+    and persistent hashing without unpickling.
+
+    Persistent hashing only works in conjunction with :class:`LoopyKeyBuilder`.
+
+    Equality comparison and persistent hashing are implemented by supplying
+    functions `eq_key_getter` and `persistent_hash_key_getter` to the
+    constructor. These functions should return keys that can be used in place of
+    the original object for the respective purposes of equality comparison and
+    persistent hashing.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.eq_key_getter = kwargs.pop("eq_key_getter")
+        self.persistent_hash_key_getter = kwargs.pop("persistent_hash_key_getter")
+        LazilyUnpicklingList.__init__(self, *args, **kwargs)
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.update_for_list(key_hash, self._list)
+
+    def _get_eq_key(self, obj):
+        if isinstance(obj, _PickledObjectWithEqAndPersistentHashKeys):
+            return obj.eq_key
+        return self.eq_key_getter(obj)
+
+    def _get_persistent_hash_key(self, obj):
+        if isinstance(obj, _PickledObjectWithEqAndPersistentHashKeys):
+            return obj.persistent_hash_key
+        return self.persistent_hash_key_getter(obj)
+
+    def __eq__(self, other):
+        if not isinstance(other, (list, LazilyUnpicklingList)):
+            return NotImplemented
+
+        if isinstance(other, LazilyUnpicklingList):
+            other = other._list
+
+        if len(self) != len(other):
+            return False
+
+        for a, b in zip(self._list, other):
+            if self._get_eq_key(a) != self._get_eq_key(b):
+                return False
+
+        return True
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __getstate__(self):
+        return {"_list": [
+                _PickledObjectWithEqAndPersistentHashKeys(
+                    val,
+                    self._get_eq_key(val),
+                    self._get_persistent_hash_key(val))
+                for val in self._list],
+                "eq_key_getter": self.eq_key_getter,
+                "persistent_hash_key_getter": self.persistent_hash_key_getter}
 
 # }}}
 
@@ -410,5 +575,20 @@ def is_interned(s):
 def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
 
+
+def natorder(key):
+    # Return natural ordering for strings, as opposed to dictionary order.
+    # E.g. will result in
+    #  'abc1' < 'abc9' < 'abc10'
+    # rather than
+    #  'abc1' < 'abc10' < 'abc9'
+    # Based on
+    # http://code.activestate.com/recipes/285264-natural-string-sorting/#c7
+    import re
+    return [int(n) if n else s for n, s in re.findall(r'(\d+)|(\D+)', key)]
+
+
+def natsorted(seq, key=lambda x: x):
+    return sorted(seq, key=lambda y: natorder(key(y)))
 
 # vim: foldmethod=marker

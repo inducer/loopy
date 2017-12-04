@@ -3,6 +3,18 @@
 Installation
 ============
 
+Option 0: Static Binary
+-----------------------
+
+If you would just like to experiment with :mod:`loopy`'s code transformation
+abilities, the easiest way to get loopy is to download a statically-linked
+Linux binary.
+
+See :ref:`static-binary` for details.
+
+Option 1: From Source, no PyOpenCL integration
+-----------------------------------------------
+
 This command should install :mod:`loopy`::
 
     pip install loo.py
@@ -26,10 +38,59 @@ You may also clone its git repository::
     git clone --recursive git://github.com/inducer/loopy
     git clone --recursive http://git.tiker.net/trees/loopy.git
 
+Option 2: From Conda Forge, with PyOpenCL integration
+-----------------------------------------------------
+
+This set of instructions is intended for 64-bit Linux and
+MacOS support computers:
+
+#.  Make sure your system has the basics to build software.
+
+    On Debian derivatives (Ubuntu and many more),
+    installing ``build-essential`` should do the trick.
+
+    Everywhere else, just making sure you have the ``g++`` package should be
+    enough.
+
+#.  Install `miniconda <https://conda.io/miniconda.html>`_.
+    (Both Python 2 and 3 should work. In the absence of other constraints, prefer Python 3.)
+
+#.  ``export CONDA=/WHERE/YOU/INSTALLED/miniconda3``
+
+    If you accepted the default location, this should work:
+
+    ``export CONDA=$HOME/miniconda3``
+
+#.  ``$CONDA/bin/conda create -n dev``
+
+#.  ``source $CONDA/bin/activate dev``
+
+#.  ``conda config --add channels conda-forge``
+
+#.  ``conda install git pip pocl islpy pyopencl`` (Linux)
+
+    or
+
+    ``conda install osx-pocl-opencl git pip pocl islpy pyopencl`` (OS X)
+
+#.  Type the following command::
+
+        pip install git+https://github.com/inducer/loopy
+
+Next time you want to use :mod:`loopy`, just run the following command::
+
+    source /WHERE/YOU/INSTALLED/miniconda3/bin/activate dev
+
+You may also like to add this to a startup file (like :file:`$HOME/.bashrc`) or create an alias for it.
+
+See the `PyOpenCL installation instructions
+<https://documen.tician.de/pyopencl/misc.html#installation>`_ for options
+regarding OpenCL drivers.
+
 User-visible Changes
 ====================
 
-Version 2016.2
+Version 2017.2
 --------------
 .. note::
 
@@ -57,7 +118,7 @@ Licensing
 
 Loopy is licensed to you under the MIT/X Consortium license:
 
-Copyright (c) 2009-13 Andreas Klöckner and Contributors.
+Copyright (c) 2009-17 Andreas Klöckner and Contributors.
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
@@ -341,6 +402,11 @@ Here's a Bibtex entry for your convenience::
        address = "{Edinburgh, Scotland.}",
        doi = "{10.1145/2627373.2627387}",
     }
+
+Getting help
+============
+
+Email the friendly folks on the `loopy mailing list <https://lists.tiker.net/listinfo/loopy>`_.
 
 Acknowledgments
 ===============

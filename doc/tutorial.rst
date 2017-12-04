@@ -122,7 +122,9 @@ always see loopy's view of a kernel by printing it.
     i: None
     ---------------------------------------------------------------------------
     INSTRUCTIONS:
-     [i]                                  out[i] <- 2*a[i]   # insn
+    for i
+      out[i] = 2*a[i]  {id=insn}
+    end i
     ---------------------------------------------------------------------------
 
 You'll likely have noticed that there's quite a bit more information here
@@ -1105,11 +1107,12 @@ work item:
 
 :mod:`loopy` supports two kinds of barriers:
 
-* *Local barriers* ensure consistency of local memory accesses to items within
+* *Local barriers* ensure consistency of memory accesses to items within
   *the same* work group. This synchronizes with all instructions in the work
-  group.
+  group.  The type of memory (local or global) may be specified by the
+  :attr:`loopy.instruction.BarrierInstruction.mem_kind`
 
-* *Global barriers* ensure consistency of global memory accesses
+* *Global barriers* ensure consistency of memory accesses
   across *all* work groups, i.e. it synchronizes with every work item
   executing the kernel. Note that there is no exact equivalent for
   this kind of barrier in OpenCL. [#global-barrier-note]_
@@ -1118,14 +1121,17 @@ Once a work item has reached a barrier, it waits for everyone that it
 synchronizes with to reach the barrier before continuing. This means that unless
 all work items reach the same barrier, the kernel will hang during execution.
 
+Barrier insertion
+~~~~~~~~~~~~~~~~~
+
 By default, :mod:`loopy` inserts local barriers between two instructions when it
 detects that a dependency involving local memory may occur across work items. To
 see this in action, take a look at the section on :ref:`local_temporaries`.
 
-In contrast, :mod:`loopy` will *not* insert global barriers automatically.
-Global barriers require manual intervention along with some special
-post-processing which we describe below. Consider the following kernel, which
-attempts to rotate its input to the right by 1 in parallel:
+In contrast, :mod:`loopy` will *not* insert global barriers automatically and
+instead will report an error if it detects the need for a global barrier. As an
+example, consider the following kernel, which attempts to rotate its input to
+the right by 1 in parallel:
 
 .. doctest::
 
@@ -1153,8 +1159,22 @@ this, :mod:`loopy` will complain that global barrier needs to be inserted:
    ...
    MissingBarrierError: Dependency 'rotate depends on maketmp' (for variable 'arr') requires synchronization by a global barrier (add a 'no_sync_with' instruction option to state that no synchronization is needed)
 
-The syntax for a global barrier instruction is ``... gbarrier``. This needs to
-be added between the pair of offending instructions.
+The syntax for a inserting a global barrier instruction is
+``... gbarrier``. :mod:`loopy` also supports manually inserting local
+barriers. The syntax for a local barrier instruction is ``... lbarrier``.
+
+Saving temporaries across global barriers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For some platforms (currently only PyOpenCL), :mod:`loopy` implements global
+barriers by splitting the kernel into a host side kernel and multiple
+device-side kernels. On such platforms, it will be necessary to save non-global
+temporaries that are live across kernel calls. This section presents an example
+of how to use :func:`loopy.save_and_reload_temporaries` which is helpful for
+that purpose.
+
+Let us start with an example. Consider the kernel from above with a
+``... gbarrier`` instruction that has already been inserted.
 
 .. doctest::
 
@@ -1175,17 +1195,16 @@ be added between the pair of offending instructions.
    ...     assumptions="n mod 16 = 0")
    >>> knl = lp.split_iname(knl, "i", 16, inner_tag="l.0", outer_tag="g.0")
 
-When we try to generate code for this, it will still not work.
+Here is what happens when we try to generate code for the kernel:
 
    >>> cgr = lp.generate_code_v2(knl)
    Traceback (most recent call last):
    ...
    MissingDefinitionError: temporary variable 'tmp' gets used in subkernel 'rotate_v2_0' without a definition (maybe you forgot to call loopy.save_and_reload_temporaries?)
 
-To understand what is going on, you need to know that :mod:`loopy` implements
-global barriers by splitting the kernel into multiple device-side kernels. The
-splitting happens when the instruction schedule is generated. To see the
-schedule, we must first call :func:`loopy.get_one_scheduled_kernel`:
+This happens due to the kernel splitting done by :mod:`loopy`. The splitting
+happens when the instruction schedule is generated. To see the schedule, we
+should call :func:`loopy.get_one_scheduled_kernel`:
 
    >>> knl = lp.get_one_scheduled_kernel(lp.preprocess_kernel(knl))
    >>> print(knl)
@@ -1196,11 +1215,11 @@ schedule, we must first call :func:`loopy.get_one_scheduled_kernel`:
    ---------------------------------------------------------------------------
    SCHEDULE:
       0: CALL KERNEL rotate_v2(extra_args=[], extra_inames=[])
-      1:     [maketmp] tmp <- arr[i_inner + i_outer*16]
+      1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
       2: RETURN FROM KERNEL rotate_v2
-      3: ---BARRIER:global---
+      3: ... gbarrier
       4: CALL KERNEL rotate_v2_0(extra_args=[], extra_inames=[])
-      5:     [rotate] arr[((1 + i_inner + i_outer*16) % n)] <- tmp
+      5:     arr[((1 + i_inner + i_outer*16) % n)] = tmp  {id=rotate}
       6: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
@@ -1234,13 +1253,13 @@ put those instructions into the schedule.
    ---------------------------------------------------------------------------
    SCHEDULE:
       0: CALL KERNEL rotate_v2(extra_args=['tmp_save_slot'], extra_inames=[])
-      1:     [maketmp] tmp <- arr[i_inner + i_outer*16]
-      2:     [tmp.save] tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] <- tmp
+      1:     tmp = arr[i_inner + i_outer*16]  {id=maketmp}
+      2:     tmp_save_slot[tmp_save_hw_dim_0_rotate_v2, tmp_save_hw_dim_1_rotate_v2] = tmp  {id=tmp.save}
       3: RETURN FROM KERNEL rotate_v2
-      4: ---BARRIER:global---
+      4: ... gbarrier
       5: CALL KERNEL rotate_v2_0(extra_args=['tmp_save_slot'], extra_inames=[])
-      6:     [tmp.reload] tmp <- tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]
-      7:     [rotate] arr[((1 + i_inner + i_outer*16) % n)] <- tmp
+      6:     tmp = tmp_save_slot[tmp_reload_hw_dim_0_rotate_v2_0, tmp_reload_hw_dim_1_rotate_v2_0]  {id=tmp.reload}
+      7:     arr[((1 + i_inner + i_outer*16) % n)] = tmp  {id=rotate}
       8: RETURN FROM KERNEL rotate_v2_0
    ---------------------------------------------------------------------------
 
@@ -1280,7 +1299,7 @@ The kernel translates into two OpenCL kernels.
      arr[((1 + lid(0) + gid(0) * 16) % n)] = tmp;
    }
 
-Executing the kernel does what we expect.
+Now we can execute the kernel.
 
    >>> arr = cl.array.arange(queue, 16, dtype=np.int32)
    >>> print(arr)

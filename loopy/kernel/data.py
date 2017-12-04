@@ -77,12 +77,17 @@ class IndexTag(ImmutableRecord):
         return type(self).__name__
 
 
-class ParallelTag(IndexTag):
+class ConcurrentTag(IndexTag):
     pass
 
 
-class HardwareParallelTag(ParallelTag):
+class HardwareConcurrentTag(ConcurrentTag):
     pass
+
+
+# deprecated aliases
+ParallelTag = ConcurrentTag
+HardwareParallelTag = HardwareConcurrentTag
 
 
 class UniqueTag(IndexTag):
@@ -105,11 +110,11 @@ class AxisTag(UniqueTag):
                 self.print_name, self.axis)
 
 
-class GroupIndexTag(HardwareParallelTag, AxisTag):
+class GroupIndexTag(HardwareConcurrentTag, AxisTag):
     print_name = "g"
 
 
-class LocalIndexTagBase(HardwareParallelTag):
+class LocalIndexTagBase(HardwareConcurrentTag):
     pass
 
 
@@ -130,7 +135,7 @@ class AutoFitLocalIndexTag(AutoLocalIndexTagBase):
 
 # {{{ ilp-like
 
-class IlpBaseTag(ParallelTag):
+class IlpBaseTag(ConcurrentTag):
     pass
 
 
@@ -161,6 +166,11 @@ class ForceSequentialTag(IndexTag):
         return "forceseq"
 
 
+class InOrderSequentialSequentialTag(IndexTag):
+    def __str__(self):
+        return "ord"
+
+
 def parse_tag(tag):
     if tag is None:
         return tag
@@ -173,6 +183,8 @@ def parse_tag(tag):
 
     if tag == "for":
         return None
+    elif tag == "ord":
+        return InOrderSequentialSequentialTag()
     elif tag in ["unr"]:
         return UnrollTag()
     elif tag in ["vec"]:
@@ -346,6 +358,14 @@ class TemporaryVariable(ArrayBase):
 
         A :class:`bool` indicating whether the variable may be written during
         its lifetime. If *True*, *initializer* must be given.
+
+    .. attribute:: _base_storage_access_may_be_aliasing
+
+        Whether the temporary is used to alias the underlying base storage.
+        Defaults to *False*. If *False*, C-based code generators will declare
+        the temporary as a ``restrict`` const pointer to the base storage
+        memory location. If *True*, the restrict part is omitted on this
+        declaration.
     """
 
     min_target_axes = 0
@@ -358,12 +378,14 @@ class TemporaryVariable(ArrayBase):
             "base_storage",
             "initializer",
             "read_only",
+            "_base_storage_access_may_be_aliasing",
             ]
 
     def __init__(self, name, dtype=None, shape=(), scope=auto,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
-            base_storage=None, initializer=None, read_only=False, **kwargs):
+            base_storage=None, initializer=None, read_only=False,
+            _base_storage_access_may_be_aliasing=False, **kwargs):
         """
         :arg dtype: :class:`loopy.auto` or a :class:`numpy.dtype`
         :arg shape: :class:`loopy.auto` or a shape tuple
@@ -419,6 +441,13 @@ class TemporaryVariable(ArrayBase):
                     "mutually exclusive"
                     % name)
 
+        if base_storage is None and _base_storage_access_may_be_aliasing:
+            raise LoopyError(
+                    "temporary variable '%s': "
+                    "_base_storage_access_may_be_aliasing option, but no "
+                    "base_storage given!"
+                    % name)
+
         ArrayBase.__init__(self, name=intern(name),
                 dtype=dtype, shape=shape,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
@@ -428,6 +457,8 @@ class TemporaryVariable(ArrayBase):
                 base_storage=base_storage,
                 initializer=initializer,
                 read_only=read_only,
+                _base_storage_access_may_be_aliasing=(
+                    _base_storage_access_may_be_aliasing),
                 **kwargs)
 
     @property
@@ -442,7 +473,7 @@ class TemporaryVariable(ArrayBase):
             return False
         elif self.scope == temp_var_scope.GLOBAL:
             raise LoopyError("TemporaryVariable.is_local called on "
-                    "global temporary variable '%s'" % self.name)
+                             "global temporary variable '%s'" % self.name)
         else:
             raise LoopyError("unexpected value of TemporaryVariable.scope")
 
@@ -489,7 +520,10 @@ class TemporaryVariable(ArrayBase):
                 and (
                     (self.initializer is None and other.initializer is None)
                     or np.array_equal(self.initializer, other.initializer))
-                and self.read_only == other.read_only)
+                and self.read_only == other.read_only
+                and (self._base_storage_access_may_be_aliasing
+                    == other._base_storage_access_may_be_aliasing)
+                )
 
     def update_persistent_hash(self, key_hash, key_builder):
         """Custom hash computation function for use with
@@ -500,6 +534,8 @@ class TemporaryVariable(ArrayBase):
         self.update_persistent_hash_for_shape(key_hash, key_builder,
                 self.storage_shape)
         key_builder.rec(key_hash, self.base_indices)
+        key_builder.rec(key_hash, self.scope)
+        key_builder.rec(key_hash, self.base_storage)
 
         initializer = self.initializer
         if initializer is not None:
@@ -507,8 +543,20 @@ class TemporaryVariable(ArrayBase):
         key_builder.rec(key_hash, initializer)
 
         key_builder.rec(key_hash, self.read_only)
+        key_builder.rec(key_hash, self._base_storage_access_may_be_aliasing)
 
 # }}}
+
+
+def iname_tag_to_temp_var_scope(iname_tag):
+    iname_tag = parse_tag(iname_tag)
+
+    if isinstance(iname_tag, GroupIndexTag):
+        return temp_var_scope.GLOBAL
+    elif isinstance(iname_tag, LocalIndexTag):
+        return temp_var_scope.LOCAL
+    else:
+        return temp_var_scope.PRIVATE
 
 
 # {{{ substitution rule
