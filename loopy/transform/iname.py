@@ -1491,7 +1491,7 @@ def find_unused_axis_tag(kernel, kind, insn_match=None):
     """
     used_axes = set()
 
-    from looopy.kernel.data import GroupIndexTag, LocalIndexTag
+    from loopy.kernel.data import GroupIndexTag, LocalIndexTag
 
     if isinstance(kind, str):
         found = False
