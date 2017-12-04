@@ -378,6 +378,8 @@ class CKernelExecutor(KernelExecutorBase):
         if self.kernel.options.edit_cl:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
+            # update code from editor
+            all_code = '\n'.join([dev_code, '', host_code])
 
         c_kernels = []
         for dp in codegen_result.device_programs:
