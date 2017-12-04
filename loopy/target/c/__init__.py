@@ -28,7 +28,7 @@ import six
 
 import numpy as np  # noqa
 from loopy.kernel.data import CallMangleInfo
-from loopy.target import TargetBase, ASTBuilderBase
+from loopy.target import TargetBase, ASTBuilderBase, DummyHostASTBuilder
 from loopy.diagnostic import LoopyError, LoopyTypeError
 from cgen import Pointer, NestedDeclarator, Block
 from cgen.mapper import IdentityMapper as CASTIdentityMapperBase
@@ -270,7 +270,7 @@ class CTarget(TargetBase):
         return False
 
     def get_host_ast_builder(self):
-        return CASTBuilder(self)
+        return DummyHostASTBuilder(self)
 
     def get_device_ast_builder(self):
         return CASTBuilder(self)
@@ -324,6 +324,10 @@ class ExecutableCTarget(CTarget):
     def get_kernel_executor(self, knl, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
         return CKernelExecutor(knl, compiler=self.compiler)
+
+    def get_host_ast_builder(self):
+        # enable host code generation
+        return CASTBuilder(self)
 
 # }}}
 
@@ -466,7 +470,7 @@ class CASTBuilder(ASTBuilderBase):
         # We only need to write declarations for global variables with
         # the first device program. `is_first_dev_prog` determines
         # whether this is the first device program in the schedule.
-        is_first_dev_prog = True
+        is_first_dev_prog = codegen_state.is_generating_device_code
         for i in range(schedule_index):
             if isinstance(kernel.schedule[i], CallKernel):
                 is_first_dev_prog = False
