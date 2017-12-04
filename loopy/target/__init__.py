@@ -32,6 +32,7 @@ __doc__ = """
 .. autoclass:: ASTBuilderBase
 
 .. autoclass:: CTarget
+.. autoclass:: ExecutableCTarget
 .. autoclass:: CudaTarget
 .. autoclass:: OpenCLTarget
 .. autoclass:: PyOpenCLTarget
