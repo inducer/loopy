@@ -309,7 +309,7 @@ class CTarget(TargetBase):
     # }}}
 
 
-# {{{
+# {{{ executable c target
 
 class ExecutableCTarget(CTarget):
     """
