@@ -1062,6 +1062,77 @@ def test_atomic(ctx_factory, dtype):
     lp.auto_test_vs_ref(ref_knl, ctx, knl, parameters=dict(n=10000))
 
 
+@pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
+def test_atomic_load(ctx_factory, dtype):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+    from loopy.kernel.data import temp_var_scope as scopes
+    n = 10
+    vec_width = 4
+
+    if (
+            np.dtype(dtype).itemsize == 8
+            and "cl_khr_int64_base_atomics" not in ctx.devices[0].extensions):
+        pytest.skip("64-bit atomics not supported on device")
+
+    import pyopencl.version  # noqa
+    if (
+            cl.version.VERSION < (2015, 2)
+            and dtype == np.int64):
+        pytest.skip("int64 RNG not supported in PyOpenCL < 2015.2")
+
+    knl = lp.make_kernel(
+            "{ [i,j]: 0<=i,j<n}",
+            """
+            for j
+                <> upper = 0
+                <> lower = 0
+                temp = 0 {id=init, atomic}
+                for i
+                    upper = upper + i * a[i] {id=sum0}
+                    lower = lower - b[i] {id=sum1}
+                end
+                temp = temp + lower {id=temp_sum, dep=sum*:init, atomic,\
+                                           nosync=init}
+                ... lbarrier {id=lb2, dep=temp_sum}
+                out[j] = upper / temp {id=final, dep=lb2, atomic,\
+                                           nosync=init:temp_sum}
+            end
+            """,
+            [
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                lp.GlobalArg("a", dtype, shape=lp.auto),
+                lp.GlobalArg("b", dtype, shape=lp.auto),
+                lp.TemporaryVariable('temp', dtype, for_atomic=True,
+                                     scope=scopes.LOCAL),
+                "..."
+                ],
+            silenced_warnings=["write_race(init)", "write_race(temp_sum)"])
+    knl = lp.fix_parameters(knl, n=n)
+    knl = lp.split_iname(knl, "j", vec_width, inner_tag="l.0")
+    _, out = knl(queue, a=np.arange(n, dtype=dtype), b=np.arange(n, dtype=dtype))
+    assert np.allclose(out, np.full_like(out, ((1 - 2 * n) / 3.0)))
+
+
+@pytest.mark.parametrize("dtype", [np.int32, np.int64, np.float32, np.float64])
+def test_atomic_init(dtype):
+    vec_width = 4
+
+    knl = lp.make_kernel(
+            "{ [i,j]: 0<=i<100 }",
+            """
+            out[i%4] = 0 {id=init, atomic=init}
+            """,
+            [
+                lp.GlobalArg("out", dtype, shape=lp.auto, for_atomic=True),
+                "..."
+                ],
+            silenced_warnings=["write_race(init)"])
+    knl = lp.split_iname(knl, 'i', vec_width, inner_tag='l.0')
+
+    print(lp.generate_code_v2(knl).device_code())
+
+
 def test_within_inames_and_reduction():
     # See https://github.com/inducer/loopy/issues/24
 
