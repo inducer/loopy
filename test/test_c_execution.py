@@ -189,3 +189,28 @@ def test_function_decl_extractor():
         target=ExecutableCTarget())
 
     assert np.allclose(knl(b=np.arange(10), v=-1)[1], np.arange(10) - 1)
+
+
+def test_c_execution_with_global_temporaries():
+    # ensure that the "host" code of a bare ExecutableCTarget with
+    # global constant temporaries is None
+
+    from loopy.target.c import ExecutableCTarget
+    from loopy.kernel.data import temp_var_scope as scopes
+    n = 10
+
+    knl = lp.make_kernel('{[i]: 0 <= i < n}',
+        """
+            a[i] = b[i]
+        """,
+        [lp.GlobalArg('a', shape=(n,), dtype=np.int32),
+         lp.TemporaryVariable('b', shape=(n,),
+                              initializer=np.arange(n, dtype=np.int32),
+                              dtype=np.int32,
+                              read_only=True,
+                              scope=scopes.GLOBAL)],
+        target=ExecutableCTarget())
+
+    knl = lp.fix_parameters(knl, n=n)
+    assert ('int b[%d]' % n) not in lp.generate_code_v2(knl).host_code()
+    assert np.allclose(knl(a=np.zeros(10, dtype=np.int32))[1], np.arange(10))

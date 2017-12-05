@@ -280,13 +280,6 @@ class IDIToCDLL(object):
 
         return arg_info
 
-    def _append_arg(self, name, dtype, pointer=False):
-        """Append arg info to current argument list."""
-        self._arg_info.append((
-            name,
-            self._dtype_to_ctype(dtype, pointer=pointer)
-        ))
-
     def _dtype_to_ctype(self, dtype, pointer=False):
         """Map NumPy dtype to equivalent ctypes type."""
         typename = self.registry.dtype_to_ctype(dtype)
@@ -385,6 +378,8 @@ class CKernelExecutor(KernelExecutorBase):
         if self.kernel.options.edit_cl:
             from pytools import invoke_editor
             dev_code = invoke_editor(dev_code, "code.c")
+            # update code from editor
+            all_code = '\n'.join([dev_code, '', host_code])
 
         c_kernels = []
         for dp in codegen_result.device_programs:
