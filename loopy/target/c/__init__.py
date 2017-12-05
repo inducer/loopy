@@ -309,12 +309,11 @@ class CTarget(TargetBase):
     # }}}
 
 
-# {{{
+# {{{ executable c target
 
 class ExecutableCTarget(CTarget):
-    """
-    An executable CTarget that uses (by default) JIT compilation of C-code
-    """
+    """An executable CTarget that uses (by default) JIT compilation of C-code
+    via :mod:`codepy`.  """
     from .c_execution import CCompiler
 
     def __init__(self, compiler=CCompiler(), fortran_abi=False):
