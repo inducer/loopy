@@ -2580,7 +2580,7 @@ def test_wildcard_dep_matching():
             """,
             "...")
 
-    all_insns = set("insn%d" % i for i in range(1,6))
+    all_insns = set("insn%d" % i for i in range(1, 6))
 
     assert knl.id_to_insn["insn1"].depends_on == set()
     assert knl.id_to_insn["insn2"].depends_on == all_insns - set(["insn2"])
