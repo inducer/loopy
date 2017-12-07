@@ -2664,6 +2664,27 @@ def test_execution_backend_can_cache_dtypes(ctx_factory):
     knl(queue)
 
 
+def test_wildcard_dep_matching():
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+            <>a = 0 {id=insn1}
+            <>b = 0 {id=insn2,dep=insn?}
+            <>c = 0 {id=insn3,dep=insn*}
+            <>d = 0 {id=insn4,dep=insn[12]}
+            <>e = 0 {id=insn5,dep=insn[!1]}
+            """,
+            "...")
+
+    all_insns = set("insn%d" % i for i in range(1, 6))
+
+    assert knl.id_to_insn["insn1"].depends_on == set()
+    assert knl.id_to_insn["insn2"].depends_on == all_insns - set(["insn2"])
+    assert knl.id_to_insn["insn3"].depends_on == all_insns - set(["insn3"])
+    assert knl.id_to_insn["insn4"].depends_on == set(["insn1", "insn2"])
+    assert knl.id_to_insn["insn5"].depends_on == all_insns - set(["insn1", "insn5"])
+
+
 def test_preamble_with_separate_temporaries(ctx_factory):
     from loopy.kernel.data import temp_var_scope as scopes
     # create a function mangler

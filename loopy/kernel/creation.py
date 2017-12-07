@@ -1656,6 +1656,13 @@ def apply_default_order_to_args(kernel, default_order):
 
 # {{{ resolve instruction dependencies
 
+WILDCARD_SYMBOLS = "*?["
+
+
+def _is_wildcard(s):
+    return any(c in s for c in WILDCARD_SYMBOLS)
+
+
 def _resolve_dependencies(knl, insn, deps):
     from loopy import find_instructions
     from loopy.match import MatchExpressionBase
@@ -1670,12 +1677,16 @@ def _resolve_dependencies(knl, insn, deps):
                 if new_dep.id != insn.id:
                     new_deps.append(new_dep.id)
                     found_any = True
-        else:
+        elif _is_wildcard(dep):
             from fnmatch import fnmatchcase
             for other_insn in knl.instructions:
-                if fnmatchcase(other_insn.id, dep):
+                if other_insn.id != insn.id and fnmatchcase(other_insn.id, dep):
                     new_deps.append(other_insn.id)
                     found_any = True
+        else:
+            if dep in knl.id_to_insn:
+                new_deps.append(dep)
+                found_any = True
 
         if not found_any and knl.options.check_dep_resolution:
             raise LoopyError("instruction '%s' declared a depency on '%s', "
