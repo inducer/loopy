@@ -804,7 +804,7 @@ def parse_instructions(instructions, defines):
                             insn.groups
                             | insn_options_stack[-1]["groups"]),
                         conflicts_with_groups=(
-                            insn.groups
+                            insn.conflicts_with_groups
                             | insn_options_stack[-1]["conflicts_with_groups"]),
                         **kwargs)
 
