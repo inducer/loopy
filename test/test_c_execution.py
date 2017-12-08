@@ -24,6 +24,7 @@ THE SOFTWARE.
 
 import numpy as np
 import loopy as lp
+import sys
 
 import logging
 logger = logging.getLogger(__name__)
@@ -214,3 +215,13 @@ def test_c_execution_with_global_temporaries():
     knl = lp.fix_parameters(knl, n=n)
     assert ('int b[%d]' % n) not in lp.generate_code_v2(knl).host_code()
     assert np.allclose(knl(a=np.zeros(10, dtype=np.int32))[1], np.arange(10))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        exec(sys.argv[1])
+    else:
+        from py.test.cmdline import main
+        main([__file__])
+
+# vim: foldmethod=marker
