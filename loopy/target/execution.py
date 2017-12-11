@@ -649,6 +649,7 @@ class ExecutionWrapperGeneratorBase(object):
 
         return gen.get_function()
 
+# }}}
 
 # }}}
 

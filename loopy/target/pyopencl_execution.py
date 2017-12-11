@@ -76,6 +76,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
         gen("")
 
+    # }}}
+
     # {{{ handle allocation of unspecified arguements
 
     def handle_alloc(self, gen, arg, kernel_arg, strify, skip_arg_checks):
