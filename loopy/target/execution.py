@@ -729,7 +729,6 @@ class KernelExecutorBase(object):
 
         return kernel
 
-    @memoize_method
     def get_typed_and_scheduled_kernel(self, arg_to_dtype_set):
         from loopy import CACHING_ENABLED
 
