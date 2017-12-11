@@ -239,7 +239,7 @@ class CCompiler(object):
                                 self.tempdir, debug, wait_on_error,
                                 debug_recompile, False)
 
-        if not recompiled:
+        if recompiled:
             logger.debug('Kernel {} compiled from source'.format(name))
 
         # and return compiled
