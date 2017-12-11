@@ -1,5 +1,6 @@
 import loopy as lp
 
+
 # {{{ test_preamble_with_separate_temporaries
 
 class SeparateTemporariesPreambleTestHelper:
