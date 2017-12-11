@@ -784,8 +784,18 @@ class KernelExecutorBase(object):
         return get_highlighted_code(code)
 
     def get_code(self, arg_to_dtype=None):
+        def process_dtype(dtype):
+            if isinstance(dtype, type) and issubclass(dtype, np.generic):
+                dtype = np.dtype(dtype)
+            if isinstance(dtype, np.dtype):
+                from loopy.types import NumpyType
+                dtype = NumpyType(dtype, self.kernel.target)
+
+            return dtype
+
         if arg_to_dtype is not None:
-            arg_to_dtype = frozenset(six.iteritems(arg_to_dtype))
+            arg_to_dtype = frozenset(
+                    (k, process_dtype(v)) for k, v in six.iteritems(arg_to_dtype))
 
         kernel = self.get_typed_and_scheduled_kernel(arg_to_dtype)
 
