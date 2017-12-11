@@ -53,7 +53,7 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
     def python_dtype_str(self, dtype):
         if np.dtype(str(dtype)).isbuiltin:
             return "_lpy_np."+dtype.name
-        raise Exception('dtype: {} not recognized'.format(dtype))
+        raise Exception('dtype: {0} not recognized'.format(dtype))
 
     # {{{ handle non numpy arguements
 
@@ -240,7 +240,7 @@ class CCompiler(object):
                                 debug_recompile, False)
 
         if recompiled:
-            logger.debug('Kernel {} compiled from source'.format(name))
+            logger.debug('Kernel {0} compiled from source'.format(name))
 
         # and return compiled
         return ctypes.CDLL(ext_file)
