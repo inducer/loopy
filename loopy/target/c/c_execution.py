@@ -227,7 +227,6 @@ class CCompiler(object):
         """Build temporary filename path in tempdir."""
         return os.path.join(self.tempdir, name)
 
-    @memoize_method
     def build(self, name, code, debug=False, wait_on_error=None,
                      debug_recompile=True):
         """Compile code, build and load shared library."""
@@ -235,7 +234,7 @@ class CCompiler(object):
         c_fname = self._tempname('code.' + self.source_suffix)
 
         # build object
-        checksum, mod_name, ext_file, recompiled = \
+        _, mod_name, ext_file, recompiled = \
             compile_from_string(self.toolchain, name, code, c_fname,
                                 self.tempdir, debug, wait_on_error,
                                 debug_recompile, False)
@@ -244,7 +243,7 @@ class CCompiler(object):
             logger.debug('Kernel {} compiled from source'.format(name))
 
         # and return compiled
-        return checksum, ctypes.CDLL(ext_file)
+        return ctypes.CDLL(ext_file)
 
 
 class CPlusPlusCompiler(CCompiler):
@@ -306,8 +305,7 @@ class CompiledCKernel(object):
         # get code and build
         self.code = dev_code
         self.comp = comp
-        self.checksum, self.dll = self.comp.build(
-            self.name, self.code)
+        self.dll = self.comp.build(self.name, self.code)
 
         # get the function declaration for interface with ctypes
         func_decl = IDIToCDLL(self.target)
