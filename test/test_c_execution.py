@@ -25,6 +25,9 @@ THE SOFTWARE.
 import numpy as np
 import loopy as lp
 import sys
+import pytest
+from loopy import CACHING_ENABLED
+from StringIO import StringIO
 
 import logging
 logger = logging.getLogger(__name__)
@@ -191,6 +194,76 @@ def test_function_decl_extractor():
 
     assert np.allclose(knl(b=np.arange(10), v=-1)[1], np.arange(10) - 1)
 
+
+@pytest.mark.skipif(not CACHING_ENABLED, reason="Can't test caching when disabled")
+def test_c_caching():
+    # ensure that codepy is correctly caching the code
+    from loopy.target.c import ExecutableCTarget
+
+    class testing_logger(object):
+        def start_capture(self, loglevel=logging.DEBUG):
+            """ Start capturing log output to a string buffer.
+                @param newLogLevel: Optionally change the global logging level, e.g.
+                logging.DEBUG
+            """
+            self.buffer = StringIO()
+            self.buffer.write("Log output")
+
+            logger = logging.getLogger()
+            if loglevel:
+                self.oldloglevel = logger.getEffectiveLevel()
+                logger.setLevel(loglevel)
+            else:
+                self.oldloglevel = None
+
+            self.loghandler = logging.StreamHandler(self.buffer)
+            formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s "
+                                          "- %(message)s")
+            self.loghandler.setFormatter(formatter)
+            logger.addHandler(self.loghandler)
+
+        def stop_capture(self):
+            """ Stop capturing log output.
+
+            @return: Collected log output as string
+            """
+
+            # Remove our handler
+            logger = logging.getLogger()
+
+            # Restore logging level (if any)
+            if self.oldloglevel is not None:
+                logger.setLevel(self.oldloglevel)
+            logger.removeHandler(self.loghandler)
+
+            self.loghandler.flush()
+            self.buffer.flush()
+
+            return self.buffer.getvalue()
+
+    def __get_knl():
+        return lp.make_kernel('{[i]: 0 <= i < 10}',
+        """
+            a[i] = b[i]
+        """,
+        [lp.GlobalArg('a', shape=(10,), dtype=np.int32),
+         lp.ConstantArg('b', shape=(10))],
+                             target=ExecutableCTarget(),
+                             name='cache_test')
+
+    knl = __get_knl()
+    # compile
+    assert np.allclose(knl(b=np.arange(10))[1], np.arange(10))
+    # setup test logger to check logs
+    tl = testing_logger()
+    tl.start_capture()
+    # remake kernel to clear cache
+    knl = __get_knl()
+    assert np.allclose(knl(b=np.arange(10))[1], np.arange(10))
+    # and get logs
+    logs = tl.stop_capture()
+    # check that we didn't recompile
+    assert 'Kernel cache_test retrieved from cache' in logs
 
 def test_c_execution_with_global_temporaries():
     # ensure that the "host" code of a bare ExecutableCTarget with
