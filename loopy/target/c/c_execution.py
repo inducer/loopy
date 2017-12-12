@@ -241,6 +241,8 @@ class CCompiler(object):
 
         if recompiled:
             logger.debug('Kernel {0} compiled from source'.format(name))
+        else:
+            logger.debug('Kernel {0} retrieved from cache'.format(name))
 
         # and return compiled
         return ctypes.CDLL(ext_file)
