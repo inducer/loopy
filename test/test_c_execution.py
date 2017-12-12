@@ -25,9 +25,9 @@ THE SOFTWARE.
 import numpy as np
 import loopy as lp
 import sys
+import six
 import pytest
 from loopy import CACHING_ENABLED
-from StringIO import StringIO
 
 import logging
 logger = logging.getLogger(__name__)
@@ -206,7 +206,7 @@ def test_c_caching():
                 @param newLogLevel: Optionally change the global logging level, e.g.
                 logging.DEBUG
             """
-            self.buffer = StringIO()
+            self.buffer = six.StringIO()
             self.buffer.write("Log output")
 
             logger = logging.getLogger()
