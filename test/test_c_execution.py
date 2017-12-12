@@ -200,7 +200,7 @@ def test_c_caching():
     # ensure that codepy is correctly caching the code
     from loopy.target.c import ExecutableCTarget
 
-    class testing_logger(object):
+    class TestingLogger(object):
         def start_capture(self, loglevel=logging.DEBUG):
             """ Start capturing log output to a string buffer.
                 @param newLogLevel: Optionally change the global logging level, e.g.
@@ -255,7 +255,7 @@ def test_c_caching():
     # compile
     assert np.allclose(knl(b=np.arange(10))[1], np.arange(10))
     # setup test logger to check logs
-    tl = testing_logger()
+    tl = TestingLogger()
     tl.start_capture()
     # remake kernel to clear cache
     knl = __get_knl()
@@ -264,6 +264,7 @@ def test_c_caching():
     logs = tl.stop_capture()
     # check that we didn't recompile
     assert 'Kernel cache_test retrieved from cache' in logs
+
 
 def test_c_execution_with_global_temporaries():
     # ensure that the "host" code of a bare ExecutableCTarget with
