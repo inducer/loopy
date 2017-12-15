@@ -2741,6 +2741,18 @@ def test_preamble_with_separate_temporaries(ctx_factory):
         queue, data=data.flatten('C'))[1][0], data[offsets[:-1] + 1])
 
 
+def test_arg_inference_for_predicates():
+    knl = lp.make_kernel("{[i]: 0 <= i < 10}",
+            """
+            if incr[i]
+              a = a + 1
+            end
+            """)
+
+    assert "incr" in knl.arg_dict
+    assert knl.arg_dict["incr"].shape == (10,)
+
+
 def test_add_prefetch_works_in_lhs_index():
     knl = lp.make_kernel(
             "{ [n,k,l,k1,l1,k2,l2]: "

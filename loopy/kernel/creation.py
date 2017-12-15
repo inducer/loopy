@@ -1106,6 +1106,9 @@ class ArgumentGuesser:
         self.all_written_names = set()
         from loopy.symbolic import get_dependencies
         for insn in instructions:
+            for pred in insn.predicates:
+                self.all_names.update(get_dependencies(self.submap(pred)))
+
             if isinstance(insn, MultiAssignmentBase):
                 for assignee_var_name in insn.assignee_var_names():
                     self.all_written_names.add(assignee_var_name)
