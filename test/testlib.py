@@ -1,6 +1,20 @@
 import loopy as lp
 
 
+# {{{ test_barrier_in_overridden_get_grid_size_expanded_kernel
+
+class GridOverride(object):
+    def __init__(self, clean, vecsize):
+        self.clean = clean
+        self.vecsize = vecsize
+
+    def __call__(self, insn_ids, ignore_auto=True):
+        gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
+        return gsize, (self.vecsize,)
+
+# }}}
+
+
 # {{{ test_preamble_with_separate_temporaries
 
 class SeparateTemporariesPreambleTestHelper:
@@ -99,3 +113,5 @@ class SeparateTemporariesPreambleTestHelper:
         yield (desc, '\n'.join([str(decl), code]))
 
 # }}}
+
+# vim: foldmethod=marker

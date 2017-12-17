@@ -2462,16 +2462,9 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     vecsize = 16
     knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
 
+    from testlib import GridOverride
+
     # artifically expand via overridden_get_grid_sizes_for_insn_ids
-    class GridOverride(object):
-        def __init__(self, clean, vecsize=vecsize):
-            self.clean = clean
-            self.vecsize = vecsize
-
-        def __call__(self, insn_ids, ignore_auto=True):
-            gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
-            return gsize, (self.vecsize,)
-
     knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
         knl.copy(), vecsize))
     # make sure we can generate the code
