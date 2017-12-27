@@ -219,8 +219,19 @@ class KernelArgument(ImmutableRecord):
 
         dtype = kwargs.pop("dtype", None)
         from loopy.types import to_loopy_type
-        kwargs["dtype"] = to_loopy_type(
+        dtype = to_loopy_type(
                 dtype, allow_auto=True, allow_none=True, target=target)
+
+        import loopy as lp
+        if dtype is lp.auto:
+            from warnings import warn
+            warn("Argument/temporary data type should be None if unspecified, "
+                    "not auto. This usage will be disallowed in 2018.",
+                    DeprecationWarning, stacklevel=2)
+
+            dtype = None
+
+        kwargs["dtype"] = dtype
 
         ImmutableRecord.__init__(self, **kwargs)
 
@@ -268,10 +279,10 @@ class ValueArg(KernelArgument):
 
     def __str__(self):
         import loopy as lp
-        if self.dtype is lp.auto:
-            type_str = "<auto>"
-        elif self.dtype is None:
-            type_str = "<runtime>"
+        assert self.dtype is not lp.auto
+
+        if self.dtype is None:
+            type_str = "<auto/runtime>"
         else:
             type_str = str(self.dtype)
 

@@ -797,11 +797,10 @@ def _hackily_ensure_multi_assignment_return_values_are_scoped_private(kernel):
 
             newly_added_assignments_ids.add(new_assignment_id)
 
-            import loopy as lp
             new_temporaries[new_assignee_name] = (
                     TemporaryVariable(
                         name=new_assignee_name,
-                        dtype=lp.auto,
+                        dtype=None,
                         scope=temp_var_scope.PRIVATE))
 
             from pymbolic import var
@@ -987,7 +986,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             new_temporary_variables[name] = TemporaryVariable(
                     name=name,
                     shape=(),
-                    dtype=lp.auto,
+                    dtype=None,
                     scope=temp_var_scope.PRIVATE)
 
         from pymbolic import var
