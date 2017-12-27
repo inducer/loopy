@@ -588,6 +588,9 @@ def infer_unknown_types(kernel, expect_completion=False):
             failed = not result
             if not failed:
                 new_dtype, = result
+                if new_dtype.target is None:
+                    new_dtype = new_dtype.with_target(kernel.target)
+
                 debug("     success: %s", new_dtype)
                 if new_dtype != item.dtype:
                     debug("     changed from: %s", item.dtype)
