@@ -111,9 +111,9 @@ always see loopy's view of a kernel by printing it.
     KERNEL: loopy_kernel
     ---------------------------------------------------------------------------
     ARGUMENTS:
-    a: GlobalArg, type: <runtime>, shape: (n), dim_tags: (N0:stride:1)
-    n: ValueArg, type: <runtime>
-    out: GlobalArg, type: <runtime>, shape: (n), dim_tags: (N0:stride:1)
+    a: GlobalArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
+    n: ValueArg, type: <auto/runtime>
+    out: GlobalArg, type: <auto/runtime>, shape: (n), dim_tags: (N0:stride:1)
     ---------------------------------------------------------------------------
     DOMAINS:
     [n] -> { [i] : 0 <= i < n }
@@ -154,7 +154,7 @@ following:
   See :ref:`specifying-arguments`.
 
 * Loopy has not determined the type of ``a`` and ``out``. The data type is
-  given as ``<runtime>``, which means that these types will be determined
+  given as ``<auto/runtime>``, which means that these types will be determined
   by the data passed in when the kernel is invoked. Loopy generates (and
   caches!) a copy of the kernel for each combination of types passed in.
 
