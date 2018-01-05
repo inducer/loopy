@@ -50,12 +50,14 @@ class _BatchVariableChanger(RuleAwareIdentityMapper):
 
     def needs_batch_subscript(self, name):
         tv = self.kernel.temporary_variables.get(name)
+        from loopy.kernel.data import temp_var_scope
         return (
                 (not self.sequential
                     and (tv is not None
-                        and not (
+                        and not ((
                             tv.initializer is not None
-                            and tv.read_only)))
+                            and tv.read_only) or (
+                                tv.scope == temp_var_scope.PRIVATE))))
                 or
                 name in self.batch_varying_args)
 
@@ -142,9 +144,12 @@ def to_batched(knl, nbatches, batch_varying_args, batch_iname_prefix="ibatch",
 
     if not sequential:
         new_temps = {}
+        from loopy.kernel.data import temp_var_scope
 
         for temp in six.itervalues(knl.temporary_variables):
-            if temp.initializer is not None and temp.read_only:
+            if (temp.initializer is not None and temp.read_only) or (
+                    temp.scope == temp_var_scope.PRIVATE and temp.name not in
+                    batch_varying_args):
                 new_temps[temp.name] = temp
             else:
                 new_temps[temp.name] = temp.copy(
