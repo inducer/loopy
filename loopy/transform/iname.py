@@ -951,7 +951,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     * duplicating j in instruction i2
     * duplicating i in instruction i2 and i3
 
-    Use :func:`has_schedulable_iname_nesting` to decide, whether an iname needs to be
+    Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
     # First we extract the minimal necessary information from the kernel
@@ -977,7 +977,7 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
                     and isinstance(knl.iname_to_tag[iname], ConcurrentTag)):
             continue
 
-        # If we find a duplication option and fo not use boostable_into
+        # If we find a duplication option and to not use boostable_into
         # information, we restart this generator with use_boostable_into=True
         if not use_boostable_into and not knl.options.ignore_boostable_into:
             for option in get_iname_duplication_options(knl, True):
