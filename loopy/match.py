@@ -134,6 +134,12 @@ class All(MatchExpressionBase):
     def __call__(self, kernel, matchable):
         return True
 
+    def __str__(self):
+        return "all"
+
+    def __repr__(self):
+        return "%s()" % (type(self).__name__)
+
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, "all_match_expr")
 
@@ -144,48 +150,39 @@ class All(MatchExpressionBase):
         return hash(type(self))
 
 
-class And(MatchExpressionBase):
+class MultiChildMatchExpressionBase(MatchExpressionBase):
     def __init__(self, children):
         self.children = children
 
+    def __str__(self):
+        joiner = " %s " % type(self).__name__.lower()
+        return "(%s)" % (joiner.join(str(ch) for ch in self.children))
+
+    def __repr__(self):
+        return "%s(%s)" % (
+                type(self).__name__,
+                ", ".join(repr(ch) for ch in self.children))
+
+    def update_persistent_hash(self, key_hash, key_builder):
+        key_builder.rec(key_hash, type(self).__name__)
+        key_builder.rec(key_hash, self.children)
+
+    def __eq__(self, other):
+        return (type(self) == type(other)
+                and self.children == other.children)
+
+    def __hash__(self):
+        return hash((type(self), self.children))
+
+
+class And(MultiChildMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return all(ch(kernel, matchable) for ch in self.children)
 
-    def __str__(self):
-        return "(%s)" % (" and ".join(str(ch) for ch in self.children))
 
-    def update_persistent_hash(self, key_hash, key_builder):
-        key_builder.rec(key_hash, "and_match_expr")
-        key_builder.rec(key_hash, self.children)
-
-    def __eq__(self, other):
-        return (type(self) == type(other)
-                and self.children == other.children)
-
-    def __hash__(self):
-        return hash((type(self), self.children))
-
-
-class Or(MatchExpressionBase):
-    def __init__(self, children):
-        self.children = children
-
+class Or(MultiChildMatchExpressionBase):
     def __call__(self, kernel, matchable):
         return any(ch(kernel, matchable) for ch in self.children)
-
-    def __str__(self):
-        return "(%s)" % (" or ".join(str(ch) for ch in self.children))
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        key_builder.rec(key_hash, "or_match_expr")
-        key_builder.rec(key_hash, self.children)
-
-    def __eq__(self, other):
-        return (type(self) == type(other)
-                and self.children == other.children)
-
-    def __hash__(self):
-        return hash((type(self), self.children))
 
 
 class Not(MatchExpressionBase):
@@ -197,6 +194,9 @@ class Not(MatchExpressionBase):
 
     def __str__(self):
         return "(not %s)" % str(self.child)
+
+    def __repr__(self):
+        return "%s(%r)" % (type(self).__name__, self.child)
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, "not_match_expr")
@@ -221,6 +221,9 @@ class GlobMatchExpressionBase(MatchExpressionBase):
     def __str__(self):
         descr = type(self).__name__
         return descr.lower() + ":" + self.glob
+
+    def __repr__(self):
+        return "%s(%r)" % (type(self).__name__, self. glob)
 
     def update_persistent_hash(self, key_hash, key_builder):
         key_builder.rec(key_hash, type(self).__name__)
