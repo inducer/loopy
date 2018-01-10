@@ -21,7 +21,7 @@ THE SOFTWARE.
 """
 
 
-VERSION = (2017, 2)
+VERSION = (2017, 2, 1)
 VERSION_STATUS = ""
 VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
 
@@ -32,4 +32,4 @@ except ImportError:
 else:
     _islpy_version = islpy.version.VERSION_TEXT
 
-DATA_MODEL_VERSION = "v74-islpy%s" % _islpy_version
+DATA_MODEL_VERSION = "v75-islpy%s" % _islpy_version

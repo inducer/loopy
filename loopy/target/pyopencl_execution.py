@@ -151,7 +151,21 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ generate invocation
 
-    def generate_invocation(self, gen, kernel_name, args):
+    def generate_invocation(self, gen, kernel_name, args, kernel, implemented_data_info):
+        if kernel.options.cl_exec_manage_array_events:
+            gen("""
+                if wait_for is None:
+                    wait_for = []
+                """)
+
+            gen("")
+            from loopy.kernel.data import GlobalArg
+            for arg in implemented_data_info:
+                if issubclass(arg.arg_class, GlobalArg):
+                    gen("wait_for.extend({arg_name}.events)".format(arg_name=arg.name))
+
+            gen("")
+
         gen("_lpy_evt = {kernel_name}({args})"
         .format(
             kernel_name=kernel_name,
@@ -159,6 +173,14 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                 ["_lpy_cl_kernels", "queue"]
                 + args
                 + ["wait_for=wait_for"])))
+
+        if kernel.options.cl_exec_manage_array_events:
+            gen("")
+            from loopy.kernel.data import GlobalArg
+            for arg in implemented_data_info:
+                if (issubclass(arg.arg_class, GlobalArg)
+                        and arg.base_name in kernel.get_written_variables()):
+                    gen("{arg_name}.add_event(_lpy_evt)".format(arg_name=arg.name))
 
     # }}}
 
