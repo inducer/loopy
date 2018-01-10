@@ -571,7 +571,8 @@ class ExecutionWrapperGeneratorBase(object):
 
     # {{{ generate invocation
 
-    def generate_invocation(self, gen, kernel_name, args, kernel, implemented_data_info):
+    def generate_invocation(self, gen, kernel_name, args,
+            kernel, implemented_data_info):
         raise NotImplementedError()
 
     # }}}

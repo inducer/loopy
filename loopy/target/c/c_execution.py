@@ -133,7 +133,8 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ generate invocation
 
-    def generate_invocation(self, gen, kernel_name, args, kernel, implemented_data_info):
+    def generate_invocation(self, gen, kernel_name, args,
+            kernel, implemented_data_info):
         gen("for knl in _lpy_c_kernels:")
         with Indentation(gen):
             gen('knl({args})'.format(

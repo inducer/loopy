@@ -151,7 +151,8 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
 
     # {{{ generate invocation
 
-    def generate_invocation(self, gen, kernel_name, args, kernel, implemented_data_info):
+    def generate_invocation(self, gen, kernel_name, args,
+            kernel, implemented_data_info):
         if kernel.options.cl_exec_manage_array_events:
             gen("""
                 if wait_for is None:
@@ -162,7 +163,9 @@ class PyOpenCLExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
             from loopy.kernel.data import GlobalArg
             for arg in implemented_data_info:
                 if issubclass(arg.arg_class, GlobalArg):
-                    gen("wait_for.extend({arg_name}.events)".format(arg_name=arg.name))
+                    gen(
+                            "wait_for.extend({arg_name}.events)"
+                            .format(arg_name=arg.name))
 
             gen("")
 
