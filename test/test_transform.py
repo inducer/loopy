@@ -105,6 +105,28 @@ def test_to_batched(ctx_factory):
     bknl(queue, a=a, x=x)
 
 
+def test_to_batched_temp(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+         ''' { [i,j]: 0<=i,j<n } ''',
+         ''' cnst = 2.0
+         out[i] = sum(j, cnst*a[i,j]*x[j])''',
+         [lp.TemporaryVariable(
+             "cnst",
+             dtype=np.float64,
+             shape=(),
+             scope=lp.temp_var_scope.PRIVATE), '...'])
+
+    bknl = lp.to_batched(knl, "nbatches", "out,x")
+
+    a = np.random.randn(5, 5)
+    x = np.random.randn(7, 5)
+
+    bknl(queue, a=a, x=x)
+
+
 def test_add_barrier(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
