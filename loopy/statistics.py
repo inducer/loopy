@@ -547,11 +547,13 @@ class MemAccess(object):
     # FIXME: This could be done much more briefly by inheriting from Record.
 
     def __init__(self, mtype=None, dtype=None, stride=None, direction=None,
-                 variable=None):
+                 variable=None, count_granularity='thread'):
         self.mtype = mtype
         self.stride = stride
         self.direction = direction
         self.variable = variable
+        self.count_granularity = count_granularity
+
         if dtype is None:
             self.dtype = dtype
         else:
@@ -569,14 +571,16 @@ class MemAccess(object):
                                       "mtype is 'local'")
 
     def copy(self, mtype=None, dtype=None, stride=None, direction=None,
-            variable=None):
+            variable=None, count_granularity=None):
         return MemAccess(
                 mtype=mtype if mtype is not None else self.mtype,
                 dtype=dtype if dtype is not None else self.dtype,
                 stride=stride if stride is not None else self.stride,
                 direction=direction if direction is not None else self.direction,
                 variable=variable if variable is not None else self.variable,
-                )
+                count_granularity=count_granularity
+                if count_granularity is not None
+                else self.count_granularity)
 
     def __eq__(self, other):
         return isinstance(other, MemAccess) and (
@@ -589,34 +593,23 @@ class MemAccess(object):
                 (self.direction is None or other.direction is None or
                  self.direction == other.direction) and
                 (self.variable is None or other.variable is None or
-                 self.variable == other.variable))
+                 self.variable == other.variable) and
+                (self.count_granularity is None or
+                 other.count_granularity is None or
+                 self.count_granularity == other.count_granularity)
+                )
 
     def __hash__(self):
         return hash(str(self))
 
     def __repr__(self):
-        if self.mtype is None:
-            mtype = 'None'
-        else:
-            mtype = self.mtype
-        if self.dtype is None:
-            dtype = 'None'
-        else:
-            dtype = str(self.dtype)
-        if self.stride is None:
-            stride = 'None'
-        else:
-            stride = str(self.stride)
-        if self.direction is None:
-            direction = 'None'
-        else:
-            direction = self.direction
-        if self.variable is None:
-            variable = 'None'
-        else:
-            variable = self.variable
-        return "MemAccess(" + mtype + ", " + dtype + ", " + stride + ", " \
-               + direction + ", " + variable + ")"
+        return "MemAccess(%s, %s, %s, %s, %s, %s)" % (
+            self.mtype,
+            self.dtype,
+            self.stride,
+            self.direction,
+            self.variable,
+            self.count_granularity)
 
 # }}}
 
