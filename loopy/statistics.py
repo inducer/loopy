@@ -1258,7 +1258,8 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
 
 # {{{ get_mem_access_map
 
-def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
+def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
+                       wsize=None):
     """Count the number of memory accesses in a loopy kernel.
 
     :arg knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
@@ -1320,6 +1321,13 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
 
     """
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
+
+    if wsize is None:
+        wsize = 32
+        warn_with_kernel(knl, "get_mem_access_map_assumes_warpsize",
+                         "get_mem_access_map: No warp size passed, "
+                         "assuming warp size is %d."
+                         % (wsize))
 
     class CacheHolder(object):
         pass
