@@ -1326,12 +1326,36 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
 
     cache_holder = CacheHolder()
 
-    @memoize_in(cache_holder, "insn_count")
-    def get_insn_count(knl, insn_id, uniform=False):
+    #@memoize_in(cache_holder, "insn_count")  # TODO why doesn't this work anymore?
+    def get_insn_count(knl, insn_id,
+                       disregard_local_axes=False,
+                       count_granularity='thread'):
         insn = knl.id_to_insn[insn_id]
-        return count_insn_runs(
-                knl, insn, disregard_local_axes=uniform,
+        ct = count_insn_runs(
+                knl, insn, disregard_local_axes=disregard_local_axes,
                 count_redundant_work=count_redundant_work)
+
+        if count_granularity == 'thread':
+            return ct
+        elif count_granularity == 'warp':
+            return ct/wsize
+        elif count_granularity == 'group':
+            from loopy.symbolic import aff_to_expr
+            _, local_size = knl.get_grid_size_upper_bounds()
+            group_threads = 1
+            for size in local_size:
+                try:
+                    s = aff_to_expr(size)
+                except AttributeError:
+                    raise LoopyError("Cannot count insn with group granularity, "
+                                     "group size is not integer: %s"
+                                     % (local_size))
+                group_threads *= s
+            return ct/group_threads
+        else:
+            raise ValueError("get_insn_count: count_granularity '%s' is"
+                    "not allowed. count_granularity must be 'group', "
+                    "'warp', or 'thread'." % (count_granularity))
 
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
@@ -1358,23 +1382,21 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
 
             # use count excluding local index tags for uniform accesses
             for key, val in six.iteritems(access_expr.count_map):
-                is_uniform = (key.mtype == 'global' and
-                        isinstance(key.stride, int) and
-                        key.stride == 0)
+
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
-                        * get_insn_count(knl, insn.id, is_uniform))
+                        * get_insn_count(knl, insn.id,
+                                         count_granularity=key.count_granularity))
                 #currently not counting stride of local mem access
 
             for key, val in six.iteritems(access_assignee_g.count_map):
-                is_uniform = (key.mtype == 'global' and
-                        isinstance(key.stride, int) and
-                        key.stride == 0)
+
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
-                        * get_insn_count(knl, insn.id, is_uniform))
+                        * get_insn_count(knl, insn.id,
+                                         count_granularity=key.count_granularity))
                 # for now, don't count writes to local mem
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
             pass
@@ -1384,13 +1406,15 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False):
 
     if numpy_types:
         # FIXME: Don't modify in-place
-        access_map.count_map = dict((MemAccess(mtype=mem_access.mtype,
-                                             dtype=mem_access.dtype.numpy_dtype,
-                                             stride=mem_access.stride,
-                                             direction=mem_access.direction,
-                                             variable=mem_access.variable),
-                                  count)
-                      for mem_access, count in six.iteritems(access_map.count_map))
+        access_map.count_map = dict(
+            (MemAccess(
+                       mtype=mem_access.mtype,
+                       dtype=mem_access.dtype.numpy_dtype,
+                       stride=mem_access.stride,
+                       direction=mem_access.direction,
+                       variable=mem_access.variable
+                      ), count)
+            for mem_access, count in six.iteritems(access_map.count_map))
 
     return access_map
 
