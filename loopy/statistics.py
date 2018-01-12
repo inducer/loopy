@@ -89,6 +89,14 @@ class GuardedPwQPolynomial(object):
 
     __rmul__ = __mul__
 
+    def __truediv__(self, other):
+        if not isinstance(other, int):
+            raise ValueError("GuardedPwQPolynomial.__truediv__ only valid for "
+                    "type int. Attempted to divide by %s" % (type(other)))
+        return GuardedPwQPolynomial(
+                self.pwqpolynomial.scale_val(isl.Val(1).div(isl.Val(other))),
+                self.valid_domain)
+
     def eval_with_dict(self, value_dict):
         space = self.pwqpolynomial.space
         pt = isl.Point.zero(space.params())
