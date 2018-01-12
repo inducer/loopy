@@ -484,8 +484,9 @@ class Op(object):
 
     # FIXME: This could be done much more briefly by inheriting from Record.
 
-    def __init__(self, dtype=None, name=None):
+    def __init__(self, dtype=None, name=None, count_granularity='thread'):
         self.name = name
+        self.count_granularity = count_granularity
         if dtype is None:
             self.dtype = dtype
         else:
@@ -497,13 +498,16 @@ class Op(object):
                 (self.dtype is None or other.dtype is None or
                  self.dtype == other.dtype) and
                 (self.name is None or other.name is None or
-                 self.name == other.name))
+                 self.name == other.name) and
+                (self.count_granularity is None or
+                 other.count_granularity is None or
+                 self.count_granularity == other.count_granularity))
 
     def __hash__(self):
         return hash(str(self))
 
     def __repr__(self):
-        return "Op(%s, %s)" % (self.dtype, self.name)
+        return "Op(%s, %s, %s)" % (self.dtype, self.name, self.count_granularity)
 
 # }}}
 
