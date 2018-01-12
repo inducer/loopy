@@ -877,7 +877,8 @@ class GlobalMemAccessCounter(MemAccessCounter):
             # count as uniform access
             return ToCountMap({MemAccess(mtype='global',
                                          dtype=self.type_inf(expr), stride=0,
-                                         variable=name): 1}
+                                         variable=name,
+                                         count_granularity='warp'): 1}
                               ) + self.rec(expr.index)
 
         if min_tag_axis != 0:
@@ -931,8 +932,15 @@ class GlobalMemAccessCounter(MemAccessCounter):
 
             total_stride += stride*coeff_min_lid
 
-        return ToCountMap({MemAccess(mtype='global', dtype=self.type_inf(expr),
-                                     stride=total_stride, variable=name): 1}
+        count_granularity = 'thread' if total_stride is not 0 else 'warp'
+
+        return ToCountMap({MemAccess(
+                            mtype='global',
+                            dtype=self.type_inf(expr),
+                            stride=total_stride,
+                            variable=name,
+                            count_granularity=count_granularity
+                            ): 1}
                           ) + self.rec(expr.index)
 
 # }}}
