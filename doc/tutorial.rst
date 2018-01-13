@@ -1703,8 +1703,8 @@ using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
     >>> global_ld_st_bytes = bytes_map.filter_by(mtype=['global']
     ...                                         ).group_by('direction')
     >>> print(lp.stringify_stats_mapping(global_ld_st_bytes))
-    MemAccess(None, None, None, load, None, None) : [m, l, n] -> { (1/2 + 3/8 * l) * n * m : m > 0 and l > 0 and n > 0 }
-    MemAccess(None, None, None, store, None, None) : [m, l, n] -> { (1/4 + 1/8 * l) * n * m : m > 0 and l > 0 and n > 0 }
+    MemAccess(None, None, None, load, None, None) : [m, l, n] -> { (1/2 * m + 3/8 * m * l) * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(None, None, None, store, None, None) : [m, l, n] -> { (1/4 * m + 1/8 * m * l) * n : m > 0 and l > 0 and n > 0 }
     <BLANKLINE>
     >>> loaded = global_ld_st_bytes[lp.MemAccess(direction='load')
     ...                            ].eval_with_dict(param_dict)
