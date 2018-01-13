@@ -27,7 +27,6 @@ import six
 import loopy as lp
 from islpy import dim_type
 import islpy as isl
-from pytools import memoize_in
 from pymbolic.mapper import CombineMapper
 from functools import reduce
 from loopy.kernel.data import (
@@ -1239,8 +1238,10 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
 
         op_map = get_op_map(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        f32add = op_map[Op(np.float32, 'add', count_granularity='thread')].eval_with_dict(params)
-        f32mul = op_map[Op(np.float32, 'mul', count_granularity='thread')].eval_with_dict(params)
+        f32add = op_map[Op(np.float32, 'add', count_granularity='thread')
+                       ].eval_with_dict(params)
+        f32mul = op_map[Op(np.float32, 'mul', count_granularity='thread')
+                       ].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -1360,8 +1361,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
     class CacheHolder(object):
         pass
 
-    cache_holder = CacheHolder()
-
+    #cache_holder = CacheHolder()
+    #from pytools import memoize_in
     #@memoize_in(cache_holder, "insn_count")  # TODO why doesn't this work anymore?
     def get_insn_count(knl, insn_id,
                        disregard_local_axes=False,

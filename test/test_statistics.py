@@ -191,7 +191,7 @@ def test_op_counter_bitwise():
     i64add = op_map[lp.Op(np.dtype(np.int64), 'add', 'thread')
                     ].eval_with_dict(params)
     i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift', 'thread')
-                    ].eval_with_dict(params)
+                      ].eval_with_dict(params)
     assert i32add == n*m+n*m*ell
     assert i32bw == 2*n*m*ell
     assert i64bw == 2*n*m
