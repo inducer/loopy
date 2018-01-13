@@ -484,7 +484,7 @@ class Op(object):
 
     # FIXME: This could be done much more briefly by inheriting from Record.
 
-    def __init__(self, dtype=None, name=None, count_granularity='thread'):
+    def __init__(self, dtype=None, name=None, count_granularity=None):
         self.name = name
         self.count_granularity = count_granularity
         if dtype is None:
@@ -547,7 +547,7 @@ class MemAccess(object):
     # FIXME: This could be done much more briefly by inheriting from Record.
 
     def __init__(self, mtype=None, dtype=None, stride=None, direction=None,
-                 variable=None, count_granularity='thread'):
+                 variable=None, count_granularity=None):
         self.mtype = mtype
         self.stride = stride
         self.direction = direction
@@ -571,7 +571,7 @@ class MemAccess(object):
                                       "mtype is 'local'")
 
     def copy(self, mtype=None, dtype=None, stride=None, direction=None,
-            variable=None, count_granularity=None):
+             variable=None, count_granularity=None):
         return MemAccess(
                 mtype=mtype if mtype is not None else self.mtype,
                 dtype=dtype if dtype is not None else self.dtype,
@@ -692,7 +692,8 @@ class ExpressionOpCounter(CounterBase):
     def map_call(self, expr):
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
-                        name='func:'+str(expr.function)): 1}
+                        name='func:'+str(expr.function),
+                        count_granularity='thread'): 1}
                     ) + self.rec(expr.parameters)
 
     def map_subscript(self, expr):
@@ -702,20 +703,27 @@ class ExpressionOpCounter(CounterBase):
         assert expr.children
         return ToCountMap(
                     {Op(dtype=self.type_inf(expr),
-                        name='add'): len(expr.children)-1}
+                        name='add',
+                        count_granularity='thread'): len(expr.children)-1}
                     ) + sum(self.rec(child) for child in expr.children)
 
     def map_product(self, expr):
         from pymbolic.primitives import is_zero
         assert expr.children
-        return sum(ToCountMap({Op(dtype=self.type_inf(expr), name='mul'): 1})
+        return sum(ToCountMap({Op(dtype=self.type_inf(expr),
+                                  name='mul',
+                                  count_granularity='thread'): 1})
                    + self.rec(child)
                    for child in expr.children
                    if not is_zero(child + 1)) + \
-                   ToCountMap({Op(dtype=self.type_inf(expr), name='mul'): -1})
+                   ToCountMap({Op(dtype=self.type_inf(expr),
+                                  name='mul',
+                                  count_granularity='thread'): -1})
 
     def map_quotient(self, expr, *args):
-        return ToCountMap({Op(dtype=self.type_inf(expr), name='div'): 1}) \
+        return ToCountMap({Op(dtype=self.type_inf(expr),
+                              name='div',
+                              count_granularity='thread'): 1}) \
                                 + self.rec(expr.numerator) \
                                 + self.rec(expr.denominator)
 
@@ -723,23 +731,31 @@ class ExpressionOpCounter(CounterBase):
     map_remainder = map_quotient
 
     def map_power(self, expr):
-        return ToCountMap({Op(dtype=self.type_inf(expr), name='pow'): 1}) \
+        return ToCountMap({Op(dtype=self.type_inf(expr),
+                              name='pow',
+                              count_granularity='thread'): 1}) \
                                 + self.rec(expr.base) \
                                 + self.rec(expr.exponent)
 
     def map_left_shift(self, expr):
-        return ToCountMap({Op(dtype=self.type_inf(expr), name='shift'): 1}) \
+        return ToCountMap({Op(dtype=self.type_inf(expr),
+                              name='shift',
+                              count_granularity='thread'): 1}) \
                                 + self.rec(expr.shiftee) \
                                 + self.rec(expr.shift)
 
     map_right_shift = map_left_shift
 
     def map_bitwise_not(self, expr):
-        return ToCountMap({Op(dtype=self.type_inf(expr), name='bw'): 1}) \
+        return ToCountMap({Op(dtype=self.type_inf(expr),
+                              name='bw',
+                              count_granularity='thread'): 1}) \
                                 + self.rec(expr.child)
 
     def map_bitwise_or(self, expr):
-        return ToCountMap({Op(dtype=self.type_inf(expr), name='bw'):
+        return ToCountMap({Op(dtype=self.type_inf(expr),
+                              name='bw',
+                              count_granularity='thread'):
                            len(expr.children)-1}) \
                                 + sum(self.rec(child) for child in expr.children)
 
@@ -761,7 +777,9 @@ class ExpressionOpCounter(CounterBase):
                + self.rec(expr.else_)
 
     def map_min(self, expr):
-        return ToCountMap({Op(dtype=self.type_inf(expr), name='maxmin'):
+        return ToCountMap({Op(dtype=self.type_inf(expr),
+                              name='maxmin',
+                              count_granularity='thread'):
                            len(expr.children)-1}) \
                + sum(self.rec(child) for child in expr.children)
 
@@ -802,7 +820,8 @@ class LocalMemAccessCounter(MemAccessCounter):
             array = self.knl.temporary_variables[name]
             if isinstance(array, TemporaryVariable) and (
                     array.scope == temp_var_scope.LOCAL):
-                sub_map[MemAccess(mtype='local', dtype=dtype)] = 1
+                sub_map[MemAccess(mtype='local', dtype=dtype,
+                                  count_granularity='thread')] = 1
         return sub_map
 
     def map_variable(self, expr):
@@ -838,7 +857,8 @@ class GlobalMemAccessCounter(MemAccessCounter):
 
         return ToCountMap({MemAccess(mtype='global',
                                      dtype=self.type_inf(expr), stride=0,
-                                     variable=name): 1}
+                                     variable=name,
+                                     count_granularity='thread'): 1}
                           ) + self.rec(expr.index)
 
     def map_subscript(self, expr):
@@ -888,7 +908,8 @@ class GlobalMemAccessCounter(MemAccessCounter):
                              "sys.maxsize." % (min_tag_axis))
             return ToCountMap({MemAccess(mtype='global',
                                          dtype=self.type_inf(expr),
-                                         stride=sys.maxsize, variable=name): 1}
+                                         stride=sys.maxsize, variable=name,
+                                         count_granularity='thread'): 1}
                               ) + self.rec(expr.index)
 
         # get local_id associated with minimum tag axis
@@ -1218,8 +1239,8 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
 
         op_map = get_op_map(knl)
         params = {'n': 512, 'm': 256, 'l': 128}
-        f32add = op_map[Op(np.float32, 'add')].eval_with_dict(params)
-        f32mul = op_map[Op(np.float32, 'mul')].eval_with_dict(params)
+        f32add = op_map[Op(np.float32, 'add', count_granularity='thread')].eval_with_dict(params)
+        f32mul = op_map[Op(np.float32, 'mul', count_granularity='thread')].eval_with_dict(params)
 
         # (now use these counts to predict performance)
 
@@ -1247,7 +1268,10 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
                     % type(insn).__name__)
 
     if numpy_types:
-        op_map.count_map = dict((Op(dtype=op.dtype.numpy_dtype, name=op.name),
+        op_map.count_map = dict((Op(
+                                    dtype=op.dtype.numpy_dtype,
+                                    name=op.name,
+                                    count_granularity=op.count_granularity),
                                  count)
                 for op, count in six.iteritems(op_map.count_map))
 
@@ -1296,25 +1320,29 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                           dtype=np.float32,
                                           stride=1,
                                           direction='load',
-                                          variable='a')
+                                          variable='a',
+                                          count_granularity='thread')
                                ].eval_with_dict(params)
         f32_s1_g_st_a = mem_map[MemAccess(mtype='global',
                                           dtype=np.float32,
                                           stride=1,
                                           direction='store',
-                                          variable='a')
+                                          variable='a',
+                                          count_granularity='thread')
                                ].eval_with_dict(params)
         f32_s1_l_ld_x = mem_map[MemAccess(mtype='local',
                                           dtype=np.float32,
                                           stride=1,
                                           direction='load',
-                                          variable='x')
+                                          variable='x',
+                                          count_granularity='thread')
                                ].eval_with_dict(params)
         f32_s1_l_st_x = mem_map[MemAccess(mtype='local',
                                           dtype=np.float32,
                                           stride=1,
                                           direction='store',
-                                          variable='x')
+                                          variable='x',
+                                          count_granularity='thread')
                                ].eval_with_dict(params)
 
         # (now use these counts to predict performance)
@@ -1343,7 +1371,12 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                 knl, insn, disregard_local_axes=disregard_local_axes,
                 count_redundant_work=count_redundant_work)
 
-        if count_granularity == 'thread':
+        if count_granularity is None:
+            warn_with_kernel(knl, "get_insn_count_assumes_granularity",
+                             "get_insn_count: No count granularity passed for "
+                             "MemAccess, assuming thread granularity.")
+            return ct
+        elif count_granularity == 'thread':
             return ct
         elif count_granularity == 'warp':
             return ct/wsize
@@ -1420,7 +1453,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                        dtype=mem_access.dtype.numpy_dtype,
                        stride=mem_access.stride,
                        direction=mem_access.direction,
-                       variable=mem_access.variable
+                       variable=mem_access.variable,
+                       count_granularity=mem_access.count_granularity
                       ), count)
             for mem_access, count in six.iteritems(access_map.count_map))
 
