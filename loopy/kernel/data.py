@@ -460,7 +460,7 @@ class TemporaryVariable(ArrayBase):
                     % name)
 
         ArrayBase.__init__(self, name=intern(name),
-                dtype=dtype, shape=shape,
+                dtype=dtype, shape=shape, strides=strides,
                 dim_tags=dim_tags, offset=offset, dim_names=dim_names,
                 order=order,
                 base_indices=base_indices, scope=scope,
