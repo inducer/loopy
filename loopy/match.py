@@ -276,7 +276,7 @@ def parse_match(expr):
     """Syntax examples::
 
     * ``id:yoink and writes:a_temp``
-    * ``id:yoink and (not writes:a_temp or tagged:input)``
+    * ``id:yoink and (not writes:a_temp or tag:input)``
     """
     if not expr:
         return All()
