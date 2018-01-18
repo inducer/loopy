@@ -441,7 +441,9 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
         warn("{knl_name}: device not supplied to PyOpenCLTarget--"
                 "workarounds for broken OpenCL implementations "
                 "(such as those relating to complex numbers) "
-                "may not be enabled when needed"
+                "may not be enabled when needed. To avoid this, "
+                "pass target=lp.PyOpenCLTarget(dev) when creating "
+                "the kernel."
                 .format(knl_name=kernel.name))
 
     if any(count_bug_per_dev):
