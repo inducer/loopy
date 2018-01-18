@@ -910,7 +910,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
             iname_insns = frozenset(
                     insn
                     for insn in insn_iname_sets
-                    if frozenset([iname]).issubset(insn))
+                    if frozenset([iname]) <= insn)
 
             import itertools as it
             # For a given iname, the set of instructions containing this iname
@@ -921,7 +921,7 @@ def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset(
                     for l in range(1, len(iname_insns))):
                 yield (
                     iname,
-                    tuple(insn.union(old_common_inames) for insn in insns_to_dup))
+                    tuple(insn | old_common_inames for insn in insns_to_dup))
 
     # If partitioning was empty, we have recursed successfully and yield nothing
 
