@@ -1081,7 +1081,9 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             warn_with_kernel(self,
                 "iname-order",
                 "get_visual_iname_order_embedding() could not determine a "
-                "consistent iname nesting order")
+                "consistent iname nesting order. This is a possible indication "
+                "that the kernel may not schedule successfully, but for now "
+                "it only impacts printing of the kernel.")
             embedding = dict((iname, iname) for iname in self.all_inames())
 
         return embedding
