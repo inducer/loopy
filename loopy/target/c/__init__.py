@@ -715,7 +715,8 @@ class CASTBuilder(ASTBuilderBase):
         return decl
 
     def wrap_global_constant(self, decl):
-        return decl
+        from cgen import Static
+        return Static(decl)
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):
         assert shape == ()
