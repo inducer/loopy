@@ -54,12 +54,12 @@ def test_op_counter_basic():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    f32add = op_map[lp.Op(np.float32, 'add', 'thread')].eval_with_dict(params)
-    f32mul = op_map[lp.Op(np.float32, 'mul', 'thread')].eval_with_dict(params)
-    f32div = op_map[lp.Op(np.float32, 'div', 'thread')].eval_with_dict(params)
-    f64mul = op_map[lp.Op(np.dtype(np.float64), 'mul', 'thread')
+    f32add = op_map[lp.Op(np.float32, 'add', 'workitem')].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.float32, 'mul', 'workitem')].eval_with_dict(params)
+    f32div = op_map[lp.Op(np.float32, 'div', 'workitem')].eval_with_dict(params)
+    f64mul = op_map[lp.Op(np.dtype(np.float64), 'mul', 'workitem')
                     ].eval_with_dict(params)
-    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', 'thread')
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', 'workitem')
                     ].eval_with_dict(params)
     assert f32add == f32mul == f32div == n*m*ell
     assert f64mul == n*m
@@ -81,8 +81,8 @@ def test_op_counter_reduction():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    f32add = op_map[lp.Op(np.float32, 'add', 'thread')].eval_with_dict(params)
-    f32mul = op_map[lp.Op(np.dtype(np.float32), 'mul', 'thread')
+    f32add = op_map[lp.Op(np.float32, 'add', 'workitem')].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.dtype(np.float32), 'mul', 'workitem')
                     ].eval_with_dict(params)
     assert f32add == f32mul == n*m*ell
 
@@ -111,11 +111,11 @@ def test_op_counter_logic():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    f32mul = op_map[lp.Op(np.float32, 'mul', 'thread')].eval_with_dict(params)
-    f64add = op_map[lp.Op(np.float64, 'add', 'thread')].eval_with_dict(params)
-    f64div = op_map[lp.Op(np.dtype(np.float64), 'div', 'thread')
+    f32mul = op_map[lp.Op(np.float32, 'mul', 'workitem')].eval_with_dict(params)
+    f64add = op_map[lp.Op(np.float64, 'add', 'workitem')].eval_with_dict(params)
+    f64div = op_map[lp.Op(np.dtype(np.float64), 'div', 'workitem')
                     ].eval_with_dict(params)
-    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', 'thread')
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', 'workitem')
                     ].eval_with_dict(params)
     assert f32mul == n*m
     assert f64div == 2*n*m  # TODO why?
@@ -143,17 +143,17 @@ def test_op_counter_specialops():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    f32mul = op_map[lp.Op(np.float32, 'mul', 'thread')].eval_with_dict(params)
-    f32div = op_map[lp.Op(np.float32, 'div', 'thread')].eval_with_dict(params)
-    f32add = op_map[lp.Op(np.float32, 'add', 'thread')].eval_with_dict(params)
-    f64pow = op_map[lp.Op(np.float64, 'pow', 'thread')].eval_with_dict(params)
-    f64add = op_map[lp.Op(np.dtype(np.float64), 'add', 'thread')
+    f32mul = op_map[lp.Op(np.float32, 'mul', 'workitem')].eval_with_dict(params)
+    f32div = op_map[lp.Op(np.float32, 'div', 'workitem')].eval_with_dict(params)
+    f32add = op_map[lp.Op(np.float32, 'add', 'workitem')].eval_with_dict(params)
+    f64pow = op_map[lp.Op(np.float64, 'pow', 'workitem')].eval_with_dict(params)
+    f64add = op_map[lp.Op(np.dtype(np.float64), 'add', 'workitem')
                     ].eval_with_dict(params)
-    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', 'thread')
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', 'workitem')
                     ].eval_with_dict(params)
-    f64rsq = op_map[lp.Op(np.dtype(np.float64), 'func:rsqrt', 'thread')
+    f64rsq = op_map[lp.Op(np.dtype(np.float64), 'func:rsqrt', 'workitem')
                     ].eval_with_dict(params)
-    f64sin = op_map[lp.Op(np.dtype(np.float64), 'func:sin', 'thread')
+    f64sin = op_map[lp.Op(np.dtype(np.float64), 'func:sin', 'workitem')
                     ].eval_with_dict(params)
     assert f32div == 2*n*m*ell
     assert f32mul == f32add == n*m*ell
@@ -183,14 +183,15 @@ def test_op_counter_bitwise():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    i32add = op_map[lp.Op(np.int32, 'add', 'thread')].eval_with_dict(params)
-    i32bw = op_map[lp.Op(np.int32, 'bw', 'thread')].eval_with_dict(params)
-    i64bw = op_map[lp.Op(np.dtype(np.int64), 'bw', 'thread')].eval_with_dict(params)
-    i64mul = op_map[lp.Op(np.dtype(np.int64), 'mul', 'thread')
+    i32add = op_map[lp.Op(np.int32, 'add', 'workitem')].eval_with_dict(params)
+    i32bw = op_map[lp.Op(np.int32, 'bw', 'workitem')].eval_with_dict(params)
+    i64bw = op_map[lp.Op(np.dtype(np.int64), 'bw', 'workitem')
+                   ].eval_with_dict(params)
+    i64mul = op_map[lp.Op(np.dtype(np.int64), 'mul', 'workitem')
                     ].eval_with_dict(params)
-    i64add = op_map[lp.Op(np.dtype(np.int64), 'add', 'thread')
+    i64add = op_map[lp.Op(np.dtype(np.int64), 'add', 'workitem')
                     ].eval_with_dict(params)
-    i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift', 'thread')
+    i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift', 'workitem')
                       ].eval_with_dict(params)
     assert i32add == n*m+n*m*ell
     assert i32bw == 2*n*m*ell
@@ -223,7 +224,7 @@ def test_op_counter_triangular_domain():
     op_map = lp.get_op_map(
                     knl,
                     count_redundant_work=True
-                    )[lp.Op(np.float64, 'mul', 'thread')]
+                    )[lp.Op(np.float64, 'mul', 'workitem')]
     value_dict = dict(m=13, n=200)
     flops = op_map.eval_with_dict(value_dict)
 
@@ -504,12 +505,12 @@ def test_mem_access_counter_mixed():
     f32nonconsec = mem_map[lp.MemAccess('global', np.dtype(np.float32),
                                 stride=Variable('m'), direction='load',
                                 variable='a',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                            ].eval_with_dict(params)
     f32nonconsec += mem_map[lp.MemAccess('global', np.dtype(np.float32),
                                 stride=Variable('m'), direction='load',
                                 variable='b',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                             ].eval_with_dict(params)
     assert f64uniform == 2*n*m*ell/32  # /subgroup_size for uniform
     assert f32uniform == n*m*ell/32  # /subgroup_size for uniform
@@ -522,7 +523,7 @@ def test_mem_access_counter_mixed():
     f32nonconsec = mem_map[lp.MemAccess('global', np.float32,
                                 stride=Variable('m'), direction='store',
                                 variable='c',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                            ].eval_with_dict(params)
     assert f64uniform == n*m*ell/32  # /subgroup_size because these are uniform
     assert f32nonconsec == n*m*ell
@@ -552,22 +553,22 @@ def test_mem_access_counter_nonconsec():
     f64nonconsec = mem_map[lp.MemAccess('global', np.float64,
                                 stride=Variable('m'), direction='load',
                                 variable='g',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                            ].eval_with_dict(params)
     f64nonconsec += mem_map[lp.MemAccess('global', np.float64,
                                 stride=Variable('m'), direction='load',
                                 variable='h',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                             ].eval_with_dict(params)
     f32nonconsec = mem_map[lp.MemAccess('global', np.dtype(np.float32),
                                 stride=Variable('m')*Variable('ell'),
                                 direction='load', variable='a',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                            ].eval_with_dict(params)
     f32nonconsec += mem_map[lp.MemAccess('global', np.dtype(np.float32),
                                 stride=Variable('m')*Variable('ell'),
                                 direction='load', variable='b',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                             ].eval_with_dict(params)
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*ell
@@ -575,12 +576,12 @@ def test_mem_access_counter_nonconsec():
     f64nonconsec = mem_map[lp.MemAccess('global', np.float64,
                                 stride=Variable('m'), direction='store',
                                 variable='e',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                            ].eval_with_dict(params)
     f32nonconsec = mem_map[lp.MemAccess('global', np.float32,
                                 stride=Variable('m')*Variable('ell'),
                                 direction='store', variable='c',
-                                count_granularity='thread')
+                                count_granularity='workitem')
                            ].eval_with_dict(params)
     assert f64nonconsec == n*m
     assert f32nonconsec == n*m*ell
@@ -591,13 +592,13 @@ def test_mem_access_counter_nonconsec():
                     'global',
                     np.float64, stride=Variable('m'),
                     direction='load', variable='g',
-                    count_granularity='thread')
+                    count_granularity='workitem')
                     ].eval_with_dict(params)
     f64nonconsec += mem_map64[lp.MemAccess(
                     'global',
                     np.float64, stride=Variable('m'),
                     direction='load', variable='h',
-                    count_granularity='thread')
+                    count_granularity='workitem')
                     ].eval_with_dict(params)
     f32nonconsec = mem_map64[lp.MemAccess(
                     'global',
@@ -605,7 +606,7 @@ def test_mem_access_counter_nonconsec():
                     stride=Variable('m')*Variable('ell'),
                     direction='load',
                     variable='a',
-                    count_granularity='thread')
+                    count_granularity='workitem')
                     ].eval_with_dict(params)
     f32nonconsec += mem_map64[lp.MemAccess(
                     'global',
@@ -613,7 +614,7 @@ def test_mem_access_counter_nonconsec():
                     stride=Variable('m')*Variable('ell'),
                     direction='load',
                     variable='b',
-                    count_granularity='thread')
+                    count_granularity='workitem')
                     ].eval_with_dict(params)
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*ell
@@ -642,30 +643,30 @@ def test_mem_access_counter_consec():
 
     f64consec = mem_map[lp.MemAccess('global', np.float64,
                         stride=1, direction='load', variable='g',
-                        count_granularity='thread')
+                        count_granularity='workitem')
                         ].eval_with_dict(params)
     f64consec += mem_map[lp.MemAccess('global', np.float64,
                         stride=1, direction='load', variable='h',
-                        count_granularity='thread')
+                        count_granularity='workitem')
                          ].eval_with_dict(params)
     f32consec = mem_map[lp.MemAccess('global', np.float32,
                         stride=1, direction='load', variable='a',
-                        count_granularity='thread')
+                        count_granularity='workitem')
                         ].eval_with_dict(params)
     f32consec += mem_map[lp.MemAccess('global', np.dtype(np.float32),
                         stride=1, direction='load', variable='b',
-                        count_granularity='thread')
+                        count_granularity='workitem')
                          ].eval_with_dict(params)
     assert f64consec == 2*n*m*ell
     assert f32consec == 3*n*m*ell
 
     f64consec = mem_map[lp.MemAccess('global', np.float64,
                         stride=1, direction='store', variable='e',
-                        count_granularity='thread')
+                        count_granularity='workitem')
                         ].eval_with_dict(params)
     f32consec = mem_map[lp.MemAccess('global', np.float32,
                         stride=1, direction='store', variable='c',
-                        count_granularity='thread')
+                        count_granularity='workitem')
                         ].eval_with_dict(params)
     assert f64consec == n*m*ell
     assert f32consec == n*m*ell
@@ -749,16 +750,16 @@ def test_all_counters_parallel_matmul():
 
     op_map = lp.get_op_map(knl, count_redundant_work=True)
     f32mul = op_map[
-                        lp.Op(np.float32, 'mul', 'thread')
+                        lp.Op(np.float32, 'mul', 'workitem')
                         ].eval_with_dict(params)
     f32add = op_map[
-                        lp.Op(np.float32, 'add', 'thread')
+                        lp.Op(np.float32, 'add', 'workitem')
                         ].eval_with_dict(params)
     i32ops = op_map[
-                        lp.Op(np.int32, 'add', 'thread')
+                        lp.Op(np.int32, 'add', 'workitem')
                         ].eval_with_dict(params)
     i32ops += op_map[
-                        lp.Op(np.dtype(np.int32), 'mul', 'thread')
+                        lp.Op(np.dtype(np.int32), 'mul', 'workitem')
                         ].eval_with_dict(params)
 
     assert f32mul+f32add == n*m*ell*2
@@ -767,11 +768,11 @@ def test_all_counters_parallel_matmul():
 
     f32s1lb = op_map[lp.MemAccess('global', np.float32,
                      stride=1, direction='load', variable='b',
-                     count_granularity='thread')
+                     count_granularity='workitem')
                      ].eval_with_dict(params)
     f32s1la = op_map[lp.MemAccess('global', np.float32,
                      stride=1, direction='load', variable='a',
-                     count_granularity='thread')
+                     count_granularity='workitem')
                      ].eval_with_dict(params)
 
     assert f32s1lb == n*m*ell/bsize
@@ -779,7 +780,7 @@ def test_all_counters_parallel_matmul():
 
     f32coal = op_map[lp.MemAccess('global', np.float32,
                      stride=1, direction='store', variable='c',
-                     count_granularity='thread')
+                     count_granularity='workitem')
                      ].eval_with_dict(params)
 
     assert f32coal == n*ell
@@ -788,7 +789,7 @@ def test_all_counters_parallel_matmul():
                         count_redundant_work=True).filter_by(mtype=['local'])
     local_mem_l = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
                                              direction='load',
-                                             count_granularity='thread')
+                                             count_granularity='workitem')
                                 ].eval_with_dict(params)
     assert local_mem_l == n*m*ell*2
 
