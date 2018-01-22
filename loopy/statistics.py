@@ -553,8 +553,8 @@ class MemAccess(Record):
                             count_granularity=count_granularity)
         else:
             from loopy.types import to_loopy_type
-            Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype), stride=stride,
-                            direction=direction, variable=variable,
+            Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
+                            stride=stride, direction=direction, variable=variable,
                             count_granularity=count_granularity)
 
     def __hash__(self):
