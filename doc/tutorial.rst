@@ -1638,12 +1638,12 @@ we'll continue using the kernel from the previous example:
 
     >>> mem_map = lp.get_mem_access_map(knl)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 0, load, a, warp) : [m, l, n] -> { 1/16 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, load, b, warp) : [m, l, n] -> { 1/32 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, store, c, warp) : [m, l, n] -> { 1/32 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, g, warp) : [m, l, n] -> { 1/32 * m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, h, warp) : [m, l, n] -> { 1/32 * m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, store, e, warp) : [m, l, n] -> { 1/32 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), 0, load, a, subgroup) : [m, l, n] -> { 1/16 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), 0, load, b, subgroup) : [m, l, n] -> { 1/32 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), 0, store, c, subgroup) : [m, l, n] -> { 1/32 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), 0, load, g, subgroup) : [m, l, n] -> { 1/32 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), 0, load, h, subgroup) : [m, l, n] -> { 1/32 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), 0, store, e, subgroup) : [m, l, n] -> { 1/32 * m * n : m > 0 and l > 0 and n > 0 }
     <BLANKLINE>
 
 :func:`loopy.get_mem_access_map` returns a :class:`loopy.ToCountMap` of **{**
@@ -1669,13 +1669,13 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 0, 'load', 'g', 'warp')
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 0, 'load', 'g', 'subgroup')
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 0, 'store', 'e', 'warp')
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 0, 'store', 'e', 'subgroup')
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 0, 'load', 'a', 'warp')
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 0, 'load', 'a', 'subgroup')
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 0, 'store', 'c', 'warp')
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 0, 'store', 'c', 'subgroup')
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1693,12 +1693,12 @@ using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
 
     >>> bytes_map = mem_map.to_bytes()
     >>> print(lp.stringify_stats_mapping(bytes_map))
-    MemAccess(global, np:dtype('float32'), 0, load, a, warp) : [m, l, n] -> { 1/4 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, load, b, warp) : [m, l, n] -> { 1/8 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, store, c, warp) : [m, l, n] -> { 1/8 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, g, warp) : [m, l, n] -> { 1/4 * m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, h, warp) : [m, l, n] -> { 1/4 * m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, store, e, warp) : [m, l, n] -> { 1/4 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), 0, load, a, subgroup) : [m, l, n] -> { 1/4 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), 0, load, b, subgroup) : [m, l, n] -> { 1/8 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), 0, store, c, subgroup) : [m, l, n] -> { 1/8 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), 0, load, g, subgroup) : [m, l, n] -> { 1/4 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), 0, load, h, subgroup) : [m, l, n] -> { 1/4 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), 0, store, e, subgroup) : [m, l, n] -> { 1/4 * m * n : m > 0 and l > 0 and n > 0 }
     <BLANKLINE>
     >>> global_ld_st_bytes = bytes_map.filter_by(mtype=['global']
     ...                                         ).group_by('direction')
