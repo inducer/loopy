@@ -624,7 +624,7 @@ class ArrayBase(ImmutableRecord):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None,
+            target=None, alignment=None,
             **kwargs):
         """
         All of the following (except *name*) are optional.
@@ -662,6 +662,7 @@ class ArrayBase(ImmutableRecord):
             Whether the array is declared for atomic access, and, if necessary,
             using atomic-capable data types.
         :arg offset: (See :attr:`offset`)
+        :arg alignment: memory alignment in bytes
 
         """
 
@@ -816,6 +817,7 @@ class ArrayBase(ImmutableRecord):
                 offset=offset,
                 dim_names=dim_names,
                 order=order,
+                alignment=alignment,
                 **kwargs)
 
     def __eq__(self, other):
