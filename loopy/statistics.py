@@ -897,7 +897,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
             return ToCountMap({MemAccess(mtype='global',
                                          dtype=self.type_inf(expr), stride=0,
                                          variable=name,
-                                         count_granularity='warp'): 1}
+                                         count_granularity='subgroup'): 1}
                               ) + self.rec(expr.index)
 
         if min_tag_axis != 0:
@@ -952,7 +952,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
 
             total_stride += stride*coeff_min_lid
 
-        count_granularity = 'thread' if total_stride is not 0 else 'warp'
+        count_granularity = 'thread' if total_stride is not 0 else 'subgroup'
 
         return ToCountMap({MemAccess(
                             mtype='global',
@@ -1284,7 +1284,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
 # {{{ get_mem_access_map
 
 def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
-                       wsize=None):
+                       subgroup_size=None):
     """Count the number of memory accesses in a loopy kernel.
 
     :arg knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
@@ -1351,12 +1351,12 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
     """
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
 
-    if wsize is None:
-        wsize = 32
-        warn_with_kernel(knl, "get_mem_access_map_assumes_warpsize",
-                         "get_mem_access_map: No warp size passed, "
-                         "assuming warp size is %d."
-                         % (wsize))
+    if subgroup_size is None:
+        subgroup_size = 32
+        warn_with_kernel(knl, "get_mem_access_map_assumes_subgroup_size",
+                         "get_mem_access_map: No subgroup size passed, "
+                         "assuming subgroup size is %d."
+                         % (subgroup_size))
 
     class CacheHolder(object):
         pass
@@ -1379,8 +1379,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
             return ct
         elif count_granularity == 'thread':
             return ct
-        elif count_granularity == 'warp':
-            return ct/wsize
+        elif count_granularity == 'subgroup':
+            return ct/subgroup_size
         elif count_granularity == 'group':
             from loopy.symbolic import aff_to_expr
             _, local_size = knl.get_grid_size_upper_bounds()
@@ -1397,7 +1397,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         else:
             raise ValueError("get_insn_count: count_granularity '%s' is"
                     "not allowed. count_granularity must be 'group', "
-                    "'warp', or 'thread'." % (count_granularity))
+                    "'subgroup', or 'thread'." % (count_granularity))
 
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)

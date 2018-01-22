@@ -247,7 +247,7 @@ def test_mem_access_counter_basic():
 
     knl = lp.add_and_infer_dtypes(knl,
                     dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, wsize=32)
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, subgroup_size=32)
 
     n = 512
     m = 256
@@ -255,33 +255,33 @@ def test_mem_access_counter_basic():
     params = {'n': n, 'm': m, 'ell': ell}
     f32l = mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='a',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
     f32l += mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='b',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                     ].eval_with_dict(params)
     f64l = mem_map[lp.MemAccess('global', np.float64,
                          stride=0, direction='load', variable='g',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
     f64l += mem_map[lp.MemAccess('global', np.float64,
                          stride=0, direction='load', variable='h',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                     ].eval_with_dict(params)
-    assert f32l == 3*n*m*ell/32  # /warpsize because these are considered uniform
-    assert f64l == 2*n*m/32  # /warpsize because these are considered uniform
+    assert f32l == 3*n*m*ell/32  # /subgroup_size because these are uniform
+    assert f64l == 2*n*m/32  # /subgroup_size because these are uniform
 
     f32s = mem_map[lp.MemAccess('global', np.dtype(np.float32),
                          stride=0, direction='store', variable='c',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
     f64s = mem_map[lp.MemAccess('global', np.dtype(np.float64),
                          stride=0, direction='store', variable='e',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
-    assert f32s == n*m*ell/32  # /warpsize because these are considered uniform
-    assert f64s == n*m/32  # /warpsize because these are considered uniform
+    assert f32s == n*m*ell/32  # /subgroup_size because these are uniform
+    assert f64s == n*m/32  # /subgroup_size because these are uniform
 
 
 def test_mem_access_counter_reduction():
@@ -294,26 +294,26 @@ def test_mem_access_counter_reduction():
             name="matmul", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, wsize=32)
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, subgroup_size=32)
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
     f32l = mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='a',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
     f32l += mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='b',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                     ].eval_with_dict(params)
-    assert f32l == 2*n*m*ell/32  # /warpsize because these are considered uniform
+    assert f32l == 2*n*m*ell/32  # /subgroup_size because these are uniform
 
     f32s = mem_map[lp.MemAccess('global', np.dtype(np.float32),
                          stride=0, direction='store', variable='c',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
-    assert f32s == n*ell/32  # /warpsize because these are considered uniform
+    assert f32s == n*ell/32  # /subgroup_size because these are uniform
 
     ld_bytes = mem_map.filter_by(mtype=['global'], direction=['load']
                                  ).to_bytes().eval_and_sum(params)
@@ -337,7 +337,7 @@ def test_mem_access_counter_logic():
             name="logic", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, wsize=32)
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, subgroup_size=32)
     n = 512
     m = 256
     ell = 128
@@ -354,9 +354,9 @@ def test_mem_access_counter_logic():
     f64_g_s = reduced_map[lp.MemAccess('global', to_loopy_type(np.float64),
                                        direction='store')
                           ].eval_with_dict(params)
-    assert f32_g_l == 2*n*m/32  # /warpsize because these are considered uniform
-    assert f64_g_l == n*m/32  # /warpsize because these are considered uniform
-    assert f64_g_s == n*m/32  # /warpsize because these are considered uniform
+    assert f32_g_l == 2*n*m/32  # /subgroup_size because these are uniform
+    assert f64_g_l == n*m/32  # /subgroup_size because these are uniform
+    assert f64_g_s == n*m/32  # /subgroup_size because these are uniform
 
 
 def test_mem_access_counter_specialops():
@@ -373,46 +373,46 @@ def test_mem_access_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
                                             g=np.float64, h=np.float64))
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, wsize=32)
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, subgroup_size=32)
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
     f32 = mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='a',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                   ].eval_with_dict(params)
     f32 += mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='load', variable='b',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
     f64 = mem_map[lp.MemAccess('global', np.dtype(np.float64),
                          stride=0, direction='load', variable='g',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                   ].eval_with_dict(params)
     f64 += mem_map[lp.MemAccess('global', np.dtype(np.float64),
                          stride=0, direction='load', variable='h',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
-    assert f32 == 2*n*m*ell/32  # /warpsize because these are considered uniform
-    assert f64 == 2*n*m/32  # /warpsize because these are considered uniform
+    assert f32 == 2*n*m*ell/32  # /subgroup_size because these are uniform
+    assert f64 == 2*n*m/32  # /subgroup_size because these are uniform
 
     f32 = mem_map[lp.MemAccess('global', np.float32,
                          stride=0, direction='store', variable='c',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                   ].eval_with_dict(params)
     f64 = mem_map[lp.MemAccess('global', np.float64,
                          stride=0, direction='store', variable='e',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                   ].eval_with_dict(params)
-    assert f32 == n*m*ell/32  # /warpsize because these are considered uniform
-    assert f64 == n*m/32  # /warpsize because these are considered uniform
+    assert f32 == n*m*ell/32  # /subgroup_size because these are uniform
+    assert f64 == n*m/32  # /subgroup_size because these are uniform
 
     filtered_map = mem_map.filter_by(direction=['load'], variable=['a', 'g'],
-                         count_granularity='warp')
+                         count_granularity='subgroup')
     #tot = lp.eval_and_sum_polys(filtered_map, params)
     tot = filtered_map.eval_and_sum(params)
-    assert tot == (n*m*ell + n*m)/32  # /warpsize for uniform
+    assert tot == (n*m*ell + n*m)/32  # /subgroup_size for uniform
 
 
 def test_mem_access_counter_bitwise():
@@ -432,38 +432,38 @@ def test_mem_access_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int32, h=np.int32))
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, wsize=32)
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, subgroup_size=32)
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
     i32 = mem_map[lp.MemAccess('global', np.int32,
                          stride=0, direction='load', variable='a',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                   ].eval_with_dict(params)
     i32 += mem_map[lp.MemAccess('global', np.int32,
                          stride=0, direction='load', variable='b',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
     i32 += mem_map[lp.MemAccess('global', np.int32,
                          stride=0, direction='load', variable='g',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
     i32 += mem_map[lp.MemAccess('global', np.dtype(np.int32),
                          stride=0, direction='load', variable='h',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
-    assert i32 == (4*n*m+2*n*m*ell)/32  # /warpsize for uniform
+    assert i32 == (4*n*m+2*n*m*ell)/32  # /subgroup_size for uniform
 
     i32 = mem_map[lp.MemAccess('global', np.int32,
                          stride=0, direction='store', variable='c',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                   ].eval_with_dict(params)
     i32 += mem_map[lp.MemAccess('global', np.int32,
                          stride=0, direction='store', variable='e',
-                         count_granularity='warp')
+                         count_granularity='subgroup')
                    ].eval_with_dict(params)
-    assert i32 == (n*m+n*m*ell)/32  # /warpsize because these are considered uniform
+    assert i32 == (n*m+n*m*ell)/32  # /subgroup_size because these are uniform
 
 
 def test_mem_access_counter_mixed():
@@ -484,22 +484,22 @@ def test_mem_access_counter_mixed():
     knl = lp.split_iname(knl, "j", bsize)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, wsize=32)  # noqa
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, subgroup_size=32)  # noqa
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
     f64uniform = mem_map[lp.MemAccess('global', np.float64,
                                 stride=0, direction='load', variable='g',
-                                count_granularity='warp')
+                                count_granularity='subgroup')
                          ].eval_with_dict(params)
     f64uniform += mem_map[lp.MemAccess('global', np.float64,
                                 stride=0, direction='load', variable='h',
-                                count_granularity='warp')
+                                count_granularity='subgroup')
                           ].eval_with_dict(params)
     f32uniform = mem_map[lp.MemAccess('global', np.float32,
                                 stride=0, direction='load', variable='x',
-                                count_granularity='warp')
+                                count_granularity='subgroup')
                          ].eval_with_dict(params)
     f32nonconsec = mem_map[lp.MemAccess('global', np.dtype(np.float32),
                                 stride=Variable('m'), direction='load',
@@ -511,20 +511,20 @@ def test_mem_access_counter_mixed():
                                 variable='b',
                                 count_granularity='thread')
                             ].eval_with_dict(params)
-    assert f64uniform == 2*n*m*ell/32  # /warpsize for uniform
-    assert f32uniform == n*m*ell/32  # /warpsize for uniform
+    assert f64uniform == 2*n*m*ell/32  # /subgroup_size for uniform
+    assert f32uniform == n*m*ell/32  # /subgroup_size for uniform
     assert f32nonconsec == 3*n*m*ell
 
     f64uniform = mem_map[lp.MemAccess('global', np.float64,
                                 stride=0, direction='store', variable='e',
-                                count_granularity='warp')
+                                count_granularity='subgroup')
                          ].eval_with_dict(params)
     f32nonconsec = mem_map[lp.MemAccess('global', np.float32,
                                 stride=Variable('m'), direction='store',
                                 variable='c',
                                 count_granularity='thread')
                            ].eval_with_dict(params)
-    assert f64uniform == n*m*ell/32  # /warpsize because these are considered uniform
+    assert f64uniform == n*m*ell/32  # /subgroup_size because these are uniform
     assert f32nonconsec == n*m*ell
 
 
@@ -585,7 +585,8 @@ def test_mem_access_counter_nonconsec():
     assert f64nonconsec == n*m
     assert f32nonconsec == n*m*ell
 
-    mem_map64 = lp.get_mem_access_map(knl, count_redundant_work=True, wsize=64)
+    mem_map64 = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                      subgroup_size=64)
     f64nonconsec = mem_map64[lp.MemAccess(
                     'global',
                     np.float64, stride=Variable('m'),
@@ -843,26 +844,26 @@ def test_summations_and_filters():
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, wsize=32)
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True, subgroup_size=32)
 
     loads_a = mem_map.filter_by(direction=['load'], variable=['a'],
-                                count_granularity=['warp']
+                                count_granularity=['subgroup']
                                 ).eval_and_sum(params)
-    assert loads_a == 2*n*m*ell/32  # /warpsize because these are considered uniform
+    assert loads_a == 2*n*m*ell/32  # /subgroup_size because these are uniform
 
     global_stores = mem_map.filter_by(mtype=['global'], direction=['store'],
-                                      count_granularity=['warp']
+                                      count_granularity=['subgroup']
                                       ).eval_and_sum(params)
-    assert global_stores == (n*m*ell + n*m)/32  # /warpsize for uniform
+    assert global_stores == (n*m*ell + n*m)/32  # /subgroup_size for uniform
 
     ld_bytes = mem_map.filter_by(mtype=['global'], direction=['load'],
-                                 count_granularity=['warp']
+                                 count_granularity=['subgroup']
                                  ).to_bytes().eval_and_sum(params)
     st_bytes = mem_map.filter_by(mtype=['global'], direction=['store'],
-                                 count_granularity=['warp']
+                                 count_granularity=['subgroup']
                                  ).to_bytes().eval_and_sum(params)
-    assert ld_bytes == (4*n*m*ell*3 + 8*n*m*2)/32  # /warpsize for uniform
-    assert st_bytes == (4*n*m*ell + 8*n*m)/32  # /warpsize for uniform
+    assert ld_bytes == (4*n*m*ell*3 + 8*n*m*2)/32  # /subgroup_size for uniform
+    assert st_bytes == (4*n*m*ell + 8*n*m)/32  # /subgroup_size for uniform
 
     # ignore stride and variable names in this map
     reduced_map = mem_map.group_by('mtype', 'dtype', 'direction')
@@ -870,8 +871,8 @@ def test_summations_and_filters():
                           ].eval_with_dict(params)
     f64lall = reduced_map[lp.MemAccess('global', np.float64, direction='load')
                           ].eval_with_dict(params)
-    assert f32lall == 3*n*m*ell/32  # /warpsize because these are considered uniform
-    assert f64lall == 2*n*m/32  # /warpsize because these are considered uniform
+    assert f32lall == 3*n*m*ell/32  # /subgroup_size because these are uniform
+    assert f64lall == 2*n*m/32  # /subgroup_size because these are uniform
 
     op_map = lp.get_op_map(knl, count_redundant_work=True)
     #for k, v in op_map.items():
@@ -904,7 +905,7 @@ def test_summations_and_filters():
         return key.stride < 1 and key.dtype == to_loopy_type(np.float64) and \
                key.direction == 'load'
     s1f64l = mem_map.filter_by_func(func_filter).eval_and_sum(params)
-    assert s1f64l == 2*n*m/32  # /warpsize because these are considered uniform
+    assert s1f64l == 2*n*m/32  # /subgroup_size because these are uniform
 
 
 def test_strided_footprint():
