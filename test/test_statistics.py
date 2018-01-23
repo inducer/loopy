@@ -672,6 +672,31 @@ def test_mem_access_counter_consec():
     assert f32consec == n*m*ell
 
 
+def test_count_granularity_val_checks():
+
+    try:
+        lp.MemAccess(count_granularity='workitem')
+        lp.MemAccess(count_granularity='subgroup')
+        lp.MemAccess(count_granularity='group')
+        lp.MemAccess(count_granularity=None)
+        assert True
+        lp.MemAccess(count_granularity='bushel')
+        assert False
+    except ValueError:
+        assert True
+
+    try:
+        lp.Op(count_granularity='workitem')
+        lp.Op(count_granularity='subgroup')
+        lp.Op(count_granularity='group')
+        lp.Op(count_granularity=None)
+        assert True
+        lp.Op(count_granularity='bushel')
+        assert False
+    except ValueError:
+        assert True
+
+
 def test_barrier_counter_nobarriers():
 
     knl = lp.make_kernel(
