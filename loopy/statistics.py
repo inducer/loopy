@@ -490,7 +490,7 @@ class Op(Record):
     count_granularity_options = ["workitem", "subgroup", "group", None]
 
     def __init__(self, dtype=None, name=None, count_granularity=None):
-        if not count_granularity in self.count_granularity_options:
+        if count_granularity not in self.count_granularity_options:
             raise ValueError("Op.__init__: count_granularity '%s' is"
                     "not allowed. count_granularity options: %s"
                     % (count_granularity, self.count_granularity_options))
@@ -563,7 +563,7 @@ class MemAccess(Record):
             raise NotImplementedError("MemAccess: variable must be None when "
                                       "mtype is 'local'")
 
-        if not count_granularity in self.count_granularity_options:
+        if count_granularity not in self.count_granularity_options:
             raise ValueError("Op.__init__: count_granularity '%s' is"
                     "not allowed. count_granularity options: %s"
                     % (count_granularity, self.count_granularity_options))
@@ -1254,8 +1254,8 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
                         (Op(
                             dtype=op.dtype.numpy_dtype,
                             name=op.name,
-                            count_granularity=op.count_granularity)
-                        , ct)
+                            count_granularity=op.count_granularity),
+                        ct)
                         for op, ct in six.iteritems(op_map.count_map)),
                     val_type=op_map.val_type
                     )
@@ -1446,8 +1446,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                             stride=mem_access.stride,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
-                            count_granularity=mem_access.count_granularity)
-                        , ct)
+                            count_granularity=mem_access.count_granularity),
+                        ct)
                         for mem_access, ct in six.iteritems(access_map.count_map)),
                     val_type=access_map.val_type
                     )
