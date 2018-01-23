@@ -61,6 +61,10 @@ def adjust_local_temp_var_storage(kernel, device):
                     temp_var.copy(storage_shape=temp_var.shape)
             continue
 
+        if not temp_var.shape:
+            # scalar, no need to mess with storage shape
+            continue
+
         other_loctemp_nbytes = [
                 tv.nbytes
                 for tv in six.itervalues(kernel.temporary_variables)
