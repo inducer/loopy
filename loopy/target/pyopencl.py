@@ -63,6 +63,7 @@ def adjust_local_temp_var_storage(kernel, device):
 
         if not temp_var.shape:
             # scalar, no need to mess with storage shape
+            new_temp_vars[temp_var.name] = temp_var
             continue
 
         other_loctemp_nbytes = [
