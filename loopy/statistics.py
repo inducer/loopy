@@ -478,7 +478,12 @@ class Op(Record):
     .. attribute:: name
 
        A :class:`str` that specifies the kind of arithmetic operation as
-       *add*, *sub*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
+       *add*, *mul*, *div*, *pow*, *shift*, *bw* (bitwise), etc.
+
+    .. attribute:: count_granularity
+
+       A :class:`str` that specifies whether this operation should be counted
+       once per *workitem*, *subgroup*, or *group*.
 
     """
 
@@ -529,6 +534,11 @@ class MemAccess(Record):
 
        A :class:`str` that specifies the variable name of the data
        accessed.
+
+    .. attribute:: count_granularity
+
+       A :class:`str` that specifies whether this operation should be counted
+       once per *workitem*, *subgroup*, or *group*.
 
     """
 
@@ -1259,6 +1269,11 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         (Likely desirable for performance modeling, but undesirable for
         code optimization.)
 
+    :arg subgroup_size: A :class:`int` that specifies the sub-group size. This
+        is used, e.g., when counting a :class:`MemAccess` whose count_granularity
+        specifies that it should only be counted once per sub-group. The default
+        subgroup_size is 32.
+
     :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
         :class:`islpy.PwQPolynomial` **}**.
 
@@ -1380,6 +1395,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                     direction="store")
 
             # FIXME: (!!!!) for now, don't count writes to local mem
+            # (^this is updated in a branch that will be merged soon)
 
             # use count excluding local index tags for uniform accesses
             for key, val in six.iteritems(access_expr.count_map):
