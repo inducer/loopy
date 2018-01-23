@@ -487,7 +487,13 @@ class Op(Record):
 
     """
 
+    count_granularity_options = ["workitem", "subgroup", "group", None]
+
     def __init__(self, dtype=None, name=None, count_granularity=None):
+        if not count_granularity in self.count_granularity_options:
+            raise ValueError("Op.__init__: count_granularity '%s' is"
+                    "not allowed. count_granularity options: %s"
+                    % (count_granularity, self.count_granularity_options))
         if dtype is None:
             Record.__init__(self, dtype=dtype, name=name,
                             count_granularity=count_granularity)
@@ -542,6 +548,8 @@ class MemAccess(Record):
 
     """
 
+    count_granularity_options = ["workitem", "subgroup", "group", None]
+
     def __init__(self, mtype=None, dtype=None, stride=None, direction=None,
                  variable=None, count_granularity=None):
 
@@ -554,6 +562,11 @@ class MemAccess(Record):
         if (mtype == 'local') and (variable is not None):
             raise NotImplementedError("MemAccess: variable must be None when "
                                       "mtype is 'local'")
+
+        if not count_granularity in self.count_granularity_options:
+            raise ValueError("Op.__init__: count_granularity '%s' is"
+                    "not allowed. count_granularity options: %s"
+                    % (count_granularity, self.count_granularity_options))
 
         if dtype is None:
             Record.__init__(self, mtype=mtype, dtype=dtype, stride=stride,
@@ -1371,9 +1384,10 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                 group_workitems *= s
             return ct/group_workitems
         else:
+            # this should not happen since this is enforced in MemAccess
             raise ValueError("get_insn_count: count_granularity '%s' is"
-                    "not allowed. count_granularity must be 'group', "
-                    "'subgroup', or 'workitem'." % (count_granularity))
+                    "not allowed. count_granularity options: %s"
+                    % (count_granularity, MemAccess.count_granularity_options))
 
     knl = infer_unknown_types(knl, expect_completion=True)
     knl = preprocess_kernel(knl)
