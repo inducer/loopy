@@ -542,8 +542,6 @@ class MemAccess(Record):
 
     """
 
-    # FIXME: This could be done much more briefly by inheriting from Record.
-
     def __init__(self, mtype=None, dtype=None, stride=None, direction=None,
                  variable=None, count_granularity=None):
 
