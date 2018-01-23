@@ -1241,8 +1241,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
                         (Op(
                             dtype=op.dtype.numpy_dtype,
                             name=op.name,
-                            count_granularity=op.count_granularity
-                            )
+                            count_granularity=op.count_granularity)
                         , ct)
                         for op, ct in six.iteritems(op_map.count_map)),
                     val_type=op_map.val_type
@@ -1433,8 +1432,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                             stride=mem_access.stride,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
-                            count_granularity=mem_access.count_granularity
-                            )
+                            count_granularity=mem_access.count_granularity)
                         , ct)
                         for mem_access, ct in six.iteritems(access_map.count_map)),
                     val_type=access_map.val_type
