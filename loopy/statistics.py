@@ -1375,8 +1375,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                 for size in local_size:
                     s = aff_to_expr(size)
                     if not isinstance(s, int):
-                        raise LoopyError("Cannot count insn with subgroup granularity, "
-                                         "group size is not integer: %s"
+                        raise LoopyError("Cannot count insn with subgroup "
+                                         "granularity, group size is not integer: %s"
                                          % (local_size))
                     group_size *= s
 
