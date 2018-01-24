@@ -1166,6 +1166,7 @@ def get_unused_hw_axes_factor(knl, insn, disregard_local_axes, space=None):
 
 
 def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False):
+
     insn_inames = knl.insn_inames(insn)
 
     if disregard_local_axes:
@@ -1363,35 +1364,41 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
     #from pytools import memoize_in
     #@memoize_in(cache_holder, "insn_count")  # TODO why doesn't this work anymore?
     def get_insn_count(knl, insn_id,
-                       disregard_local_axes=False,
                        count_granularity='workitem'):
         insn = knl.id_to_insn[insn_id]
-        ct = count_insn_runs(
-                knl, insn, disregard_local_axes=disregard_local_axes,
-                count_redundant_work=count_redundant_work)
 
         if count_granularity is None:
             warn_with_kernel(knl, "get_insn_count_assumes_granularity",
                              "get_insn_count: No count granularity passed for "
                              "MemAccess, assuming workitem granularity.")
-            return ct
-        elif count_granularity == 'workitem':
-            return ct
+            count_granularity == 'workitem'
+
+        if count_granularity == 'workitem':
+            return count_insn_runs(
+                knl, insn, count_redundant_work=count_redundant_work)
+
+        ct_disregard_local = count_insn_runs(
+                knl, insn, disregard_local_axes=True,
+                count_redundant_work=count_redundant_work)
+
+        if count_granularity == 'group':
+            return ct_disregard_local
         elif count_granularity == 'subgroup':
-            return ct//subgroup_size
-        elif count_granularity == 'group':
+            # get the group size
             from loopy.symbolic import aff_to_expr
-            _, local_size = knl.get_grid_size_upper_bounds()
-            group_workitems = 1
-            for size in local_size:
-                try:
+            global_size, local_size = knl.get_grid_size_upper_bounds()
+            group_size = 1
+            if local_size:
+                for size in local_size:
                     s = aff_to_expr(size)
-                except AttributeError:
-                    raise LoopyError("Cannot count insn with group granularity, "
-                                     "group size is not integer: %s"
-                                     % (local_size))
-                group_workitems *= s
-            return ct//group_workitems
+                    if not isinstance(s, int):
+                        raise LoopyError("Cannot count insn with subgroup granularity, "
+                                         "group size is not integer: %s"
+                                         % (local_size))
+                    group_size *= s
+
+            from pytools import div_ceil
+            return ct_disregard_local*div_ceil(group_size, subgroup_size)
         else:
             # this should not happen since this is enforced in MemAccess
             raise ValueError("get_insn_count: count_granularity '%s' is"
