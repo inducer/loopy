@@ -991,7 +991,7 @@ def test_summations_and_filters():
                           ].eval_with_dict(params)
 
     # uniform: (count-per-sub-group)*n_groups*subgroups_per_group
-    assert f32lall== (3*n*m*ell)*n_groups*subgroups_per_group
+    assert f32lall == (3*n*m*ell)*n_groups*subgroups_per_group
     assert f64lall == (2*n*m)*n_groups*subgroups_per_group
 
     op_map = lp.get_op_map(knl, count_redundant_work=True)
