@@ -89,13 +89,22 @@ class GuardedPwQPolynomial(object):
 
     __rmul__ = __mul__
 
-    def __truediv__(self, other):
+    def __floordiv__(self, other):
         if not isinstance(other, int):
-            raise ValueError("GuardedPwQPolynomial.__truediv__ only valid for "
+            raise ValueError("GuardedPwQPolynomial.__floordiv__ only valid for "
                     "type int. Attempted to divide by %s" % (type(other)))
         return GuardedPwQPolynomial(
                 self.pwqpolynomial.scale_val(isl.Val(1).div(isl.Val(other))),
                 self.valid_domain)
+
+    def ceildiv(self, other):
+        if not isinstance(other, int):
+            raise ValueError("GuardedPwQPolynomial.ceildiv only valid for "
+                    "type int. Attempted to divide by %s" % (type(other)))
+        return GuardedPwQPolynomial(
+                (self.pwqpolynomial + other - 1).scale_val(isl.Val(1).div(isl.Val(other))),
+                self.valid_domain)
+
 
     def eval_with_dict(self, value_dict):
         space = self.pwqpolynomial.space
@@ -1369,7 +1378,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         elif count_granularity == 'workitem':
             return ct
         elif count_granularity == 'subgroup':
-            return ct/subgroup_size
+            return ct//subgroup_size
         elif count_granularity == 'group':
             from loopy.symbolic import aff_to_expr
             _, local_size = knl.get_grid_size_upper_bounds()
@@ -1382,7 +1391,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                      "group size is not integer: %s"
                                      % (local_size))
                 group_workitems *= s
-            return ct/group_workitems
+            return ct//group_workitems
         else:
             # this should not happen since this is enforced in MemAccess
             raise ValueError("get_insn_count: count_granularity '%s' is"
