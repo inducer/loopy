@@ -2757,7 +2757,7 @@ def test_relaxed_stride_checks(ctx_factory):
 
     with cl.CommandQueue(ctx) as queue:
         mat = np.zeros((1, 10), order="F")
-        b = np.zeros(10, dtype=np.float64)
+        b = np.zeros(10)
 
         evt, (a,) = knl(queue, A=mat, b=b)
 
