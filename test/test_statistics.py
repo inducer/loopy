@@ -540,7 +540,7 @@ def test_mem_access_counter_mixed():
             e[i, k] = g[i,k]*(2+h[i,k])
             """
             ],
-            name="mixed", assumptions="n,m,ell >= 1")
+            name="mixed_knl", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64,
@@ -589,7 +589,6 @@ def test_mem_access_counter_mixed():
     # uniform: (count-per-sub-group)*n_groups*subgroups_per_group
     assert f64uniform == (2*n*m)*n_groups*subgroups_per_group
     assert f32uniform == (m*n)*n_groups*subgroups_per_group
-
     assert f32nonconsec == 3*n*m*ell
 
     f64uniform = mem_map[lp.MemAccess('global', np.float64,
