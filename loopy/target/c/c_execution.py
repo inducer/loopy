@@ -105,12 +105,23 @@ class CExecutionWrapperGenerator(ExecutionWrapperGeneratorBase):
                         kernel_arg.dtype.numpy_dtype),
                     order=order))
 
+        expected_strides = tuple(
+                var("_lpy_expected_strides_%s" % i)
+                for i in range(num_axes))
+
+        gen("%s = %s.strides" % (strify(expected_strides), arg.name))
+
         #check strides
         if not skip_arg_checks:
-            gen("assert %(strides)s == %(name)s.strides, "
+            strides_check_expr = self.get_strides_check_expr(
+                    (strify(s) for s in sym_shape),
+                    (strify(s) for s in sym_strides),
+                    (strify(s) for s in expected_strides))
+            gen("assert %(strides_check)s, "
                     "'Strides of loopy created array %(name)s, "
                     "do not match expected.'" %
-                    dict(name=arg.name,
+                    dict(strides_check=strides_check_expr,
+                         name=arg.name,
                          strides=strify(sym_strides)))
             for i in range(num_axes):
                 gen("del _lpy_shape_%d" % i)

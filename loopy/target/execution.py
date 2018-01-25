@@ -351,6 +351,13 @@ class ExecutionWrapperGeneratorBase(object):
     def get_arg_pass(self, arg):
         raise NotImplementedError()
 
+    def get_strides_check_expr(self, shape, strides, sym_strides):
+        # Returns an expression suitable for use for checking the strides of an
+        # argument. Arguments should be sequences of strings.
+        return " and ".join(
+                "(%s == 1 or %s == %s)" % elem
+                for elem in zip(shape, strides, sym_strides))
+
     # {{{ arg setup
 
     def generate_arg_setup(
@@ -516,13 +523,34 @@ class ExecutionWrapperGeneratorBase(object):
                         itemsize = kernel_arg.dtype.numpy_dtype.itemsize
                         sym_strides = tuple(
                                 itemsize*s_i for s_i in arg.unvec_strides)
-                        gen("if %s.strides != %s:"
-                                % (arg.name, strify(sym_strides)))
+
+                        ndim = len(arg.unvec_shape)
+                        shape = ["_lpy_shape_%d" % i for i in range(ndim)]
+                        strides = ["_lpy_stride_%d" % i for i in range(ndim)]
+
+                        gen("(%s,) = %s.shape" % (", ".join(shape), arg.name))
+                        gen("(%s,) = %s.strides" % (", ".join(strides), arg.name))
+
+                        gen("if not %s:"
+                                % self.get_strides_check_expr(
+                                    shape, strides,
+                                    (strify(s) for s in sym_strides)))
                         with Indentation(gen):
+                            gen("_lpy_got = tuple(stride "
+                                    "for (dim, stride) in zip(%s.shape, %s.strides) "
+                                    "if dim > 1)"
+                                    % (arg.name, arg.name))
+                            gen("_lpy_expected = tuple(stride "
+                                    "for (dim, stride) in zip(%s.shape, %s) "
+                                    "if dim > 1)"
+                                    % (arg.name, strify_tuple(sym_strides)))
+
                             gen("raise TypeError(\"strides mismatch on "
-                                    "argument '%s' (got: %%s, expected: %%s)\" "
-                                    "%% (%s.strides, %s))"
-                                    % (arg.name, arg.name, strify(sym_strides)))
+                                    "argument '%s' "
+                                    "(after removing unit length dims, "
+                                    "got: %%s, expected: %%s)\" "
+                                    "%% (_lpy_got, _lpy_expected))"
+                                    % arg.name)
 
                     if not arg.allows_offset:
                         gen("if hasattr(%s, 'offset') and %s.offset:" % (
