@@ -2757,8 +2757,6 @@ def test_relaxed_stride_checks(ctx_factory):
 
     with cl.CommandQueue(ctx) as queue:
         A = np.zeros((1, 10), order="F")
-        # Force convert A to C order. numpy will preserve strides in this case.
-        A = np.array(A, copy=False, order="C")
         b = np.zeros(10, dtype=np.float64)
 
         evt, (a,) = knl(queue, A=A, b=b)
