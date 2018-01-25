@@ -2756,10 +2756,10 @@ def test_relaxed_stride_checks(ctx_factory):
              """)
 
     with cl.CommandQueue(ctx) as queue:
-        A = np.zeros((1, 10), order="F")
+        mat = np.zeros((1, 10), order="F")
         b = np.zeros(10, dtype=np.float64)
 
-        evt, (a,) = knl(queue, A=A, b=b)
+        evt, (a,) = knl(queue, A=mat, b=b)
 
         assert a == 0
 
