@@ -370,6 +370,7 @@ class ExecutionWrapperGeneratorBase(object):
         from loopy.types import NumpyType
 
         gen("# {{{ set up array arguments")
+        gen("")
 
         if not options.no_numpy:
             gen("_lpy_encountered_numpy = False")
