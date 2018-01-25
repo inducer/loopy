@@ -363,6 +363,10 @@ class ExecutionWrapperGeneratorBase(object):
         from loopy.types import NumpyType
 
         gen("# {{{ set up array arguments")
+
+        gen("")
+        gen("def _lpy_filter_stride(shape, stride):")
+        gen("    return tuple(s for dim, s in zip(shape, stride) if dim > 1)")
         gen("")
 
         if not options.no_numpy:
@@ -516,13 +520,21 @@ class ExecutionWrapperGeneratorBase(object):
                         itemsize = kernel_arg.dtype.numpy_dtype.itemsize
                         sym_strides = tuple(
                                 itemsize*s_i for s_i in arg.unvec_strides)
-                        gen("if %s.strides != %s:"
-                                % (arg.name, strify(sym_strides)))
+                        gen("if _lpy_filter_stride(%s.shape, %s.strides) != "
+                                    "_lpy_filter_stride(%s.shape, %s):"
+                                    % (
+                                        arg.name, arg.name, arg.name,
+                                        strify(sym_strides)))
                         with Indentation(gen):
                             gen("raise TypeError(\"strides mismatch on "
-                                    "argument '%s' (got: %%s, expected: %%s)\" "
-                                    "%% (%s.strides, %s))"
-                                    % (arg.name, arg.name, strify(sym_strides)))
+                                    "argument '%s' "
+                                    "(after removing unit length dims, "
+                                    "got: %%s, expected: %%s)\" "
+                                    "%% (_lpy_filter_stride(%s.shape, %s.strides), "
+                                    "_lpy_filter_stride(%s.shape, %s)))"
+                                    % (
+                                        arg.name, arg.name, arg.name, arg.name,
+                                        strify(sym_strides)))
 
                     if not arg.allows_offset:
                         gen("if hasattr(%s, 'offset') and %s.offset:" % (

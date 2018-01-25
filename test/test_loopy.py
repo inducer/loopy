@@ -2746,6 +2746,26 @@ def test_arg_inference_for_predicates():
     assert knl.arg_dict["incr"].shape == (10,)
 
 
+def test_relaxed_stride_checks(ctx_factory):
+    # Check that loopy is compatible with numpy's relaxed stride rules.
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel("{[i,j]: 0 <= i <= n and 0 <= j <= m}",
+             """
+             a[i] = sum(j, A[i,j] * b[j])
+             """)
+
+    with cl.CommandQueue(ctx) as queue:
+        A = np.zeros((1, 10), order="F")
+        # Force convert A to C order. numpy will preserve strides in this case.
+        A = np.array(A, copy=False, order="C")
+        b = np.zeros(10, dtype=np.float64)
+
+        evt, (a,) = knl(queue, A=A, b=b)
+
+        assert a == 0
+
+
 def test_add_prefetch_works_in_lhs_index():
     knl = lp.make_kernel(
             "{ [n,k,l,k1,l1,k2,l2]: "
