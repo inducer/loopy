@@ -353,7 +353,7 @@ class ExecutionWrapperGeneratorBase(object):
 
     def get_strides_check_expr(self, shape, strides, sym_strides):
         # Returns an expression suitable for use for checking the strides of an
-        # argument.
+        # argument. Arguments should be sequences of strings.
         return " and ".join(
                 "(%s == 1 or %s == %s)" % elem
                 for elem in zip(shape, strides, sym_strides))
