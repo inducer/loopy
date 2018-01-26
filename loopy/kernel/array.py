@@ -612,7 +612,8 @@ class ArrayBase(ImmutableRecord):
 
         Memory alignment of the array in bytes.
         Default to *None*. If an integer N is given, the array would be declared
-        with ``__attribute__((aligned(N)))`` in code generation for :class:`loopy.CTarget`.
+        with ``__attribute__((aligned(N)))`` in code generation for
+        :class:`loopy.CTarget`.
 
     .. automethod:: __init__
     .. automethod:: __eq__
