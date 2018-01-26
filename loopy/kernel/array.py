@@ -614,6 +614,8 @@ class ArrayBase(ImmutableRecord):
         Default to *None*. If an integer N is given, the array would be declared
         with ``__attribute__((aligned(N)))`` in code generation for
         :class:`loopy.CTarget`.
+        
+        .. versionadded:: 2018.1
 
     .. automethod:: __init__
     .. automethod:: __eq__
