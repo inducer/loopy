@@ -608,6 +608,21 @@ class ArrayBase(ImmutableRecord):
         to generate more informative names than could be achieved by
         axis numbers.
 
+    .. attribute:: alignment
+
+        Memory alignment of the array in bytes. For temporary arrays,
+        this ensures they are allocated with this alignment. For arguments,
+        this entails a promise that the incoming array obeys this alignment
+        restriction.
+
+        Defaults to *None*.
+
+        If an integer N is given, the array would be declared
+        with ``__attribute__((aligned(N)))`` in code generation for
+        :class:`loopy.CTarget`.
+
+        .. versionadded:: 2018.1
+
     .. automethod:: __init__
     .. automethod:: __eq__
     .. automethod:: num_user_axes
@@ -624,7 +639,7 @@ class ArrayBase(ImmutableRecord):
 
     def __init__(self, name, dtype=None, shape=None, dim_tags=None, offset=0,
             dim_names=None, strides=None, order=None, for_atomic=False,
-            target=None,
+            target=None, alignment=None,
             **kwargs):
         """
         All of the following (except *name*) are optional.
@@ -662,6 +677,7 @@ class ArrayBase(ImmutableRecord):
             Whether the array is declared for atomic access, and, if necessary,
             using atomic-capable data types.
         :arg offset: (See :attr:`offset`)
+        :arg alignment: memory alignment in bytes
 
         """
 
@@ -816,6 +832,7 @@ class ArrayBase(ImmutableRecord):
                 offset=offset,
                 dim_names=dim_names,
                 order=order,
+                alignment=alignment,
                 **kwargs)
 
     def __eq__(self, other):

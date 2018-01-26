@@ -709,6 +709,10 @@ class CASTBuilder(ASTBuilderBase):
                     ecm(p.flattened_product(decl_info.shape),
                         prec=PREC_NONE, type_context="i"))
 
+        if temp_var.alignment:
+            from cgen import AlignedAttribute
+            temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
+
         return temp_var_decl
 
     def wrap_temporary_decl(self, decl, scope):
