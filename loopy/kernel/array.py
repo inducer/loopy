@@ -608,6 +608,12 @@ class ArrayBase(ImmutableRecord):
         to generate more informative names than could be achieved by
         axis numbers.
 
+    .. attribute:: alignment
+
+        Memory alignment of the array in bytes.
+        Default to *None*. If an integer N is given, the array would be declared
+        with ``__attribute__((aligned(N)))`` in code generation for :class:`loopy.CTarget`.
+
     .. automethod:: __init__
     .. automethod:: __eq__
     .. automethod:: num_user_axes
