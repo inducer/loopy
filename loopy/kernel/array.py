@@ -610,11 +610,17 @@ class ArrayBase(ImmutableRecord):
 
     .. attribute:: alignment
 
-        Memory alignment of the array in bytes.
-        Default to *None*. If an integer N is given, the array would be declared
+        Memory alignment of the array in bytes. For temporary arrays,
+        this ensures they are allocated with this alignment. For arguments,
+        this entails a promise that the incoming array obeys this alignment
+        restriction.
+
+        Defaults to *None*.
+
+        If an integer N is given, the array would be declared
         with ``__attribute__((aligned(N)))`` in code generation for
         :class:`loopy.CTarget`.
-        
+
         .. versionadded:: 2018.1
 
     .. automethod:: __init__
