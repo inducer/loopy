@@ -531,7 +531,6 @@ def test_mem_access_counter_bitwise():
 
 
 def test_mem_access_counter_mixed():
-
     knl = lp.make_kernel(
             "[n,m,ell] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
             [
@@ -540,16 +539,16 @@ def test_mem_access_counter_mixed():
             e[i, k] = g[i,k]*(2+h[i,k])
             """
             ],
-            name="mixed_knl", assumptions="n,m,ell >= 1")
+            name="mixed", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64,
                 x=np.float32))
 
-    bsize0 = 65
+    group_size_0 = 65
     subgroup_size = 32
 
-    knl = lp.split_iname(knl, "j", bsize0)
+    knl = lp.split_iname(knl, "j", group_size_0)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
     n = 512
@@ -557,8 +556,8 @@ def test_mem_access_counter_mixed():
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
 
-    n_groups = div_ceil(ell, bsize0)
-    group_size = bsize0
+    n_groups = div_ceil(ell, group_size_0)
+    group_size = group_size_0
     subgroups_per_group = div_ceil(group_size, subgroup_size)
 
     mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
@@ -589,7 +588,23 @@ def test_mem_access_counter_mixed():
     # uniform: (count-per-sub-group)*n_groups*subgroups_per_group
     assert f64uniform == (2*n*m)*n_groups*subgroups_per_group
     assert f32uniform == (m*n)*n_groups*subgroups_per_group
-    assert f32nonconsec == 3*n*m*ell
+
+    expect_fallback = False
+    import islpy as isl
+    try:
+        isl.BasicSet.card
+    except AttributeError:
+        expect_fallback = True
+    else:
+        expect_fallback = False
+
+    if expect_fallback:
+        if ell < group_size_0:
+            assert f32nonconsec == 3*n*m*ell*n_groups
+        else:
+            assert f32nonconsec == 3*n*m*n_groups*group_size_0
+    else:
+        assert f32nonconsec == 3*n*m*ell
 
     f64uniform = mem_map[lp.MemAccess('global', np.float64,
                                 stride=0, direction='store', variable='e',
@@ -603,7 +618,14 @@ def test_mem_access_counter_mixed():
 
     # uniform: (count-per-sub-group)*n_groups*subgroups_per_group
     assert f64uniform == m*n*n_groups*subgroups_per_group
-    assert f32nonconsec == n*m*ell
+
+    if expect_fallback:
+        if ell < group_size_0:
+            assert f32nonconsec == n*m*ell*n_groups
+        else:
+            assert f32nonconsec == n*m*n_groups*group_size_0
+    else:
+        assert f32nonconsec == n*m*ell
 
 
 def test_mem_access_counter_nonconsec():
