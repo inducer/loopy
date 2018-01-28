@@ -107,7 +107,7 @@ def get_arguments_with_incomplete_dtype(knl):
             if arg.dtype is None]
 
 
-def add_and_infer_dtypes(knl, dtype_dict):
+def add_and_infer_dtypes(knl, dtype_dict, expect_completion=False):
     processed_dtype_dict = {}
 
     for k, v in six.iteritems(dtype_dict):
@@ -119,7 +119,7 @@ def add_and_infer_dtypes(knl, dtype_dict):
     knl = add_dtypes(knl, processed_dtype_dict)
 
     from loopy.type_inference import infer_unknown_types
-    return infer_unknown_types(knl, expect_completion=True)
+    return infer_unknown_types(knl, expect_completion=expect_completion)
 
 
 def _add_and_infer_dtypes_overdetermined(knl, dtype_dict):
