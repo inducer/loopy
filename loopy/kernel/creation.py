@@ -1004,7 +1004,7 @@ def _find_existentially_quantified_inames(dom_str):
 
 
 def parse_domains(domains, defines):
-    if isinstance(domains, str):
+    if isinstance(domains, (isl.BasicSet, str)):
         domains = [domains]
 
     result = []
