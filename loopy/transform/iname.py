@@ -854,23 +854,23 @@ def duplicate_inames(knl, inames, within, new_inames=None, suffix=None,
 
 # {{{ iname duplication for schedulability
 
-def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
-    # Remove common inames of the current insn_deps, as they are not relevant
+def _get_iname_duplication_options(insn_iname_sets, old_common_inames=frozenset([])):
+    # Remove common inames of the current insn_iname_sets, as they are not relevant
     # for splitting.
-    common = frozenset([]).union(*insn_deps).intersection(*insn_deps)
+    common = frozenset([]).union(*insn_iname_sets).intersection(*insn_iname_sets)
 
     # If common inames were found, we reduce the problem and go into recursion
     if common:
         # Remove the common inames from the instruction dependencies
-        insn_deps = (
-            frozenset(dep - common for dep in insn_deps)
+        insn_iname_sets = (
+            frozenset(iname_set - common for iname_set in insn_iname_sets)
             -
             frozenset([frozenset([])]))
         # Join the common inames with those previously found
         common = common.union(old_common_inames)
 
         # Go into recursion
-        for option in _get_iname_duplication_options(insn_deps, common):
+        for option in _get_iname_duplication_options(insn_iname_sets, common):
             yield option
         # Do not yield anything beyond here!
         return
@@ -880,7 +880,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
     def join_sets_if_not_disjoint(sets):
         for s1 in sets:
             for s2 in sets:
-                if s1 != s2 and s1.intersection(s2):
+                if s1 != s2 and s1 & s2:
                     return (
                         (sets - frozenset([s1, s2]))
                         | frozenset([s1 | s2])
@@ -888,7 +888,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
 
         return sets, True
 
-    partitioning = insn_deps
+    partitioning = insn_iname_sets
     stop = False
     while not stop:
         partitioning, stop = join_sets_if_not_disjoint(partitioning)
@@ -897,7 +897,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
     # subproblems
     if len(partitioning) > 1:
         for part in partitioning:
-            working_set = frozenset(s for s in insn_deps if s.issubset(part))
+            working_set = frozenset(s for s in insn_iname_sets if s <= part)
             for option in _get_iname_duplication_options(working_set,
                                                          old_common_inames):
                 yield option
@@ -908,7 +908,9 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
         # There are splitting options for all inames
         for iname in inames:
             iname_insns = frozenset(
-                    insn for insn in insn_deps if frozenset([iname]).issubset(insn))
+                    insn
+                    for insn in insn_iname_sets
+                    if frozenset([iname]) <= insn)
 
             import itertools as it
             # For a given iname, the set of instructions containing this iname
@@ -919,7 +921,7 @@ def _get_iname_duplication_options(insn_deps, old_common_inames=frozenset([])):
                     for l in range(1, len(iname_insns))):
                 yield (
                     iname,
-                    tuple(insn.union(old_common_inames) for insn in insns_to_dup))
+                    tuple(insn | old_common_inames for insn in insns_to_dup))
 
     # If partitioning was empty, we have recursed successfully and yield nothing
 
@@ -951,12 +953,12 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
     * duplicating j in instruction i2
     * duplicating i in instruction i2 and i3
 
-    Use :func:`has_schedulable_iname_nesting` to decide, whether an iname needs to be
+    Use :func:`has_schedulable_iname_nesting` to decide whether an iname needs to be
     duplicated in a given kernel.
     """
     # First we extract the minimal necessary information from the kernel
     if use_boostable_into:
-        insn_deps = (
+        insn_iname_sets = (
             frozenset(insn.within_inames.union(
                 insn.boostable_into if insn.boostable_into is not None
                 else frozenset([]))
@@ -964,20 +966,20 @@ def get_iname_duplication_options(knl, use_boostable_into=False):
             -
             frozenset([frozenset([])]))
     else:
-        insn_deps = (
+        insn_iname_sets = (
             frozenset(insn.within_inames for insn in knl.instructions)
             -
             frozenset([frozenset([])]))
 
     # Get the duplication options as a tuple of iname and a set
-    for iname, insns in _get_iname_duplication_options(insn_deps):
+    for iname, insns in _get_iname_duplication_options(insn_iname_sets):
         # Check whether this iname has a parallel tag and discard it if so
         from loopy.kernel.data import ConcurrentTag
         if (iname in knl.iname_to_tag
                     and isinstance(knl.iname_to_tag[iname], ConcurrentTag)):
             continue
 
-        # If we find a duplication option and fo not use boostable_into
+        # If we find a duplication option and to not use boostable_into
         # information, we restart this generator with use_boostable_into=True
         if not use_boostable_into and not knl.options.ignore_boostable_into:
             for option in get_iname_duplication_options(knl, True):

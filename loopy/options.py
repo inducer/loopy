@@ -112,6 +112,15 @@ class Options(ImmutableRecord):
         Do not check for or accept :mod:`numpy` arrays as
         arguments.
 
+        Defaults to *False*.
+
+    .. attribute:: cl_exec_manage_array_events
+
+        Within the PyOpenCL executor, respect and udpate
+        :attr:`pyopencl.array.Array.event`.
+
+        Defaults to *True*.
+
     .. attribute:: return_dict
 
         Have kernels return a :class:`dict` instead of a tuple as
@@ -196,6 +205,7 @@ class Options(ImmutableRecord):
 
                 skip_arg_checks=kwargs.get("skip_arg_checks", False),
                 no_numpy=kwargs.get("no_numpy", False),
+                cl_exec_manage_array_events=kwargs.get("no_numpy", True),
                 return_dict=kwargs.get("return_dict", False),
                 write_wrapper=kwargs.get("write_wrapper", False),
                 write_code=kwargs.get("write_code", False),

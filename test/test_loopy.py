@@ -2462,16 +2462,9 @@ def test_barrier_in_overridden_get_grid_size_expanded_kernel():
     vecsize = 16
     knl = lp.split_iname(knl, 'i', vecsize, inner_tag='l.0')
 
+    from testlib import GridOverride
+
     # artifically expand via overridden_get_grid_sizes_for_insn_ids
-    class GridOverride(object):
-        def __init__(self, clean, vecsize=vecsize):
-            self.clean = clean
-            self.vecsize = vecsize
-
-        def __call__(self, insn_ids, ignore_auto=True):
-            gsize, _ = self.clean.get_grid_sizes_for_insn_ids(insn_ids, ignore_auto)
-            return gsize, (self.vecsize,)
-
     knl = knl.copy(overridden_get_grid_sizes_for_insn_ids=GridOverride(
         knl.copy(), vecsize))
     # make sure we can generate the code
@@ -2739,6 +2732,36 @@ def test_preamble_with_separate_temporaries(ctx_factory):
     # check that it actually performs the lookup correctly
     assert np.allclose(kernel(
         queue, data=data.flatten('C'))[1][0], data[offsets[:-1] + 1])
+
+
+def test_arg_inference_for_predicates():
+    knl = lp.make_kernel("{[i]: 0 <= i < 10}",
+            """
+            if incr[i]
+              a = a + 1
+            end
+            """)
+
+    assert "incr" in knl.arg_dict
+    assert knl.arg_dict["incr"].shape == (10,)
+
+
+def test_relaxed_stride_checks(ctx_factory):
+    # Check that loopy is compatible with numpy's relaxed stride rules.
+    ctx = ctx_factory()
+
+    knl = lp.make_kernel("{[i,j]: 0 <= i <= n and 0 <= j <= m}",
+             """
+             a[i] = sum(j, A[i,j] * b[j])
+             """)
+
+    with cl.CommandQueue(ctx) as queue:
+        mat = np.zeros((1, 10), order="F")
+        b = np.zeros(10)
+
+        evt, (a,) = knl(queue, A=mat, b=b)
+
+        assert a == 0
 
 
 def test_add_prefetch_works_in_lhs_index():

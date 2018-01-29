@@ -61,6 +61,11 @@ def adjust_local_temp_var_storage(kernel, device):
                     temp_var.copy(storage_shape=temp_var.shape)
             continue
 
+        if not temp_var.shape:
+            # scalar, no need to mess with storage shape
+            new_temp_vars[temp_var.name] = temp_var
+            continue
+
         other_loctemp_nbytes = [
                 tv.nbytes
                 for tv in six.itervalues(kernel.temporary_variables)
@@ -441,7 +446,9 @@ def generate_value_arg_setup(kernel, devices, implemented_data_info):
         warn("{knl_name}: device not supplied to PyOpenCLTarget--"
                 "workarounds for broken OpenCL implementations "
                 "(such as those relating to complex numbers) "
-                "may not be enabled when needed"
+                "may not be enabled when needed. To avoid this, "
+                "pass target=lp.PyOpenCLTarget(dev) when creating "
+                "the kernel."
                 .format(knl_name=kernel.name))
 
     if any(count_bug_per_dev):

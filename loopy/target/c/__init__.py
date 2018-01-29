@@ -194,7 +194,6 @@ def generate_array_literal(codegen_state, array, value):
 
     ecm = codegen_state.expression_to_code_mapper
 
-    from pymbolic.mapper.stringifier import PREC_NONE
     from loopy.expression import dtype_to_type_context
     from loopy.symbolic import ArrayLiteral
 
@@ -203,7 +202,7 @@ def generate_array_literal(codegen_state, array, value):
             codegen_state.ast_builder.get_c_expression_to_code_mapper(),
             ArrayLiteral(
                 tuple(
-                    ecm(d_i, PREC_NONE, type_context, array.dtype).expr
+                    ecm.map_constant(d_i, type_context)
                     for d_i in data)))
 
 # }}}
@@ -710,13 +709,18 @@ class CASTBuilder(ASTBuilderBase):
                     ecm(p.flattened_product(decl_info.shape),
                         prec=PREC_NONE, type_context="i"))
 
+        if temp_var.alignment:
+            from cgen import AlignedAttribute
+            temp_var_decl = AlignedAttribute(temp_var.alignment, temp_var_decl)
+
         return temp_var_decl
 
     def wrap_temporary_decl(self, decl, scope):
         return decl
 
     def wrap_global_constant(self, decl):
-        return decl
+        from cgen import Static
+        return Static(decl)
 
     def get_value_arg_decl(self, name, shape, dtype, is_written):
         assert shape == ()

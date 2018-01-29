@@ -25,7 +25,7 @@ It can capture the following types of optimizations:
 
 * Vector and multi-core parallelism in the OpenCL/CUDA model
 * Data layout transformations (structure of arrays to array of structures)
-* Loopy Unrolling
+* Loop unrolling
 * Loop tiling with efficient handling of boundary cases
 * Prefetching/copy optimizations
 * Instruction level parallelism
