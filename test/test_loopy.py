@@ -1129,7 +1129,7 @@ def test_atomic_init(dtype):
                 ],
             silenced_warnings=["write_race(init)"])
     knl = lp.split_iname(knl, 'i', vec_width, inner_tag='l.0')
-
+    print(knl)
     print(lp.generate_code_v2(knl).device_code())
 
 

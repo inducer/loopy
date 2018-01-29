@@ -607,26 +607,6 @@ class VarAtomicity(object):
         return not self.__eq__(other)
 
 
-class AtomicInit(VarAtomicity):
-    """Describes initialization of an atomic variable. A subclass of
-    :class:`VarAtomicity`.
-    """
-
-    def update_persistent_hash(self, key_hash, key_builder):
-        """Custom hash computation function for use with
-        :class:`pytools.persistent_dict.PersistentDict`.
-        """
-
-        super(AtomicInit, self).update_persistent_hash(key_hash, key_builder)
-        key_builder.rec(key_hash, "AtomicInit")
-
-    def __str__(self):
-        return "update[%s]%s/%s" % (
-                self.var_name,
-                memory_ordering.to_string(self.ordering),
-                memory_scope.to_string(self.scope))
-
-
 class OrderedAtomic(VarAtomicity):
     """Properties of an atomic operation. A subclass of :class:`VarAtomicity`.
 
@@ -665,8 +645,23 @@ class OrderedAtomic(VarAtomicity):
                 memory_scope.to_string(self.scope))
 
 
+class AtomicInit(OrderedAtomic):
+    """Describes initialization of an atomic variable. A subclass of
+    :class:`OrderedAtomic`.
+
+    .. attribute:: ordering
+
+        One of the values from :class:`memory_ordering`
+
+    .. attribute:: scope
+
+        One of the values from :class:`memory_scope`
+    """
+    op_name = 'init'
+
+
 class AtomicUpdate(OrderedAtomic):
-    """Properties of an atomic update. A subclass of :class:`VarAtomicity`.
+    """Properties of an atomic update. A subclass of :class:`OrderedAtomic`.
 
     .. attribute:: ordering
 
@@ -680,7 +675,7 @@ class AtomicUpdate(OrderedAtomic):
 
 
 class AtomicLoad(OrderedAtomic):
-    """Properties of an atomic load. A subclass of :class:`VarAtomicity`.
+    """Properties of an atomic load. A subclass of :class:`OrderedAtomic`.
 
     .. attribute:: ordering
 
