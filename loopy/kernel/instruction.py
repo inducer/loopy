@@ -660,7 +660,6 @@ class AtomicInit(OrderedAtomic):
     op_name = 'init'
 
 
-
 class AtomicUpdate(OrderedAtomic):
     """Properties of an atomic update. A subclass of :class:`OrderedAtomic`.
 
