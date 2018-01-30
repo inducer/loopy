@@ -1384,8 +1384,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
             warn_with_kernel(knl, "insn_count_subgroups_upper_bound",
                     "get_insn_count: when counting instruction %s with "
                     "count_granularity=subgroup, using upper bound for group size "
-                    "(%d workitems) to compute subgroups per group. If kernel has "
-                    "multiple device programs, actual subgroup count may be lower."
+                    "(%d workitems) to compute subgroups per group. When multiple "
+                    "device programs present, actual subgroup count may be lower."
                     % (insn_id, group_size))
 
             from pytools import div_ceil
