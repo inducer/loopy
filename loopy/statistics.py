@@ -1370,7 +1370,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         elif count_granularity == 'subgroup':
             # get the group size
             from loopy.symbolic import aff_to_expr
-            global_size, local_size = knl.get_grid_size_upper_bounds()
+            _, local_size = knl.get_grid_size_upper_bounds()
             group_size = 1
             if local_size:
                 for size in local_size:
@@ -1380,6 +1380,13 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                          "granularity, group size is not integer: %s"
                                          % (local_size))
                     group_size *= s
+
+            warn_with_kernel(knl, "insn_count_subgroups_upper_bound",
+                    "get_insn_count: when counting instruction %s with "
+                    "count_granularity=subgroup, using upper bound for group size "
+                    "(%d workitems) to compute subgroups per group. If kernel has "
+                    "multiple device programs, actual subgroup count may be lower."
+                    % (insn_id, group_size))
 
             from pytools import div_ceil
             return ct_disregard_local*div_ceil(group_size, subgroup_size)
