@@ -525,15 +525,17 @@ class ExpressionToCExpressionMapper(IdentityMapper):
 
             real_sum = p.flattened_sum([self.rec(r, type_context) for r in reals])
 
+            c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
+
             def binary_tree_add(start, end):
                 if start + 1 == end:
-                    return self.rec(complexes[start], type_context, tgt_dtype)
+                    return c_applied[start]
                 mid = (start + end)//2
                 lsum = binary_tree_add(start, mid)
                 rsum = binary_tree_add(mid, end)
                 return var("%s_add" % tgt_name)(lsum, rsum)
 
-            complex_sum = binary_tree_add(0, len(complexes))
+            complex_sum = binary_tree_add(0, len(c_applied))
 
             if real_sum:
                 return var("%s_radd" % tgt_name)(real_sum, complex_sum)
@@ -573,9 +575,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             real_prd = p.flattened_product(
                     [self.rec(r, type_context) for r in reals])
 
+            c_applied = [self.rec(c, type_context, tgt_dtype) for c in complexes]
+
             def binary_tree_mul(start, end):
                 if start + 1 == end:
-                    return self.rec(complexes[start], type_context, tgt_dtype)
+                    return c_applied[start]
                 mid = (start + end)//2
                 lsum = binary_tree_mul(start, mid)
                 rsum = binary_tree_mul(mid, end)
