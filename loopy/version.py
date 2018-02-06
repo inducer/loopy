@@ -62,8 +62,12 @@ break existing programs, kernels now have to declare support for a given
 language version to let them take advantage of this check.
 
 As a result, :mod:`loopy` will now issue a warning when a call to
-:func:`loopy.make_kernel` does not declare a language version. Such kernels will
-(indefinitely) default to language version 2017.2.1.
+:func:`loopy.make_kernel` does not declare a language version. Such kernels
+will (indefinitely) default to language version 2017.2.1.  If passing a
+language version to :func:`make_kernel` is impractical, you may also place a
+global variable ``LOOPY_KERNEL_LANGUAGE_VERSION`` in the global namespace of
+the function calling :func:`make_kernel`. If *lang_version* is not explicitly
+given, that its value will be used.
 
 Language versions will generally reflect the version number of :mod:`loopy` in
 which they were introduced, though it is possible that some versions of

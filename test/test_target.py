@@ -52,6 +52,9 @@ __all__ = [
         ]
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 def test_ispc_target(occa_mode=False):
     from loopy.target.ispc import ISPCTarget
 

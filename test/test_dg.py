@@ -34,6 +34,9 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 def test_dg_volume(ctx_factory):
     #logging.basicConfig(level=logging.DEBUG)
 

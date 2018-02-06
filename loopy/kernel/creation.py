@@ -1920,6 +1920,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         If not given, this value defaults to version **(2017, 2, 1)** and
         a warning will be issued.
 
+        If this is impractical, you may also place a global variable
+        ``LOOPY_KERNEL_LANGUAGE_VERSION`` in the global namespace of the
+        function calling :func:`make_kernel`. If *lang_version* is not
+        explicitly given, that its value will be used.
+
         See also :ref:`language-versioning`.
 
     .. versionchanged:: 2017.2.1
@@ -1972,18 +1977,32 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     lang_version = kwargs.pop("lang_version", None)
     if lang_version is None:
-        from warnings import warn
-        from loopy.diagnostic import LoopyWarning
-        from loopy.version import (
-                MOST_RECENT_LANGUAGE_VERSION,
-                FALLBACK_LANGUAGE_VERSION)
-        warn("'lang_version' was not passed to make_kernel(). "
-                "To avoid this warning, pass "
-                "lang_version=%r in this invocation."
-                % (MOST_RECENT_LANGUAGE_VERSION,),
-                LoopyWarning, stacklevel=2)
+        # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
 
-        lang_version = FALLBACK_LANGUAGE_VERSION
+        # This *is* gross. But it seems like the right thing interface-wise.
+        import inspect
+        caller_globals = inspect.currentframe().f_back.f_globals
+
+        try:
+            lang_version = caller_globals["LOOPY_KERNEL_LANGUAGE_VERSION"]
+        except KeyError:
+            pass
+
+        # }}}
+
+        if lang_version is None:
+            from warnings import warn
+            from loopy.diagnostic import LoopyWarning
+            from loopy.version import (
+                    MOST_RECENT_LANGUAGE_VERSION,
+                    FALLBACK_LANGUAGE_VERSION)
+            warn("'lang_version' was not passed to make_kernel(). "
+                    "To avoid this warning, pass "
+                    "lang_version=%r in this invocation."
+                    % (MOST_RECENT_LANGUAGE_VERSION,),
+                    LoopyWarning, stacklevel=2)
+
+            lang_version = FALLBACK_LANGUAGE_VERSION
 
     if lang_version >= (2018, 1):
         options = options.copy(enforce_check_variable_access_ordered=True)

@@ -44,6 +44,9 @@ __all__ = [
         ]
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("ilp_multiple", [1, 2])
 @pytest.mark.parametrize("opt_level", [11])

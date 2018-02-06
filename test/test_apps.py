@@ -49,6 +49,9 @@ __all__ = [
         ]
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 # {{{ convolutions
 
 def test_convolution(ctx_factory):

@@ -40,6 +40,9 @@ else:
     faulthandler.enable()
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 def test_c_target():
     from loopy.target.c import ExecutableCTarget
 

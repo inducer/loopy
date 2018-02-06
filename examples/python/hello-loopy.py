@@ -8,6 +8,9 @@ import pyopencl.array
 ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
+# for make_kernel calls from this file
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
 n = 15 * 10**6
 a = cl.array.arange(queue, n, dtype=np.float32)
 
@@ -15,8 +18,7 @@ a = cl.array.arange(queue, n, dtype=np.float32)
 # ------
 knl = lp.make_kernel(
         "{ [i]: 0<=i<n }",
-        "out[i] = 2*a[i]",
-        lang_version=(2018, 1))
+        "out[i] = 2*a[i]")
 
 # transform
 # ---------

@@ -56,6 +56,9 @@ __all__ = [
 # - scan(a) + scan(b)
 # - test for badly tagged inames
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 @pytest.mark.parametrize("n", [1, 2, 3, 16])
 @pytest.mark.parametrize("stride", [1, 2])
 def test_sequential_scan(ctx_factory, n, stride):

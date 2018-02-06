@@ -34,6 +34,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 def test_nbody(ctx_factory):
     logging.basicConfig(level=logging.INFO)
 

@@ -32,6 +32,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 def test_compute_sccs():
     from loopy.tools import compute_sccs
     import random

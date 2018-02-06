@@ -52,6 +52,9 @@ __all__ = [
         ]
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 def test_globals_decl_once_with_multi_subprogram(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -67,8 +70,7 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             [lp.TemporaryVariable(
                 'cnst', shape=('n'), initializer=cnst,
                 scope=lp.temp_var_scope.GLOBAL,
-                read_only=True), '...'],
-            lang_version=(2018, 1))
+                read_only=True), '...'])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
 
@@ -89,8 +91,7 @@ def test_complicated_subst(ctx_factory):
                 h(x) := 1 + g(x) + 20*g$two(x)
 
                 a[i] = h$one(i) * h$two(i)
-                """,
-            lang_version=(2018, 1))
+                """)
 
     knl = lp.expand_subst(knl, "... > id:h and tag:two > id:g and tag:two")
 
@@ -121,8 +122,7 @@ def test_type_inference_no_artificial_doubles(ctx_factory):
                 lp.GlobalArg("c", np.float32, shape=("n",)),
                 lp.ValueArg("n", np.int32),
                 ],
-            assumptions="n>=1",
-            lang_version=(2018, 1))
+            assumptions="n>=1")
 
     knl = lp.preprocess_kernel(knl, ctx.devices[0])
     for k in lp.generate_loop_schedules(knl):
@@ -142,9 +142,7 @@ def test_type_inference_with_type_dependencies():
             c = b + c
             <>d = b + 2 + 1j
             """,
-            "...",
-            lang_version=(2018, 1))
-
+            "...")
     knl = lp.infer_unknown_types(knl)
 
     from loopy.types import to_loopy_type

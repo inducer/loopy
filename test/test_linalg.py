@@ -62,6 +62,9 @@ def check_float4(result, ref_result):
                 ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
 
 
+LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+
+
 def test_axpy(ctx_factory):
     logging.basicConfig(level="INFO")
     ctx = ctx_factory()
