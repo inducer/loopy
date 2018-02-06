@@ -1998,8 +1998,10 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
                     FALLBACK_LANGUAGE_VERSION)
             warn("'lang_version' was not passed to make_kernel(). "
                     "To avoid this warning, pass "
-                    "lang_version=%r in this invocation."
-                    % (MOST_RECENT_LANGUAGE_VERSION,),
+                    "lang_version={ver} in this invocation. "
+                    "(Or set LOOPY_KERNEL_LANGUAGE_VERSION = {ver} in "
+                    "the global scope of the calling frame.)"
+                    .format(ver=MOST_RECENT_LANGUAGE_VERSION),
                     LoopyWarning, stacklevel=2)
 
             lang_version = FALLBACK_LANGUAGE_VERSION
