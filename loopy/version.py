@@ -67,7 +67,7 @@ will (indefinitely) default to language version 2017.2.1.  If passing a
 language version to :func:`make_kernel` is impractical, you may also place a
 global variable ``LOOPY_KERNEL_LANGUAGE_VERSION`` in the global namespace of
 the function calling :func:`make_kernel`. If *lang_version* is not explicitly
-given, that its value will be used.
+given, this value will be used.
 
 Language versions will generally reflect the version number of :mod:`loopy` in
 which they were introduced, though it is possible that some versions of
