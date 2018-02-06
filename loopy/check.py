@@ -447,6 +447,12 @@ def check_variable_access_ordered(kernel):
     depfind = IndirectDependencyEdgeFinder(kernel)
 
     for name in checked_variables:
+        readers = rmap.get(name, set())
+        writers = wmap.get(name, set())
+
+        if not writers:
+            continue
+
         if name in kernel.temporary_variables:
             scope = kernel.temporary_variables[name].scope
         else:
@@ -456,12 +462,11 @@ def check_variable_access_ordered(kernel):
             elif isinstance(arg, ValueArg):
                 scope = temp_var_scope.PRIVATE
             else:
+                # No need to consider ConstantArg and ImageArg (for now)
+                # because those won't be written.
                 raise ValueError("could not determine scope of '%s'" % name)
 
         # Check even for PRIVATE scope, to ensure intentional program order.
-
-        readers = rmap.get(name, set())
-        writers = wmap.get(name, set())
 
         for writer_id in writers:
             for other_id in readers | writers:
