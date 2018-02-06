@@ -30,4 +30,6 @@ To Copy between Data Formats
 
 .. autofunction:: make_copy_kernel
 
+.. automodule:: loopy.version
+
 .. vim: tw=75:spell:fdm=marker

@@ -90,7 +90,9 @@ regarding OpenCL drivers.
 User-visible Changes
 ====================
 
-Version 2017.2
+See also :ref:`language-versioning`.
+
+Version 2018.1
 --------------
 .. note::
 

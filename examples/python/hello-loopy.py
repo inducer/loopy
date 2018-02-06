@@ -15,7 +15,8 @@ a = cl.array.arange(queue, n, dtype=np.float32)
 # ------
 knl = lp.make_kernel(
         "{ [i]: 0<=i<n }",
-        "out[i] = 2*a[i]")
+        "out[i] = 2*a[i]",
+        lang_version=(2018, 1))
 
 # transform
 # ---------

@@ -379,6 +379,120 @@ def check_has_schedulable_iname_nesting(kernel):
                 "to get hints about which iname to duplicate. Here are some "
                 "options:\n%s" % opt_str)
 
+
+class IndirectDependencyEdgeFinder(object):
+    def __init__(self, kernel):
+        self.kernel = kernel
+        self.dep_edge_cache = {}
+
+    def __call__(self, depender_id, dependee_id):
+        cache_key = (depender_id, dependee_id)
+
+        try:
+            return self.dep_edge_cache[cache_key]
+        except KeyError:
+            pass
+
+        depender = self.kernel.id_to_insn[depender_id]
+
+        if dependee_id in depender.depends_on:
+            self.dep_edge_cache[cache_key] = True
+            return True
+
+        for dep in depender.depends_on:
+            if self(dep, dependee_id):
+                self.dep_edge_cache[cache_key] = True
+                return True
+
+        return False
+
+
+def needs_no_sync_with(kernel, var_scope, dep_a_id, dep_b_id):
+    dep_a = kernel.id_to_insn[dep_a_id]
+    dep_b = kernel.id_to_insn[dep_b_id]
+
+    from loopy.kernel.data import temp_var_scope
+    if var_scope == temp_var_scope.GLOBAL:
+        search_scopes = ["global", "any"]
+    elif var_scope == temp_var_scope.LOCAL:
+        search_scopes = ["local", "any"]
+    elif var_scope == temp_var_scope.PRIVATE:
+        search_scopes = ["any"]
+    else:
+        raise ValueError("unexpected value of 'temp_var_scope'")
+
+    for scope in search_scopes:
+        if (dep_a_id, scope) in dep_b.no_sync_with:
+            return True
+        if (dep_b_id, scope) in dep_a.no_sync_with:
+            return True
+
+    return False
+
+
+def check_variable_access_ordered(kernel):
+    """Checks that all writes are ordered with respect to all other access to
+    the written variable.
+    """
+    checked_variables = (
+            kernel.get_written_variables()
+            | set(kernel.temporary_variables)
+            | set(arg for arg in kernel.arg_dict))
+
+    wmap = kernel.writer_map()
+    rmap = kernel.reader_map()
+
+    from loopy.kernel.data import GlobalArg, ValueArg, temp_var_scope
+
+    depfind = IndirectDependencyEdgeFinder(kernel)
+
+    for name in checked_variables:
+        if name in kernel.temporary_variables:
+            scope = kernel.temporary_variables[name].scope
+        else:
+            arg = kernel.arg_dict[name]
+            if isinstance(arg, GlobalArg):
+                scope = temp_var_scope.GLOBAL
+            elif isinstance(arg, ValueArg):
+                scope = temp_var_scope.PRIVATE
+            else:
+                raise ValueError("could not determine scope of '%s'" % name)
+
+        # Check even for PRIVATE scope, to ensure intentional program order.
+
+        readers = rmap.get(name, set())
+        writers = wmap.get(name, set())
+
+        for writer_id in writers:
+            for other_id in readers | writers:
+                if writer_id == other_id:
+                    continue
+
+                has_ordering_relationship = (
+                        needs_no_sync_with(kernel, scope, other_id, writer_id)
+                        or
+                        depfind(writer_id, other_id)
+                        or
+                        depfind(other_id, writer_id))
+
+                if not has_ordering_relationship:
+                    msg = ("No ordering relationship found between "
+                            "'{writer_id}' which writes '{var}' and "
+                            "'{other_id}' which also accesses '{var}'. "
+                            "Please either add a (possibly indirect) dependency "
+                            "between the two, or add one to the other's no_sync set "
+                            "to indicate that no ordering is intended."
+                            .format(
+                                writer_id=writer_id,
+                                other_id=other_id,
+                                var=name))
+                    if kernel.options.enforce_check_variable_access_ordered:
+                        raise LoopyError(msg)
+                    else:
+                        from loopy.diagnostic import warn_with_kernel
+                        warn_with_kernel(
+                                kernel, "variable_access_ordered", msg)
+
 # }}}
 
 
@@ -397,6 +511,7 @@ def pre_schedule_checks(kernel):
         check_bounds(kernel)
         check_write_destinations(kernel)
         check_has_schedulable_iname_nesting(kernel)
+        check_variable_access_ordered(kernel)
 
         logger.debug("%s: pre-schedule check: done" % kernel.name)
     except KeyboardInterrupt:

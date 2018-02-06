@@ -72,7 +72,8 @@ def test_dg_volume(ctx_factory):
                     order=order),
                 lp.ValueArg("K", np.int32, approximately=1000),
                 ],
-            name="dg_volume", assumptions="K>=1")
+            name="dg_volume", assumptions="K>=1",
+            lang_version=(2018, 1))
 
     knl = lp.fix_parameters(knl, Np=Np)
 

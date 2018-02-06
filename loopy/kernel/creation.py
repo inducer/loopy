@@ -1909,6 +1909,23 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         will be fixed to *value*. *name* may refer to :ref:`domain-parameters`
         or :ref:`arguments`. See also :func:`loopy.fix_parameters`.
 
+    :arg lang_version: The language version against which the kernel was
+        written, a tuple. To ensure future compatibility, copy the current value of
+        :data:`loopy.MOST_RECENT_LANGUAGE_VERSION` and pass that value.
+
+        (If you just pass :data:`loopy.MOST_RECENT_LANGUAGE_VERSION` directly,
+        breaking language changes *will* apply to your kernel without asking,
+        likely breaking your code.)
+
+        If not given, this value defaults to version **(2017, 2, 1)** and
+        a warning will be issued.
+
+        See also :ref:`language-versioning`.
+
+    .. versionchanged:: 2017.2.1
+
+        *lang_version* added.
+
     .. versionchanged:: 2017.2
 
         *fixed_parameters* added.
@@ -1952,6 +1969,24 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     from loopy.options import make_options
     options = make_options(options)
+
+    lang_version = kwargs.pop("lang_version", None)
+    if lang_version is None:
+        from warnings import warn
+        from loopy.diagnostic import LoopyWarning
+        from loopy.version import (
+                MOST_RECENT_LANGUAGE_VERSION,
+                FALLBACK_LANGUAGE_VERSION)
+        warn("'lang_version' was not passed to make_kernel(). "
+                "To avoid this warning, pass "
+                "lang_version=%r in this invocation."
+                % (MOST_RECENT_LANGUAGE_VERSION,),
+                LoopyWarning, stacklevel=2)
+
+        lang_version = FALLBACK_LANGUAGE_VERSION
+
+    if lang_version >= (2018, 1):
+        options = options.copy(enforce_check_variable_access_ordered=True)
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")
