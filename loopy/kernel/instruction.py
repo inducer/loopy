@@ -99,12 +99,17 @@ class InstructionBase(ImmutableRecord):
            - `"global"`
            - `"any"`.
 
-        This indicates no barrier synchronization is necessary with the given
+        This indicates (symmetrically) that program semantics are not affected by
+        execution ordering of the involved instructions. In particular,
+        no barrier synchronization will be considered necessary with the given
         instruction using barriers of type `scope`, even given the existence of
         a dependency chain and apparently conflicting access.
 
         Note, that :attr:`no_sync_with` allows instruction matching through wildcards
         and match expression, just like :attr:`depends_on`.
+
+        This data is used specifically by barrier insertion and
+        :func:`loopy.check.enforce_variable_access_ordered`.
 
     .. rubric:: Conditionals
 
