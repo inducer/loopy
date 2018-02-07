@@ -2007,7 +2007,7 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             lang_version = FALLBACK_LANGUAGE_VERSION
 
     if lang_version >= (2018, 1):
-        options = options.copy(enforce_check_variable_access_ordered=True)
+        options = options.copy(enforce_variable_access_ordered=True)
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")

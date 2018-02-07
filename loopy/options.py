@@ -163,7 +163,7 @@ class Options(ImmutableRecord):
 
     .. attribute:: disable_global_barriers
 
-    .. attribute:: enforce_check_variable_access_ordered
+    .. attribute:: enforce_variable_access_ordered
 
         If *True*, require that
         :func:`loopy.check.check_variable_access_ordered` passes.
@@ -225,8 +225,8 @@ class Options(ImmutableRecord):
                     False),
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
 
-                enforce_check_variable_access_ordered=kwargs.get(
-                    "enforce_check_variable_access_ordered", False),
+                enforce_variable_access_ordered=kwargs.get(
+                    "enforce_variable_access_ordered", False),
                 )
 
     # {{{ legacy compatibility

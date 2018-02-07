@@ -55,7 +55,7 @@ Loopy Language Versioning
 At version 2018.1, :mod:`loopy` introduced a language versioning scheme to make
 it easier to evolve the language while retaining backward compatibility. What
 prompted this is the addition of
-:attr:`loopy.Options.enforce_check_variable_access_ordered`, which (despite
+:attr:`loopy.Options.enforce_variable_access_ordered`, which (despite
 its name) serves to enable a new check that helps ensure that all variable
 access in a kernel is ordered as intended. Since that has the potential to
 break existing programs, kernels now have to declare support for a given
@@ -70,10 +70,10 @@ the function calling :func:`make_kernel`. If *lang_version* is not explicitly
 given, this value will be used.
 
 Language versions will generally reflect the version number of :mod:`loopy` in
-which they were introduced, though it is possible that some versions of
-:mod:`loopy` do not introduce new user-visible language features. In such
-situations, the previous language version number remains.
-
+which they were introduced, though it is likely that most versions of
+:mod:`loopy` do not introduce language incompatibilities. In such
+situations, the previous language version number remains. (In fact, we
+will work hard to avoid backward-incompatible language changes.)
 
 .. data:: MOST_RECENT_LANGUAGE_VERSION
 
@@ -84,7 +84,7 @@ situations, the previous language version number remains.
 History of Language Versions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* ``(2018, 1)``: :attr:`loopy.Options.enforce_check_variable_access_ordered`
+* ``(2018, 1)``: :attr:`loopy.Options.enforce_variable_access_ordered`
     is turned on by default.
 
 * ``(2017, 2, 1)``: Initial legacy language version.

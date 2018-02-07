@@ -431,8 +431,12 @@ def needs_no_sync_with(kernel, var_scope, dep_a_id, dep_b_id):
 
 
 def check_variable_access_ordered(kernel):
-    """Checks that all writes are ordered with respect to all other access to
-    the written variable.
+    """Checks that between each write to a variable and all other accesses to
+    the variable there is either:
+
+    * an (at least indirect) depdendency edge, or
+    * an explicit statement that no ordering is necessary (expressed
+      through :attr:`loopy.Instruuction.no_sync_with`)
     """
     checked_variables = (
             kernel.get_written_variables()
@@ -473,25 +477,25 @@ def check_variable_access_ordered(kernel):
                 if writer_id == other_id:
                     continue
 
-                has_ordering_relationship = (
+                has_dependency_relationship = (
                         needs_no_sync_with(kernel, scope, other_id, writer_id)
                         or
                         depfind(writer_id, other_id)
                         or
                         depfind(other_id, writer_id))
 
-                if not has_ordering_relationship:
-                    msg = ("No ordering relationship found between "
+                if not has_dependency_relationship:
+                    msg = ("No dependency relationship found between "
                             "'{writer_id}' which writes '{var}' and "
                             "'{other_id}' which also accesses '{var}'. "
                             "Please either add a (possibly indirect) dependency "
                             "between the two, or add one to the other's no_sync set "
-                            "to indicate that no ordering is intended."
+                            "to indicate that no ordering is intended. "
                             .format(
                                 writer_id=writer_id,
                                 other_id=other_id,
                                 var=name))
-                    if kernel.options.enforce_check_variable_access_ordered:
+                    if kernel.options.enforce_variable_access_ordered:
                         raise LoopyError(msg)
                     else:
                         from loopy.diagnostic import warn_with_kernel
