@@ -26,7 +26,7 @@ knl = lp.make_kernel(
 
             <> post_dist_sq = if(matches, dist_sq, HUGE)
         end
-        <> min_dist_sq, <> min_ictr = argmin(ictr, post_dist_sq)
+        <> min_dist_sq, <> min_ictr = argmin(ictr, ictr, post_dist_sq)
 
         tgt_to_qbx_center[itgt] = if(min_dist_sq < HUGE, min_ictr, -1)
     end
