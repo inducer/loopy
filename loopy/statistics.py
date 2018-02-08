@@ -225,7 +225,7 @@ class ToCountMap(object):
                                              variable=['a','g'])
             tot_loads_a_g = filtered_map.eval_and_sum(params)
 
-            # (now use these counts to predict performance)
+            # (now use these counts to, e.g., predict performance)
 
         """
 
@@ -273,7 +273,7 @@ class ToCountMap(object):
             filtered_map = mem_map.filter_by_func(filter_func)
             tot = filtered_map.eval_and_sum(params)
 
-            # (now use these counts to predict performance)
+            # (now use these counts to, e.g., predict performance)
 
         """
 
@@ -328,7 +328,7 @@ class ToCountMap(object):
             f64ops = ops_dtype[Op(dtype=np.float64)].eval_with_dict(params)
             i32ops = ops_dtype[Op(dtype=np.int32)].eval_with_dict(params)
 
-            # (now use these counts to predict performance)
+            # (now use these counts to, e.g., predict performance)
 
         """
 
@@ -385,7 +385,7 @@ class ToCountMap(object):
                                 mtype=['global'], stride=[2],
                                 direction=['store']).eval_and_sum(params)
 
-            # (now use these counts to predict performance)
+            # (now use these counts to, e.g., predict performance)
 
         """
 
@@ -442,7 +442,7 @@ class ToCountMap(object):
                                              variable=['a','g'])
             tot_loads_a_g = filtered_map.eval_and_sum(params)
 
-            # (now use these counts to predict performance)
+            # (now use these counts to, e.g., predict performance)
 
         """
         return self.sum().eval_with_dict(params)
@@ -1216,7 +1216,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False):
         f32mul = op_map[Op(np.float32, 'mul', count_granularity='workitem')
                        ].eval_with_dict(params)
 
-        # (now use these counts to predict performance)
+        # (now use these counts to, e.g., predict performance)
 
     """
 
@@ -1328,7 +1328,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                                           count_granularity='workitem')
                                ].eval_with_dict(params)
 
-        # (now use these counts to predict performance)
+        # (now use these counts to, e.g., predict performance)
 
     """
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
@@ -1488,7 +1488,7 @@ def get_synchronization_map(knl):
         params = {'n': 512, 'm': 256, 'l': 128}
         barrier_ct = sync_map['barrier_local'].eval_with_dict(params)
 
-        # (now use this count to predict performance)
+        # (now use this count to, e.g., predict performance)
 
     """
 
