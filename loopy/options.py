@@ -170,6 +170,8 @@ class Options(ImmutableRecord):
         Required for language versions 2018.1 and above. This check
         helps find and eliminate unintentionally unordered access
         to variables.
+
+        If equal to ``"no_check"``, then no check is performed.
     """
 
     _legacy_options_map = {

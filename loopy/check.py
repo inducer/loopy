@@ -438,6 +438,9 @@ def check_variable_access_ordered(kernel):
     * an explicit statement that no ordering is necessary (expressed
       through :attr:`loopy.Instruuction.no_sync_with`)
     """
+    if kernel.options.enforce_variable_access_ordered == "no_check":
+        return
+
     checked_variables = (
             kernel.get_written_variables()
             | set(kernel.temporary_variables)
