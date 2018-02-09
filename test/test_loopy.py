@@ -893,8 +893,8 @@ def test_multiple_writes_to_local_temporary():
     knl = lp.make_kernel(
         "{[i,e]: 0<=i<5 and 0<=e<nelements}",
         """
-        <> temp[i, 0] = 17
-        temp[i, 1] = 15
+        <> temp[i, 0] = 17  {nosync_query=writes:temp}
+        temp[i, 1] = 15  {nosync_query=writes:temp}
         """)
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
@@ -1849,7 +1849,7 @@ def test_nop(ctx_factory):
                 <> z[i] = z[i+1] + z[i]  {id=wr_z}
                 <> v[i] = 11  {id=wr_v}
                 ... nop {dep=wr_z:wr_v,id=yoink}
-                z[i] = z[i] - z[i+1] + v[i]
+                z[i] = z[i] - z[i+1] + v[i]  {dep=yoink}
             end
             """)
 
@@ -2110,11 +2110,11 @@ def test_if_else(ctx_factory):
             "{ [i]: 0<=i<50}",
             """
             if i % 3 == 0
-                a[i] = 15
+                a[i] = 15  {nosync_query=writes:a}
             elif i % 3 == 1
-                a[i] = 11
+                a[i] = 11  {nosync_query=writes:a}
             else
-                a[i] = 3
+                a[i] = 3  {nosync_query=writes:a}
             end
             """
             )
@@ -2134,14 +2134,14 @@ def test_if_else(ctx_factory):
             for i
                 if i % 2 == 0
                     if i % 3 == 0
-                        a[i] = 15
+                        a[i] = 15  {nosync_query=writes:a}
                     elif i % 3 == 1
-                        a[i] = 11
+                        a[i] = 11  {nosync_query=writes:a}
                     else
-                        a[i] = 3
+                        a[i] = 3  {nosync_query=writes:a}
                     end
                 else
-                    a[i] = 4
+                    a[i] = 4  {nosync_query=writes:a}
                 end
             end
             """
@@ -2162,17 +2162,17 @@ def test_if_else(ctx_factory):
                 if i < 25
                     for j
                         if j % 2 == 0
-                            a[i, j] = 1
+                            a[i, j] = 1  {nosync_query=writes:a}
                         else
-                            a[i, j] = 0
+                            a[i, j] = 0  {nosync_query=writes:a}
                         end
                     end
                 else
                     for j
                         if j % 2 == 0
-                            a[i, j] = 0
+                            a[i, j] = 0  {nosync_query=writes:a}
                         else
-                            a[i, j] = 1
+                            a[i, j] = 1  {nosync_query=writes:a}
                         end
                     end
                 end
