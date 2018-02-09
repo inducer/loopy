@@ -29,6 +29,7 @@ from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
                              ExecutionWrapperGeneratorBase, get_highlighted_code)
 from pytools import memoize_method
 from pytools.py_codegen import (Indentation)
+from pytools.prefork import ExecError
 from codepy.toolchain import guess_toolchain, ToolchainGuessError, GCCToolchain
 from codepy.jit import compile_from_string
 import six
@@ -220,7 +221,7 @@ class CCompiler(object):
         if toolchain is None:
             try:
                 self.toolchain = guess_toolchain()
-            except ToolchainGuessError:
+            except (ToolchainGuessError, ExecError):
                 # missing compiler python was built with (likely, Conda)
                 # use a default GCCToolchain
                 logger = logging.getLogger(__name__)
