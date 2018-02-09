@@ -324,14 +324,14 @@ class CompiledCKernel(object):
     to automatically map argument types.
     """
 
-    def __init__(self, knl, idi, dev_code, target, comp=CCompiler()):
+    def __init__(self, knl, idi, dev_code, target, comp=None):
         from loopy.target.c import ExecutableCTarget
         assert isinstance(target, ExecutableCTarget)
         self.target = target
         self.name = knl.name
         # get code and build
         self.code = dev_code
-        self.comp = comp
+        self.comp = comp if comp is not None else CCompiler()
         self.dll = self.comp.build(self.name, self.code)
 
         # get the function declaration for interface with ctypes
