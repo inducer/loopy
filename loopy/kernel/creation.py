@@ -1666,7 +1666,7 @@ def _is_wildcard(s):
     return any(c in s for c in WILDCARD_SYMBOLS)
 
 
-def _resolve_dependencies(knl, insn, deps):
+def _resolve_dependencies(what, knl, insn, deps):
     from loopy import find_instructions
     from loopy.match import MatchExpressionBase
 
@@ -1692,10 +1692,11 @@ def _resolve_dependencies(knl, insn, deps):
                 found_any = True
 
         if not found_any and knl.options.check_dep_resolution:
-            raise LoopyError("instruction '%s' declared a depency on '%s', "
+            raise LoopyError("instruction '%s' declared %s on '%s', "
                     "which did not resolve to any instruction present in the "
                     "kernel '%s'. Set the kernel option 'check_dep_resolution'"
-                    "to False to disable this check." % (insn.id, dep, knl.name))
+                    "to False to disable this check."
+                    % (insn.id, what, dep, knl.name))
 
     for dep_id in new_deps:
         if dep_id not in knl.id_to_insn:
@@ -1710,13 +1711,14 @@ def resolve_dependencies(knl):
 
     for insn in knl.instructions:
         new_insns.append(insn.copy(
-                    depends_on=_resolve_dependencies(knl, insn, insn.depends_on),
-                    no_sync_with=frozenset(
-                        (resolved_insn_id, nosync_scope)
-                        for nosync_dep, nosync_scope in insn.no_sync_with
-                        for resolved_insn_id in
-                        _resolve_dependencies(knl, insn, (nosync_dep,))),
-                    ))
+            depends_on=_resolve_dependencies(
+                "a dependency", knl, insn, insn.depends_on),
+            no_sync_with=frozenset(
+                (resolved_insn_id, nosync_scope)
+                for nosync_dep, nosync_scope in insn.no_sync_with
+                for resolved_insn_id in
+                _resolve_dependencies("nosync", knl, insn, (nosync_dep,))),
+            ))
 
     return knl.copy(instructions=new_insns)
 
