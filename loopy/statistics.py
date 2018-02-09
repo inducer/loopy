@@ -1343,11 +1343,10 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
     class CacheHolder(object):
         pass
 
-    # cache_holder = CacheHolder()
-    # from pytools import memoize_in
-    # @memoize_in(cache_holder, "insn_count")  # TODO why doesn't this work anymore?
-    def get_insn_count(knl, insn_id,
-                       count_granularity='workitem'):
+    cache_holder = CacheHolder()
+    from pytools import memoize_in
+    @memoize_in(cache_holder, "insn_count")
+    def get_insn_count(knl, insn_id, count_granularity='workitem'):
         insn = knl.id_to_insn[insn_id]
 
         if count_granularity is None:
@@ -1426,8 +1425,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
-                        * get_insn_count(knl, insn.id,
-                                         count_granularity=key.count_granularity))
+                        * get_insn_count(knl, insn.id, key.count_granularity))
                 #currently not counting stride of local mem access
 
             for key, val in six.iteritems(access_assignee_g.count_map):
@@ -1435,8 +1433,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
-                        * get_insn_count(knl, insn.id,
-                                         count_granularity=key.count_granularity))
+                        * get_insn_count(knl, insn.id, key.count_granularity))
                 # for now, don't count writes to local mem
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
             pass
