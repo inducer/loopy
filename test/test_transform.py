@@ -78,7 +78,8 @@ def test_collect_common_factors(ctx_factory):
             """
             <float32> out_tmp = 0 {id=out_init,inames=i}
             out_tmp = out_tmp + alpha[i]*a[i,j]*b1[j] {id=out_up1,dep=out_init}
-            out_tmp = out_tmp + alpha[i]*a[j,i]*b2[j] {id=out_up2,dep=out_up1}
+            out_tmp = out_tmp + alpha[i]*a[j,i]*b2[j] \
+                    {id=out_up2,dep=out_init,nosync=out_up1}
             out[i] = out_tmp {dep=out_up1:out_up2}
             """)
     knl = lp.add_and_infer_dtypes(knl,
