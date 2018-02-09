@@ -197,7 +197,7 @@ def test_rob_stroud_bernstein(ctx_factory):
 
                     for alpha2
                         tmp[el,alpha1,i2] = tmp[el,alpha1,i2] + w * coeffs[aind] \
-                                {id=write_tmp}
+                                {id=write_tmp,dep=init_w:aind_init}
                         w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
                                 {id=update_w,dep=init_w:write_tmp}
                         aind = aind + 1 \
@@ -491,7 +491,8 @@ def test_lbm(ctx_factory):
                 f_new[i, j, 11] =  + 0.25*m[8] - 0.125*m[10] - 0.25*m[11]
            end
         end
-        """)
+        """,
+        lang_version=(2017, 2, 1))
 
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
 

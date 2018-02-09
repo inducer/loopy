@@ -206,14 +206,16 @@ def test_random123(ctx_factory, tp):
             <> key2 = make_uint2(i, 324830944) {inames=i}
             <> key4 = make_uint4(i, 324830944, 234181, 2233) {inames=i}
             <> ctr = make_uint4(0, 1, 2, 3)  {inames=i,id=init_ctr}
-            <> real, ctr = philox4x32_TYPE(ctr, key2)  {dep=init_ctr}
-            <> imag, ctr = threefry4x32_TYPE(ctr, key4)  {dep=init_ctr}
+            <> real, ctr = philox4x32_TYPE(ctr, key2)  {id=realpart,dep=init_ctr}
+            <> imag, ctr = threefry4x32_TYPE(ctr, key4)  {dep=init_ctr:realpart}
 
             out[i, 0] = real.s0 + 1j * imag.s0
             out[i, 1] = real.s1 + 1j * imag.s1
             out[i, 2] = real.s2 + 1j * imag.s2
             out[i, 3] = real.s3 + 1j * imag.s3
             """.replace("TYPE", tp))
+
+    knl = lp.add_nosync(knl, "any", "writes:out", "writes:out", force=True)
 
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
     knl = lp.set_options(knl, write_cl=True)

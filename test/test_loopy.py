@@ -1088,12 +1088,12 @@ def test_atomic_load(ctx_factory, dtype):
             "{ [i,j]: 0<=i,j<n}",
             """
             for j
-                <> upper = 0
-                <> lower = 0
+                <> upper = 0  {id=init_upper}
+                <> lower = 0  {id=init_lower}
                 temp = 0 {id=init, atomic}
                 for i
-                    upper = upper + i * a[i] {id=sum0}
-                    lower = lower - b[i] {id=sum1}
+                    upper = upper + i * a[i] {id=sum0,dep=init_upper}
+                    lower = lower - b[i] {id=sum1,dep=init_lower}
                 end
                 temp = temp + lower {id=temp_sum, dep=sum*:init, atomic,\
                                            nosync=init}
@@ -2632,8 +2632,8 @@ def test_fixed_parameters(ctx_factory):
     knl = lp.make_kernel(
             "[n] -> {[i]: 0 <= i < n}",
             """
-            <>tmp[i] = i
-            tmp[0] = 0
+            <>tmp[i] = i  {id=init}
+            tmp[0] = 0  {dep=init}
             """,
             fixed_parameters=dict(n=1))
 
