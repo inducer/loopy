@@ -1346,6 +1346,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     cache_holder = CacheHolder()
     from pytools import memoize_in
+
     @memoize_in(cache_holder, "insn_count")
     def get_insn_count(knl, insn_id, count_granularity='workitem'):
         insn = knl.id_to_insn[insn_id]
