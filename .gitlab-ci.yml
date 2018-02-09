@@ -127,6 +127,7 @@ Python 3.6 POCL Examples:
   - python3.6
   - pocl
   - large-node
+  - ispc
   except:
   - tags
 
