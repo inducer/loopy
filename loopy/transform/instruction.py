@@ -264,6 +264,11 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
         sinks = frozenset(
                 sink.id for sink in find_instructions(kernel, sink))
 
+    if not sources:
+        raise LoopyError("No match found for source specification '%s'." % source)
+    if not sinks:
+        raise LoopyError("No match found for sink specification '%s'." % sink)
+
     def insns_in_conflicting_groups(insn1_id, insn2_id):
         insn1 = kernel.id_to_insn[insn1_id]
         insn2 = kernel.id_to_insn[insn2_id]
@@ -275,11 +280,12 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
     from collections import defaultdict
     nosync_to_add = defaultdict(set)
 
+    rec_dep_map = kernel.recursive_insn_dep_map()
     for sink in sinks:
         for source in sources:
 
             needs_nosync = force or (
-                    source in kernel.recursive_insn_dep_map()[sink]
+                    source in rec_dep_map[sink]
                     or insns_in_conflicting_groups(source, sink))
 
             if not needs_nosync:
@@ -288,6 +294,12 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
             nosync_to_add[sink].add((source, scope))
             if bidirectional:
                 nosync_to_add[source].add((sink, scope))
+
+    if not nosync_to_add:
+        raise LoopyError("No nosync annotations were added as a result "
+                "of this call. add_nosync will (by default) only add them to "
+                "accompany existing depencies or group exclusions. Maybe you want "
+                "to pass force=True?")
 
     new_instructions = list(kernel.instructions)
 
