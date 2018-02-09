@@ -498,6 +498,7 @@ class Op(Record):
         return hash(str(self))
 
     def __repr__(self):
+        # Record.__repr__ overridden for consistent ordering and conciseness
         return "Op(%s, %s, %s)" % (self.dtype, self.name, self.count_granularity)
 
 # }}}
@@ -574,6 +575,7 @@ class MemAccess(Record):
         return hash(str(self))
 
     def __repr__(self):
+        # Record.__repr__ overridden for consistent ordering and conciseness
         return "MemAccess(%s, %s, %s, %s, %s, %s)" % (
             self.mtype,
             self.dtype,
