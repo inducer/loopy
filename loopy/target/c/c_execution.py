@@ -225,7 +225,7 @@ class CCompiler(object):
                 # missing compiler python was built with (likely, Conda)
                 # use a default GCCToolchain
                 logger = logging.getLogger(__name__)
-                logger.info('Default toolchain guessed from python config '
+                logger.warn('Default toolchain guessed from python config '
                             'not found, replacing with default GCCToolchain.')
                 self.toolchain = GCCToolchain()
 
