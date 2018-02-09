@@ -1,7 +1,7 @@
 subroutine fill(out, a, n)
   implicit none
 
-  real*8 a, out(n)
+  real_type a, out(n)
   integer n, i
 
 !$loopy begin tagged: init
@@ -9,17 +9,28 @@ subroutine fill(out, a, n)
     out(i) = a
   end do
 !$loopy end tagged: init
+
+!$loopy begin tagged: mult
   do i = 1, n
-    out(i) = out(i) * 2
+    out(i) = out(i) * factor
   end do
+!$loopy end tagged: mult
 end
 
 !$loopy begin
+!
+! SOURCE = lp.c_preprocess(SOURCE, [
+!       "factor 4.0",
+!       "real_type real*8",
+!       ])
 ! fill, = lp.parse_fortran(SOURCE, FILENAME)
+! fill = lp.add_barrier(fill, "tag:init", "tag:mult", "gb1")
 ! fill = lp.split_iname(fill, "i", 128,
 !     outer_tag="g.0", inner_tag="l.0")
 ! fill = lp.split_iname(fill, "i_1", 128,
 !     outer_tag="g.0", inner_tag="l.0")
 ! RESULT = [fill]
+!
 !$loopy end
+
 ! vim:filetype=floopy

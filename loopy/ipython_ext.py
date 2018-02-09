@@ -9,7 +9,7 @@ import loopy as lp
 class LoopyMagics(Magics):
     @cell_magic
     def fortran_kernel(self, line, cell):
-        result = lp.parse_fortran(cell.encode())
+        result = lp.parse_fortran(cell)
 
         for knl in result:
             self.shell.user_ns[knl.name] = knl
@@ -17,7 +17,7 @@ class LoopyMagics(Magics):
     @cell_magic
     def transformed_fortran_kernel(self, line, cell):
         result = lp.parse_transformed_fortran(
-                cell.encode(),
+                cell,
                 transform_code_context=self.shell.user_ns)
 
         for knl in result:
