@@ -29,7 +29,7 @@ from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
                              ExecutionWrapperGeneratorBase, get_highlighted_code)
 from pytools import memoize_method
 from pytools.py_codegen import (Indentation)
-from codepy.toolchain import guess_toolchain
+from codepy.toolchain import guess_toolchain, ToolchainGuessError, GCCToolchain
 from codepy.jit import compile_from_string
 import six
 import ctypes
@@ -216,7 +216,18 @@ class CCompiler(object):
                  source_suffix='c'):
         # try to get a default toolchain
         # or subclass supplied version if available
-        self.toolchain = guess_toolchain() if toolchain is None else toolchain
+        self.toolchain = toolchain
+        if toolchain is None:
+            try:
+                self.toolchain = guess_toolchain()
+            except ToolchainGuessError:
+                # missing compiler python was built with (likely, Conda)
+                # use a default GCCToolchain
+                logger = logging.getLogger(__name__)
+                logger.info('Default toolchain guessed from python config '
+                            'not found, replacing with default GCCToolchain.')
+                self.toolchain = GCCToolchain()
+
         self.source_suffix = source_suffix
         if toolchain is None:
             # copy in all differing values
