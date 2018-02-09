@@ -1179,7 +1179,8 @@ def count_insn_runs(knl, insn, count_redundant_work, disregard_local_axes=False)
 
 # {{{ get_op_map
 
-def get_op_map(knl, numpy_types=True, count_redundant_work=False):
+def get_op_map(knl, numpy_types=True, count_redundant_work=False,
+               subgroup_size=None):
 
     """Count the number of operations in a loopy kernel.
 
@@ -1463,7 +1464,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
 # {{{ get_synchronization_map
 
-def get_synchronization_map(knl):
+def get_synchronization_map(knl, subgroup_size=None):
 
     """Count the number of synchronization events each work item encounters in a
     loopy kernel.
