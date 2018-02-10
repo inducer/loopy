@@ -228,7 +228,8 @@ def tag_instructions(kernel, new_tag, within=None):
 
 # {{{ add nosync
 
-def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
+def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False,
+        empty_ok=False):
     """Add a *no_sync_with* directive between *source* and *sink*.
     *no_sync_with* is only added if *sink* depends on *source* or
     if the instruction pair is in a conflicting group.
@@ -248,8 +249,16 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
     :arg force: A :class:`bool`. If *True*, add a *no_sync_with* directive
         even without the presence of a dependency edge or conflicting
         instruction group.
+    :arg empty_ok: If *True*, do not complain even if no *nosync* tags were
+        added as a result of the transformation.
 
     :return: The updated kernel
+
+    .. versionchanged:: 2018.1
+
+        If the transformation adds no *nosync* directives, it will complain.
+        This used to silently pass. This behavior can be restored using
+        *empty_ok*.
     """
 
     if isinstance(source, str) and source in kernel.id_to_insn:
@@ -264,9 +273,9 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
         sinks = frozenset(
                 sink.id for sink in find_instructions(kernel, sink))
 
-    if not sources:
+    if not sources and not empty_ok:
         raise LoopyError("No match found for source specification '%s'." % source)
-    if not sinks:
+    if not sinks and not empty_ok:
         raise LoopyError("No match found for sink specification '%s'." % sink)
 
     def insns_in_conflicting_groups(insn1_id, insn2_id):
@@ -295,7 +304,7 @@ def add_nosync(kernel, scope, source, sink, bidirectional=False, force=False):
             if bidirectional:
                 nosync_to_add[source].add((sink, scope))
 
-    if not nosync_to_add:
+    if not nosync_to_add and not empty_ok:
         raise LoopyError("No nosync annotations were added as a result "
                 "of this call. add_nosync will (by default) only add them to "
                 "accompany existing depencies or group exclusions. Maybe you want "
