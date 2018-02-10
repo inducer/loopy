@@ -310,7 +310,7 @@ def test_missing_compilers():
         knl = lp.fix_parameters(knl, n=n)
         return evalfunc(knl)
 
-    assert __test(lambda knl: lp.generate_code_v2(knl)[0], CTarget)
+    assert __test(lambda knl: lp.generate_code_v2(knl).host_code(), CTarget)
 
     from pytools.prefork import ExecError
 
