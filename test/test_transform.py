@@ -496,7 +496,8 @@ def test_add_nosync():
     orig_knl = lp.set_temporary_scope(orig_knl, "tmp5", "local")
 
     # No dependency present - don't add nosync
-    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2")
+    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2",
+            empty_ok=True)
     assert frozenset() == knl.id_to_insn["insn2"].no_sync_with
 
     # Dependency present
