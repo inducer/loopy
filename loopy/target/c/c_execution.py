@@ -227,14 +227,16 @@ class CCompiler(object):
                 logger = logging.getLogger(__name__)
                 logger.warn('Default toolchain guessed from python config '
                             'not found, replacing with default GCCToolchain.')
+                # this is ugly, but I'm not sure there's a clean way to copy the
+                # default args
                 self.toolchain = GCCToolchain(
-                    cc=cc,
-                    cflags=cflags,
-                    ldflags=ldflags,
-                    libraries=libraries,
-                    library_dirs=library_dirs,
-                    defines=defines,
-                    source_suffix=source_suffix)
+                    cc='gcc',
+                    cflags='-std=c99 -O3 -fPIC'.split(),
+                    ldflags='-shared'.split(),
+                    libraries=[],
+                    library_dirs=[],
+                    defines=[],
+                    source_suffix='c')
 
         if toolchain is None:
             # copy in all differing values
