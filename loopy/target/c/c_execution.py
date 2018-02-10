@@ -227,9 +227,15 @@ class CCompiler(object):
                 logger = logging.getLogger(__name__)
                 logger.warn('Default toolchain guessed from python config '
                             'not found, replacing with default GCCToolchain.')
-                self.toolchain = GCCToolchain()
+                self.toolchain = GCCToolchain(
+                    cc=cc,
+                    cflags=cflags,
+                    ldflags=ldflags,
+                    libraries=libraries,
+                    library_dirs=library_dirs,
+                    defines=defines,
+                    source_suffix=source_suffix)
 
-        self.source_suffix = source_suffix
         if toolchain is None:
             # copy in all differing values
             diff = {'cc': cc,
