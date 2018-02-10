@@ -432,13 +432,16 @@ def needs_no_sync_with(kernel, var_scope, dep_a, dep_b):
     else:
         raise ValueError("unexpected value of 'temp_var_scope'")
 
-    for scope in search_scopes:
-        if (dep_a_id, scope) in dep_b.no_sync_with:
-            return True
-        if (dep_b_id, scope) in dep_a.no_sync_with:
-            return True
+    ab_nosync = False
+    ba_nosync = False
 
-    return False
+    for scope in search_scopes:
+        if (dep_a.id, scope) in dep_b.no_sync_with:
+            ab_nosync = True
+        if (dep_b.id, scope) in dep_a.no_sync_with:
+            ba_nosync = True
+
+    return ab_nosync and ba_nosync
 
 
 def check_variable_access_ordered(kernel):
