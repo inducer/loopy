@@ -34,7 +34,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
 
 
 def test_nbody(ctx_factory):

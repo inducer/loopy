@@ -2,14 +2,12 @@ import numpy as np
 import loopy as lp
 import pyopencl as cl
 import pyopencl.array
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
 
 # setup
 # -----
 ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
-
-# for make_kernel calls from this file
-LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
 
 n = 15 * 10**6
 a = cl.array.arange(queue, n, dtype=np.float32)

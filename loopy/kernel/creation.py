@@ -1922,10 +1922,12 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         If not given, this value defaults to version **(2017, 2, 1)** and
         a warning will be issued.
 
-        If this is impractical, you may also place a global variable
-        ``LOOPY_KERNEL_LANGUAGE_VERSION`` in the global namespace of the
-        function calling :func:`make_kernel`. If *lang_version* is not
-        explicitly given, that its value will be used.
+        To set the kernel version for all :mod:`loopy` kernels in a (Python) source
+        file, you may simply say::
+
+            from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
+
+        If *lang_version* is not explicitly given, that version value will be used.
 
         See also :ref:`language-versioning`.
 
@@ -1981,16 +1983,25 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     if lang_version is None:
         # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
 
+        from loopy.version import LANGUAGE_VERSION_SYMBOLS
+
         # This *is* gross. But it seems like the right thing interface-wise.
         import inspect
         caller_globals = inspect.currentframe().f_back.f_globals
 
-        try:
-            lang_version = caller_globals["LOOPY_KERNEL_LANGUAGE_VERSION"]
-        except KeyError:
-            pass
+        for ver_sym in LANGUAGE_VERSION_SYMBOLS:
+            try:
+                lang_version = caller_globals[ver_sym]
+                break
+            except KeyError:
+                pass
 
         # }}}
+
+        import loopy.version
+        version_to_symbol = dict(
+                (getattr(loopy.version, lvs), lvs)
+                for lvs in LANGUAGE_VERSION_SYMBOLS)
 
         if lang_version is None:
             from warnings import warn
@@ -2001,12 +2012,19 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
             warn("'lang_version' was not passed to make_kernel(). "
                     "To avoid this warning, pass "
                     "lang_version={ver} in this invocation. "
-                    "(Or set LOOPY_KERNEL_LANGUAGE_VERSION = {ver} in "
+                    "(Or say 'from loopy.version import "
+                    "{sym_ver}' in "
                     "the global scope of the calling frame.)"
-                    .format(ver=MOST_RECENT_LANGUAGE_VERSION),
+                    .format(
+                        ver=MOST_RECENT_LANGUAGE_VERSION,
+                        sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
+                        ),
                     LoopyWarning, stacklevel=2)
 
             lang_version = FALLBACK_LANGUAGE_VERSION
+
+        if lang_version not in version_to_symbol:
+            raise LoopyError("Language version '%s' is not known." % lang_version)
 
     if lang_version >= (2018, 1):
         options = options.copy(enforce_variable_access_ordered=True)

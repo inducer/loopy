@@ -38,6 +38,14 @@ DATA_MODEL_VERSION = "v77-islpy%s" % _islpy_version
 FALLBACK_LANGUAGE_VERSION = (2017, 2, 1)
 MOST_RECENT_LANGUAGE_VERSION = (2018, 1)
 
+LOOPY_USE_LANGUAGE_VERSION_2018_1 = (2018, 1)
+LOOPY_USE_LANGUAGE_VERSION_2017_2_1 = (2017, 2, 1)
+
+LANGUAGE_VERSION_SYMBOLS = [
+        "LOOPY_USE_LANGUAGE_VERSION_2018_1",
+        "LOOPY_USE_LANGUAGE_VERSION_2017_2_1",
+        ]
+
 __doc__ = """
 
 .. currentmodule:: loopy
@@ -64,10 +72,13 @@ language version to let them take advantage of this check.
 As a result, :mod:`loopy` will now issue a warning when a call to
 :func:`loopy.make_kernel` does not declare a language version. Such kernels
 will (indefinitely) default to language version 2017.2.1.  If passing a
-language version to :func:`make_kernel` is impractical, you may also place a
-global variable ``LOOPY_KERNEL_LANGUAGE_VERSION`` in the global namespace of
-the function calling :func:`make_kernel`. If *lang_version* is not explicitly
-given, this value will be used.
+language version to :func:`make_kernel` is impractical, you may also import
+one of the ``LOOPY_USE_LANGUAGE_VERSION_...`` symbols given below using::
+
+    from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
+
+in the global namespace of the function calling :func:`make_kernel`. If
+*lang_version* in that call is not explicitly given, this value will be used.
 
 Language versions will generally reflect the version number of :mod:`loopy` in
 which they were introduced, though it is likely that most versions of
@@ -81,11 +92,16 @@ will work hard to avoid backward-incompatible language changes.)
     example **(2018, 1)**. Direct comparison of these tuples will always
     yield valid version comparisons.
 
+
 History of Language Versions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-* ``(2018, 1)``: :attr:`loopy.Options.enforce_variable_access_ordered`
+.. data:: LOOPY_USE_LANGUAGE_VERSION_2018_1
+
+    :attr:`loopy.Options.enforce_variable_access_ordered`
     is turned on by default.
 
-* ``(2017, 2, 1)``: Initial legacy language version.
+.. data:: LOOPY_USE_LANGUAGE_VERSION_2017_2_1
+
+    Initial legacy language version.
 """

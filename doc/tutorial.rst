@@ -25,6 +25,7 @@ import a few modules and set up a :class:`pyopencl.Context` and a
 
     >>> import loopy as lp
     >>> lp.set_caching_enabled(False)
+    >>> from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
 
     >>> from warnings import filterwarnings, catch_warnings
     >>> filterwarnings('error', category=lp.LoopyWarning)

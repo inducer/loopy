@@ -56,7 +56,7 @@ __all__ = [
 # - scan(a) + scan(b)
 # - test for badly tagged inames
 
-LOOPY_KERNEL_LANGUAGE_VERSION = (2018, 1)
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
 
 
 @pytest.mark.parametrize("n", [1, 2, 3, 16])
