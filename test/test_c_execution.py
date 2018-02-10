@@ -257,9 +257,10 @@ def test_c_caching():
     # setup test logger to check logs
     tl = TestingLogger()
     tl.start_capture()
-    # remake kernel to clear cache
-    knl = __get_knl()
-    assert np.allclose(knl(b=np.arange(10))[1], np.arange(10))
+    # copy kernel such that we share the same executor cache
+    knl = knl.copy()
+    # but use different args, so we can't cache the result
+    assert np.allclose(knl(b=np.arange(1, 11))[1], np.arange(1, 11))
     # and get logs
     logs = tl.stop_capture()
     # check that we didn't recompile
