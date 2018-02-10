@@ -249,9 +249,8 @@ class CCompiler(object):
                     'defines': defines}
             # filter empty and those equal to toolchain defaults
             diff = dict((k, v) for k, v in six.iteritems(diff)
-                    if v and
-                    not hasattr(self.toolchain, k) or
-                    getattr(self.toolchain, k) != v)
+                    if v and (not hasattr(self.toolchain, k) or
+                              getattr(self.toolchain, k) != v))
             self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
         self.source_suffix = source_suffix
