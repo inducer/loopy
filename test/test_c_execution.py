@@ -291,6 +291,49 @@ def test_c_execution_with_global_temporaries():
     assert np.allclose(knl(a=np.zeros(10, dtype=np.int32))[1], np.arange(10))
 
 
+def test_missing_compilers():
+    from loopy.target.c import ExecutableCTarget, CTarget
+    from loopy.target.c.c_execution import CCompiler
+    from codepy.toolchain import GCCToolchain
+
+    def __test(evalfunc, target, **targetargs):
+        n = 10
+
+        knl = lp.make_kernel('{[i]: 0 <= i < n}',
+            """
+                a[i] = b[i]
+            """,
+            [lp.GlobalArg('a', shape=(n,), dtype=np.int32),
+             lp.GlobalArg('b', shape=(n,), dtype=np.int32)],
+            target=target(**targetargs))
+
+        knl = lp.fix_parameters(knl, n=n)
+        return evalfunc(knl)
+
+    assert __test(lambda knl: lp.generate_code_v2(knl)[0], CTarget)
+
+    from pytools.prefork import ExecError
+
+    def eval_tester(knl):
+        return np.allclose(knl(a=np.zeros(10, dtype=np.int32),
+                               b=np.arange(10, dtype=np.int32))[1], np.arange(10))
+    import os
+    path_store = os.environ["PATH"]
+    try:
+        # test with path wiped out such that we can't find gcc
+        with pytest.raises(ExecError):
+            os.environ["PATH"] = ''
+            __test(eval_tester, ExecutableCTarget)
+    finally:
+        # make sure we restore the path regardless for future testing
+        os.environ["PATH"] = path_store
+
+    # next test that some made up compiler defaults to gcc
+    ccomp = CCompiler(cc='foo')
+    assert isinstance(ccomp.toolchain, GCCToolchain)
+    assert ccomp.cc = 'gcc'
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
