@@ -1873,7 +1873,7 @@ def test_global_barrier(ctx_factory):
                     <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
                     <> v[i] = 11  {id=wr_v,dep=top}
                     ... gbarrier {dep=wr_z:wr_v,id=yoink}
-                    z[i] = z[i] - z[i+1] + v[i] {id=iupd}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=wr_z}
                 end
                 ... gbarrier {dep=iupd,id=postloop}
                 z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
@@ -2573,10 +2573,10 @@ def test_struct_assignment(ctx_factory):
         "{ [i]: 0<=i<N }",
         """
         for i
-            result[i].hit = i % 2
-            result[i].tmin = i
-            result[i].tmax = i+10
-            result[i].bi = i
+            result[i].hit = i % 2  {nosync_query=writes:result}
+            result[i].tmin = i  {nosync_query=writes:result}
+            result[i].tmax = i+10  {nosync_query=writes:result}
+            result[i].bi = i  {nosync_query=writes:result}
         end
         """,
         [
