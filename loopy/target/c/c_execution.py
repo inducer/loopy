@@ -227,9 +227,17 @@ class CCompiler(object):
                 logger = logging.getLogger(__name__)
                 logger.warn('Default toolchain guessed from python config '
                             'not found, replacing with default GCCToolchain.')
-                self.toolchain = GCCToolchain()
+                # this is ugly, but I'm not sure there's a clean way to copy the
+                # default args
+                self.toolchain = GCCToolchain(
+                    cc='gcc',
+                    cflags='-std=c99 -O3 -fPIC'.split(),
+                    ldflags='-shared'.split(),
+                    libraries=[],
+                    library_dirs=[],
+                    defines=[],
+                    source_suffix='c')
 
-        self.source_suffix = source_suffix
         if toolchain is None:
             # copy in all differing values
             diff = {'cc': cc,
@@ -241,9 +249,8 @@ class CCompiler(object):
                     'defines': defines}
             # filter empty and those equal to toolchain defaults
             diff = dict((k, v) for k, v in six.iteritems(diff)
-                    if v and
-                    not hasattr(self.toolchain, k) or
-                    getattr(self.toolchain, k) != v)
+                    if v and (not hasattr(self.toolchain, k) or
+                              getattr(self.toolchain, k) != v))
             self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
         self.source_suffix = source_suffix
