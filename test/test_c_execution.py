@@ -328,10 +328,15 @@ def test_missing_compilers():
         # make sure we restore the path regardless for future testing
         os.environ["PATH"] = path_store
 
-    # next test that some made up compiler defaults to gcc
+    # next test that some made up compiler can be specified
     ccomp = CCompiler(cc='foo')
     assert isinstance(ccomp.toolchain, GCCToolchain)
-    assert ccomp.cc == 'gcc'
+    assert ccomp.toolchain.cc == 'foo'
+
+    # and that said made up compiler errors out
+
+    with pytest.raises(ExecError):
+        __test(eval_tester, ExecutableCTarget, compiler=ccomp)
 
 
 if __name__ == "__main__":
