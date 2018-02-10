@@ -421,10 +421,7 @@ class IndirectDependencyEdgeFinder(object):
         return False
 
 
-def needs_no_sync_with(kernel, var_scope, dep_a_id, dep_b_id):
-    dep_a = kernel.id_to_insn[dep_a_id]
-    dep_b = kernel.id_to_insn[dep_b_id]
-
+def needs_no_sync_with(kernel, var_scope, dep_a, dep_b):
     from loopy.kernel.data import temp_var_scope
     if var_scope == temp_var_scope.GLOBAL:
         search_scopes = ["global", "any"]
@@ -498,12 +495,16 @@ def check_variable_access_ordered(kernel):
                 if writer_id == other_id:
                     continue
 
+                writer = kernel.id_to_insn[writer_id]
+                other = kernel.id_to_insn[other_id]
+
                 has_dependency_relationship = (
-                        needs_no_sync_with(kernel, scope, other_id, writer_id)
+                        needs_no_sync_with(kernel, scope, other, writer)
                         or
                         depfind(writer_id, other_id)
                         or
-                        depfind(other_id, writer_id))
+                        depfind(other_id, writer_id)
+                        )
 
                 if not has_dependency_relationship:
                     msg = ("No dependency relationship found between "
