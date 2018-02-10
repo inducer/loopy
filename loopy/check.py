@@ -450,26 +450,30 @@ def check_variable_access_ordered(kernel):
 
     * an (at least indirect) depdendency edge, or
     * an explicit statement that no ordering is necessary (expressed
-      through :attr:`loopy.Instruuction.no_sync_with`)
+      through :attr:`loopy.Instruction.no_sync_with`)
     """
     if kernel.options.enforce_variable_access_ordered == "no_check":
         return
 
-    checked_variables = (
-            kernel.get_written_variables()
-            | set(kernel.temporary_variables)
-            | set(arg for arg in kernel.arg_dict))
+    checked_variables = kernel.get_written_variables() & (
+            set(kernel.temporary_variables) | set(arg for arg in kernel.arg_dict))
 
     wmap = kernel.writer_map()
     rmap = kernel.reader_map()
 
     from loopy.kernel.data import GlobalArg, ValueArg, temp_var_scope
+    from loopy.kernel.tools import find_aliasing_equivalence_classes
 
     depfind = IndirectDependencyEdgeFinder(kernel)
+    aliasing_equiv_classes = find_aliasing_equivalence_classes(kernel)
 
     for name in checked_variables:
-        readers = rmap.get(name, set())
-        writers = wmap.get(name, set())
+        eq_class = aliasing_equiv_classes[name]
+
+        readers = set.union(
+                *[rmap.get(eq_name, set()) for eq_name in eq_class])
+        writers = set.union(
+                *[wmap.get(eq_name, set()) for eq_name in eq_class])
 
         if not writers:
             continue
@@ -503,15 +507,21 @@ def check_variable_access_ordered(kernel):
 
                 if not has_dependency_relationship:
                     msg = ("No dependency relationship found between "
-                            "'{writer_id}' which writes '{var}' and "
-                            "'{other_id}' which also accesses '{var}'. "
-                            "Please either add a (possibly indirect) dependency "
-                            "between the two, or add one to the other's no_sync set "
+                            "'{writer_id}' which writes {var} and "
+                            "'{other_id}' which also accesses {var}. "
+                            "Either add a (possibly indirect) dependency "
+                            "between the two, or add one to the other's nosync set "
                             "to indicate that no ordering is intended. "
                             .format(
                                 writer_id=writer_id,
                                 other_id=other_id,
-                                var=name))
+                                var=(
+                                    "the variable '%s'" % name
+                                    if len(eq_class) == 1
+                                    else (
+                                        "the aliasing equivalence class '%s'"
+                                        % ", ".join(eq_class))
+                                    )))
                     if kernel.options.enforce_variable_access_ordered:
                         from loopy.diagnostic import VariableAccessNotOrdered
                         raise VariableAccessNotOrdered(msg)

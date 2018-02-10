@@ -1731,4 +1731,84 @@ def get_subkernel_to_insn_id_map(kernel):
 # }}}
 
 
+# {{{ find aliasing equivalence classes
+
+class DisjointSets(object):
+    """
+    .. automethod:: __getitem__
+    .. automethod:: find_leader_or_create_group
+    .. automethod:: union
+    .. automethod:: union_many
+    """
+
+    # https://en.wikipedia.org/wiki/Disjoint-set_data_structure
+
+    def __init__(self):
+        self.leader_to_group = {}
+        self.element_to_leader = {}
+
+    def __getitem__(self, item):
+        """
+        :arg item: A representative of an equivalence class.
+        :returns: the equivalence class, given as a set of elements
+        """
+        try:
+            leader = self.element_to_leader[item]
+        except KeyError:
+            return set([item])
+        else:
+            return self.leader_to_group[leader]
+
+    def find_leader_or_create_group(self, el):
+        try:
+            return self.element_to_leader[el]
+        except KeyError:
+            pass
+
+        self.element_to_leader[el] = el
+        self.leader_to_group[el] = set([el])
+        return el
+
+    def union(self, a, b):
+        leader_a = self.find_leader_or_create_group(a)
+        leader_b = self.find_leader_or_create_group(b)
+
+        if leader_a == leader_b:
+            return
+
+        new_leader = leader_a
+
+        for b_el in self.leader_to_group[leader_b]:
+            self.element_to_leader[b_el] = new_leader
+
+        self.leader_to_group[leader_a].update(self.leader_to_group[leader_b])
+        del self.leader_to_group[leader_b]
+
+    def union_many(self, relation):
+        """
+        :arg relation: an iterable of 2-tuples enumerating the elements of the
+            relation. The relation is assumed to be an equivalence relation
+            (transitive, reflexive, symmetric) but need not explicitly contain
+            all elements to make it that.
+
+            The first elements of the tuples become group leaders.
+
+        :returns: *self*
+        """
+
+        for a, b in relation:
+            self.union(a, b)
+
+        return self
+
+
+def find_aliasing_equivalence_classes(kernel):
+    return DisjointSets().union_many(
+            (tv.base_storage, tv.name)
+            for tv in six.itervalues(kernel.temporary_variables)
+            if tv.base_storage is not None)
+
+# }}}
+
+
 # vim: foldmethod=marker

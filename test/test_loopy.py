@@ -2806,6 +2806,25 @@ def test_check_for_variable_access_ordering():
         lp.get_one_scheduled_kernel(knl)
 
 
+def test_check_for_variable_access_ordering_with_aliasing():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            a[i] = 12
+            b[i+1] = 13
+            """,
+            [
+                lp.TemporaryVariable("a", shape="n+1", base_storage="tmp"),
+                lp.TemporaryVariable("b", shape="n+1", base_storage="tmp"),
+                ])
+
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import VariableAccessNotOrdered
+    with pytest.raises(VariableAccessNotOrdered):
+        lp.get_one_scheduled_kernel(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
