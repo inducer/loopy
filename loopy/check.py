@@ -250,6 +250,8 @@ def check_for_data_dependent_parallel_bounds(kernel):
                         % (i, par, ", ".join(par_inames)))
 
 
+# {{{ check access bounds
+
 class _AccessCheckMapper(WalkMapper):
     def __init__(self, kernel, domain, insn_id):
         self.kernel = kernel
@@ -340,6 +342,10 @@ def check_bounds(kernel):
 
         insn.with_transformed_expressions(run_acm)
 
+# }}}
+
+
+# {{{ check write destinations
 
 def check_write_destinations(kernel):
     for insn in kernel.instructions:
@@ -363,6 +369,10 @@ def check_write_destinations(kernel):
                     or wvar in kernel.arg_dict) and wvar not in kernel.all_params():
                 raise LoopyError
 
+# }}}
+
+
+# {{{ check_has_schedulable_iname_nesting
 
 def check_has_schedulable_iname_nesting(kernel):
     from loopy.transform.iname import (has_schedulable_iname_nesting,
@@ -379,6 +389,10 @@ def check_has_schedulable_iname_nesting(kernel):
                 "to get hints about which iname to duplicate. Here are some "
                 "options:\n%s" % opt_str)
 
+# }}}
+
+
+# {{{ check_variable_access_ordered
 
 class IndirectDependencyEdgeFinder(object):
     def __init__(self, kernel):
@@ -499,11 +513,14 @@ def check_variable_access_ordered(kernel):
                                 other_id=other_id,
                                 var=name))
                     if kernel.options.enforce_variable_access_ordered:
-                        raise LoopyError(msg)
+                        from loopy.diagnostic import VariableAccessNotOrdered
+                        raise VariableAccessNotOrdered(msg)
                     else:
                         from loopy.diagnostic import warn_with_kernel
                         warn_with_kernel(
                                 kernel, "variable_access_ordered", msg)
+
+# }}}
 
 # }}}
 

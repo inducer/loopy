@@ -2791,6 +2791,21 @@ def test_add_prefetch_works_in_lhs_index():
         assert "a1_map" not in get_dependencies(insn.assignees)
 
 
+def test_check_for_variable_access_ordering():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            a[i] = 12
+            a[i+1] = 13
+            """)
+
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import VariableAccessNotOrdered
+    with pytest.raises(VariableAccessNotOrdered):
+        lp.get_one_scheduled_kernel(knl)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
