@@ -331,7 +331,7 @@ def test_missing_compilers():
     # next test that some made up compiler defaults to gcc
     ccomp = CCompiler(cc='foo')
     assert isinstance(ccomp.toolchain, GCCToolchain)
-    assert ccomp.cc = 'gcc'
+    assert ccomp.cc == 'gcc'
 
 
 if __name__ == "__main__":
