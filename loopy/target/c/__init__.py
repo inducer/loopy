@@ -314,11 +314,11 @@ class ExecutableCTarget(CTarget):
     """
     An executable CTarget that uses (by default) JIT compilation of C-code
     """
-    from loopy.target.c.c_execution import CCompiler
 
-    def __init__(self, compiler=CCompiler(), fortran_abi=False):
+    def __init__(self, compiler=None, fortran_abi=False):
         super(ExecutableCTarget, self).__init__(fortran_abi=fortran_abi)
-        self.compiler = compiler
+        from loopy.target.c.c_execution import CCompiler
+        self.compiler = compiler or CCompiler()
 
     def get_kernel_executor(self, knl, *args, **kwargs):
         from loopy.target.c.c_execution import CKernelExecutor
