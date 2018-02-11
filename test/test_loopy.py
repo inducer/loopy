@@ -2368,8 +2368,9 @@ def test_nosync_option_parsing():
     assert "id=insn5, no_sync_with=insn1@any" in kernel_str
 
 
-def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
-    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop)
+def barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
+    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop,
+            CallKernel, ReturnFromKernel)
     watch_for_barrier = False
     seen_barrier = False
     loop_level = 0
@@ -2379,9 +2380,7 @@ def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
             if sched_item.insn_id == id1:
                 watch_for_barrier = True
             elif sched_item.insn_id == id2:
-                assert watch_for_barrier
-                assert seen_barrier
-                return
+                return watch_for_barrier and seen_barrier
         elif isinstance(sched_item, Barrier):
             if watch_for_barrier and loop_level not in ignore_barriers_in_levels:
                 seen_barrier = True
@@ -2389,6 +2388,11 @@ def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
             loop_level += 1
         elif isinstance(sched_item, LeaveLoop):
             loop_level -= 1
+        elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
+            pass
+        else:
+            raise RuntimeError("schedule item type '%s' not understood"
+                    % type(sched_item).__name__)
 
     raise RuntimeError("id2 was not seen")
 
@@ -2415,9 +2419,9 @@ def test_barrier_insertion_near_top_of_loop():
 
     print(knl)
 
-    assert_barrier_between(knl, "ainit", "tcomp")
-    assert_barrier_between(knl, "tcomp", "bcomp1")
-    assert_barrier_between(knl, "bcomp1", "bcomp2")
+    assert barrier_between(knl, "ainit", "tcomp")
+    assert barrier_between(knl, "tcomp", "bcomp1")
+    assert barrier_between(knl, "bcomp1", "bcomp2")
 
 
 def test_barrier_insertion_near_bottom_of_loop():
@@ -2442,8 +2446,8 @@ def test_barrier_insertion_near_bottom_of_loop():
 
     print(knl)
 
-    assert_barrier_between(knl, "bcomp1", "bcomp2")
-    assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
+    assert barrier_between(knl, "bcomp1", "bcomp2")
+    assert barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
 def test_barrier_in_overridden_get_grid_size_expanded_kernel():
@@ -2825,6 +2829,31 @@ def test_check_for_variable_access_ordering_with_aliasing():
     from loopy.diagnostic import VariableAccessNotOrdered
     with pytest.raises(VariableAccessNotOrdered):
         lp.get_one_scheduled_kernel(knl)
+
+
+@pytest.mark.parametrize(("second_index", "expect_barrier"),
+        [
+            ("2*i", True),
+            ("2*i+1", False),
+            ])
+def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<128}",
+            """
+            a[2*i] = 12  {id=first}
+            a[%s] = 13  {id=second,dep=first}
+            """ % second_index,
+            [
+                lp.TemporaryVariable("a", lp.auto, shape=(256,),
+                    scope=lp.temp_var_scope.LOCAL),
+                ])
+
+    knl = lp.tag_inames(knl, "i:l.0")
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+
+    assert barrier_between(knl, "first", "second") == expect_barrier
 
 
 if __name__ == "__main__":
