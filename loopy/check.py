@@ -450,7 +450,7 @@ def check_variable_access_ordered(kernel):
 
     * an (at least indirect) depdendency edge, or
     * an explicit statement that no ordering is necessary (expressed
-      through :attr:`loopy.Instruction.no_sync_with`)
+      through a bi-directional :attr:`loopy.Instruction.no_sync_with`)
     """
     if kernel.options.enforce_variable_access_ordered not in [
             "no_check",
@@ -478,6 +478,9 @@ def check_variable_access_ordered(kernel):
     aliasing_equiv_classes = find_aliasing_equivalence_classes(kernel)
 
     for name in checked_variables:
+        # This is a tad redundant in that this could probably be restructured
+        # to iterate only over equivalence classes and not individual variables.
+        # But then the access-range overlap check below would have to be smarter.
         eq_class = aliasing_equiv_classes[name]
 
         readers = set.union(
