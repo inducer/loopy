@@ -1611,8 +1611,10 @@ def test_missing_temporary_definition_detection():
 def test_missing_definition_check_respects_aliases():
     # Based on https://github.com/inducer/loopy/issues/69
     knl = lp.make_kernel("{ [i] : 0<=i<n }",
-         ["a[i] = 0",
-          "c[i] = b[i]"],
+            """
+            a[i] = 0
+            c[i] = b[i]  {dep_query=writes:a}
+            """,
          temporary_variables={
              "a": lp.TemporaryVariable("a",
                         dtype=np.float64, shape=("n",), base_storage="base"),
