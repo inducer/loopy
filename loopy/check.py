@@ -514,8 +514,10 @@ def check_variable_access_ordered(kernel):
                             "'{writer_id}' which writes {var} and "
                             "'{other_id}' which also accesses {var}. "
                             "Either add a (possibly indirect) dependency "
-                            "between the two, or add one to the other's nosync set "
-                            "to indicate that no ordering is intended. "
+                            "between the two, or add them to each others' nosync "
+                            "set to indicate that no ordering is intended, or "
+                            "turn off this check by setting the "
+                            "'enforce_variable_access_ordered' option"
                             .format(
                                 writer_id=writer_id,
                                 other_id=other_id,
