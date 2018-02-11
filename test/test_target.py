@@ -215,8 +215,6 @@ def test_random123(ctx_factory, tp):
             out[i, 3] = real.s3 + 1j * imag.s3
             """.replace("TYPE", tp))
 
-    knl = lp.add_nosync(knl, "any", "writes:out", "writes:out", force=True)
-
     knl = lp.split_iname(knl, "i", 128, outer_tag="g.0", inner_tag="l.0")
     knl = lp.set_options(knl, write_cl=True)
 

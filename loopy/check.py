@@ -421,7 +421,7 @@ class IndirectDependencyEdgeFinder(object):
         return False
 
 
-def needs_no_sync_with(kernel, var_scope, dep_a, dep_b):
+def declares_nosync_with(kernel, var_scope, dep_a, dep_b):
     from loopy.kernel.data import temp_var_scope
     if var_scope == temp_var_scope.GLOBAL:
         search_scopes = ["global", "any"]
@@ -454,6 +454,8 @@ def check_variable_access_ordered(kernel):
     """
     if kernel.options.enforce_variable_access_ordered == "no_check":
         return
+
+    logger.debug("%s: check_variable_access_ordered: start" % kernel.name)
 
     checked_variables = kernel.get_written_variables() & (
             set(kernel.temporary_variables) | set(arg for arg in kernel.arg_dict))
@@ -493,6 +495,8 @@ def check_variable_access_ordered(kernel):
 
         # Check even for PRIVATE scope, to ensure intentional program order.
 
+        from loopy.symbolic import do_access_ranges_overlap_conservative
+
         for writer_id in writers:
             for other_id in readers | writers:
                 if writer_id == other_id:
@@ -502,7 +506,7 @@ def check_variable_access_ordered(kernel):
                 other = kernel.id_to_insn[other_id]
 
                 has_dependency_relationship = (
-                        needs_no_sync_with(kernel, scope, other, writer)
+                        declares_nosync_with(kernel, scope, other, writer)
                         or
                         depfind(writer_id, other_id)
                         or
@@ -510,6 +514,11 @@ def check_variable_access_ordered(kernel):
                         )
 
                 if not has_dependency_relationship:
+                    if not do_access_ranges_overlap_conservative(
+                            kernel, writer_id, "w", other_id, "any",
+                            name):
+                        continue
+
                     msg = ("No dependency relationship found between "
                             "'{writer_id}' which writes {var} and "
                             "'{other_id}' which also accesses {var}. "
@@ -535,6 +544,8 @@ def check_variable_access_ordered(kernel):
                         from loopy.diagnostic import warn_with_kernel
                         warn_with_kernel(
                                 kernel, "variable_access_ordered", msg)
+
+    logger.debug("%s: check_variable_access_ordered: done" % kernel.name)
 
 # }}}
 

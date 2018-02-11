@@ -893,8 +893,8 @@ def test_multiple_writes_to_local_temporary():
     knl = lp.make_kernel(
         "{[i,e]: 0<=i<5 and 0<=e<nelements}",
         """
-        <> temp[i, 0] = 17  {nosync_query=writes:temp}
-        temp[i, 1] = 15  {nosync_query=writes:temp}
+        <> temp[i, 0] = 17
+        temp[i, 1] = 15
         """)
     knl = lp.tag_inames(knl, dict(i="l.0"))
 
