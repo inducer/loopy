@@ -484,6 +484,8 @@ def check_variable_access_ordered(kernel):
                 *[rmap.get(eq_name, set()) for eq_name in eq_class])
         writers = set.union(
                 *[wmap.get(eq_name, set()) for eq_name in eq_class])
+        unaliased_readers = rmap.get(name, set())
+        unaliased_writers = wmap.get(name, set())
 
         if not writers:
             continue
@@ -521,37 +523,54 @@ def check_variable_access_ordered(kernel):
                         depfind(other_id, writer_id)
                         )
 
-                if not has_dependency_relationship:
-                    if not do_access_ranges_overlap_conservative(
-                            kernel, writer_id, "w", other_id, "any",
-                            name):
-                        continue
+                if has_dependency_relationship:
+                    continue
 
-                    msg = ("No dependency relationship found between "
-                            "'{writer_id}' which writes {var} and "
-                            "'{other_id}' which also accesses {var}. "
-                            "Either add a (possibly indirect) dependency "
-                            "between the two, or add them to each others' nosync "
-                            "set to indicate that no ordering is intended, or "
-                            "turn off this check by setting the "
-                            "'enforce_variable_access_ordered' option"
-                            .format(
-                                writer_id=writer_id,
-                                other_id=other_id,
-                                var=(
-                                    "the variable '%s'" % name
-                                    if len(eq_class) == 1
-                                    else (
-                                        "the aliasing equivalence class '%s'"
-                                        % ", ".join(eq_class))
-                                    )))
-                    if kernel.options.enforce_variable_access_ordered:
-                        from loopy.diagnostic import VariableAccessNotOrdered
-                        raise VariableAccessNotOrdered(msg)
-                    else:
-                        from loopy.diagnostic import warn_with_kernel
-                        warn_with_kernel(
-                                kernel, "variable_access_ordered", msg)
+                is_relationship_by_aliasing = not (
+                        writer_id in unaliased_writers
+                        and (other_id in unaliased_writers
+                            or other_id in unaliased_readers))
+
+                # Do not enforce ordering for disjoint access ranges
+                if (not is_relationship_by_aliasing
+                        and not do_access_ranges_overlap_conservative(
+                            kernel, writer_id, "w", other_id, "any",
+                            name)):
+                    continue
+
+                # Do not enforce ordering for aliasing-based relationships
+                # in different groups.
+                if (is_relationship_by_aliasing and (
+                        bool(writer.groups & other.conflicts_with_groups)
+                        or
+                        bool(other.groups & writer.conflicts_with_groups))):
+                    continue
+
+                msg = ("No dependency relationship found between "
+                        "'{writer_id}' which writes {var} and "
+                        "'{other_id}' which also accesses {var}. "
+                        "Either add a (possibly indirect) dependency "
+                        "between the two, or add them to each others' nosync "
+                        "set to indicate that no ordering is intended, or "
+                        "turn off this check by setting the "
+                        "'enforce_variable_access_ordered' option"
+                        .format(
+                            writer_id=writer_id,
+                            other_id=other_id,
+                            var=(
+                                "the variable '%s'" % name
+                                if len(eq_class) == 1
+                                else (
+                                    "the aliasing equivalence class '%s'"
+                                    % ", ".join(eq_class))
+                                )))
+                if kernel.options.enforce_variable_access_ordered:
+                    from loopy.diagnostic import VariableAccessNotOrdered
+                    raise VariableAccessNotOrdered(msg)
+                else:
+                    from loopy.diagnostic import warn_with_kernel
+                    warn_with_kernel(
+                            kernel, "variable_access_ordered", msg)
 
     logger.debug("%s: check_variable_access_ordered: done" % kernel.name)
 
