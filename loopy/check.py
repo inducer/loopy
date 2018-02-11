@@ -452,6 +452,14 @@ def check_variable_access_ordered(kernel):
     * an explicit statement that no ordering is necessary (expressed
       through :attr:`loopy.Instruction.no_sync_with`)
     """
+    if kernel.options.enforce_variable_access_ordered not in [
+            "no_check",
+            True,
+            False]:
+        raise LoopyError("invalid value for option "
+                "'enforce_variable_access_ordered': %s"
+                % kernel.options.enforce_variable_access_ordered)
+
     if kernel.options.enforce_variable_access_ordered == "no_check":
         return
 
