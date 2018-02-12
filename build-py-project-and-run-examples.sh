@@ -15,22 +15,22 @@ function run_examples()
     echo "-----------------------------------------------------------------------"
     dn=$(dirname "$i")
     bn=$(basename "$i")
-    (cd $dn; $CMDLINE "$bn")
+    (cd $dn; echo $CMDLINE "$bn"; $CMDLINE "$bn")
   done
 }
 
 function run_py_examples()
 {
   run_examples "*.py" ${PY_EXE}
-end
+}
 function run_ipynb_examples()
 {
   run_examples "*.ipynb" "${PY_EXE} -m nbconvert --execute"
-end
+}
 function run_floopy_examples()
 {
   run_examples "*.floopy" "${PY_EXE} -m loopy"
-end
+}
 
 run_py_examples
 run_ipynb_examples
