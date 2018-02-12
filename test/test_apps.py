@@ -494,7 +494,6 @@ def test_lbm(ctx_factory):
         end
         """)
 
-    #knl = lp.set_options(knl, enforce_variable_access_ordered="no_check")
     knl = lp.add_and_infer_dtypes(knl, {"f": np.float32})
 
     ref_knl = knl
