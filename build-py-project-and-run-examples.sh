@@ -17,7 +17,7 @@ function run_examples()
     bn=$(basename "$i")
     (cd $dn; $CMDLINE "$bn")
   done
-end
+}
 
 function run_py_examples()
 {
