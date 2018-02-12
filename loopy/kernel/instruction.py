@@ -99,12 +99,13 @@ class InstructionBase(ImmutableRecord):
            - `"global"`
            - `"any"`.
 
-         An element ``(insn_id, scope)`` means "no conflicting variable access
-         for variables of ``scope`` between this instruction and ``insn_id``.
-         Specifically, loopy will not complain even if it detects that accesses
-         potentially requiring ordering (e.g. by dependencies) exist, and it
-         will not emit barriers to guard any dependencies from this
-         instruction on ``insn_id`` that may exist.
+        An element ``(insn_id, scope)`` means "do not consider any variable
+        access conflicting for variables of ``scope`` between this instruction
+        and ``insn_id``".
+        Specifically, loopy will not complain even if it detects that accesses
+        potentially requiring ordering (e.g. by dependencies) exist, and it
+        will not emit barriers to guard any dependencies from this
+        instruction on ``insn_id`` that may exist.
 
         Note, that :attr:`no_sync_with` allows instruction matching through wildcards
         and match expression, just like :attr:`depends_on`.
