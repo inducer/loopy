@@ -1861,9 +1861,9 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             # An expansion happened, so insert the generated stuff plus
             # ourselves back into the queue.
 
+            result_assignment_dep_on = \
+                    insn.depends_on | frozenset(new_insn_add_depends_on)
             kwargs = insn.get_copy_kwargs(
-                    depends_on=insn.depends_on
-                    | frozenset(new_insn_add_depends_on),
                     no_sync_with=insn.no_sync_with
                     | frozenset(new_insn_add_no_sync_with),
                     within_inames=(
@@ -1871,6 +1871,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                         | new_insn_add_within_inames))
 
             kwargs.pop("id")
+            kwargs.pop("depends_on")
             kwargs.pop("expression")
             kwargs.pop("assignee", None)
             kwargs.pop("assignees", None)
@@ -1878,20 +1879,27 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
             kwargs.pop("temp_var_types", None)
 
             if isinstance(insn.expression, Reduction) and nresults > 1:
+                result_assignment_ids = [
+                        insn_id_gen(insn.id) for i in range(nresults)]
                 replacement_insns = [
                         lp.Assignment(
-                            id=insn_id_gen(insn.id),
+                            id=result_assignment_ids[i],
+                            depends_on=(
+                                result_assignment_dep_on
+                                | (frozenset([result_assignment_ids[i-1]])
+                                    if i else frozenset())),
                             assignee=assignee,
                             expression=new_expr,
                             **kwargs)
-                        for assignee, new_expr in zip(
-                            insn.assignees, new_expressions)]
+                        for i, (assignee, new_expr) in enumerate(zip(
+                            insn.assignees, new_expressions))]
 
             else:
                 new_expr, = new_expressions
                 replacement_insns = [
                         make_assignment(
                             id=insn_id_gen(insn.id),
+                            depends_on=result_assignment_dep_on,
                             assignees=insn.assignees,
                             expression=new_expr,
                             **kwargs)

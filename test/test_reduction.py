@@ -49,6 +49,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_nonsense_reduction(ctx_factory):
     ctx = ctx_factory()
 

@@ -162,6 +162,16 @@ class Options(ImmutableRecord):
     .. rubric:: Features
 
     .. attribute:: disable_global_barriers
+
+    .. attribute:: enforce_variable_access_ordered
+
+        If *True*, require that
+        :func:`loopy.check.check_variable_access_ordered` passes.
+        Required for language versions 2018.1 and above. This check
+        helps find and eliminate unintentionally unordered access
+        to variables.
+
+        If equal to ``"no_check"``, then no check is performed.
     """
 
     _legacy_options_map = {
@@ -216,6 +226,9 @@ class Options(ImmutableRecord):
                 disable_global_barriers=kwargs.get("disable_global_barriers",
                     False),
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
+
+                enforce_variable_access_ordered=kwargs.get(
+                    "enforce_variable_access_ordered", False),
                 )
 
     # {{{ legacy compatibility

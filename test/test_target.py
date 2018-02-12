@@ -52,6 +52,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_ispc_target(occa_mode=False):
     from loopy.target.ispc import ISPCTarget
 
@@ -203,8 +206,8 @@ def test_random123(ctx_factory, tp):
             <> key2 = make_uint2(i, 324830944) {inames=i}
             <> key4 = make_uint4(i, 324830944, 234181, 2233) {inames=i}
             <> ctr = make_uint4(0, 1, 2, 3)  {inames=i,id=init_ctr}
-            <> real, ctr = philox4x32_TYPE(ctr, key2)  {dep=init_ctr}
-            <> imag, ctr = threefry4x32_TYPE(ctr, key4)  {dep=init_ctr}
+            <> real, ctr = philox4x32_TYPE(ctr, key2)  {id=realpart,dep=init_ctr}
+            <> imag, ctr = threefry4x32_TYPE(ctr, key4)  {dep=init_ctr:realpart}
 
             out[i, 0] = real.s0 + 1j * imag.s0
             out[i, 1] = real.s1 + 1j * imag.s1

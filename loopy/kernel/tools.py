@@ -1278,14 +1278,14 @@ def draw_dependencies_as_unicode_arrows(
 
     for insn in instructions:
         for dep in insn.depends_on:
-            reverse_deps.setdefault(dep, []).append(insn.id)
+            reverse_deps.setdefault(dep, set()).add(insn.id)
 
     # mapping of (from_id, to_id) tuples to column_index
     dep_to_column = {}
 
     # {{{ find column assignments
 
-    # mapping from column indices to (end_insn_id, updown)
+    # mapping from column indices to (end_insn_ids, pointed_at_insn_id)
     columns_in_use = {}
 
     n_columns = [0]
@@ -1299,47 +1299,101 @@ def draw_dependencies_as_unicode_arrows(
             row.append(" ")
         return i
 
-    def do_flag_downward(s, updown):
-        if flag_downward and updown == "down":
+    def do_flag_downward(s, pointed_at_insn_id):
+        if flag_downward and pointed_at_insn_id not in processed_ids:
             return fore.RED+s+style.RESET_ALL
         else:
             return s
 
     def make_extender():
         result = n_columns[0] * [" "]
-        for col, (_, updown) in six.iteritems(columns_in_use):
-            result[col] = do_flag_downward(u"│", updown)
+        for col, (_, pointed_at_insn_id) in six.iteritems(columns_in_use):
+            result[col] = do_flag_downward(u"│", pointed_at_insn_id)
 
         return result
+
+    processed_ids = set()
 
     rows = []
     for insn in instructions:
         row = make_extender()
 
-        for rdep in reverse_deps.get(insn.id, []):
-            assert rdep != insn.id
+        # {{{ add rdeps for already existing columns
 
-            dep_key = (rdep, insn.id)
-            if dep_key not in dep_to_column:
-                col = dep_to_column[dep_key] = find_free_column()
-                columns_in_use[col] = (rdep, "up")
-                row[col] = u"↱"
+        rdeps = reverse_deps.get(insn.id, set()).copy() - processed_ids
+        assert insn.id not in rdeps
+
+        if insn.id in dep_to_column:
+            columns_in_use[insn.id][0].update(rdeps)
+
+        # }}}
+
+        # {{{ add deps for already existing columns
+
+        for dep in insn.depends_on:
+            dep_key = dep
+            if dep_key in dep_to_column:
+                col = dep_to_column[dep]
+                columns_in_use[col][0].add(insn.id)
+
+        # }}}
+
+        for col, (starts, pointed_at_insn_id) in list(six.iteritems(columns_in_use)):
+            if insn.id == pointed_at_insn_id:
+                if starts:
+                    # will continue downward
+                    row[col] = do_flag_downward(u">", pointed_at_insn_id)
+                else:
+                    # stops here
+
+                    # placeholder, pending deletion
+                    columns_in_use[col] = None
+
+                    row[col] = do_flag_downward(u"↳", pointed_at_insn_id)
+
+            elif insn.id in starts:
+                starts.remove(insn.id)
+                if starts:
+                    # will continue downward
+                    row[col] = do_flag_downward(u"├", pointed_at_insn_id)
+
+                else:
+                    # stops here
+                    row[col] = u"└"
+                    # placeholder, pending deletion
+                    columns_in_use[col] = None
+
+        # {{{ start arrows by reverse dep
+
+        dep_key = insn.id
+        if dep_key not in dep_to_column and rdeps:
+            col = dep_to_column[dep_key] = find_free_column()
+            columns_in_use[col] = (rdeps, insn.id)
+            row[col] = u"↱"
+
+        # }}}
+
+        # {{{ start arrows by forward dep
 
         for dep in insn.depends_on:
             assert dep != insn.id
-            dep_key = (insn.id, dep)
+            dep_key = dep
             if dep_key not in dep_to_column:
                 col = dep_to_column[dep_key] = find_free_column()
-                columns_in_use[col] = (dep, "down")
-                row[col] = do_flag_downward(u"┌", "down")
+                columns_in_use[col] = (set([insn.id]), dep)
+                row[col] = do_flag_downward(u"┌", dep)
 
-        for col, (end, updown) in list(six.iteritems(columns_in_use)):
-            if insn.id == end:
+        # }}}
+
+        # {{{ delete columns_in_use entry for end-of-life columns
+
+        for col, value in list(six.iteritems(columns_in_use)):
+            if value is None:
                 del columns_in_use[col]
-                if updown == "up":
-                    row[col] = u"└"
-                else:
-                    row[col] = do_flag_downward(u"↳", updown)
+
+        # }}
+
+        processed_ids.add(insn.id)
 
         extender = make_extender()
 
@@ -1727,6 +1781,86 @@ def get_subkernel_to_insn_id_map(kernel):
         result[subkernel] = frozenset(result[subkernel])
 
     return result
+
+# }}}
+
+
+# {{{ find aliasing equivalence classes
+
+class DisjointSets(object):
+    """
+    .. automethod:: __getitem__
+    .. automethod:: find_leader_or_create_group
+    .. automethod:: union
+    .. automethod:: union_many
+    """
+
+    # https://en.wikipedia.org/wiki/Disjoint-set_data_structure
+
+    def __init__(self):
+        self.leader_to_group = {}
+        self.element_to_leader = {}
+
+    def __getitem__(self, item):
+        """
+        :arg item: A representative of an equivalence class.
+        :returns: the equivalence class, given as a set of elements
+        """
+        try:
+            leader = self.element_to_leader[item]
+        except KeyError:
+            return set([item])
+        else:
+            return self.leader_to_group[leader]
+
+    def find_leader_or_create_group(self, el):
+        try:
+            return self.element_to_leader[el]
+        except KeyError:
+            pass
+
+        self.element_to_leader[el] = el
+        self.leader_to_group[el] = set([el])
+        return el
+
+    def union(self, a, b):
+        leader_a = self.find_leader_or_create_group(a)
+        leader_b = self.find_leader_or_create_group(b)
+
+        if leader_a == leader_b:
+            return
+
+        new_leader = leader_a
+
+        for b_el in self.leader_to_group[leader_b]:
+            self.element_to_leader[b_el] = new_leader
+
+        self.leader_to_group[leader_a].update(self.leader_to_group[leader_b])
+        del self.leader_to_group[leader_b]
+
+    def union_many(self, relation):
+        """
+        :arg relation: an iterable of 2-tuples enumerating the elements of the
+            relation. The relation is assumed to be an equivalence relation
+            (transitive, reflexive, symmetric) but need not explicitly contain
+            all elements to make it that.
+
+            The first elements of the tuples become group leaders.
+
+        :returns: *self*
+        """
+
+        for a, b in relation:
+            self.union(a, b)
+
+        return self
+
+
+def find_aliasing_equivalence_classes(kernel):
+    return DisjointSets().union_many(
+            (tv.base_storage, tv.name)
+            for tv in six.itervalues(kernel.temporary_variables)
+            if tv.base_storage is not None)
 
 # }}}
 

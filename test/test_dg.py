@@ -34,6 +34,9 @@ from pyopencl.tools import (  # noqa
         pytest_generate_tests_for_pyopencl as pytest_generate_tests)
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_dg_volume(ctx_factory):
     #logging.basicConfig(level=logging.DEBUG)
 

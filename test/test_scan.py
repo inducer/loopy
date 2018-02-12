@@ -56,6 +56,9 @@ __all__ = [
 # - scan(a) + scan(b)
 # - test for badly tagged inames
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 @pytest.mark.parametrize("n", [1, 2, 3, 16])
 @pytest.mark.parametrize("stride", [1, 2])
 def test_sequential_scan(ctx_factory, n, stride):

@@ -29,7 +29,8 @@ from loopy.target.execution import (KernelExecutorBase, _KernelInfo,
                              ExecutionWrapperGeneratorBase, get_highlighted_code)
 from pytools import memoize_method
 from pytools.py_codegen import (Indentation)
-from codepy.toolchain import guess_toolchain
+from pytools.prefork import ExecError
+from codepy.toolchain import guess_toolchain, ToolchainGuessError, GCCToolchain
 from codepy.jit import compile_from_string
 import six
 import ctypes
@@ -216,8 +217,27 @@ class CCompiler(object):
                  source_suffix='c'):
         # try to get a default toolchain
         # or subclass supplied version if available
-        self.toolchain = guess_toolchain() if toolchain is None else toolchain
-        self.source_suffix = source_suffix
+        self.toolchain = toolchain
+        if toolchain is None:
+            try:
+                self.toolchain = guess_toolchain()
+            except (ToolchainGuessError, ExecError):
+                # missing compiler python was built with (likely, Conda)
+                # use a default GCCToolchain
+                logger = logging.getLogger(__name__)
+                logger.warn('Default toolchain guessed from python config '
+                            'not found, replacing with default GCCToolchain.')
+                # this is ugly, but I'm not sure there's a clean way to copy the
+                # default args
+                self.toolchain = GCCToolchain(
+                    cc='gcc',
+                    cflags='-std=c99 -O3 -fPIC'.split(),
+                    ldflags='-shared'.split(),
+                    libraries=[],
+                    library_dirs=[],
+                    defines=[],
+                    source_suffix='c')
+
         if toolchain is None:
             # copy in all differing values
             diff = {'cc': cc,
@@ -229,9 +249,8 @@ class CCompiler(object):
                     'defines': defines}
             # filter empty and those equal to toolchain defaults
             diff = dict((k, v) for k, v in six.iteritems(diff)
-                    if v and
-                    not hasattr(self.toolchain, k) or
-                    getattr(self.toolchain, k) != v)
+                    if v and (not hasattr(self.toolchain, k) or
+                              getattr(self.toolchain, k) != v))
             self.toolchain = self.toolchain.copy(**diff)
         self.tempdir = tempfile.mkdtemp(prefix="tmp_loopy")
         self.source_suffix = source_suffix
@@ -312,14 +331,14 @@ class CompiledCKernel(object):
     to automatically map argument types.
     """
 
-    def __init__(self, knl, idi, dev_code, target, comp=CCompiler()):
+    def __init__(self, knl, idi, dev_code, target, comp=None):
         from loopy.target.c import ExecutableCTarget
         assert isinstance(target, ExecutableCTarget)
         self.target = target
         self.name = knl.name
         # get code and build
         self.code = dev_code
-        self.comp = comp
+        self.comp = comp if comp is not None else CCompiler()
         self.dll = self.comp.build(self.name, self.code)
 
         # get the function declaration for interface with ctypes
