@@ -1712,7 +1712,7 @@ def _get_access_range_conservative(kernel, insn_id, access_dir, var_name):
 def do_access_ranges_overlap_conservative(
         kernel, insn1_id, insn1_dir, insn2_id, insn2_dir, var_name):
     """Determine whether the access ranges to *var_name* in the two
-    given instructions overlpa. This determination is made 'conservatively',
+    given instructions overlap. This determination is made 'conservatively',
     i.e. if precise information is unavailable, it is concluded that the
     ranges overlap.
 
