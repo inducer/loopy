@@ -34,6 +34,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_nbody(ctx_factory):
     logging.basicConfig(level=logging.INFO)
 

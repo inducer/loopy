@@ -52,6 +52,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_assume(ctx_factory):
     ctx = ctx_factory()
 

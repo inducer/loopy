@@ -40,6 +40,9 @@ else:
     faulthandler.enable()
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_c_target():
     from loopy.target.c import ExecutableCTarget
 

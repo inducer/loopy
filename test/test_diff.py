@@ -48,6 +48,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_diff(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)

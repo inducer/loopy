@@ -708,6 +708,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
 
             # }}}
 
+            from loopy.version import MOST_RECENT_LANGUAGE_VERSION
             knl = lp.make_kernel(
                     sub.index_sets,
                     sub.instructions,
@@ -717,6 +718,7 @@ class F2LoopyTranslator(FTreeWalkerBase):
                     index_dtype=self.index_dtype,
                     target=self.target,
                     seq_dependencies=seq_dependencies,
+                    lang_version=MOST_RECENT_LANGUAGE_VERSION
                     )
 
             from loopy.loop import fuse_loop_domains

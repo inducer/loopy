@@ -1427,8 +1427,8 @@ class DependencyTracker(object):
             raise ValueError("unknown 'var_kind': %s" % var_kind)
 
         from collections import defaultdict
-        self.writer_map = defaultdict(set)
-        self.reader_map = defaultdict(set)
+        self.base_writer_map = defaultdict(set)
+        self.base_access_map = defaultdict(set)
         self.temp_to_base_storage = kernel.get_temporary_to_base_storage_map()
 
     def map_to_base_storage(self, var_names):
@@ -1442,23 +1442,27 @@ class DependencyTracker(object):
         return result
 
     def discard_all_sources(self):
-        self.writer_map.clear()
-        self.reader_map.clear()
+        self.base_writer_map.clear()
+        self.base_access_map.clear()
+
+    # Anything with 'base' in the name in this class contains names normalized
+    # to their 'base_storage'.
 
     def add_source(self, source):
         """
-        Specify that an instruction may be used as the source of a dependency edge.
+        Specify that an instruction used as the source (depended-upon
+        part) of a dependency edge is of interest to this tracker.
         """
         # If source is an insn ID, look up the actual instruction.
         source = self.kernel.id_to_insn.get(source, source)
 
         for written in self.map_to_base_storage(
                 set(source.assignee_var_names()) & self.relevant_vars):
-            self.writer_map[written].add(source.id)
+            self.base_writer_map[written].add(source.id)
 
         for read in self.map_to_base_storage(
-                source.read_dependency_names() & self.relevant_vars):
-            self.reader_map[read].add(source.id)
+                source.dependency_names() & self.relevant_vars):
+            self.base_access_map[read].add(source.id)
 
     def gen_dependencies_with_target_at(self, target):
         """
@@ -1471,51 +1475,87 @@ class DependencyTracker(object):
         # If target is an insn ID, look up the actual instruction.
         target = self.kernel.id_to_insn.get(target, target)
 
-        tgt_write = self.map_to_base_storage(
-            set(target.assignee_var_names()) & self.relevant_vars)
-        tgt_read = self.map_to_base_storage(
-            target.read_dependency_names() & self.relevant_vars)
-
-        for (accessed_vars, accessor_map) in [
-                (tgt_read, self.writer_map),
-                (tgt_write, self.reader_map),
-                (tgt_write, self.writer_map)]:
+        for (
+                tgt_dir, src_dir, src_base_var_to_accessor_map
+                ) in [
+                ("any", "w", self.base_writer_map),
+                ("w", "any", self.base_access_map),
+                ]:
 
             for dep in self.get_conflicting_accesses(
-                    accessed_vars, accessor_map, target.id):
+                    target, tgt_dir, src_dir, src_base_var_to_accessor_map):
                 yield dep
 
-    def get_conflicting_accesses(
-            self, accessed_vars, var_to_accessor_map, target):
+    def get_conflicting_accesses(self, target, tgt_dir, src_dir,
+            src_base_var_to_accessor_map):
 
-        def determine_conflict_nature(source, target):
-            if (not self.reverse and source in
-                    self.kernel.get_nosync_set(target, scope=self.var_kind)):
-                return None
-            if (self.reverse and target in
-                    self.kernel.get_nosync_set(source, scope=self.var_kind)):
-                return None
-            return self.describe_dependency(source, target)
+        def get_written_names(insn):
+            return set(insn.assignee_var_names()) & self.relevant_vars
 
-        for var in sorted(accessed_vars):
-            for source in sorted(var_to_accessor_map[var]):
-                dep_descr = determine_conflict_nature(source, target)
+        def get_accessed_names(insn):
+            return insn.dependency_names() & self.relevant_vars
 
+        dir_to_getter = {"w": get_written_names, "any": get_accessed_names}
+
+        def filter_var_set_for_base_storage(var_name_set, base_storage_name):
+            return set(
+                    name
+                    for name in var_name_set
+                    if (self.temp_to_base_storage.get(name, name)
+                        == base_storage_name))
+
+        tgt_accessed_vars = dir_to_getter[tgt_dir](target)
+        tgt_accessed_vars_base = self.map_to_base_storage(tgt_accessed_vars)
+
+        for race_var_base in sorted(tgt_accessed_vars_base):
+            for source_id in sorted(
+                    src_base_var_to_accessor_map[race_var_base]):
+
+                # {{{ no barrier if nosync
+
+                if (not self.reverse and source_id in
+                        self.kernel.get_nosync_set(target.id, scope=self.var_kind)):
+                    continue
+                if (self.reverse and target.id in
+                        self.kernel.get_nosync_set(source_id, scope=self.var_kind)):
+                    continue
+
+                # }}}
+
+                dep_descr = self.describe_dependency(source_id, target)
                 if dep_descr is None:
                     continue
 
+                source = self.kernel.id_to_insn[source_id]
+                src_race_vars = filter_var_set_for_base_storage(
+                        dir_to_getter[src_dir](source), race_var_base)
+                tgt_race_vars = filter_var_set_for_base_storage(
+                        tgt_accessed_vars, race_var_base)
+
+                race_var = race_var_base
+
+                # Only one (non-base_storage) race variable name: Data is not
+                # being passed between aliases, so we may look at indices.
+                if src_race_vars == tgt_race_vars and len(src_race_vars) == 1:
+                    race_var, = src_race_vars
+
+                    from loopy.symbolic import do_access_ranges_overlap_conservative
+                    if not do_access_ranges_overlap_conservative(
+                            self.kernel, target.id, tgt_dir,
+                            source_id, src_dir, race_var):
+                        continue
+
                 yield DependencyRecord(
-                        source=self.kernel.id_to_insn[source],
-                        target=self.kernel.id_to_insn[target],
+                        source=source,
+                        target=target,
                         dep_descr=dep_descr,
-                        variable=var,
+                        variable=race_var,
                         var_kind=self.var_kind)
 
-    def describe_dependency(self, source, target):
+    def describe_dependency(self, source_id, target):
         dep_descr = None
 
-        source = self.kernel.id_to_insn[source]
-        target = self.kernel.id_to_insn[target]
+        source = self.kernel.id_to_insn[source_id]
 
         if self.reverse:
             source, target = target, source

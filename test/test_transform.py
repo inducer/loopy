@@ -49,6 +49,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_chunk_iname(ctx_factory):
     ctx = ctx_factory()
 
@@ -75,7 +78,8 @@ def test_collect_common_factors(ctx_factory):
             """
             <float32> out_tmp = 0 {id=out_init,inames=i}
             out_tmp = out_tmp + alpha[i]*a[i,j]*b1[j] {id=out_up1,dep=out_init}
-            out_tmp = out_tmp + alpha[i]*a[j,i]*b2[j] {id=out_up2,dep=out_init}
+            out_tmp = out_tmp + alpha[i]*a[j,i]*b2[j] \
+                    {id=out_up2,dep=out_init,nosync=out_up1}
             out[i] = out_tmp {dep=out_up1:out_up2}
             """)
     knl = lp.add_and_infer_dtypes(knl,
@@ -492,7 +496,8 @@ def test_add_nosync():
     orig_knl = lp.set_temporary_scope(orig_knl, "tmp5", "local")
 
     # No dependency present - don't add nosync
-    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2")
+    knl = lp.add_nosync(orig_knl, "any", "writes:tmp", "writes:tmp2",
+            empty_ok=True)
     assert frozenset() == knl.id_to_insn["insn2"].no_sync_with
 
     # Dependency present

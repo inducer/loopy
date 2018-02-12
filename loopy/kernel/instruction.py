@@ -91,7 +91,7 @@ class InstructionBase(ImmutableRecord):
 
     .. attribute:: no_sync_with
 
-        a :class:`frozenset` of tuples of the form `(insn_id, scope)`, where
+        a :class:`frozenset` of tuples of the form ``(insn_id, scope)``, where
         `insn_id` refers to :attr:`id` of :class:`Instruction` instances
         and `scope` is one of the following strings:
 
@@ -99,12 +99,19 @@ class InstructionBase(ImmutableRecord):
            - `"global"`
            - `"any"`.
 
-        This indicates no barrier synchronization is necessary with the given
-        instruction using barriers of type `scope`, even given the existence of
-        a dependency chain and apparently conflicting access.
+        An element ``(insn_id, scope)`` means "do not consider any variable
+        access conflicting for variables of ``scope`` between this instruction
+        and ``insn_id``".
+        Specifically, loopy will not complain even if it detects that accesses
+        potentially requiring ordering (e.g. by dependencies) exist, and it
+        will not emit barriers to guard any dependencies from this
+        instruction on ``insn_id`` that may exist.
 
         Note, that :attr:`no_sync_with` allows instruction matching through wildcards
         and match expression, just like :attr:`depends_on`.
+
+        This data is used specifically by barrier insertion and
+        :func:`loopy.check.enforce_variable_access_ordered`.
 
     .. rubric:: Conditionals
 
