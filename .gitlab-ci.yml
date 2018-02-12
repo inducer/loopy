@@ -117,6 +117,20 @@ Python 3.6 POCL Twice With Cache:
 #   except:
 #   - tags
 
+Python 3.6 POCL Examples:
+  script:
+  - export PY_EXE=python3.6
+  - export PYOPENCL_TEST=portable
+  - export EXTRA_INSTALL="numpy mako pyvisfile matplotlib jupyter nbconvert"
+  - ". ./build-py-project-and-run-examples.sh"
+  tags:
+  - python3.6
+  - pocl
+  - large-node
+  - ispc
+  except:
+  - tags
+
 CentOS binary:
   script:
   - (cd build-helpers; ./make-linux-build-docker.sh --nodate)

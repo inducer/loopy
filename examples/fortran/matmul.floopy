@@ -1,6 +1,6 @@
 subroutine dgemm(m,n,l,alpha,a,b,c)
   implicit none
-  real*8 temp, a(m,l),b(l,n),c(m,n), alpha
+  real*8 a(m,l),b(l,n),c(m,n), alpha
   integer m,n,k,i,j,l
 
   do j = 1,n

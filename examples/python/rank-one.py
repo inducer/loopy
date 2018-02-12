@@ -6,15 +6,16 @@ import loopy as lp
 ctx = cl.create_some_context()
 queue = cl.CommandQueue(ctx)
 
-knl = lp.make_kernel(queue.device,
-    "{[i,j]: 0<=i,j<n}",
+knl = lp.make_kernel(
+    "{[i, j]: 0<=i<n and 0<=j<n}",
     "c[i, j] = a[i]*b[j]",
     assumptions="n >= 16")
 
 a = np.arange(200, dtype=np.float32)
 b = np.arange(200, dtype=np.float32)
 
-evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
+knl = lp.set_options(knl, write_code=True)
+evt, (c,) = knl(queue, a=a, b=b)
 # SETUPEND
 
 orig_knl = knl
@@ -26,7 +27,8 @@ knl = lp.split_iname(knl, "j", 16,
         outer_tag="g.1", inner_tag="l.1")
 # SPLITEND
 
-evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
+knl = lp.set_options(knl, write_code=True)
+evt, (c,) = knl(queue, a=a, b=b)
 
 split_knl = knl
 
@@ -35,7 +37,8 @@ knl = lp.add_prefetch(knl, "a")
 knl = lp.add_prefetch(knl, "b")
 # PREFETCH1END
 
-evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
+knl = lp.set_options(knl, write_code=True)
+evt, (c,) = knl(queue, a=a, b=b)
 
 knl = split_knl
 
@@ -44,7 +47,8 @@ knl = lp.add_prefetch(knl, "a", ["i_inner"])
 knl = lp.add_prefetch(knl, "b", ["j_inner"])
 # PREFETCH2END
 
-evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
+knl = lp.set_options(knl, write_code=True)
+evt, (c,) = knl(queue, a=a, b=b)
 
 knl = orig_knl
 
@@ -68,4 +72,5 @@ knl = lp.split_iname(knl, "a_dim_0", 16,
         outer_tag="l.1", inner_tag="l.0")
 # PREFETCH3END
 
-evt, (c,) = knl(queue, a=a, b=b, options="write_cl")
+knl = lp.set_options(knl, write_code=True)
+evt, (c,) = knl(queue, a=a, b=b)
