@@ -279,7 +279,8 @@ class _AccessCheckMapper(WalkMapper):
             if not isinstance(subscript, tuple):
                 subscript = (subscript,)
 
-            from loopy.symbolic import get_dependencies, get_access_range
+            from loopy.symbolic import (get_dependencies, get_access_range,
+                    UnableToDetermineAccessRange)
 
             available_vars = set(self.domain.get_var_dict())
             shape_deps = set()
@@ -300,11 +301,8 @@ class _AccessCheckMapper(WalkMapper):
             try:
                 access_range = get_access_range(self.domain, subscript,
                         self.kernel.assumptions)
-            except isl.Error:
-                # Likely: index was non-linear, nothing we can do.
-                return
-            except TypeError:
-                # Likely: index was non-linear, nothing we can do.
+            except UnableToDetermineAccessRange:
+                # Likely: index was non-affine, nothing we can do.
                 return
 
             shape_domain = isl.BasicSet.universe(access_range.get_space())

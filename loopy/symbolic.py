@@ -1537,6 +1537,10 @@ class PrimeAdder(IdentityMapper):
 
 # {{{ get access range
 
+class UnableToDetermineAccessRange(Exception):
+    pass
+
+
 def get_access_range(domain, subscript, assumptions):
     domain, assumptions = isl.align_two(domain,
             assumptions)
@@ -1558,8 +1562,17 @@ def get_access_range(domain, subscript, assumptions):
     access_map = access_map.insert_dims(dim_type.set, dn, dims)
 
     for idim in range(dims):
-        idx_aff = aff_from_expr(access_map.get_space(),
-                subscript[idim])
+        sub_idim = subscript[idim]
+        with isl.SuppressedWarnings(domain.get_ctx()):
+            try:
+                idx_aff = aff_from_expr(access_map.get_space(), sub_idim)
+            except TypeError as e:
+                raise UnableToDetermineAccessRange(
+                        "%s: %s" % (type(e).__name__, str(e)))
+            except isl.Error as e:
+                raise UnableToDetermineAccessRange(
+                        "%s: %s" % (type(e).__name__, str(e)))
+
         idx_aff = idx_aff.set_coefficient_val(
                 dim_type.in_, dn+idim, -1)
 
@@ -1604,7 +1617,12 @@ class BatchedAccessRangeMapper(WalkMapper):
             self.bad_subscripts[arg_name].append(expr)
             return
 
-        access_range = get_access_range(domain, subscript, self.kernel.assumptions)
+        try:
+            access_range = get_access_range(
+                    domain, subscript, self.kernel.assumptions)
+        except UnableToDetermineAccessRange:
+            self.bad_subscripts[arg_name].append(expr)
+            return
 
         if self.access_ranges[arg_name] is None:
             self.access_ranges[arg_name] = access_range
@@ -1652,7 +1670,7 @@ class AccessRangeMapper(object):
 # }}}
 
 
-# {{{ do_access_ranges_overlap
+# {{{ do_access_ranges_overlap_conservative
 
 def _get_access_range_conservative(kernel, insn_id, access_dir, var_name):
     insn = kernel.id_to_insn[insn_id]
