@@ -443,25 +443,7 @@ def declares_nosync_with(kernel, var_scope, dep_a, dep_b):
     return ab_nosync and ba_nosync
 
 
-def check_variable_access_ordered(kernel):
-    """Checks that between each write to a variable and all other accesses to
-    the variable there is either:
-
-    * an (at least indirect) depdendency edge, or
-    * an explicit statement that no ordering is necessary (expressed
-      through a bi-directional :attr:`loopy.Instruction.no_sync_with`)
-    """
-    if kernel.options.enforce_variable_access_ordered not in [
-            "no_check",
-            True,
-            False]:
-        raise LoopyError("invalid value for option "
-                "'enforce_variable_access_ordered': %s"
-                % kernel.options.enforce_variable_access_ordered)
-
-    if kernel.options.enforce_variable_access_ordered == "no_check":
-        return
-
+def _check_variable_access_ordered_inner(kernel):
     logger.debug("%s: check_variable_access_ordered: start" % kernel.name)
 
     checked_variables = kernel.get_written_variables() & (
@@ -555,7 +537,9 @@ def check_variable_access_ordered(kernel):
                         "between the two, or add them to each others' nosync "
                         "set to indicate that no ordering is intended, or "
                         "turn off this check by setting the "
-                        "'enforce_variable_access_ordered' option"
+                        "'enforce_variable_access_ordered' option "
+                        "(more issues of this type may exist--only reporting "
+                        "the first one)"
                         .format(
                             writer_id=writer_id,
                             other_id=other_id,
@@ -566,15 +550,42 @@ def check_variable_access_ordered(kernel):
                                     "the aliasing equivalence class '%s'"
                                     % ", ".join(eq_class))
                                 )))
-                if kernel.options.enforce_variable_access_ordered:
-                    from loopy.diagnostic import VariableAccessNotOrdered
-                    raise VariableAccessNotOrdered(msg)
-                else:
-                    from loopy.diagnostic import warn_with_kernel
-                    warn_with_kernel(
-                            kernel, "variable_access_ordered", msg)
+
+                from loopy.diagnostic import VariableAccessNotOrdered
+                raise VariableAccessNotOrdered(msg)
 
     logger.debug("%s: check_variable_access_ordered: done" % kernel.name)
+
+
+def check_variable_access_ordered(kernel):
+    """Checks that between each write to a variable and all other accesses to
+    the variable there is either:
+
+    * an (at least indirect) depdendency edge, or
+    * an explicit statement that no ordering is necessary (expressed
+      through a bi-directional :attr:`loopy.Instruction.no_sync_with`)
+    """
+
+    if kernel.options.enforce_variable_access_ordered not in [
+            "no_check",
+            True,
+            False]:
+        raise LoopyError("invalid value for option "
+                "'enforce_variable_access_ordered': %s"
+                % kernel.options.enforce_variable_access_ordered)
+
+    if kernel.options.enforce_variable_access_ordered == "no_check":
+        return
+
+    if kernel.options.enforce_variable_access_ordered:
+        _check_variable_access_ordered_inner(kernel)
+    else:
+        from loopy.diagnostic import VariableAccessNotOrdered
+        try:
+            _check_variable_access_ordered_inner(kernel)
+        except VariableAccessNotOrdered as e:
+            from loopy.diagnostic import warn_with_kernel
+            warn_with_kernel(kernel, "variable_access_ordered", str(e))
 
 # }}}
 
