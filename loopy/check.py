@@ -416,6 +416,7 @@ class IndirectDependencyEdgeFinder(object):
                 self.dep_edge_cache[cache_key] = True
                 return True
 
+        self.dep_edge_cache[cache_key] = False
         return False
 
 
