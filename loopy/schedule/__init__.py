@@ -775,6 +775,7 @@ def generate_loop_schedules_internal(
         # schedule generation order.
         return (insn.priority, len(active_groups & insn.groups), insn.id)
 
+    # Use previous instruction sorting result if it is available
     if sched_state.insn_ids_to_try is None:
         insn_ids_to_try = sorted(
                 # Non-prescheduled instructions go first.
@@ -883,6 +884,11 @@ def generate_loop_schedules_internal(
         if is_ready and debug_mode:
             print("ready to schedule '%s'" % format_insn(kernel, insn.id))
 
+        # Remove the current instruction from the sorted list of instructions
+        # to try
+        new_insn_ids_to_try = list(insn_ids_to_try)
+        new_insn_ids_to_try.remove(insn.id)
+
         if is_ready and not debug_mode:
             iid_set = frozenset([insn.id])
 
@@ -900,6 +906,8 @@ def generate_loop_schedules_internal(
                     else:
                         new_active_group_counts[grp] = (
                                 sched_state.group_insn_counts[grp] - 1)
+                # invalidate instruction to try when active group changes
+                new_insn_ids_to_try = None
 
             else:
                 new_active_group_counts = sched_state.active_group_counts
@@ -911,9 +919,6 @@ def generate_loop_schedules_internal(
                 if orig_have & insn.boostable_into:
                     new_uses_of_boostability.append(
                             (insn.id, orig_have & insn.boostable_into))
-
-            new_insn_ids_to_try = list(insn_ids_to_try)
-            new_insn_ids_to_try.remove(insn.id)
 
             new_sched_state = sched_state.copy(
                     scheduled_insn_ids=sched_state.scheduled_insn_ids | iid_set,
