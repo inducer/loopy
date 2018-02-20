@@ -40,6 +40,9 @@ else:
     faulthandler.enable()
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_c_target():
     from loopy.target.c import ExecutableCTarget
 
@@ -257,9 +260,10 @@ def test_c_caching():
     # setup test logger to check logs
     tl = TestingLogger()
     tl.start_capture()
-    # remake kernel to clear cache
-    knl = __get_knl()
-    assert np.allclose(knl(b=np.arange(10))[1], np.arange(10))
+    # copy kernel such that we share the same executor cache
+    knl = knl.copy()
+    # but use different args, so we can't cache the result
+    assert np.allclose(knl(b=np.arange(1, 11))[1], np.arange(1, 11))
     # and get logs
     logs = tl.stop_capture()
     # check that we didn't recompile
@@ -289,6 +293,54 @@ def test_c_execution_with_global_temporaries():
     knl = lp.fix_parameters(knl, n=n)
     assert ('int b[%d]' % n) not in lp.generate_code_v2(knl).host_code()
     assert np.allclose(knl(a=np.zeros(10, dtype=np.int32))[1], np.arange(10))
+
+
+def test_missing_compilers():
+    from loopy.target.c import ExecutableCTarget, CTarget
+    from loopy.target.c.c_execution import CCompiler
+    from codepy.toolchain import GCCToolchain
+
+    def __test(evalfunc, target, **targetargs):
+        n = 10
+
+        knl = lp.make_kernel('{[i]: 0 <= i < n}',
+            """
+                a[i] = b[i]
+            """,
+            [lp.GlobalArg('a', shape=(n,), dtype=np.int32),
+             lp.GlobalArg('b', shape=(n,), dtype=np.int32)],
+            target=target(**targetargs))
+
+        knl = lp.fix_parameters(knl, n=n)
+        return evalfunc(knl)
+
+    assert __test(lambda knl: lp.generate_code_v2(knl).device_code(), CTarget)
+
+    from pytools.prefork import ExecError
+
+    def eval_tester(knl):
+        return np.allclose(knl(a=np.zeros(10, dtype=np.int32),
+                               b=np.arange(10, dtype=np.int32))[1], np.arange(10))
+    import os
+    path_store = os.environ["PATH"]
+    try:
+        # test with path wiped out such that we can't find gcc
+        with pytest.raises(ExecError):
+            os.environ["PATH"] = ''
+            __test(eval_tester, ExecutableCTarget)
+    finally:
+        # make sure we restore the path regardless for future testing
+        os.environ["PATH"] = path_store
+
+    # next test that some made up compiler can be specified
+    ccomp = CCompiler(cc='foo')
+    assert isinstance(ccomp.toolchain, GCCToolchain)
+    assert ccomp.toolchain.cc == 'foo'
+
+    # and that said made up compiler errors out
+
+    with pytest.raises(ExecError):
+        __test(eval_tester, ExecutableCTarget, compiler=ccomp)
 
 
 if __name__ == "__main__":

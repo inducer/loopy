@@ -1537,6 +1537,10 @@ class PrimeAdder(IdentityMapper):
 
 # {{{ get access range
 
+class UnableToDetermineAccessRange(Exception):
+    pass
+
+
 def get_access_range(domain, subscript, assumptions):
     domain, assumptions = isl.align_two(domain,
             assumptions)
@@ -1558,8 +1562,17 @@ def get_access_range(domain, subscript, assumptions):
     access_map = access_map.insert_dims(dim_type.set, dn, dims)
 
     for idim in range(dims):
-        idx_aff = aff_from_expr(access_map.get_space(),
-                subscript[idim])
+        sub_idim = subscript[idim]
+        with isl.SuppressedWarnings(domain.get_ctx()):
+            try:
+                idx_aff = aff_from_expr(access_map.get_space(), sub_idim)
+            except TypeError as e:
+                raise UnableToDetermineAccessRange(
+                        "%s: %s" % (type(e).__name__, str(e)))
+            except isl.Error as e:
+                raise UnableToDetermineAccessRange(
+                        "%s: %s" % (type(e).__name__, str(e)))
+
         idx_aff = idx_aff.set_coefficient_val(
                 dim_type.in_, dn+idim, -1)
 
@@ -1582,11 +1595,11 @@ def get_access_range(domain, subscript, assumptions):
 
 class BatchedAccessRangeMapper(WalkMapper):
 
-    def __init__(self, kernel, arg_names):
+    def __init__(self, kernel, var_names):
         self.kernel = kernel
-        self.arg_names = set(arg_names)
-        self.access_ranges = dict((arg, None) for arg in arg_names)
-        self.bad_subscripts = dict((arg, []) for arg in arg_names)
+        self.var_names = set(var_names)
+        self.access_ranges = dict((arg, None) for arg in var_names)
+        self.bad_subscripts = dict((arg, []) for arg in var_names)
 
     def map_subscript(self, expr, inames):
         domain = self.kernel.get_inames_domain(inames)
@@ -1594,7 +1607,7 @@ class BatchedAccessRangeMapper(WalkMapper):
 
         assert isinstance(expr.aggregate, p.Variable)
 
-        if expr.aggregate.name not in self.arg_names:
+        if expr.aggregate.name not in self.var_names:
             return
 
         arg_name = expr.aggregate.name
@@ -1604,7 +1617,12 @@ class BatchedAccessRangeMapper(WalkMapper):
             self.bad_subscripts[arg_name].append(expr)
             return
 
-        access_range = get_access_range(domain, subscript, self.kernel.assumptions)
+        try:
+            access_range = get_access_range(
+                    domain, subscript, self.kernel.assumptions)
+        except UnableToDetermineAccessRange:
+            self.bad_subscripts[arg_name].append(expr)
+            return
 
         if self.access_ranges[arg_name] is None:
             self.access_ranges[arg_name] = access_range
@@ -1622,7 +1640,7 @@ class BatchedAccessRangeMapper(WalkMapper):
     def map_linear_subscript(self, expr, inames):
         self.rec(expr.index, inames)
 
-        if expr.aggregate.name in self.arg_names:
+        if expr.aggregate.name in self.var_names:
             self.bad_subscripts[expr.aggregate.name].append(expr)
 
     def map_reduction(self, expr, inames):
@@ -1634,20 +1652,87 @@ class BatchedAccessRangeMapper(WalkMapper):
 
 class AccessRangeMapper(object):
 
-    def __init__(self, kernel, arg_name):
-        self.arg_name = arg_name
-        self.inner_mapper = BatchedAccessRangeMapper(kernel, [arg_name])
+    def __init__(self, kernel, var_name):
+        self.var_name = var_name
+        self.inner_mapper = BatchedAccessRangeMapper(kernel, [var_name])
 
     def __call__(self, expr, inames):
         return self.inner_mapper(expr, inames)
 
     @property
     def access_range(self):
-        return self.inner_mapper.access_ranges[self.arg_name]
+        return self.inner_mapper.access_ranges[self.var_name]
 
     @property
     def bad_subscripts(self):
-        return self.inner_mapper.bad_subscripts[self.arg_name]
+        return self.inner_mapper.bad_subscripts[self.var_name]
+
+# }}}
+
+
+# {{{ do_access_ranges_overlap_conservative
+
+def _get_access_range_conservative(kernel, insn_id, access_dir, var_name):
+    insn = kernel.id_to_insn[insn_id]
+    from loopy.kernel.instruction import MultiAssignmentBase
+
+    assert access_dir in ["w", "any"]
+
+    if not isinstance(insn, MultiAssignmentBase):
+        if access_dir == "any":
+            return var_name in insn.dependency_names()
+        else:
+            return var_name in insn.write_dependency_names()
+
+    exprs = list(insn.assignees)
+    if access_dir == "any":
+        exprs.append(insn.expression)
+        exprs.extend(insn.predicates)
+
+    arange = False
+    for expr in exprs:
+        arm = AccessRangeMapper(kernel, var_name)
+        arm(expr, kernel.insn_inames(insn))
+
+        if arm.bad_subscripts:
+            return True
+
+        expr_arange = arm.access_range
+        if expr_arange is None:
+            continue
+
+        if arange is False:
+            arange = expr_arange
+        else:
+            arange = arange | expr_arange
+
+    return arange
+
+
+def do_access_ranges_overlap_conservative(
+        kernel, insn1_id, insn1_dir, insn2_id, insn2_dir, var_name):
+    """Determine whether the access ranges to *var_name* in the two
+    given instructions overlap. This determination is made 'conservatively',
+    i.e. if precise information is unavailable, it is concluded that the
+    ranges overlap.
+
+    :arg insn1_dir: either ``"w"`` or ``"any"``, to indicate which
+        type of access is desired--writing or any
+    :arg insn2_dir: either ``"w"`` or ``"any"``
+    :returns: a :class:`bool`
+    """
+
+    insn1_arange = _get_access_range_conservative(
+            kernel, insn1_id, insn1_dir, var_name)
+    insn2_arange = _get_access_range_conservative(
+            kernel, insn2_id, insn2_dir, var_name)
+
+    if insn1_arange is False or insn2_arange is False:
+        return False
+    if insn1_arange is True or insn2_arange is True:
+        return True
+
+    return not (insn1_arange & insn2_arange).is_empty()
 
 # }}}
 

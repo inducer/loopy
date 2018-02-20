@@ -52,6 +52,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_globals_decl_once_with_multi_subprogram(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
@@ -1085,12 +1088,12 @@ def test_atomic_load(ctx_factory, dtype):
             "{ [i,j]: 0<=i,j<n}",
             """
             for j
-                <> upper = 0
-                <> lower = 0
+                <> upper = 0  {id=init_upper}
+                <> lower = 0  {id=init_lower}
                 temp = 0 {id=init, atomic}
                 for i
-                    upper = upper + i * a[i] {id=sum0}
-                    lower = lower - b[i] {id=sum1}
+                    upper = upper + i * a[i] {id=sum0,dep=init_upper}
+                    lower = lower - b[i] {id=sum1,dep=init_lower}
                 end
                 temp = temp + lower {id=temp_sum, dep=sum*:init, atomic,\
                                            nosync=init}
@@ -1608,8 +1611,10 @@ def test_missing_temporary_definition_detection():
 def test_missing_definition_check_respects_aliases():
     # Based on https://github.com/inducer/loopy/issues/69
     knl = lp.make_kernel("{ [i] : 0<=i<n }",
-         ["a[i] = 0",
-          "c[i] = b[i]"],
+            """
+            a[i] = 0
+            c[i] = b[i]  {dep_query=writes:a}
+            """,
          temporary_variables={
              "a": lp.TemporaryVariable("a",
                         dtype=np.float64, shape=("n",), base_storage="base"),
@@ -1846,7 +1851,7 @@ def test_nop(ctx_factory):
                 <> z[i] = z[i+1] + z[i]  {id=wr_z}
                 <> v[i] = 11  {id=wr_v}
                 ... nop {dep=wr_z:wr_v,id=yoink}
-                z[i] = z[i] - z[i+1] + v[i]
+                z[i] = z[i] - z[i+1] + v[i]  {dep=yoink}
             end
             """)
 
@@ -1870,7 +1875,7 @@ def test_global_barrier(ctx_factory):
                     <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
                     <> v[i] = 11  {id=wr_v,dep=top}
                     ... gbarrier {dep=wr_z:wr_v,id=yoink}
-                    z[i] = z[i] - z[i+1] + v[i] {id=iupd}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=wr_z}
                 end
                 ... gbarrier {dep=iupd,id=postloop}
                 z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
@@ -2107,11 +2112,11 @@ def test_if_else(ctx_factory):
             "{ [i]: 0<=i<50}",
             """
             if i % 3 == 0
-                a[i] = 15
+                a[i] = 15  {nosync_query=writes:a}
             elif i % 3 == 1
-                a[i] = 11
+                a[i] = 11  {nosync_query=writes:a}
             else
-                a[i] = 3
+                a[i] = 3  {nosync_query=writes:a}
             end
             """
             )
@@ -2131,14 +2136,14 @@ def test_if_else(ctx_factory):
             for i
                 if i % 2 == 0
                     if i % 3 == 0
-                        a[i] = 15
+                        a[i] = 15  {nosync_query=writes:a}
                     elif i % 3 == 1
-                        a[i] = 11
+                        a[i] = 11  {nosync_query=writes:a}
                     else
-                        a[i] = 3
+                        a[i] = 3  {nosync_query=writes:a}
                     end
                 else
-                    a[i] = 4
+                    a[i] = 4  {nosync_query=writes:a}
                 end
             end
             """
@@ -2159,17 +2164,17 @@ def test_if_else(ctx_factory):
                 if i < 25
                     for j
                         if j % 2 == 0
-                            a[i, j] = 1
+                            a[i, j] = 1  {nosync_query=writes:a}
                         else
-                            a[i, j] = 0
+                            a[i, j] = 0  {nosync_query=writes:a}
                         end
                     end
                 else
                     for j
                         if j % 2 == 0
-                            a[i, j] = 0
+                            a[i, j] = 0  {nosync_query=writes:a}
                         else
-                            a[i, j] = 1
+                            a[i, j] = 1  {nosync_query=writes:a}
                         end
                     end
                 end
@@ -2363,8 +2368,9 @@ def test_nosync_option_parsing():
     assert "id=insn5, no_sync_with=insn1@any" in kernel_str
 
 
-def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
-    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop)
+def barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
+    from loopy.schedule import (RunInstruction, Barrier, EnterLoop, LeaveLoop,
+            CallKernel, ReturnFromKernel)
     watch_for_barrier = False
     seen_barrier = False
     loop_level = 0
@@ -2374,9 +2380,7 @@ def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
             if sched_item.insn_id == id1:
                 watch_for_barrier = True
             elif sched_item.insn_id == id2:
-                assert watch_for_barrier
-                assert seen_barrier
-                return
+                return watch_for_barrier and seen_barrier
         elif isinstance(sched_item, Barrier):
             if watch_for_barrier and loop_level not in ignore_barriers_in_levels:
                 seen_barrier = True
@@ -2384,6 +2388,11 @@ def assert_barrier_between(knl, id1, id2, ignore_barriers_in_levels=()):
             loop_level += 1
         elif isinstance(sched_item, LeaveLoop):
             loop_level -= 1
+        elif isinstance(sched_item, (CallKernel, ReturnFromKernel)):
+            pass
+        else:
+            raise RuntimeError("schedule item type '%s' not understood"
+                    % type(sched_item).__name__)
 
     raise RuntimeError("id2 was not seen")
 
@@ -2410,9 +2419,9 @@ def test_barrier_insertion_near_top_of_loop():
 
     print(knl)
 
-    assert_barrier_between(knl, "ainit", "tcomp")
-    assert_barrier_between(knl, "tcomp", "bcomp1")
-    assert_barrier_between(knl, "bcomp1", "bcomp2")
+    assert barrier_between(knl, "ainit", "tcomp")
+    assert barrier_between(knl, "tcomp", "bcomp1")
+    assert barrier_between(knl, "bcomp1", "bcomp2")
 
 
 def test_barrier_insertion_near_bottom_of_loop():
@@ -2437,8 +2446,8 @@ def test_barrier_insertion_near_bottom_of_loop():
 
     print(knl)
 
-    assert_barrier_between(knl, "bcomp1", "bcomp2")
-    assert_barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
+    assert barrier_between(knl, "bcomp1", "bcomp2")
+    assert barrier_between(knl, "ainit", "aupdate", ignore_barriers_in_levels=[1])
 
 
 def test_barrier_in_overridden_get_grid_size_expanded_kernel():
@@ -2570,10 +2579,10 @@ def test_struct_assignment(ctx_factory):
         "{ [i]: 0<=i<N }",
         """
         for i
-            result[i].hit = i % 2
-            result[i].tmin = i
-            result[i].tmax = i+10
-            result[i].bi = i
+            result[i].hit = i % 2  {nosync_query=writes:result}
+            result[i].tmin = i  {nosync_query=writes:result}
+            result[i].tmax = i+10  {nosync_query=writes:result}
+            result[i].bi = i  {nosync_query=writes:result}
         end
         """,
         [
@@ -2629,8 +2638,8 @@ def test_fixed_parameters(ctx_factory):
     knl = lp.make_kernel(
             "[n] -> {[i]: 0 <= i < n}",
             """
-            <>tmp[i] = i
-            tmp[0] = 0
+            <>tmp[i] = i  {id=init}
+            tmp[0] = 0  {dep=init}
             """,
             fixed_parameters=dict(n=1))
 
@@ -2786,6 +2795,65 @@ def test_add_prefetch_works_in_lhs_index():
     from loopy.symbolic import get_dependencies
     for insn in knl.instructions:
         assert "a1_map" not in get_dependencies(insn.assignees)
+
+
+def test_check_for_variable_access_ordering():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            a[i] = 12
+            a[i+1] = 13
+            """)
+
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import VariableAccessNotOrdered
+    with pytest.raises(VariableAccessNotOrdered):
+        lp.get_one_scheduled_kernel(knl)
+
+
+def test_check_for_variable_access_ordering_with_aliasing():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<n}",
+            """
+            a[i] = 12
+            b[i+1] = 13
+            """,
+            [
+                lp.TemporaryVariable("a", shape="n+1", base_storage="tmp"),
+                lp.TemporaryVariable("b", shape="n+1", base_storage="tmp"),
+                ])
+
+    knl = lp.preprocess_kernel(knl)
+
+    from loopy.diagnostic import VariableAccessNotOrdered
+    with pytest.raises(VariableAccessNotOrdered):
+        lp.get_one_scheduled_kernel(knl)
+
+
+@pytest.mark.parametrize(("second_index", "expect_barrier"),
+        [
+            ("2*i", True),
+            ("2*i+1", False),
+            ])
+def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<128}",
+            """
+            a[2*i] = 12  {id=first}
+            a[%s] = 13  {id=second,dep=first}
+            """ % second_index,
+            [
+                lp.TemporaryVariable("a", lp.auto, shape=(256,),
+                    scope=lp.temp_var_scope.LOCAL),
+                ])
+
+    knl = lp.tag_inames(knl, "i:l.0")
+
+    knl = lp.preprocess_kernel(knl)
+    knl = lp.get_one_scheduled_kernel(knl)
+
+    assert barrier_between(knl, "first", "second") == expect_barrier
 
 
 if __name__ == "__main__":

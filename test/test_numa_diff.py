@@ -44,6 +44,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 @pytest.mark.parametrize("Nq", [7])
 @pytest.mark.parametrize("ilp_multiple", [1, 2])
 @pytest.mark.parametrize("opt_level", [11])
@@ -57,13 +60,14 @@ def test_gnuma_horiz_kernel(ctx_factory, ilp_multiple, Nq, opt_level):  # noqa
     source = source.replace("datafloat", "real*4")
 
     hsv_r, hsv_s = [
-           knl for knl in lp.parse_fortran(source, filename, auto_dependencies=False)
+           knl for knl in lp.parse_fortran(source, filename, seq_dependencies=False)
            if "KernelR" in knl.name or "KernelS" in knl.name
            ]
     hsv_r = lp.tag_instructions(hsv_r, "rknl")
     hsv_s = lp.tag_instructions(hsv_s, "sknl")
     hsv = lp.fuse_kernels([hsv_r, hsv_s], ["_r", "_s"])
     #hsv = hsv_s
+    hsv = lp.add_nosync(hsv, "any", "writes:rhsQ", "writes:rhsQ", force=True)
 
     from gnuma_loopy_transforms import (
           fix_euler_parameters,

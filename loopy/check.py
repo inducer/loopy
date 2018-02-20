@@ -250,6 +250,8 @@ def check_for_data_dependent_parallel_bounds(kernel):
                         % (i, par, ", ".join(par_inames)))
 
 
+# {{{ check access bounds
+
 class _AccessCheckMapper(WalkMapper):
     def __init__(self, kernel, domain, insn_id):
         self.kernel = kernel
@@ -277,7 +279,8 @@ class _AccessCheckMapper(WalkMapper):
             if not isinstance(subscript, tuple):
                 subscript = (subscript,)
 
-            from loopy.symbolic import get_dependencies, get_access_range
+            from loopy.symbolic import (get_dependencies, get_access_range,
+                    UnableToDetermineAccessRange)
 
             available_vars = set(self.domain.get_var_dict())
             shape_deps = set()
@@ -298,11 +301,8 @@ class _AccessCheckMapper(WalkMapper):
             try:
                 access_range = get_access_range(self.domain, subscript,
                         self.kernel.assumptions)
-            except isl.Error:
-                # Likely: index was non-linear, nothing we can do.
-                return
-            except TypeError:
-                # Likely: index was non-linear, nothing we can do.
+            except UnableToDetermineAccessRange:
+                # Likely: index was non-affine, nothing we can do.
                 return
 
             shape_domain = isl.BasicSet.universe(access_range.get_space())
@@ -340,6 +340,10 @@ def check_bounds(kernel):
 
         insn.with_transformed_expressions(run_acm)
 
+# }}}
+
+
+# {{{ check write destinations
 
 def check_write_destinations(kernel):
     for insn in kernel.instructions:
@@ -363,6 +367,10 @@ def check_write_destinations(kernel):
                     or wvar in kernel.arg_dict) and wvar not in kernel.all_params():
                 raise LoopyError
 
+# }}}
+
+
+# {{{ check_has_schedulable_iname_nesting
 
 def check_has_schedulable_iname_nesting(kernel):
     from loopy.transform.iname import (has_schedulable_iname_nesting,
@@ -382,6 +390,208 @@ def check_has_schedulable_iname_nesting(kernel):
 # }}}
 
 
+# {{{ check_variable_access_ordered
+
+class IndirectDependencyEdgeFinder(object):
+    def __init__(self, kernel):
+        self.kernel = kernel
+        self.dep_edge_cache = {}
+
+    def __call__(self, depender_id, dependee_id):
+        cache_key = (depender_id, dependee_id)
+
+        try:
+            return self.dep_edge_cache[cache_key]
+        except KeyError:
+            pass
+
+        depender = self.kernel.id_to_insn[depender_id]
+
+        if dependee_id in depender.depends_on:
+            self.dep_edge_cache[cache_key] = True
+            return True
+
+        for dep in depender.depends_on:
+            if self(dep, dependee_id):
+                self.dep_edge_cache[cache_key] = True
+                return True
+
+        self.dep_edge_cache[cache_key] = False
+        return False
+
+
+def declares_nosync_with(kernel, var_scope, dep_a, dep_b):
+    from loopy.kernel.data import temp_var_scope
+    if var_scope == temp_var_scope.GLOBAL:
+        search_scopes = ["global", "any"]
+    elif var_scope == temp_var_scope.LOCAL:
+        search_scopes = ["local", "any"]
+    elif var_scope == temp_var_scope.PRIVATE:
+        search_scopes = ["any"]
+    else:
+        raise ValueError("unexpected value of 'temp_var_scope'")
+
+    ab_nosync = False
+    ba_nosync = False
+
+    for scope in search_scopes:
+        if (dep_a.id, scope) in dep_b.no_sync_with:
+            ab_nosync = True
+        if (dep_b.id, scope) in dep_a.no_sync_with:
+            ba_nosync = True
+
+    return ab_nosync and ba_nosync
+
+
+def _check_variable_access_ordered_inner(kernel):
+    logger.debug("%s: check_variable_access_ordered: start" % kernel.name)
+
+    checked_variables = kernel.get_written_variables() & (
+            set(kernel.temporary_variables) | set(arg for arg in kernel.arg_dict))
+
+    wmap = kernel.writer_map()
+    rmap = kernel.reader_map()
+
+    from loopy.kernel.data import GlobalArg, ValueArg, temp_var_scope
+    from loopy.kernel.tools import find_aliasing_equivalence_classes
+
+    depfind = IndirectDependencyEdgeFinder(kernel)
+    aliasing_equiv_classes = find_aliasing_equivalence_classes(kernel)
+
+    for name in checked_variables:
+        # This is a tad redundant in that this could probably be restructured
+        # to iterate only over equivalence classes and not individual variables.
+        # But then the access-range overlap check below would have to be smarter.
+        eq_class = aliasing_equiv_classes[name]
+
+        readers = set.union(
+                *[rmap.get(eq_name, set()) for eq_name in eq_class])
+        writers = set.union(
+                *[wmap.get(eq_name, set()) for eq_name in eq_class])
+        unaliased_readers = rmap.get(name, set())
+        unaliased_writers = wmap.get(name, set())
+
+        if not writers:
+            continue
+
+        if name in kernel.temporary_variables:
+            scope = kernel.temporary_variables[name].scope
+        else:
+            arg = kernel.arg_dict[name]
+            if isinstance(arg, GlobalArg):
+                scope = temp_var_scope.GLOBAL
+            elif isinstance(arg, ValueArg):
+                scope = temp_var_scope.PRIVATE
+            else:
+                # No need to consider ConstantArg and ImageArg (for now)
+                # because those won't be written.
+                raise ValueError("could not determine scope of '%s'" % name)
+
+        # Check even for PRIVATE scope, to ensure intentional program order.
+
+        from loopy.symbolic import do_access_ranges_overlap_conservative
+
+        for writer_id in writers:
+            for other_id in readers | writers:
+                if writer_id == other_id:
+                    continue
+
+                writer = kernel.id_to_insn[writer_id]
+                other = kernel.id_to_insn[other_id]
+
+                has_dependency_relationship = (
+                        declares_nosync_with(kernel, scope, other, writer)
+                        or
+                        depfind(writer_id, other_id)
+                        or
+                        depfind(other_id, writer_id)
+                        )
+
+                if has_dependency_relationship:
+                    continue
+
+                is_relationship_by_aliasing = not (
+                        writer_id in unaliased_writers
+                        and (other_id in unaliased_writers
+                            or other_id in unaliased_readers))
+
+                # Do not enforce ordering for disjoint access ranges
+                if (not is_relationship_by_aliasing
+                        and not do_access_ranges_overlap_conservative(
+                            kernel, writer_id, "w", other_id, "any",
+                            name)):
+                    continue
+
+                # Do not enforce ordering for aliasing-based relationships
+                # in different groups.
+                if (is_relationship_by_aliasing and (
+                        bool(writer.groups & other.conflicts_with_groups)
+                        or
+                        bool(other.groups & writer.conflicts_with_groups))):
+                    continue
+
+                msg = ("No dependency relationship found between "
+                        "'{writer_id}' which writes {var} and "
+                        "'{other_id}' which also accesses {var}. "
+                        "Either add a (possibly indirect) dependency "
+                        "between the two, or add them to each others' nosync "
+                        "set to indicate that no ordering is intended, or "
+                        "turn off this check by setting the "
+                        "'enforce_variable_access_ordered' option "
+                        "(more issues of this type may exist--only reporting "
+                        "the first one)"
+                        .format(
+                            writer_id=writer_id,
+                            other_id=other_id,
+                            var=(
+                                "the variable '%s'" % name
+                                if len(eq_class) == 1
+                                else (
+                                    "the aliasing equivalence class '%s'"
+                                    % ", ".join(eq_class))
+                                )))
+
+                from loopy.diagnostic import VariableAccessNotOrdered
+                raise VariableAccessNotOrdered(msg)
+
+    logger.debug("%s: check_variable_access_ordered: done" % kernel.name)
+
+
+def check_variable_access_ordered(kernel):
+    """Checks that between each write to a variable and all other accesses to
+    the variable there is either:
+
+    * an (at least indirect) depdendency edge, or
+    * an explicit statement that no ordering is necessary (expressed
+      through a bi-directional :attr:`loopy.Instruction.no_sync_with`)
+    """
+
+    if kernel.options.enforce_variable_access_ordered not in [
+            "no_check",
+            True,
+            False]:
+        raise LoopyError("invalid value for option "
+                "'enforce_variable_access_ordered': %s"
+                % kernel.options.enforce_variable_access_ordered)
+
+    if kernel.options.enforce_variable_access_ordered == "no_check":
+        return
+
+    if kernel.options.enforce_variable_access_ordered:
+        _check_variable_access_ordered_inner(kernel)
+    else:
+        from loopy.diagnostic import VariableAccessNotOrdered
+        try:
+            _check_variable_access_ordered_inner(kernel)
+        except VariableAccessNotOrdered as e:
+            from loopy.diagnostic import warn_with_kernel
+            warn_with_kernel(kernel, "variable_access_ordered", str(e))
+
+# }}}
+
+# }}}
+
+
 def pre_schedule_checks(kernel):
     try:
         logger.debug("%s: pre-schedule check: start" % kernel.name)
@@ -397,6 +607,7 @@ def pre_schedule_checks(kernel):
         check_bounds(kernel)
         check_write_destinations(kernel)
         check_has_schedulable_iname_nesting(kernel)
+        check_variable_access_ordered(kernel)
 
         logger.debug("%s: pre-schedule check: done" % kernel.name)
     except KeyboardInterrupt:

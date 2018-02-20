@@ -1666,7 +1666,7 @@ def _is_wildcard(s):
     return any(c in s for c in WILDCARD_SYMBOLS)
 
 
-def _resolve_dependencies(knl, insn, deps):
+def _resolve_dependencies(what, knl, insn, deps):
     from loopy import find_instructions
     from loopy.match import MatchExpressionBase
 
@@ -1692,10 +1692,11 @@ def _resolve_dependencies(knl, insn, deps):
                 found_any = True
 
         if not found_any and knl.options.check_dep_resolution:
-            raise LoopyError("instruction '%s' declared a depency on '%s', "
+            raise LoopyError("instruction '%s' declared %s on '%s', "
                     "which did not resolve to any instruction present in the "
                     "kernel '%s'. Set the kernel option 'check_dep_resolution'"
-                    "to False to disable this check." % (insn.id, dep, knl.name))
+                    "to False to disable this check."
+                    % (insn.id, what, dep, knl.name))
 
     for dep_id in new_deps:
         if dep_id not in knl.id_to_insn:
@@ -1710,13 +1711,14 @@ def resolve_dependencies(knl):
 
     for insn in knl.instructions:
         new_insns.append(insn.copy(
-                    depends_on=_resolve_dependencies(knl, insn, insn.depends_on),
-                    no_sync_with=frozenset(
-                        (resolved_insn_id, nosync_scope)
-                        for nosync_dep, nosync_scope in insn.no_sync_with
-                        for resolved_insn_id in
-                        _resolve_dependencies(knl, insn, (nosync_dep,))),
-                    ))
+            depends_on=_resolve_dependencies(
+                "a dependency", knl, insn, insn.depends_on),
+            no_sync_with=frozenset(
+                (resolved_insn_id, nosync_scope)
+                for nosync_dep, nosync_scope in insn.no_sync_with
+                for resolved_insn_id in
+                _resolve_dependencies("nosync", knl, insn, (nosync_dep,))),
+            ))
 
     return knl.copy(instructions=new_insns)
 
@@ -1909,6 +1911,30 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
         will be fixed to *value*. *name* may refer to :ref:`domain-parameters`
         or :ref:`arguments`. See also :func:`loopy.fix_parameters`.
 
+    :arg lang_version: The language version against which the kernel was
+        written, a tuple. To ensure future compatibility, copy the current value of
+        :data:`loopy.MOST_RECENT_LANGUAGE_VERSION` and pass that value.
+
+        (If you just pass :data:`loopy.MOST_RECENT_LANGUAGE_VERSION` directly,
+        breaking language changes *will* apply to your kernel without asking,
+        likely breaking your code.)
+
+        If not given, this value defaults to version **(2017, 2, 1)** and
+        a warning will be issued.
+
+        To set the kernel version for all :mod:`loopy` kernels in a (Python) source
+        file, you may simply say::
+
+            from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1
+
+        If *lang_version* is not explicitly given, that version value will be used.
+
+        See also :ref:`language-versioning`.
+
+    .. versionchanged:: 2017.2.1
+
+        *lang_version* added.
+
     .. versionchanged:: 2017.2
 
         *fixed_parameters* added.
@@ -1952,6 +1978,56 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
 
     from loopy.options import make_options
     options = make_options(options)
+
+    lang_version = kwargs.pop("lang_version", None)
+    if lang_version is None:
+        # {{{ peek into caller's module to look for LOOPY_KERNEL_LANGUAGE_VERSION
+
+        from loopy.version import LANGUAGE_VERSION_SYMBOLS
+
+        # This *is* gross. But it seems like the right thing interface-wise.
+        import inspect
+        caller_globals = inspect.currentframe().f_back.f_globals
+
+        for ver_sym in LANGUAGE_VERSION_SYMBOLS:
+            try:
+                lang_version = caller_globals[ver_sym]
+                break
+            except KeyError:
+                pass
+
+        # }}}
+
+        import loopy.version
+        version_to_symbol = dict(
+                (getattr(loopy.version, lvs), lvs)
+                for lvs in LANGUAGE_VERSION_SYMBOLS)
+
+        if lang_version is None:
+            from warnings import warn
+            from loopy.diagnostic import LoopyWarning
+            from loopy.version import (
+                    MOST_RECENT_LANGUAGE_VERSION,
+                    FALLBACK_LANGUAGE_VERSION)
+            warn("'lang_version' was not passed to make_kernel(). "
+                    "To avoid this warning, pass "
+                    "lang_version={ver} in this invocation. "
+                    "(Or say 'from loopy.version import "
+                    "{sym_ver}' in "
+                    "the global scope of the calling frame.)"
+                    .format(
+                        ver=MOST_RECENT_LANGUAGE_VERSION,
+                        sym_ver=version_to_symbol[MOST_RECENT_LANGUAGE_VERSION]
+                        ),
+                    LoopyWarning, stacklevel=2)
+
+            lang_version = FALLBACK_LANGUAGE_VERSION
+
+        if lang_version not in version_to_symbol:
+            raise LoopyError("Language version '%s' is not known." % lang_version)
+
+    if lang_version >= (2018, 1):
+        options = options.copy(enforce_variable_access_ordered=True)
 
     if isinstance(silenced_warnings, str):
         silenced_warnings = silenced_warnings.split(";")

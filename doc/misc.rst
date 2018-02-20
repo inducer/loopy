@@ -90,7 +90,9 @@ regarding OpenCL drivers.
 User-visible Changes
 ====================
 
-Version 2017.2
+See also :ref:`language-versioning`.
+
+Version 2018.1
 --------------
 .. note::
 
@@ -341,6 +343,41 @@ This list is always growing, but here are a few pointers:
 * Loop collapse
 
   Use :func:`loopy.join_inames`.
+
+In what sense does Loopy suport vectorization?
+----------------------------------------------
+
+There are really two ways in which the OpenCL/CUDA model of computation exposes
+vectorization:
+
+* "SIMT": The user writes scalar program instances and either the compiler or
+  the hardware joins the individual program instances into vectors of a
+  hardware-given length for execution.
+
+* "Short vectors": This type of vectorization is based on vector types,
+  e.g. ``float4``, which support arithmetic with implicit vector semantics
+  as well as a number of 'intrinsic' functions.
+
+Loopy suports both. The first one, SIMT, is accessible by tagging inames with,
+e.g., ``l.0```. Accessing the second one requires using both execution- and
+data-reshaping capabilities in loopy. To start with, you need an array that
+has an axis with the length of the desired vector. If that's not yet available,
+you may use :func:`loopy.split_array_axis` to produce one. Similarly, you need
+an iname whose bounds match those of the desired vector length. Again, if you
+don't already have one, :func:`loopy.split_iname` will easily produce one.
+Lastly, both the array axis an the iname need the implementation tag ``"vec"``.
+Here is an example of this machinery in action:
+
+.. literalinclude:: ../examples/python/vector-types.py
+    :language: python
+
+Note how the example slices off the last 'slab' of iterations to ensure that
+the bulk of the iteration does not require conditionals which would prevent
+successful vectorization. This generates the following code:
+
+.. literalinclude:: ../examples/python/vector-types.cl
+    :language: c
+
 
 Uh-oh. I got a scheduling error. Any hints?
 -------------------------------------------

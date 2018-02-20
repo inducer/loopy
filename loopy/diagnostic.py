@@ -115,6 +115,10 @@ class LoopyTypeError(LoopyError):
 class ExpressionNotAffineError(LoopyError):
     pass
 
+
+class VariableAccessNotOrdered(LoopyError):
+    pass
+
 # }}}
 
 

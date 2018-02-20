@@ -65,6 +65,8 @@ from loopy.library.reduction import register_reduction_parser
 
 # {{{ import transforms
 
+from loopy.version import VERSION, MOST_RECENT_LANGUAGE_VERSION
+
 from loopy.transform.iname import (
         set_loop_priority, prioritize_loops,
         split_iname, chunk_iname, join_inames, tag_inames, duplicate_inames,
@@ -170,6 +172,8 @@ __all__ = [
         "make_kernel", "UniqueName",
 
         "register_reduction_parser",
+
+        "VERSION", "MOST_RECENT_LANGUAGE_VERSION",
 
         # {{{ transforms
 

@@ -62,6 +62,9 @@ def check_float4(result, ref_result):
                 ref_result[comp], result[comp], rtol=1e-3, atol=1e-3), None
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 def test_axpy(ctx_factory):
     logging.basicConfig(level="INFO")
     ctx = ctx_factory()

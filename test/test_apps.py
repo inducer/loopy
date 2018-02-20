@@ -49,6 +49,9 @@ __all__ = [
         ]
 
 
+from loopy.version import LOOPY_USE_LANGUAGE_VERSION_2018_1  # noqa
+
+
 # {{{ convolutions
 
 def test_convolution(ctx_factory):
@@ -194,7 +197,7 @@ def test_rob_stroud_bernstein(ctx_factory):
 
                     for alpha2
                         tmp[el,alpha1,i2] = tmp[el,alpha1,i2] + w * coeffs[aind] \
-                                {id=write_tmp}
+                                {id=write_tmp,dep=init_w:aind_init}
                         w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
                                 {id=update_w,dep=init_w:write_tmp}
                         aind = aind + 1 \
@@ -255,7 +258,7 @@ def test_rob_stroud_bernstein_full(ctx_factory):
                     <> w = s**(deg-alpha1) {id=init_w}
 
                     <> tmp[alpha1,i2] = tmp[alpha1,i2] + w * coeffs[aind] \
-                            {id=write_tmp}
+                            {id=write_tmp,dep=init_w:aind_init}
                     for alpha2
                         w = w * r * ( deg - alpha1 - alpha2 ) / (1 + alpha2) \
                             {id=update_w,dep=init_w:write_tmp}
@@ -269,15 +272,16 @@ def test_rob_stroud_bernstein_full(ctx_factory):
                 <> xi2 = qpts[0, i1_2] {dep=aind_incr}
                 <> s2 = 1-xi2
                 <> r2 = xi2/s2
-                <> w2 = s2**deg
+                <> w2 = s2**deg  {id=w2_init}
 
                 for alpha1_2
                     for i2_2
                         result[el, i1_2, i2_2] = result[el, i1_2, i2_2] + \
-                                w2 * tmp[alpha1_2, i2_2]
+                                w2 * tmp[alpha1_2, i2_2]  {id=res2,dep=w2_init}
                     end
 
-                    w2 = w2 * r2 * (deg-alpha1_2) / (1+alpha1_2)
+                    w2 = w2 * r2 * (deg-alpha1_2) / (1+alpha1_2)  \
+                            {id=w2_update, dep=res2}
                 end
             end
         end

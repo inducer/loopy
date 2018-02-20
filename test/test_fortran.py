@@ -405,14 +405,10 @@ def test_fuse_kernels(ctx_factory):
             fortran_template.format(
                 inner=(xd_line + "\n" + yd_line), name="xyderiv"))
 
-    knl = lp.fuse_kernels((xderiv, yderiv))
+    knl = lp.fuse_kernels((xderiv, yderiv), data_flow=[("result", 0, 1)])
     knl = lp.prioritize_loops(knl, "e,i,j,k")
 
     assert len(knl.temporary_variables) == 2
-
-    # This is needed for correctness, otherwise ordering could foul things up.
-    knl = lp.assignment_to_subst(knl, "prev")
-    knl = lp.assignment_to_subst(knl, "prev_0")
 
     ctx = ctx_factory()
     lp.auto_test_vs_ref(xyderiv, ctx, knl, parameters=dict(nelements=20, ndofs=4))
