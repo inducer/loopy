@@ -460,7 +460,7 @@ def stringify_stats_mapping(m):
 
 class CountGranularity:
     """Strings specifying whether an operation should be counted once per
-    *work-item*, *sub-group*, or *group*.
+    *work-item*, *sub-group*, or *work-group*.
 
     .. attribute :: WORKITEM
 
@@ -472,15 +472,15 @@ class CountGranularity:
        A :class:`str` that specifies that an operation should be counted
        once per *sub-group*.
 
-    .. attribute :: GROUP
+    .. attribute :: WORKGROUP
 
        A :class:`str` that specifies that an operation should be counted
-       once per *group*.
+       once per *work-group*.
 
     """
     WORKITEM = "workitem"
     SUBGROUP = "subgroup"
-    GROUP = "group"
+    WORKGROUP = "workgroup"
 
 
 # {{{ Op descriptor
@@ -501,11 +501,11 @@ class Op(Record):
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
-       once per *work-item*, *sub-group*, or *group*. A work-item is a single
-       instance of computation executing on a single processor (think
+       once per *work-item*, *sub-group*, or *work-group*. A work-item is a
+       single instance of computation executing on a single processor (think
        'thread'), a collection of which may be grouped together into a
        work-group. Each work-group executes on a single compute unit with all
-       work-items within the group sharing local memory. A sub-group is an
+       work-items within the work-group sharing local memory. A sub-group is an
        implementation-dependent grouping of work-items within a work-group,
        analagous to an NVIDIA CUDA warp.
 
@@ -513,7 +513,7 @@ class Op(Record):
 
     count_granularity_options = [CountGranularity.WORKITEM,
                                  CountGranularity.SUBGROUP,
-                                 CountGranularity.GROUP,
+                                 CountGranularity.WORKGROUP,
                                  None]
 
     def __init__(self, dtype=None, name=None, count_granularity=None):
@@ -572,11 +572,11 @@ class MemAccess(Record):
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
-       once per *work-item*, *sub-group*, or *group*. A work-item is a single
-       instance of computation executing on a single processor (think
+       once per *work-item*, *sub-group*, or *work-group*. A work-item is a
+       single instance of computation executing on a single processor (think
        'thread'), a collection of which may be grouped together into a
        work-group. Each work-group executes on a single compute unit with all
-       work-items within the group sharing local memory. A sub-group is an
+       work-items within the work-group sharing local memory. A sub-group is an
        implementation-dependent grouping of work-items within a work-group,
        analagous to an NVIDIA CUDA warp.
 
@@ -584,7 +584,7 @@ class MemAccess(Record):
 
     count_granularity_options = [CountGranularity.WORKITEM,
                                  CountGranularity.SUBGROUP,
-                                 CountGranularity.GROUP,
+                                 CountGranularity.WORKGROUP,
                                  None]
 
     def __init__(self, mtype=None, dtype=None, stride=None, direction=None,
@@ -1461,31 +1461,31 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                 knl, insn, disregard_local_axes=True,
                 count_redundant_work=count_redundant_work)
 
-        if count_granularity == CountGranularity.GROUP:
+        if count_granularity == CountGranularity.WORKGROUP:
             return ct_disregard_local
         elif count_granularity == CountGranularity.SUBGROUP:
             # get the group size
             from loopy.symbolic import aff_to_expr
             _, local_size = knl.get_grid_size_upper_bounds()
-            group_size = 1
+            workgroup_size = 1
             if local_size:
                 for size in local_size:
                     s = aff_to_expr(size)
                     if not isinstance(s, int):
                         raise LoopyError("Cannot count insn with %s granularity, "
-                                         "group size is not integer: %s"
+                                         "work-group size is not integer: %s"
                                          % (CountGranularity.SUBGROUP, local_size))
-                    group_size *= s
+                    workgroup_size *= s
 
             warn_with_kernel(knl, "insn_count_subgroups_upper_bound",
                     "get_insn_count: when counting instruction %s with "
-                    "count_granularity=%s, using upper bound for group size "
-                    "(%d work-items) to compute sub-groups per group. When multiple "
-                    "device programs present, actual sub-group count may be lower."
-                    % (insn_id, CountGranularity.SUBGROUP, group_size))
+                    "count_granularity=%s, using upper bound for work-group size "
+                    "(%d work-items) to compute sub-groups per work-group. When "
+                    "multiple device programs present, actual sub-group count may be"
+                    "lower." % (insn_id, CountGranularity.SUBGROUP, workgroup_size))
 
             from pytools import div_ceil
-            return ct_disregard_local*div_ceil(group_size, subgroup_size)
+            return ct_disregard_local*div_ceil(workgroup_size, subgroup_size)
         else:
             # this should not happen since this is enforced in MemAccess
             raise ValueError("get_insn_count: count_granularity '%s' is"
