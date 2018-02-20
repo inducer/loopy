@@ -1636,7 +1636,7 @@ we'll continue using the kernel from the previous example:
 
 .. doctest::
 
-    >>> mem_map = lp.get_mem_access_map(knl)
+    >>> mem_map = lp.get_mem_access_map(knl, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
     MemAccess(global, np:dtype('float32'), 0, load, a, subgroup) : [m, l, n] -> { 2 * m * l * n : m > 0 and l > 0 and n > 0 }
     MemAccess(global, np:dtype('float32'), 0, load, b, subgroup) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
@@ -1729,7 +1729,7 @@ resulting :class:`islpy.PwQPolynomial` will be more complicated this time.
 
     >>> knl_consec = lp.split_iname(knl, "k", 128,
     ...                             outer_tag="l.1", inner_tag="l.0")
-    >>> mem_map = lp.get_mem_access_map(knl_consec)
+    >>> mem_map = lp.get_mem_access_map(knl_consec, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
     MemAccess(global, np:dtype('float32'), 1, load, a, workitem) : [m, l, n] -> { ... }
     MemAccess(global, np:dtype('float32'), 1, load, b, workitem) : [m, l, n] -> { ... }
@@ -1770,7 +1770,7 @@ switch the inner and outer tags in our parallelization of the kernel:
 
     >>> knl_nonconsec = lp.split_iname(knl, "k", 128,
     ...                                outer_tag="l.0", inner_tag="l.1")
-    >>> mem_map = lp.get_mem_access_map(knl_nonconsec)
+    >>> mem_map = lp.get_mem_access_map(knl_nonconsec, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
     MemAccess(global, np:dtype('float32'), 128, load, a, workitem) : [m, l, n] -> { ... }
     MemAccess(global, np:dtype('float32'), 128, load, b, workitem) : [m, l, n] -> { ... }
