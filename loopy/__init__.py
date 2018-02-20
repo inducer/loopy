@@ -239,8 +239,8 @@ __all__ = [
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
-        "ToCountMap", "stringify_stats_mapping", "Op", "MemAccess",
-        "get_op_poly", "get_op_map", "get_lmem_access_poly",
+        "ToCountMap", "CountGranularity", "stringify_stats_mapping", "Op",
+        "MemAccess", "get_op_poly", "get_op_map", "get_lmem_access_poly",
         "get_DRAM_access_poly", "get_gmem_access_poly", "get_mem_access_map",
         "get_synchronization_poly", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
