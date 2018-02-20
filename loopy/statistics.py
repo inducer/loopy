@@ -501,7 +501,7 @@ class Op(Record):
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
-       once per *workitem*, *subgroup*, or *group*.
+       once per *work-item*, *sub-group*, or *group*.
 
     """
 
@@ -566,7 +566,7 @@ class MemAccess(Record):
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
-       once per *workitem*, *subgroup*, or *group*.
+       once per *work-item*, *sub-group*, or *group*.
 
     """
 
@@ -1323,7 +1323,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
     :arg subgroup_size: A :class:`int` that specifies the sub-group size. This
         is used, e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. The default
-        subgroup_size is 32.
+        sub-group_size is 32.
 
     :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
         :class:`islpy.PwQPolynomial` **}**.
@@ -1380,12 +1380,35 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
     """
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
 
-    if subgroup_size is None:
-        subgroup_size = 32
-        warn_with_kernel(knl, "get_mem_access_map_assumes_subgroup_size",
-                         "get_mem_access_map: No subgroup size passed, "
-                         "assuming subgroup size is %d."
-                         % (subgroup_size))
+    if not isinstance(subgroup_size, int):
+        # try to find subgroup_size
+        from loopy.target.pyopencl import PyOpenCLTarget
+        if isinstance(knl.target, PyOpenCLTarget) and knl.target.device is not None:
+            from pyopencl.characterize import get_simd_group_size
+            subgroup_size_guess = get_simd_group_size(knl.target.device, None)
+            warn_with_kernel(knl, "get_mem_access_map_assumes_subgroup_size",
+                             "subgroup_size passed: %s. Device: %s. Using "
+                             "sub-group size given by get_simd_group_size(): %d"
+                             % (subgroup_size, knl.target.device,
+                                subgroup_size_guess))
+            subgroup_size = subgroup_size_guess
+        elif subgroup_size == 'guess':
+            # unable to get subgroup_size from device, so guess
+            subgroup_size = 32
+            warn_with_kernel(knl, "get_mem_access_map_guessing_subgroup_size",
+                             "get_mem_access_map: 'guess' sub-group size passed, "
+                             "no target device found, wildly guessing that "
+                             "sub-group size is %d."
+                             % (subgroup_size))
+
+        if subgroup_size is None:
+            # 'guess' was not passed and either no target device found
+            # or get_simd_group_size returned None
+            raise ValueError("No sub-group size passed and no target device found. "
+                             "Either (1) pass integer value for subgroup_size, "
+                             "(2) ensure that kernel.target is PyOpenClTarget "
+                             "and kernel.target.device is set, or (3) pass "
+                             "subgroup_size='guess' and hope for the best.")
 
     class CacheHolder(object):
         pass
@@ -1432,8 +1455,8 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
             warn_with_kernel(knl, "insn_count_subgroups_upper_bound",
                     "get_insn_count: when counting instruction %s with "
                     "count_granularity=%s, using upper bound for group size "
-                    "(%d workitems) to compute subgroups per group. When multiple "
-                    "device programs present, actual subgroup count may be lower."
+                    "(%d work-items) to compute sub-groups per group. When multiple "
+                    "device programs present, actual sub-group count may be lower."
                     % (insn_id, CountGranularity.SUBGROUP, group_size))
 
             from pytools import div_ceil

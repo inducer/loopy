@@ -645,7 +645,8 @@ def test_mem_access_counter_nonconsec():
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)  # noqa
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=32)  # noqa
     n = 512
     m = 256
     ell = 128
@@ -735,7 +736,8 @@ def test_mem_access_counter_consec():
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size='guess')
     n = 512
     m = 256
     ell = 128
@@ -889,13 +891,14 @@ def test_all_counters_parallel_matmul():
 
     assert f32mul+f32add == n*m*ell*2
 
-    op_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+    mem_access_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                           subgroup_size=32)
 
-    f32s1lb = op_map[lp.MemAccess('global', np.float32,
+    f32s1lb = mem_access_map[lp.MemAccess('global', np.float32,
                      stride=1, direction='load', variable='b',
                      count_granularity=cg.WORKITEM)
                      ].eval_with_dict(params)
-    f32s1la = op_map[lp.MemAccess('global', np.float32,
+    f32s1la = mem_access_map[lp.MemAccess('global', np.float32,
                      stride=1, direction='load', variable='a',
                      count_granularity=cg.WORKITEM)
                      ].eval_with_dict(params)
@@ -903,7 +906,7 @@ def test_all_counters_parallel_matmul():
     assert f32s1lb == n*m*ell/bsize
     assert f32s1la == n*m*ell/bsize
 
-    f32coal = op_map[lp.MemAccess('global', np.float32,
+    f32coal = mem_access_map[lp.MemAccess('global', np.float32,
                      stride=1, direction='store', variable='c',
                      count_granularity=cg.WORKITEM)
                      ].eval_with_dict(params)
@@ -911,7 +914,8 @@ def test_all_counters_parallel_matmul():
     assert f32coal == n*ell
 
     local_mem_map = lp.get_mem_access_map(knl,
-                        count_redundant_work=True).filter_by(mtype=['local'])
+                        count_redundant_work=True,
+                        subgroup_size=32).filter_by(mtype=['local'])
     local_mem_l = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
                                              direction='load',
                                              count_granularity=cg.WORKITEM)
