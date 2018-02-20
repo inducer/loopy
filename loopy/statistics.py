@@ -208,13 +208,13 @@ class ToCountMap(object):
     def filter_by(self, **kwargs):
         """Remove items without specified key fields.
 
-        :arg kwargs: Keyword arguments matching fields in the keys of
-                 the :class:`ToCountMap`, each given a list of
-                 allowable values for that key field.
+        :arg kwargs: Keyword arguments matching fields in the keys of the
+            :class:`ToCountMap`, each given a list of allowable values for that
+            key field.
 
         :return: A :class:`ToCountMap` containing the subset of the items in
-                 the original :class:`ToCountMap` that match the field values
-                 passed.
+            the original :class:`ToCountMap` that match the field values
+            passed.
 
         Example usage::
 
@@ -256,11 +256,11 @@ class ToCountMap(object):
     def filter_by_func(self, func):
         """Keep items that pass a test.
 
-        :arg func: A function that takes a map key a parameter and
-             returns a :class:`bool`.
+        :arg func: A function that takes a map key a parameter and returns a
+            :class:`bool`.
 
-        :arg: A :class:`ToCountMap` containing the subset of the items in
-                 the original :class:`ToCountMap` for which func(key) is true.
+        :arg: A :class:`ToCountMap` containing the subset of the items in the
+            original :class:`ToCountMap` for which func(key) is true.
 
         Example usage::
 
@@ -289,13 +289,13 @@ class ToCountMap(object):
 
     def group_by(self, *args):
         """Group map items together, distinguishing by only the key fields
-           passed in args.
+        passed in args.
 
         :arg args: Zero or more :class:`str` fields of map keys.
 
-        :return: A :class:`ToCountMap` containing the same total counts
-                 grouped together by new keys that only contain the fields
-                 specified in the arguments passed.
+        :return: A :class:`ToCountMap` containing the same total counts grouped
+            together by new keys that only contain the fields specified in the
+            arguments passed.
 
         Example usage::
 
@@ -363,8 +363,8 @@ class ToCountMap(object):
         """Convert counts to bytes using data type in map key.
 
         :return: A :class:`ToCountMap` mapping each original key to a
-                 :class:`islpy.PwQPolynomial` with counts in bytes rather than
-                 instances.
+            :class:`islpy.PwQPolynomial` with counts in bytes rather than
+            instances.
 
         Example usage::
 
@@ -404,8 +404,8 @@ class ToCountMap(object):
     def sum(self):
         """Add all counts in ToCountMap.
 
-        :return: A :class:`islpy.PwQPolynomial` or :class:`int` containing the sum of
-                 counts.
+        :return: A :class:`islpy.PwQPolynomial` or :class:`int` containing the
+            sum of counts.
 
         """
 
@@ -431,7 +431,7 @@ class ToCountMap(object):
         parameter dict.
 
         :return: An :class:`int` containing the sum of all counts in the
-                 :class:`ToCountMap` evaluated with the parameters provided.
+            :class:`ToCountMap` evaluated with the parameters provided.
 
         Example usage::
 
@@ -502,11 +502,12 @@ class Op(Record):
 
        A :class:`str` that specifies whether this operation should be counted
        once per *work-item*, *sub-group*, or *group*. A work-item is a single
-       instance of computation executing on a single processor (think 'thread'),
-       a collection of which may be grouped together into a work-group. Each
-       work-group executes on a single compute unit with all work-items within
-       the group sharing local memory. A sub-group is an implementation-dependent
-       grouping of work-items within a work-group, analagous to an NVIDIA CUDA warp.
+       instance of computation executing on a single processor (think
+       'thread'), a collection of which may be grouped together into a
+       work-group. Each work-group executes on a single compute unit with all
+       work-items within the group sharing local memory. A sub-group is an
+       implementation-dependent grouping of work-items within a work-group,
+       analagous to an NVIDIA CUDA warp.
 
     """
 
@@ -555,8 +556,8 @@ class MemAccess(Record):
 
     .. attribute:: stride
 
-       An :class:`int` that specifies stride of the memory access. A stride of 0
-       indicates a uniform access (i.e. all work-items access the same item).
+       An :class:`int` that specifies stride of the memory access. A stride of
+       0 indicates a uniform access (i.e. all work-items access the same item).
 
     .. attribute:: direction
 
@@ -1229,15 +1230,15 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     :arg knl: A :class:`loopy.LoopKernel` whose operations are to be counted.
 
-    :arg numpy_types: A :class:`bool` specifying whether the types
-         in the returned mapping should be numpy types
-         instead of :class:`loopy.LoopyType`.
+    :arg numpy_types: A :class:`bool` specifying whether the types in the
+        returned mapping should be numpy types instead of
+        :class:`loopy.LoopyType`.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`
         flag indicates whether this work should be included in the count.
-        (Likely desirable for performance modeling, but undesirable for
-        code optimization.)
+        (Likely desirable for performance modeling, but undesirable for code
+        optimization.)
 
     :return: A :class:`ToCountMap` of **{** :class:`Op` **:**
         :class:`islpy.PwQPolynomial` **}**.
@@ -1315,9 +1316,9 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
     :arg knl: A :class:`loopy.LoopKernel` whose memory accesses are to be
         counted.
 
-    :arg numpy_types: A :class:`bool` specifying whether the types
-        in the returned mapping should be numpy types
-        instead of :class:`loopy.LoopyType`.
+    :arg numpy_types: A :class:`bool` specifying whether the types in the
+        returned mapping should be numpy types instead of
+        :class:`loopy.LoopyType`.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`
@@ -1325,25 +1326,26 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         (Likely desirable for performance modeling, but undesirable for
         code optimization.)
 
-    :arg subgroup_size: A :class:`int` that specifies the sub-group size. An OpenCL
-        sub-group is an implementation-dependent grouping of work-items within a
-        work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used, e.g.,
-        when counting a :class:`MemAccess` whose count_granularity specifies that it
-        should only be counted once per sub-group. If set to None an attempt to find
-        the sub-group size using the device will be made. A :class:`string` 'guess'
-        may also be passed as the subgroup_size, in which case get_mem_access_map
-        will attempt to find the sub-group sizeusing the device and, if
-        unsuccessful, will make a wild guess.
+    :arg subgroup_size: A :class:`int` that specifies the sub-group size. An
+        OpenCL sub-group is an implementation-dependent grouping of work-items
+        within a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is
+        used, e.g., when counting a :class:`MemAccess` whose count_granularity
+        specifies that it should only be counted once per sub-group. If set to
+        None an attempt to find the sub-group size using the device will be
+        made. A :class:`string` 'guess' may also be passed as the
+        subgroup_size, in which case get_mem_access_map will attempt to find
+        the sub-group sizeusing the device and, if unsuccessful, will make a
+        wild guess.
 
     :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
         :class:`islpy.PwQPolynomial` **}**.
 
-        - The :class:`MemAccess` specifies the characteristics of the
-          memory access.
+        - The :class:`MemAccess` specifies the characteristics of the memory
+          access.
 
-        - The :class:`islpy.PwQPolynomial` holds the number of memory
-          accesses with the characteristics specified in the key (in terms
-          of the :class:`loopy.LoopKernel` *inames*).
+        - The :class:`islpy.PwQPolynomial` holds the number of memory accesses
+          with the characteristics specified in the key (in terms of the
+          :class:`loopy.LoopKernel` *inames*).
 
     Example usage::
 
@@ -1547,17 +1549,16 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
 def get_synchronization_map(knl, subgroup_size=None):
 
-    """Count the number of synchronization events each work-item encounters in a
-    loopy kernel.
+    """Count the number of synchronization events each work-item encounters in
+    a loopy kernel.
 
     :arg knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
     :return: A dictionary mapping each type of synchronization event to a
-            :class:`islpy.PwQPolynomial` holding the number of events per
-            work-item.
+        :class:`islpy.PwQPolynomial` holding the number of events per work-item.
 
-            Possible keys include ``barrier_local``, ``barrier_global``
-            (if supported by the target) and ``kernel_launch``.
+        Possible keys include ``barrier_local``, ``barrier_global``
+        (if supported by the target) and ``kernel_launch``.
 
     Example usage::
 
@@ -1626,14 +1627,14 @@ def get_synchronization_map(knl, subgroup_size=None):
 # {{{ gather_access_footprints
 
 def gather_access_footprints(kernel, ignore_uncountable=False):
-    """Return a dictionary mapping ``(var_name, direction)``
-    to :class:`islpy.Set` instances capturing which indices
-    of each the array *var_name* are read/written (where
-    *direction* is either ``read`` or ``write``.
+    """Return a dictionary mapping ``(var_name, direction)`` to
+    :class:`islpy.Set` instances capturing which indices of each the array
+    *var_name* are read/written (where *direction* is either ``read`` or
+    ``write``.
 
-    :arg ignore_uncountable: If *False*, an error will be raised for
-        accesses on which the footprint cannot be determined (e.g.
-        data-dependent or nonlinear indices)
+    :arg ignore_uncountable: If *False*, an error will be raised for accesses
+        on which the footprint cannot be determined (e.g. data-dependent or
+        nonlinear indices)
     """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
@@ -1685,9 +1686,9 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
     read/written (where *direction* is either ``read`` or ``write`` on array
     *var_name*
 
-    :arg ignore_uncountable: If *True*, an error will be raised for
-        accesses on which the footprint cannot be determined (e.g.
-        data-dependent or nonlinear indices)
+    :arg ignore_uncountable: If *True*, an error will be raised for accesses on
+        which the footprint cannot be determined (e.g. data-dependent or
+        nonlinear indices)
     """
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
@@ -1763,8 +1764,8 @@ def get_gmem_access_poly(knl):
 
 
 def get_synchronization_poly(knl):
-    """Count the number of synchronization events each work-item encounters in a
-    loopy kernel.
+    """Count the number of synchronization events each work-item encounters in
+    a loopy kernel.
 
     get_synchronization_poly is deprecated. Use get_synchronization_map instead.
 
