@@ -337,7 +337,7 @@ class TypeInferenceMapper(CombineMapper):
         if fields is None:
             raise LoopyError("cannot look up attribute '%s' in "
                     "non-aggregate expression '%s'"
-                    % (expr.aggregate, expr.name))
+                    % (expr.name, expr.aggregate))
 
         try:
             field = fields[expr.name]
