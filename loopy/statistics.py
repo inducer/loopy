@@ -572,7 +572,13 @@ class MemAccess(Record):
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
-       once per *work-item*, *sub-group*, or *group*.
+       once per *work-item*, *sub-group*, or *group*. A work-item is a single
+       instance of computation executing on a single processor (think
+       'thread'), a collection of which may be grouped together into a
+       work-group. Each work-group executes on a single compute unit with all
+       work-items within the group sharing local memory. A sub-group is an
+       implementation-dependent grouping of work-items within a work-group,
+       analagous to an NVIDIA CUDA warp.
 
     """
 
@@ -1240,6 +1246,13 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         (Likely desirable for performance modeling, but undesirable for code
         optimization.)
 
+    :arg subgroup_size: (currently unused) A :class:`int` that specifies the
+        sub-group size. An OpenCL sub-group is an implementation-dependent
+        grouping of work-items within a work-group, analagous to an NVIDIA CUDA
+        warp. subgroup_size is used, e.g., when counting a :class:`MemAccess`
+        whose count_granularity specifies that it should only be counted once
+        per sub-group.
+
     :return: A :class:`ToCountMap` of **{** :class:`Op` **:**
         :class:`islpy.PwQPolynomial` **}**.
 
@@ -1553,6 +1566,13 @@ def get_synchronization_map(knl, subgroup_size=None):
     a loopy kernel.
 
     :arg knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
+
+    :arg subgroup_size: (currently unused) A :class:`int` that specifies the
+        sub-group size. An OpenCL sub-group is an implementation-dependent
+        grouping of work-items within a work-group, analagous to an NVIDIA CUDA
+        warp. subgroup_size is used, e.g., when counting a :class:`MemAccess`
+        whose count_granularity specifies that it should only be counted once
+        per sub-group.
 
     :return: A dictionary mapping each type of synchronization event to a
         :class:`islpy.PwQPolynomial` holding the number of events per work-item.
