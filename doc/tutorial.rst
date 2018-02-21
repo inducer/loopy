@@ -1578,12 +1578,13 @@ One way to evaluate these polynomials is with :func:`islpy.eval_with_dict`:
 .. doctest::
 
     >>> param_dict = {'n': 256, 'm': 256, 'l': 8}
-    >>> f32add = op_map[lp.Op(np.float32, 'add', 'workitem')].eval_with_dict(param_dict)
-    >>> f32div = op_map[lp.Op(np.float32, 'div', 'workitem')].eval_with_dict(param_dict)
-    >>> f32mul = op_map[lp.Op(np.float32, 'mul', 'workitem')].eval_with_dict(param_dict)
-    >>> f64add = op_map[lp.Op(np.float64, 'add', 'workitem')].eval_with_dict(param_dict)
-    >>> f64mul = op_map[lp.Op(np.float64, 'mul', 'workitem')].eval_with_dict(param_dict)
-    >>> i32add = op_map[lp.Op(np.int32, 'add', 'workitem')].eval_with_dict(param_dict)
+    >>> from loopy.statistics import CountGranularity as CG
+    >>> f32add = op_map[lp.Op(np.float32, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f32div = op_map[lp.Op(np.float32, 'div', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f32mul = op_map[lp.Op(np.float32, 'mul', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f64add = op_map[lp.Op(np.float64, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> f64mul = op_map[lp.Op(np.float64, 'mul', CG.WORKITEM)].eval_with_dict(param_dict)
+    >>> i32add = op_map[lp.Op(np.int32, 'add', CG.WORKITEM)].eval_with_dict(param_dict)
     >>> print("%i\n%i\n%i\n%i\n%i\n%i" %
     ...     (f32add, f32div, f32mul, f64add, f64mul, i32add))
     524288
@@ -1673,13 +1674,13 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 0, 'load', 'g', 'subgroup')
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 0, 'load', 'g', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 0, 'store', 'e', 'subgroup')
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 0, 'store', 'e', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 0, 'load', 'a', 'subgroup')
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 0, 'load', 'a', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 0, 'store', 'c', 'subgroup')
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 0, 'store', 'c', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1754,13 +1755,13 @@ array accesses has not changed:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 1, 'load', 'g', 'workitem')
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 1, 'load', 'g', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 1, 'store', 'e', 'workitem')
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 1, 'store', 'e', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 1, 'load', 'a', 'workitem')
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 1, 'load', 'a', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 1, 'store', 'c', 'workitem')
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 1, 'store', 'c', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1794,13 +1795,13 @@ changed:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 128, 'load', 'g', 'workitem')
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 128, 'load', 'g', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 128, 'store', 'e', 'workitem')
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 128, 'store', 'e', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 128, 'load', 'a', 'workitem')
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 128, 'load', 'a', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 128, 'store', 'c', 'workitem')
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 128, 'store', 'c', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
