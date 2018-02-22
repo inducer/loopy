@@ -1312,6 +1312,20 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 # }}}
 
 
+def _find_subgroup_size_for_knl(knl):
+    from loopy.target.pyopencl import PyOpenCLTarget
+    if isinstance(knl.target, PyOpenCLTarget) and knl.target.device is not None:
+        from pyopencl.characterize import get_simd_group_size
+        subgroup_size_guess = get_simd_group_size(knl.target.device, None)
+        warn_with_kernel(knl, "getting_subgroup_size_from_device",
+                         "Device: %s. Using sub-group size given by "
+                         "pyopencl.characterize.get_simd_group_size(): %d"
+                         % (knl.target.device, subgroup_size_guess))
+        return subgroup_size_guess
+    else:
+        return None
+
+
 # {{{ get_mem_access_map
 
 def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
@@ -1399,33 +1413,35 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     if not isinstance(subgroup_size, int):
         # try to find subgroup_size
-        from loopy.target.pyopencl import PyOpenCLTarget
-        if isinstance(knl.target, PyOpenCLTarget) and knl.target.device is not None:
-            from pyopencl.characterize import get_simd_group_size
-            subgroup_size_guess = get_simd_group_size(knl.target.device, None)
-            warn_with_kernel(knl, "get_mem_access_map_assumes_subgroup_size",
-                             "subgroup_size passed: %s. Device: %s. Using "
-                             "sub-group size given by get_simd_group_size(): %d"
-                             % (subgroup_size, knl.target.device,
-                                subgroup_size_guess))
-            subgroup_size = subgroup_size_guess
-        elif subgroup_size == 'guess':
-            # unable to get subgroup_size from device, so guess
-            subgroup_size = 32
-            warn_with_kernel(knl, "get_mem_access_map_guessing_subgroup_size",
-                             "get_mem_access_map: 'guess' sub-group size passed, "
-                             "no target device found, wildly guessing that "
-                             "sub-group size is %d."
-                             % (subgroup_size))
+        subgroup_size_guess = _find_subgroup_size_for_knl(knl)
 
         if subgroup_size is None:
-            # 'guess' was not passed and either no target device found
-            # or get_simd_group_size returned None
-            raise ValueError("No sub-group size passed and no target device found. "
-                             "Either (1) pass integer value for subgroup_size, "
-                             "(2) ensure that kernel.target is PyOpenClTarget "
-                             "and kernel.target.device is set, or (3) pass "
-                             "subgroup_size='guess' and hope for the best.")
+            if subgroup_size_guess is None:
+                # 'guess' was not passed and either no target device found
+                # or get_simd_group_size returned None
+                raise ValueError("No sub-group size passed and no target device found. "
+                                 "Either (1) pass integer value for subgroup_size, "
+                                 "(2) ensure that kernel.target is PyOpenClTarget "
+                                 "and kernel.target.device is set, or (3) pass "
+                                 "subgroup_size='guess' and hope for the best.")
+            else:
+                subgroup_size = subgroup_size_guess
+
+        elif subgroup_size == 'guess':
+            if subgroup_size_guess is None:
+                # unable to get subgroup_size from device, so guess
+                subgroup_size = 32
+                warn_with_kernel(knl, "get_mem_access_map_guessing_subgroup_size",
+                                 "get_mem_access_map: 'guess' sub-group size passed, "
+                                 "no target device found, wildly guessing that "
+                                 "sub-group size is %d."
+                                 % (subgroup_size))
+            else:
+                subgroup_size = subgroup_size_guess
+        else:
+            raise ValueError("Invalid value for subgroup_size: %s. subgroup_size "
+                             "must be integer, 'guess', or, if you're feeling "
+                             "lucky, None." % (subgroup_size))
 
     class CacheHolder(object):
         pass
