@@ -1351,10 +1351,10 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         used, e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         None an attempt to find the sub-group size using the device will be
-        made. A :class:`string` 'guess' may also be passed as the
-        subgroup_size, in which case get_mem_access_map will attempt to find
-        the sub-group sizeusing the device and, if unsuccessful, will make a
-        wild guess.
+        made, if this fails an error will be raised. A :class:`string` 'guess'
+        may also be passed as the subgroup_size, in which case
+        get_mem_access_map will attempt to find the sub-group size using the
+        device and, if unsuccessful, will make a wild guess.
 
     :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
         :class:`islpy.PwQPolynomial` **}**.
