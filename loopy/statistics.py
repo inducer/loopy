@@ -1419,7 +1419,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
             if subgroup_size_guess is None:
                 # 'guess' was not passed and either no target device found
                 # or get_simd_group_size returned None
-                raise ValueError("No sub-group size passed and no target device found. "
+                raise ValueError("No sub-group size passed, no target device found. "
                                  "Either (1) pass integer value for subgroup_size, "
                                  "(2) ensure that kernel.target is PyOpenClTarget "
                                  "and kernel.target.device is set, or (3) pass "
@@ -1432,10 +1432,9 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                 # unable to get subgroup_size from device, so guess
                 subgroup_size = 32
                 warn_with_kernel(knl, "get_mem_access_map_guessing_subgroup_size",
-                                 "get_mem_access_map: 'guess' sub-group size passed, "
-                                 "no target device found, wildly guessing that "
-                                 "sub-group size is %d."
-                                 % (subgroup_size))
+                                 "get_mem_access_map: 'guess' sub-group size "
+                                 "passed, no target device found, wildly guessing "
+                                 "that sub-group size is %d." % (subgroup_size))
             else:
                 subgroup_size = subgroup_size_guess
         else:
