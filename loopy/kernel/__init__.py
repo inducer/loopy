@@ -815,6 +815,16 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         return result
 
+    @memoize_method
+    def get_unwritten_value_args(self):
+        written_vars = self.get_written_variables()
+
+        from loopy.kernel.data import ValueArg
+        return set(
+                arg.name
+                for arg in self.args
+                if isinstance(arg, ValueArg) and arg.name not in written_vars)
+
     # }}}
 
     # {{{ argument wrangling
