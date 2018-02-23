@@ -378,6 +378,28 @@ successful vectorization. This generates the following code:
 .. literalinclude:: ../examples/python/vector-types.cl
     :language: c
 
+What is the story with language versioning?
+-------------------------------------------
+
+The idea is to keep supporting multiple versions at a time. There's a
+tension in loopy between the need to build code that keeps working
+unchanged for some number of years, and needing the language to
+evolve--not just as a research vehicle, but also to enable to respond
+to emerging needs in applications and hardware.
+
+The idea is not to support all versions indefinitely, merely to allow
+users to upgrade on their own schedule on the scale of a couple years.
+Warnings about needing to upgrade would get noisier as a version nears
+deprecation. In a way, it is intended to be a version of Python's
+`__future__` flags, which IMO have the served the language tremendously
+well.
+
+One can also obtain the current language version programmatically:
+:data:`loopy.MOST_RECENT_LANGUAGE_VERSION`.
+But pinning your code to that would mean choosing to not use the
+potentially valuable guarantee to keep existing code working unchanged
+for a while. Instead, it might be wiser to just grab the version of the
+language current at the time of writing the code.
 
 Uh-oh. I got a scheduling error. Any hints?
 -------------------------------------------
