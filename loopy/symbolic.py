@@ -1337,7 +1337,10 @@ class PwAffEvaluationMapper(EvaluationMapperBase, IdentityMapperMixin):
         return num.mod_val(denom)
 
 
-def aff_from_expr(space, expr, vars_to_zero=frozenset()):
+def aff_from_expr(space, expr, vars_to_zero=None):
+    if vars_to_zero is None:
+        vars_to_zero = frozenset()
+
     pwaff = pwaff_from_expr(space, expr, vars_to_zero).coalesce()
 
     pieces = pwaff.get_pieces()
@@ -1349,8 +1352,44 @@ def aff_from_expr(space, expr, vars_to_zero=frozenset()):
                 "non-piecewise quasi-affine expression" % expr)
 
 
-def pwaff_from_expr(space, expr, vars_to_zero=frozenset()):
+def pwaff_from_expr(space, expr, vars_to_zero=None):
     return PwAffEvaluationMapper(space, vars_to_zero)(expr)
+
+
+def with_aff_conversion_guard(f, space, expr, *args):
+    import islpy as isl
+    from pymbolic.mapper.evaluator import UnknownVariableError
+
+    err = None
+    with isl.SuppressedWarnings(space.get_ctx()):
+        try:
+            return f(space, expr, *args)
+        except TypeError as e:
+            err = e
+        except isl.Error as e:
+            err = e
+        except UnknownVariableError as e:
+            err = e
+
+        assert err is not None
+        from loopy.diagnostic import ExpressionToAffineConversionError
+        raise ExpressionToAffineConversionError(
+                "could not convert expression '%s' to affine representation: "
+                "%s: %s" % (expr, type(err).__name__, str(err)))
+
+
+def guarded_aff_from_expr(space, expr, vars_to_zero=None):
+    """Performs the same operation as :func:`aff_from_expr` but only raises
+    :exc:`loopy.diagnostic.ExpressionToAffineConversionError`
+    """
+    return with_aff_conversion_guard(aff_from_expr, space, expr, vars_to_zero)
+
+
+def guarded_pwaff_from_expr(space, expr, vars_to_zero=None):
+    """Performs the same operation as :func:`aff_from_expr` but only raises
+    :exc:`loopy.diagnostic.ExpressionToAffineConversionError`
+    """
+    return with_aff_conversion_guard(pwaff_from_expr, space, expr, vars_to_zero)
 
 # }}}
 
@@ -1541,7 +1580,16 @@ class UnableToDetermineAccessRange(Exception):
     pass
 
 
-def get_access_range(domain, subscript, assumptions):
+def get_access_range(domain, subscript, assumptions, shape=None,
+        allowed_constant_names=None):
+    """
+    :arg shape: if not *None*, indicates that it is desired to return an
+        overestimate of the access range based on the shape if a precise range
+        cannot be determined.
+    :arg allowed_constant_names: An iterable of names of constants that are to be
+        permitted in the access range expressions. Names that are already
+        parameters of *domain* may be repeated without ill effects.
+    """
     domain, assumptions = isl.align_two(domain,
             assumptions)
     domain = domain & assumptions
@@ -1558,26 +1606,66 @@ def get_access_range(domain, subscript, assumptions):
     if isinstance(access_map, isl.BasicSet):
         access_map = isl.Set.from_basic_set(access_map)
 
+    if allowed_constant_names is not None:
+        allowed_constant_names = set(allowed_constant_names) - set(
+                access_map.get_dim_name(dim_type.param, i)
+                for i in range(access_map.dim(dim_type.param)))
+
+        par_base = access_map.dim(dim_type.param)
+        access_map = access_map.insert_dims(dim_type.param, par_base,
+                len(allowed_constant_names))
+        for i, const_name in enumerate(allowed_constant_names):
+            access_map = access_map.set_dim_name(
+                    dim_type.param, par_base+i, const_name)
+
     dn = access_map.dim(dim_type.set)
     access_map = access_map.insert_dims(dim_type.set, dn, dims)
 
+    from loopy.diagnostic import ExpressionToAffineConversionError
+
     for idim in range(dims):
-        sub_idim = subscript[idim]
-        with isl.SuppressedWarnings(domain.get_ctx()):
-            try:
-                idx_aff = aff_from_expr(access_map.get_space(), sub_idim)
-            except TypeError as e:
-                raise UnableToDetermineAccessRange(
-                        "%s: %s" % (type(e).__name__, str(e)))
-            except isl.Error as e:
-                raise UnableToDetermineAccessRange(
-                        "%s: %s" % (type(e).__name__, str(e)))
+        idx_aff = None
 
-        idx_aff = idx_aff.set_coefficient_val(
-                dim_type.in_, dn+idim, -1)
+        try:
+            idx_aff = guarded_aff_from_expr(access_map.space, subscript[idim])
+        except ExpressionToAffineConversionError as err:
+            shape_aff = None
 
-        access_map = access_map.add_constraint(
-                isl.Constraint.equality_from_aff(idx_aff))
+            if shape is not None:
+                try:
+                    shape_aff = guarded_aff_from_expr(access_map.space, shape[idim])
+                except ExpressionToAffineConversionError as sub_err:
+                    pass
+
+            if shape_aff is None:
+                # failed to convert shape[idim] to aff
+                raise UnableToDetermineAccessRange(
+                        "unable to determine access range of subscript: [%s] "
+                        "(encountered %s: %s)"
+                        % (", ".join(str(si) for si in subscript),
+                            # intentionally using 'outer' err
+                            type(err).__name__, str(err)))
+
+            # successfully converted shape[idim] to aff, but not subscript[idim]
+
+            upper_bound_cns = isl.Constraint.inequality_from_aff(
+                    shape_aff.set_coefficient_val(
+                        dim_type.in_, dn+idim, -1))
+            lower_bound_cns = isl.Constraint.inequality_from_aff(
+                    isl.Aff.zero_on_domain(access_map.space).set_coefficient_val(
+                        dim_type.in_, dn+idim, 1))
+
+            access_map = access_map.add_constraint(upper_bound_cns)
+            access_map = access_map.add_constraint(lower_bound_cns)
+
+        else:
+            # successfully converted subscript[idim] -> idx_aff
+
+            idx_aff = idx_aff.set_coefficient_val(
+                    dim_type.in_, dn+idim, -1)
+
+            access_map = access_map.add_constraint(
+                    isl.Constraint.equality_from_aff(idx_aff))
 
     access_map_as_map = isl.Map.universe(access_map.get_space())
     access_map_as_map = access_map_as_map.intersect_range(access_map)
@@ -1595,11 +1683,16 @@ def get_access_range(domain, subscript, assumptions):
 
 class BatchedAccessRangeMapper(WalkMapper):
 
-    def __init__(self, kernel, var_names):
+    def __init__(self, kernel, var_names, overestimate=None):
         self.kernel = kernel
         self.var_names = set(var_names)
         self.access_ranges = dict((arg, None) for arg in var_names)
         self.bad_subscripts = dict((arg, []) for arg in var_names)
+
+        if overestimate is None:
+            overestimate = False
+
+        self.overestimate = overestimate
 
     def map_subscript(self, expr, inames):
         domain = self.kernel.get_inames_domain(inames)
@@ -1613,13 +1706,13 @@ class BatchedAccessRangeMapper(WalkMapper):
         arg_name = expr.aggregate.name
         subscript = expr.index_tuple
 
-        if not get_dependencies(subscript) <= set(domain.get_var_dict()):
-            self.bad_subscripts[arg_name].append(expr)
-            return
+        descriptor = self.kernel.get_var_descriptor(arg_name)
 
         try:
             access_range = get_access_range(
-                    domain, subscript, self.kernel.assumptions)
+                    domain, subscript, self.kernel.assumptions,
+                    shape=descriptor.shape if self.overestimate else None,
+                    allowed_constant_names=self.kernel.get_unwritten_value_args())
         except UnableToDetermineAccessRange:
             self.bad_subscripts[arg_name].append(expr)
             return
@@ -1652,9 +1745,10 @@ class BatchedAccessRangeMapper(WalkMapper):
 
 class AccessRangeMapper(object):
 
-    def __init__(self, kernel, var_name):
+    def __init__(self, kernel, var_name, overestimate=None):
         self.var_name = var_name
-        self.inner_mapper = BatchedAccessRangeMapper(kernel, [var_name])
+        self.inner_mapper = BatchedAccessRangeMapper(
+                kernel, [var_name], overestimate)
 
     def __call__(self, expr, inames):
         return self.inner_mapper(expr, inames)
@@ -1691,7 +1785,7 @@ def _get_access_range_conservative(kernel, insn_id, access_dir, var_name):
 
     arange = False
     for expr in exprs:
-        arm = AccessRangeMapper(kernel, var_name)
+        arm = AccessRangeMapper(kernel, var_name, overestimate=True)
         arm(expr, kernel.insn_inames(insn))
 
         if arm.bad_subscripts:

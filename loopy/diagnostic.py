@@ -116,6 +116,10 @@ class ExpressionNotAffineError(LoopyError):
     pass
 
 
+class ExpressionToAffineConversionError(LoopyError):
+    pass
+
+
 class VariableAccessNotOrdered(LoopyError):
     pass
 
