@@ -1650,7 +1650,7 @@ def get_access_range(domain, subscript, assumptions, shape=None,
 
             upper_bound_cns = isl.Constraint.inequality_from_aff(
                     shape_aff.set_coefficient_val(
-                        dim_type.in_, dn+idim, -1))
+                        dim_type.in_, dn+idim, -1) - 1)
             lower_bound_cns = isl.Constraint.inequality_from_aff(
                     isl.Aff.zero_on_domain(access_map.space).set_coefficient_val(
                         dim_type.in_, dn+idim, 1))
