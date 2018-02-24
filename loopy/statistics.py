@@ -1242,14 +1242,14 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         (Likely desirable for performance modeling, but undesirable for code
         optimization.)
 
-    :arg subgroup_size: (currently unused) An :class:`int`, :class:`string`
+    :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
         sub-group is an implementation-dependent grouping of work-items within
         a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
         e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         *None* an attempt to find the sub-group size using the device will be
-        made, if this fails an error will be raised. If a :class:`string`
+        made, if this fails an error will be raised. If a :class:`str`
         ``'guess'`` is passed as the subgroup_size, get_mem_access_map will
         attempt to find the sub-group size using the device and, if
         unsuccessful, will make a wild guess.
@@ -1354,14 +1354,14 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         (Likely desirable for performance modeling, but undesirable for
         code optimization.)
 
-    :arg subgroup_size: An :class:`int`, :class:`string` ``'guess'``, or
+    :arg subgroup_size: An :class:`int`, :class:`str` ``'guess'``, or
         *None* that specifies the sub-group size. An OpenCL sub-group is an
         implementation-dependent grouping of work-items within a work-group,
         analagous to an NVIDIA CUDA warp. subgroup_size is used, e.g., when
         counting a :class:`MemAccess` whose count_granularity specifies that it
         should only be counted once per sub-group. If set to *None* an attempt
         to find the sub-group size using the device will be made, if this fails
-        an error will be raised. If a :class:`string` ``'guess'`` is passed as
+        an error will be raised. If a :class:`str` ``'guess'`` is passed as
         the subgroup_size, get_mem_access_map will attempt to find the
         sub-group size using the device and, if unsuccessful, will make a wild
         guess.
@@ -1584,14 +1584,14 @@ def get_synchronization_map(knl, subgroup_size=None):
 
     :arg knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
-    :arg subgroup_size: (currently unused) An :class:`int`, :class:`string`
+    :arg subgroup_size: (currently unused) An :class:`int`, :class:`str`
         ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
         sub-group is an implementation-dependent grouping of work-items within
         a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
         e.g., when counting a :class:`MemAccess` whose count_granularity
         specifies that it should only be counted once per sub-group. If set to
         *None* an attempt to find the sub-group size using the device will be
-        made, if this fails an error will be raised. If a :class:`string`
+        made, if this fails an error will be raised. If a :class:`str`
         ``'guess'`` is passed as the subgroup_size, get_mem_access_map will
         attempt to find the sub-group size using the device and, if
         unsuccessful, will make a wild guess.
