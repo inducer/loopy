@@ -30,6 +30,8 @@ from pyopencl.tools import (  # noqa
 import loopy as lp
 from loopy.types import to_loopy_type
 import numpy as np
+from pytools import div_ceil
+from loopy.statistics import CountGranularity as CG
 
 from pymbolic.primitives import Variable
 
@@ -57,11 +59,13 @@ def test_op_counter_basic():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    f32add = op_map[lp.Op(np.float32, 'add')].eval_with_dict(params)
-    f32mul = op_map[lp.Op(np.float32, 'mul')].eval_with_dict(params)
-    f32div = op_map[lp.Op(np.float32, 'div')].eval_with_dict(params)
-    f64mul = op_map[lp.Op(np.dtype(np.float64), 'mul')].eval_with_dict(params)
-    i32add = op_map[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    f32add = op_map[lp.Op(np.float32, 'add', CG.WORKITEM)].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.float32, 'mul', CG.WORKITEM)].eval_with_dict(params)
+    f32div = op_map[lp.Op(np.float32, 'div', CG.WORKITEM)].eval_with_dict(params)
+    f64mul = op_map[lp.Op(np.dtype(np.float64), 'mul', CG.WORKITEM)
+                    ].eval_with_dict(params)
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', CG.WORKITEM)
+                    ].eval_with_dict(params)
     assert f32add == f32mul == f32div == n*m*ell
     assert f64mul == n*m
     assert i32add == n*m*2
@@ -82,8 +86,9 @@ def test_op_counter_reduction():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    f32add = op_map[lp.Op(np.float32, 'add')].eval_with_dict(params)
-    f32mul = op_map[lp.Op(np.dtype(np.float32), 'mul')].eval_with_dict(params)
+    f32add = op_map[lp.Op(np.float32, 'add', CG.WORKITEM)].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.dtype(np.float32), 'mul', CG.WORKITEM)
+                    ].eval_with_dict(params)
     assert f32add == f32mul == n*m*ell
 
     op_map_dtype = op_map.group_by('dtype')
@@ -111,10 +116,12 @@ def test_op_counter_logic():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    f32mul = op_map[lp.Op(np.float32, 'mul')].eval_with_dict(params)
-    f64add = op_map[lp.Op(np.float64, 'add')].eval_with_dict(params)
-    f64div = op_map[lp.Op(np.dtype(np.float64), 'div')].eval_with_dict(params)
-    i32add = op_map[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.float32, 'mul', CG.WORKITEM)].eval_with_dict(params)
+    f64add = op_map[lp.Op(np.float64, 'add', CG.WORKITEM)].eval_with_dict(params)
+    f64div = op_map[lp.Op(np.dtype(np.float64), 'div', CG.WORKITEM)
+                    ].eval_with_dict(params)
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', CG.WORKITEM)
+                    ].eval_with_dict(params)
     assert f32mul == n*m
     assert f64div == 2*n*m  # TODO why?
     assert f64add == n*m
@@ -141,14 +148,18 @@ def test_op_counter_specialops():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    f32mul = op_map[lp.Op(np.float32, 'mul')].eval_with_dict(params)
-    f32div = op_map[lp.Op(np.float32, 'div')].eval_with_dict(params)
-    f32add = op_map[lp.Op(np.float32, 'add')].eval_with_dict(params)
-    f64pow = op_map[lp.Op(np.float64, 'pow')].eval_with_dict(params)
-    f64add = op_map[lp.Op(np.dtype(np.float64), 'add')].eval_with_dict(params)
-    i32add = op_map[lp.Op(np.dtype(np.int32), 'add')].eval_with_dict(params)
-    f64rsq = op_map[lp.Op(np.dtype(np.float64), 'func:rsqrt')].eval_with_dict(params)
-    f64sin = op_map[lp.Op(np.dtype(np.float64), 'func:sin')].eval_with_dict(params)
+    f32mul = op_map[lp.Op(np.float32, 'mul', CG.WORKITEM)].eval_with_dict(params)
+    f32div = op_map[lp.Op(np.float32, 'div', CG.WORKITEM)].eval_with_dict(params)
+    f32add = op_map[lp.Op(np.float32, 'add', CG.WORKITEM)].eval_with_dict(params)
+    f64pow = op_map[lp.Op(np.float64, 'pow', CG.WORKITEM)].eval_with_dict(params)
+    f64add = op_map[lp.Op(np.dtype(np.float64), 'add', CG.WORKITEM)
+                    ].eval_with_dict(params)
+    i32add = op_map[lp.Op(np.dtype(np.int32), 'add', CG.WORKITEM)
+                    ].eval_with_dict(params)
+    f64rsq = op_map[lp.Op(np.dtype(np.float64), 'func:rsqrt', CG.WORKITEM)
+                    ].eval_with_dict(params)
+    f64sin = op_map[lp.Op(np.dtype(np.float64), 'func:sin', CG.WORKITEM)
+                    ].eval_with_dict(params)
     assert f32div == 2*n*m*ell
     assert f32mul == f32add == n*m*ell
     assert f64add == 3*n*m
@@ -177,12 +188,16 @@ def test_op_counter_bitwise():
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    i32add = op_map[lp.Op(np.int32, 'add')].eval_with_dict(params)
-    i32bw = op_map[lp.Op(np.int32, 'bw')].eval_with_dict(params)
-    i64bw = op_map[lp.Op(np.dtype(np.int64), 'bw')].eval_with_dict(params)
-    i64mul = op_map[lp.Op(np.dtype(np.int64), 'mul')].eval_with_dict(params)
-    i64add = op_map[lp.Op(np.dtype(np.int64), 'add')].eval_with_dict(params)
-    i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift')].eval_with_dict(params)
+    i32add = op_map[lp.Op(np.int32, 'add', CG.WORKITEM)].eval_with_dict(params)
+    i32bw = op_map[lp.Op(np.int32, 'bw', CG.WORKITEM)].eval_with_dict(params)
+    i64bw = op_map[lp.Op(np.dtype(np.int64), 'bw', CG.WORKITEM)
+                   ].eval_with_dict(params)
+    i64mul = op_map[lp.Op(np.dtype(np.int64), 'mul', CG.WORKITEM)
+                    ].eval_with_dict(params)
+    i64add = op_map[lp.Op(np.dtype(np.int64), 'add', CG.WORKITEM)
+                    ].eval_with_dict(params)
+    i64shift = op_map[lp.Op(np.dtype(np.int64), 'shift', CG.WORKITEM)
+                      ].eval_with_dict(params)
     assert i32add == n*m+n*m*ell
     assert i32bw == 2*n*m*ell
     assert i64bw == 2*n*m
@@ -211,7 +226,10 @@ def test_op_counter_triangular_domain():
     else:
         expect_fallback = False
 
-    op_map = lp.get_op_map(knl, count_redundant_work=True)[lp.Op(np.float64, 'mul')]
+    op_map = lp.get_op_map(
+                    knl,
+                    count_redundant_work=True
+                    )[lp.Op(np.float64, 'mul', CG.WORKITEM)]
     value_dict = dict(m=13, n=200)
     flops = op_map.eval_with_dict(value_dict)
 
@@ -234,35 +252,55 @@ def test_mem_access_counter_basic():
             name="basic", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+                    dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+
+    subgroup_size = 32
+
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=subgroup_size)
+
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
+
+    n_workgroups = 1
+    group_size = 1
+    subgroups_per_group = div_ceil(group_size, subgroup_size)
+
     f32l = mem_map[lp.MemAccess('global', np.float32,
-                         stride=0, direction='load', variable='a')
+                         stride=0, direction='load', variable='a',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
     f32l += mem_map[lp.MemAccess('global', np.float32,
-                          stride=0, direction='load', variable='b')
+                         stride=0, direction='load', variable='b',
+                         count_granularity=CG.SUBGROUP)
                     ].eval_with_dict(params)
     f64l = mem_map[lp.MemAccess('global', np.float64,
-                         stride=0, direction='load', variable='g')
+                         stride=0, direction='load', variable='g',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
     f64l += mem_map[lp.MemAccess('global', np.float64,
-                          stride=0, direction='load', variable='h')
+                         stride=0, direction='load', variable='h',
+                         count_granularity=CG.SUBGROUP)
                     ].eval_with_dict(params)
-    assert f32l == 3*n*m*ell
-    assert f64l == 2*n*m
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f32l == (3*n*m*ell)*n_workgroups*subgroups_per_group
+    assert f64l == (2*n*m)*n_workgroups*subgroups_per_group
 
     f32s = mem_map[lp.MemAccess('global', np.dtype(np.float32),
-                         stride=0, direction='store', variable='c')
+                         stride=0, direction='store', variable='c',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
     f64s = mem_map[lp.MemAccess('global', np.dtype(np.float64),
-                         stride=0, direction='store', variable='e')
+                         stride=0, direction='store', variable='e',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
-    assert f32s == n*m*ell
-    assert f64s == n*m
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f32s == (n*m*ell)*n_workgroups*subgroups_per_group
+    assert f64s == (n*m)*n_workgroups*subgroups_per_group
 
 
 def test_mem_access_counter_reduction():
@@ -275,23 +313,39 @@ def test_mem_access_counter_reduction():
             name="matmul", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32))
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+
+    subgroup_size = 32
+
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=subgroup_size)
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
+
+    n_workgroups = 1
+    group_size = 1
+    subgroups_per_group = div_ceil(group_size, subgroup_size)
+
     f32l = mem_map[lp.MemAccess('global', np.float32,
-                         stride=0, direction='load', variable='a')
+                         stride=0, direction='load', variable='a',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
     f32l += mem_map[lp.MemAccess('global', np.float32,
-                          stride=0, direction='load', variable='b')
+                         stride=0, direction='load', variable='b',
+                         count_granularity=CG.SUBGROUP)
                     ].eval_with_dict(params)
-    assert f32l == 2*n*m*ell
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f32l == (2*n*m*ell)*n_workgroups*subgroups_per_group
 
     f32s = mem_map[lp.MemAccess('global', np.dtype(np.float32),
-                         stride=0, direction='store', variable='c')
+                         stride=0, direction='store', variable='c',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
-    assert f32s == n*ell
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f32s == (n*ell)*n_workgroups*subgroups_per_group
 
     ld_bytes = mem_map.filter_by(mtype=['global'], direction=['load']
                                  ).to_bytes().eval_and_sum(params)
@@ -315,11 +369,19 @@ def test_mem_access_counter_logic():
             name="logic", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl, dict(g=np.float32, h=np.float64))
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+
+    subgroup_size = 32
+
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=subgroup_size)
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
+
+    n_workgroups = 1
+    group_size = 1
+    subgroups_per_group = div_ceil(group_size, subgroup_size)
 
     reduced_map = mem_map.group_by('mtype', 'dtype', 'direction')
 
@@ -332,9 +394,11 @@ def test_mem_access_counter_logic():
     f64_g_s = reduced_map[lp.MemAccess('global', to_loopy_type(np.float64),
                                        direction='store')
                           ].eval_with_dict(params)
-    assert f32_g_l == 2*n*m
-    assert f64_g_l == n*m
-    assert f64_g_s == n*m
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f32_g_l == (2*n*m)*n_workgroups*subgroups_per_group
+    assert f64_g_l == (n*m)*n_workgroups*subgroups_per_group
+    assert f64_g_s == (n*m)*n_workgroups*subgroups_per_group
 
 
 def test_mem_access_counter_specialops():
@@ -351,39 +415,60 @@ def test_mem_access_counter_specialops():
 
     knl = lp.add_and_infer_dtypes(knl, dict(a=np.float32, b=np.float32,
                                             g=np.float64, h=np.float64))
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+
+    subgroup_size = 32
+
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=subgroup_size)
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
+
+    n_workgroups = 1
+    group_size = 1
+    subgroups_per_group = div_ceil(group_size, subgroup_size)
+
     f32 = mem_map[lp.MemAccess('global', np.float32,
-                         stride=0, direction='load', variable='a')
+                         stride=0, direction='load', variable='a',
+                         count_granularity=CG.SUBGROUP)
                   ].eval_with_dict(params)
     f32 += mem_map[lp.MemAccess('global', np.float32,
-                          stride=0, direction='load', variable='b')
+                         stride=0, direction='load', variable='b',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
     f64 = mem_map[lp.MemAccess('global', np.dtype(np.float64),
-                         stride=0, direction='load', variable='g')
+                         stride=0, direction='load', variable='g',
+                         count_granularity=CG.SUBGROUP)
                   ].eval_with_dict(params)
     f64 += mem_map[lp.MemAccess('global', np.dtype(np.float64),
-                          stride=0, direction='load', variable='h')
+                         stride=0, direction='load', variable='h',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
-    assert f32 == 2*n*m*ell
-    assert f64 == 2*n*m
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f32 == (2*n*m*ell)*n_workgroups*subgroups_per_group
+    assert f64 == (2*n*m)*n_workgroups*subgroups_per_group
 
     f32 = mem_map[lp.MemAccess('global', np.float32,
-                         stride=0, direction='store', variable='c')
+                         stride=0, direction='store', variable='c',
+                         count_granularity=CG.SUBGROUP)
                   ].eval_with_dict(params)
     f64 = mem_map[lp.MemAccess('global', np.float64,
-                         stride=0, direction='store', variable='e')
+                         stride=0, direction='store', variable='e',
+                         count_granularity=CG.SUBGROUP)
                   ].eval_with_dict(params)
-    assert f32 == n*m*ell
-    assert f64 == n*m
 
-    filtered_map = mem_map.filter_by(direction=['load'], variable=['a', 'g'])
-    #tot = lp.eval_and_sum_polys(filtered_map, params)
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f32 == (n*m*ell)*n_workgroups*subgroups_per_group
+    assert f64 == (n*m)*n_workgroups*subgroups_per_group
+
+    filtered_map = mem_map.filter_by(direction=['load'], variable=['a', 'g'],
+                         count_granularity=CG.SUBGROUP)
     tot = filtered_map.eval_and_sum(params)
-    assert tot == n*m*ell + n*m
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert tot == (n*m*ell + n*m)*n_workgroups*subgroups_per_group
 
 
 def test_mem_access_counter_bitwise():
@@ -403,36 +488,53 @@ def test_mem_access_counter_bitwise():
                 a=np.int32, b=np.int32,
                 g=np.int32, h=np.int32))
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+    subgroup_size = 32
+
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=subgroup_size)
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
-    i32 = mem_map[lp.MemAccess('global', np.int32,
-                         stride=0, direction='load', variable='a')
-                  ].eval_with_dict(params)
-    i32 += mem_map[lp.MemAccess('global', np.int32,
-                          stride=0, direction='load', variable='b')
-                   ].eval_with_dict(params)
-    i32 += mem_map[lp.MemAccess('global', np.int32,
-                          stride=0, direction='load', variable='g')
-                   ].eval_with_dict(params)
-    i32 += mem_map[lp.MemAccess('global', np.dtype(np.int32),
-                          stride=0, direction='load', variable='h')
-                   ].eval_with_dict(params)
-    assert i32 == 4*n*m+2*n*m*ell
+
+    n_workgroups = 1
+    group_size = 1
+    subgroups_per_group = div_ceil(group_size, subgroup_size)
 
     i32 = mem_map[lp.MemAccess('global', np.int32,
-                         stride=0, direction='store', variable='c')
+                         stride=0, direction='load', variable='a',
+                         count_granularity=CG.SUBGROUP)
                   ].eval_with_dict(params)
     i32 += mem_map[lp.MemAccess('global', np.int32,
-                          stride=0, direction='store', variable='e')
+                         stride=0, direction='load', variable='b',
+                         count_granularity=CG.SUBGROUP)
                    ].eval_with_dict(params)
-    assert i32 == n*m+n*m*ell
+    i32 += mem_map[lp.MemAccess('global', np.int32,
+                         stride=0, direction='load', variable='g',
+                         count_granularity=CG.SUBGROUP)
+                   ].eval_with_dict(params)
+    i32 += mem_map[lp.MemAccess('global', np.dtype(np.int32),
+                         stride=0, direction='load', variable='h',
+                         count_granularity=CG.SUBGROUP)
+                   ].eval_with_dict(params)
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert i32 == (4*n*m+2*n*m*ell)*n_workgroups*subgroups_per_group
+
+    i32 = mem_map[lp.MemAccess('global', np.int32,
+                         stride=0, direction='store', variable='c',
+                         count_granularity=CG.SUBGROUP)
+                  ].eval_with_dict(params)
+    i32 += mem_map[lp.MemAccess('global', np.int32,
+                         stride=0, direction='store', variable='e',
+                         count_granularity=CG.SUBGROUP)
+                   ].eval_with_dict(params)
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert i32 == (n*m+n*m*ell)*n_workgroups*subgroups_per_group
 
 
 def test_mem_access_counter_mixed():
-
     knl = lp.make_kernel(
             "[n,m,ell] -> {[i,k,j]: 0<=i<n and 0<=k<m and 0<=j<ell}",
             [
@@ -442,48 +544,92 @@ def test_mem_access_counter_mixed():
             """
             ],
             name="mixed", assumptions="n,m,ell >= 1")
+
     knl = lp.add_and_infer_dtypes(knl, dict(
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64,
                 x=np.float32))
-    bsize = 16
-    knl = lp.split_iname(knl, "j", bsize)
+
+    group_size_0 = 65
+    subgroup_size = 32
+
+    knl = lp.split_iname(knl, "j", group_size_0)
     knl = lp.tag_inames(knl, {"j_inner": "l.0", "j_outer": "g.0"})
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)  # noqa
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
+
+    n_workgroups = div_ceil(ell, group_size_0)
+    group_size = group_size_0
+    subgroups_per_group = div_ceil(group_size, subgroup_size)
+
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=subgroup_size)
     f64uniform = mem_map[lp.MemAccess('global', np.float64,
-                                stride=0, direction='load', variable='g')
+                                stride=0, direction='load', variable='g',
+                                count_granularity=CG.SUBGROUP)
                          ].eval_with_dict(params)
     f64uniform += mem_map[lp.MemAccess('global', np.float64,
-                                 stride=0, direction='load', variable='h')
+                                stride=0, direction='load', variable='h',
+                                count_granularity=CG.SUBGROUP)
                           ].eval_with_dict(params)
     f32uniform = mem_map[lp.MemAccess('global', np.float32,
-                                stride=0, direction='load', variable='x')
+                                stride=0, direction='load', variable='x',
+                                count_granularity=CG.SUBGROUP)
                          ].eval_with_dict(params)
     f32nonconsec = mem_map[lp.MemAccess('global', np.dtype(np.float32),
-                                  stride=Variable('m'), direction='load',
-                                  variable='a')
+                                stride=Variable('m'), direction='load',
+                                variable='a',
+                                count_granularity=CG.WORKITEM)
                            ].eval_with_dict(params)
     f32nonconsec += mem_map[lp.MemAccess('global', np.dtype(np.float32),
-                                   stride=Variable('m'), direction='load',
-                                   variable='b')
+                                stride=Variable('m'), direction='load',
+                                variable='b',
+                                count_granularity=CG.WORKITEM)
                             ].eval_with_dict(params)
-    assert f64uniform == 2*n*m*ell/bsize
-    assert f32uniform == n*m*ell/bsize
-    assert f32nonconsec == 3*n*m*ell
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f64uniform == (2*n*m)*n_workgroups*subgroups_per_group
+    assert f32uniform == (m*n)*n_workgroups*subgroups_per_group
+
+    expect_fallback = False
+    import islpy as isl
+    try:
+        isl.BasicSet.card
+    except AttributeError:
+        expect_fallback = True
+    else:
+        expect_fallback = False
+
+    if expect_fallback:
+        if ell < group_size_0:
+            assert f32nonconsec == 3*n*m*ell*n_workgroups
+        else:
+            assert f32nonconsec == 3*n*m*n_workgroups*group_size_0
+    else:
+        assert f32nonconsec == 3*n*m*ell
 
     f64uniform = mem_map[lp.MemAccess('global', np.float64,
-                                stride=0, direction='store', variable='e')
+                                stride=0, direction='store', variable='e',
+                                count_granularity=CG.SUBGROUP)
                          ].eval_with_dict(params)
     f32nonconsec = mem_map[lp.MemAccess('global', np.float32,
-                                  stride=Variable('m'), direction='store',
-                                  variable='c')
+                                stride=Variable('m'), direction='store',
+                                variable='c',
+                                count_granularity=CG.WORKITEM)
                            ].eval_with_dict(params)
-    assert f64uniform == n*m*ell/bsize
-    assert f32nonconsec == n*m*ell
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f64uniform == m*n*n_workgroups*subgroups_per_group
+
+    if expect_fallback:
+        if ell < group_size_0:
+            assert f32nonconsec == n*m*ell*n_workgroups
+        else:
+            assert f32nonconsec == n*m*n_workgroups*group_size_0
+    else:
+        assert f32nonconsec == n*m*ell
 
 
 def test_mem_access_counter_nonconsec():
@@ -502,40 +648,80 @@ def test_mem_access_counter_nonconsec():
     knl = lp.split_iname(knl, "i", 16)
     knl = lp.tag_inames(knl, {"i_inner": "l.0", "i_outer": "g.0"})
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)  # noqa
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=32)  # noqa
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
     f64nonconsec = mem_map[lp.MemAccess('global', np.float64,
-                                  stride=Variable('m'), direction='load',
-                                  variable='g')
+                                stride=Variable('m'), direction='load',
+                                variable='g',
+                                count_granularity=CG.WORKITEM)
                            ].eval_with_dict(params)
     f64nonconsec += mem_map[lp.MemAccess('global', np.float64,
-                                   stride=Variable('m'), direction='load',
-                                   variable='h')
+                                stride=Variable('m'), direction='load',
+                                variable='h',
+                                count_granularity=CG.WORKITEM)
                             ].eval_with_dict(params)
     f32nonconsec = mem_map[lp.MemAccess('global', np.dtype(np.float32),
-                                  stride=Variable('m')*Variable('ell'),
-                                  direction='load', variable='a')
+                                stride=Variable('m')*Variable('ell'),
+                                direction='load', variable='a',
+                                count_granularity=CG.WORKITEM)
                            ].eval_with_dict(params)
     f32nonconsec += mem_map[lp.MemAccess('global', np.dtype(np.float32),
-                                   stride=Variable('m')*Variable('ell'),
-                                   direction='load', variable='b')
+                                stride=Variable('m')*Variable('ell'),
+                                direction='load', variable='b',
+                                count_granularity=CG.WORKITEM)
                             ].eval_with_dict(params)
     assert f64nonconsec == 2*n*m
     assert f32nonconsec == 3*n*m*ell
 
     f64nonconsec = mem_map[lp.MemAccess('global', np.float64,
-                                  stride=Variable('m'), direction='store',
-                                  variable='e')
+                                stride=Variable('m'), direction='store',
+                                variable='e',
+                                count_granularity=CG.WORKITEM)
                            ].eval_with_dict(params)
     f32nonconsec = mem_map[lp.MemAccess('global', np.float32,
-                                  stride=Variable('m')*Variable('ell'),
-                                  direction='store', variable='c')
+                                stride=Variable('m')*Variable('ell'),
+                                direction='store', variable='c',
+                                count_granularity=CG.WORKITEM)
                            ].eval_with_dict(params)
     assert f64nonconsec == n*m
     assert f32nonconsec == n*m*ell
+
+    mem_map64 = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                      subgroup_size=64)
+    f64nonconsec = mem_map64[lp.MemAccess(
+                    'global',
+                    np.float64, stride=Variable('m'),
+                    direction='load', variable='g',
+                    count_granularity=CG.WORKITEM)
+                    ].eval_with_dict(params)
+    f64nonconsec += mem_map64[lp.MemAccess(
+                    'global',
+                    np.float64, stride=Variable('m'),
+                    direction='load', variable='h',
+                    count_granularity=CG.WORKITEM)
+                    ].eval_with_dict(params)
+    f32nonconsec = mem_map64[lp.MemAccess(
+                    'global',
+                    np.dtype(np.float32),
+                    stride=Variable('m')*Variable('ell'),
+                    direction='load',
+                    variable='a',
+                    count_granularity=CG.WORKITEM)
+                    ].eval_with_dict(params)
+    f32nonconsec += mem_map64[lp.MemAccess(
+                    'global',
+                    np.dtype(np.float32),
+                    stride=Variable('m')*Variable('ell'),
+                    direction='load',
+                    variable='b',
+                    count_granularity=CG.WORKITEM)
+                    ].eval_with_dict(params)
+    assert f64nonconsec == 2*n*m
+    assert f32nonconsec == 3*n*m*ell
 
 
 def test_mem_access_counter_consec():
@@ -553,35 +739,67 @@ def test_mem_access_counter_consec():
                 a=np.float32, b=np.float32, g=np.float64, h=np.float64))
     knl = lp.tag_inames(knl, {"k": "l.0", "i": "g.0", "j": "g.1"})
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size='guess')
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
 
     f64consec = mem_map[lp.MemAccess('global', np.float64,
-                        stride=1, direction='load', variable='g')
+                        stride=1, direction='load', variable='g',
+                        count_granularity=CG.WORKITEM)
                         ].eval_with_dict(params)
     f64consec += mem_map[lp.MemAccess('global', np.float64,
-                        stride=1, direction='load', variable='h')
+                        stride=1, direction='load', variable='h',
+                        count_granularity=CG.WORKITEM)
                          ].eval_with_dict(params)
     f32consec = mem_map[lp.MemAccess('global', np.float32,
-                        stride=1, direction='load', variable='a')
+                        stride=1, direction='load', variable='a',
+                        count_granularity=CG.WORKITEM)
                         ].eval_with_dict(params)
     f32consec += mem_map[lp.MemAccess('global', np.dtype(np.float32),
-                        stride=1, direction='load', variable='b')
+                        stride=1, direction='load', variable='b',
+                        count_granularity=CG.WORKITEM)
                          ].eval_with_dict(params)
     assert f64consec == 2*n*m*ell
     assert f32consec == 3*n*m*ell
 
     f64consec = mem_map[lp.MemAccess('global', np.float64,
-                        stride=1, direction='store', variable='e')
+                        stride=1, direction='store', variable='e',
+                        count_granularity=CG.WORKITEM)
                         ].eval_with_dict(params)
     f32consec = mem_map[lp.MemAccess('global', np.float32,
-                        stride=1, direction='store', variable='c')
+                        stride=1, direction='store', variable='c',
+                        count_granularity=CG.WORKITEM)
                         ].eval_with_dict(params)
     assert f64consec == n*m*ell
     assert f32consec == n*m*ell
+
+
+def test_count_granularity_val_checks():
+
+    try:
+        lp.MemAccess(count_granularity=CG.WORKITEM)
+        lp.MemAccess(count_granularity=CG.SUBGROUP)
+        lp.MemAccess(count_granularity=CG.WORKGROUP)
+        lp.MemAccess(count_granularity=None)
+        assert True
+        lp.MemAccess(count_granularity='bushel')
+        assert False
+    except ValueError:
+        assert True
+
+    try:
+        lp.Op(count_granularity=CG.WORKITEM)
+        lp.Op(count_granularity=CG.SUBGROUP)
+        lp.Op(count_granularity=CG.WORKGROUP)
+        lp.Op(count_granularity=None)
+        assert True
+        lp.Op(count_granularity='bushel')
+        assert False
+    except ValueError:
+        assert True
 
 
 def test_barrier_counter_nobarriers():
@@ -662,42 +880,48 @@ def test_all_counters_parallel_matmul():
 
     op_map = lp.get_op_map(knl, count_redundant_work=True)
     f32mul = op_map[
-                        lp.Op(np.float32, 'mul')
+                        lp.Op(np.float32, 'mul', CG.WORKITEM)
                         ].eval_with_dict(params)
     f32add = op_map[
-                        lp.Op(np.float32, 'add')
+                        lp.Op(np.float32, 'add', CG.WORKITEM)
                         ].eval_with_dict(params)
     i32ops = op_map[
-                        lp.Op(np.int32, 'add')
+                        lp.Op(np.int32, 'add', CG.WORKITEM)
                         ].eval_with_dict(params)
     i32ops += op_map[
-                        lp.Op(np.dtype(np.int32), 'mul')
+                        lp.Op(np.dtype(np.int32), 'mul', CG.WORKITEM)
                         ].eval_with_dict(params)
 
     assert f32mul+f32add == n*m*ell*2
 
-    op_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+    mem_access_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                           subgroup_size=32)
 
-    f32s1lb = op_map[lp.MemAccess('global', np.float32,
-                     stride=1, direction='load', variable='b')
-                     ].eval_with_dict(params)
-    f32s1la = op_map[lp.MemAccess('global', np.float32,
-                     stride=1, direction='load', variable='a')
-                     ].eval_with_dict(params)
+    f32s1lb = mem_access_map[lp.MemAccess('global', np.float32,
+                             stride=1, direction='load', variable='b',
+                             count_granularity=CG.WORKITEM)
+                             ].eval_with_dict(params)
+    f32s1la = mem_access_map[lp.MemAccess('global', np.float32,
+                             stride=1, direction='load', variable='a',
+                             count_granularity=CG.WORKITEM)
+                             ].eval_with_dict(params)
 
     assert f32s1lb == n*m*ell/bsize
     assert f32s1la == n*m*ell/bsize
 
-    f32coal = op_map[lp.MemAccess('global', np.float32,
-                     stride=1, direction='store', variable='c')
-                     ].eval_with_dict(params)
+    f32coal = mem_access_map[lp.MemAccess('global', np.float32,
+                             stride=1, direction='store', variable='c',
+                             count_granularity=CG.WORKITEM)
+                             ].eval_with_dict(params)
 
     assert f32coal == n*ell
 
     local_mem_map = lp.get_mem_access_map(knl,
-                        count_redundant_work=True).filter_by(mtype=['local'])
+                        count_redundant_work=True,
+                        subgroup_size=32).filter_by(mtype=['local'])
     local_mem_l = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
-                                             direction='load')
+                                             direction='load',
+                                             count_granularity=CG.WORKITEM)
                                 ].eval_with_dict(params)
     assert local_mem_l == n*m*ell*2
 
@@ -747,28 +971,46 @@ def test_summations_and_filters():
             name="basic", assumptions="n,m,ell >= 1")
 
     knl = lp.add_and_infer_dtypes(knl,
-                        dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+                    dict(a=np.float32, b=np.float32, g=np.float64, h=np.float64))
+
+    subgroup_size = 32
+
     n = 512
     m = 256
     ell = 128
     params = {'n': n, 'm': m, 'ell': ell}
 
-    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True)
+    n_workgroups = 1
+    group_size = 1
+    subgroups_per_group = div_ceil(group_size, subgroup_size)
 
-    loads_a = mem_map.filter_by(direction=['load'], variable=['a']
+    mem_map = lp.get_mem_access_map(knl, count_redundant_work=True,
+                                    subgroup_size=subgroup_size)
+
+    loads_a = mem_map.filter_by(direction=['load'], variable=['a'],
+                                count_granularity=[CG.SUBGROUP]
                                 ).eval_and_sum(params)
-    assert loads_a == 2*n*m*ell
 
-    global_stores = mem_map.filter_by(mtype=['global'], direction=['store']
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert loads_a == (2*n*m*ell)*n_workgroups*subgroups_per_group
+
+    global_stores = mem_map.filter_by(mtype=['global'], direction=['store'],
+                                      count_granularity=[CG.SUBGROUP]
                                       ).eval_and_sum(params)
-    assert global_stores == n*m*ell + n*m
 
-    ld_bytes = mem_map.filter_by(mtype=['global'], direction=['load']
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert global_stores == (n*m*ell + n*m)*n_workgroups*subgroups_per_group
+
+    ld_bytes = mem_map.filter_by(mtype=['global'], direction=['load'],
+                                 count_granularity=[CG.SUBGROUP]
                                  ).to_bytes().eval_and_sum(params)
-    st_bytes = mem_map.filter_by(mtype=['global'], direction=['store']
+    st_bytes = mem_map.filter_by(mtype=['global'], direction=['store'],
+                                 count_granularity=[CG.SUBGROUP]
                                  ).to_bytes().eval_and_sum(params)
-    assert ld_bytes == 4*n*m*ell*3 + 8*n*m*2
-    assert st_bytes == 4*n*m*ell + 8*n*m
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert ld_bytes == (4*n*m*ell*3 + 8*n*m*2)*n_workgroups*subgroups_per_group
+    assert st_bytes == (4*n*m*ell + 8*n*m)*n_workgroups*subgroups_per_group
 
     # ignore stride and variable names in this map
     reduced_map = mem_map.group_by('mtype', 'dtype', 'direction')
@@ -776,8 +1018,10 @@ def test_summations_and_filters():
                           ].eval_with_dict(params)
     f64lall = reduced_map[lp.MemAccess('global', np.float64, direction='load')
                           ].eval_with_dict(params)
-    assert f32lall == 3*n*m*ell
-    assert f64lall == 2*n*m
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert f32lall == (3*n*m*ell)*n_workgroups*subgroups_per_group
+    assert f64lall == (2*n*m)*n_workgroups*subgroups_per_group
 
     op_map = lp.get_op_map(knl, count_redundant_work=True)
     #for k, v in op_map.items():
@@ -810,7 +1054,9 @@ def test_summations_and_filters():
         return key.stride < 1 and key.dtype == to_loopy_type(np.float64) and \
                key.direction == 'load'
     s1f64l = mem_map.filter_by_func(func_filter).eval_and_sum(params)
-    assert s1f64l == 2*n*m
+
+    # uniform: (count-per-sub-group)*n_workgroups*subgroups_per_group
+    assert s1f64l == (2*n*m)*n_workgroups*subgroups_per_group
 
 
 def test_strided_footprint():

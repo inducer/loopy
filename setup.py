@@ -62,7 +62,7 @@ setup(name="loo.py",
           },
 
       dependency_links=[
-          "hg+https://bitbucket.org/inducer/f2py#egg=f2py==0.3.1"
+          "git+https://github.com/pearu/f2py.git"
           ],
 
       scripts=["bin/loopy"],

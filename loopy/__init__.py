@@ -121,8 +121,8 @@ from loopy.transform.add_barrier import add_barrier
 from loopy.type_inference import infer_unknown_types
 from loopy.preprocess import preprocess_kernel, realize_reduction
 from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (ToCountMap, stringify_stats_mapping, Op,
-        MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
+from loopy.statistics import (ToCountMap, CountGranularity, stringify_stats_mapping,
+        Op, MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
         get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_map,
         get_synchronization_poly, get_synchronization_map,
         gather_access_footprints, gather_access_footprint_bytes)
@@ -243,8 +243,8 @@ __all__ = [
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
-        "ToCountMap", "stringify_stats_mapping", "Op", "MemAccess",
-        "get_op_poly", "get_op_map", "get_lmem_access_poly",
+        "ToCountMap", "CountGranularity", "stringify_stats_mapping", "Op",
+        "MemAccess", "get_op_poly", "get_op_map", "get_lmem_access_poly",
         "get_DRAM_access_poly", "get_gmem_access_poly", "get_mem_access_map",
         "get_synchronization_poly", "get_synchronization_map",
         "gather_access_footprints", "gather_access_footprint_bytes",
