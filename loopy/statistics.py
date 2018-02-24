@@ -362,7 +362,7 @@ class ToCountMap(object):
     def to_bytes(self):
         """Convert counts to bytes using data type in map key.
 
-        :return: A :class:`ToCountMap` mapping each original key to a
+        :return: A :class:`ToCountMap` mapping each original key to an
             :class:`islpy.PwQPolynomial` with counts in bytes rather than
             instances.
 
@@ -404,7 +404,7 @@ class ToCountMap(object):
     def sum(self):
         """Add all counts in ToCountMap.
 
-        :return: A :class:`islpy.PwQPolynomial` or :class:`int` containing the
+        :return: An :class:`islpy.PwQPolynomial` or :class:`int` containing the
             sum of counts.
 
         """
@@ -462,17 +462,17 @@ class CountGranularity:
     """Strings specifying whether an operation should be counted once per
     *work-item*, *sub-group*, or *work-group*.
 
-    .. attribute :: WORKITEM
+    .. attribute:: WORKITEM
 
        A :class:`str` that specifies that an operation should be counted
        once per *work-item*.
 
-    .. attribute :: SUBGROUP
+    .. attribute:: SUBGROUP
 
        A :class:`str` that specifies that an operation should be counted
        once per *sub-group*.
 
-    .. attribute :: WORKGROUP
+    .. attribute:: WORKGROUP
 
        A :class:`str` that specifies that an operation should be counted
        once per *work-group*.
@@ -503,11 +503,13 @@ class Op(Record):
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
-       once per *work-item*, *sub-group*, or *work-group*. A work-item is a
-       single instance of computation executing on a single processor (think
-       'thread'), a collection of which may be grouped together into a
-       work-group. Each work-group executes on a single compute unit with all
-       work-items within the work-group sharing local memory. A sub-group is an
+       once per *work-item*, *sub-group*, or *work-group*. The granularities
+       allowed can be found in :class:`CountGranularity`, and may be accessed,
+       e.g., as ``CountGranularity.WORKITEM``. A work-item is a single instance
+       of computation executing on a single processor (think 'thread'), a
+       collection of which may be grouped together into a work-group. Each
+       work-group executes on a single compute unit with all work-items within
+       the work-group sharing local memory. A sub-group is an
        implementation-dependent grouping of work-items within a work-group,
        analagous to an NVIDIA CUDA warp.
 
@@ -569,11 +571,13 @@ class MemAccess(Record):
     .. attribute:: count_granularity
 
        A :class:`str` that specifies whether this operation should be counted
-       once per *work-item*, *sub-group*, or *work-group*. A work-item is a
-       single instance of computation executing on a single processor (think
-       'thread'), a collection of which may be grouped together into a
-       work-group. Each work-group executes on a single compute unit with all
-       work-items within the work-group sharing local memory. A sub-group is an
+       once per *work-item*, *sub-group*, or *work-group*. The granularities
+       allowed can be found in :class:`CountGranularity`, and may be accessed,
+       e.g., as ``CountGranularity.WORKITEM``. A work-item is a single instance
+       of computation executing on a single processor (think 'thread'), a
+       collection of which may be grouped together into a work-group. Each
+       work-group executes on a single compute unit with all work-items within
+       the work-group sharing local memory. A sub-group is an
        implementation-dependent grouping of work-items within a work-group,
        analagous to an NVIDIA CUDA warp.
 
@@ -1238,12 +1242,17 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         (Likely desirable for performance modeling, but undesirable for code
         optimization.)
 
-    :arg subgroup_size: (currently unused) A :class:`int` that specifies the
-        sub-group size. An OpenCL sub-group is an implementation-dependent
-        grouping of work-items within a work-group, analagous to an NVIDIA CUDA
-        warp. subgroup_size is used, e.g., when counting a :class:`MemAccess`
-        whose count_granularity specifies that it should only be counted once
-        per sub-group.
+    :arg subgroup_size: (currently unused) An :class:`int`, :class:`string`
+        ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
+        sub-group is an implementation-dependent grouping of work-items within
+        a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
+        e.g., when counting a :class:`MemAccess` whose count_granularity
+        specifies that it should only be counted once per sub-group. If set to
+        *None* an attempt to find the sub-group size using the device will be
+        made, if this fails an error will be raised. If a :class:`string`
+        ``'guess'`` is passed as the subgroup_size, get_mem_access_map will
+        attempt to find the sub-group size using the device and, if
+        unsuccessful, will make a wild guess.
 
     :return: A :class:`ToCountMap` of **{** :class:`Op` **:**
         :class:`islpy.PwQPolynomial` **}**.
@@ -1345,16 +1354,17 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         (Likely desirable for performance modeling, but undesirable for
         code optimization.)
 
-    :arg subgroup_size: A :class:`int` that specifies the sub-group size. An
-        OpenCL sub-group is an implementation-dependent grouping of work-items
-        within a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is
-        used, e.g., when counting a :class:`MemAccess` whose count_granularity
-        specifies that it should only be counted once per sub-group. If set to
-        None an attempt to find the sub-group size using the device will be
-        made, if this fails an error will be raised. A :class:`string` 'guess'
-        may also be passed as the subgroup_size, in which case
-        get_mem_access_map will attempt to find the sub-group size using the
-        device and, if unsuccessful, will make a wild guess.
+    :arg subgroup_size: An :class:`int`, :class:`string` ``'guess'``, or
+        *None* that specifies the sub-group size. An OpenCL sub-group is an
+        implementation-dependent grouping of work-items within a work-group,
+        analagous to an NVIDIA CUDA warp. subgroup_size is used, e.g., when
+        counting a :class:`MemAccess` whose count_granularity specifies that it
+        should only be counted once per sub-group. If set to *None* an attempt
+        to find the sub-group size using the device will be made, if this fails
+        an error will be raised. If a :class:`string` ``'guess'`` is passed as
+        the subgroup_size, get_mem_access_map will attempt to find the
+        sub-group size using the device and, if unsuccessful, will make a wild
+        guess.
 
     :return: A :class:`ToCountMap` of **{** :class:`MemAccess` **:**
         :class:`islpy.PwQPolynomial` **}**.
@@ -1574,15 +1584,21 @@ def get_synchronization_map(knl, subgroup_size=None):
 
     :arg knl: A :class:`loopy.LoopKernel` whose barriers are to be counted.
 
-    :arg subgroup_size: (currently unused) A :class:`int` that specifies the
-        sub-group size. An OpenCL sub-group is an implementation-dependent
-        grouping of work-items within a work-group, analagous to an NVIDIA CUDA
-        warp. subgroup_size is used, e.g., when counting a :class:`MemAccess`
-        whose count_granularity specifies that it should only be counted once
-        per sub-group.
+    :arg subgroup_size: (currently unused) An :class:`int`, :class:`string`
+        ``'guess'``, or *None* that specifies the sub-group size. An OpenCL
+        sub-group is an implementation-dependent grouping of work-items within
+        a work-group, analagous to an NVIDIA CUDA warp. subgroup_size is used,
+        e.g., when counting a :class:`MemAccess` whose count_granularity
+        specifies that it should only be counted once per sub-group. If set to
+        *None* an attempt to find the sub-group size using the device will be
+        made, if this fails an error will be raised. If a :class:`string`
+        ``'guess'`` is passed as the subgroup_size, get_mem_access_map will
+        attempt to find the sub-group size using the device and, if
+        unsuccessful, will make a wild guess.
 
-    :return: A dictionary mapping each type of synchronization event to a
-        :class:`islpy.PwQPolynomial` holding the number of events per work-item.
+    :return: A dictionary mapping each type of synchronization event to an
+        :class:`islpy.PwQPolynomial` holding the number of events per
+        work-item.
 
         Possible keys include ``barrier_local``, ``barrier_global``
         (if supported by the target) and ``kernel_launch``.
@@ -1794,7 +1810,8 @@ def get_synchronization_poly(knl):
     """Count the number of synchronization events each work-item encounters in
     a loopy kernel.
 
-    get_synchronization_poly is deprecated. Use get_synchronization_map instead.
+    get_synchronization_poly is deprecated. Use get_synchronization_map
+    instead.
 
     """
     warn_with_kernel(knl, "deprecated_get_synchronization_poly",
