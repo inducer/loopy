@@ -1391,7 +1391,7 @@ def draw_dependencies_as_unicode_arrows(
             if value is None:
                 del columns_in_use[col]
 
-        # }}
+        # }}}
 
         processed_ids.add(insn.id)
 
