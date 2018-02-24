@@ -29,6 +29,8 @@ import sys
 import islpy as isl
 from loopy.diagnostic import warn_with_kernel, LoopyError  # noqa
 
+from pytools import MinRecursionLimit
+
 from pytools.persistent_dict import WriteOncePersistentDict
 from loopy.tools import LoopyKeyBuilder
 from loopy.version import DATA_MODEL_VERSION
@@ -1810,12 +1812,27 @@ def insert_barriers(kernel, schedule, synchronization_kind, verify_only, level=0
 # }}}
 
 
+class MinRecursionLimitForScheduling(MinRecursionLimit):
+    def __init__(self, kernel):
+        MinRecursionLimit.__init__(self,
+                len(kernel.instructions) * 2 + len(kernel.all_inames()) * 4)
+
+
 # {{{ main scheduling entrypoint
 
 def generate_loop_schedules(kernel, debug_args={}):
-    from pytools import MinRecursionLimit
-    with MinRecursionLimit(max(len(kernel.instructions) * 2,
-                               len(kernel.all_inames()) * 4)):
+    """
+    .. warning::
+
+        This function needs to be called inside (another layer) of a
+        :class:`MinRecursionLimitForScheduling` context manager, and the
+        context manager needs to end *after* the last reference to the
+        generators has gone out of scope. Otherwise, the high-recursion-limit
+        generator chain may not be successfully garbage-collected and cause an
+        internal error in the Python runtime.
+    """
+
+    with MinRecursionLimitForScheduling(kernel):
         for sched in generate_loop_schedules_inner(kernel, debug_args=debug_args):
             yield sched
 
@@ -2003,6 +2020,19 @@ schedule_cache = WriteOncePersistentDict(
         key_builder=LoopyKeyBuilder())
 
 
+def _get_one_scheduled_kernel_inner(kernel):
+    # This helper function exists to ensure that the generator chain is fully
+    # out of scope after the function returns. This allows it to be
+    # garbage-collected in the exit handler of the
+    # MinRecursionLimitForScheduling context manager in the surrounding
+    # function, because it possilby cannot be safely collected with a lower
+    # recursion limit without crashing the Python runtime.
+    #
+    # See https://gitlab.tiker.net/inducer/sumpy/issues/31 for context.
+
+    return next(iter(generate_loop_schedules(kernel)))
+
+
 def get_one_scheduled_kernel(kernel):
     from loopy import CACHING_ENABLED
 
@@ -2024,7 +2054,8 @@ def get_one_scheduled_kernel(kernel):
 
         logger.info("%s: schedule start" % kernel.name)
 
-        result = next(iter(generate_loop_schedules(kernel)))
+        with MinRecursionLimitForScheduling(kernel):
+            result = _get_one_scheduled_kernel_inner(kernel)
 
         logger.info("%s: scheduling done after %.2f s" % (
             kernel.name, time()-start_time))
