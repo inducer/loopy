@@ -1527,11 +1527,10 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                     + access_counter_l(insn.expression)
                     ).with_set_attributes(direction="load")
 
-            access_assignee_g = access_counter_g(insn.assignee).with_set_attributes(
-                    direction="store")
-
-            # FIXME: (!!!!) for now, don't count writes to local mem
-            # (^this is updated in a branch that will be merged soon)
+            access_assignee = (
+                    access_counter_g(insn.assignee)
+                    + access_counter_l(insn.assignee)
+                    ).with_set_attributes(direction="store")
 
             # use count excluding local index tags for uniform accesses
             for key, val in six.iteritems(access_expr.count_map):
@@ -1542,7 +1541,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                         * get_insn_count(knl, insn.id, key.count_granularity))
                 #currently not counting stride of local mem access
 
-            for key, val in six.iteritems(access_assignee_g.count_map):
+            for key, val in six.iteritems(access_assignee.count_map):
 
                 access_map = (
                         access_map
