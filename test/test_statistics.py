@@ -925,6 +925,12 @@ def test_all_counters_parallel_matmul():
                                 ].eval_with_dict(params)
     assert local_mem_l == n*m*ell*2
 
+    local_mem_s = local_mem_map[lp.MemAccess('local', np.dtype(np.float32),
+                                             direction='store',
+                                             count_granularity=CG.WORKITEM)
+                                ].eval_with_dict(params)
+    assert local_mem_s == n*m*ell*2/bsize
+
 
 def test_gather_access_footprint():
     knl = lp.make_kernel(
