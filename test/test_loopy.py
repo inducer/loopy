@@ -2856,6 +2856,19 @@ def test_no_barriers_for_nonoverlapping_access(second_index, expect_barrier):
     assert barrier_between(knl, "first", "second") == expect_barrier
 
 
+def test_half_complex_conditional(ctx_factory):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    knl = lp.make_kernel(
+            "{[i]: 0 <= i < 10}",
+            """
+           tmp[i] = if(i < 5, 0, 0j)
+           """)
+
+    knl(queue)
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
