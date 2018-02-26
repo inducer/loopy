@@ -324,10 +324,11 @@ class ExpressionToCExpressionMapper(IdentityMapper):
                     self.rec(expr.denominator, 'i'))
 
     def map_if(self, expr, type_context):
+        result_type = self.infer_type(expr)
         return type(expr)(
                 self.rec(expr.condition, "i"),
-                self.rec(expr.then, type_context),
-                self.rec(expr.else_, type_context),
+                self.rec(expr.then, type_context, result_type),
+                self.rec(expr.else_, type_context, result_type),
                 )
 
     def map_comparison(self, expr, type_context):
