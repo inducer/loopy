@@ -659,7 +659,6 @@ def generate_loop_schedules_internal(
         sched_state, allow_boost=False, debug=None):
     # allow_insn is set to False initially and after entering each loop
     # to give loops containing high-priority instructions a chance.
-
     kernel = sched_state.kernel
     Fore = kernel.options._fore  # noqa
     Style = kernel.options._style  # noqa
@@ -778,10 +777,14 @@ def generate_loop_schedules_internal(
         # schedule generation order.
         return (insn.priority, len(active_groups & insn.groups), insn.id)
 
-    insn_ids_to_try = sorted(
-            # Non-prescheduled instructions go first.
-            sched_state.unscheduled_insn_ids - sched_state.prescheduled_insn_ids,
-            key=insn_sort_key, reverse=True)
+    # Use previous instruction sorting result if it is available
+    if sched_state.insn_ids_to_try is None:
+        insn_ids_to_try = sorted(
+                # Non-prescheduled instructions go first.
+                sched_state.unscheduled_insn_ids - sched_state.prescheduled_insn_ids,
+                key=insn_sort_key, reverse=True)
+    else:
+        insn_ids_to_try = sched_state.insn_ids_to_try
 
     insn_ids_to_try.extend(
         insn_id
@@ -900,9 +903,20 @@ def generate_loop_schedules_internal(
                     else:
                         new_active_group_counts[grp] = (
                                 sched_state.group_insn_counts[grp] - 1)
-
             else:
                 new_active_group_counts = sched_state.active_group_counts
+
+            # }}}
+
+            # {{{ update instruction_ids_to_try
+
+            new_insn_ids_to_try = list(insn_ids_to_try)
+            new_insn_ids_to_try.remove(insn.id)
+
+            # invalidate instruction_ids_to_try when active group changes
+            if set(new_active_group_counts.keys()) != set(
+                    sched_state.active_group_counts.keys()):
+                new_insn_ids_to_try = None
 
             # }}}
 
@@ -915,6 +929,7 @@ def generate_loop_schedules_internal(
             new_sched_state = sched_state.copy(
                     scheduled_insn_ids=sched_state.scheduled_insn_ids | iid_set,
                     unscheduled_insn_ids=sched_state.unscheduled_insn_ids - iid_set,
+                    insn_ids_to_try=new_insn_ids_to_try,
                     schedule=(
                         sched_state.schedule + (RunInstruction(insn_id=insn.id),)),
                     preschedule=(
@@ -930,7 +945,6 @@ def generate_loop_schedules_internal(
             # Don't be eager about entering/leaving loops--if progress has been
             # made, revert to top of scheduler and see if more progress can be
             # made.
-
             for sub_sched in generate_loop_schedules_internal(
                     new_sched_state,
                     allow_boost=rec_allow_boost, debug=debug):
@@ -1904,6 +1918,7 @@ def generate_loop_schedules_inner(kernel, debug_args={}):
             may_schedule_global_barriers=True,
 
             preschedule=preschedule,
+            insn_ids_to_try=None,
 
             # ilp and vec are not parallel for the purposes of the scheduler
             parallel_inames=parallel_inames - ilp_inames - vec_inames,
