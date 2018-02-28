@@ -884,11 +884,6 @@ def generate_loop_schedules_internal(
         if is_ready and debug_mode:
             print("ready to schedule '%s'" % format_insn(kernel, insn.id))
 
-        # Remove the current instruction from the sorted list of instructions
-        # to try
-        new_insn_ids_to_try = list(insn_ids_to_try)
-        new_insn_ids_to_try.remove(insn.id)
-
         if is_ready and not debug_mode:
             iid_set = frozenset([insn.id])
 
@@ -906,11 +901,20 @@ def generate_loop_schedules_internal(
                     else:
                         new_active_group_counts[grp] = (
                                 sched_state.group_insn_counts[grp] - 1)
-                # invalidate instruction to try when active group changes
-                new_insn_ids_to_try = None
-
             else:
                 new_active_group_counts = sched_state.active_group_counts
+
+            # }}}
+
+            # {{{ update instruction_ids_to_try
+
+            new_insn_ids_to_try = list(insn_ids_to_try)
+            new_insn_ids_to_try.remove(insn.id)
+
+            # invalidate instruction_ids_to_try when active group changes
+            if set(new_active_group_counts.keys()) != set(
+                    sched_state.active_group_counts.keys()):
+                new_insn_ids_to_try = None
 
             # }}}
 
