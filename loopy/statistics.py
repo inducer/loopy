@@ -930,7 +930,6 @@ class GlobalMemAccessCounter(MemAccessCounter):
                                 count_granularity=CountGranularity.SUBGROUP): 1}
                               ) + self.rec(expr.index)
 
-
         # create lid_strides dict (strides are coefficents in flattened index)
         # i.e., we want {0:A, 1:B, 2:C, ...} where A, B, & C
         # come from flattened index [... + C*lid2 + B*lid1 + A*lid0]
