@@ -529,7 +529,7 @@ class Op(Record):
                             count_granularity=count_granularity)
 
     def __hash__(self):
-        return hash(str(self))
+        return hash(repr(self))
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
@@ -612,14 +612,16 @@ class MemAccess(Record):
                             variable=variable, count_granularity=count_granularity)
 
     def __hash__(self):
-        return hash(str(self))
+        # Note that this means lid_strides must be sorted in self.__repr__()
+        return hash(repr(self))
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
         return "MemAccess(%s, %s, %s, %s, %s, %s)" % (
             self.mtype,
             self.dtype,
-            self.lid_strides,
+            None if self.lid_strides is None else dict(
+                sorted(six.iteritems(self.lid_strides))),
             self.direction,
             self.variable,
             self.count_granularity)
@@ -870,7 +872,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
             return ToCountMap()
 
         return ToCountMap({MemAccess(mtype='global',
-                                     dtype=self.type_inf(expr), lid_strides=[],
+                                     dtype=self.type_inf(expr), lid_strides={},
                                      variable=name,
                                      count_granularity=CountGranularity.WORKITEM): 1}
                           ) + self.rec(expr.index)
@@ -906,18 +908,18 @@ class GlobalMemAccessCounter(MemAccessCounter):
         if not lid_to_iname:
 
             # no local id found, count as uniform access
-            # Note:
-            # lid_strides=[] when no local ids were found,
-            # lid_strides=[0, ...] if any local id is found and the lid0 stride is 0,
-            # either because no lid0 is found or because the stride of lid0 is 0
+            # Note, a few different cases may be considered uniform:
+            # lid_strides={} if no local ids were found,
+            # lid_strides={1:1, 2:32} if no local id 0 was found,
+            # lid_strides={0:0, ...} if a local id 0 is found and its stride is 0
             warn_with_kernel(self.knl, "no_lid_found",
                              "GlobalSubscriptCounter: No local id found, "
-                             "setting lid_strides to []. Expression: %s"
+                             "setting lid_strides to {}. Expression: %s"
                              % (expr))
 
             return ToCountMap({MemAccess(
                                 mtype='global',
-                                dtype=self.type_inf(expr), lid_strides=[],
+                                dtype=self.type_inf(expr), lid_strides={},
                                 variable=name,
                                 count_granularity=CountGranularity.SUBGROUP): 1}
                               ) + self.rec(expr.index)
@@ -965,18 +967,18 @@ class GlobalMemAccessCounter(MemAccessCounter):
             lid_strides[ltag] = ltag_stride
 
         # insert 0s for coeffs of missing *lesser* lids
-        for i in range(max(lid_strides.keys())+1):
-            if i not in lid_strides.keys():
-                lid_strides[i] = 0
+        #for i in range(max(lid_strides.keys())+1):
+        #    if i not in lid_strides.keys():
+        #        lid_strides[i] = 0
 
-        count_granularity = CountGranularity.WORKITEM if lid_strides[0] != 0 \
-                                else CountGranularity.SUBGROUP
+        count_granularity = CountGranularity.WORKITEM if (
+                                0 in lid_strides and lid_strides[0] != 0
+                                ) else CountGranularity.SUBGROUP
 
         return ToCountMap({MemAccess(
                             mtype='global',
                             dtype=self.type_inf(expr),
-                            lid_strides=[lid_strides[i]
-                                         for i in sorted(lid_strides)],
+                            lid_strides=dict(sorted(six.iteritems(lid_strides))),
                             variable=name,
                             count_granularity=count_granularity
                             ): 1}
