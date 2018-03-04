@@ -1641,15 +1641,15 @@ we'll continue using the kernel from the previous example:
 
     >>> mem_map = lp.get_mem_access_map(knl, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 0, load, a, subgroup) : ...
+    MemAccess(global, np:dtype('float32'), {}, load, a, subgroup) : ...
     <BLANKLINE>
 
 Each line of output will look roughly like::
 
 
-    MemAccess(global, np:dtype('float32'), 0, load, a, subgroup) : [m, l, n] -> { 2 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, load, b, subgroup) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, store, c, subgroup) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, load, a, subgroup) : [m, l, n] -> { 2 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, load, b, subgroup) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, store, c, subgroup) : [m, l, n] -> { m * l * n : m > 0 and l > 0 and n > 0 }
 
 :func:`loopy.get_mem_access_map` returns a :class:`loopy.ToCountMap` of **{**
 :class:`loopy.MemAccess` **:** :class:`islpy.PwQPolynomial` **}**.
@@ -1661,8 +1661,13 @@ Each line of output will look roughly like::
 - dtype: A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
   data type accessed.
 
-- stride: An :class:`int` that specifies stride of the memory access. A stride
-  of 0 indicates a uniform access (i.e. all work-items access the same item).
+- stride: A :class:`dict` of **{** :class:`int` **:**
+  :class:`pymbolic.primitives.Variable` or :class:`int` **}** that specifies
+  local strides for each local id in the memory access index. Local ids not
+  found will not be present in ``lid_strides.keys()``. Uniform access (i.e.
+  work-items within a sub-group access the same item) is indicated by setting
+  ``lid_strides[0]=0``, but may also occur when no local id 0 is found, in
+  which case the 0 key will not be present in lid_strides.
 
 - direction: A :class:`str` that specifies the direction of memory access as
   **load** or **store**.
@@ -1674,13 +1679,13 @@ We can evaluate these polynomials using :func:`islpy.eval_with_dict`:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 0, 'load', 'g', CG.SUBGROUP)
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, {}, 'load', 'g', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 0, 'store', 'e', CG.SUBGROUP)
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, {}, 'store', 'e', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 0, 'load', 'a', CG.SUBGROUP)
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, {}, 'load', 'a', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 0, 'store', 'c', CG.SUBGROUP)
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, {}, 'store', 'c', CG.SUBGROUP)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1698,7 +1703,7 @@ using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
 
     >>> bytes_map = mem_map.to_bytes()
     >>> print(lp.stringify_stats_mapping(bytes_map))
-    MemAccess(global, np:dtype('float32'), 0, load, a, subgroup) : ...
+    MemAccess(global, np:dtype('float32'), {}, load, a, subgroup) : ...
     <BLANKLINE>
     >>> global_ld_st_bytes = bytes_map.filter_by(mtype=['global']
     ...                                         ).group_by('direction')
@@ -1716,12 +1721,12 @@ using :func:`loopy.ToCountMap.to_bytes` and :func:`loopy.ToCountMap.group_by`:
 
 The lines of output above might look like::
 
-    MemAccess(global, np:dtype('float32'), 0, load, a, subgroup) : [m, l, n] -> { 8 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, load, b, subgroup) : [m, l, n] -> { 4 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float32'), 0, store, c, subgroup) : [m, l, n] -> { 4 * m * l * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, g, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, load, h, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
-    MemAccess(global, np:dtype('float64'), 0, store, e, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, load, a, subgroup) : [m, l, n] -> { 8 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, load, b, subgroup) : [m, l, n] -> { 4 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float32'), {}, store, c, subgroup) : [m, l, n] -> { 4 * m * l * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), {}, load, g, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), {}, load, h, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
+    MemAccess(global, np:dtype('float64'), {}, store, e, subgroup) : [m, l, n] -> { 8 * m * n : m > 0 and l > 0 and n > 0 }
 
 One can see how these functions might be useful in computing, for example,
 achieved memory bandwidth in byte/sec or performance in FLOP/sec.
@@ -1730,7 +1735,7 @@ achieved memory bandwidth in byte/sec or performance in FLOP/sec.
 
 Since we have not tagged any of the inames or parallelized the kernel across
 work-items (which would have produced iname tags), :func:`loopy.get_mem_access_map`
-considers the memory accesses *uniform*, so the *stride* of each access is 0.
+finds no local id strides, leaving ``lid_strides`` empty for each memory access.
 Now we'll parallelize the kernel and count the array accesses again. The
 resulting :class:`islpy.PwQPolynomial` will be more complicated this time.
 
@@ -1740,12 +1745,12 @@ resulting :class:`islpy.PwQPolynomial` will be more complicated this time.
     ...                             outer_tag="l.1", inner_tag="l.0")
     >>> mem_map = lp.get_mem_access_map(knl_consec, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 1, load, a, workitem) : ...
-    MemAccess(global, np:dtype('float32'), 1, load, b, workitem) : ...
-    MemAccess(global, np:dtype('float32'), 1, store, c, workitem) : ...
-    MemAccess(global, np:dtype('float64'), 1, load, g, workitem) : ...
-    MemAccess(global, np:dtype('float64'), 1, load, h, workitem) : ...
-    MemAccess(global, np:dtype('float64'), 1, store, e, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 1, 1: 128}, load, a, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 1, 1: 128}, load, b, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 1, 1: 128}, store, c, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 1, 1: 128}, load, g, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 1, 1: 128}, load, h, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 1, 1: 128}, store, e, workitem) : ...
     <BLANKLINE>
 
 With this parallelization, consecutive work-items will access consecutive array
@@ -1755,13 +1760,13 @@ array accesses has not changed:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 1, 'load', 'g', CG.WORKITEM)
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, {0: 1, 1: 128}, 'load', 'g', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 1, 'store', 'e', CG.WORKITEM)
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, {0: 1, 1: 128}, 'store', 'e', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 1, 'load', 'a', CG.WORKITEM)
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, {0: 1, 1: 128}, 'load', 'a', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 1, 'store', 'c', CG.WORKITEM)
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, {0: 1, 1: 128}, 'store', 'c', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1772,8 +1777,8 @@ array accesses has not changed:
 
 ~~~~~~~~~~~
 
-To produce *nonconsecutive* array accesses with stride greater than 1, we'll
-switch the inner and outer tags in our parallelization of the kernel:
+To produce *nonconsecutive* array accesses with local id 0 stride greater than 1,
+we'll switch the inner and outer tags in our parallelization of the kernel:
 
 .. doctest::
 
@@ -1781,12 +1786,12 @@ switch the inner and outer tags in our parallelization of the kernel:
     ...                                outer_tag="l.0", inner_tag="l.1")
     >>> mem_map = lp.get_mem_access_map(knl_nonconsec, subgroup_size=32)
     >>> print(lp.stringify_stats_mapping(mem_map))
-    MemAccess(global, np:dtype('float32'), 128, load, a, workitem) : ...
-    MemAccess(global, np:dtype('float32'), 128, load, b, workitem) : ...
-    MemAccess(global, np:dtype('float32'), 128, store, c, workitem) : ...
-    MemAccess(global, np:dtype('float64'), 128, load, g, workitem) : ...
-    MemAccess(global, np:dtype('float64'), 128, load, h, workitem) : ...
-    MemAccess(global, np:dtype('float64'), 128, store, e, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 128, 1: 1}, load, a, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 128, 1: 1}, load, b, workitem) : ...
+    MemAccess(global, np:dtype('float32'), {0: 128, 1: 1}, store, c, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 128, 1: 1}, load, g, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 128, 1: 1}, load, h, workitem) : ...
+    MemAccess(global, np:dtype('float64'), {0: 128, 1: 1}, store, e, workitem) : ...
     <BLANKLINE>
 
 With this parallelization, consecutive work-items will access *nonconsecutive*
@@ -1795,13 +1800,13 @@ changed:
 
 .. doctest::
 
-    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, 128, 'load', 'g', CG.WORKITEM)
+    >>> f64ld_g = mem_map[lp.MemAccess('global', np.float64, {0: 128, 1: 1}, 'load', 'g', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, 128, 'store', 'e', CG.WORKITEM)
+    >>> f64st_e = mem_map[lp.MemAccess('global', np.float64, {0: 128, 1: 1}, 'store', 'e', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, 128, 'load', 'a', CG.WORKITEM)
+    >>> f32ld_a = mem_map[lp.MemAccess('global', np.float32, {0: 128, 1: 1}, 'load', 'a', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
-    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, 128, 'store', 'c', CG.WORKITEM)
+    >>> f32st_c = mem_map[lp.MemAccess('global', np.float32, {0: 128, 1: 1}, 'store', 'c', CG.WORKITEM)
     ...                  ].eval_with_dict(param_dict)
     >>> print("f32 ld a: %i\nf32 st c: %i\nf64 ld g: %i\nf64 st e: %i" %
     ...       (f32ld_a, f32st_c, f64ld_g, f64st_e))
@@ -1819,7 +1824,7 @@ criteria are more complicated than a simple list of allowable values:
     >>> def f(key):
     ...     from loopy.types import to_loopy_type
     ...     return key.dtype == to_loopy_type(np.float32) and \
-    ...            key.stride > 1
+    ...            key.lid_strides[0] > 1
     >>> count = mem_map.filter_by_func(f).eval_and_sum(param_dict)
     >>> print(count)
     2097152
