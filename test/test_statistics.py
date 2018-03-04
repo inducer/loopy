@@ -897,20 +897,20 @@ def test_all_counters_parallel_matmul():
                                            subgroup_size=32)
 
     f32s1lb = mem_access_map[lp.MemAccess('global', np.float32,
-                             lid_strides=[1, Variable('ell')], direction='load', variable='b',
-                             count_granularity=CG.WORKITEM)
+                             lid_strides=[1, Variable('ell')], direction='load',
+                             variable='b', count_granularity=CG.WORKITEM)
                              ].eval_with_dict(params)
     f32s1la = mem_access_map[lp.MemAccess('global', np.float32,
-                             lid_strides=[1, Variable('m')], direction='load', variable='a',
-                             count_granularity=CG.WORKITEM)
+                             lid_strides=[1, Variable('m')], direction='load',
+                             variable='a', count_granularity=CG.WORKITEM)
                              ].eval_with_dict(params)
 
     assert f32s1lb == n*m*ell/bsize
     assert f32s1la == n*m*ell/bsize
 
     f32coal = mem_access_map[lp.MemAccess('global', np.float32,
-                             lid_strides=[1, Variable('ell')], direction='store', variable='c',
-                             count_granularity=CG.WORKITEM)
+                             lid_strides=[1, Variable('ell')], direction='store',
+                             variable='c', count_granularity=CG.WORKITEM)
                              ].eval_with_dict(params)
 
     assert f32coal == n*ell
