@@ -556,7 +556,7 @@ class MemAccess(Record):
     .. attribute:: lid_strides
 
        A :class:`dict` of **{** :class:`int` **:**
-       :class:`pymbolic.primitives.Variable` or :class:`int` **}** that
+       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
        specifies local strides for each local id in the memory access index.
        Local ids not found will not be present in ``lid_strides.keys()``.
        Uniform access (i.e. work-items within a sub-group access the same
