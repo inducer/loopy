@@ -269,7 +269,7 @@ class ToCountMap(object):
             params = {'n': 512, 'm': 256, 'l': 128}
             mem_map = lp.get_mem_access_map(knl)
             def filter_func(key):
-                return key.stride > 1 and key.stride <= 4:
+                return key.lid_strides[0] > 1 and key.lid_strides[0] <= 4:
 
             filtered_map = mem_map.filter_by_func(filter_func)
             tot = filtered_map.eval_and_sum(params)
@@ -374,16 +374,16 @@ class ToCountMap(object):
             params = {'n': 512, 'm': 256, 'l': 128}
 
             s1_g_ld_byt = bytes_map.filter_by(
-                                mtype=['global'], stride=[1],
+                                mtype=['global'], lid_strides={0: 1},
                                 direction=['load']).eval_and_sum(params)
             s2_g_ld_byt = bytes_map.filter_by(
-                                mtype=['global'], stride=[2],
+                                mtype=['global'], lid_strides={0: 2},
                                 direction=['load']).eval_and_sum(params)
             s1_g_st_byt = bytes_map.filter_by(
-                                mtype=['global'], stride=[1],
+                                mtype=['global'], lid_strides={0: 1},
                                 direction=['store']).eval_and_sum(params)
             s2_g_st_byt = bytes_map.filter_by(
-                                mtype=['global'], stride=[2],
+                                mtype=['global'], lid_strides={0: 2},
                                 direction=['store']).eval_and_sum(params)
 
             # (now use these counts to, e.g., predict performance)
@@ -440,7 +440,7 @@ class ToCountMap(object):
             params = {'n': 512, 'm': 256, 'l': 128}
             mem_map = lp.get_mem_access_map(knl)
             filtered_map = mem_map.filter_by(direction=['load'],
-                                             variable=['a','g'])
+                                             variable=['a', 'g'])
             tot_loads_a_g = filtered_map.eval_and_sum(params)
 
             # (now use these counts to, e.g., predict performance)
@@ -529,7 +529,7 @@ class Op(Record):
                             count_granularity=count_granularity)
 
     def __hash__(self):
-        return hash(str(self))
+        return hash(repr(self))
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
@@ -553,10 +553,16 @@ class MemAccess(Record):
        A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
        data type accessed.
 
-    .. attribute:: stride
+    .. attribute:: lid_strides
 
-       An :class:`int` that specifies stride of the memory access. A stride of
-       0 indicates a uniform access (i.e. all work-items access the same item).
+       A :class:`dict` of **{** :class:`int` **:**
+       :class:`pymbolic.primitives.Expression` or :class:`int` **}** that
+       specifies local strides for each local id in the memory access index.
+       Local ids not found will not be present in ``lid_strides.keys()``.
+       Uniform access (i.e. work-items within a sub-group access the same
+       item) is indicated by setting ``lid_strides[0]=0``, but may also occur
+       when no local id 0 is found, in which case the 0 key will not be
+       present in lid_strides.
 
     .. attribute:: direction
 
@@ -583,12 +589,12 @@ class MemAccess(Record):
 
     """
 
-    def __init__(self, mtype=None, dtype=None, stride=None, direction=None,
+    def __init__(self, mtype=None, dtype=None, lid_strides=None, direction=None,
                  variable=None, count_granularity=None):
 
-        #TODO currently giving all lmem access stride=None
-        if (mtype == 'local') and (stride is not None):
-            raise NotImplementedError("MemAccess: stride must be None when "
+        #TODO currently giving all lmem access lid_strides=None
+        if mtype == 'local' and lid_strides is not None:
+            raise NotImplementedError("MemAccess: lid_strides must be None when "
                                       "mtype is 'local'")
 
         #TODO currently giving all lmem access variable=None
@@ -602,24 +608,26 @@ class MemAccess(Record):
                     % (count_granularity, CountGranularity.ALL+[None]))
 
         if dtype is None:
-            Record.__init__(self, mtype=mtype, dtype=dtype, stride=stride,
+            Record.__init__(self, mtype=mtype, dtype=dtype, lid_strides=lid_strides,
                             direction=direction, variable=variable,
                             count_granularity=count_granularity)
         else:
             from loopy.types import to_loopy_type
             Record.__init__(self, mtype=mtype, dtype=to_loopy_type(dtype),
-                            stride=stride, direction=direction, variable=variable,
-                            count_granularity=count_granularity)
+                            lid_strides=lid_strides, direction=direction,
+                            variable=variable, count_granularity=count_granularity)
 
     def __hash__(self):
-        return hash(str(self))
+        # Note that this means lid_strides must be sorted in self.__repr__()
+        return hash(repr(self))
 
     def __repr__(self):
         # Record.__repr__ overridden for consistent ordering and conciseness
         return "MemAccess(%s, %s, %s, %s, %s, %s)" % (
             self.mtype,
             self.dtype,
-            self.stride,
+            None if self.lid_strides is None else dict(
+                sorted(six.iteritems(self.lid_strides))),
             self.direction,
             self.variable,
             self.count_granularity)
@@ -870,7 +878,7 @@ class GlobalMemAccessCounter(MemAccessCounter):
             return ToCountMap()
 
         return ToCountMap({MemAccess(mtype='global',
-                                     dtype=self.type_inf(expr), stride=0,
+                                     dtype=self.type_inf(expr), lid_strides={},
                                      variable=name,
                                      count_granularity=CountGranularity.WORKITEM): 1}
                           ) + self.rec(expr.index)
@@ -896,86 +904,81 @@ class GlobalMemAccessCounter(MemAccessCounter):
         from loopy.kernel.data import LocalIndexTag
         my_inames = get_dependencies(index) & self.knl.all_inames()
 
-        # find min tag axis
-        import sys
-        min_tag_axis = sys.maxsize
-        local_id_found = False
+        # find all local index tags and corresponding inames
+        lid_to_iname = {}
         for iname in my_inames:
             tag = self.knl.iname_to_tag.get(iname)
             if isinstance(tag, LocalIndexTag):
-                local_id_found = True
-                if tag.axis < min_tag_axis:
-                    min_tag_axis = tag.axis
+                lid_to_iname[tag.axis] = iname
 
-        if not local_id_found:
-            # count as uniform access
+        if not lid_to_iname:
+
+            # no local id found, count as uniform access
+            # Note, a few different cases may be considered uniform:
+            # lid_strides={} if no local ids were found,
+            # lid_strides={1:1, 2:32} if no local id 0 was found,
+            # lid_strides={0:0, ...} if a local id 0 is found and its stride is 0
+            warn_with_kernel(self.knl, "no_lid_found",
+                             "GlobalSubscriptCounter: No local id found, "
+                             "setting lid_strides to {}. Expression: %s"
+                             % (expr))
+
             return ToCountMap({MemAccess(
                                 mtype='global',
-                                dtype=self.type_inf(expr), stride=0,
+                                dtype=self.type_inf(expr), lid_strides={},
                                 variable=name,
                                 count_granularity=CountGranularity.SUBGROUP): 1}
                               ) + self.rec(expr.index)
 
-        if min_tag_axis != 0:
-            warn_with_kernel(self.knl, "unknown_gmem_stride",
-                             "GlobalSubscriptCounter: Memory access minimum "
-                             "tag axis %d != 0, stride unknown, using "
-                             "sys.maxsize." % (min_tag_axis))
-            return ToCountMap({MemAccess(
-                                mtype='global',
-                                dtype=self.type_inf(expr),
-                                stride=sys.maxsize, variable=name,
-                                count_granularity=CountGranularity.WORKITEM): 1}
-                              ) + self.rec(expr.index)
+        # create lid_strides dict (strides are coefficents in flattened index)
+        # i.e., we want {0:A, 1:B, 2:C, ...} where A, B, & C
+        # come from flattened index [... + C*lid2 + B*lid1 + A*lid0]
 
-        # get local_id associated with minimum tag axis
-        min_lid = None
-        for iname in my_inames:
-            tag = self.knl.iname_to_tag.get(iname)
-            if isinstance(tag, LocalIndexTag):
-                if tag.axis == min_tag_axis:
-                    min_lid = iname
-                    break  # there will be only one min local_id
-
-        # found local_id associated with minimum tag axis
-
-        total_stride = 0
-        # check coefficient of min_lid for each axis
         from loopy.symbolic import CoefficientCollector
         from loopy.kernel.array import FixedStrideArrayDimTag
         from pymbolic.primitives import Variable
-        for idx, axis_tag in zip(index, array.dim_tags):
 
-            from loopy.symbolic import simplify_using_aff
-            from loopy.diagnostic import ExpressionNotAffineError
-            try:
-                coeffs = CoefficientCollector()(
-                          simplify_using_aff(self.knl, idx))
-            except ExpressionNotAffineError:
-                total_stride = None
-                break
-            # check if he contains the lid 0 guy
-            try:
-                coeff_min_lid = coeffs[Variable(min_lid)]
-            except KeyError:
-                # does not contain min_lid
-                continue
-            # found coefficient of min_lid
-            # now determine stride
-            if isinstance(axis_tag, FixedStrideArrayDimTag):
-                stride = axis_tag.stride
-            else:
-                continue
+        lid_strides = {}
 
-            total_stride += stride*coeff_min_lid
+        for ltag, iname in six.iteritems(lid_to_iname):
+            ltag_stride = 0
+            # check coefficient of this lid for each axis
+            for idx, axis_tag in zip(index, array.dim_tags):
 
-        count_granularity = CountGranularity.WORKITEM if total_stride is not 0 \
-                                else CountGranularity.SUBGROUP
+                from loopy.symbolic import simplify_using_aff
+                from loopy.diagnostic import ExpressionNotAffineError
+                try:
+                    coeffs = CoefficientCollector()(
+                              simplify_using_aff(self.knl, idx))
+                except ExpressionNotAffineError:
+                    ltag_stride = None
+                    break
+
+                # check if idx contains this lid
+                try:
+                    coeff_lid = coeffs[Variable(lid_to_iname[ltag])]
+                except KeyError:
+                    # idx does not contain this lid
+                    continue
+
+                # found coefficient of this lid
+                # now determine stride
+                if isinstance(axis_tag, FixedStrideArrayDimTag):
+                    stride = axis_tag.stride
+                else:
+                    continue
+
+                ltag_stride += stride*coeff_lid
+            lid_strides[ltag] = ltag_stride
+
+        count_granularity = CountGranularity.WORKITEM if (
+                                0 in lid_strides and lid_strides[0] != 0
+                                ) else CountGranularity.SUBGROUP
 
         return ToCountMap({MemAccess(
                             mtype='global',
                             dtype=self.type_inf(expr),
-                            stride=total_stride,
+                            lid_strides=dict(sorted(six.iteritems(lid_strides))),
                             variable=name,
                             count_granularity=count_granularity
                             ): 1}
@@ -1386,7 +1389,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         f32_s1_g_ld_a = mem_map[MemAccess(
                                     mtype='global',
                                     dtype=np.float32,
-                                    stride=1,
+                                    lid_strides={0: 1},
                                     direction='load',
                                     variable='a',
                                     count_granularity=CountGranularity.WORKITEM)
@@ -1394,7 +1397,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         f32_s1_g_st_a = mem_map[MemAccess(
                                     mtype='global',
                                     dtype=np.float32,
-                                    stride=1,
+                                    lid_strides={0: 1},
                                     direction='store',
                                     variable='a',
                                     count_granularity=CountGranularity.WORKITEM)
@@ -1402,7 +1405,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         f32_s1_l_ld_x = mem_map[MemAccess(
                                     mtype='local',
                                     dtype=np.float32,
-                                    stride=1,
+                                    lid_strides={0: 1},
                                     direction='load',
                                     variable='x',
                                     count_granularity=CountGranularity.WORKITEM)
@@ -1410,7 +1413,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         f32_s1_l_st_x = mem_map[MemAccess(
                                     mtype='local',
                                     dtype=np.float32,
-                                    stride=1,
+                                    lid_strides={0: 1},
                                     direction='store',
                                     variable='x',
                                     count_granularity=CountGranularity.WORKITEM)
@@ -1532,14 +1535,12 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                     + access_counter_l(insn.assignee)
                     ).with_set_attributes(direction="store")
 
-            # use count excluding local index tags for uniform accesses
             for key, val in six.iteritems(access_expr.count_map):
 
                 access_map = (
                         access_map
                         + ToCountMap({key: val})
                         * get_insn_count(knl, insn.id, key.count_granularity))
-                #currently not counting stride of local mem access
 
             for key, val in six.iteritems(access_assignee.count_map):
 
@@ -1547,7 +1548,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                         access_map
                         + ToCountMap({key: val})
                         * get_insn_count(knl, insn.id, key.count_granularity))
-                # for now, don't count writes to local mem
+
         elif isinstance(insn, (NoOpInstruction, BarrierInstruction)):
             pass
         else:
@@ -1560,7 +1561,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
                         (MemAccess(
                             mtype=mem_access.mtype,
                             dtype=mem_access.dtype.numpy_dtype,
-                            stride=mem_access.stride,
+                            lid_strides=mem_access.lid_strides,
                             direction=mem_access.direction,
                             variable=mem_access.variable,
                             count_granularity=mem_access.count_granularity),
