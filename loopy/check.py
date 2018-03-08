@@ -60,7 +60,6 @@ def check_identifiers_in_subst_rules(knl):
 
 # {{{ sanity checks run pre-scheduling
 
-
 # FIXME: Replace with an enum. See
 # https://gitlab.tiker.net/inducer/loopy/issues/85
 VALID_NOSYNC_SCOPES = frozenset(["local", "global", "any"])
@@ -489,7 +488,8 @@ def _check_variable_access_ordered_inner(kernel):
 
         # Check even for PRIVATE scope, to ensure intentional program order.
 
-        from loopy.symbolic import do_access_ranges_overlap_conservative
+        from loopy.symbolic import AccessRangeOverlapChecker
+        overlap_checker = AccessRangeOverlapChecker(kernel)
 
         for writer_id in writers:
             for other_id in readers | writers:
@@ -516,10 +516,9 @@ def _check_variable_access_ordered_inner(kernel):
                             or other_id in unaliased_readers))
 
                 # Do not enforce ordering for disjoint access ranges
-                if (not is_relationship_by_aliasing
-                        and not do_access_ranges_overlap_conservative(
-                            kernel, writer_id, "w", other_id, "any",
-                            name)):
+                if (not is_relationship_by_aliasing and not
+                    overlap_checker.do_access_ranges_overlap_conservative(
+                            writer_id, "w", other_id, "any", name)):
                     continue
 
                 # Do not enforce ordering for aliasing-based relationships

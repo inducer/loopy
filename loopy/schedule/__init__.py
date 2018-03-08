@@ -1435,6 +1435,9 @@ class DependencyTracker(object):
         self.reverse = reverse
         self.var_kind = var_kind
 
+        from loopy.symbolic import AccessRangeOverlapChecker
+        self.overlap_checker = AccessRangeOverlapChecker(kernel)
+
         if var_kind == "local":
             self.relevant_vars = kernel.local_var_names()
         elif var_kind == "global":
@@ -1555,10 +1558,9 @@ class DependencyTracker(object):
                 if src_race_vars == tgt_race_vars and len(src_race_vars) == 1:
                     race_var, = src_race_vars
 
-                    from loopy.symbolic import do_access_ranges_overlap_conservative
-                    if not do_access_ranges_overlap_conservative(
-                            self.kernel, target.id, tgt_dir,
-                            source_id, src_dir, race_var):
+                    if not (
+                        self.overlap_checker.do_access_ranges_overlap_conservative(
+                                target.id, tgt_dir, source_id, src_dir, race_var)):
                         continue
 
                 yield DependencyRecord(
