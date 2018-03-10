@@ -658,7 +658,7 @@ class TemporarySaver(object):
 
         # Add dimension-dependent inames.
         dim_inames = []
-        domain = domain.add(isl.dim_type.set,
+        domain = domain.add_dims(isl.dim_type.set,
                             len(promoted_temporary.non_hw_dims)
                             + len(promoted_temporary.hw_dims))
 
