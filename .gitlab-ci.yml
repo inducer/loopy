@@ -1,7 +1,7 @@
-Python 2.7 AMD CPU:
+Python 2.7 Intel CPU:
   script:
   - export PY_EXE=python2.7
-  - export PYOPENCL_TEST=amd:pu
+  - export PYOPENCL_TEST=Intel
   - export EXTRA_INSTALL="numpy mako"
   - export LOOPY_NO_CACHE=1
   - export NO_DOCTESTS=1
@@ -9,7 +9,7 @@ Python 2.7 AMD CPU:
   - ". ./build-and-test-py-project.sh"
   tags:
   - python2.7
-  - amd-cl-cpu
+  - intel-cl-cpu
   except:
   - tags
 
@@ -28,17 +28,17 @@ Python 2.6 POCL:
   except:
   - tags
 
-Python 3.5 AMD CPU:
+Python 3.5 Intel CPU:
   script:
   - export PY_EXE=python3.5
-  - export PYOPENCL_TEST=amd:pu
+  - export PYOPENCL_TEST=Intel
   - export EXTRA_INSTALL="numpy mako"
   - export LOOPY_NO_CACHE=1
   - curl -L -O -k https://gitlab.tiker.net/inducer/ci-support/raw/master/build-and-test-py-project.sh
   - ". ./build-and-test-py-project.sh"
   tags:
   - python3.5
-  - amd-cl-cpu
+  - intel-cl-cpu
   except:
   - tags
 
