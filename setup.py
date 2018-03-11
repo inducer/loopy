@@ -11,7 +11,7 @@ try:
 finally:
     version_file.close()
 
-os.environ["AKPYTHON_EXEC_FROM_WITHIN_WITHIN_SETUP_PY"] = "1"
+os.environ["AKPYTHON_EXEC_IMPORT_UNAVAILABLE"] = "1"
 exec(compile(version_file_contents, "loopy/version.py", 'exec'), ver_dic)
 
 
