@@ -33,7 +33,7 @@ else:
     _git_rev = _git_rev_mod.GIT_REVISION
 
     # If we're running from a dev tree, the last install (and hence the most
-    # recent update of the above git rev could have taken place very long ago.
+    # recent update of the above git rev) could have taken place very long ago.
     from pytools import find_module_git_revision
     _runtime_git_rev = find_module_git_revision(__file__, n_levels_up=1)
     if _runtime_git_rev is not None:
