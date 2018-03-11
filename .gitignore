@@ -20,4 +20,6 @@ htmlcov
 lextab.py
 yacctab.py
 
+loopy/_git_rev.py
+
 .cache

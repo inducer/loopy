@@ -21,6 +21,27 @@ THE SOFTWARE.
 """
 
 
+# {{{ find install- or run-time git revision
+
+import os
+if os.environ.get("AKPYTHON_EXEC_FROM_WITHIN_WITHIN_SETUP_PY") is not None:
+    # We're just being exec'd by setup.py. We can't import anything.
+    _git_rev = None
+
+else:
+    import loopy._git_rev as _git_rev_mod
+    _git_rev = _git_rev_mod.GIT_REVISION
+
+    # If we're running from a dev tree, the last install (and hence the most
+    # recent update of the above git rev) could have taken place very long ago.
+    from pytools import find_module_git_revision
+    _runtime_git_rev = find_module_git_revision(__file__, n_levels_up=1)
+    if _runtime_git_rev is not None:
+        _git_rev = _runtime_git_rev
+
+# }}}
+
+
 VERSION = (2017, 2, 1)
 VERSION_STATUS = ""
 VERSION_TEXT = ".".join(str(x) for x in VERSION) + VERSION_STATUS
@@ -31,8 +52,7 @@ except ImportError:
     _islpy_version = "_UNKNOWN_"
 else:
     _islpy_version = islpy.version.VERSION_TEXT
-
-DATA_MODEL_VERSION = "v78-islpy%s" % _islpy_version
+DATA_MODEL_VERSION = "%s-islpy%s-%s-v0" % (VERSION_TEXT, _islpy_version, _git_rev)
 
 
 FALLBACK_LANGUAGE_VERSION = (2017, 2, 1)
