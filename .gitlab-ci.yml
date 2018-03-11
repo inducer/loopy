@@ -114,6 +114,7 @@ CentOS binary:
   - docker
   only:
   - master
+  retry: 2
 
 Documentation:
   script:
