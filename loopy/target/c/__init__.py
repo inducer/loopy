@@ -356,6 +356,11 @@ def c_symbol_mangler(kernel, name):
 
 # {{{ function mangler
 
+def c_math_identifiers():
+    return set(["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh", "tanh",
+        "exp", "log", "log10", "sqrt", "ceil", "floor", "max", "min"])
+
+
 def c_math_mangler(target, name, arg_dtypes, modify_name=True):
     # Function mangler for math functions defined in C standard
     # Convert abs, min, max to fabs, fmin, fmax.
@@ -426,6 +431,11 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
 
 class CASTBuilder(ASTBuilderBase):
     # {{{ library
+
+    def function_identifiers(self):
+        return (
+                super(CASTBuilder, self).function_identifiers() |
+                c_math_identifiers())
 
     def function_manglers(self):
         return (

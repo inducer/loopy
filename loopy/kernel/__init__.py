@@ -37,7 +37,8 @@ from pytools import UniqueNameGenerator, generate_unique_names
 
 from loopy.library.function import (
         default_function_mangler,
-        single_arg_function_mangler)
+        single_arg_function_mangler,
+        default_function_identifiers)
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
@@ -143,6 +144,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         to instances of :class:`loopy.kernel.data.IndexTag`.
 
     .. attribute:: function_manglers
+    .. attribute:: function_identifiers
     .. attribute:: symbol_manglers
 
     .. attribute:: substitutions
@@ -200,6 +202,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 default_function_mangler,
                 single_arg_function_mangler,
                 ],
+            function_identifiers=set(),
             symbol_manglers=[],
 
             iname_slab_increments={},
@@ -265,6 +268,11 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         assert all(dom.get_ctx() == isl.DEFAULT_CONTEXT for dom in domains)
         assert assumptions.get_ctx() == isl.DEFAULT_CONTEXT
 
+        # Populating the function identifiers based on the target and the default
+        # function identifiers
+        function_identifiers = (default_function_identifiers() |
+                target.get_device_ast_builder().function_identifiers())
+
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,
                 instructions=instructions,
@@ -284,6 +292,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 cache_manager=cache_manager,
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
+                function_identifiers=function_identifiers,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
                 options=options,

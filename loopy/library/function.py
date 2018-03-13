@@ -23,7 +23,13 @@ THE SOFTWARE.
 """
 
 
+def default_function_identifiers():
+    from loopy.library.reduction import reduction_function_identifiers
+    return set("make_tuple") | reduction_function_identifiers()
+
+
 def default_function_mangler(kernel, name, arg_dtypes):
+
     from loopy.library.reduction import reduction_function_mangler
 
     manglers = [reduction_function_mangler, tuple_function_mangler]
@@ -54,6 +60,5 @@ def tuple_function_mangler(kernel, name, arg_dtypes):
                 arg_dtypes=arg_dtypes)
 
     return None
-
 
 # vim: foldmethod=marker

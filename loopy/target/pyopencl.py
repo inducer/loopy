@@ -199,6 +199,11 @@ def check_sizes(kernel, device):
 # }}}
 
 
+def pyopencl_function_identifiers():
+    return set(["sqrt", "exp", "log", "sin", "cos", "tan", "sinh", "cosh", "tanh",
+        "conj", "real", "imag", "abs"])
+
+
 def pyopencl_function_mangler(target, name, arg_dtypes):
     if len(arg_dtypes) == 1 and isinstance(name, str):
         arg_dtype, = arg_dtypes
@@ -738,6 +743,11 @@ class PyOpenCLCASTBuilder(OpenCLCASTBuilder):
     """
 
     # {{{ library
+
+    def function_identifiers(self):
+        from loopy.library.random123 import random123_function_identifiers
+        return (super(PyOpenCLCASTBuilder, self).function_identifiers() |
+                pyopencl_function_identifiers() | random123_function_identifiers())
 
     def function_manglers(self):
         from loopy.library.random123 import random123_function_mangler

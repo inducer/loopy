@@ -31,11 +31,10 @@ from loopy.target.c.codegen.expression import ExpressionToCExpressionMapper
 from pytools import memoize_method
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
-from loopy.target.c import DTypeRegistryWrapper, c_math_mangler
+from loopy.target.c import DTypeRegistryWrapper, c_math_identifiers
 from loopy.kernel.data import temp_var_scope, CallMangleInfo
 from pymbolic import var
 
-from functools import partial
 
 # {{{ dtype registry wrappers
 
@@ -139,7 +138,26 @@ def _register_vector_types(dtype_registry):
 # }}}
 
 
+# {{{ function identifiers
+
+_CL_SIMPLE_MULTI_ARG_FUNC_IDS = set(["clamp", "atan2"])
+
+
+VECTOR_LITERAL_FUNC_IDS = set("make_%s%d" % (name, count)
+        for name in ['char', 'uchar', 'short', 'ushort', 'int', 'uint', 'long',
+            'ulong', 'float', 'double']
+        for count in [2, 3, 4, 8, 16]
+        )
+
+
+def opencl_function_identifiers():
+    return set(["max", "min", "dot"]) | (_CL_SIMPLE_MULTI_ARG_FUNC_IDS |
+            VECTOR_LITERAL_FUNC_IDS)
+
+# }}}
+
 # {{{ function mangler
+
 
 _CL_SIMPLE_MULTI_ARG_FUNCTIONS = {
         "clamp": 3,
@@ -356,8 +374,6 @@ class OpenCLTarget(CTarget):
                 vec.types[base.numpy_dtype, count],
                 target=self)
 
-    # }}}
-
 # }}}
 
 
@@ -366,13 +382,9 @@ class OpenCLTarget(CTarget):
 class OpenCLCASTBuilder(CASTBuilder):
     # {{{ library
 
-    def function_manglers(self):
-        return (
-                [
-                    opencl_function_mangler,
-                    partial(c_math_mangler, modify_name=False)
-                ] +
-                super(OpenCLCASTBuilder, self).function_manglers())
+    def function_identifiers(self):
+        return (opencl_function_identifiers() | c_math_identifiers() |
+                super(OpenCLCASTBuilder, self).function_identifiers())
 
     def symbol_manglers(self):
         return (

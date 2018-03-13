@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 import numpy as np
 
-from pymbolic.mapper import CSECachingMapperMixin
+from pymbolic.mapper import CSECachingMapperMixin, Collector
 from loopy.tools import intern_frozenset_of_ids
 from loopy.symbolic import IdentityMapper, WalkMapper
 from loopy.kernel.data import (
@@ -1829,6 +1829,76 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 # }}}
 
 
+# {{{ lookup functions
+
+
+class FunctionScoper(IdentityMapper):
+    def __init__(self, function_ids):
+        self.function_ids = function_ids
+
+    def map_call(self, expr):
+        if expr.function.name in self.function_ids:
+            # 1. need to change the function to ScopedFunction instead of Variable
+            from pymbolic.primitives import Call
+            from loopy.symbolic import ScopedFunction
+
+            return super(FunctionScoper, self).map_call(
+                    Call(function=ScopedFunction(expr.function.name),
+                         parameters=expr.parameters))
+
+        else:
+            return super(FunctionScoper, self).map_call(expr)
+
+    def map_call_with_kwargs(self, expr):
+        if expr.function.name in self.function_ids:
+            from pymbolic.primitives import CallWithKwargs
+            from loopy.symbolic import ScopedFunction
+            return super(FunctionScoper, self).map_call_with_kwargs(
+                    CallWithKwargs(function=ScopedFunction(expr.function.name),
+                        parameters=expr.parameters,
+                        kw_parameters=expr.kw_parameters))
+        else:
+            return super(FunctionScoper, self).map_call_with_kwargs(expr)
+
+
+class ScopedFunctionCollector(Collector):
+
+    def map_scoped_function(self, expr):
+        return set([expr.name])
+
+
+def scope_functions(kernel):
+    func_ids = kernel.function_identifiers.copy()
+
+    from loopy.kernel.instruction import CInstruction, _DataObliviousInstruction
+    function_scoper = FunctionScoper(func_ids)
+    scoped_function_collector = ScopedFunctionCollector()
+    scoped_functions = set()
+
+    new_insns = []
+
+    for insn in kernel.instructions:
+        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
+            new_insn = insn.copy(expression=function_scoper(insn.expression))
+            scoped_functions.update(scoped_function_collector(new_insn.expression))
+            new_insns.append(new_insn)
+        elif isinstance(insn, _DataObliviousInstruction):
+            new_insns.append(insn)
+        else:
+            raise NotImplementedError("scope_function not implemented for %s" %
+                    type(insn))
+
+    # Need to combine the scoped functions into a dict
+    """
+    from loopy.function_interface import InKernelCallable
+    scoped_function_dict = ((func, InKernelCallable(func)) for func in
+            scoped_functions)
+    """
+    return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
 # {{{ kernel creation top-level
 
 def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
@@ -2162,6 +2232,11 @@ def make_kernel(domains, instructions, kernel_data=["..."], **kwargs):
     check_for_multiple_writes_to_loop_bounds(knl)
     check_for_duplicate_names(knl)
     check_written_variable_names(knl)
+
+    # Function Lookup
+    # TODO: here I add my function for function_lookup. Lol. realize the UN-inteded
+    # pun
+    knl = scope_functions(knl)
 
     from loopy.preprocess import prepare_for_caching
     knl = prepare_for_caching(knl)

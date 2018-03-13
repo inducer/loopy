@@ -150,6 +150,9 @@ class ASTBuilderBase(object):
 
     # {{{ library
 
+    def function_identifiers(self):
+        return set()
+
     def function_manglers(self):
         return []
 

@@ -112,6 +112,8 @@ class IdentityMapperMixin(object):
 
     map_rule_argument = map_group_hw_index
 
+    map_scoped_function = IdentityMapperBase.map_variable
+
 
 class IdentityMapper(IdentityMapperBase, IdentityMapperMixin):
     pass
@@ -124,6 +126,8 @@ class PartialEvaluationMapper(
 
     def map_common_subexpression_uncached(self, expr):
         return type(expr)(self.rec(expr.child), expr.prefix, expr.scope)
+
+    map_scoped_function = map_variable
 
 
 class WalkMapper(WalkMapperBase):
@@ -163,6 +167,8 @@ class WalkMapper(WalkMapperBase):
 
     map_rule_argument = map_group_hw_index
 
+    map_scoped_function = WalkMapperBase.map_variable
+
 
 class CallbackMapper(CallbackMapperBase, IdentityMapper):
     map_reduction = CallbackMapperBase.map_constant
@@ -173,6 +179,8 @@ class CombineMapper(CombineMapperBase):
         return self.rec(expr.expr)
 
     map_linear_subscript = CombineMapperBase.map_subscript
+
+    map_scoped_function = CombineMapperBase.map_variable
 
 
 class SubstitutionMapper(
@@ -229,6 +237,9 @@ class StringifyMapper(StringifyMapperBase):
     def map_type_cast(self, expr, enclosing_prec):
         from pymbolic.mapper.stringifier import PREC_NONE
         return "cast(%s, %s)" % (repr(expr.type), self.rec(expr.child, PREC_NONE))
+
+    def map_scoped_function(self, expr, prec):
+        return "ScopedFunction('%s')" % expr.name
 
 
 class UnidirectionalUnifier(UnidirectionalUnifierBase):
@@ -287,6 +298,8 @@ class DependencyMapper(DependencyMapperBase):
     def map_type_cast(self, expr):
         return self.rec(expr.child)
 
+    map_scoped_function = DependencyMapperBase.map_variable
+
 
 class SubstitutionRuleExpander(IdentityMapper):
     def __init__(self, rules):
@@ -321,6 +334,8 @@ class SubstitutionRuleExpander(IdentityMapper):
         expr = submap(rule.expression)
 
         return self.rec(expr)
+
+    map_scoped_function = map_variable
 
 # }}}
 
@@ -635,6 +650,15 @@ class RuleArgument(p.Expression):
         return StringifyMapper
 
     mapper_method = intern("map_rule_argument")
+
+
+class ScopedFunction(p.Variable):
+    """ Connects a call to a callable available in a kernel.
+    """
+    mapper_method = intern("map_scoped_function")
+
+    def stringifier(self):
+        return StringifyMapper
 
 # }}}
 

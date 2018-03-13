@@ -422,6 +422,13 @@ def parse_reduction_op(name):
 # }}}
 
 
+def reduction_function_identifiers():
+    """ Return a :class:`set` of the type of the reduction identifiers that can be
+    encountered in a kernel.
+    """
+    return set(op for op in _REDUCTION_OPS)
+
+
 def reduction_function_mangler(kernel, func_id, arg_dtypes):
     if isinstance(func_id, ArgExtOp):
         from loopy.target.opencl import CTarget
