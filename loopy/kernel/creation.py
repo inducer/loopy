@@ -1889,12 +1889,11 @@ def scope_functions(kernel):
                     type(insn))
 
     # Need to combine the scoped functions into a dict
-    """
-    from loopy.function_interface import InKernelCallable
-    scoped_function_dict = ((func, InKernelCallable(func)) for func in
+    from loopy.kernel.function_interface import InKernelCallable
+    scoped_function_dict = dict((func, InKernelCallable(func)) for func in
             scoped_functions)
-    """
-    return kernel.copy(instructions=new_insns)
+
+    return kernel.copy(instructions=new_insns, scoped_functions=scoped_function_dict)
 
 # }}}
 

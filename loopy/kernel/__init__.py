@@ -203,6 +203,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 single_arg_function_mangler,
                 ],
             function_identifiers=set(),
+            scoped_functions={},
             symbol_manglers=[],
 
             iname_slab_increments={},
@@ -293,6 +294,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
                 applied_iname_rewrites=applied_iname_rewrites,
                 function_manglers=function_manglers,
                 function_identifiers=function_identifiers,
+                scoped_functions=scoped_functions,
                 symbol_manglers=symbol_manglers,
                 index_dtype=index_dtype,
                 options=options,
