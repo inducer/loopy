@@ -37,7 +37,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from pymbolic.primitives import Variable
+from loopy.symbolic import ScopedFunction
 from pymbolic.mapper import Collector
 
 import logging
@@ -2103,21 +2103,21 @@ def check_atomic_loads(kernel):
 
 class UnScopedCallCollector(Collector):
     def map_call(self, expr):
-        if isinstance(expr.function, Variable):
+        if not isinstance(expr.function, ScopedFunction):
             return set([expr.function.name])
         else:
             return set()
 
 
-def check_function_are_scoped(kernel):
+def check_functions_are_scoped(kernel):
     """ Checks if all the calls in the instruction expression have been scoped,
     otherwise indicate to what all calls we await signature.
     """
     for insn in kernel.instructions:
         unscoped_calls = UnScopedCallCollector()(insn.expression)
         if unscoped_calls:
-            raise LoopyError("Unknown function obtained %s -- register a function"
-                    " or a kernel corresponding to it." % unscoped_calls[0])
+            raise LoopyError("Unknown function '%s' obtained -- register a function"
+                    " or a kernel corresponding to it." % unscoped_calls.pop())
 
 # }}}
 
@@ -2173,7 +2173,7 @@ def preprocess_kernel(kernel, device=None):
 
     # Checking if all the functions being used in the kernel and scoped to a
     # finite namespace
-    check_function_are_scoped(kernel)
+    check_functions_are_scoped(kernel)
 
     # Ordering restriction:
     # Type inference and reduction iname uniqueness don't handle substitutions.
