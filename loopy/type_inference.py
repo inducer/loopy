@@ -60,6 +60,7 @@ class TypeInferenceMapper(CombineMapper):
             new_assignments = {}
         self.new_assignments = new_assignments
         self.symbols_with_unknown_types = set()
+        self.scoped_functions = kernel.scoped_functions
 
     def __call__(self, expr, return_tuple=False, return_dtype_set=False):
         kwargs = {}
@@ -250,7 +251,9 @@ class TypeInferenceMapper(CombineMapper):
         return self.rec(expr.aggregate)
 
     def map_call(self, expr, return_tuple=False):
-        from pymbolic.primitives import Variable
+        from pymbolic.primitives import Variable, Expression
+        from loopy.symbolic import SubArrayRef
+        from loopy.kernel.function_interface import ValueArgDescriptor
 
         identifier = expr.function
         if isinstance(identifier, Variable):
@@ -270,6 +273,39 @@ class TypeInferenceMapper(CombineMapper):
         if None in arg_dtypes:
             return []
 
+        arg_id_to_dtype = dict((i, dtype) for (i, dtype) in
+                enumerate(arg_dtypes))
+
+        # specializing the known function wrt type
+        in_knl_callable = (
+                self.scoped_functions[expr.function.name].with_types(
+                    arg_id_to_dtype))
+
+        # need to colllect arg_id_to_descr from the Subarrayrefs
+        arg_id_to_descr = {}
+        for id, par in enumerate(expr.parameters):
+            if isinstance(par, SubArrayRef):
+                arg_id_to_descr[id] = par.get_arg_descr()
+            elif isinstance(par, Expression):
+                arg_id_to_descr[id] = ValueArgDescriptor()
+            else:
+                # should not come over here
+                raise LoopyError("Unexpected parameter given to call")
+
+        new_arg_id_to_dtype = in_knl_callable.arg_id_to_dtype
+        result_dtypes = []
+
+        # collecting result dtypes in order of the assignees
+
+        for i in range(len(new_arg_id_to_dtype)):
+            if -i-1 in new_arg_id_to_dtype:
+                result_dtypes.appen(new_arg_id_to_dtype[-i-1])
+            else:
+                return result_dtypes
+
+        """
+        # Letting this stay over here, as it maybe needed later for maintaining
+        # backward compatibility
         mangle_result = self.kernel.mangle_function(identifier, arg_dtypes)
         if return_tuple:
             if mangle_result is not None:
@@ -285,6 +321,7 @@ class TypeInferenceMapper(CombineMapper):
         raise RuntimeError("unable to resolve "
                 "function '%s' with %d given arguments"
                 % (identifier, len(arg_dtypes)))
+        """
 
     def map_variable(self, expr):
         if expr.name in self.kernel.all_inames():

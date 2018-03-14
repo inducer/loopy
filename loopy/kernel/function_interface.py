@@ -5,8 +5,6 @@ import numpy as np
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 
-from loopy.types import NumpyType
-
 
 # {{{ argument descriptors
 
@@ -66,7 +64,137 @@ class ArrayArgDescriptor(ArgDescriptor):
 # }}}
 
 
-# {{{ in kernel callable
+# {{{ c with types
+
+def c_with_types(name, arg_id_to_dtype):
+
+    # Specializing the type of the math function once they agree upon the
+    # function signature.
+
+    if name in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
+            "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]:
+        for id, dtype in arg_id_to_dtype.items():
+            if not -1 <= id <= 0:
+                raise LoopyError("%s can take only one argument." % name)
+
+        dtype = arg_id_to_dtype[0].numpy_dtype
+
+        if dtype.kind == 'f':
+            # generic type resolve we can go ahead and specialize
+            pass
+        elif dtype.kind in ['u', 'i']:
+            # int and unsigned are casted into float32
+            dtype = np.float32
+        else:
+            raise LoopyError("%s function cannot take arguments of the type %s"
+                    % (name, dtype))
+
+        # Done specializing. Returning the intended arg_id_to_dtype
+        return {-1: dtype, 0: dtype}
+
+    # binary functions
+    elif name in ["max", "min"]:
+        for id, dtype in arg_id_to_dtype.items():
+            if not -1 <= id <= 1:
+                raise LoopyError("%s can take only two arguments." % name)
+
+        # finding the common type for all the dtypes involved
+        dtype = np.find_common_type(
+            [], [dtype.numpy_dtype for dtype in arg_id_to_dtype])
+
+        if dtype.kind == 'f':
+            # generic type resolve we can go ahead and specialize
+            pass
+        elif dtype.kind in ['u', 'i']:
+            # int and unsigned are implicitly casted into float32
+            dtype = np.float32
+        else:
+            raise LoopyError("%s function cannot take arguments of the type %s"
+                    % (name, dtype))
+
+        # Specialized into one of the known types
+        return {-1: dtype, 0: arg_id_to_dtype[0], 1: arg_id_to_dtype[1]}
+
+    else:
+        # could not specialize the function within the C namespace
+        # this would help when checking for OpenCL/CUDA function which are not
+        # present in C
+        return None
+
+# }}}
+
+
+# {{{ opencl with_types
+
+def opencl_with_types(name, arg_id_to_dtype):
+    new_arg_id_to_dtype = c_with_types(name, arg_id_to_dtype)
+    if new_arg_id_to_dtype is None:
+        # could not locate the function within C's namespace. Searching in
+        # OpenCL specific namespace
+
+        # FIXME: Need to add these functions over here
+        new_arg_id_to_dtype = None
+
+    return new_arg_id_to_dtype
+
+# }}}
+
+
+# {{{ pyopencl with_types
+
+def pyopencl_with_types(name, arg_id_to_dtype):
+    new_arg_id_to_dtype = opencl_with_types(name, arg_id_to_dtype)
+    if new_arg_id_to_dtype is None:
+        # could not locate the function within C's namespace. Searching in
+        # PyOpenCL specific namespace
+
+        # FIXME: Need to add these functions over here
+        new_arg_id_to_dtype = None
+
+    return new_arg_id_to_dtype
+
+# }}}
+
+
+# {{{ cuda with_types
+
+def cuda_with_types(name, arg_id_to_dtype):
+    new_arg_id_to_dtype = c_with_types(name, arg_id_to_dtype)
+    if new_arg_id_to_dtype is None:
+        # could not locate the function within C's namespace. Searching in
+        # CUDA specific namespace
+
+        # FIXME: Need to add these extra functions over here
+        new_arg_id_to_dtype = None
+
+    return new_arg_id_to_dtype
+
+# }}}
+
+
+# {{{ kw_to_pos
+
+def get_kw_pos_association(kernel):
+    kw_to_pos = {}
+    pos_to_kw = {}
+
+    read_count = 0
+    write_count = -1
+
+    for arg in kernel.args:
+        if arg.name in kernel.written_variables:
+            kw_to_pos[arg.name] = write_count
+            pos_to_kw[write_count] = arg.name
+            write_count -= 1
+        else:
+            kw_to_pos[arg.name] = read_count
+            pos_to_kw[read_count] = arg.name
+            read_count += 1
+
+    return kw_to_pos, pos_to_kw
+
+# }}}
+
 
 class InKernelCallable(ImmutableRecord):
     """
@@ -75,13 +203,25 @@ class InKernelCallable(ImmutableRecord):
 
         The name of the callable which can be encountered within a kernel.
 
+    .. attribute:: arg_id_to_dtype
+
+        A mapping which indicates the arguments types and result types it would
+        be handling. This would be set once the callable is type specialized.
+
+    .. attribute:: arg_id_to_descr
+
+        A mapping which gives indicates the argument shape and `dim_tags` it
+        would be responsible for generating code. These parameters would be set,
+        once it is shape and stride(`dim_tags`) specialized.
+
     .. note::
 
         Negative ids in the mapping attributes indicate the result arguments
 
     """
 
-    def __init__(self, name=None):
+    def __init__(self, name, subkernel=None, arg_id_to_dtype=None,
+            arg_id_to_descr=None):
 
         # {{{ sanity checks
 
@@ -91,8 +231,10 @@ class InKernelCallable(ImmutableRecord):
         # }}}
 
         self.name = name
+        self.subkernel = subkernel
 
-        super(InKernelCallable, self).__init__(name=name)
+        super(InKernelCallable, self).__init__(name=name,
+                subkernel=subkernel)
 
     def copy(self, name=None):
         if name is None:
@@ -100,7 +242,7 @@ class InKernelCallable(ImmutableRecord):
 
         return InKernelCallable(name=name)
 
-    def with_types(self, arg_id_to_dtype):
+    def with_types(self, arg_id_to_dtype, target):
         """
         :arg arg_id_to_type: a mapping from argument identifiers
             (integers for positional arguments, names for keyword
@@ -118,7 +260,103 @@ class InKernelCallable(ImmutableRecord):
             its keyword identifier.
         """
 
-        raise NotImplementedError()
+        if self.arg_id_to_dtype:
+            # trying to specialize an already specialized function.
+
+            if self.arg_id_to_dtype == arg_id_to_dtype:
+                return self.copy()
+            else:
+                raise LoopyError("Overwriting a specialized function--maybe"
+                        " start with new instance of InKernelCallable?")
+
+        # {{{ attempt to specialize using scalar functions
+
+        from loopy.library import default_function_identifiers
+        if self.name in default_function_identifiers():
+            ...
+        elif self.name in target.ast_builder().function_identifiers:
+            from loopy.target.c import CTarget
+            from loopy.target.opencl import OpenCLTarget
+            from loopy.target.pyopencl import PyOpenCLTarget
+            from loopy.target.cuda import CudaTarget
+
+            if isinstance(target, CTarget):
+                new_arg_id_to_dtype = c_with_types(arg_id_to_dtype)
+
+            elif isinstance(target, OpenCLTarget):
+                new_arg_id_to_dtype = opencl_with_types(arg_id_to_dtype)
+
+            elif isinstance(target, PyOpenCLTarget):
+                new_arg_id_to_dtype = pyopencl_with_types(arg_id_to_dtype)
+
+            elif isinstance(target, CudaTarget):
+                new_arg_id_to_dtype = cuda_with_types(arg_id_to_dtype)
+
+            else:
+                raise NotImplementedError("InKernelCallable.with_types() for"
+                        " %s target" % target)
+
+        # }}}
+
+        if new_arg_id_to_dtype is not None:
+            # got our speciliazed function
+            return self.copy(arg_id_to_dtype=new_arg_id_to_dtype)
+
+        if self.subkernel is None:
+            # did not find a scalar function and function prototype does not
+            # even have  subkernel registered => no match found
+            raise LoopyError("Function %s not present within"
+                    " the %s namespace" % (self.name, target))
+
+        # {{{ attempt to specialization with array functions
+
+        kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+
+        new_args = []
+        for arg in self.subkernel.args:
+            kw = arg.name
+            if kw in arg_id_to_dtype:
+                # id exists as kw
+                new_args.append(arg.copy(dtype=arg_id_to_dtype[kw]))
+            elif kw_to_pos[kw] in arg_id_to_dtype:
+                # id exists as positional argument
+                new_args.append(arg.copy(
+                    dtype=arg_id_to_dtype[kw_to_pos[kw]]))
+            else:
+                if kw in self.subkernel.read_variables():
+                    # need to know the type of the input arguments for type
+                    # inference
+                    raise LoopyError("Type of %s variable not supplied to the"
+                            " subkernel, which is needed for type"
+                            " inference." % kw)
+                new_args.append(arg)
+
+        from loopy.type_inference import infer_unknown_types
+        pre_specialized_subkernel = self.subkernel.copy(
+                args=new_args)
+
+        # inferring the types of the written variables based on the knowledge
+        # of the types of the arguments supplied
+        specialized_kernel = infer_unknown_types(pre_specialized_subkernel,
+                expect_completion=True)
+        new_arg_id_to_dtype = {}
+        read_count = 0
+        write_count = -1
+        for arg in specialized_kernel.args:
+            new_arg_id_to_dtype[arg.name] = arg.dtype
+            if arg.name in specialized_kernel.written_variables():
+                new_arg_id_to_dtype[write_count] = arg.dtype
+                write_count -= 1
+            else:
+                new_arg_id_to_dtype[read_count] = arg.dtype
+                read_count += 1
+
+        # }}}
+
+        # Returning the kernel call with specialized subkernel and the corresponding
+        # new arg_id_to_dtype
+        return self.copy(subkernel=specialized_kernel,
+                arg_id_to_dtype=new_arg_id_to_dtype)
 
     def with_descrs(self, arg_id_to_descr):
         """
@@ -188,177 +426,10 @@ class InKernelCallable(ImmutableRecord):
     def __eq__(self, other):
         return (self.name == other.name
                 and self.arg_id_to_descr == other.arg_id_to_descr
-                and self.arg_id_to_keyword == other.arg_id_to_keyword)
+                and self.arg_id_to_dtype == other.arg_id_to_keyword)
 
     def __hash__(self):
         return hash((self.name, ))
-
-# }}}
-
-
-# {{{ generic callable class
-
-
-class CommonReturnTypeCallable(InKernelCallable):
-    """ A class of generic functions which have the following properties:
-        - Single return value
-        - Return type of the callable is a common dtype to all the input arguments
-          to the callable
-
-    .. attribute:: name
-
-        The name of the function as would be encountered in loopy.
-
-    ..attribute:: specialized_dtype
-
-        The dtype for which the function has been setup to generate code and
-        premables. For example, the function `sin` can be specialized to either one
-        of the following `float sin(float x)` or `double sin(double x)`. This is not
-        usually expected to be an input as this removed the generality of the
-        callable.
-
-    ..attribute:: kinds_allowed
-
-        The extent upto which the function can be generalized upto. For example
-        `sin(x)` cannot have complex types as its specialized type.
-
-    ..attribute:: arity
-
-        The number of inputs that are to be given to the function
-
-    """
-
-    def __init__(self, name=None, specialized_dtype=None, kinds_allowed=None,
-            arity=None):
-
-        super(CommonReturnTypeCallable, self).__init__(name=name)
-
-        self.specialized_dtype = specialized_dtype
-        self.kinds_allowed = kinds_allowed
-        self.arity = arity
-
-    def copy(self, specialized_dtype=None):
-        if specialized_dtype is None:
-            specialized_dtype = self.specialized_dtype
-
-        return type(self)(self.name, specialized_dtype,
-                self.kinds_allowed, self.arity)
-
-    def with_types(self, arg_id_to_dtype):
-
-        specialized_dtype = np.find_common_type([], [dtype.numpy_dtype
-            for id, dtype in arg_id_to_dtype.items() if id >= 0])
-
-        if self.specialized_dtype is not None and (specialized_dtype !=
-                self.specialized_dtype):
-            from loopy.warnings import warn
-            warn("Trying to change the type of the already set function."
-                    "-- maybe use a different class instance?")
-
-        new_arg_id_to_dtype = arg_id_to_dtype.copy()
-        # checking the compliance of the arg_id_to_dtype
-
-        if -1 not in arg_id_to_dtype:
-            # return type was not know earlier, now setting it to the common type
-            new_arg_id_to_dtype[-1] = NumpyType(specialized_dtype)
-
-        if self.arity+1 == len(new_arg_id_to_dtype) and (specialized_dtype.kind in
-                self.kinds_allowed):
-            # the function signature matched with the current instance.
-            # returning the function and the new_arg_id_to_dtype
-            for i in range(self.arity):
-                new_arg_id_to_dtype[i] = NumpyType(specialized_dtype)
-
-            return (self.copy(specialized_dtype=specialized_dtype),
-                    new_arg_id_to_dtype)
-
-        return None
-
-    def is_ready_for_code_gen(self):
-        return self.specilized_dtype is not None
-
-    def get_target_specific_name(self, target):
-        raise NotImplementedError()
-
-    def get_preamble(self, target):
-        raise NotImplementedError()
-
-# }}}
-
-# {{{ specific type callable class
-
-
-class SpecificReturnTypeCallable(InKernelCallable):
-    """ A super class for the funcitons which cannot be listed as generic
-    functions. These types of Callables support explicity mentioning of the
-    arguments and result dtypes.
-
-    .. attribute:: name
-
-        The name of the function as would be encountered in loopy.
-
-    .. attribute:: arg_id_to_dtype
-
-        The dtype pattern of the arguments which is supposed to be used for checking
-        the applicability of this function in a given scenario.
-    """
-
-    def __init__(self, name=None, arg_id_to_dtype=None):
-
-        super(SpecificReturnTypeCallable, self).__init__(name=name)
-
-        if arg_id_to_dtype is None:
-            LoopyError("The function signature is incomplete without the"
-                    "`arg_id_to_dtype`")
-        self.arg_id_to_dtype = arg_id_to_dtype
-
-    def with_types(self, arg_id_to_dtype):
-
-        # Checking the number of inputs
-        if len([id for id in arg_id_to_dtype if id >= 0]) != len(
-                [id for id in self.arg_id_to_dtype if id >= 0]):
-            # the number of input arguments do not match
-            return None
-
-        # Checking the input dtypes
-        for id, dtype in arg_id_to_dtype.items():
-            if id in self.arg_id_to_dtype and self.arg_id_to_dtype[id] == dtype:
-                # dtype matched with the one given in the input
-                pass
-            else:
-                # did not match with  the function signature and hence returning
-                # None
-                return None
-
-        # Setting the output if not present
-        new_arg_id_to_dtype = arg_id_to_dtype.copy()
-        for id, dtype in self.arg_id_to_dtype:
-            if id < 0:
-                # outputs
-                if id in new_arg_id_to_dtype and new_arg_id_to_dtype[id] != dtype:
-                    # the output dtype had been supplied but did not match with the
-                    # one in the function signature
-                    return None
-
-                new_arg_id_to_dtype[id] = dtype
-
-        # Finally returning the types
-        return self.copy(), new_arg_id_to_dtype
-
-    def is_ready_for_code_gen(self):
-        # everything about the function is determined at the constructor itself,
-        # hence always redy for codegen
-        return True
-
-    def get_target_specific_name(self, target):
-        # defaults to the name of the function in Loopy. May change this specific to
-        # a target by inheriting this class and overriding this function.
-        return self.name
-
-    def get_preamble(self, target):
-        return ""
-
-# }}}
 
 # {{{ callable kernel
 
@@ -417,43 +488,6 @@ class CallableKernel(InKernelCallable):
 
         # }}}
 
-        # Checking the input dtypes
-        for id, arg in self.subkernel.arg_dict.items():
-            if id in self.subkernel.read_varibles():
-
-                # because we need the type of the parameters from the main kernel. It
-                # is necessary that we know the types from there. Hence asserting
-                # this condition
-                assert id in arg_id_to_dtype
-
-        new_arg_dict = {}
-        for id, dtype in arg_id_to_dtype.items():
-            # Making the type of the new arg according to the arg which has been
-            # called in the function.
-            new_arg_dict[id] = self.subkernel.arg_dict[id].copy(dtype=dtype)
-
-        # Merging the 2 dictionaries so that to even incorporate the variables that
-        # were not mentioned in arg_id_to_dtype.
-        new_arg_dict = {**self.subkernel.arg_dict, **new_arg_dict}
-
-        # Preprocessing the kernel so that we can get the types of the other
-        # variables that are involved in the args
-        from loopy.type_inference import infer_unknown_types
-        pre_specialized_subkernel = self.subkernel.copy(
-                args=list(new_arg_dict.values))
-
-        # inferring the types of the written variables based on the knowledge of the
-        # types of the arguments supplied
-        specialized_kernel = infer_unknown_types(pre_specialized_subkernel,
-                expect_completion=True)
-
-        new_arg_id_to_dtype = {}
-        for id, arg in specialized_kernel.arg_dict:
-            new_arg_id_to_dtype[id] = arg.dtype
-
-        # Returning the kernel call with specialized subkernel and the corresponding
-        # new arg_id_to_dtype
-        return self.copy(subkernel=specialized_kernel), specialized_kernel.arg_dict
 
     # }}}
 
