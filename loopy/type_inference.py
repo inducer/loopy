@@ -25,7 +25,6 @@ THE SOFTWARE.
 import six
 
 from pymbolic.mapper import CombineMapper
-from pymbolic.primitives import Call, CallWithKwargs
 from loopy.symbolic import IdentityMapper, ScopedFunction
 import numpy as np
 import re
@@ -284,7 +283,7 @@ class TypeInferenceMapper(CombineMapper):
         # specializing the known function wrt type
         in_knl_callable = (
                 self.scoped_functions[expr.function.name].with_types(
-                    arg_id_to_dtype))
+                    arg_id_to_dtype, self.kernel.target))
 
         # storing the type specialized function so that it can be used for
         # later use
@@ -297,7 +296,7 @@ class TypeInferenceMapper(CombineMapper):
 
         for i in range(len(new_arg_id_to_dtype)):
             if -i-1 in new_arg_id_to_dtype:
-                result_dtypes.appen(new_arg_id_to_dtype[-i-1])
+                result_dtypes.append(new_arg_id_to_dtype[-i-1])
             else:
                 return result_dtypes
 
@@ -516,11 +515,6 @@ class _DictUnionView:
         raise KeyError(key)
 
 
-# {{{ FunctionType Specializer
-
-
-# }}}
-
 # {{{ duplicating the funciton name
 
 def next_indexed_name(name):
@@ -542,17 +536,35 @@ def next_indexed_name(name):
 
 # {{{ FunctionScopeChanger
 
+#TODO: Make it sophisticated
+
 class FunctionScopeChanger(IdentityMapper):
     def __init__(self, new_names):
         self.new_names = new_names
+        self.new_names_set = frozenset(new_names.values())
 
     def map_call(self, expr):
-        return Call(ScopedFunction(self.new_names[expr]),
-                expr.parameters)
+        if expr in self.new_names:
+            return type(expr)(
+                    ScopedFunction(self.new_names[expr]),
+                    tuple(self.rec(child)
+                        for child in expr.parameters))
+        else:
+            return IdentityMapper.map_call(self, expr)
 
     def map_call_with_kwargs(self, expr):
-        return CallWithKwargs(ScopedFunction(self.new_names[expr]),
-                expr.parameters, expr.kw_parameters)
+        if expr in self.new_names:
+            return type(expr)(
+                ScopedFunction(self.new_names[expr]),
+                tuple(self.rec(child)
+                    for child in expr.parameters),
+                dict(
+                    (key, self.rec(val))
+                    for key, val in six.iteritems(expr.kw_parameters))
+                    )
+        else:
+            return IdentityMapper.map_call_with_kwargs(self, expr)
+
 # }}}
 
 
@@ -728,7 +740,7 @@ def infer_unknown_types(kernel, expect_completion=False):
 
     # TODO: These 2 dictionaries are inverse mapping of each other and help to keep
     # track of which ...(need to explain better)
-    scoped_names_to_functions = {}
+    scoped_names_to_functions = pre_type_specialized_knl.scoped_functions
     scoped_functions_to_names = {}
     pymbolic_calls_to_new_names = {}
 
@@ -738,7 +750,7 @@ def infer_unknown_types(kernel, expect_completion=False):
             # name in not present in new_scoped_name_to_function
             old_name = pymbolic_call.function.name
             new_name = next_indexed_name(old_name)
-            while new_name not in scoped_names_to_functions:
+            while new_name in scoped_names_to_functions:
                 new_name = next_indexed_name(new_name)
 
             scoped_names_to_functions[new_name] = knl_callable
@@ -755,14 +767,13 @@ def infer_unknown_types(kernel, expect_completion=False):
         if isinstance(insn, (MultiAssignmentBase, CInstruction)):
             expr = scope_changer(insn.expression)
             new_insns.append(insn.copy(expression=expr))
-            pass
         elif isinstance(insn, _DataObliviousInstruction):
             new_insns.append(insn)
         else:
             raise NotImplementedError("Type Inference Specialization not"
                     "implemented for %s instruciton" % type(insn))
 
-    return pre_type_specialized_knl.copy(scope_functions=scoped_names_to_functions,
+    return pre_type_specialized_knl.copy(scoped_functions=scoped_names_to_functions,
             instructions=new_insns)
 
 # }}}
