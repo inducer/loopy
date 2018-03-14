@@ -2181,6 +2181,10 @@ def preprocess_kernel(kernel, device=None):
 
     kernel = infer_unknown_types(kernel, expect_completion=False)
 
+    # TODO: Specializng based on:
+    # 1. ArgDescriptors
+    # 2. InameTags
+
     check_for_writes_to_predicates(kernel)
     check_reduction_iname_uniqueness(kernel)
 
