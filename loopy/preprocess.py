@@ -37,8 +37,11 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import ScopedFunction
+from loopy.symbolic import ScopedFunction, IdentityMapper
 from pymbolic.mapper import Collector
+
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+        _DataObliviousInstruction)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -2122,6 +2125,44 @@ def check_functions_are_scoped(kernel):
 # }}}
 
 
+# {{{ arg_descr_inference
+
+# take help from the work we did yesterday to populate this
+class ArgDescriptionAdder(IdentityMapper):
+
+    def __init__(self,):
+        ...
+
+    def map_call(self, expr):
+        ...
+
+
+def arg_descr_inference(kernel):
+    """ Specializes the kernel functions in way that the functions agree upon
+    shape and dimensions of the arguments too.
+    """
+
+    # The rest are to be hanfled by array calls. Which would need a mapper.
+
+    new_insns = []
+    for insn in kernel.instructions:
+        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
+            expr = ArgDescriptionAdder(insn.expression)
+            new_insns.append(insn.copy(expression=expr))
+        elif isinstance(insn, _DataObliviousInstruction):
+            new_insns.append()
+        else:
+            raise NotImplementedError("arg_descr_inference for %s instruction" %
+                    type(insn))
+
+    # get the new scoped functions, in a similar fashion we did for type
+    # inference
+
+    return kernel.copy(instructions=new_insns)
+
+# }}}
+
+
 preprocess_cache = WriteOncePersistentDict(
         "loopy-preprocess-cache-v2-"+DATA_MODEL_VERSION,
         key_builder=LoopyKeyBuilder())
@@ -2180,6 +2221,9 @@ def preprocess_kernel(kernel, device=None):
     # Get them out of the way.
 
     kernel = infer_unknown_types(kernel, expect_completion=False)
+    print(kernel.instructions)
+    print(kernel.scoped_functions)
+    1/0
 
     # TODO: Specializng based on:
     # 1. ArgDescriptors

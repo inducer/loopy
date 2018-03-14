@@ -1341,6 +1341,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
             "temporary_variables",
             "iname_to_tag",
             "substitutions",
+            "scoped_functions",
             "iname_slab_increments",
             "loop_priority",
             "silenced_warnings",

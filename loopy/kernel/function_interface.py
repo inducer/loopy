@@ -4,6 +4,7 @@ import numpy as np
 
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
+from loopy.types import NumpyType
 
 
 # {{{ argument descriptors
@@ -72,7 +73,7 @@ def c_with_types(name, arg_id_to_dtype):
     # function signature.
 
     if name in ["abs", "acos", "asin", "atan", "cos", "cosh", "sin", "sinh",
-            "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor"]:
+            "tanh", "exp", "log", "log10", "sqrt", "ceil", "floor", "tan"]:
         for id, dtype in arg_id_to_dtype.items():
             if not -1 <= id <= 0:
                 raise LoopyError("%s can take only one argument." % name)
@@ -90,6 +91,7 @@ def c_with_types(name, arg_id_to_dtype):
                     % (name, dtype))
 
         # Done specializing. Returning the intended arg_id_to_dtype
+        dtype = NumpyType(dtype)
         return {-1: dtype, 0: dtype}
 
     # binary functions
@@ -113,7 +115,7 @@ def c_with_types(name, arg_id_to_dtype):
                     % (name, dtype))
 
         # Specialized into one of the known types
-        return {-1: dtype, 0: arg_id_to_dtype[0], 1: arg_id_to_dtype[1]}
+        return {-1: NumpyType(dtype), 0: arg_id_to_dtype[0], 1: arg_id_to_dtype[1]}
 
     else:
         # could not specialize the function within the C namespace
@@ -182,7 +184,7 @@ def get_kw_pos_association(kernel):
     write_count = -1
 
     for arg in kernel.args:
-        if arg.name in kernel.written_variables:
+        if arg.name in kernel.get_written_variables():
             kw_to_pos[arg.name] = write_count
             pos_to_kw[write_count] = arg.name
             write_count -= 1
@@ -230,17 +232,10 @@ class InKernelCallable(ImmutableRecord):
 
         # }}}
 
-        self.name = name
-        self.subkernel = subkernel
-
         super(InKernelCallable, self).__init__(name=name,
-                subkernel=subkernel)
-
-    def copy(self, name=None):
-        if name is None:
-            name = self.name
-
-        return InKernelCallable(name=name)
+                subkernel=subkernel,
+                arg_id_to_dtype=arg_id_to_dtype,
+                arg_id_to_descr=arg_id_to_descr)
 
     def with_types(self, arg_id_to_dtype, target):
         """
@@ -271,26 +266,26 @@ class InKernelCallable(ImmutableRecord):
 
         # {{{ attempt to specialize using scalar functions
 
-        from loopy.library import default_function_identifiers
+        from loopy.library.function import default_function_identifiers
         if self.name in default_function_identifiers():
             ...
-        elif self.name in target.ast_builder().function_identifiers:
+        elif self.name in target.get_device_ast_builder().function_identifiers():
             from loopy.target.c import CTarget
             from loopy.target.opencl import OpenCLTarget
             from loopy.target.pyopencl import PyOpenCLTarget
             from loopy.target.cuda import CudaTarget
 
             if isinstance(target, CTarget):
-                new_arg_id_to_dtype = c_with_types(arg_id_to_dtype)
+                new_arg_id_to_dtype = c_with_types(self.name, arg_id_to_dtype)
 
             elif isinstance(target, OpenCLTarget):
-                new_arg_id_to_dtype = opencl_with_types(arg_id_to_dtype)
+                new_arg_id_to_dtype = opencl_with_types(self.name, arg_id_to_dtype)
 
             elif isinstance(target, PyOpenCLTarget):
-                new_arg_id_to_dtype = pyopencl_with_types(arg_id_to_dtype)
+                new_arg_id_to_dtype = pyopencl_with_types(self.name, arg_id_to_dtype)
 
             elif isinstance(target, CudaTarget):
-                new_arg_id_to_dtype = cuda_with_types(arg_id_to_dtype)
+                new_arg_id_to_dtype = cuda_with_types(self.name, arg_id_to_dtype)
 
             else:
                 raise NotImplementedError("InKernelCallable.with_types() for"
@@ -344,7 +339,7 @@ class InKernelCallable(ImmutableRecord):
         write_count = -1
         for arg in specialized_kernel.args:
             new_arg_id_to_dtype[arg.name] = arg.dtype
-            if arg.name in specialized_kernel.written_variables():
+            if arg.name in specialized_kernel.get_written_variables():
                 new_arg_id_to_dtype[write_count] = arg.dtype
                 write_count -= 1
             else:
@@ -429,7 +424,7 @@ class InKernelCallable(ImmutableRecord):
                 and self.arg_id_to_dtype == other.arg_id_to_keyword)
 
     def __hash__(self):
-        return hash((self.name, ))
+        return hash((self.name, self.subkernel))
 
 # {{{ callable kernel
 
@@ -487,7 +482,6 @@ class CallableKernel(InKernelCallable):
                         "as KWargs")
 
         # }}}
-
 
     # }}}
 
