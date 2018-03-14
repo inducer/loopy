@@ -128,9 +128,7 @@ def make_ref_args(kernel, impl_arg_info, queue, parameters):
             else:
                 strides = evaluate(arg.unvec_strides, parameters)
 
-                from pytools import all
-                assert all(s > 0 for s in strides)
-                alloc_size = sum(astrd*(alen-1)
+                alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
                         for alen, astrd in zip(shape, strides)) + 1
 
                 if dtype is None:
@@ -241,8 +239,7 @@ def make_args(kernel, impl_arg_info, queue, ref_arg_data, parameters):
             itemsize = dtype.itemsize
             numpy_strides = [itemsize*s for s in strides]
 
-            assert all(s > 0 for s in strides)
-            alloc_size = sum(astrd*(alen-1)
+            alloc_size = sum(astrd*(alen-1) if astrd != 0 else alen-1
                     for alen, astrd in zip(shape, strides)) + 1
 
             # use contiguous array to transfer to host
