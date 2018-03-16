@@ -385,7 +385,7 @@ class CKernelExecutor(KernelExecutorBase):
         super(CKernelExecutor, self).__init__(kernel)
 
     def get_invoker_uncached(self, kernel, codegen_result):
-        generator = CExecutionWrapperGenerator
+        generator = CExecutionWrapperGenerator()
         return generator(kernel, codegen_result)
 
     @memoize_method
