@@ -1388,4 +1388,16 @@ class BarrierInstruction(_DataObliviousInstruction):
 # }}}
 
 
+# {{{ key getters
+
+def _get_insn_eq_key(insn):
+    return insn._key_builder.key()
+
+
+def _get_insn_hash_key(insn):
+    return insn._key_builder.hash_key()
+
+# }}}
+
+
 # vim: foldmethod=marker
