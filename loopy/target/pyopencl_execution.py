@@ -261,14 +261,17 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
             specific arguments.
         """
 
-        super(PyOpenCLKernelExecutor, self).__init__(
-            kernel, invoker=PyOpenCLExecutionWrapperGenerator())
+        super(PyOpenCLKernelExecutor, self).__init__(kernel)
 
         self.context = context
 
         from loopy.target.pyopencl import PyOpenCLTarget
         if isinstance(kernel.target, PyOpenCLTarget):
             self.kernel = kernel.copy(target=PyOpenCLTarget(context.devices[0]))
+
+    def get_invoker_uncached(self, kernel, codegen_result):
+        generator = PyOpenCLExecutionWrapperGenerator()
+        return generator(kernel, codegen_result)
 
     @memoize_method
     def kernel_info(self, arg_to_dtype_set=frozenset(), all_kwargs=None):
@@ -309,7 +312,7 @@ class PyOpenCLKernelExecutor(KernelExecutorBase):
                 kernel=kernel,
                 cl_kernels=cl_kernels,
                 implemented_data_info=codegen_result.implemented_data_info,
-                invoker=self.invoker(kernel, codegen_result))
+                invoker=self.get_invoker(kernel, codegen_result))
 
     def __call__(self, queue, **kwargs):
         """

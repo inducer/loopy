@@ -1277,9 +1277,20 @@ class LoopKernel(ImmutableRecordWithoutPickling):
         result = dict(
                 (key, getattr(self, key))
                 for key in self.__class__.fields
-                if hasattr(self, key))
+                if hasattr(self, key) and key != "instructions")
 
         result.pop("cache_manager", None)
+
+        # Make the instructions lazily unpickling, to support faster
+        # cache retrieval for execution.
+        from loopy.kernel.instruction import _get_insn_eq_key, _get_insn_hash_key
+        from loopy.tools import (
+                LazilyUnpicklingListWithEqAndPersistentHashing as LazyList)
+
+        result["instructions"] = LazyList(
+                self.instructions,
+                eq_key_getter=_get_insn_eq_key,
+                persistent_hash_key_getter=_get_insn_hash_key)
 
         # make sure that kernels are pickled with a cached hash key in place
         from loopy.tools import LoopyKeyBuilder
