@@ -487,7 +487,7 @@ class InstructionBase(ImmutableRecord):
 
 def _get_assignee_var_name(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript
+    from loopy.symbolic import LinearSubscript, SubArrayRef
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -506,13 +506,20 @@ def _get_assignee_var_name(expr):
         assert isinstance(agg, Variable)
 
         return agg.name
+
+    elif isinstance(expr, SubArrayRef):
+        agg = expr.subscript.aggregate
+        assert isinstance(agg, Variable)
+
+        return agg.name
+
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
 
 def _get_assignee_subscript_deps(expr):
     from pymbolic.primitives import Variable, Subscript, Lookup
-    from loopy.symbolic import LinearSubscript, get_dependencies
+    from loopy.symbolic import LinearSubscript, get_dependencies, SubArrayRef
 
     if isinstance(expr, Lookup):
         expr = expr.aggregate
@@ -523,6 +530,8 @@ def _get_assignee_subscript_deps(expr):
         return get_dependencies(expr.index)
     elif isinstance(expr, LinearSubscript):
         return get_dependencies(expr.index)
+    elif isinstance(expr, SubArrayRef):
+        return get_dependencies(expr.get_begin_subscript().index)
     else:
         raise RuntimeError("invalid lvalue '%s'" % expr)
 
@@ -961,9 +970,10 @@ class CallInstruction(MultiAssignmentBase):
                 forced_iname_deps=forced_iname_deps,
                 forced_iname_deps_is_final=forced_iname_deps_is_final)
 
-        from pymbolic.primitives import Call
+        from pymbolic.primitives import Call, CallWithKwargs
         from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, Reduction)) and expression is not None:
+        if not isinstance(expression, (Call, CallWithKwargs, Reduction)) and (
+                expression is not None):
             raise LoopyError("'expression' argument to CallInstruction "
                     "must be a function call")
 
@@ -979,9 +989,10 @@ class CallInstruction(MultiAssignmentBase):
             expression = parse(expression)
 
         from pymbolic.primitives import Variable, Subscript
-        from loopy.symbolic import LinearSubscript
+        from loopy.symbolic import LinearSubscript, SubArrayRef
         for assignee in assignees:
-            if not isinstance(assignee, (Variable, Subscript, LinearSubscript)):
+            if not isinstance(assignee, (Variable, Subscript, LinearSubscript,
+                    SubArrayRef)):
                 raise LoopyError("invalid lvalue '%s'" % assignee)
 
         self.assignees = assignees
@@ -1035,16 +1046,36 @@ class CallInstruction(MultiAssignmentBase):
 # }}}
 
 
+def is_array_call(assignees, expression):
+    from pymbolic.primitives import Call, CallWithKwargs
+    from loopy.symbolic import SubArrayRef
+
+    if not isinstance(expression, (Call, CallWithKwargs)):
+        return False
+
+    for assignee in assignees:
+        if isinstance(assignee, SubArrayRef):
+            return True
+
+    for par in expression.parameters:
+        if isinstance(assignee, SubArrayRef):
+            return True
+
+    # did not encounter SubArrayRef, hence must be a normal call
+    return False
+
+
 def make_assignment(assignees, expression, temp_var_types=None, **kwargs):
-    if len(assignees) > 1 or len(assignees) == 0:
+    if len(assignees) > 1 or len(assignees) == 0 or is_array_call(assignees,
+            expression):
         atomicity = kwargs.pop("atomicity", ())
         if atomicity:
             raise LoopyError("atomic operations with more than one "
                     "left-hand side not supported")
 
-        from pymbolic.primitives import Call
+        from pymbolic.primitives import Call, CallWithKwargs
         from loopy.symbolic import Reduction
-        if not isinstance(expression, (Call, Reduction)):
+        if not isinstance(expression, (Call, CallWithKwargs, Reduction)):
             raise LoopyError("right-hand side in multiple assignment must be "
                     "function call or reduction, got: '%s'" % expression)
 
