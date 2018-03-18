@@ -497,14 +497,16 @@ def parse_insn(groups, insn_options):
         if isinstance(inner_lhs_i, Lookup):
             inner_lhs_i = inner_lhs_i.aggregate
 
-        from loopy.symbolic import LinearSubscript
+        from loopy.symbolic import LinearSubscript, SubArrayRef
         if isinstance(inner_lhs_i, Variable):
             assignee_names.append(inner_lhs_i.name)
         elif isinstance(inner_lhs_i, (Subscript, LinearSubscript)):
             assignee_names.append(inner_lhs_i.aggregate.name)
+        elif isinstance(inner_lhs_i, SubArrayRef):
+            assignee_names.append(inner_lhs_i.subscript.aggregate.name)
         else:
             raise LoopyError("left hand side of assignment '%s' must "
-                    "be variable or subscript" % (lhs_i,))
+                    "be variable, subscript or a SubArrayRef" % (lhs_i,))
 
         new_lhs.append(lhs_i)
 
