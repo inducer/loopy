@@ -37,8 +37,7 @@ from pytools import UniqueNameGenerator, generate_unique_names
 
 from loopy.library.function import (
         default_function_mangler,
-        single_arg_function_mangler,
-        default_function_identifiers)
+        single_arg_function_mangler)
 
 from loopy.diagnostic import CannotBranchDomainTree, LoopyError
 from loopy.tools import natsorted
@@ -271,8 +270,7 @@ class LoopKernel(ImmutableRecordWithoutPickling):
 
         # Populating the function identifiers based on the target and the default
         # function identifiers
-        function_identifiers = (default_function_identifiers() |
-                target.get_device_ast_builder().function_identifiers())
+        function_identifiers = target.get_device_ast_builder().function_identifiers()
 
         ImmutableRecordWithoutPickling.__init__(self,
                 domains=domains,

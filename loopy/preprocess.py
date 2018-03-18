@@ -27,6 +27,7 @@ import six
 from loopy.diagnostic import (
         LoopyError, WriteRaceConditionWarning, warn_with_kernel,
         LoopyAdvisory)
+from functools import reduce
 
 import islpy as isl
 
@@ -37,11 +38,11 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
-from loopy.symbolic import ScopedFunction, IdentityMapper
+from loopy.symbolic import ScopedFunction, CombineMapper
 from pymbolic.mapper import Collector
 
 from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
-        _DataObliviousInstruction)
+        CallInstruction,  _DataObliviousInstruction)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -2127,38 +2128,155 @@ def check_functions_are_scoped(kernel):
 
 # {{{ arg_descr_inference
 
-# take help from the work we did yesterday to populate this
-class ArgDescriptionAdder(IdentityMapper):
+def get_arg_description_from_sub_array_ref(sub_array, kernel):
+    """ Gets the dim_tags, memory scope, shape informations of a
+    :class:`SubArrayRef` argument in the caller kernel packed into
+    :class:`ArrayArgDescriptor`.
+    """
+    from loopy.kernel.function_interface import ArrayArgDescriptor
 
-    def __init__(self,):
-        ...
+    name = sub_array.subscript.attribute.name
 
-    def map_call(self, expr):
-        ...
+    if name in kernel.temporary_variables:
+        mem_scope = "LOCAL"
+        arg = kernel.temporary_variables[name]
+        assert name not in kernel.arg_dict
+    else:
+        assert name in kernel.arg_dict
+        mem_scope = "GLOBAL"
+        arg = kernel.arg_dict[name]
+
+    sub_dim_tags, sub_shape = sub_array.get_sub_array_dim_tags_and_shape(
+            arg.dim_tags, arg.shape)
+
+    return ArrayArgDescriptor(mem_scope=mem_scope,
+            dim_tags=sub_dim_tags,
+            shape=sub_shape)
 
 
-def arg_descr_inference(kernel):
+class ArgDescriptionInferer(CombineMapper):
+    """ Returns a set with elements as instances of :class:`tuple` (expr,
+    in_kenrel_callable). The mapped `in_kenrel_callable` of the
+    :class:`InKernelCallable` are descriptor specialized for the given
+    arguments.
+    """
+
+    def __init__(self, scoped_functions):
+        self.scoped_functions = scoped_functions
+
+    def combine(self, values):
+        import operator
+        return reduce(operator.or_, values, set())
+
+    def map_call(self, expr, **kwargs):
+        from loopy.kernel.function_interface import ValueArgDescriptor
+        from loopy.symbolic import SubArrayRef
+
+        # descriptors for the args
+        arg_id_to_descr = dict((i, get_arg_description_from_sub_array_ref(par))
+                if isinstance(par, SubArrayRef) else (i, ValueArgDescriptor())
+                for i, par in enumerate(expr.parameters))
+
+        assignee_id_to_descr = {}
+
+        # assignee descriptor
+        if 'assignees' in kwargs:
+            # If supplied with assignees then this is a CallInstruction
+            assignees = kwargs['assignees']
+            assert isinstance(assignees, tuple)
+            for i, par in enumerate(assignees):
+                if isinstance(par, SubArrayRef):
+                    assignee_id_to_descr[-i-1] = (
+                            get_arg_description_from_sub_array_ref(par))
+                else:
+                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+
+        # gathering all the descriptors
+        combined_arg_id_to_dtype = {**arg_id_to_descr, **assignee_id_to_descr}
+
+        # specializing the function according to the parameter description
+        new_scoped_function = (
+                self.scoped_functions[expr.function.name].with_descrs(
+                    combined_arg_id_to_dtype))
+
+        # collecting the descriptors for args, kwargs, assignees
+        return set(((expr, new_scoped_function),))
+
+    def map_call_with_kwargs(self, expr, **kwargs):
+        from loopy.kernel.function_intergace import ValueArgDescriptor
+        from loopy.symbolic import SubArrayRef
+
+        # descriptors for the args and kwargs:
+        arg_id_to_descr = dict((i, get_arg_description_from_sub_array_ref(par))
+                if isinstance(par, SubArrayRef) else ValueArgDescriptor()
+                for i, par in enumerate(expr.parameters) +
+                expr.kw_parameters.items())
+
+        assignee_id_to_descr = {}
+
+        if 'assignees' in kwargs:
+            # If supplied with assignees then this is a CallInstruction
+            assignees = kwargs['assignees']
+            assert isinstance(assignees, tuple)
+            for i, par in enumerate(assignees):
+                if isinstance(par, SubArrayRef):
+                    assignee_id_to_descr[-i-1] = (
+                            get_arg_description_from_sub_array_ref(par))
+                else:
+                    assignee_id_to_descr[-i-1] = ValueArgDescriptor()
+
+        # gathering all the descriptors
+        combined_arg_id_to_descr = {**arg_id_to_descr, **assignee_id_to_descr}
+
+        # specializing the function according to the parameter description
+        new_scoped_function = (
+                self.scoped_functions[expr.function.name].with_descr(
+                    combined_arg_id_to_descr))
+
+        # collecting the descriptors for args, kwargs, assignees
+        return set(((expr, new_scoped_function),))
+
+    def map_constant(self, expr):
+        return set()
+
+    map_variable = map_constant
+    map_function_symbol = map_constant
+
+def infer_arg_descr(kernel):
     """ Specializes the kernel functions in way that the functions agree upon
     shape and dimensions of the arguments too.
     """
 
-    # The rest are to be hanfled by array calls. Which would need a mapper.
+    arg_description_modifier = ArgDescriptionInferer(kernel.scoped_functions)
+    pymbolic_calls_to_functions = set()
 
-    new_insns = []
     for insn in kernel.instructions:
+
+        if isinstance(insn, CallInstruction):
+            # In call instructions the assignees play an important in
+            # determining the arg_id_to_dtype
+            pymbolic_calls_to_functions.update(
+                    arg_description_modifier(insn.expression,
+                        assignees=insn.assignees))
         if isinstance(insn, (MultiAssignmentBase, CInstruction)):
-            expr = ArgDescriptionAdder(insn.expression)
-            new_insns.append(insn.copy(expression=expr))
+            pymbolic_calls_to_functions.update(arg_description_modifier(
+                insn.expression))
         elif isinstance(insn, _DataObliviousInstruction):
-            new_insns.append()
+            pass
         else:
             raise NotImplementedError("arg_descr_inference for %s instruction" %
                     type(insn))
 
-    # get the new scoped functions, in a similar fashion we did for type
-    # inference
+    # making it the set of tuples a dict
+    pymbolic_calls_to_functions = dict(pymbolic_calls_to_functions)
 
-    return kernel.copy(instructions=new_insns)
+    # Now do the similar treatment as done for type inference.
+    from loopy.kernel.function_interface import (
+            register_pymbolic_calls_to_knl_callables)
+
+    return register_pymbolic_calls_to_knl_callables(kernel,
+            pymbolic_calls_to_functions)
+
 
 # }}}
 
@@ -2221,9 +2339,6 @@ def preprocess_kernel(kernel, device=None):
     # Get them out of the way.
 
     kernel = infer_unknown_types(kernel, expect_completion=False)
-    print(kernel.instructions)
-    print(kernel.scoped_functions)
-    1/0
 
     # TODO: Specializng based on:
     # 1. ArgDescriptors
@@ -2262,6 +2377,19 @@ def preprocess_kernel(kernel, device=None):
     # check for atomic loads, much easier to do here now that the dependencies
     # have been established
     kernel = check_atomic_loads(kernel)
+
+    kernel = infer_arg_descr(kernel)
+
+    print(75*'-')
+    print("This is after Type Inference")
+    for insn in kernel.instructions:
+        print(insn)
+    print(75*'-')
+    print('Linked Functions:')
+    for name, func in kernel.scoped_functions.items():
+        print(name, "=>", func)
+    print(75*'-')
+    1/0
 
     kernel = kernel.target.preprocess(kernel)
 

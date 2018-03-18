@@ -723,19 +723,22 @@ class SubArrayRef(p.Expression):
                 starting_inames.append(iname)
         return p.Subscript(self.subscript.aggregate, tuple(starting_inames))
 
-    def get_inner_dim_tags(self, arg_dim_tags):
+    def get_sub_array_dim_tags_and_shape(self, arg_dim_tags, arg_shape):
         """ Gives the dim tags for the inner inames.
         This would be used for stride calculation in the child kernel.
         This might need to go, once we start calculating the stride length
         using the upper and lower bounds of the involved inames.
         """
         from loopy.kernel.array import FixedStrideArrayDimTag as DimTag
-        inner_dim_tags = []
-        for dim_tag, iname in zip(arg_dim_tags, self.subscript.index_tuple):
+        sub_dim_tags = []
+        sub_shape = []
+        for dim_tag, axis_length, iname in zip(
+                arg_dim_tags, arg_shape, self.subscript.index_tuple):
             if iname in self.swept_inames:
-                inner_dim_tags.append(DimTag(dim_tag.stride))
+                sub_dim_tags.append(DimTag(dim_tag.stride))
+                sub_shape.append(axis_length)
 
-        return inner_dim_tags
+        return sub_dim_tags, sub_shape
 
     def __getinitargs__(self):
         return (self.swept_inames, self.subscript)

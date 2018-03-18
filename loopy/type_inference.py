@@ -25,9 +25,7 @@ THE SOFTWARE.
 import six
 
 from pymbolic.mapper import CombineMapper
-from loopy.symbolic import IdentityMapper, ScopedFunction
 import numpy as np
-import re
 
 from loopy.tools import is_integer
 from loopy.types import NumpyType
@@ -35,9 +33,6 @@ from loopy.types import NumpyType
 from loopy.diagnostic import (
         LoopyError,
         TypeInferenceFailure, DependencyTypeInferenceFailure)
-
-from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
-        _DataObliviousInstruction)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -515,59 +510,6 @@ class _DictUnionView:
         raise KeyError(key)
 
 
-# {{{ duplicating the funciton name
-
-def next_indexed_name(name):
-    FUNC_NAME = re.compile(r"^(?P<alpha>\S+?)_(?P<num>\d+?)$")
-
-    match = FUNC_NAME.match(name)
-
-    if match is None:
-        if name[-1] == '_':
-            return "{old_name}0".format(old_name=name)
-        else:
-            return "{old_name}_0".format(old_name=name)
-
-    return "{alpha}_{num}".format(alpha=match.group('alpha'),
-            num=int(match.group('num'))+1)
-
-# }}}
-
-
-# {{{ FunctionScopeChanger
-
-#TODO: Make it sophisticated
-
-class FunctionScopeChanger(IdentityMapper):
-    def __init__(self, new_names):
-        self.new_names = new_names
-        self.new_names_set = frozenset(new_names.values())
-
-    def map_call(self, expr):
-        if expr in self.new_names:
-            return type(expr)(
-                    ScopedFunction(self.new_names[expr]),
-                    tuple(self.rec(child)
-                        for child in expr.parameters))
-        else:
-            return IdentityMapper.map_call(self, expr)
-
-    def map_call_with_kwargs(self, expr):
-        if expr in self.new_names:
-            return type(expr)(
-                ScopedFunction(self.new_names[expr]),
-                tuple(self.rec(child)
-                    for child in expr.parameters),
-                dict(
-                    (key, self.rec(val))
-                    for key, val in six.iteritems(expr.kw_parameters))
-                    )
-        else:
-            return IdentityMapper.map_call_with_kwargs(self, expr)
-
-# }}}
-
-
 # {{{ infer_unknown_types
 
 def infer_unknown_types(kernel, expect_completion=False):
@@ -736,45 +678,11 @@ def infer_unknown_types(kernel, expect_completion=False):
             args=[new_arg_dict[arg.name] for arg in kernel.args],
             )
 
-    # {{{ type specialization
+    from loopy.kernel.function_interface import (
+            register_pymbolic_calls_to_knl_callables)
+    return register_pymbolic_calls_to_knl_callables(
+            pre_type_specialized_knl, specialized_functions)
 
-    # TODO: These 2 dictionaries are inverse mapping of each other and help to keep
-    # track of which ...(need to explain better)
-    scoped_names_to_functions = pre_type_specialized_knl.scoped_functions
-    scoped_functions_to_names = {}
-    pymbolic_calls_to_new_names = {}
-
-    for pymbolic_call, knl_callable in specialized_functions.items():
-        if knl_callable not in scoped_functions_to_names:
-            # need to make a new name deerived from the old name such that new
-            # name in not present in new_scoped_name_to_function
-            old_name = pymbolic_call.function.name
-            new_name = next_indexed_name(old_name)
-            while new_name in scoped_names_to_functions:
-                new_name = next_indexed_name(new_name)
-
-            scoped_names_to_functions[new_name] = knl_callable
-            scoped_functions_to_names[knl_callable] = new_name
-
-        pymbolic_calls_to_new_names[pymbolic_call] = (
-                scoped_functions_to_names[knl_callable])
-
-    # }}}
-
-    new_insns = []
-    scope_changer = FunctionScopeChanger(pymbolic_calls_to_new_names)
-    for insn in pre_type_specialized_knl.instructions:
-        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
-            expr = scope_changer(insn.expression)
-            new_insns.append(insn.copy(expression=expr))
-        elif isinstance(insn, _DataObliviousInstruction):
-            new_insns.append(insn)
-        else:
-            raise NotImplementedError("Type Inference Specialization not"
-                    "implemented for %s instruciton" % type(insn))
-
-    return pre_type_specialized_knl.copy(scoped_functions=scoped_names_to_functions,
-            instructions=new_insns)
 
 # }}}
 

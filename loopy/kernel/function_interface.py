@@ -1,10 +1,17 @@
 from __future__ import division, absolute_import
 
+import re
+import six
 import numpy as np
 
 from pytools import ImmutableRecord
 from loopy.diagnostic import LoopyError
 from loopy.types import NumpyType
+
+from loopy.kernel.instruction import (MultiAssignmentBase, CInstruction,
+                _DataObliviousInstruction)
+
+from loopy.symbolic import IdentityMapper, ScopedFunction
 
 
 # {{{ argument descriptors
@@ -21,17 +28,20 @@ class ArgDescriptor(ImmutableRecord):
             mem_scope=None,
             shape=None,
             dim_tags=None):
-        super(ArgDescriptor).__init__(self,
-                mem_scope=mem_scope,
+        super(ArgDescriptor, self).__init__(mem_scope=mem_scope,
                 shape=shape,
                 dim_tags=dim_tags)
 
 
 class ValueArgDescriptor(ArgDescriptor):
-    """
-    """
     def __init__(self):
-        super(ValueArgDescriptor, self).__init__(self)
+        super(ValueArgDescriptor, self).__init__()
+
+    def __str__(self):
+        return "ValueArgDescriptor"
+
+    def __repr__(self):
+        return "ValueArgDescriptor"
 
 
 class ArrayArgDescriptor(ArgDescriptor):
@@ -41,9 +51,10 @@ class ArrayArgDescriptor(ArgDescriptor):
     """
 
     def __init__(self,
+            shape=None,
             mem_scope=None,
             dim_tags=None):
-        super(ArgDescriptor, self).__init__(self,
+        super(ArgDescriptor, self).__init__(shape=None,
                 mem_scope=mem_scope,
                 dim_tags=dim_tags)
 
@@ -266,10 +277,7 @@ class InKernelCallable(ImmutableRecord):
 
         # {{{ attempt to specialize using scalar functions
 
-        from loopy.library.function import default_function_identifiers
-        if self.name in default_function_identifiers():
-            ...
-        elif self.name in target.get_device_ast_builder().function_identifiers():
+        if self.name in target.get_device_ast_builder().function_identifiers():
             from loopy.target.c import CTarget
             from loopy.target.opencl import OpenCLTarget
             from loopy.target.pyopencl import PyOpenCLTarget
@@ -371,7 +379,36 @@ class InKernelCallable(ImmutableRecord):
             its keyword identifier.
         """
 
-        raise NotImplementedError()
+        if self.subkernel is None:
+            # This is a scalar call
+            # need to assert that the name is in funtion indentifiers
+            arg_id_to_descr[-1] = ValueArgDescriptor()
+            return self.copy(arg_id_to_descr=arg_id_to_descr)
+
+        else:
+            # Now this ia a kernel call
+            # tuning the subkernel so that we have the the matching shapes and
+            # dim_tags.
+            # FIXME: Although We receive input if the argument is
+            # local/global. We do not use it to set the subkernel function
+            # signature. Need to do it, so that we can handle teporary inputs
+            # in the array call.
+
+            # Collecting the parameters
+            new_args = self.args.copy()
+            kw_to_pos, pos_to_kw = get_kw_pos_association(self.subkernel)
+
+            for id, descr in arg_id_to_descr.items():
+                if isinstance(id, str):
+                    id = kw_to_pos[id]
+                assert isinstance(id, int)
+                new_args[id] = new_args[id].copy(shape=descr.shape,
+                        dim_tags=descr.dim_tags)
+
+            descriptor_specialized_knl = self.subkernel.copy(args=new_args)
+
+            return self.copy(subkernel=descriptor_specialized_knl,
+                    arg_id_to_descr=arg_id_to_descr)
 
     def with_iname_tag_usage(self, unusable, concurrent_shape):
         """
@@ -390,16 +427,10 @@ class InKernelCallable(ImmutableRecord):
 
         raise NotImplementedError()
 
-    def is_arg_written(self, arg_id):
-        """
-        :arg arg_id: (keyword) name or position
-        """
-
-        raise NotImplementedError()
-
     def is_ready_for_code_gen(self):
 
-        raise NotImplementedError()
+        return (self.arg_id_to_dtype is not None and
+                self.arg_id_to_descr is not None)
 
     # {{{ code generation
 
@@ -413,6 +444,8 @@ class InKernelCallable(ImmutableRecord):
         raise NotImplementedError()
 
     def emit_call(self, target):
+        # two varieties of this call, when obtained in between a function and
+        # when obtained as a separate instruction statement.
 
         raise NotImplementedError()
 
@@ -421,7 +454,7 @@ class InKernelCallable(ImmutableRecord):
     def __eq__(self, other):
         return (self.name == other.name
                 and self.arg_id_to_descr == other.arg_id_to_descr
-                and self.arg_id_to_dtype == other.arg_id_to_keyword)
+                and self.arg_id_to_dtype == other.arg_id_to_dtype)
 
     def __hash__(self):
         return hash((self.name, self.subkernel))
@@ -527,6 +560,107 @@ class CallableKernel(InKernelCallable):
         return ""
 
     # }}}
+
+# }}}
+
+
+# {{{ new pymbolic calls to scoped functions
+
+def next_indexed_name(name):
+    func_name = re.compile(r"^(?P<alpha>\S+?)_(?P<num>\d+?)$")
+
+    match = func_name.match(name)
+
+    if match is None:
+        if name[-1] == '_':
+            return "{old_name}0".format(old_name=name)
+        else:
+            return "{old_name}_0".format(old_name=name)
+
+    return "{alpha}_{num}".format(alpha=match.group('alpha'),
+            num=int(match.group('num'))+1)
+
+
+class FunctionScopeChanger(IdentityMapper):
+    #TODO: Make it sophisticated as in I don't like the if-else systems. Needs
+    # something else.
+    def __init__(self, new_names):
+        self.new_names = new_names
+        self.new_names_set = frozenset(new_names.values())
+
+    def map_call(self, expr):
+        if expr in self.new_names:
+            return type(expr)(
+                    ScopedFunction(self.new_names[expr]),
+                    tuple(self.rec(child)
+                        for child in expr.parameters))
+        else:
+            return IdentityMapper.map_call(self, expr)
+
+    def map_call_with_kwargs(self, expr):
+        if expr in self.new_names:
+            return type(expr)(
+                ScopedFunction(self.new_names[expr]),
+                tuple(self.rec(child)
+                    for child in expr.parameters),
+                dict(
+                    (key, self.rec(val))
+                    for key, val in six.iteritems(expr.kw_parameters))
+                    )
+        else:
+            return IdentityMapper.map_call_with_kwargs(self, expr)
+
+
+def register_pymbolic_calls_to_knl_callables(kernel,
+        pymbolic_calls_to_knl_callables):
+    """ Takes in a mapping :arg:`pymbolic_calls_to_knl_callables` and returns a
+    new kernel which includes an association with the given pymbolic calls to
+    instances of :class:`InKernelCallable`
+    """
+
+    scoped_names_to_functions = kernel.scoped_functions.copy()
+
+    # A dict containing the new scoped functions to the names which have been
+    # assigned to them
+    scoped_functions_to_names = {}
+
+    # A dict containing the new name that need to be assigned to the
+    # corresponding pymbolic call
+    pymbolic_calls_to_new_names = {}
+
+    for pymbolic_call, in_knl_callable in pymbolic_calls_to_knl_callables.items():
+        # checking if such a in-kernel callable already exists.
+        if in_knl_callable not in scoped_functions_to_names:
+            # No matching in_knl_callable found => make a new one with a new
+            # name.
+
+            unique_name = next_indexed_name(pymbolic_call.function.name)
+            while unique_name in scoped_names_to_functions:
+                # keep on finding new names till one a unique one is found.
+                unique_name = next_indexed_name(unique_name)
+
+            # book-keeping of the functions and names mappings for later use
+            scoped_names_to_functions[unique_name] = in_knl_callable
+            scoped_functions_to_names[in_knl_callable] = unique_name
+
+        pymbolic_calls_to_new_names[pymbolic_call] = (
+                scoped_functions_to_names[in_knl_callable])
+
+    # Using the data populated in pymbolic_calls_to_new_names to change the
+    # names of the scoped functions of all the calls in the kernel.
+    new_insns = []
+    scope_changer = FunctionScopeChanger(pymbolic_calls_to_new_names)
+    for insn in kernel.instructions:
+        if isinstance(insn, (MultiAssignmentBase, CInstruction)):
+            expr = scope_changer(insn.expression)
+            new_insns.append(insn.copy(expression=expr))
+        elif isinstance(insn, _DataObliviousInstruction):
+            new_insns.append(insn)
+        else:
+            raise NotImplementedError("Type Inference Specialization not"
+                    "implemented for %s instruciton" % type(insn))
+    return kernel.copy(scoped_functions=scoped_names_to_functions,
+            instructions=new_insns)
 
 # }}}
 
