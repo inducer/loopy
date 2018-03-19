@@ -1836,8 +1836,8 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 
 class FunctionScoper(IdentityMapper):
     """
-    Subclass of :class:`IdentityMapper` which converts functions known to
-    the kernel at to instances of :class:`ScopedFunction`.
+    Converts functions known to the kernel as instances of
+    :class:`ScopedFunction`.
 
     .. _example:
 
