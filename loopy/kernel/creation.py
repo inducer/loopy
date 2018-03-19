@@ -1861,6 +1861,9 @@ class FunctionScoper(IdentityMapper):
                     tuple(self.rec(child)
                         for child in expr.parameters))
 
+        # This is an unknown function as of yet, not modifying it.
+        return IdentityMapper.map_call(self, expr)
+
     def map_call_with_kwargs(self, expr):
         if expr.function.name in self.function_ids:
             from pymbolic.primitives import CallWithKwargs
@@ -1874,13 +1877,20 @@ class FunctionScoper(IdentityMapper):
                         for key, val in six.iteritems(expr.kw_parameters))
                         )
 
+        # This is an unknown function as of yet, not modifying it.
+        return IdentityMapper.map_call(self, expr)
+
 
 class ScopedFunctionCollector(Collector):
+    """ This mapper would collect all the instances of :class:`ScopedFunction`
+    occurring in the expression and written all of them as a :class:`set`.
+    """
 
     def map_scoped_function(self, expr):
         return set([expr.name])
 
-    map_sub_array_ref = Collector.map_constant
+    def map_sub_array_ref(self, expr):
+        return set()
 
 
 def scope_functions(kernel):
