@@ -1833,7 +1833,6 @@ def apply_single_writer_depencency_heuristic(kernel, warn_if_used=True):
 
 # {{{ lookup functions
 
-
 class FunctionScoper(IdentityMapper):
     """
     Converts functions known to the kernel as instances of
